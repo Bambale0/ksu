@@ -155,12 +155,17 @@ class PaymentService:
                     amount=package.amount,
                     description=description,
                     notification_url=settings.webhook_url("webhooks/payments/tbank"),
-                    return_url=settings.payment_return_url,
+                    return_url=settings.payment_return_url or settings.public_base_url,
                 )
             finally:
                 await client.aclose()
 
         if provider == "yookassa":
+            return_url = settings.payment_return_url or settings.public_base_url
+            if not return_url:
+                raise PaymentProviderError(
+                    "YooKassa requires PAYMENT_RETURN_URL or PUBLIC_BASE_URL"
+                )
             client = YooKassaClient(
                 settings.yookassa_shop_id,
                 settings.yookassa_secret_key,
@@ -172,7 +177,7 @@ class PaymentService:
                     amount=package.amount,
                     currency=package.currency,
                     description=description,
-                    return_url=settings.payment_return_url,
+                    return_url=return_url,
                 )
             finally:
                 await client.aclose()
