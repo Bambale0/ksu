@@ -58,6 +58,8 @@ mypy app
 pytest -q
 ```
 
+CI runs the same validation on every pull request and on pushes to `main`, with real PostgreSQL and Redis service containers.
+
 ## Telegram webhook
 
 When `BOT_TOKEN` and `TELEGRAM_WEBHOOK_URL` are configured, application startup registers:
