@@ -10,6 +10,7 @@ from app.api.router import api_router
 from app.api.webhooks import router as webhook_router
 from app.bot.dispatcher import create_dispatcher
 from app.core.config import settings
+from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.db.session import engine
 
@@ -56,6 +57,7 @@ app = FastAPI(
     redoc_url=None if settings.is_production else "/redoc",
     lifespan=lifespan,
 )
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(health_router)
 app.include_router(webhook_router)
 app.include_router(api_router)
