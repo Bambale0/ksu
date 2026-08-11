@@ -12,6 +12,7 @@ from app.api.v1 import (
     promocodes,
     referrals,
     support,
+    uploads,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -21,6 +22,7 @@ api_router.include_router(referrals.router)
 api_router.include_router(generations.router)
 api_router.include_router(payments.router)
 api_router.include_router(support.router)
+api_router.include_router(uploads.router)
 api_router.include_router(admin_auth.router)
 api_router.include_router(admin_users.router)
 api_router.include_router(admin_operations.router)

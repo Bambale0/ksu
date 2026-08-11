@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Ксю · Генерация</title>
+  <link rel="stylesheet" href="/mini-app/styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script defer src="/mini-app/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">КСЮ · AI STUDIO</div>
+        <h1>Создать контент</h1>
+      </div>
+      <div class="balance" id="balance" aria-live="polite">
+        <span class="balance-label">Баланс</span>
+        <strong id="balanceValue">—</strong>
+      </div>
+    </header>
+
+    <main>
+      <section class="card model-card" aria-labelledby="modelHeading">
+        <div class="section-heading">
+          <div>
+            <span class="step">1</span>
+            <h2 id="modelHeading">Модель</h2>
+          </div>
+          <span class="muted" id="modelCount"></span>
+        </div>
+        <div class="family-tabs" id="familyTabs" role="tablist" aria-label="Семейства моделей"></div>
+        <label class="field-label" for="modelSelect">Выберите модель</label>
+        <select class="input" id="modelSelect"></select>
+        <div class="model-meta" id="modelMeta"></div>
+      </section>
+
+      <section class="card settings-card" aria-labelledby="settingsHeading">
+        <div class="section-heading">
+          <div>
+            <span class="step">2</span>
+            <h2 id="settingsHeading">Настройки</h2>
+          </div>
+          <button type="button" class="ghost-button" id="resetButton">Сбросить</button>
+        </div>
+        <div id="scenarioBlock" class="scenario-block" hidden></div>
+        <div id="dynamicForm" class="dynamic-form"></div>
+      </section>
+
+      <section class="card summary-card" aria-labelledby="summaryHeading">
+        <div class="section-heading">
+          <div>
+            <span class="step">3</span>
+            <h2 id="summaryHeading">Вы выбрали</h2>
+          </div>
+          <span class="quote-status" id="quoteStatus"></span>
+        </div>
+
+        <div class="summary-model" id="summaryModel"></div>
+        <div class="summary-chips" id="summaryChips"></div>
+
+        <div class="price-panel">
+          <div>
+            <span class="muted">Стоимость</span>
+            <strong class="price" id="priceCredits">—</strong>
+          </div>
+          <div class="price-rub" id="priceRub"></div>
+        </div>
+
+        <div class="validation-message" id="validationMessage" role="status"></div>
+        <button type="button" class="primary-button" id="createButton" disabled>Создать</button>
+      </section>
+
+      <section class="result-card" id="resultCard" hidden aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -1,8 +1,10 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from aiogram import Bot
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
 from app.api.health import router as health_router
@@ -61,3 +63,6 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(health_router)
 app.include_router(webhook_router)
 app.include_router(api_router)
+
+mini_app_dir = Path(__file__).resolve().parent / "web" / "mini_app"
+app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
