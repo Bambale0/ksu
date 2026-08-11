@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: ksu
+          POSTGRES_USER: ksu
+          POSTGRES_PASSWORD: ksu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ksu -d ksu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://ksu:ksu@127.0.0.1:5432/ksu
+      REDIS_URL: redis://127.0.0.1:6379/0
+      BOT_TOKEN: ""
+      TELEGRAM_WEBHOOK_SECRET: test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Compile
+        run: python -m compileall -q app tests
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Test
+        run: pytest -q
