@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
     start_balance_rox: Decimal = Decimal("0")
+    internal_credit_rub: Decimal = Decimal("10")
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
     rox_packages_json: str = "{}"

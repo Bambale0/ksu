@@ -18,6 +18,7 @@ from app.providers.payments import (
     TBankClient,
     YooKassaClient,
 )
+from app.services.credits import InternalCreditService
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
@@ -37,6 +38,10 @@ class PaymentPackage:
     currency: str
     rox_amount: Decimal
 
+    @property
+    def credits(self) -> Decimal:
+        return self.rox_amount
+
 
 class PaymentService:
     PROVIDERS = {"cryptobot", "tbank", "yookassa"}
@@ -54,16 +59,36 @@ class PaymentService:
         for package_id, item in raw.items():
             if not isinstance(item, dict):
                 continue
-            amount = Decimal(str(item.get("amount", "0")))
-            rox_amount = Decimal(str(item.get("rox", "0")))
+
             currency = str(item.get("currency", "RUB")).upper()
-            if amount <= 0 or rox_amount <= 0:
+            if currency != "RUB":
+                raise ValueError(
+                    f"Package {package_id} must use RUB because internal credits have a fixed RUB rate"
+                )
+
+            amount_raw = item.get("amount")
+            credits_raw = item.get("credits", item.get("rox"))
+            if amount_raw is None and credits_raw is None:
                 continue
+
+            amount = Decimal(str(amount_raw)) if amount_raw is not None else None
+            credits = Decimal(str(credits_raw)) if credits_raw is not None else None
+
+            if amount is None and credits is not None:
+                amount = InternalCreditService.rubles_for(credits)
+            elif credits is None and amount is not None:
+                credits = InternalCreditService.credits_for(amount)
+
+            assert amount is not None and credits is not None
+            if amount <= 0 or credits <= 0:
+                continue
+
+            InternalCreditService.assert_rate(credits=credits, rubles=amount)
             result[str(package_id)] = PaymentPackage(
                 package_id=str(package_id),
                 amount=amount,
                 currency=currency,
-                rox_amount=rox_amount,
+                rox_amount=credits,
             )
         return result
 
@@ -94,12 +119,15 @@ class PaymentService:
             currency=package.currency,
             rox_amount=package.rox_amount,
             status="creating",
-            payload={"package_id": package_id},
+            payload={
+                "package_id": package_id,
+                "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
+            },
         )
         session.add(payment)
         await session.flush()
 
-        description = f"ROX package {package_id}"
+        description = f"Internal credits: {package.credits}"
         try:
             created = await cls._create_external(
                 provider,
