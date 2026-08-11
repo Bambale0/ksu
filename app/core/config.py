@@ -24,14 +24,11 @@ class Settings(BaseSettings):
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
     rox_packages_json: str = "{}"
+    generation_pricing_json: str = "{}"
 
     kie_api_key: str = ""
     kie_base_url: str = "https://api.kie.ai"
     kie_webhook_hmac_key: str = ""
-    kie_text_to_image_model: str = ""
-    kie_image_to_image_model: str = ""
-    kie_text_to_video_model: str = ""
-    kie_image_to_video_model: str = ""
 
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
@@ -49,18 +46,6 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
-
-    def kie_model_for(self, kind: str) -> str:
-        models = {
-            "text_to_image": self.kie_text_to_image_model,
-            "image_to_image": self.kie_image_to_image_model,
-            "text_to_video": self.kie_text_to_video_model,
-            "image_to_video": self.kie_image_to_video_model,
-        }
-        model = models.get(kind, "")
-        if not model:
-            raise ValueError(f"Kie model is not configured for generation kind: {kind}")
-        return model
 
     def webhook_url(self, path: str) -> str:
         if not self.public_base_url:

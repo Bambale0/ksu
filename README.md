@@ -1,6 +1,6 @@
 # KSU bot
 
-Production-oriented backend baseline for a Telegram content product.
+Production-oriented backend for a Telegram AI content product.
 
 ## Stack
 
@@ -22,6 +22,8 @@ Production-oriented backend baseline for a Telegram content product.
 - promo code redemption
 - two-level referrals (30% / 5% configuration)
 - Kie.ai generation provider + Redis generation worker
+- schema-driven Kie model catalog for Nano Banana, Seedream, GPT Image, Wan, Seedance, Kling Motion and Grok
+- flat image billing + per-second video billing calculated only on the server
 - Kie callback HMAC verification and provider status reconciliation
 - CryptoBot / Crypto Pay payments with signed webhooks
 - T-Bank Internet Acquiring `/v2/Init` payments with Token verification
@@ -47,33 +49,105 @@ API: `http://localhost:8000`
 - `POST /webhooks/payments/cryptobot`
 - `POST /webhooks/payments/tbank`
 - `POST /webhooks/payments/yookassa`
+- `GET /api/v1/generations/models`
+- `POST /api/v1/generations/quote`
+- `POST /api/v1/generations`
 - `GET /api/v1/payments/packages`
 - `POST /api/v1/payments`
 - `/docs` in non-production environments
 
-## Kie.ai
+## Kie.ai model catalog
 
-Configure the API key and one server-controlled Kie model for every enabled product flow:
+The API uses Kie Market's unified task API. A client selects the local `model_id`; the backend maps it to a server-controlled Kie model slug and forwards model-specific input parameters.
+
+Enabled families include:
+
+- Nano Banana: base, Edit, Pro, 2, 2 Lite
+- Seedream: 3.0, 4.0, 4.5, 5.0 Lite, 5.0 Pro, including edit/image-to-image and layer decomposition where supported
+- GPT Image: 1.5 and 2, text-to-image and image-to-image
+- Wan 2.7: image, image Pro, text-to-video, image-to-video, first/last frame, video continuation, video edit and reference-to-video
+- Seedance: 1.5 Pro, 2.0, 2.0 Fast, 2.0 Mini and 2.5 with multimodal references
+- Kling Motion Control: 2.6 and 3.0
+- Grok Imagine: text/image generation, text/image-to-video, Video 1.5 Preview, upscale and extend
+
+Configure Kie:
 
 ```dotenv
 PUBLIC_BASE_URL=https://api.example.com
 KIE_API_KEY=...
 KIE_WEBHOOK_HMAC_KEY=...
-KIE_TEXT_TO_IMAGE_MODEL=...
-KIE_IMAGE_TO_IMAGE_MODEL=...
-KIE_TEXT_TO_VIDEO_MODEL=...
-KIE_IMAGE_TO_VIDEO_MODEL=...
 ```
 
-Generation requests are persisted and charged first, then pushed to Redis. The `generation-worker` service consumes the queue and submits tasks to Kie `/api/v1/jobs/createTask`. Kie callbacks are verified and reconciled through `/api/v1/jobs/recordInfo`. Failed provider jobs receive an idempotent ROX refund.
+Generation requests are persisted and charged first, then pushed to Redis. The `generation-worker` consumes the queue and submits tasks to Kie `/api/v1/jobs/createTask`. Kie callbacks are verified and reconciled through `/api/v1/jobs/recordInfo`. Failed provider jobs receive an idempotent ROX refund.
 
-The model is not accepted from the client. This prevents a user from selecting an unexpectedly expensive Kie model while paying the ROX price of a cheaper generation kind. Model choice remains server configuration until a model-aware pricing catalog is added.
+### Catalog
+
+```http
+GET /api/v1/generations/models
+```
+
+Each model entry exposes its `model_id`, family, media type, operation, supported fields, required fields, billing mode, unit ROX price, video duration limits and capability notes. This endpoint is intended to drive bot/mini-app/web generation forms from one backend source of truth.
+
+### Quote
+
+```http
+POST /api/v1/generations/quote
+Content-Type: application/json
+
+{
+  "model_id": "wan-2.7-t2v",
+  "prompt": "Cinematic city at night",
+  "parameters": {
+    "duration": 6,
+    "resolution": "1080p",
+    "ratio": "16:9"
+  }
+}
+```
+
+For image models the quote uses a flat server-side model rate. For every video model the quote uses:
+
+```text
+cost_rox = unit_price_rox_per_second × billing_seconds
+```
+
+The actual generation endpoint runs the same calculation again before the wallet debit. A browser, mini app, or Telegram client cannot submit `cost_rox`.
+
+For models whose provider request does not contain a usable output duration (for example Kling Motion, Grok Extend, or an auto-duration video edit), pass `billing_seconds`. Grok Upscale can reuse the source duration automatically when the source Kie task belongs to this backend.
+
+### Generation
+
+```http
+POST /api/v1/generations
+Content-Type: application/json
+
+{
+  "model_id": "seedance-2.5",
+  "prompt": "A cinematic beach at sunset",
+  "parameters": {
+    "duration": 8,
+    "resolution": "720p",
+    "aspect_ratio": "16:9",
+    "generate_audio": true
+  }
+}
+```
+
+Model-specific parameters are sent to Kie without exposing internal billing metadata. Server-side capability validation additionally enforces important provider constraints such as Seedance frame/reference mode exclusivity and Kling Motion's one-image/one-video input shape.
+
+### ROX generation pricing
+
+Default product prices live in the model catalog and can be overridden without changing code:
+
+```dotenv
+GENERATION_PRICING_JSON={"wan-2.7-t2v":{"per_second":"8.50"},"gpt-image-2-t2i":{"flat":"18"},"kling-motion-3.0":{"per_second":"15"}}
+```
+
+`per_second` values are ROX per one second of video. `flat` values are ROX per image generation task. These are product prices, not credentials and not client-controlled values.
 
 ## ROX packages
 
 Prices are server-side configuration. `POST /api/v1/payments` accepts only a `package_id` and provider, never an amount supplied by the browser or Telegram client.
-
-Configure packages as JSON:
 
 ```dotenv
 ROX_PACKAGES_JSON={"starter":{"amount":"299.00","currency":"RUB","rox":"350"}}
