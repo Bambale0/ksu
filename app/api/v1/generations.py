@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import (
     InvalidModelParametersError,
@@ -24,8 +25,19 @@ class CreateGenerationRequest(BaseModel):
 
 
 @router.get("/models")
-async def generation_models() -> dict[str, list[dict[str, Any]]]:
-    return {"models": ModelCatalog.list()}
+async def generation_models() -> dict[str, object]:
+    models: list[dict[str, Any]] = []
+    for item in ModelCatalog.list():
+        enriched = dict(item)
+        unit_credits = enriched.get("price_rox")
+        if unit_credits is not None:
+            enriched["price_credits"] = str(unit_credits)
+            enriched["price_rub"] = str(InternalCreditService.rubles_for(str(unit_credits)))
+        models.append(enriched)
+    return {
+        "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
+        "models": models,
+    }
 
 
 @router.post("/quote")
@@ -47,9 +59,14 @@ async def quote_generation(
     return {
         "model_id": spec.id,
         "price_mode": spec.price_mode,
+        "unit_price_credits": str(unit_price),
         "unit_price_rox": str(unit_price),
+        "unit_price_rub": str(InternalCreditService.rubles_for(unit_price)),
         "billing_seconds": seconds,
+        "cost_credits": str(cost),
         "cost_rox": str(cost),
+        "cost_rub": str(InternalCreditService.rubles_for(cost)),
+        "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
     }
 
 
@@ -72,14 +89,16 @@ async def create_generation(
             parameters=payload.parameters,
         )
     except InsufficientBalanceError as exc:
-        raise HTTPException(status_code=409, detail="Insufficient ROX") from exc
+        raise HTTPException(status_code=409, detail="Insufficient internal credits") from exc
     except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "id": str(generation.id),
         "status": generation.status,
         "model_id": str(generation.parameters.get("_model_id") or ""),
+        "cost_credits": str(generation.cost_rox),
         "cost_rox": str(generation.cost_rox),
+        "cost_rub": str(InternalCreditService.rubles_for(generation.cost_rox)),
         "billing_seconds": (
             str(generation.parameters.get("_billing_seconds"))
             if generation.parameters.get("_billing_seconds") is not None
