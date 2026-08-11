@@ -11,6 +11,7 @@ from app.services.model_catalog import (
     ModelCatalog,
     UnknownModelError,
 )
+from app.services.model_ui import build_model_ui_schema
 from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/generations", tags=["generations"])
@@ -33,8 +34,10 @@ async def generation_models() -> dict[str, object]:
         if unit_credits is not None:
             enriched["price_credits"] = str(unit_credits)
             enriched["price_rub"] = str(InternalCreditService.rubles_for(str(unit_credits)))
+        enriched["ui_schema"] = build_model_ui_schema(enriched)
         models.append(enriched)
     return {
+        "schema_version": 1,
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
         "models": models,
     }
