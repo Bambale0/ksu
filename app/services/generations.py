@@ -52,6 +52,36 @@ class GenerationService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _apply_input_url(spec: ModelSpec, parameters: dict[str, Any], input_url: str | None) -> None:
+        if not input_url:
+            return
+        if any(
+            parameters.get(key)
+            for key in (
+                "image_url",
+                "image_urls",
+                "image_input",
+                "input_urls",
+                "first_frame_url",
+                "first_frame",
+            )
+        ):
+            return
+        fields = set(spec.known_fields)
+        if "first_frame_url" in fields:
+            parameters["first_frame_url"] = input_url
+        elif "image_urls" in fields:
+            parameters["image_urls"] = [input_url]
+        elif "input_urls" in fields:
+            parameters["input_urls"] = [input_url]
+        elif "image_input" in fields:
+            parameters["image_input"] = [input_url]
+        elif "image_url" in fields:
+            parameters["image_url"] = input_url
+        elif "first_frame" in fields:
+            parameters["first_frame"] = input_url
+
     @classmethod
     async def prepare_request(
         cls,
@@ -59,12 +89,15 @@ class GenerationService:
         *,
         model_id: str,
         prompt: str,
+        input_url: str | None = None,
         parameters: dict[str, Any] | None = None,
         billing_seconds: int | None = None,
     ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
+        spec = ModelCatalog.get(model_id)
         merged = dict(parameters or {})
         if prompt and not merged.get("prompt"):
             merged["prompt"] = prompt
+        cls._apply_input_url(spec, merged, input_url)
         resolved_seconds = await cls._resolve_billing_seconds(
             session,
             model_id=model_id,
@@ -94,6 +127,7 @@ class GenerationService:
             session,
             model_id=model_id,
             prompt=prompt,
+            input_url=input_url,
             parameters=parameters,
             billing_seconds=billing_seconds,
         )
