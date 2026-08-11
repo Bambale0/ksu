@@ -7,7 +7,6 @@ import json
 import secrets
 import struct
 import time
-import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
