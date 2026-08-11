@@ -227,3 +227,99 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AdminAccount(TimestampMixin, Base):
+    __tablename__ = "admin_accounts"
+    __table_args__ = (Index("ix_admin_accounts_role_active", "role", "is_active"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="auditor")
+    permission_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    mfa_secret_encrypted: Mapped[str | None] = mapped_column(Text)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    mfa_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    recovery_code_hashes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    session_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_ip_hash: Mapped[str | None] = mapped_column(String(64))
+    created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL")
+    )
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+    __table_args__ = (
+        Index("ix_admin_sessions_admin_active", "admin_id", "revoked_at", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idle_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoke_reason: Mapped[str | None] = mapped_column(String(255))
+    mfa_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    step_up_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    session_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    ip_hash: Mapped[str | None] = mapped_column(String(64))
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64))
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+    __table_args__ = (
+        Index("ix_admin_audit_created", "created_at"),
+        Index("ix_admin_audit_action_created", "action", "created_at"),
+        Index("ix_admin_audit_resource", "resource_type", "resource_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL"), index=True
+    )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_sessions.id", ondelete="SET NULL")
+    )
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(24), nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(String(64))
+    resource_id: Mapped[str | None] = mapped_column(String(128))
+    reason: Mapped[str | None] = mapped_column(Text)
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    ip_hash: Mapped[str | None] = mapped_column(String(64))
+    user_agent_hash: Mapped[str | None] = mapped_column(String(64))
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    integrity_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AdminUserNote(Base):
+    __tablename__ = "admin_user_notes"
+    __table_args__ = (Index("ix_admin_user_notes_user_created", "user_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

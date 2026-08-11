@@ -48,6 +48,8 @@ async def get_current_user(
     )
     user = await UserService.get_or_create(session, tg_user)
     await session.commit()
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is restricted")
     return user
 
 
