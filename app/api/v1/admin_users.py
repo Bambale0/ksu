@@ -12,7 +12,6 @@ from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
 from app.db.models import (
     AdminAccount,
-    AdminAuditLog,
     AdminUserNote,
     Generation,
     Payment,
