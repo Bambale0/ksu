@@ -66,12 +66,13 @@ def test_tbank_token_uses_only_root_values() -> None:
 
 
 def test_rox_packages_are_server_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "internal_credit_rub", 10)
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"starter":{"amount":"299.00","currency":"RUB","rox":"350"}}',
+        '{"starter":{"amount":"3500.00","currency":"RUB","rox":"350"}}',
     )
     package = PaymentService.package("starter")
-    assert str(package.amount) == "299.00"
+    assert str(package.amount) == "3500.00"
     assert str(package.rox_amount) == "350"
     assert package.currency == "RUB"
