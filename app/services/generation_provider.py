@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Generation
 from app.providers.kie import KieClient, KieTask
+from app.services.model_catalog import ModelCatalog
 from app.services.wallet import WalletService
 
 
@@ -23,15 +24,16 @@ class GenerationProviderService:
         if generation.status not in {"queued", "retry"}:
             return generation
 
+        model_id = str((generation.parameters or {}).get("_model_id") or "")
+        spec = ModelCatalog.get(model_id)
         generation.status = "submitting"
         generation.provider = "kie"
         await session.commit()
 
         client = KieClient(settings.kie_api_key, settings.kie_base_url)
         try:
-            model = settings.kie_model_for(generation.kind)
             task_id = await client.create_task(
-                model=model,
+                model=spec.kie_model,
                 input_data=cls._input_for(generation),
                 callback_url=settings.webhook_url("webhooks/kie"),
             )
@@ -129,11 +131,22 @@ class GenerationProviderService:
 
     @staticmethod
     def _input_for(generation: Generation) -> dict[str, Any]:
-        data = dict(generation.parameters or {})
-        data.pop("_result_urls", None)
-        data.setdefault("prompt", generation.prompt)
+        data = {
+            key: value
+            for key, value in dict(generation.parameters or {}).items()
+            if not key.startswith("_")
+        }
+        if generation.prompt and not data.get("prompt"):
+            data["prompt"] = generation.prompt
         if generation.input_url and not any(
-            key in data for key in ("image_url", "image_urls", "input_urls")
+            key in data
+            for key in (
+                "image_url",
+                "image_urls",
+                "image_input",
+                "input_urls",
+                "first_frame_url",
+            )
         ):
             data["image_url"] = generation.input_url
         return data
