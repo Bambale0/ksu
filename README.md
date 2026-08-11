@@ -90,6 +90,7 @@ Docker Compose services:
 
 ## Documentation map
 
+- `docs/API_REFERENCE.md` — authentication boundaries and the current route map.
 - `docs/OPERATIONS_RUNBOOK.md` — production deployment, provider setup, smoke checks, backup/restore, incident and rollback procedures.
 - `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract, state rules, uploads, quoting and model scenarios.
 - `docs/ADMIN_SECURITY.md` — privileged admin bootstrap, MFA, permissions, sessions, audit and security operations.
