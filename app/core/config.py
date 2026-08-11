@@ -27,6 +27,19 @@ class Settings(BaseSettings):
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 
+    # Separate privileged-admin security domain.
+    # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
+    admin_security_key: str = ""
+    admin_bootstrap_telegram_ids: str = ""
+    admin_require_mfa: bool = True
+    admin_session_ttl_minutes: int = 480
+    admin_idle_timeout_minutes: int = 30
+    admin_step_up_minutes: int = 10
+    admin_login_rate_limit_per_minute: int = 5
+    admin_request_rate_limit_per_minute: int = 120
+    admin_login_max_failures: int = 5
+    admin_login_lock_minutes: int = 15
+
     kie_api_key: str = ""
     kie_base_url: str = "https://api.kie.ai"
     kie_webhook_hmac_key: str = ""
