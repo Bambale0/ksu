@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
+    public_base_url: str = ""
 
     database_url: str = "postgresql+asyncpg://ksu:ksu@localhost:5432/ksu"
     redis_url: str = "redis://localhost:6379/0"
@@ -22,10 +23,49 @@ class Settings(BaseSettings):
     start_balance_rox: Decimal = Decimal("0")
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
+    rox_packages_json: str = "{}"
+
+    kie_api_key: str = ""
+    kie_base_url: str = "https://api.kie.ai"
+    kie_webhook_hmac_key: str = ""
+    kie_text_to_image_model: str = ""
+    kie_image_to_image_model: str = ""
+    kie_text_to_video_model: str = ""
+    kie_image_to_video_model: str = ""
+
+    cryptopay_api_token: str = ""
+    cryptopay_base_url: str = "https://pay.crypt.bot"
+
+    tbank_terminal_key: str = ""
+    tbank_password: str = ""
+    tbank_base_url: str = "https://securepay.tinkoff.ru"
+
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    yookassa_base_url: str = "https://api.yookassa.ru"
+
+    payment_return_url: str = ""
 
     @property
     def is_production(self) -> bool:
         return self.app_env.lower() == "production"
+
+    def kie_model_for(self, kind: str) -> str:
+        models = {
+            "text_to_image": self.kie_text_to_image_model,
+            "image_to_image": self.kie_image_to_image_model,
+            "text_to_video": self.kie_text_to_video_model,
+            "image_to_video": self.kie_image_to_video_model,
+        }
+        model = models.get(kind, "")
+        if not model:
+            raise ValueError(f"Kie model is not configured for generation kind: {kind}")
+        return model
+
+    def webhook_url(self, path: str) -> str:
+        if not self.public_base_url:
+            return ""
+        return f"{self.public_base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
 @lru_cache
