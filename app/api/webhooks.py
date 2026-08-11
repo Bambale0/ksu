@@ -3,6 +3,7 @@ import json
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
+from urllib.parse import parse_qsl
 
 from aiogram.types import Update
 from fastapi import APIRouter, Header, HTTPException, Request, status
@@ -210,8 +211,8 @@ async def _json_or_form(request: Request) -> dict[str, Any]:
     if "application/json" in content_type:
         payload = await request.json()
         return dict(payload)
-    form = await request.form()
-    return {key: value for key, value in form.items()}
+    body = (await request.body()).decode("utf-8")
+    return dict(parse_qsl(body, keep_blank_values=True))
 
 
 def _uuid_or_400(value: Any) -> uuid.UUID:
