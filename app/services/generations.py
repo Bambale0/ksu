@@ -27,15 +27,9 @@ class GenerationService:
         if billing_seconds is not None:
             return billing_seconds
 
-        if model_id == "grok-video-extend":
-            extend_times = parameters.get("extend_times")
-            if extend_times not in (None, "", 0, "0"):
-                try:
-                    return int(extend_times)
-                except (TypeError, ValueError):
-                    pass
-
-        if model_id not in {"grok-video-upscale", "grok-video-extend"}:
+        # Grok upscale does not accept a duration parameter. When the source task
+        # was created by this service, reuse the duration that was billed for it.
+        if model_id != "grok-video-upscale":
             return None
 
         task_id = str(parameters.get("task_id") or "")
