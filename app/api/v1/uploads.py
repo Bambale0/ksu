@@ -13,6 +13,18 @@ router = APIRouter(prefix="/uploads", tags=["uploads"])
 ALLOWED_MEDIA_PREFIXES = ("image/", "video/", "audio/")
 
 
+def _upload_size(file: UploadFile) -> int:
+    if file.size is not None:
+        return int(file.size)
+    # Starlette already spooled the multipart part by the time the endpoint runs.
+    # Measure the spool instead of disabling the daily-byte quota for chunked clients.
+    current = file.file.tell()
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(current)
+    return int(size)
+
+
 @router.post("/kie", status_code=status.HTTP_201_CREATED)
 async def upload_to_kie(
     user: CurrentUserDep,
@@ -23,9 +35,7 @@ async def upload_to_kie(
     if not content_type.startswith(ALLOWED_MEDIA_PREFIXES):
         raise HTTPException(status_code=415, detail="Only image, video and audio files are allowed")
 
-    if file.size is None and settings.upload_daily_bytes_limit > 0:
-        raise HTTPException(status_code=411, detail="Upload size is required")
-    size_bytes = int(file.size or 0)
+    size_bytes = _upload_size(file)
     if size_bytes > settings.kie_upload_max_bytes:
         raise HTTPException(status_code=413, detail="File is too large")
 
