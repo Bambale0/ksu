@@ -158,7 +158,18 @@ async def tbank_webhook(request: Request) -> PlainTextResponse:
             raise HTTPException(status_code=404, detail="Payment not found")
         if payment.external_id and str(payload.get("PaymentId") or "") != str(payment.external_id):
             raise HTTPException(status_code=409, detail="T-Bank payment mismatch")
-        await PaymentService.apply_tbank_state(session, payment.id, payload)
+
+        state_payload = dict(payload)
+        if str(payload.get("Status") or "").upper() in {
+            "PARTIAL_REFUNDED",
+            "PARTIAL_REVERSED",
+        }:
+            # Notification Amount can describe the refund operation rather than the
+            # original payment. Signature validation already used the untouched body;
+            # downstream accounting must not mistake this value for total payment size.
+            state_payload.pop("Amount", None)
+            state_payload["NotificationAmount"] = payload.get("Amount")
+        await PaymentService.apply_tbank_state(session, payment.id, state_payload)
     return PlainTextResponse("OK", status_code=200)
 
 
