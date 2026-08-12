@@ -3,6 +3,8 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const STORAGE_KEY = "ksu-generation-drafts-v1";
+  const TERMINAL_STATUSES = new Set(["succeeded", "failed"]);
+  const ACTIVE_STATUSES = new Set(["queued", "retry", "submitting", "generating"]);
   const FAMILY_LABELS = {
     nanobanana: "Nano Banana",
     seedream: "Seedream",
@@ -45,7 +47,13 @@
     quoteTimer: null,
     submitting: false,
     uploading: 0,
+    pollingGenerationId: null,
+    pollTimer: null,
+    historyBefore: null,
+    historyLoading: false,
   };
+
+  injectHistoryUi();
 
   function loadDrafts() {
     try {
@@ -60,7 +68,7 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.drafts));
     } catch (_error) {
-      // Storage is a convenience. The form remains fully functional without it.
+      // Draft storage is a convenience only.
     }
   }
 
@@ -94,9 +102,7 @@
       if (allowed.has(name)) values[name] = value;
     }
     const validScenarios = new Set((model.ui_schema?.scenario?.items || []).map((item) => item.id));
-    const scenario = validScenarios.has(draft.scenario)
-      ? draft.scenario
-      : fresh.scenario;
+    const scenario = validScenarios.has(draft.scenario) ? draft.scenario : fresh.scenario;
     return {
       values,
       touched: { ...(draft.touched || {}) },
@@ -109,9 +115,7 @@
   function currentDraft() {
     const model = currentModel();
     if (!model) return null;
-    if (!state.drafts[model.id]) {
-      state.drafts[model.id] = defaultDraft(model);
-    }
+    if (!state.drafts[model.id]) state.drafts[model.id] = defaultDraft(model);
     state.drafts[model.id] = sanitizeDraft(model, state.drafts[model.id]);
     return state.drafts[model.id];
   }
@@ -155,8 +159,12 @@
       body = null;
     }
     if (!response.ok) {
-      const detail = body?.detail || body?.message || `HTTP ${response.status}`;
-      throw new Error(String(detail));
+      const rawDetail = body?.detail ?? body?.message ?? `HTTP ${response.status}`;
+      const detail = typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
+      const error = new Error(detail);
+      error.status = response.status;
+      error.retryAfter = Number(response.headers.get("Retry-After") || body?.retry_after || 0);
+      throw error;
     }
     return body;
   }
@@ -182,7 +190,18 @@
       video_upscale: "Апскейл видео",
       video_extend: "Расширение видео",
     };
-    return labels[operation] || operation.replaceAll("_", " ");
+    return labels[operation] || String(operation || "").replaceAll("_", " ");
+  }
+
+  function statusLabel(status) {
+    return {
+      queued: "В очереди",
+      retry: "Повторная попытка",
+      submitting: "Отправляется",
+      generating: "Генерируется",
+      succeeded: "Готово",
+      failed: "Ошибка",
+    }[status] || status;
   }
 
   function initTelegram() {
@@ -193,11 +212,9 @@
       tg.setHeaderColor("secondary_bg_color");
       tg.setBackgroundColor("bg_color");
     } catch (_error) {
-      // Older Telegram clients may not support all color APIs.
+      // Older clients can lack individual theme APIs.
     }
-    if (tg.MainButton) {
-      tg.MainButton.onClick(submitGeneration);
-    }
+    tg.MainButton?.onClick?.(submitGeneration);
   }
 
   async function loadModels() {
@@ -227,9 +244,7 @@
       return;
     }
     try {
-      const me = await apiFetch("/api/v1/me", {
-        headers: apiHeaders({ auth: true }),
-      });
+      const me = await apiFetch("/api/v1/me", { headers: apiHeaders({ auth: true }) });
       dom.balance.textContent = `${Number(me.balance_rox || 0).toLocaleString("ru-RU")} кр.`;
     } catch (_error) {
       dom.balance.textContent = "—";
@@ -443,9 +458,11 @@
       const input = document.createElement("textarea");
       input.className = field.control === "json" ? "json-input" : "textarea";
       input.placeholder = field.placeholder || "";
-      input.value = value == null ? "" : field.control === "json" && typeof value !== "string"
-        ? JSON.stringify(value, null, 2)
-        : String(value);
+      input.value = value == null
+        ? ""
+        : field.control === "json" && typeof value !== "string"
+          ? JSON.stringify(value, null, 2)
+          : String(value);
       input.addEventListener("input", () => setFieldValue(field.name, input.value, false));
       wrapper.appendChild(input);
       return wrapper;
@@ -517,12 +534,12 @@
     });
     const help = document.createElement("div");
     help.className = "field-help";
-    help.textContent = "Используется только для серверного расчёта цены за секунду.";
+    help.textContent = "Используется для серверного расчёта цены за секунду.";
     wrapper.append(label, input, help);
     return wrapper;
   }
 
-  function renderFileControl(field, model, draft) {
+  function renderFileControl(field, _model, draft) {
     const box = document.createElement("div");
     box.className = "upload-box";
     const row = document.createElement("div");
@@ -653,7 +670,6 @@
         headers: apiHeaders({ auth: true }),
         body: form,
       });
-
       const meta = {
         url: uploaded.url,
         name: uploaded.name || file.name,
@@ -788,7 +804,6 @@
         }
       }
     }
-
     for (const rule of scenarioValidation(model, draft)) {
       if (rule.includes("|")) errors.push("Добавьте хотя бы один референс для выбранного режима");
       else {
@@ -796,7 +811,6 @@
         errors.push(`Заполните «${field?.label || rule}»`);
       }
     }
-
     const billing = model.ui_schema?.billing_seconds;
     if (billing?.required && !draft.billing_seconds) {
       errors.push(`Заполните «${billing.label || "Длительность"}»`);
@@ -817,8 +831,7 @@
       if (field.name === "prompt" || !fieldIsVisible(model, draft, field.name)) continue;
       const value = draft.values[field.name];
       if (isEmpty(value)) continue;
-      if (field.control === "json") parameters[field.name] = JSON.parse(value);
-      else parameters[field.name] = value;
+      parameters[field.name] = field.control === "json" ? JSON.parse(value) : value;
     }
     const payload = {
       model_id: model.id,
@@ -880,11 +893,8 @@
     const draft = currentDraft();
     if (!model || !draft) return;
     const scenario = selectedScenario(model, draft);
-    dom.summaryModel.textContent = scenario
-      ? `${model.title} · ${scenario.title}`
-      : model.title;
+    dom.summaryModel.textContent = scenario ? `${model.title} · ${scenario.title}` : model.title;
     dom.summaryChips.replaceChildren();
-
     const fields = new Map((model.ui_schema?.fields || []).map((field) => [field.name, field]));
     for (const name of model.ui_schema?.summary_fields || []) {
       const field = fields.get(name);
@@ -898,7 +908,6 @@
       chip.textContent = `${field.label}: ${formatSettingValue(field, value, draft)}`;
       dom.summaryChips.appendChild(chip);
     }
-
     if (draft.billing_seconds) {
       const chip = document.createElement("span");
       chip.className = "summary-chip";
@@ -918,9 +927,7 @@
     if (field.control === "toggle") return value ? "Да" : "Нет";
     if (field.control === "file" || field.control === "files") {
       const files = Array.isArray(draft.files[field.name]) ? draft.files[field.name] : [];
-      const count = field.control === "files"
-        ? (Array.isArray(value) ? value.length : 0)
-        : (value ? 1 : 0);
+      const count = field.control === "files" ? (Array.isArray(value) ? value.length : 0) : (value ? 1 : 0);
       if (count === 1) return files[0]?.name || "1 файл";
       return `${count} файла`;
     }
@@ -993,7 +1000,6 @@
     if (!payload) return;
 
     state.submitting = true;
-    dom.resultCard.hidden = true;
     updateCreateControls();
     try {
       const result = await apiFetch("/api/v1/generations", {
@@ -1001,22 +1007,203 @@
         headers: apiHeaders({ json: true, auth: true }),
         body: JSON.stringify(payload),
       });
-      dom.resultCard.hidden = false;
-      dom.resultCard.innerHTML = "";
-      const title = document.createElement("h3");
-      title.textContent = "Генерация запущена";
-      const text = document.createElement("p");
-      text.textContent = `Задача ${result.id} поставлена в очередь. Списано ${formatNumber(result.cost_credits)} кр.`;
-      dom.resultCard.append(title, text);
       tg.HapticFeedback?.notificationOccurred?.("success");
       showToast("Задача отправлена в генерацию");
       await loadMe();
+      renderGenerationResult({
+        id: result.id,
+        status: result.status,
+        cost_credits: result.cost_credits,
+        result_urls: [],
+        model: { title: currentModel()?.title || "Модель", media_type: currentModel()?.media_type },
+        prompt: String(currentDraft()?.values?.prompt || ""),
+      });
+      startGenerationPolling(result.id);
     } catch (error) {
       tg.HapticFeedback?.notificationOccurred?.("error");
-      showToast(error.message || "Не удалось запустить генерацию");
+      const retry = error.retryAfter ? ` Повтори через ${error.retryAfter} сек.` : "";
+      showToast(`${error.message || "Не удалось запустить генерацию"}${retry}`);
     } finally {
       state.submitting = false;
       updateCreateControls();
+    }
+  }
+
+  function startGenerationPolling(generationId) {
+    stopGenerationPolling();
+    state.pollingGenerationId = generationId;
+    let delay = 1500;
+    const tick = async () => {
+      if (state.pollingGenerationId !== generationId) return;
+      try {
+        const generation = await apiFetch(`/api/v1/generations/${generationId}`, {
+          headers: apiHeaders({ auth: true }),
+        });
+        renderGenerationResult(generation);
+        if (TERMINAL_STATUSES.has(generation.status)) {
+          stopGenerationPolling();
+          loadMe();
+          if (generation.status === "succeeded") {
+            tg?.HapticFeedback?.notificationOccurred?.("success");
+          } else {
+            tg?.HapticFeedback?.notificationOccurred?.("error");
+          }
+          return;
+        }
+        delay = Math.min(5000, Math.round(delay * 1.25));
+      } catch (error) {
+        if (error.status === 404) {
+          stopGenerationPolling();
+          showToast("Задача больше недоступна");
+          return;
+        }
+        delay = Math.min(8000, Math.round(delay * 1.5));
+      }
+      state.pollTimer = setTimeout(tick, delay);
+    };
+    state.pollTimer = setTimeout(tick, 500);
+  }
+
+  function stopGenerationPolling() {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+    state.pollingGenerationId = null;
+  }
+
+  function renderGenerationResult(generation) {
+    dom.resultCard.hidden = false;
+    dom.resultCard.replaceChildren();
+
+    const heading = document.createElement("h3");
+    heading.textContent = generation.status === "succeeded"
+      ? "Готово"
+      : generation.status === "failed"
+        ? "Генерация не завершилась"
+        : statusLabel(generation.status);
+    dom.resultCard.appendChild(heading);
+
+    const meta = document.createElement("p");
+    meta.textContent = `${generation.model?.title || "Модель"} · ${statusLabel(generation.status)}`;
+    dom.resultCard.appendChild(meta);
+
+    if (ACTIVE_STATUSES.has(generation.status)) {
+      const progress = document.createElement("div");
+      progress.className = "ksu-result-progress";
+      progress.textContent = "Результат появится здесь автоматически — экран можно оставить открытым.";
+      dom.resultCard.appendChild(progress);
+    }
+
+    const urls = Array.isArray(generation.result_urls)
+      ? generation.result_urls
+      : generation.result_url
+        ? [generation.result_url]
+        : [];
+    if (generation.status === "succeeded" && urls.length) {
+      const gallery = document.createElement("div");
+      gallery.className = "ksu-result-gallery";
+      urls.forEach((url, index) => gallery.appendChild(resultMedia(url, generation.model?.media_type, index)));
+      dom.resultCard.appendChild(gallery);
+    }
+
+    if (generation.status === "failed") {
+      const error = document.createElement("p");
+      error.className = "ksu-result-error";
+      error.textContent = generation.error || "Провайдер не завершил задачу. Списание возвращается сервером по правилам генерации.";
+      dom.resultCard.appendChild(error);
+    }
+
+    if (generation.cost_credits) {
+      const price = document.createElement("p");
+      price.textContent = `Стоимость: ${formatNumber(generation.cost_credits)} кр.`;
+      dom.resultCard.appendChild(price);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "ksu-result-actions";
+    if (generation.id) {
+      const reuse = actionButton("Повторить / изменить", () => reuseGeneration(generation.id));
+      actions.appendChild(reuse);
+    }
+    if (urls[0]) {
+      actions.appendChild(actionButton("Поделиться", () => shareResult(urls[0])));
+      const download = document.createElement("a");
+      download.className = "ksu-history-action";
+      download.href = urls[0];
+      download.target = "_blank";
+      download.rel = "noopener noreferrer";
+      download.textContent = "Открыть / скачать";
+      actions.appendChild(download);
+    }
+    if (actions.children.length) dom.resultCard.appendChild(actions);
+  }
+
+  function resultMedia(url, mediaType, index) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "ksu-result-media";
+    if (mediaType === "video" || /\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+      const video = document.createElement("video");
+      video.src = url;
+      video.controls = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      video.setAttribute("aria-label", `Результат ${index + 1}`);
+      wrapper.appendChild(video);
+    } else {
+      const image = document.createElement("img");
+      image.src = url;
+      image.alt = `Результат ${index + 1}`;
+      image.loading = "lazy";
+      wrapper.appendChild(image);
+    }
+    return wrapper;
+  }
+
+  async function shareResult(url) {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Моя генерация", url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        showToast("Ссылка скопирована");
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (_error) {
+      // Native share cancellation is not an application error.
+    }
+  }
+
+  async function reuseGeneration(generationId) {
+    if (!tg?.initData) return;
+    try {
+      const payload = await apiFetch(`/api/v1/generations/${generationId}/recreate`, {
+        headers: apiHeaders({ auth: true }),
+      });
+      if (!state.modelById.has(payload.model_id)) {
+        showToast("Эта модель больше недоступна");
+        return;
+      }
+      selectModel(payload.model_id);
+      const model = currentModel();
+      const draft = defaultDraft(model);
+      const allowed = new Set((model.ui_schema?.fields || []).map((field) => field.name));
+      for (const [key, value] of Object.entries(payload.parameters || {})) {
+        if (allowed.has(key)) draft.values[key] = value;
+      }
+      if (allowed.has("prompt")) draft.values.prompt = payload.prompt || "";
+      draft.billing_seconds = payload.billing_seconds ?? null;
+      for (const key of Object.keys(draft.values)) draft.touched[key] = true;
+      state.drafts[model.id] = sanitizeDraft(model, draft);
+      persistDrafts();
+      closeHistory();
+      state.quote = null;
+      state.quoteError = null;
+      renderAll();
+      scheduleQuote();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      showToast("Настройки восстановлены — проверь цену и запусти заново");
+    } catch (error) {
+      showToast(error.message || "Не удалось восстановить настройки");
     }
   }
 
@@ -1034,6 +1221,164 @@
     updateCreateControls();
     scheduleQuote();
     tg?.HapticFeedback?.impactOccurred?.("light");
+  }
+
+  function injectHistoryUi() {
+    const style = document.createElement("style");
+    style.textContent = `
+      .ksu-history-button{position:fixed;right:14px;top:14px;z-index:40;border:0;border-radius:999px;padding:10px 14px;background:var(--tg-theme-button-color,#2481cc);color:var(--tg-theme-button-text-color,#fff);font:600 14px/1 system-ui;box-shadow:0 6px 20px rgba(0,0,0,.16)}
+      .ksu-history-overlay{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.48);display:flex;align-items:flex-end;justify-content:center}
+      .ksu-history-overlay[hidden]{display:none}
+      .ksu-history-sheet{width:min(760px,100%);max-height:92vh;overflow:auto;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#111);border-radius:22px 22px 0 0;padding:18px;box-sizing:border-box}
+      .ksu-history-head{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-18px;padding:18px 0 12px;background:var(--tg-theme-bg-color,#fff);z-index:2}
+      .ksu-history-close,.ksu-history-action{border:1px solid var(--tg-theme-hint-color,#aaa);background:transparent;color:var(--tg-theme-text-color,#111);border-radius:12px;padding:9px 11px;text-decoration:none;font:600 13px/1.2 system-ui;cursor:pointer}
+      .ksu-history-list{display:grid;gap:10px}
+      .ksu-history-card{border:1px solid color-mix(in srgb,var(--tg-theme-hint-color,#999) 28%,transparent);border-radius:16px;padding:13px;background:var(--tg-theme-secondary-bg-color,#f5f5f5)}
+      .ksu-history-card h4{margin:0 0 6px;font:700 15px/1.3 system-ui}.ksu-history-card p{margin:4px 0;font:13px/1.45 system-ui;color:var(--tg-theme-hint-color,#777)}
+      .ksu-history-card-actions,.ksu-result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .ksu-result-gallery{display:grid;gap:10px;margin:12px 0}.ksu-result-media img,.ksu-result-media video{display:block;width:100%;max-height:70vh;object-fit:contain;border-radius:14px;background:#000}
+      .ksu-result-progress{padding:12px;border-radius:12px;background:var(--tg-theme-secondary-bg-color,#f2f2f2);margin:10px 0}.ksu-result-error{color:var(--tg-theme-destructive-text-color,#d14)}
+      .ksu-history-more{width:100%;margin-top:12px;padding:12px;border:0;border-radius:12px;background:var(--tg-theme-secondary-bg-color,#eee);color:var(--tg-theme-text-color,#111);font-weight:700}
+    `;
+    document.head.appendChild(style);
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.id = "ksuHistoryButton";
+    open.className = "ksu-history-button";
+    open.textContent = "История";
+    open.addEventListener("click", openHistory);
+    document.body.appendChild(open);
+
+    const overlay = document.createElement("div");
+    overlay.id = "ksuHistoryOverlay";
+    overlay.className = "ksu-history-overlay";
+    overlay.hidden = true;
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) closeHistory();
+    });
+    const sheet = document.createElement("section");
+    sheet.className = "ksu-history-sheet";
+    const head = document.createElement("div");
+    head.className = "ksu-history-head";
+    const title = document.createElement("h2");
+    title.textContent = "История генераций";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ksu-history-close";
+    close.textContent = "Закрыть";
+    close.addEventListener("click", closeHistory);
+    head.append(title, close);
+    const list = document.createElement("div");
+    list.id = "ksuHistoryList";
+    list.className = "ksu-history-list";
+    const more = document.createElement("button");
+    more.id = "ksuHistoryMore";
+    more.type = "button";
+    more.className = "ksu-history-more";
+    more.textContent = "Показать ещё";
+    more.hidden = true;
+    more.addEventListener("click", () => loadHistoryPage(false));
+    sheet.append(head, list, more);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+  }
+
+  async function openHistory() {
+    if (!tg?.initData) {
+      showToast("История доступна при открытии Mini App через Telegram");
+      return;
+    }
+    document.getElementById("ksuHistoryOverlay").hidden = false;
+    state.historyBefore = null;
+    await loadHistoryPage(true);
+  }
+
+  function closeHistory() {
+    document.getElementById("ksuHistoryOverlay").hidden = true;
+  }
+
+  async function loadHistoryPage(replace) {
+    if (state.historyLoading) return;
+    state.historyLoading = true;
+    const list = document.getElementById("ksuHistoryList");
+    const more = document.getElementById("ksuHistoryMore");
+    if (replace) {
+      list.replaceChildren();
+      const loading = document.createElement("p");
+      loading.textContent = "Загружаю историю…";
+      list.appendChild(loading);
+    }
+    try {
+      const query = new URLSearchParams({ limit: "20" });
+      if (!replace && state.historyBefore) query.set("before", state.historyBefore);
+      const page = await apiFetch(`/api/v1/generations?${query}`, {
+        headers: apiHeaders({ auth: true }),
+      });
+      if (replace) list.replaceChildren();
+      for (const generation of page.items || []) list.appendChild(historyCard(generation));
+      if (!list.children.length) {
+        const empty = document.createElement("p");
+        empty.textContent = "Генераций пока нет.";
+        list.appendChild(empty);
+      }
+      state.historyBefore = page.next_before || null;
+      more.hidden = !page.has_more;
+    } catch (error) {
+      if (replace) list.replaceChildren();
+      const failed = document.createElement("p");
+      failed.textContent = error.message || "Не удалось загрузить историю";
+      list.appendChild(failed);
+      more.hidden = true;
+    } finally {
+      state.historyLoading = false;
+    }
+  }
+
+  function historyCard(generation) {
+    const card = document.createElement("article");
+    card.className = "ksu-history-card";
+    const title = document.createElement("h4");
+    title.textContent = `${generation.model?.title || "Модель"} · ${statusLabel(generation.status)}`;
+    const prompt = document.createElement("p");
+    prompt.textContent = generation.prompt ? generation.prompt.slice(0, 180) : "Без промпта";
+    const meta = document.createElement("p");
+    meta.textContent = `${formatDate(generation.created_at)} · ${formatNumber(generation.cost_credits)} кр.`;
+    const actions = document.createElement("div");
+    actions.className = "ksu-history-card-actions";
+    actions.appendChild(actionButton("Открыть", () => openHistoryGeneration(generation.id)));
+    actions.appendChild(actionButton("Повторить / изменить", () => reuseGeneration(generation.id)));
+    card.append(title, prompt, meta, actions);
+    return card;
+  }
+
+  function actionButton(label, handler) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ksu-history-action";
+    button.textContent = label;
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  async function openHistoryGeneration(generationId) {
+    try {
+      const generation = await apiFetch(`/api/v1/generations/${generationId}`, {
+        headers: apiHeaders({ auth: true }),
+      });
+      closeHistory();
+      renderGenerationResult(generation);
+      dom.resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (ACTIVE_STATUSES.has(generation.status)) startGenerationPolling(generation.id);
+    } catch (error) {
+      showToast(error.message || "Не удалось открыть генерацию");
+    }
+  }
+
+  function formatDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
   }
 
   function formatNumber(value) {
