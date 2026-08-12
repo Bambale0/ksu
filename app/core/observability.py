@@ -96,6 +96,26 @@ WORKER_HEARTBEAT_AGE = Gauge(
     "Age of the most recent worker heartbeat",
     ("worker",),
 )
+DISTRIBUTED_EVENTS = Gauge(
+    "ksu_distributed_event_count",
+    "Cross-process event count stored in Redis",
+    ("event",),
+)
+PROVIDER_CIRCUIT_OPEN = Gauge(
+    "ksu_provider_circuit_open",
+    "Whether a provider resource-protection circuit is open",
+    ("provider",),
+)
+
+DISTRIBUTED_EVENT_NAMES = (
+    "generation_submit_success",
+    "generation_submit_failure",
+    "generation_reconcile_failure",
+    "generation_worker_loop_error",
+    "payment_reconcile_success",
+    "payment_reconcile_failure",
+    "payment_worker_loop_error",
+)
 
 _tracer_provider: TracerProvider | None = None
 _httpx_instrumented = False
@@ -113,8 +133,6 @@ def current_trace_fields() -> dict[str, str]:
 
 
 def configure_telemetry(app: FastAPI) -> None:
-    """Configure optional OTLP tracing without making an exporter a runtime dependency."""
-
     global _tracer_provider, _httpx_instrumented
     if not settings.otel_enabled or _tracer_provider is not None:
         return
@@ -132,11 +150,7 @@ def configure_telemetry(app: FastAPI) -> None:
     )
     endpoint = settings.otel_exporter_otlp_traces_endpoint.strip()
     if endpoint:
-        provider.add_span_processor(
-            BatchSpanProcessor(
-                OTLPSpanExporter(endpoint=endpoint),
-            )
-        )
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
     else:
         logger.warning("OTEL_ENABLED is true but OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is empty")
 
@@ -188,6 +202,15 @@ async def worker_health(redis: Redis, worker: str) -> dict[str, Any]:
     WORKER_UP.labels(worker=worker).set(1 if up else 0)
     WORKER_HEARTBEAT_AGE.labels(worker=worker).set(age)
     return {"worker": worker, "up": up, "age_seconds": round(age, 3)}
+
+
+async def record_distributed_event(redis: Redis, event: str) -> int:
+    if event not in DISTRIBUTED_EVENT_NAMES:
+        raise ValueError(f"Unknown distributed observability event: {event}")
+    key = f"observability:event:{event}"
+    value = int(await redis.incr(key))
+    DISTRIBUTED_EVENTS.labels(event=event).set(value)
+    return value
 
 
 async def refresh_snapshot_metrics(session: AsyncSession, redis: Redis) -> None:
@@ -261,3 +284,10 @@ async def refresh_snapshot_metrics(session: AsyncSession, redis: Redis) -> None:
 
     for worker in ("generation-worker", "payment-worker"):
         await worker_health(redis, worker)
+
+    for event in DISTRIBUTED_EVENT_NAMES:
+        value = int(await redis.get(f"observability:event:{event}") or 0)
+        DISTRIBUTED_EVENTS.labels(event=event).set(value)
+
+    circuit_ttl = await redis.ttl("abuse:circuit:kie:open")
+    PROVIDER_CIRCUIT_OPEN.labels(provider="kie").set(1 if circuit_ttl and circuit_ttl > 0 else 0)

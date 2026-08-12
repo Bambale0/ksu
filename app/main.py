@@ -9,12 +9,15 @@ from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
 from app.api.health import router as health_router
+from app.api.metrics import router as metrics_router
 from app.api.router import api_router
 from app.api.webhooks import router as webhook_router
 from app.bot.dispatcher import create_dispatcher
 from app.core.config import settings
+from app.core.http_observability import RequestObservabilityMiddleware
 from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
+from app.core.observability import configure_telemetry, shutdown_telemetry
 from app.db.session import engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
 
@@ -52,6 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await bot.session.close()
         await redis.aclose()
         await engine.dispose()
+        shutdown_telemetry()
 
 
 app = FastAPI(
@@ -62,6 +66,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestObservabilityMiddleware)
+configure_telemetry(app)
 
 
 @app.exception_handler(ResourcePolicyError)
@@ -79,6 +85,7 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
 
 
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(webhook_router)
 app.include_router(api_router)
 
