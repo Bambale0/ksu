@@ -222,6 +222,27 @@ class MediaIngestQueue:
         await session.commit()
 
     @staticmethod
+    async def defer_without_attempt(
+        session: AsyncSession,
+        *,
+        asset_id: uuid.UUID,
+        error: str,
+        delay_seconds: int = 300,
+    ) -> None:
+        row = await session.get(MediaIngestJob, asset_id, with_for_update=True)
+        asset = await session.get(MediaAsset, asset_id, with_for_update=True)
+        if row is None or asset is None:
+            return
+        row.status = "pending"
+        row.attempts = max(0, row.attempts - 1)
+        row.lease_until = None
+        row.available_at = utcnow() + timedelta(seconds=max(30, delay_seconds))
+        row.last_error = error[:4000]
+        asset.status = "pending"
+        asset.error = error[:4000]
+        await session.commit()
+
+    @staticmethod
     async def release_or_fail(
         session: AsyncSession,
         *,
@@ -293,7 +314,16 @@ class MediaIngestService:
             await session.commit()
             await MediaIngestQueue.complete(session, asset.id)
             return True
-        except (ObjectStorageNotConfigured, UnsafeMediaSource, MediaIngestError, httpx.HTTPError) as exc:
+        except ObjectStorageNotConfigured as exc:
+            # Missing S3 configuration is an operator/deployment state, not an asset defect.
+            # Do not burn the retry budget while waiting for the bucket to be configured.
+            await MediaIngestQueue.defer_without_attempt(
+                session,
+                asset_id=claim.asset_id,
+                error=str(exc),
+            )
+            return True
+        except (UnsafeMediaSource, MediaIngestError, httpx.HTTPError) as exc:
             await MediaIngestQueue.release_or_fail(
                 session,
                 asset_id=claim.asset_id,
@@ -336,17 +366,30 @@ class MediaIngestService:
                         continue
                     response.raise_for_status()
                     content_length = response.headers.get("content-length")
-                    if content_length and int(content_length) > settings.media_ingest_max_bytes:
-                        raise MediaIngestError("Media source exceeds MEDIA_INGEST_MAX_BYTES")
+                    if content_length:
+                        try:
+                            declared_size = int(content_length)
+                        except ValueError as exc:
+                            raise MediaIngestError("Media source returned invalid Content-Length") from exc
+                        if declared_size > settings.media_ingest_max_bytes:
+                            raise MediaIngestError("Media source exceeds MEDIA_INGEST_MAX_BYTES")
 
                     content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
                     suffix = cls._suffix_for(current_url, content_type)
                     if not cls._allowed_content_type(content_type, suffix):
-                        raise MediaIngestError(f"Unsupported media content type: {content_type or 'unknown'}")
+                        raise MediaIngestError(
+                            f"Unsupported media content type: {content_type or 'unknown'}"
+                        )
                     if not content_type or content_type == "application/octet-stream":
-                        content_type = mimetypes.guess_type(f"file{suffix}")[0] or "application/octet-stream"
+                        content_type = (
+                            mimetypes.guess_type(f"file{suffix}")[0] or "application/octet-stream"
+                        )
 
-                    handle = tempfile.NamedTemporaryFile(prefix="ksu-media-", suffix=suffix, delete=False)
+                    handle = tempfile.NamedTemporaryFile(
+                        prefix="ksu-media-",
+                        suffix=suffix,
+                        delete=False,
+                    )
                     path = Path(handle.name)
                     digest = hashlib.sha256()
                     size = 0
@@ -409,7 +452,12 @@ class MediaIngestService:
             direct = ipaddress.ip_address(host)
             addresses = [direct]
         except ValueError:
-            infos = await asyncio.to_thread(socket.getaddrinfo, host, parsed.port or 443, type=socket.SOCK_STREAM)
+            infos = await asyncio.to_thread(
+                socket.getaddrinfo,
+                host,
+                parsed.port or 443,
+                type=socket.SOCK_STREAM,
+            )
             addresses = []
             for info in infos:
                 try:
@@ -418,16 +466,8 @@ class MediaIngestService:
                     continue
         if not addresses:
             raise UnsafeMediaSource("Media source hostname did not resolve")
-        for address in addresses:
-            if (
-                address.is_private
-                or address.is_loopback
-                or address.is_link_local
-                or address.is_multicast
-                or address.is_reserved
-                or address.is_unspecified
-            ):
-                raise UnsafeMediaSource("Media source resolves to a non-public address")
+        if any(not address.is_global for address in addresses):
+            raise UnsafeMediaSource("Media source resolves to a non-public address")
 
 
 async def media_queue_snapshot(session: AsyncSession) -> dict[str, int | float]:
