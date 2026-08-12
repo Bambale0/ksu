@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import ReferralRelation, ReferralReward
+from app.db.payment_models import ReferralRewardReversal
 
 
 class ReferralService:
@@ -24,11 +25,28 @@ class ReferralService:
                 ReferralRelation.inviter_user_id.in_(first_ids)
             )
         )
-        available = await session.scalar(
-            select(func.coalesce(func.sum(ReferralReward.amount), 0)).where(
-                ReferralReward.partner_user_id == user_id,
-                ReferralReward.status == "available",
+
+        available_rewards = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(ReferralReward.amount), 0)).where(
+                        ReferralReward.partner_user_id == user_id,
+                        ReferralReward.status.in_(["available", "reversed"]),
+                    )
+                )
             )
+            or 0
+        )
+        available_reversals = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(ReferralRewardReversal.amount), 0))
+                    .select_from(ReferralRewardReversal)
+                    .join(ReferralReward, ReferralReward.id == ReferralRewardReversal.reward_id)
+                    .where(ReferralReward.partner_user_id == user_id)
+                )
+            )
+            or 0
         )
         pending = await session.scalar(
             select(func.coalesce(func.sum(ReferralReward.amount), 0)).where(
@@ -39,7 +57,7 @@ class ReferralService:
         return {
             "first_line": int(first or 0),
             "second_line": int(second or 0),
-            "available": Decimal(available or 0),
+            "available": max(Decimal("0"), available_rewards - available_reversals),
             "pending": Decimal(pending or 0),
         }
 
@@ -82,6 +100,54 @@ class ReferralService:
             percent=settings.referral_second_percent,
             payment_amount=payment_amount,
         )
+
+    @staticmethod
+    async def reverse_payment_rewards(
+        session: AsyncSession,
+        *,
+        source_transaction_id: uuid.UUID,
+        payment_reversal_id: uuid.UUID,
+        cumulative_ratio: Decimal,
+    ) -> None:
+        """Adjust referral earnings to match the cumulative refunded payment share."""
+
+        ratio = min(Decimal("1"), max(Decimal("0"), cumulative_ratio))
+        rewards = list(
+            (
+                await session.scalars(
+                    select(ReferralReward)
+                    .where(ReferralReward.source_transaction_id == source_transaction_id)
+                    .with_for_update()
+                )
+            ).all()
+        )
+        for reward in rewards:
+            already_reversed = Decimal(
+                (
+                    await session.scalar(
+                        select(func.coalesce(func.sum(ReferralRewardReversal.amount), 0)).where(
+                            ReferralRewardReversal.reward_id == reward.id
+                        )
+                    )
+                )
+                or 0
+            )
+            target = (Decimal(reward.amount) * ratio).quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
+            target = min(Decimal(reward.amount), target)
+            incremental = target - already_reversed
+            if incremental > 0:
+                session.add(
+                    ReferralRewardReversal(
+                        reward_id=reward.id,
+                        payment_reversal_id=payment_reversal_id,
+                        amount=incremental,
+                    )
+                )
+            reward.status = "reversed" if target >= Decimal(reward.amount) else "available"
+        await session.flush()
 
     @staticmethod
     async def _create_reward(
