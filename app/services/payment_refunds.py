@@ -32,6 +32,23 @@ class PaymentRefundService:
         payment = await session.get(Payment, payment_id)
         if payment is None:
             raise LookupError("Payment not found")
+
+        # Idempotency lookup must precede mutable lifecycle checks. A successful first
+        # refund changes payment.status to refunded, but a retry of the same request
+        # must still return the original provider operation instead of failing.
+        existing = await session.scalar(
+            select(PaymentRefundRequest).where(
+                PaymentRefundRequest.payment_id == payment.id,
+                PaymentRefundRequest.request_key == request_key,
+            )
+        )
+        if existing is not None:
+            if Decimal(existing.amount) != amount:
+                raise PaymentIdempotencyConflict(
+                    "Refund idempotency key was already used for another amount"
+                )
+            return existing
+
         if payment.provider == "yookassa":
             return await PaymentService.initiate_refund(
                 session,
@@ -71,6 +88,8 @@ class PaymentRefundService:
         if not payment.external_id:
             raise PaymentProviderError("Payment has no T-Bank PaymentId")
 
+        # Double-check after entering provider-specific path for callers that invoke
+        # this private helper indirectly during concurrent request races.
         existing = await session.scalar(
             select(PaymentRefundRequest).where(
                 PaymentRefundRequest.payment_id == payment.id,
