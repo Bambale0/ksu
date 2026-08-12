@@ -141,7 +141,12 @@ TELEGRAM_WEBHOOK_SECRET=<random-secret>
 
 INTERNAL_CREDIT_RUB=10
 ROX_PACKAGES_JSON={"starter":{"credits":"30","currency":"RUB"}}
+
+ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
+ADMIN_REQUIRE_MFA=true
 ```
+
+`ADMIN_SECURITY_KEY` must be a dedicated secret and must never reuse bot/provider credentials. Owner bootstrap/MFA procedure is documented in `docs/ADMIN_SECURITY.md`.
 
 ### Generation reliability
 
