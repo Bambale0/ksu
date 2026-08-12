@@ -1,50 +1,56 @@
 # KSU bot
 
-Production-oriented Telegram AI content platform: Telegram bot + schema-driven Mini App + FastAPI backend + Kie.ai generation worker + internal credits/payments + privileged admin API.
+Production-oriented Telegram AI content platform: Telegram bot + schema-driven Mini App + FastAPI backend + durable Kie.ai generation worker + internal credits/payments + privileged admin API.
 
-**Documentation status:** synchronized with `main` on 2026-08-11.
+**Documentation status:** synchronized with this branch on 2026-08-12.
 
 ## What is implemented now
 
 ### User product
 
 - Telegram bot commands `/start`, `/balance`, `/profile`, `/support`.
-- Telegram Mini App served by this backend at `/mini-app/`.
+- Telegram Mini App served at `/mini-app/`.
 - Telegram WebApp `initData` validation on authenticated REST endpoints.
-- Dynamic generation screens driven by backend `ui_schema`, not hardcoded per model in the browser.
-- Isolated per-model drafts, scenario-specific fields, live selected-settings summary and server-side live quote.
-- Local image/video/audio upload through the backend to Kie File Upload; the Kie API key never reaches the browser.
+- Dynamic generation screens driven by backend `ui_schema`.
+- Isolated per-model drafts, scenario-specific fields, selected-settings summary and live server-side quote.
+- Local image/video/audio upload through `/api/v1/uploads/kie`; the Kie API key never reaches the browser.
 - Users, wallets, immutable wallet transaction ledger, promo codes, referrals, support tickets and notifications.
 
 ### Generation
 
 - Kie.ai Market task integration through `/api/v1/jobs/createTask` and unified `/api/v1/jobs/recordInfo` reconciliation.
-- Kie webhook HMAC verification through `X-Webhook-Timestamp` / `X-Webhook-Signature` when `KIE_WEBHOOK_HMAC_KEY` is configured.
-- Redis generation queue + dedicated `generation-worker` process.
-- Idempotent internal-credit refund when a provider task fails.
+- Kie webhook HMAC verification when `KIE_WEBHOOK_HMAC_KEY` is configured.
+- **Transactional outbox for generation submission:** generation row, wallet debit and `generation_outbox` row commit in one PostgreSQL transaction.
+- PostgreSQL leased work claims using `FOR UPDATE SKIP LOCKED`; expired leases are reclaimable by another worker.
+- Redis is a best-effort low-latency wake-up channel only; losing Redis wake-up does not lose paid generation work.
+- Dedicated `generation-worker` polls the durable outbox and periodically performs recovery/reconciliation.
+- Existing `queued/retry` rows without outbox records are repaired automatically.
+- Kie callback URL carries the local `generation_id`, allowing recovery if Kie accepted `createTask` before the worker persisted `taskId`.
+- Stale `generating` tasks are reconciled through Kie `recordInfo` if a callback is delayed/lost.
+- Provider failure/unknown-submission timeout produces an idempotent internal-credit refund.
 - Server-controlled model catalog for Nano Banana, Seedream, GPT Image, Wan, Seedance, Kling Motion Control and Grok Imagine variants.
-- Flat billing for image tasks and per-second billing for every video model.
+- Flat billing for image tasks and per-second billing for video tasks.
 - Fixed product exchange rate: **1 internal credit = 10 RUB** by default.
 
 ### Payments
 
 - CryptoBot / Crypto Pay: invoice creation + raw-body HMAC webhook verification.
-- T-Bank Internet Acquiring: `/v2/Init`, signed `Token`, verified notifications and required `OK` acknowledgement.
-- YooKassa: server-side payment creation with `Idempotence-Key`; incoming notification is rechecked against the authoritative YooKassa payment before wallet credit.
+- T-Bank Internet Acquiring: `/v2/Init`, signed `Token`, verified notifications and `OK` acknowledgement.
+- YooKassa: `Idempotence-Key`; incoming notification is rechecked against the authoritative provider payment before wallet credit.
 - Server-side credit package catalog; clients submit only `package_id` and provider.
-- Successful payment credits the wallet idempotently and accrues 30% / 5% referral rewards according to configuration.
+- Successful payment credits the wallet idempotently and accrues configured 30% / 5% referral rewards.
 
 ### Admin/security
 
-- Separate privileged admin identity and session domain; normal Telegram user authorization is not an admin bearer session.
+- Separate privileged admin identity/session domain.
 - Roles: `owner`, `admin`, `support`, `finance`, `moderator`, `auditor`.
 - Deny-by-default permissions with explicit allow/deny overrides.
-- TOTP MFA, one-time recovery codes, opaque server-side sessions, idle/absolute expiry and step-up reauthentication for sensitive operations.
-- Admin operations for users, wallet adjustments, generations, payments visibility, support, withdrawals, promos, referrals, admin accounts/sessions and audit/security visibility.
+- TOTP MFA, one-time recovery codes, opaque server-side sessions, idle/absolute expiry and step-up reauthentication.
+- Admin operations for users, wallet adjustments, generations, payment visibility, support, withdrawals, promos, referrals, admin accounts/sessions and audit/security visibility.
 - HMAC-protected audit trail with secret/credential redaction.
-- User restrictions are enforced in both REST/Mini App authorization and Telegram bot middleware.
+- User restrictions are enforced in REST/Mini App authorization and Telegram bot middleware.
 
-> The repository currently ships the **admin API/security contour**, but not a dedicated visual admin web client. See `docs/ADMIN_SECURITY.md`.
+> The repository ships the **admin API/security contour**, but not a dedicated visual admin web client. See `docs/ADMIN_SECURITY.md`.
 
 ## Stack
 
@@ -67,18 +73,22 @@ Telegram / browser
  reverse proxy / TLS
         |
         v
- FastAPI app :8000 --------------------> PostgreSQL
-    |       |                           Redis
-    |       |
-    |       +--> Telegram webhooks
-    |       +--> Kie/payment webhooks
-    |       +--> /mini-app static assets
-    |       +--> /api/v1/*
+ FastAPI app :8000 --------------------------> PostgreSQL
+    |                                             |
+    |                                             +--> generation_outbox
+    |                                             +--> wallet/generation state
     |
-    +--> Redis queue --> generation-worker --> Kie.ai
+    +--> best-effort Redis wake --------------------+
+                                                   |
+                                                   v
+                                         generation-worker
+                                           | claim lease
+                                           | SKIP LOCKED
+                                           v
+                                              Kie.ai
 
-Payment providers --> /webhooks/payments/* --> wallet/referrals
-Kie callbacks -----> /webhooks/kie ----------> generation reconciliation
+Kie callbacks --------> /webhooks/kie ----------> recordInfo reconciliation
+Payment providers ----> /webhooks/payments/* ---> wallet/referrals
 ```
 
 Docker Compose services:
@@ -90,10 +100,10 @@ Docker Compose services:
 
 ## Documentation map
 
-- `docs/API_REFERENCE.md` — authentication boundaries and the current route map.
-- `docs/OPERATIONS_RUNBOOK.md` — production deployment, provider setup, smoke checks, backup/restore, incident and rollback procedures.
-- `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract, state rules, uploads, quoting and model scenarios.
-- `docs/ADMIN_SECURITY.md` — privileged admin bootstrap, MFA, permissions, sessions, audit and security operations.
+- `docs/API_REFERENCE.md` — authentication boundaries and current route map.
+- `docs/OPERATIONS_RUNBOOK.md` — production deployment, provider setup, smoke checks, backup/restore, incidents and rollback.
+- `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract, state rules, uploads, quote and model scenarios.
+- `docs/ADMIN_SECURITY.md` — privileged admin bootstrap, MFA, permissions, sessions and audit.
 
 ## Local development
 
@@ -102,9 +112,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The app container runs `alembic upgrade head` before starting Uvicorn. For controlled production releases, follow the explicit migration/deploy sequence in `docs/OPERATIONS_RUNBOOK.md` instead of relying on startup migration alone.
-
-Local API: `http://localhost:8000`
+The Compose app command runs `alembic upgrade head` before Uvicorn. Controlled production releases should still run migrations explicitly according to `docs/OPERATIONS_RUNBOOK.md`.
 
 Useful surfaces:
 
@@ -120,7 +128,7 @@ GET  /api/v1/payments/packages
 POST /api/v1/payments
 ```
 
-OpenAPI Swagger/ReDoc are enabled only outside production.
+Swagger/ReDoc are enabled only outside production.
 
 ## Core environment configuration
 
@@ -133,56 +141,26 @@ APP_ENV=production
 PUBLIC_BASE_URL=https://api.example.com
 DATABASE_URL=postgresql+asyncpg://...
 REDIS_URL=redis://...
-
 BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
 ```
 
-`PUBLIC_BASE_URL` is the public HTTPS origin used for the Mini App and provider callbacks. `TELEGRAM_WEBHOOK_URL` is the origin used during `Bot.set_webhook`; in a normal deployment they are the same origin.
-
-When both `BOT_TOKEN` and `TELEGRAM_WEBHOOK_URL` are set, application startup registers:
-
-```text
-{TELEGRAM_WEBHOOK_URL}/webhooks/telegram
-```
-
-Incoming Telegram updates must include `X-Telegram-Bot-Api-Secret-Token` when `TELEGRAM_WEBHOOK_SECRET` is configured.
-
-The bot's **Create content** button opens:
-
-```text
-{PUBLIC_BASE_URL}/mini-app/
-```
-
-Also configure the Main Mini App URL in BotFather if you want the app launch button on the bot profile.
+The bot's Create content button opens `{PUBLIC_BASE_URL}/mini-app/`. Configure the Main Mini App URL in BotFather as well if a profile-level launch button is desired.
 
 ## Internal credits
-
-The product's internal currency is intentionally separate from Kie provider credits.
 
 ```dotenv
 INTERNAL_CREDIT_RUB=10
 ```
 
-Rule:
-
 ```text
 rubles = internal_credits × INTERNAL_CREDIT_RUB
 ```
 
-With the current default:
+Legacy storage/API compatibility fields named `rox` remain in parts of the codebase, but product terminology is **credits**. Kie `creditsConsumed` is provider-side usage and is not the user's internal-credit balance.
 
-```text
-1 credit  = 10 RUB
-30 credits = 300 RUB
-```
-
-Legacy database/API compatibility fields named `rox` remain in parts of the codebase, but public product terminology is **credits**.
-
-Kie `creditsConsumed` is provider-side usage data and is not automatically treated as the user's product balance.
-
-## Kie.ai
+## Kie.ai and durable generation flow
 
 ```dotenv
 KIE_API_KEY=...
@@ -190,87 +168,84 @@ KIE_BASE_URL=https://api.kie.ai
 KIE_UPLOAD_BASE_URL=https://kieai.redpandaai.co
 KIE_UPLOAD_MAX_BYTES=104857600
 KIE_WEBHOOK_HMAC_KEY=...
+
+GENERATION_WORKER_POLL_SECONDS=5
+GENERATION_OUTBOX_LEASE_SECONDS=90
+GENERATION_SUBMISSION_MAX_ATTEMPTS=5
+GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS=900
+GENERATION_RECONCILE_INTERVAL_SECONDS=60
+GENERATION_RECONCILE_STALE_SECONDS=60
+GENERATION_RECOVERY_BATCH_SIZE=50
 ```
 
 Production flow:
 
-1. Client requests a server model from `GET /api/v1/generations/models`.
-2. Client asks the server for a quote.
-3. On generation creation the backend validates the same request again, debits the wallet and stores the generation.
-4. The generation ID is pushed to Redis `queue:generations`.
-5. `generation-worker` submits the Kie task with `callBackUrl={PUBLIC_BASE_URL}/webhooks/kie`.
-6. Kie callback is HMAC-verified when the HMAC key is configured.
-7. Backend calls Kie `recordInfo` and applies the authoritative state/result.
-8. Provider failure triggers an idempotent generation refund.
+1. Client selects a server model and obtains a server-side quote.
+2. `POST /api/v1/generations` revalidates the model and price.
+3. Generation row + wallet debit + `generation_outbox` row commit atomically in PostgreSQL.
+4. The app sends a best-effort Redis wake signal. Failure is logged but does not fail the committed request.
+5. `generation-worker` claims an outbox row with a lease and `FOR UPDATE SKIP LOCKED`.
+6. Worker submits Kie `createTask` with `callBackUrl={PUBLIC_BASE_URL}/webhooks/kie?generation_id=<local-id>`.
+7. The returned Kie `taskId` is persisted and the outbox row is completed.
+8. Kie callback is HMAC-verified and then reconciled through `recordInfo`.
+9. A periodic recovery pass also checks stale `generating` tasks through `recordInfo`.
+10. Provider failure or unrecoverable unknown submission refunds the internal credits idempotently.
 
-In production, enable Webhook HMAC in the Kie settings page and configure the same key as `KIE_WEBHOOK_HMAC_KEY`.
+The worker never treats Redis as durable generation state. If Redis is unavailable, DB polling continues at `GENERATION_WORKER_POLL_SECONDS`.
 
-Media uploads use:
+### Uncertain provider submission
 
-```text
-POST /api/v1/uploads/kie
-```
+There is an unavoidable provider boundary: the process can die after Kie accepted `createTask` but before the HTTP response/task ID is durably stored. To avoid duplicate provider spend, the worker does **not** blindly resubmit a local generation already in `submitting` state. The callback can bind its signed Kie `taskId` back to the local `generation_id`. If no callback recovers the task within `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`, the user receives an idempotent refund and the local generation is failed.
 
-This endpoint requires valid Telegram Mini App authorization, accepts image/video/audio MIME types, applies the global `KIE_UPLOAD_MAX_BYTES` limit, and streams the file to Kie. Model-specific UI limits may be stricter than the global upload ceiling.
+### Media uploads
 
-Kie-hosted uploaded/generated URLs are provider-managed temporary assets. If durable storage is required, copy successful outputs to product-owned object storage instead of treating provider URLs as permanent storage.
+`POST /api/v1/uploads/kie` requires Telegram Mini App authorization and accepts image/video/audio MIME types within the configured global size ceiling. Provider URLs are temporary; copy successful results to product-owned object storage when durable media retention is implemented.
 
 ## Dynamic generation Mini App
 
-The browser does not contain a separate hardcoded form for each Kie model.
+`GET /api/v1/generations/models` returns `schema_version` and a `ui_schema` for every model. The browser uses it as the runtime form contract.
 
-```text
-GET /api/v1/generations/models
-```
+Important behavior:
 
-returns `schema_version` and, for every model, a `ui_schema` containing groups, fields, control types, defaults, required flags, model-specific scenarios, summary fields and optional explicit billing-seconds configuration.
+- per-model drafts are isolated and persisted locally as a convenience;
+- stale/unknown fields are removed when a saved draft meets a newer schema;
+- scenario switching clears incompatible values from state, not only the DOM;
+- selected-settings summary comes from current state;
+- quote refreshes after relevant changes;
+- create buttons remain disabled while validation/upload/quote is incomplete.
 
-Current important behaviors:
-
-- model-specific drafts are isolated and persisted locally as a convenience;
-- stale/unknown fields are removed when a draft is restored against a newer schema;
-- switching a scenario clears mutually incompatible fields from state, not only from the DOM;
-- selected-settings chips are rendered from the current state;
-- quote is refreshed after relevant changes with a short debounce;
-- the Create button and Telegram bottom button are disabled while validation/upload/quote is incomplete;
-- local file uploads require Telegram `initData`; a normal HTTP/HTTPS remote URL may also be supplied where a file field is shown.
-
-See `docs/GENERATION_MINI_APP.md` for the contract and model scenario details.
+See `docs/GENERATION_MINI_APP.md`.
 
 ## Generation billing
 
-Image model:
+Image:
 
 ```text
 cost_credits = flat_price
 ```
 
-Video model:
+Video:
 
 ```text
 cost_credits = price_credits_per_second × billing_seconds
 cost_rub = cost_credits × INTERNAL_CREDIT_RUB
 ```
 
-Prices are server-controlled. Optional overrides:
+Optional server-side price overrides:
 
 ```dotenv
 GENERATION_PRICING_JSON={"wan-2.7-t2v":{"per_second":"8.50"},"gpt-image-2-t2i":{"flat":"18"},"kling-motion-3.0":{"per_second":"15"}}
 ```
 
-The create endpoint recalculates price independently; a client cannot submit its own trusted cost.
-
-For operations without a usable provider `duration` input, `ui_schema.billing_seconds` supplies a separate product billing value. Grok upscale may reuse the source task's stored billed duration when that source belongs to this backend.
+The create endpoint recalculates price independently; clients cannot submit a trusted cost.
 
 ## Credit packages and payments
-
-Packages are server-side:
 
 ```dotenv
 ROX_PACKAGES_JSON={"starter":{"credits":"30","currency":"RUB"}}
 ```
 
-At `INTERNAL_CREDIT_RUB=10`, this creates a 300 RUB package. If both `amount` and `credits` are supplied, the backend rejects mismatched exchange rates.
+At `INTERNAL_CREDIT_RUB=10`, 30 credits cost 300 RUB. If both `amount` and `credits` are configured, mismatched exchange rates are rejected.
 
 ### CryptoBot / Crypto Pay
 
@@ -279,13 +254,7 @@ CRYPTOPAY_API_TOKEN=...
 CRYPTOPAY_BASE_URL=https://pay.crypt.bot
 ```
 
-Webhook:
-
-```text
-POST {PUBLIC_BASE_URL}/webhooks/payments/cryptobot
-```
-
-The backend verifies `crypto-pay-api-signature` against the **raw** request body using the Crypto Pay token-derived HMAC secret before processing `invoice_paid`.
+Webhook: `POST {PUBLIC_BASE_URL}/webhooks/payments/cryptobot`.
 
 ### T-Bank
 
@@ -296,7 +265,7 @@ TBANK_BASE_URL=https://securepay.tinkoff.ru
 PAYMENT_RETURN_URL=https://example.com/payment-result
 ```
 
-The backend calls `/v2/Init`; `NotificationURL` is generated from `PUBLIC_BASE_URL`. Notifications are signature/terminal/payment/amount checked and the handler returns exactly plain-text `OK` on successful processing.
+The backend uses `/v2/Init`, validates notifications and returns plain-text `OK` on successful handling.
 
 ### YooKassa
 
@@ -307,17 +276,9 @@ YOOKASSA_BASE_URL=https://api.yookassa.ru
 PAYMENT_RETURN_URL=https://example.com/payment-result
 ```
 
-Configure `payment.succeeded` notifications to:
-
-```text
-POST {PUBLIC_BASE_URL}/webhooks/payments/yookassa
-```
-
-Payment creation uses the local UUID as `Idempotence-Key` and in metadata. The webhook payload alone is not trusted: the backend retrieves the provider payment again and verifies metadata, ID, amount, currency and authoritative state before crediting the wallet.
+Configure `payment.succeeded` to `POST {PUBLIC_BASE_URL}/webhooks/payments/yookassa`. Incoming notifications are re-fetched from YooKassa before local wallet credit.
 
 ## Admin/security
-
-Required production variables include:
 
 ```dotenv
 ADMIN_SECURITY_KEY=<dedicated random secret, 32+ chars>
@@ -325,23 +286,17 @@ ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary initial owner Telegram ID>
 ADMIN_REQUIRE_MFA=true
 ```
 
-Do not reuse a provider credential as `ADMIN_SECURITY_KEY`.
-
-After first owner enrollment, remove `ADMIN_BOOTSTRAP_TELEGRAM_IDS` and manage additional admins through the owner-only API. Full procedure: `docs/ADMIN_SECURITY.md`.
+After first owner enrollment, remove `ADMIN_BOOTSTRAP_TELEGRAM_IDS`. Full procedure: `docs/ADMIN_SECURITY.md`.
 
 ## Database migrations
 
-Current migration chain includes the product schema and admin/security schema.
+Current migration chain includes product schema, admin/security schema and generation outbox:
 
 ```bash
 alembic upgrade head
 ```
 
-For production, back up PostgreSQL before migrations and use the runbook deploy sequence.
-
 ## CI and local validation
-
-GitHub Actions currently runs on every pull request and pushes to `main`:
 
 ```text
 pip install -e '.[dev]'
@@ -352,25 +307,21 @@ alembic upgrade head
 pytest -q
 ```
 
-CI uses real PostgreSQL and Redis service containers.
-
-`mypy` is installed in the dev extra but is **not currently a required CI gate**.
+CI uses real PostgreSQL and Redis service containers. `mypy` is installed in the dev extra but is not currently a required CI gate.
 
 ## Known production limitations
 
-These are deliberate documentation of the current code, not claims of completed work:
+1. **Provider URLs are not product-owned durable media storage.** Copy Kie outputs to owned object storage for permanent retention.
+2. **No dedicated visual admin client is bundled yet.** The protected admin API/security domain is implemented.
+3. **Compose exposes app port 8000 directly for development.** Production should place it behind HTTPS/reverse proxy and keep PostgreSQL/Redis private.
+4. **Application startup also runs migrations in the Compose command.** Production deployments should execute migrations explicitly before replacing app/worker.
+5. **Kie createTask has a cross-system ambiguity window.** The transactional outbox prevents local paid-work loss, and callback binding prevents blind duplicate submission, but if Kie accepted a request and neither its task ID response nor callback is observed, the backend refunds the user after the configured unknown-submission timeout. Provider-side spend may still have occurred in that rare case.
 
-1. **No transactional outbox yet for generation enqueue.** Generation/wallet DB state is committed before `Redis.rpush`. A process failure in that narrow gap can leave a paid generation in `queued` state without a queue message. Do not assume Redis restart alone repairs this case. Add transactional outbox/reconciliation before treating enqueue as exactly-once durable.
-2. **Provider URLs are not product-owned durable media storage.** Uploaded/generated Kie assets should be copied to owned object storage if permanent retention is required.
-3. **No dedicated visual admin client is bundled yet.** The protected admin API/security domain is implemented; a separate UI can be built against it.
-4. **Compose exposes app port 8000 directly for development.** Production should place it behind HTTPS/reverse proxy and keep PostgreSQL/Redis private.
-5. **Application startup also runs migrations in the Compose command.** Production deployments should still execute migrations explicitly before replacing the app/worker, as described in the runbook.
+## External references checked for this architecture
 
-## External references checked for this documentation
-
-- Kie.ai Market task creation/detail, file upload and webhook HMAC verification documentation.
-- Telegram Mini Apps documentation (`initData`, dynamic theme, Bottom/Main button behavior).
-- Crypto Pay API webhook signature documentation.
-- T-Bank Internet Acquiring Init and notification documentation.
-- YooKassa payment creation/webhook documentation.
-- OWASP ASVS 5.0.0 and Authorization guidance for the privileged admin contour.
+- PostgreSQL row locking / `SKIP LOCKED` for queue-like consumers.
+- Kie.ai Market task detail and webhook HMAC documentation.
+- Redis finite blocking timeout semantics for best-effort worker wake-up.
+- Telegram Mini Apps documentation.
+- Crypto Pay, T-Bank and YooKassa provider documentation.
+- OWASP ASVS 5.0.0 and Authorization guidance for privileged admin controls.

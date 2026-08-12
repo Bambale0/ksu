@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 
+    # Generation reliability. PostgreSQL outbox is authoritative; Redis only wakes workers.
+    generation_worker_poll_seconds: int = 5
+    generation_outbox_lease_seconds: int = 90
+    generation_submission_max_attempts: int = 5
+    generation_submission_unknown_timeout_seconds: int = 900
+    generation_reconcile_interval_seconds: int = 60
+    generation_reconcile_stale_seconds: int = 60
+    generation_recovery_batch_size: int = 50
+
     # Separate privileged-admin security domain.
     # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
     admin_security_key: str = ""

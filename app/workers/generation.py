@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import uuid
+import time
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.core.config import settings
-from app.db.session import SessionFactory, engine
-from app.services.generation_provider import GenerationProviderService
+from app.db.session import engine
+from app.services.generation_worker import GenerationWorkerService
 from app.services.generations import GenerationService
 
 logger = logging.getLogger(__name__)
@@ -17,24 +17,37 @@ logger = logging.getLogger(__name__)
 
 async def run() -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    next_recovery_at = 0.0
     try:
         while True:
-            item = await redis.blpop(GenerationService.QUEUE_KEY, timeout=5)
-            if item is None:
-                continue
-            _, raw = item
+            now = time.monotonic()
+            if now >= next_recovery_at:
+                try:
+                    await GenerationWorkerService.recovery_once()
+                except Exception:
+                    logger.exception("Generation recovery pass failed")
+                next_recovery_at = now + settings.generation_reconcile_interval_seconds
+
             try:
-                payload = json.loads(raw)
-                generation_id = uuid.UUID(str(payload["generation_id"]))
-            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                logger.exception("Dropping malformed generation queue item: %r", raw)
+                processed = await GenerationWorkerService.process_one()
+            except Exception:
+                logger.exception("Generation outbox worker iteration failed")
+                processed = False
+
+            if processed:
+                # Drain durable work without sleeping while backlog exists.
                 continue
 
-            async with SessionFactory() as session:
-                try:
-                    await GenerationProviderService.submit_kie(session, generation_id)
-                except Exception:
-                    logger.exception("Generation submission failed: %s", generation_id)
+            # Redis is only a low-latency wake-up primitive. A finite timeout is
+            # mandatory so DB outbox polling still progresses if a wake-up is lost.
+            try:
+                await redis.blpop(
+                    GenerationService.WAKE_KEY,
+                    timeout=settings.generation_worker_poll_seconds,
+                )
+            except RedisError:
+                logger.warning("Redis wake-up channel unavailable; polling durable outbox")
+                await asyncio.sleep(settings.generation_worker_poll_seconds)
     finally:
         await redis.aclose()
         await engine.dispose()

@@ -1,19 +1,26 @@
-import json
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
+from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.wallet import WalletService
 
+logger = logging.getLogger(__name__)
+
 
 class GenerationService:
+    # Kept for compatibility with older deployments/metrics. The worker no longer
+    # treats this Redis list as the durable source of work.
     QUEUE_KEY = "queue:generations"
+    WAKE_KEY = "wake:generations"
 
     @classmethod
     async def _resolve_billing_seconds(
@@ -35,9 +42,7 @@ class GenerationService:
         task_id = str(parameters.get("task_id") or "")
         if not task_id:
             return None
-        source = await session.scalar(
-            select(Generation).where(Generation.external_id == task_id)
-        )
+        source = await session.scalar(select(Generation).where(Generation.external_id == task_id))
         if source is None:
             return None
         source_seconds = (source.parameters or {}).get("_billing_seconds")
@@ -146,6 +151,9 @@ class GenerationService:
         session.add(generation)
         await session.flush()
 
+        # The outbox row and wallet debit live in the same PostgreSQL transaction.
+        # A Redis outage can delay execution, but can no longer lose paid work.
+        GenerationOutboxService.add(session, generation.id)
         await WalletService.debit(
             session,
             user_id=user_id,
@@ -157,6 +165,10 @@ class GenerationService:
         )
         await session.commit()
 
-        payload = json.dumps({"generation_id": str(generation.id)}, separators=(",", ":"))
-        await redis.rpush(cls.QUEUE_KEY, payload)
+        # Best-effort latency optimization only. The worker polls the DB outbox, so
+        # failure here must not turn a successfully committed generation into 5xx.
+        try:
+            await redis.rpush(cls.WAKE_KEY, str(generation.id))
+        except RedisError:
+            logger.warning("Redis wake-up failed for generation %s; outbox will recover it", generation.id)
         return generation

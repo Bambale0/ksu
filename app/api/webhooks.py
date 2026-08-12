@@ -58,8 +58,20 @@ async def kie_webhook(
     ):
         raise HTTPException(status_code=403, detail="Invalid Kie webhook signature")
 
+    generation_id: uuid.UUID | None = None
+    raw_generation_id = request.query_params.get("generation_id")
+    if raw_generation_id:
+        try:
+            generation_id = uuid.UUID(raw_generation_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid generation id") from exc
+
     async with SessionFactory() as session:
-        await GenerationProviderService.sync_kie_task(session, task_id=task_id)
+        await GenerationProviderService.sync_kie_task(
+            session,
+            task_id=task_id,
+            generation_id=generation_id,
+        )
     return {"ok": True}
 
 

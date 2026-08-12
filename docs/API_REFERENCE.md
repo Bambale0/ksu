@@ -1,6 +1,6 @@
 # KSU API reference
 
-**Status:** route/auth reference for the current backend on 2026-08-11.
+**Status:** route/auth reference for the current backend on 2026-08-12.
 
 This is an operational route map, not a generated OpenAPI dump. In non-production environments the backend exposes `/docs` and `/redoc`; in production those UIs are disabled.
 
@@ -8,15 +8,7 @@ This is an operational route map, not a generated OpenAPI dump. In non-productio
 
 ### Public
 
-No product user identity is required.
-
-Current examples:
-
-- health probes;
-- model catalog;
-- generation quote;
-- credit package catalog;
-- provider/Telegram webhook endpoints authenticate by provider-specific mechanisms rather than product user session.
+No product user identity is required. Current examples include health probes, model catalog, generation quote and credit package catalog. Provider/Telegram webhook endpoints authenticate by provider-specific mechanisms rather than product-user sessions.
 
 ### Telegram user
 
@@ -26,9 +18,7 @@ Authenticated REST calls use:
 X-Telegram-Init-Data: <Telegram.WebApp.initData>
 ```
 
-The backend validates signed Telegram WebApp data using `BOT_TOKEN`, resolves/creates the product user, and rejects inactive users.
-
-Do not send or trust `initDataUnsafe` as authentication.
+The backend validates signed Telegram WebApp data using `BOT_TOKEN`, resolves/creates the product user, and rejects inactive users. Do not trust `initDataUnsafe` as authentication.
 
 ### Admin
 
@@ -38,13 +28,7 @@ Admin API uses:
 Authorization: Bearer <opaque-admin-session-token>
 ```
 
-Admin login/enrollment/step-up also uses fresh:
-
-```http
-X-Telegram-Init-Data: <Telegram.WebApp.initData>
-```
-
-Admin sessions are separate from normal product-user authentication. See `ADMIN_SECURITY.md`.
+Admin login/enrollment/step-up also uses fresh `X-Telegram-Init-Data`. Admin sessions are separate from normal product-user authentication. See `ADMIN_SECURITY.md`.
 
 ## Health
 
@@ -60,46 +44,27 @@ Public readiness probe that checks PostgreSQL and Redis connectivity.
 
 ### `GET /mini-app/`
 
-Serves the bundled generation Mini App (`app/web/mini_app`).
-
-The page itself is static/public; authenticated actions inside it use Telegram `initData`.
+Serves the bundled generation Mini App (`app/web/mini_app`). The page is static/public; authenticated actions inside it use Telegram `initData`.
 
 ## User/profile
 
 ### `GET /api/v1/me`
 
-**Auth:** Telegram user.
-
-Returns basic product user identity and current wallet balance. Some legacy response naming still uses `balance_rox`; product terminology is internal credits.
+**Auth:** Telegram user. Returns basic product user identity and current wallet balance. Some legacy response naming still uses `balance_rox`; product terminology is internal credits.
 
 ### `GET /api/v1/me/transactions`
 
-**Auth:** Telegram user.
-
-Returns recent wallet ledger transactions.
+**Auth:** Telegram user. Returns recent wallet ledger transactions.
 
 ## Generation
 
 ### `GET /api/v1/generations/models`
 
-**Auth:** public.
-
-Returns:
-
-- `schema_version`;
-- `internal_credit_rub`;
-- server model catalog;
-- Kie model mapping metadata;
-- billing metadata;
-- `ui_schema` for the dynamic Mini App.
-
-The Mini App treats this endpoint as the runtime screen contract.
+**Auth:** public. Returns `schema_version`, `internal_credit_rub`, server model catalog, Kie mapping/billing metadata and `ui_schema`. The Mini App treats this endpoint as the runtime screen contract.
 
 ### `POST /api/v1/generations/quote`
 
 **Auth:** public.
-
-Request shape:
 
 ```json
 {
@@ -111,35 +76,37 @@ Request shape:
 }
 ```
 
-Server validates model/required fields/model-specific structural rules and computes price from server configuration.
-
-Response includes credit/RUB unit and total pricing.
+The server validates model fields/rules and calculates credit/RUB pricing from server configuration.
 
 ### `POST /api/v1/generations`
 
 **Auth:** Telegram user.
 
-Creates a paid generation:
+Creates a paid generation with durable local delivery semantics:
 
-1. validates model request;
-2. recalculates price;
-3. creates generation DB row;
-4. debits wallet idempotently;
-5. commits DB transaction;
-6. enqueues generation ID in Redis;
+1. validates the model request and recalculates price;
+2. creates the generation row;
+3. debits the wallet idempotently;
+4. creates one `generation_outbox` row;
+5. commits generation + wallet + outbox atomically in PostgreSQL;
+6. emits a best-effort Redis wake signal;
 7. returns HTTP 202.
 
-Known limitation: DB commit and Redis enqueue are not yet transactional. See `OPERATIONS_RUNBOOK.md`.
+Redis is not authoritative generation state. If the wake-up is lost or Redis is unavailable after the PostgreSQL commit, `generation-worker` still polls and claims the outbox row.
+
+The worker uses leased PostgreSQL claims with `FOR UPDATE SKIP LOCKED`. Expired processing leases are reclaimable, so a worker crash before provider submission does not lose the job.
+
+The Kie callback URL contains the local `generation_id`. If Kie accepted `createTask` but the worker died before persisting the returned provider `taskId`, a signed Kie callback can bind that task back to the original local generation. An uncertain `submitting` generation is not blindly resubmitted; if it cannot be recovered before the configured timeout, the user is refunded idempotently.
+
+Stale `generating` rows with a Kie task ID are periodically reconciled through `/api/v1/jobs/recordInfo` as a callback fallback.
 
 ## Uploads
 
 ### `POST /api/v1/uploads/kie`
 
-**Auth:** Telegram user.
+**Auth:** Telegram user. `multipart/form-data` with one `file`.
 
-`multipart/form-data` with one `file`.
-
-Allowed media MIME prefixes:
+Allowed MIME prefixes:
 
 ```text
 image/
@@ -147,27 +114,19 @@ video/
 audio/
 ```
 
-Global size ceiling comes from `KIE_UPLOAD_MAX_BYTES` when size metadata is available. The endpoint streams the media to Kie File Upload and returns the provider URL/metadata.
-
-Model/UI-specific limits can be stricter than the global endpoint ceiling.
+The global size ceiling comes from `KIE_UPLOAD_MAX_BYTES` when size metadata is available. Model/UI-specific limits can be stricter.
 
 ## Payment packages
 
 ### `GET /api/v1/payments/packages`
 
-**Auth:** public.
-
-Returns server-defined packages and `internal_credit_rub`.
-
-The client cannot define its own payment amount or credit quantity.
+**Auth:** public. Returns server-defined packages and `internal_credit_rub`. The client cannot define payment amount or credit quantity.
 
 ## Payment creation
 
 ### `POST /api/v1/payments`
 
 **Auth:** Telegram user.
-
-Request:
 
 ```json
 {
@@ -176,15 +135,13 @@ Request:
 }
 ```
 
-Response returns local payment ID/status/provider/amount/currency/credits and provider payment URL.
+Returns local payment ID/status/provider/amount/currency/credits and provider payment URL.
 
 ## Promo codes
 
 ### `POST /api/v1/promocodes/redeem`
 
 **Auth:** Telegram user.
-
-Request:
 
 ```json
 {"code":"PROMO"}
@@ -196,77 +153,37 @@ Promo redemption is validated server-side and wallet credit uses the product led
 
 ### `GET /api/v1/referrals/stats`
 
-**Auth:** Telegram user.
-
-Returns referral stats, configured level percentages and referral payload:
-
-```text
-ref_<telegram_id>
-```
-
-Payment completion accrues configured first/second-line rewards idempotently.
+**Auth:** Telegram user. Returns referral stats, configured level percentages and `ref_<telegram_id>` payload. Payment completion accrues configured first/second-line rewards idempotently.
 
 ## Support
 
 ### `POST /api/v1/support/tickets`
 
-**Auth:** Telegram user.
-
-Creates a support ticket and first user message.
-
-Request:
-
-```json
-{
-  "topic": "...",
-  "message": "..."
-}
-```
+**Auth:** Telegram user. Creates a support ticket and its first user message.
 
 ### `GET /api/v1/support/tickets`
 
-**Auth:** Telegram user.
-
-Lists that user's support tickets.
-
-Admin support reply/status operations are under the privileged admin API.
+**Auth:** Telegram user. Lists that user's support tickets. Admin reply/status operations are under the privileged admin API.
 
 ## Webhooks
 
-Webhook routes are intentionally omitted from production OpenAPI (`include_in_schema=False`).
+Webhook routes are omitted from production OpenAPI (`include_in_schema=False`).
 
 ### `POST /webhooks/telegram`
 
-Authentication/integrity:
-
-```http
-X-Telegram-Bot-Api-Secret-Token
-```
-
-is checked when `TELEGRAM_WEBHOOK_SECRET` is configured.
+Checks `X-Telegram-Bot-Api-Secret-Token` when `TELEGRAM_WEBHOOK_SECRET` is configured.
 
 ### `POST /webhooks/kie`
 
-Checks:
-
-```http
-X-Webhook-Timestamp
-X-Webhook-Signature
-```
-
-using Kie HMAC when `KIE_WEBHOOK_HMAC_KEY` is configured, then reconciles through Kie `recordInfo`.
+Checks `X-Webhook-Timestamp` and `X-Webhook-Signature` using Kie HMAC when configured, can recover the local generation from the callback query `generation_id`, then reconciles provider state through Kie `recordInfo`.
 
 ### `POST /webhooks/payments/cryptobot`
 
-Checks `crypto-pay-api-signature` against the raw body. Only `invoice_paid` is treated as a completion event.
+Checks `crypto-pay-api-signature` against the raw body. Only `invoice_paid` is treated as completion.
 
 ### `POST /webhooks/payments/tbank`
 
-Checks token, terminal, local/external IDs and amount. Successful handler response is plain text:
-
-```text
-OK
-```
+Checks token, terminal, local/external IDs and amount. Successful handling returns plain-text `OK`.
 
 ### `POST /webhooks/payments/yookassa`
 
@@ -274,13 +191,9 @@ Re-fetches the payment from YooKassa and verifies authoritative metadata/ID/amou
 
 ## Admin API
 
-Prefix:
+Prefix: `/api/v1/admin`.
 
-```text
-/api/v1/admin
-```
-
-Admin endpoints require separate opaque bearer-session auth and explicit permission dependencies. Sensitive actions additionally require a fresh step-up window.
+Admin endpoints require separate opaque bearer-session authentication and explicit permission dependencies. Sensitive actions additionally require a fresh step-up window.
 
 Main groups:
 
@@ -300,25 +213,13 @@ Main groups:
 /admin/security/*
 ```
 
-See `ADMIN_SECURITY.md` for current exact auth/session/role behavior and endpoint inventory.
+See `ADMIN_SECURITY.md` for exact auth/session/role behavior.
 
 ## Pricing and trust boundaries
 
-The browser is never authoritative for:
-
-- model/provider slug;
-- generation cost;
-- package price;
-- credit amount;
-- payment success;
-- admin authorization;
-- Kie callback success.
-
-Server-side components re-evaluate these from model/payment/admin configuration or provider-authoritative data.
+The browser is never authoritative for model/provider slug, generation cost, package price, credit amount, payment success, admin authorization or Kie callback success. Server-side components re-evaluate these from configuration or provider-authoritative data.
 
 ## HTTP error conventions
-
-Current API uses FastAPI JSON errors with `detail` for most application validation/auth errors.
 
 Typical classes:
 
@@ -327,7 +228,7 @@ Typical classes:
 401 missing/invalid user/admin authentication
 403 authenticated but forbidden / invalid webhook signature
 404 resource/package/payment not found
-409 state/mismatch/insufficient-state conflict
+409 state/mismatch conflict
 413 upload too large
 415 unsupported upload media type
 422 request/model validation error
@@ -336,10 +237,8 @@ Typical classes:
 503 required service/configuration unavailable
 ```
 
-Do not build client logic around exact human error strings when a status/state field can be used instead.
+Do not build client logic around exact human error strings when a status/state field is available.
 
 ## Versioning note
 
-The current REST prefix is `/api/v1`, while the generation UI contract also carries its own `schema_version` / `ui_schema.version`.
-
-When making incompatible dynamic-form changes, bump/document the UI schema contract instead of silently changing semantics under the same version.
+REST uses `/api/v1`; generation UI also carries `schema_version` / `ui_schema.version`. Incompatible dynamic-form changes should bump/document the UI schema contract instead of silently changing semantics.
