@@ -66,7 +66,9 @@ jobs:
         run: python -m compileall -q app tests
 
       - name: Validate Mini App JavaScript
-        run: node --check app/web/mini_app/app.js
+        run: |
+          node --check app/web/mini_app/app.js
+          node --check app/web/mini_app/shell.js
 
       - name: Apply migrations
         run: alembic upgrade head
