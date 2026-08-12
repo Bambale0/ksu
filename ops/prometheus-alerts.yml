@@ -19,6 +19,15 @@ groups:
           summary: "KSU generation outbox is delayed"
           description: "Oldest pending/processing generation outbox item is older than 5 minutes."
 
+      - alert: KsuMediaIngestBacklog
+        expr: ksu_media_ingest_oldest_pending_seconds > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KSU durable media ingestion is delayed"
+          description: "Oldest pending/processing media ingest job is older than 10 minutes; provider result URLs may expire if the backlog persists."
+
       - alert: KsuKieCircuitOpen
         expr: ksu_provider_circuit_open{provider="kie"} == 1
         for: 1m
@@ -70,6 +79,15 @@ groups:
         annotations:
           summary: "Kie generation submit failures are increasing"
           description: "More than five generation submit failures were recorded in the last ten minutes."
+
+      - alert: KsuMediaWorkerFailuresIncreasing
+        expr: delta(ksu_distributed_event_count{event="media_worker_loop_error"}[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Durable media worker failures are increasing"
+          description: "Media worker has recorded repeated unexpected ingest-loop failures."
 
       - alert: KsuPaymentReconciliationFailuresIncreasing
         expr: delta(ksu_distributed_event_count{event="payment_reconcile_failure"}[10m]) > 3
