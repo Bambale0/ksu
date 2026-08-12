@@ -1,12 +1,10 @@
 # KSU production operations runbook
 
-**Status:** matches the repository runtime as of 2026-08-12.
+**Status:** matches runtime as of 2026-08-12.
 
-This runbook covers deployment and operation of the KSU backend, Telegram Mini App, durable generation worker, payment reconciliation/refunds and admin/security API.
+This runbook covers the FastAPI app, Telegram Mini App, PostgreSQL/Redis, durable generation delivery, payment reconciliation, OWASP API4 resource controls and privileged admin API.
 
-Commands assume Docker Compose on Linux behind an HTTPS reverse proxy/load balancer.
-
-## 1. Production topology
+## 1. Topology
 
 ```text
 Internet / Telegram
@@ -18,11 +16,13 @@ Internet / Telegram
  app :8000 --------------------> PostgreSQL
    |                              |-- business state
    |                              |-- generation_outbox
-   |                              |-- payment_requests/reversals
+   |                              |-- payment lifecycle
    |
-   +--> Redis ------------------> generation-worker --> Kie
+   +--> Redis ------------------> limits / FSM / wake signals
+   |       |
+   |       +--> generation-worker --> Kie.ai
    |
-   +---------------------------> payment-worker ------> providers
+   +----------> payment-worker ----> payment providers
 ```
 
 Compose services:
@@ -35,149 +35,59 @@ generation-worker
 payment-worker
 ```
 
-Production rules:
+Only the HTTPS proxy should be internet-facing. PostgreSQL and Redis must remain private.
 
-- expose only the HTTPS reverse proxy;
-- keep PostgreSQL/Redis private;
-- keep `.env` and Docker socket private;
-- maintain off-host PostgreSQL backups;
-- synchronize system clocks;
-- PostgreSQL is authoritative for money, generation delivery and payment lifecycle;
-- Redis generation wake signals are latency optimization, not durable paid-work state.
+## 2. External endpoints
 
-## 2. External setup
-
-### Telegram
-
-Configure bot token, public HTTPS origin, random `TELEGRAM_WEBHOOK_SECRET`, and optionally BotFather Main Mini App URL.
+Telegram:
 
 ```text
-Mini App: https://api.example.com/mini-app/
-Webhook:  https://api.example.com/webhooks/telegram
+POST /webhooks/telegram
 ```
 
-Authenticated REST calls validate `Telegram.WebApp.initData` server-side.
-
-Official reference: https://core.telegram.org/bots/webapps
-
-### Kie.ai
-
-Configure API key and Webhook HMAC key.
+Kie:
 
 ```text
-https://api.example.com/webhooks/kie
+POST /webhooks/kie
 ```
 
-The worker adds `?generation_id=<local-uuid>` to callback URLs for crash recovery. Callback HMAC is checked and provider state is then reconciled through Kie `recordInfo`.
-
-Official references:
-
-- https://docs.kie.ai/market/common/get-task-detail
-- https://docs.kie.ai/common-api/webhook-verification
-- https://docs.kie.ai/file-upload-api/upload-file-stream/
-
-### Crypto Pay
-
-Configure:
+Payments:
 
 ```text
-https://api.example.com/webhooks/payments/cryptobot
+POST /webhooks/payments/cryptobot
+POST /webhooks/payments/tbank
+POST /webhooks/payments/yookassa
 ```
 
-The backend validates `crypto-pay-api-signature` over the raw body. `payment-worker` can recover invoice state through `getInvoices` using external invoice ID or local UUID stored in `payload`.
-
-Crypto Pay invoice API has no merchant refund method; do not simulate one by locally changing payment status.
-
-Official reference: https://help.send.tg/en/articles/10279948-crypto-pay-api
-
-### T-Bank Internet Acquiring
-
-Current integration uses:
+Mini App:
 
 ```text
-/v2/Init
-/v2/CheckOrder
-/v2/GetState
-/v2/Cancel
+GET /mini-app/
 ```
 
-Notification URL:
+Kie callback URLs include the local `generation_id`; callback HMAC and authoritative `recordInfo` remain required.
 
-```text
-https://api.example.com/webhooks/payments/tbank
-```
-
-Successful notification handling returns HTTP 200 body exactly:
-
-```text
-OK
-```
-
-Full admin refund is implemented through classic `/v2/Cancel` without `Amount`. Admin partial T-Bank refunds are disabled because online-cash-register setups can require a refund `Receipt`, which KSU does not yet model.
-
-Official references:
-
-- https://developer.tbank.ru/eacq/api/init
-- https://developer.tbank.ru/eacq/api/check-order
-- https://developer.tbank.ru/eacq/api/get-state
-- https://developer.tbank.ru/eacq/api/cancel
-- https://developer.tbank.ru/eacq/scenarios/cancel_confirm/
-- https://developer.tbank.ru/eacq/intro/developer/notification
-
-### YooKassa
-
-Configure payment/refund notifications to the same endpoint:
-
-```text
-https://api.example.com/webhooks/payments/yookassa
-```
-
-At minimum subscribe to:
-
-```text
-payment.succeeded
-refund.succeeded
-```
-
-The webhook body is not trusted as final accounting truth. The backend re-fetches the payment from YooKassa and uses its authoritative status plus cumulative `refunded_amount`.
-
-Merchant refund API uses `/v3/refunds` with UUID `Idempotence-Key`.
-
-Official references:
-
-- https://yookassa.ru/developers/using-api/interaction-format
-- https://yookassa.ru/developers/payment-acceptance/after-the-payment/refund
-- https://yookassa.ru/developers/using-api/webhooks
-
-## 3. Production `.env`
-
-Start from `.env.example`.
-
-### Core
+## 3. Core production environment
 
 ```dotenv
 APP_ENV=production
 PUBLIC_BASE_URL=https://api.example.com
-DATABASE_URL=postgresql+asyncpg://ksu:<strong-password>@postgres:5432/ksu
+DATABASE_URL=postgresql+asyncpg://ksu:<password>@postgres:5432/ksu
 REDIS_URL=redis://redis:6379/0
 BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
-```
 
-### Credits/packages
-
-```dotenv
 INTERNAL_CREDIT_RUB=10
-START_BALANCE_ROX=0
-REFERRAL_FIRST_PERCENT=30
-REFERRAL_SECOND_PERCENT=5
 ROX_PACKAGES_JSON={"starter":{"credits":"30","currency":"RUB"}}
+
+ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
+ADMIN_REQUIRE_MFA=true
 ```
 
-With `INTERNAL_CREDIT_RUB=10`, 30 credits must equal 300 RUB.
+Provider credentials are listed in `.env.example`; never reuse them for `ADMIN_SECURITY_KEY`.
 
-### Generation
+## 4. Generation reliability configuration
 
 ```dotenv
 KIE_API_KEY=...
@@ -196,7 +106,9 @@ GENERATION_RECONCILE_STALE_SECONDS=60
 GENERATION_RECOVERY_BATCH_SIZE=50
 ```
 
-### Payment lifecycle
+Generation + wallet debit + PostgreSQL transactional outbox commit together. Redis `wake:generations` is latency optimization only.
+
+## 5. Payment lifecycle configuration
 
 ```dotenv
 PAYMENT_RECONCILE_INTERVAL_SECONDS=60
@@ -204,66 +116,66 @@ PAYMENT_RECONCILE_STALE_SECONDS=30
 PAYMENT_RECONCILE_BATCH_SIZE=100
 
 CRYPTOPAY_API_TOKEN=...
-CRYPTOPAY_BASE_URL=https://pay.crypt.bot
-
 TBANK_TERMINAL_KEY=...
 TBANK_PASSWORD=...
-TBANK_BASE_URL=https://securepay.tinkoff.ru
-
 YOOKASSA_SHOP_ID=...
 YOOKASSA_SECRET_KEY=...
-YOOKASSA_BASE_URL=https://api.yookassa.ru
-
 PAYMENT_RETURN_URL=https://app.example.com/payment-result
 ```
 
-`payment-worker` periodically reconciles stale local states:
+`payment-worker` reconciles unknown/pending provider state. Do not manually set payment success/refund state as an incident shortcut.
 
-```text
-creating
-creation_unknown
-pending
-refund_review
-```
+## 6. Anti-abuse / OWASP API4 controls
 
-Provider/API failures during reconciliation are logged and retried later; they do not create a second local payment intent.
-
-### Admin security
+Production defaults are explicit and configurable:
 
 ```dotenv
-ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
-ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary-initial-owner-id>
-ADMIN_REQUIRE_MFA=true
-ADMIN_SESSION_TTL_MINUTES=480
-ADMIN_IDLE_TIMEOUT_MINUTES=30
-ADMIN_STEP_UP_MINUTES=10
+ABUSE_PROTECTION_ENABLED=true
+ABUSE_FAIL_CLOSED=true
+GENERATION_RATE_LIMIT_PER_MINUTE=10
+GENERATION_MAX_ACTIVE_PER_USER=3
+GENERATION_DAILY_SPEND_LIMIT_CREDITS=0
+UPLOAD_RATE_LIMIT_PER_MINUTE=12
+UPLOAD_DAILY_BYTES_LIMIT=1073741824
+PAYMENT_CREATE_RATE_LIMIT_PER_MINUTE=6
+KIE_SUBMIT_RATE_LIMIT_PER_MINUTE=60
+KIE_CIRCUIT_FAILURE_THRESHOLD=5
+KIE_CIRCUIT_FAILURE_WINDOW_SECONDS=60
+KIE_CIRCUIT_OPEN_SECONDS=60
 ```
 
-See `docs/ADMIN_SECURITY.md`.
+Operational meaning:
 
-## 4. Deployment
+- generation request rate is per authenticated user;
+- active-generation cap covers `queued`, `retry`, `submitting`, `generating`;
+- daily generation-credit ceiling is optional (`0` disables it);
+- upload request rate and bytes/day are per authenticated user;
+- Kie upload also keeps global MIME and `KIE_UPLOAD_MAX_BYTES` checks;
+- payment creation has a per-user rate in addition to UUID idempotency;
+- Kie has a global submission rate and availability circuit breaker;
+- `429` responses carry `Retry-After`;
+- if `ABUSE_FAIL_CLOSED=true`, inability to verify an expensive user/provider operation through Redis returns/delays with `503`/retry instead of allowing unmetered spend.
 
-### First install / update
+### Important Redis-outage distinction
+
+PostgreSQL remains durable business state. If Redis goes down **after** a paid generation has been committed, the generation is not lost. However, with fail-closed protection, `generation-worker` can deliberately postpone a new Kie submission until the protection store recovers. This is expected safety behavior, not an outbox failure.
+
+### Reverse-proxy body limit
+
+Application upload checks happen after multipart reaches FastAPI. Configure an edge/proxy request-body limit consistent with the largest allowed upload so oversized bodies are rejected before application parsing. Application quotas do not replace this edge control.
+
+## 7. Deployment
 
 ```bash
 git clone <repository-url> ksu
 cd ksu
 cp .env.example .env
 chmod 600 .env
-```
 
-Start dependencies:
-
-```bash
 docker compose up -d postgres redis
-docker compose ps
-```
-
-Build and migrate:
-
-```bash
 docker compose build app generation-worker payment-worker
 docker compose run --rm app alembic upgrade head
+docker compose up -d app generation-worker payment-worker
 ```
 
 Current migration chain:
@@ -275,26 +187,9 @@ Current migration chain:
 0004_payment_lifecycle
 ```
 
-Start runtime:
+Anti-abuse uses current PostgreSQL/Redis infrastructure and adds no migration.
 
-```bash
-docker compose up -d app generation-worker payment-worker
-docker compose ps
-docker compose logs --tail=200 app generation-worker payment-worker
-```
-
-## 5. Reverse proxy requirements
-
-The proxy must:
-
-- terminate valid HTTPS;
-- preserve provider signature/token headers;
-- preserve raw Crypto Pay request body;
-- allow upload body sizes consistent with `KIE_UPLOAD_MAX_BYTES`;
-- use upload/provider callback timeouts appropriate for the service;
-- prevent direct public access to PostgreSQL/Redis.
-
-## 6. Post-deploy smoke checks
+## 8. Smoke checks
 
 ```bash
 BASE=https://api.example.com
@@ -305,64 +200,67 @@ curl -fsS "$BASE/api/v1/generations/models"
 curl -fsS "$BASE/api/v1/payments/packages"
 ```
 
-### Generation smoke
+Then use Telegram to verify one model quote, one small upload, one budgeted generation and one low-value test payment.
 
-From Telegram:
+### Limit smoke test
 
-1. open Mini App;
-2. switch models/scenarios and verify controls;
-3. upload small valid media;
-4. verify quote/selected settings;
-5. run one budgeted test generation;
-6. confirm generation reaches terminal result/refund behavior.
-
-### Payment smoke
-
-Use a dedicated low-value package.
-
-Client creation must include a UUID key:
-
-```http
-Idempotency-Key: <uuid>
-```
-
-Retry the same request with the same key and confirm the same local payment ID is returned rather than another provider intent.
-
-After payment:
+In staging only, temporarily lower one limit, exceed it and verify:
 
 ```text
-GET /api/v1/payments/{payment_id}
+HTTP 429
+Retry-After: <seconds>
+{"code":"resource_limit_exceeded", ...}
 ```
 
-should eventually show `succeeded`; wallet credit must occur once.
+Temporarily point staging at an unavailable limiter Redis and verify expensive mutation returns `503 protection_backend_unavailable` when fail-closed is enabled.
 
-## 7. Generation reliability operations
+## 9. Generation incident checks
 
-Normal local flow:
-
-```text
-queued -> outbox pending -> leased processing -> submitting -> generating -> succeeded
-```
-
-Inspect outbox:
+Outbox summary:
 
 ```sql
-SELECT status, count(*) FROM generation_outbox GROUP BY status;
+SELECT status, count(*)
+FROM generation_outbox
+GROUP BY status;
+```
 
-SELECT id, generation_id, status, attempts, available_at, lease_until, last_error
+Old work:
+
+```sql
+SELECT generation_id, status, attempts, available_at, lease_until, last_error
 FROM generation_outbox
 WHERE status IN ('pending','processing')
 ORDER BY created_at ASC
 LIMIT 100;
 ```
 
-Redis loss should increase latency only. Paid generation state remains in PostgreSQL.
+If a generation is delayed with an error mentioning resource/circuit protection:
 
-## 8. Payment lifecycle operations
+1. check Redis health;
+2. check Kie provider health/429/5xx rate;
+3. inspect circuit TTL before forcing anything;
+4. do not manually mark the generation failed or create another paid task;
+5. let the durable outbox retry after the protection delay.
 
-### Creation idempotency
+## 10. Redis anti-abuse keys
 
-`payment_requests` is the durable local creation-intent registry.
+Current key families:
+
+```text
+abuse:generation:user:<user_uuid>
+abuse:upload:req:<user_uuid>
+abuse:upload:bytes:<user_uuid>:<utc-date>
+abuse:payment:user:<user_uuid>
+abuse:provider-submit:kie
+abuse:circuit:kie:failures
+abuse:circuit:kie:open
+```
+
+Do not routinely delete these in production to “fix” throttling. Confirm the underlying traffic/provider incident first.
+
+## 11. Payment incident checks
+
+Creation-intent state:
 
 ```sql
 SELECT user_id, request_key, provider, package_id, payment_id, status, last_error, created_at
@@ -371,40 +269,7 @@ ORDER BY created_at DESC
 LIMIT 100;
 ```
 
-If provider creation returns a transport error after the request may have been accepted, local payment becomes:
-
-```text
-creation_unknown
-```
-
-Do **not** issue a new key automatically. `payment-worker` attempts provider-specific recovery.
-
-### Provider recovery
-
-Crypto Pay:
-
-```text
-external_id known -> getInvoices(invoice_ids=...)
-external_id missing -> scan recent invoices for local payload UUID
-```
-
-T-Bank:
-
-```text
-external_id missing -> CheckOrder(OrderId=<local payment uuid>)
-external_id known   -> GetState(PaymentId=...)
-```
-
-YooKassa:
-
-```text
-external_id missing -> repeat create payment with same provider Idempotence-Key
-external_id known   -> GET authoritative payment
-```
-
-### Refund/reversal accounting
-
-Inspect reversal ledger:
+Reversal state:
 
 ```sql
 SELECT payment_id, provider, amount, credits, reason, provider_event_id, created_at
@@ -413,49 +278,11 @@ ORDER BY created_at DESC
 LIMIT 100;
 ```
 
-Referral reductions:
+Payment `creation_unknown` should be reconciled through the original local intent; never mint a new idempotency key automatically.
 
-```sql
-SELECT reward_id, payment_reversal_id, amount, created_at
-FROM referral_reward_reversals
-ORDER BY created_at DESC
-LIMIT 100;
-```
+## 12. Backup and restore
 
-A provider-confirmed refund can legitimately make a user's credit balance negative if bought credits were already spent. That is accounting debt, not a reason to ignore the provider refund.
-
-### Admin refund/reconcile
-
-Requires privileged admin session, financial permission and fresh MFA step-up:
-
-```text
-POST /api/v1/admin/payments/{id}/reconcile
-POST /api/v1/admin/payments/{id}/refund
-```
-
-Refund request:
-
-```json
-{
-  "amount":"300.00",
-  "request_id":"<uuid-v4>",
-  "reason":"Customer refund"
-}
-```
-
-Support matrix:
-
-```text
-YooKassa  partial/full  yes
-T-Bank    full only     yes
-Crypto Pay refund       no provider API
-```
-
-Never manually edit wallet/payment status as a substitute for provider refund/reconciliation.
-
-## 9. Backup/restore
-
-PostgreSQL contains money, outbox and payment lifecycle state. Back up before migrations and on the business RPO schedule.
+PostgreSQL contains wallets, payments and durable generation work:
 
 ```bash
 mkdir -p backups
@@ -463,119 +290,48 @@ docker compose exec -T postgres \
   pg_dump -U ksu -d ksu -Fc > "backups/ksu-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-Restore tests must run in a separate database before relying on backups.
+Keep off-host copies and regularly restore into a separate test database.
 
-Redis persists FSM/wake data but losing Redis must not lose paid generation/payment records.
+Redis loss affects FSM, protection state and latency, but not committed PostgreSQL wallet/payment/outbox records.
 
-## 10. Release procedure
+## 13. Release procedure
 
 1. require green CI;
-2. inspect migrations;
+2. inspect migrations/config changes;
 3. back up PostgreSQL;
-4. pull approved commit/tag;
-5. update `.env` if required;
-6. build app + both workers;
-7. run `alembic upgrade head` explicitly;
-8. recreate app/workers;
-9. run smoke checks;
-10. watch logs and provider dashboards.
+4. build images;
+5. run migration explicitly;
+6. recreate app and both workers;
+7. run health/product/limit smoke checks;
+8. watch logs and provider dashboards.
 
 ```bash
-git fetch --all --prune
-git checkout <approved-commit-or-tag>
 docker compose build app generation-worker payment-worker
 docker compose run --rm app alembic upgrade head
 docker compose up -d app generation-worker payment-worker
 docker compose logs --tail=200 app generation-worker payment-worker
 ```
 
-## 11. Rollback
+Do not automatically run `alembic downgrade` after a failed production release; use a reviewed forward fix or controlled restore when necessary.
 
-If schema change is backward-compatible, roll application images/commit back without downgrading DB.
+## 14. Monitoring priorities
 
-Do not automatically run `alembic downgrade` after a failed production release. Stop writes and choose a reviewed forward fix or restore if a migration is incompatible.
+Until the Observability epic lands, minimally alert on:
 
-## 12. Incident playbooks
+- `/health/ready` failures;
+- app/generation-worker/payment-worker restart loops;
+- generation outbox oldest pending age;
+- generation refund/failure spikes;
+- Redis availability;
+- repeated `resource_limit_exceeded` / `protection_backend_unavailable` events;
+- Kie 429/5xx and open circuit events;
+- payment reconciliation errors and webhook 4xx/5xx;
+- admin auth failures;
+- PostgreSQL connections/storage.
 
-### Health fails
+Never log bearer tokens, Telegram `initData`, provider secrets, MFA secrets or recovery codes.
 
-- inspect `docker compose ps`;
-- inspect app/worker logs;
-- inspect PostgreSQL/Redis connectivity;
-- verify proxy upstream and recent migrations.
-
-### Generation stuck queued
-
-- verify `generation-worker`;
-- inspect `generation_outbox` row/lease;
-- Redis is secondary;
-- do not create another billable generation as repair.
-
-### Generation stuck submitting
-
-- inspect Kie callback/logs;
-- do not blindly resubmit uncertain provider requests;
-- allow callback recovery/timeout refund.
-
-### Payment stuck `creation_unknown`
-
-- verify `payment-worker` is running;
-- inspect provider connectivity/credentials;
-- use admin reconcile if needed;
-- reuse original payment ID/request key, not a new payment intent.
-
-### Payment stuck `pending`
-
-- inspect provider dashboard and `payment-worker` logs;
-- compare local external ID with provider state;
-- run authorized admin reconcile;
-- never manually mark `succeeded`.
-
-### T-Bank `refund_review`
-
-- inspect provider state/dashboard and original operation;
-- this state is intentionally used when a partial refund/reversal cannot be converted to a safe local amount from the currently observed provider payload;
-- do not guess the amount;
-- resolve through authoritative provider/accounting data.
-
-### YooKassa refund occurred outside KSU
-
-- `refund.succeeded` should trigger provider re-fetch;
-- if webhook was lost, `payment-worker` reconciliation reads cumulative `refunded_amount`;
-- confirm `payment_reversals` reaches provider cumulative refund amount exactly once.
-
-### Crypto Pay invoice paid but balance not credited
-
-- verify webhook signature delivery;
-- inspect `payment-worker` recovery via `getInvoices`;
-- remember Crypto Pay can disable webhooks after exhausted retries, so inspect app settings after prolonged incident.
-
-### Refund caused negative credit balance
-
-This can be correct if the user spent credits before the external refund. Do not manually erase the debt. Escalate only if provider reversal amount itself is wrong.
-
-### Admin security incident
-
-Follow `docs/ADMIN_SECURITY.md`, revoke affected sessions/accounts and preserve audit logs.
-
-## 13. Monitoring priorities
-
-Minimum alerts:
-
-- readiness failure/restart loop;
-- generation outbox backlog/oldest age/expired leases;
-- generation failure/refund spike;
-- `payment-worker` restart/reconciliation error rate;
-- count/age of `creation_unknown`, `pending`, `refund_review` payments;
-- payment reversal volume and negative-wallet events;
-- payment webhook 4xx/5xx rate;
-- repeated admin auth failures;
-- PostgreSQL storage/connection pressure;
-- Redis availability/memory pressure.
-
-Never put bearer tokens, Telegram `initData`, provider credentials, MFA secrets or recovery codes into logs/alerts.
-
-## 14. CI/release gate
+## 15. CI gate
 
 GitHub Actions validates:
 
@@ -588,14 +344,15 @@ alembic upgrade head on PostgreSQL
 pytest on PostgreSQL + Redis
 ```
 
-## 15. Current operational gaps
+Anti-abuse tests use real Redis for Lua counters/TTL/circuit behavior and PostgreSQL for generation admission.
 
-- permanent product-owned media/object storage is not implemented;
-- anti-abuse/resource limits are the next P0 epic;
-- full observability/metrics/tracing is still pending;
-- T-Bank partial merchant refunds are intentionally withheld until refund Receipt/fiscal data is modelled;
-- Crypto Pay invoice refund is unavailable in provider API;
+## 16. Current gaps / next epic
+
+- full metrics/traces/worker heartbeats/alerts are the next P0 Observability epic;
+- permanent product-owned media storage is not implemented;
+- no visual admin client is bundled yet;
 - acquiring settlement/chargeback register ingestion is not automated;
-- no dedicated visual admin client is bundled;
-- Compose does not yet define an app healthcheck;
-- `mypy` is not a required CI gate.
+- T-Bank partial merchant refund remains intentionally disabled until receipt/fiscal data is modelled;
+- `mypy` is not yet a CI gate.
+
+Official external guidance used by this runbook includes OWASP API Security API4 Unrestricted Resource Consumption, Redis distributed rate limiting, Kie task/webhook/upload documentation, Telegram Mini Apps, Crypto Pay, T-Bank and YooKassa provider documentation.
