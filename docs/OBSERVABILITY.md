@@ -7,8 +7,8 @@
 The observability layer must answer four operational questions without exposing secrets or creating its own resource-consumption problem:
 
 1. Is the API process alive and are PostgreSQL/Redis usable?
-2. Are the generation/payment workers actually running?
-3. Is paid work or payment reconciliation accumulating?
+2. Are the generation, media and payment workers actually running?
+3. Is paid generation, media delivery or payment reconciliation accumulating?
 4. Can an operator correlate one request/provider operation across logs and traces?
 
 ## Health semantics
@@ -18,7 +18,7 @@ Use the endpoints for different purposes:
 ```text
 GET /health/live         process liveness
 GET /health/ready        API dependencies: PostgreSQL + Redis
-GET /health/operational  generation-worker + payment-worker heartbeats
+GET /health/operational  generation-worker + media-worker + payment-worker heartbeats
 ```
 
 `/health/operational` returning 503 is an **alert condition**, not a reason to restart an otherwise healthy API container. Keep orchestration readiness bound to `/health/ready`.
@@ -54,6 +54,9 @@ ksu_http_request_duration_seconds{method,route}
 ksu_generations{status}
 ksu_generation_outbox{status}
 ksu_generation_outbox_oldest_pending_seconds
+ksu_media_assets{status}
+ksu_media_ingest_jobs{status}
+ksu_media_ingest_oldest_pending_seconds
 ksu_payments{status}
 ksu_worker_up{worker}
 ksu_worker_heartbeat_age_seconds{worker}
@@ -62,9 +65,9 @@ ksu_provider_circuit_open{provider}
 ksu_resource_policy_events_total{code}
 ```
 
-Do not add raw user IDs, Telegram IDs, payment IDs, generation IDs, prompts, URLs or provider task IDs as Prometheus labels. Those are high-cardinality values and belong in logs/traces.
+Do not add raw user IDs, Telegram IDs, payment IDs, generation IDs, media IDs, prompts, URLs or provider task IDs as Prometheus labels. Those are high-cardinality values and belong in logs/traces.
 
-The API process refreshes database/Redis snapshot gauges when Prometheus scrapes `/metrics`. Worker event counts live in Redis because `generation-worker` and `payment-worker` are separate processes and do not share the API process' in-memory Prometheus registry.
+The API process refreshes database/Redis snapshot gauges when Prometheus scrapes `/metrics`. Worker event counts live in Redis because `generation-worker`, `media-worker` and `payment-worker` are separate processes and do not share the API process' in-memory Prometheus registry.
 
 ## Worker heartbeats
 
@@ -72,6 +75,7 @@ Redis keys:
 
 ```text
 observability:worker:generation-worker:heartbeat
+observability:worker:media-worker:heartbeat
 observability:worker:payment-worker:heartbeat
 ```
 
@@ -105,6 +109,9 @@ generation_submit_success
 generation_submit_failure
 generation_reconcile_failure
 generation_worker_loop_error
+media_ingest_processed
+media_reconcile_failure
+media_worker_loop_error
 payment_reconcile_success
 payment_reconcile_failure
 payment_worker_loop_error
@@ -123,30 +130,31 @@ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
 OTEL_TRACE_SAMPLE_RATIO=0.10
 ```
 
-When enabled, service names are:
+When enabled, logical service names are:
 
 ```text
 ksu
 ksu.generation-worker
+ksu.media-worker
 ksu.payment-worker
 ```
 
-The API instruments FastAPI and HTTPX. Workers instrument HTTPX and create root business spans for generation submission/reconciliation and payment reconciliation. Provider HTTP calls then appear as child client spans.
+The API instruments FastAPI and HTTPX. Worker/provider calls can be correlated through structured logs and HTTP tracing. Per-operation identifiers belong in trace/log fields rather than metric labels.
 
-Examples of trace-only attributes:
+Examples of trace/log-only identifiers:
 
 ```text
 generation.id
 generation.model_id
 generation.provider
 generation.outbox_attempt
+media.asset_id
+media.generation_id
 payment.id
 payment.provider
 ```
 
-These identifiers are intentionally trace attributes, not metric labels.
-
-An unavailable OTLP collector must not become a product dependency. Keep tracing optional and route exports through a local/nearby collector when possible. The SDK uses batch span processing so application/provider calls do not synchronously wait for an exporter round trip.
+An unavailable OTLP collector must not become a product dependency. Keep tracing optional and route exports through a local/nearby collector when possible.
 
 ## Structured logs
 
@@ -178,11 +186,12 @@ Telegram initData
 Authorization bearer tokens
 admin session tokens
 BOT_TOKEN
-Kie/payment provider credentials
+Kie/payment/S3 provider credentials
 MFA secrets
 recovery codes
 payment requisites
 raw sensitive provider payloads
+presigned S3 query strings
 ```
 
 ## Baseline alerts
@@ -197,11 +206,13 @@ They cover:
 
 - stale worker heartbeats;
 - old generation outbox work;
+- old media-ingest work;
 - Kie circuit open;
 - payments stuck in `creation_unknown`;
 - payments stuck in `refund_review`;
 - elevated API 5xx ratio;
 - increasing generation submission failures;
+- increasing media worker failures;
 - increasing payment reconciliation failures.
 
 Treat these thresholds as production starting points. Tune them against real traffic and provider latency after launch; do not weaken security/accounting alerts merely to eliminate noise.
@@ -224,6 +235,14 @@ Treat these thresholds as production starting points. Tune them against real tra
 - submit success/failure event deltas;
 - reconcile failure deltas.
 
+### Media
+
+- media assets by `pending` / `ready` / `failed`;
+- ingest jobs by lifecycle state;
+- oldest pending/processing ingest job age;
+- media worker heartbeat;
+- reconcile/worker-error event deltas.
+
 ### Payments
 
 - payments by lifecycle state;
@@ -243,16 +262,26 @@ Treat these thresholds as production starting points. Tune them against real tra
 1. Check `/health/operational` and `ksu_worker_up`.
 2. Inspect Docker/container status and structured logs for the named worker.
 3. Check Redis connectivity before assuming the process itself is dead.
-4. For generation worker incidents, inspect PostgreSQL `generation_outbox`; paid work remains durable there.
-5. Restart only the affected worker after identifying the immediate cause.
+4. For generation incidents, inspect PostgreSQL `generation_outbox`; paid work remains durable there.
+5. For media incidents, inspect `media_ingest_jobs`; successful generation accounting remains intact while media delivery recovers.
+6. Restart only the affected worker after identifying the immediate cause.
 
 ### Generation outbox backlog
 
-1. Check worker heartbeat.
+1. Check generation-worker heartbeat.
 2. Check Kie circuit/429/5xx state.
 3. Check Redis protection-store availability.
 4. Inspect oldest pending/processing outbox row and lease state.
 5. Do not create a duplicate paid generation as repair.
+
+### Media ingest backlog
+
+1. Check media-worker heartbeat.
+2. Verify S3 credentials, bucket, region/custom endpoint and network path.
+3. Inspect the oldest `media_ingest_jobs` rows and their `last_error` values.
+4. Check whether provider result URLs are returning 403/404 or have expired.
+5. Do not mark the generation failed or refund it solely because durable-media copying is delayed.
+6. Fix storage/network configuration and let the durable queue retry.
 
 ### Kie circuit open
 
@@ -293,8 +322,8 @@ curl -fsS "$BASE/health/operational"
 curl -fsS -H "Authorization: Bearer $METRICS_BEARER_TOKEN" "$BASE/metrics" | head
 ```
 
-After workers have started, both `ksu_worker_up` series should be `1`. A fresh environment can briefly report operational 503 until each worker publishes its first heartbeat.
+After workers have started, all three `ksu_worker_up` series should be `1`. A fresh environment can briefly report operational 503 until each worker publishes its first heartbeat.
 
 ## External guidance
 
-Implementation follows the current OpenTelemetry Python SDK/OTLP exporter guidance and Prometheus instrumentation guidance. Metric labels are deliberately bounded to avoid high-cardinality resource growth, while traces carry per-operation debugging identifiers.
+Implementation follows the current OpenTelemetry Python SDK/OTLP exporter guidance and Prometheus instrumentation guidance. Metric labels are deliberately bounded to avoid high-cardinality resource growth, while traces/logs carry per-operation debugging identifiers.
