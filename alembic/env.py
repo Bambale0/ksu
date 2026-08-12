@@ -12,6 +12,7 @@ from app.db import models  # noqa: F401
 from app.db import payment_models  # noqa: F401
 from app.db import profile_models  # noqa: F401
 from app.db import reliability_models  # noqa: F401
+from app.db import social_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

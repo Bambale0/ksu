@@ -34,8 +34,23 @@
     document.head.appendChild(script);
   }
 
+  function mountSocialTools() {
+    if (!document.querySelector('link[href="/mini-app/social.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/social.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/social.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/social.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountPartnerCabinet();
   mountProfileTools();
+  mountSocialTools();
 
   if (!overlay || !createHome || !builder) return;
 
