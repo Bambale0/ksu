@@ -6,8 +6,10 @@ from fastapi import HTTPException
 
 from app.api.v1.generations import (
     get_generation,
+    hide_generation_from_history,
     list_generations,
     recreate_generation_payload,
+    restore_generation_to_history,
 )
 from app.db.models import Generation, User
 from app.db.session import SessionFactory
@@ -39,6 +41,10 @@ async def test_history_is_owned_paginated_and_exposes_result_urls() -> None:
                     "https://example.invalid/first.png",
                     "https://example.invalid/second.png",
                 ],
+                "aspect_ratio": "1:1",
+                "output_format": "png",
+                "_kie_model": "private/provider-slug",
+                "unexpected_provider_field": "must-not-leak",
             },
         )
         second = Generation(
@@ -95,6 +101,8 @@ async def test_history_is_owned_paginated_and_exposes_result_urls() -> None:
         ]
         assert detail["cost_credits"] == "8.00"
         assert detail["model"]["id"] == "nano-banana"
+        assert detail["settings"] == {"aspect_ratio": "1:1", "output_format": "png"}
+        assert detail["hidden_from_history"] is False
 
         with pytest.raises(HTTPException) as exc_info:
             await get_generation(foreign.id, user, session)
@@ -139,6 +147,52 @@ async def test_history_status_filter_is_server_side() -> None:
             status_filter="failed",
         )
         assert [item["prompt"] for item in page["items"]] == ["bad"]
+
+
+@pytest.mark.asyncio
+async def test_history_hide_is_soft_and_restore_is_reversible() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(25), first_name="Hide")
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_image",
+            status="succeeded",
+            prompt="keep accounting row",
+            cost_rox=Decimal("8"),
+            provider="kie",
+            parameters={"_model_id": "nano-banana"},
+        )
+        session.add(generation)
+        await session.commit()
+
+        hidden = await hide_generation_from_history(generation.id, user, session)
+        assert hidden == {"hidden": True}
+        assert await session.get(Generation, generation.id) is not None
+
+        page = await list_generations(
+            user,
+            session,
+            limit=20,
+            before=None,
+            status_filter=None,
+        )
+        assert generation.id not in {item["id"] for item in page["items"]}
+
+        detail = await get_generation(generation.id, user, session)
+        assert detail["hidden_from_history"] is True
+
+        restored = await restore_generation_to_history(generation.id, user, session)
+        assert restored == {"hidden": False}
+        page = await list_generations(
+            user,
+            session,
+            limit=20,
+            before=None,
+            status_filter=None,
+        )
+        assert str(generation.id) in {item["id"] for item in page["items"]}
 
 
 @pytest.mark.asyncio
