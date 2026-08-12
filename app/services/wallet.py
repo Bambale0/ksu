@@ -8,7 +8,11 @@ from app.db.models import Wallet, WalletTransaction
 
 
 class InsufficientBalanceError(ValueError):
-    pass
+    def __init__(self, *, current_balance: Decimal, required_amount: Decimal) -> None:
+        self.current_balance = Decimal(current_balance)
+        self.required_amount = Decimal(required_amount)
+        self.shortage = max(Decimal("0"), self.required_amount - self.current_balance)
+        super().__init__("Not enough ROX")
 
 
 class WalletService:
@@ -155,10 +159,14 @@ class WalletService:
             wallet = Wallet(user_id=user_id, balance=Decimal("0"))
             session.add(wallet)
             await session.flush()
-        if not allow_negative and Decimal(wallet.balance) < amount:
-            raise InsufficientBalanceError("Not enough ROX")
+        current_balance = Decimal(wallet.balance)
+        if not allow_negative and current_balance < amount:
+            raise InsufficientBalanceError(
+                current_balance=current_balance,
+                required_amount=amount,
+            )
 
-        before = Decimal(wallet.balance)
+        before = current_balance
         after = before - amount
         wallet.balance = after
         tx = WalletTransaction(
