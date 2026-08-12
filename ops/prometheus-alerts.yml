@@ -1,0 +1,81 @@
+groups:
+  - name: ksu-runtime
+    rules:
+      - alert: KsuWorkerDown
+        expr: ksu_worker_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "KSU worker heartbeat is stale"
+          description: "Worker {{ $labels.worker }} has not published a healthy heartbeat for 2 minutes."
+
+      - alert: KsuGenerationOutboxBacklog
+        expr: ksu_generation_outbox_oldest_pending_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "KSU generation outbox is delayed"
+          description: "Oldest pending/processing generation outbox item is older than 5 minutes."
+
+      - alert: KsuKieCircuitOpen
+        expr: ksu_provider_circuit_open{provider="kie"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kie submission circuit is open"
+          description: "KSU is delaying new Kie submissions because recent provider failures crossed the circuit threshold."
+
+      - alert: KsuPaymentCreationUnknown
+        expr: ksu_payments{status="creation_unknown"} > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment creation remains uncertain"
+          description: "At least one payment has stayed in creation_unknown for 10 minutes."
+
+      - alert: KsuPaymentRefundReview
+        expr: ksu_payments{status="refund_review"} > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment refund requires review"
+          description: "At least one payment is waiting for authoritative refund amount reconciliation."
+
+      - alert: KsuApiHigh5xxRatio
+        expr: |
+          (
+            sum(rate(ksu_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(ksu_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KSU API 5xx ratio is high"
+          description: "More than 5% of API requests have returned 5xx for 10 minutes."
+
+  - name: ksu-business-pipeline
+    rules:
+      - alert: KsuGenerationSubmitFailuresIncreasing
+        expr: delta(ksu_distributed_event_count{event="generation_submit_failure"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kie generation submit failures are increasing"
+          description: "More than five generation submit failures were recorded in the last ten minutes."
+
+      - alert: KsuPaymentReconciliationFailuresIncreasing
+        expr: delta(ksu_distributed_event_count{event="payment_reconcile_failure"}[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment reconciliation failures are increasing"
+          description: "Payment worker has recorded repeated reconciliation failures."
