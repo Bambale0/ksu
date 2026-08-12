@@ -56,6 +56,19 @@ async def test_profile_preferences_are_durable_and_server_validated() -> None:
         assert updated["marketing_notifications"] is True
         assert updated["profile_discoverable"] is True
 
+        disabled = await update_preferences(
+            UpdatePreferenceRequest(
+                ui_language="ru",
+                notifications_enabled=False,
+                marketing_notifications=True,
+                profile_discoverable=False,
+            ),
+            user,
+            session,
+        )
+        assert disabled["notifications_enabled"] is False
+        assert disabled["marketing_notifications"] is False
+
         with pytest.raises(HTTPException) as error:
             await update_preferences(
                 UpdatePreferenceRequest(ui_language="unsupported"),
