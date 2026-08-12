@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     bot_token: str = ""
+    bot_username: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
     internal_credit_rub: Decimal = Decimal("10")
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
+    # Product spec defines a minimum withdrawal but does not fix the business value.
+    # Zero means no separate minimum beyond amount > 0.
+    partner_min_withdrawal_rub: Decimal = Decimal("0")
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 
