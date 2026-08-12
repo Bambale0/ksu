@@ -169,6 +169,13 @@ class TBankClient:
     async def check_order(self, local_id: str) -> dict[str, Any]:
         return await self._signed_post("/v2/CheckOrder", {"OrderId": local_id})
 
+    async def refund_full(self, *, external_id: str, request_key: str) -> dict[str, Any]:
+        # /v2/Cancel without Amount performs a full refund for CONFIRMED payments.
+        return await self._signed_post(
+            "/v2/Cancel",
+            {"PaymentId": external_id, "ExternalRequestId": request_key},
+        )
+
     def verify_notification(self, payload: dict[str, Any]) -> bool:
         supplied = str(payload.get("Token") or "")
         if not supplied:
