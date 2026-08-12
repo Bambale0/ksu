@@ -1,8 +1,9 @@
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Payment
@@ -29,6 +30,7 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "id": str(payment.id),
         "status": payment.status,
         "provider": payment.provider,
+        "package_id": str(payment.payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
         "credits": str(payment.rox_amount),
@@ -36,6 +38,8 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
         "payment_url": str(payment.payload.get("payment_url") or ""),
         "idempotency_key": request_key or str(payment.payload.get("request_key") or ""),
+        "created_at": payment.created_at.isoformat(),
+        "updated_at": payment.updated_at.isoformat(),
     }
 
 
@@ -53,6 +57,25 @@ async def list_packages() -> dict[str, object]:
             for package_id, package in PaymentService.packages().items()
         },
     }
+
+
+@router.get("")
+async def list_user_payments(
+    user: CurrentUserDep,
+    session: SessionDep,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict[str, object]:
+    payments = list(
+        (
+            await session.scalars(
+                select(Payment)
+                .where(Payment.user_id == user.id)
+                .order_by(Payment.created_at.desc(), Payment.id.desc())
+                .limit(limit)
+            )
+        ).all()
+    )
+    return {"items": [_payment_view(payment) for payment in payments]}
 
 
 @router.post("", status_code=201)

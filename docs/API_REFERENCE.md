@@ -159,13 +159,54 @@ In addition to MIME allowlist and `KIE_UPLOAD_MAX_BYTES`, the endpoint enforces:
 
 If Starlette does not expose multipart size metadata, the server measures the already-spooled file so chunked clients do not bypass byte accounting. Production reverse proxy must still enforce its own request-body ceiling before application parsing.
 
-## Payment packages
+## Wallet and payments
+
+The Wallet Mini App treats backend package/payment state as authoritative. The client never submits arbitrary RUB or credit amounts and never marks a payment successful locally.
 
 ### `GET /api/v1/payments/packages`
 
-**Auth:** public. Returns server-defined packages and `internal_credit_rub`.
+**Auth:** public.
 
-## Payment creation
+Returns the server-defined package catalog and `internal_credit_rub` conversion rate. Example shape:
+
+```json
+{
+  "internal_credit_rub": "10",
+  "packages": {
+    "starter": {
+      "amount": "300.00",
+      "currency": "RUB",
+      "credits": "30.00",
+      "rox": "30.00"
+    }
+  }
+}
+```
+
+`amount` and `credits` are output-only for the user client. Checkout sends only the selected package identifier and provider.
+
+### `GET /api/v1/payments?limit=20`
+
+**Auth:** Telegram user.
+
+Returns the authenticated user's newest payments only, newest first. This is also the Wallet recovery source after a Mini App reload/reopen: the client finds the newest nonterminal payment from server state instead of persisting financial truth in browser storage.
+
+Each item includes:
+
+```text
+id
+status
+provider
+package_id
+amount
+currency
+credits / rox
+payment_url
+created_at
+updated_at
+```
+
+Foreign-user payments are never returned.
 
 ### `POST /api/v1/payments`
 
@@ -190,6 +231,8 @@ Body:
 
 Before external invoice creation the endpoint also applies a per-user payment-creation rate limit. Payment idempotency remains authoritative: retrying the same intent with the same UUID returns the same local payment; reusing the key for a different intent returns 409.
 
+The client should keep one UUID for one package/provider checkout attempt across transient retries. A network/provider uncertainty is not a reason to generate another invoice.
+
 ### `GET /api/v1/payments/{payment_id}`
 
 **Auth:** Telegram user owning the payment. Returns current local payment state/payment URL.
@@ -209,7 +252,19 @@ expired
 failed
 ```
 
-`payment-worker` periodically reconciles nonterminal/unknown provider state.
+`payment-worker` periodically reconciles nonterminal/unknown provider state. Wallet polling is only a presentation refresh; it does not perform settlement logic itself.
+
+### Mini App checkout behavior
+
+Wallet uses the current Telegram Mini Apps link APIs when available:
+
+- Telegram-hosted (`t.me` / `telegram.me`) provider links: `openTelegramLink`;
+- normal HTTPS provider links: `openLink`;
+- ordinary browser fallback: new secure browser tab/window.
+
+On Mini App `activated`, Wallet refreshes payment history and current server status. After `succeeded`, it refreshes `/api/v1/me` and `/api/v1/me/transactions` before showing the new balance.
+
+If payment creation returns an upstream `502`, the client preserves the current idempotency intent and immediately reloads `GET /api/v1/payments`; it does not create a second invoice. `429` responses must honor `Retry-After`.
 
 ## Provider reconciliation
 

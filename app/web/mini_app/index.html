@@ -11,6 +11,8 @@
   <script defer src="/mini-app/app.js"></script>
   <script defer src="/mini-app/shell.js"></script>
   <script defer src="/mini-app/shell-integration.js"></script>
+  <script defer src="/mini-app/payment-link-guard.js"></script>
+  <script defer src="/mini-app/wallet.js"></script>
 </head>
 <body>
   <div class="offline-banner" id="offlineBanner" hidden role="status">Нет сети · показываю доступный интерфейс</div>
@@ -169,16 +171,79 @@
             <h1 id="walletViewTitle">Баланс</h1>
           </div>
         </header>
+
         <div class="wallet-hero shell-panel" id="walletHero">
           <span class="muted">Доступно</span>
           <strong id="walletBalance">—</strong>
           <small>Внутренние кредиты Ксю</small>
         </div>
+
+        <section class="home-section" aria-labelledby="topupHeading">
+          <div class="home-section-head">
+            <div>
+              <span class="section-kicker">Пополнение</span>
+              <h2 id="topupHeading">Выберите пакет</h2>
+            </div>
+            <span class="muted" id="paymentRateLabel"></span>
+          </div>
+          <div class="payment-packages" id="paymentPackageGrid" aria-live="polite">
+            <div class="shell-skeleton"></div>
+            <div class="shell-skeleton"></div>
+          </div>
+
+          <div class="payment-checkout shell-panel" id="paymentCheckoutPanel">
+            <div class="payment-checkout-head">
+              <div>
+                <span class="section-kicker">Способ оплаты</span>
+                <strong id="paymentSelectionSummary">Сначала выберите пакет</strong>
+              </div>
+            </div>
+            <div class="payment-providers" id="paymentProviderGrid" role="radiogroup" aria-label="Способ оплаты">
+              <button type="button" class="payment-provider is-selected" data-payment-provider="cryptobot" role="radio" aria-checked="true">
+                <span class="provider-mark">₿</span>
+                <span><strong>Crypto Pay</strong><small>Криптовалюта</small></span>
+              </button>
+              <button type="button" class="payment-provider" data-payment-provider="tbank" role="radio" aria-checked="false">
+                <span class="provider-mark">T</span>
+                <span><strong>Т-Банк</strong><small>Банковская оплата</small></span>
+              </button>
+              <button type="button" class="payment-provider" data-payment-provider="yookassa" role="radio" aria-checked="false">
+                <span class="provider-mark">Ю</span>
+                <span><strong>ЮKassa</strong><small>Карта / СБП</small></span>
+              </button>
+            </div>
+            <div class="payment-message" id="paymentCheckoutMessage" role="status" aria-live="polite"></div>
+            <button type="button" class="primary-button payment-pay-button" id="paymentCheckoutButton" disabled>Перейти к оплате</button>
+          </div>
+        </section>
+
+        <section class="home-section" id="paymentStatusSection" hidden aria-labelledby="paymentStatusHeading">
+          <div class="home-section-head">
+            <div>
+              <span class="section-kicker">Текущая оплата</span>
+              <h2 id="paymentStatusHeading">Статус платежа</h2>
+            </div>
+          </div>
+          <div class="payment-status-card shell-panel" id="paymentStatusCard" aria-live="polite"></div>
+        </section>
+
+        <section class="home-section" aria-labelledby="paymentsHistoryHeading">
+          <div class="home-section-head">
+            <div>
+              <span class="section-kicker">Платежи</span>
+              <h2 id="paymentsHistoryHeading">Последние пополнения</h2>
+            </div>
+          </div>
+          <div class="payment-history shell-panel" id="paymentHistoryList" aria-live="polite">
+            <div class="shell-skeleton"></div>
+          </div>
+        </section>
+
         <section class="home-section" aria-labelledby="transactionsHeading">
           <div class="home-section-head">
             <div>
               <span class="section-kicker">Операции</span>
-              <h2 id="transactionsHeading">Последние движения</h2>
+              <h2 id="transactionsHeading">Движения по балансу</h2>
             </div>
           </div>
           <div class="transaction-list shell-panel" id="transactionList" aria-live="polite">
