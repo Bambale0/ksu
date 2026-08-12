@@ -54,8 +54,12 @@ class GenerationProviderService:
         )
         if generation is None:
             raise LookupError("Generation disappeared after provider submission")
-        if generation.status == "failed":
-            # A concurrent recovery path already made this terminal.
+        if generation.status in {"succeeded", "failed"}:
+            # A fast callback/recovery path has already made the task terminal.
+            return generation
+        if generation.external_id and generation.external_id != task_id:
+            # A callback has already bound a provider task. Never replace it with a
+            # second/ambiguous provider identity.
             return generation
         generation.external_id = task_id
         generation.provider = "kie"
