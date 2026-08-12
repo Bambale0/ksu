@@ -1,10 +1,10 @@
 # KSU production operations runbook
 
-**Status:** matches the repository runtime as of 2026-08-11.
+**Status:** matches the repository runtime as of 2026-08-12.
 
-This runbook covers production deployment and operation of the current KSU backend, Telegram generation Mini App, Kie generation worker, payment integrations and admin/security API.
+This runbook covers production deployment and operation of the KSU backend, Telegram Mini App, durable generation outbox/worker, Kie.ai integration, payments and admin/security API.
 
-It is intentionally operational: commands below assume Docker Compose on a Linux host with an external HTTPS reverse proxy/load balancer.
+Commands assume Docker Compose on Linux behind an external HTTPS reverse proxy/load balancer.
 
 ## 1. Production topology
 
@@ -16,14 +16,23 @@ Internet / Telegram
         |
         v
  app :8000
-   |       \
-   |        +--> PostgreSQL
-   |        +--> Redis
-   |        +--> Telegram API
-   |        +--> Kie API / Kie upload API
-   |        +--> Crypto Pay / T-Bank / YooKassa
+   |      \
+   |       +--> PostgreSQL
+   |       |      +--> business data
+   |       |      +--> generation_outbox (durable work)
+   |       |
+   |       +--> Redis (FSM + best-effort generation wake signal)
+   |       +--> Telegram API
+   |       +--> Kie API / Kie upload API
+   |       +--> Crypto Pay / T-Bank / YooKassa
    |
-   +--> Redis queue --> generation-worker --> Kie Market
+   +--> wake:generations
+                  |
+                  v
+          generation-worker
+             | DB lease / SKIP LOCKED
+             v
+             Kie Market
 ```
 
 Compose services:
@@ -39,21 +48,22 @@ Production rules:
 
 - only the HTTPS reverse proxy should be internet-facing;
 - PostgreSQL and Redis must remain private;
-- do not expose `.env` or Docker socket;
+- do not expose `.env` or the Docker socket;
 - use persistent volumes and off-host PostgreSQL backups;
-- use a dedicated domain/origin for the service, for example `https://api.example.com`;
-- keep system clocks synchronized because Telegram/Kie signatures and payment flows rely on timestamps or signed data.
+- keep system clocks synchronized;
+- treat PostgreSQL as the durable source for money, generations and generation delivery state;
+- treat Redis generation notifications as latency optimization only.
 
 ## 2. Required external setup
 
-Before first deployment obtain/configure:
-
 ### Telegram
+
+Obtain/configure:
 
 - bot token from BotFather;
 - public HTTPS origin;
 - random `TELEGRAM_WEBHOOK_SECRET`;
-- Main Mini App URL in BotFather if the profile-level launch button is desired.
+- Main Mini App URL if the profile-level launch button is desired.
 
 Mini App URL:
 
@@ -61,9 +71,13 @@ Mini App URL:
 https://api.example.com/mini-app/
 ```
 
-The backend also places this URL in the bot's **Create content** WebApp button when `PUBLIC_BASE_URL` is configured.
+Telegram webhook:
 
-Telegram requires server-side validation of `Telegram.WebApp.initData`; this project does that on authenticated REST endpoints. Do not replace it with trust in `initDataUnsafe`.
+```text
+https://api.example.com/webhooks/telegram
+```
+
+Authenticated REST endpoints validate `Telegram.WebApp.initData` server-side. Never replace that with trust in `initDataUnsafe`.
 
 Official reference: https://core.telegram.org/bots/webapps
 
@@ -73,17 +87,21 @@ Obtain:
 
 - API key;
 - Webhook HMAC key from Kie Settings;
-- access to Kie Market models used by the server catalog.
+- access to the Kie Market models enabled by the server catalog.
 
-Enable Kie Webhook HMAC verification in production and set the same key in `KIE_WEBHOOK_HMAC_KEY`.
-
-Current callback path:
+Base callback path:
 
 ```text
 https://api.example.com/webhooks/kie
 ```
 
-The worker supplies this URL as `callBackUrl` for Kie Market tasks. The callback handler verifies HMAC and then queries `/api/v1/jobs/recordInfo` for authoritative task state.
+For every submitted generation the worker actually sends a callback URL containing the local identity:
+
+```text
+https://api.example.com/webhooks/kie?generation_id=<local-generation-uuid>
+```
+
+That query value is not trusted as proof of success. The handler first verifies Kie webhook HMAC, then uses Kie `recordInfo` for authoritative provider state. The local ID exists so a callback can recover the Kie `taskId` if the worker died after `createTask` was accepted but before the task ID was committed locally.
 
 Official references:
 
@@ -93,27 +111,17 @@ Official references:
 
 ### CryptoBot / Crypto Pay
 
-Create a Crypto Pay application and set its webhook URL to:
+Webhook:
 
 ```text
 https://api.example.com/webhooks/payments/cryptobot
 ```
 
-Production base URL:
-
-```text
-https://pay.crypt.bot
-```
-
-The backend validates `crypto-pay-api-signature` over the raw request body before processing `invoice_paid`.
-
-Operational note: Crypto Pay API 1.5.2 documents extended webhook retries and automatic webhook disabling after all retries fail. Monitor webhook delivery after incidents.
+The backend verifies `crypto-pay-api-signature` over the raw body before processing `invoice_paid`.
 
 Official reference: https://help.send.tg/en/articles/10279948-crypto-pay-api
 
 ### T-Bank Internet Acquiring
-
-Obtain terminal key/password and ensure the terminal accepts HTTPS notifications.
 
 Current backend behavior:
 
@@ -121,8 +129,8 @@ Current backend behavior:
 - sends `NotificationURL={PUBLIC_BASE_URL}/webhooks/payments/tbank`;
 - validates notification `Token`, terminal, payment ID and amount;
 - accepts `CONFIRMED` as success;
-- maps `REJECTED`, `REVERSED`, `CANCELED` to local canceled state;
-- responds to a successfully processed notification with HTTP 200 and body exactly `OK`.
+- maps `REJECTED`, `REVERSED`, `CANCELED` to local canceled state when the payment is not already succeeded;
+- returns HTTP 200 with body exactly `OK` on successful notification handling.
 
 Official references:
 
@@ -131,13 +139,13 @@ Official references:
 
 ### YooKassa
 
-Obtain shop ID and secret key and configure a `payment.succeeded` webhook to:
+Configure `payment.succeeded` webhook:
 
 ```text
 https://api.example.com/webhooks/payments/yookassa
 ```
 
-The backend does not trust the incoming webhook object as final truth. It retrieves the payment from YooKassa again and checks metadata, local/external IDs, amount, currency and authoritative status before wallet credit.
+The backend re-fetches the payment from YooKassa and validates metadata, local/external IDs, amount, currency and authoritative status before crediting the wallet.
 
 Official references:
 
@@ -146,7 +154,7 @@ Official references:
 
 ## 3. Production `.env`
 
-Start from `.env.example`; never use example secrets verbatim.
+Start from `.env.example`; never reuse example secrets.
 
 ### Core
 
@@ -157,13 +165,6 @@ DATABASE_URL=postgresql+asyncpg://ksu:<strong-password>@postgres:5432/ksu
 REDIS_URL=redis://redis:6379/0
 ```
 
-`PUBLIC_BASE_URL` must be the externally reachable HTTPS origin. It is used for:
-
-- Mini App WebApp button;
-- Kie callback URL;
-- T-Bank NotificationURL;
-- fallback payment return URL if `PAYMENT_RETURN_URL` is empty.
-
 ### Telegram
 
 ```dotenv
@@ -171,8 +172,6 @@ BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
 ```
-
-`TELEGRAM_WEBHOOK_URL` is an origin, not the full `/webhooks/telegram` path. The application appends that path during startup.
 
 ### Internal credits
 
@@ -184,7 +183,7 @@ REFERRAL_SECOND_PERCENT=5
 ROX_PACKAGES_JSON={"starter":{"credits":"30","currency":"RUB"}}
 ```
 
-With `INTERNAL_CREDIT_RUB=10`, `30` credits must cost `300 RUB`. The backend rejects mismatched package amount/credits pairs.
+At the default exchange rate, 30 credits must equal 300 RUB. Mismatched amount/credits package configuration is rejected.
 
 ### Generation / Kie
 
@@ -195,15 +194,33 @@ KIE_UPLOAD_BASE_URL=https://kieai.redpandaai.co
 KIE_UPLOAD_MAX_BYTES=104857600
 KIE_WEBHOOK_HMAC_KEY=...
 GENERATION_PRICING_JSON={}
+
+GENERATION_WORKER_POLL_SECONDS=5
+GENERATION_OUTBOX_LEASE_SECONDS=90
+GENERATION_SUBMISSION_MAX_ATTEMPTS=5
+GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS=900
+GENERATION_RECONCILE_INTERVAL_SECONDS=60
+GENERATION_RECONCILE_STALE_SECONDS=60
+GENERATION_RECOVERY_BATCH_SIZE=50
 ```
 
-`GENERATION_PRICING_JSON` overrides product prices. Video values are internal credits **per second**; image values are flat internal credits per task.
+`GENERATION_PRICING_JSON` uses internal credits. Video values are credits per second; image values are flat per task.
 
 Example:
 
 ```dotenv
 GENERATION_PRICING_JSON={"wan-2.7-t2v":{"per_second":"8.5"},"gpt-image-2-t2i":{"flat":"18"}}
 ```
+
+Reliability settings:
+
+- `GENERATION_WORKER_POLL_SECONDS`: maximum normal latency before a worker polls PostgreSQL if no Redis wake is received;
+- `GENERATION_OUTBOX_LEASE_SECONDS`: ownership lease for one claimed outbox row;
+- `GENERATION_SUBMISSION_MAX_ATTEMPTS`: bound for retryable local submission attempts;
+- `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`: recovery window when provider acceptance may have occurred but no task ID was persisted;
+- `GENERATION_RECONCILE_INTERVAL_SECONDS`: periodic recovery pass cadence;
+- `GENERATION_RECONCILE_STALE_SECONDS`: age before a generating Kie task is polled as callback fallback;
+- `GENERATION_RECOVERY_BATCH_SIZE`: maximum rows handled per recovery scan.
 
 ### Payments
 
@@ -222,13 +239,11 @@ YOOKASSA_BASE_URL=https://api.yookassa.ru
 PAYMENT_RETURN_URL=https://app.example.com/payment-result
 ```
 
-For YooKassa, either `PAYMENT_RETURN_URL` or `PUBLIC_BASE_URL` must be configured.
-
 ### Admin security
 
 ```dotenv
-ADMIN_SECURITY_KEY=<dedicated random secret, at least 32 chars>
-ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary initial owner ID>
+ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
+ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary-initial-owner-id>
 ADMIN_REQUIRE_MFA=true
 ADMIN_SESSION_TTL_MINUTES=480
 ADMIN_IDLE_TIMEOUT_MINUTES=30
@@ -243,7 +258,7 @@ Read `docs/ADMIN_SECURITY.md` before bootstrapping owner access.
 
 ## 4. First deployment
 
-### 4.1 Prepare files
+### Prepare
 
 ```bash
 git clone <repository-url> ksu
@@ -252,96 +267,77 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Populate `.env` with production values.
+Populate production values.
 
-### 4.2 Start stateful dependencies
+### Start stateful dependencies
 
 ```bash
 docker compose up -d postgres redis
-```
-
-Check:
-
-```bash
 docker compose ps
 ```
 
-Both services should become healthy.
+Both should become healthy.
 
-### 4.3 Apply migrations explicitly
-
-For production, migrate before replacing app/worker:
+### Build and migrate
 
 ```bash
 docker compose build app generation-worker
 docker compose run --rm app alembic upgrade head
 ```
 
-The Compose `app` command also runs `alembic upgrade head`, but the explicit production migration step gives a clear failure boundary and avoids relying on container start order.
+The migration chain currently includes:
 
-### 4.4 Start application processes
+```text
+0001_initial
+0002_admin_security
+0003_generation_outbox
+```
+
+### Start application processes
 
 ```bash
 docker compose up -d app generation-worker
-```
-
-### 4.5 Inspect startup
-
-```bash
 docker compose ps
 docker compose logs --tail=200 app generation-worker
 ```
 
-If `BOT_TOKEN` + `TELEGRAM_WEBHOOK_URL` are valid, app startup calls Telegram `setWebhook` automatically.
-
 ## 5. Reverse proxy / TLS requirements
 
-The current Compose file publishes `8000:8000`; treat that as development-friendly wiring. In production restrict host/network access so only the reverse proxy can reach port 8000.
+Production should restrict published port 8000 so only the reverse proxy can access it.
 
-Required proxy behavior:
+The proxy must:
 
 - terminate valid HTTPS;
-- preserve normal request bodies and headers;
-- allow POST bodies large enough for the configured upload ceiling;
-- do not strip `X-Telegram-Bot-Api-Secret-Token`;
-- do not strip `X-Webhook-Timestamp` / `X-Webhook-Signature`;
+- preserve request bodies and required headers;
+- allow POST bodies up to the configured media ceiling;
+- preserve `X-Telegram-Bot-Api-Secret-Token`;
+- preserve `X-Webhook-Timestamp` / `X-Webhook-Signature`;
 - preserve `crypto-pay-api-signature`;
-- allow payment provider POSTs;
-- set sensible upstream timeouts for file upload and provider callback processing.
-
-Do not put secrets in query strings.
+- allow payment-provider POST callbacks;
+- use upstream timeouts suitable for upload and provider callbacks.
 
 ## 6. Post-deploy smoke checklist
-
-Set:
 
 ```bash
 BASE=https://api.example.com
 ```
 
-### Liveness
+### Health
 
 ```bash
 curl -fsS "$BASE/health/live"
-```
-
-Expected: HTTP 200.
-
-### Readiness
-
-```bash
 curl -fsS "$BASE/health/ready"
 ```
 
-Expected: HTTP 200 with PostgreSQL and Redis ready.
+Both must return HTTP 200.
 
-### Mini App asset
+### Mini App
 
 ```bash
 curl -fsSI "$BASE/mini-app/"
 ```
 
-Expected: HTTP 200.
+Expected HTTP 200.
 
 ### Model schema
 
@@ -349,16 +345,9 @@ Expected: HTTP 200.
 curl -fsS "$BASE/api/v1/generations/models"
 ```
 
-Verify:
-
-- non-empty `models`;
-- `schema_version` present;
-- every model contains `ui_schema`;
-- expected families appear.
+Verify non-empty models, `schema_version`, `ui_schema` and expected families.
 
 ### Quote
-
-Use a currently enabled model ID from the catalog rather than assuming a stale ID:
 
 ```bash
 curl -fsS -X POST "$BASE/api/v1/generations/quote" \
@@ -366,93 +355,109 @@ curl -fsS -X POST "$BASE/api/v1/generations/quote" \
   -d '{"model_id":"gpt-image-2-t2i","prompt":"smoke test","parameters":{"aspect_ratio":"1:1"}}'
 ```
 
-Expected: quote with `cost_credits` and `cost_rub`.
+Expected `cost_credits` and `cost_rub`.
 
 ### Telegram
 
 From a real Telegram client:
 
-1. Open the bot.
-2. Press **Create content**.
-3. Confirm Mini App loads without leaving Telegram.
-4. Change model/family and verify fields update.
-5. Confirm selected-settings summary matches visible values.
-6. For an authenticated upload field, upload a small test image.
-7. Do not run a paid generation in production unless an explicit test budget is intended.
+1. open the bot;
+2. press **Create content**;
+3. confirm Mini App loads;
+4. switch model/family and confirm controls update;
+5. verify selected-settings summary;
+6. upload a small media file to a supported model;
+7. run a paid production generation only with an explicit test budget.
 
-## 7. Generation worker verification
+## 7. Durable generation worker verification
 
-Watch:
+### Normal lifecycle
+
+```text
+queued
+  -> outbox pending
+  -> outbox processing (leased)
+  -> submitting
+  -> generating
+  -> succeeded
+
+provider failure / unrecoverable submission
+  -> failed
+  -> idempotent credit refund
+```
+
+The generation row, wallet debit and outbox row are committed in one PostgreSQL transaction.
+
+Redis key:
+
+```text
+wake:generations
+```
+
+is only a wake-up channel. It is safe for a wake signal to be lost because the worker polls the database after a finite timeout.
+
+### Verify worker
 
 ```bash
 docker compose logs -f generation-worker
 ```
 
-The worker consumes Redis list:
+Database checks during an incident can inspect:
 
-```text
-queue:generations
+```sql
+SELECT status, count(*)
+FROM generation_outbox
+GROUP BY status;
 ```
 
-Expected lifecycle:
+and old outstanding work:
 
-```text
-queued -> submitting -> generating -> succeeded
-                                  \-> failed -> idempotent refund
+```sql
+SELECT id, generation_id, status, attempts, available_at, lease_until, last_error
+FROM generation_outbox
+WHERE status IN ('pending', 'processing')
+ORDER BY created_at ASC
+LIMIT 100;
 ```
 
-Kie callback handling performs a `recordInfo` reconciliation before applying provider result.
+### Worker crash behavior
 
-### Known queue durability limitation
+If a worker dies after claiming an outbox row but before provider submission, the lease expires and another worker may reclaim the row.
 
-Current creation order is:
+If the worker dies after Kie accepted `createTask` but before the returned `taskId` is persisted, the backend does **not** blindly resubmit the request. The signed Kie callback can bind its task ID via the callback URL's local `generation_id`. If no callback recovers it before `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`, the local generation is failed and credits are refunded idempotently.
 
-```text
-DB generation + wallet debit
-COMMIT
-Redis RPUSH
-```
+This avoids double-charging the user and avoids deliberately duplicating provider jobs. It cannot mathematically eliminate the cross-system ambiguity where Kie accepted work but neither its HTTP response nor callback is ever observed.
 
-There is no transactional outbox yet. A process crash after DB commit but before Redis enqueue can leave a paid generation stuck in `queued` with no queue message.
+### Lost/delayed callback behavior
 
-Incident guidance:
+`generation-worker` periodically scans stale `generating` rows with a Kie `external_id` and queries Kie `recordInfo`. Temporary reconciliation failure is logged and does not itself fail/refund the generation.
 
-- do not debit the user again;
-- do not assume restarting Redis/worker repairs a missing enqueue;
-- verify whether a Kie external task exists before any repair;
-- if no provider task exists, repair/requeue only through a reviewed maintenance action that preserves the existing generation ID and charge idempotency;
-- prioritize implementation of a transactional outbox/reconciliation job before high-volume production.
+## 8. Payment smoke and rules
 
-## 8. Payment smoke and production rules
-
-Never test production payment webhooks by manually posting a fake `succeeded` body and then bypassing signature checks.
+Never test production payment webhooks by bypassing signature checks.
 
 ### Crypto Pay
 
-- create a low-value allowed package through the normal API/UI;
-- pay the provider invoice normally;
-- verify the webhook arrives and wallet credit occurs once;
-- resend/duplicate delivery must not produce a second credit.
-
-The provider signs the raw body. Reverse proxies/body parsers must not transform the body before FastAPI receives it.
+- create a low-value configured package through the normal API/UI;
+- pay the invoice normally;
+- verify wallet credit occurs once;
+- duplicate webhook delivery must not produce a second credit.
 
 ### T-Bank
 
-- successful notification must receive body `OK` exactly;
-- check provider dashboard if notifications are retrying;
-- verify local amount in RUB became provider amount in kopecks correctly.
+- successful notification must receive body exactly `OK`;
+- inspect provider dashboard if notifications retry;
+- verify RUB-to-kopeck amount conversion.
 
 ### YooKassa
 
 - ensure `payment.succeeded` webhook is registered;
-- the backend re-fetches payment state from YooKassa, so outbound access to `api.yookassa.ru` is required even while handling inbound webhook;
-- do not introduce a future admin button that blindly sets local payment status to succeeded.
+- webhook handling requires outbound access to `api.yookassa.ru` for authoritative re-fetch;
+- do not introduce/manual-use an unsafe local "mark succeeded" shortcut.
 
 ## 9. Backup procedure
 
-At minimum back up PostgreSQL before migrations and on a schedule appropriate for business RPO.
-
-Example logical backup:
+PostgreSQL contains durable business and generation-delivery state. Back it up before migrations and on the business RPO schedule.
 
 ```bash
 mkdir -p backups
@@ -460,15 +465,13 @@ docker compose exec -T postgres \
   pg_dump -U ksu -d ksu -Fc > "backups/ksu-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-Also back up off-host; the same server/volume is not a disaster-recovery backup.
+Keep off-host backups.
 
-Redis contains FSM and generation queue state. AOF is enabled in Compose, but PostgreSQL remains the primary source for durable business records. Preserve Redis persistence/volume during normal upgrades.
+Redis contains FSM and best-effort generation wake signals. A Redis data loss can affect active conversational state/latency, but **must not lose a paid generation**, because `generation_outbox` is in PostgreSQL.
 
-## 10. Restore test procedure
+## 10. Restore test
 
-Test restores regularly into a separate database, not directly over production.
-
-Example:
+Restore into a separate test database:
 
 ```bash
 docker compose exec -T postgres createdb -U ksu ksu_restore_test || true
@@ -476,37 +479,33 @@ cat backups/<backup>.dump | \
   docker compose exec -T postgres pg_restore -U ksu -d ksu_restore_test --clean --if-exists
 ```
 
-Validate schema/data, then remove the test database:
+Validate data/schema, then:
 
 ```bash
 docker compose exec -T postgres dropdb -U ksu ksu_restore_test
 ```
 
-A real production restore should be treated as an incident change: stop app/worker writes, preserve the failed database, restore into a controlled target, validate, then reopen traffic.
+A production restore is an incident change: stop writes, preserve failed state, restore into a controlled target, validate, then reopen traffic.
 
 ## 11. Normal release procedure
 
-1. Confirm target commit/PR CI is green.
-2. Read migration diff if migrations changed.
-3. Take PostgreSQL backup.
-4. Pull/checkout target commit.
-5. Update `.env` only if required by the release.
-6. Build images.
-7. Run migrations explicitly.
-8. Start/recreate `app` and `generation-worker`.
-9. Run smoke checklist.
-10. Watch app/worker logs and provider webhook dashboards.
-
-Commands:
+1. confirm target CI is green;
+2. inspect migrations;
+3. take PostgreSQL backup;
+4. pull approved commit/tag;
+5. update `.env` if required;
+6. build images;
+7. run migrations explicitly;
+8. recreate app and worker;
+9. run smoke checklist;
+10. watch application/worker logs and provider dashboards.
 
 ```bash
 git fetch --all --prune
 git checkout <approved-commit-or-tag>
-
 docker compose build app generation-worker
 docker compose run --rm app alembic upgrade head
 docker compose up -d app generation-worker
-
 docker compose ps
 docker compose logs --tail=200 app generation-worker
 ```
@@ -515,7 +514,7 @@ docker compose logs --tail=200 app generation-worker
 
 ### Application-only rollback
 
-If the database migration is backward-compatible:
+If migrations are backward-compatible:
 
 ```bash
 git checkout <previous-known-good-commit>
@@ -523,20 +522,9 @@ docker compose build app generation-worker
 docker compose up -d app generation-worker
 ```
 
-Run all smoke checks.
+### Migration warning
 
-### Migration rollback warning
-
-Do **not** automatically run `alembic downgrade` in production just because an app release failed. A downgrade can destroy data or be incompatible with writes already made by the new version.
-
-If a migration is not backward-compatible:
-
-1. stop writes/app/worker;
-2. assess migration and written data;
-3. either deploy a forward fix or restore the pre-deploy backup;
-4. validate before reopening traffic.
-
-Forward fixes are generally safer after production data has been written.
+Do not automatically run `alembic downgrade` after a failed release. If a migration is not backward-compatible, stop writes and choose a reviewed forward fix or pre-deploy restore.
 
 ## 13. Incident playbooks
 
@@ -544,128 +532,129 @@ Forward fixes are generally safer after production data has been written.
 
 - inspect `docker compose ps`;
 - inspect app logs;
-- check reverse proxy upstream;
-- restart only after identifying whether crash loop is configuration/migration related.
+- inspect reverse-proxy upstream;
+- identify config/migration crash loops before restart.
 
 ### `/health/ready` fails
 
-- check PostgreSQL health/connectivity;
-- check Redis health/connectivity;
-- inspect connection strings/DNS/network;
-- do not route full traffic until ready succeeds.
+- check PostgreSQL/Redis health and connectivity;
+- inspect URLs/DNS/network;
+- do not route full traffic until readiness recovers.
 
-### Mini App loads but authenticated API calls return 401
+### Mini App authenticated calls return 401
 
-- confirm it was opened from Telegram, not a normal browser tab;
-- confirm `BOT_TOKEN` matches the bot that launched the Mini App;
-- verify frontend sends `X-Telegram-Init-Data`;
-- verify server clock;
-- do not bypass validation with `initDataUnsafe`.
+- confirm app was opened through Telegram;
+- confirm `BOT_TOKEN` matches the launching bot;
+- verify `X-Telegram-Init-Data` is sent;
+- verify system clock;
+- never bypass with `initDataUnsafe`.
 
 ### Media upload fails
 
-- check `KIE_API_KEY` and outbound connectivity;
-- check `KIE_UPLOAD_BASE_URL`;
-- compare file size with global `KIE_UPLOAD_MAX_BYTES` and model-specific UI limit;
-- check reverse proxy request-body limit;
-- remember Kie upload URLs are temporary provider assets.
+- verify `KIE_API_KEY` and outbound access;
+- verify `KIE_UPLOAD_BASE_URL`;
+- compare file size with global/model limits;
+- inspect reverse-proxy body limit.
 
-### Generation stuck in `queued`
+### Generation stuck `queued`
 
-- verify worker is running;
-- inspect worker logs;
-- inspect Redis availability;
-- consider the documented DB-commit/Redis-enqueue gap;
-- do not create a second billable generation as a repair without reconciling the original.
+- verify `generation-worker` is running;
+- inspect `generation_outbox` for the generation;
+- if outbox is missing, recovery scan should create it automatically;
+- inspect `available_at`, `lease_until`, attempts and last error;
+- Redis availability is secondary: a Redis outage should increase latency, not lose the job;
+- do not create a second billable generation as a repair.
 
-### Generation stuck in `generating`
+### Outbox stuck `processing`
 
-- inspect stored Kie `external_id`;
-- use the existing admin reconcile endpoint if authorized;
-- verify Kie `recordInfo` availability;
-- check callback/HMAC configuration.
+- compare `lease_until` with current UTC time;
+- an expired lease should be reclaimable automatically;
+- if leases continually expire, inspect worker crashes and provider submission latency;
+- never manually mark payment/generation success merely to clear the row.
+
+### Generation stuck `submitting`
+
+- if no `external_id`, this is the provider ambiguity window;
+- inspect recent worker logs and Kie callbacks;
+- do not manually resubmit without proving no Kie task exists;
+- allow callback recovery / configured timeout handling to decide refund.
+
+### Generation stuck `generating`
+
+- inspect Kie `external_id`;
+- verify worker periodic reconciliation is running;
+- use the authorized admin reconcile endpoint if necessary;
+- verify Kie `recordInfo` and webhook/HMAC configuration.
 
 ### Kie callbacks return 403
 
-- verify Kie Settings webhook HMAC is enabled;
-- verify `KIE_WEBHOOK_HMAC_KEY` matches exactly;
-- check proxy preserves `X-Webhook-Timestamp` and `X-Webhook-Signature`;
+- verify webhook HMAC configuration/key;
+- verify proxy preserves Kie signature headers;
 - check server time.
 
 ### Crypto Pay webhook failures
 
-- verify webhook URL and HTTPS;
-- verify token belongs to that Crypto Pay application;
+- verify HTTPS/webhook URL/token;
 - ensure proxy does not alter raw body;
-- inspect Crypto Pay dashboard because repeated failures can eventually disable webhook delivery.
+- inspect provider retry/dashboard state.
 
 ### T-Bank retries notifications
 
-- verify endpoint returns HTTP 200 body exactly `OK`;
-- inspect token/terminal/amount mismatch logs;
-- verify public HTTPS URL and proxy timeout;
-- compare with T-Bank notification archive/dashboard.
+- endpoint must return HTTP 200 body exactly `OK`;
+- inspect token/terminal/amount mismatch;
+- verify public HTTPS/proxy timeout.
 
 ### YooKassa webhook arrives but balance is not credited
 
-- inspect authoritative provider re-fetch failure;
-- verify shop ID/secret and outbound API access;
-- compare payment metadata `payment_id`, external ID, amount and currency;
-- do not manually set local succeeded state before resolving mismatch.
+- inspect authoritative re-fetch errors;
+- verify shop credentials/outbound API access;
+- compare metadata, external ID, amount and currency;
+- do not manually set succeeded before resolving mismatch.
 
-### Admin credential/session incident
+### Admin incident
 
-Follow `docs/ADMIN_SECURITY.md`.
-
-At minimum:
-
-- disable/revoke affected admin sessions/accounts;
-- preserve audit logs;
-- rotate compromised provider-specific credentials;
-- treat `ADMIN_SECURITY_KEY` rotation specially because it affects session token verification, audit HMAC verification and encrypted MFA secrets.
+Follow `docs/ADMIN_SECURITY.md`. Revoke affected sessions/accounts and preserve audit logs.
 
 ## 14. Monitoring priorities
 
 Minimum useful alerts:
 
-- `/health/ready` failure;
+- readiness failure;
 - app/worker restart loop;
-- generation failures/refund spike;
-- `queued` generations older than an operational threshold;
+- `generation_outbox` pending/processing backlog and oldest age;
+- expired/repeated outbox leases;
+- generations stuck `submitting` near unknown timeout;
+- generation failure/refund spike;
+- Kie reconciliation error rate;
 - payment webhook 4xx/5xx rate;
 - repeated admin auth failures/lockouts;
-- active admins without MFA;
-- large wallet adjustments;
-- withdrawal status changes;
-- PostgreSQL storage/connection exhaustion;
-- Redis memory/persistence issues.
+- PostgreSQL storage/connection pressure;
+- Redis availability/memory issues.
 
-Do not include raw bearer tokens, Telegram `initData`, payment credentials, MFA secrets or recovery codes in logs/alerts.
+Never put bearer tokens, Telegram `initData`, payment credentials, MFA secrets or recovery codes into logs/alerts.
 
 ## 15. CI/release gate
 
-Current GitHub Actions gate:
+Current GitHub Actions validates:
 
 ```text
 install dependencies
 ruff check .
 python compileall
 node --check app/web/mini_app/app.js
-alembic upgrade head on real PostgreSQL
+alembic upgrade head on PostgreSQL
 pytest on PostgreSQL + Redis
 ```
 
-A green CI run verifies the tested code/migration path, but it does not replace production smoke tests or provider sandbox/live configuration checks.
+A green CI run does not replace production provider configuration and smoke tests.
 
-## 16. Current known operational gaps
+## 16. Current operational gaps
 
 Track these explicitly:
 
-- generation DB commit and Redis enqueue are not transactional;
+- Kie `createTask` still has an unavoidable cross-system ambiguity if provider acceptance occurs but neither response task ID nor callback is ever observed; local timeout/refund protects the user but provider spend may still exist;
 - there is no product-owned permanent object storage for generated/uploaded media;
 - no dedicated visual admin client is bundled;
-- payment state does not currently have a generic admin/provider reconciliation button; this is intentional to avoid unsafe manual success overrides, but operational reconciliation tooling may be added later;
-- Compose does not define an app healthcheck, so orchestration uses process start rather than application readiness for `generation-worker` dependency;
+- full payment refund/chargeback reconciliation is a separate next epic;
+- Compose does not define an app healthcheck;
 - `mypy` is not currently enforced by CI.
-
-Do not hide these gaps in operational documentation; they determine incident behavior and release risk.
