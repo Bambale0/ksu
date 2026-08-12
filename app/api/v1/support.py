@@ -11,6 +11,9 @@ from app.db.models import SupportMessage, SupportTicket
 
 router = APIRouter(prefix="/support", tags=["support"])
 
+ACTIVE_USER_STATUSES = {"open", "in_progress"}
+REOPENABLE_USER_STATUSES = {"resolved", "closed"}
+
 
 class CreateTicketRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=64)
@@ -28,9 +31,9 @@ def _ticket_view(ticket: SupportTicket) -> dict[str, object]:
         "status": ticket.status,
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
-        "can_reply": ticket.status == "open",
-        "can_close": ticket.status == "open",
-        "can_reopen": ticket.status == "closed",
+        "can_reply": ticket.status in ACTIVE_USER_STATUSES,
+        "can_close": ticket.status in ACTIVE_USER_STATUSES,
+        "can_reopen": ticket.status in REOPENABLE_USER_STATUSES,
     }
 
 
@@ -139,8 +142,8 @@ async def reply_ticket(
         user_id=user.id,
         for_update=True,
     )
-    if ticket.status != "open":
-        raise HTTPException(status_code=409, detail="Closed support ticket cannot receive replies")
+    if ticket.status not in ACTIVE_USER_STATUSES:
+        raise HTTPException(status_code=409, detail="Support ticket must be reopened before replying")
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Message is required")
@@ -168,8 +171,8 @@ async def close_ticket(
         user_id=user.id,
         for_update=True,
     )
-    if ticket.status != "open":
-        raise HTTPException(status_code=409, detail="Support ticket is not open")
+    if ticket.status not in ACTIVE_USER_STATUSES:
+        raise HTTPException(status_code=409, detail="Support ticket is not active")
     ticket.status = "closed"
     await session.commit()
     await session.refresh(ticket)
@@ -188,8 +191,8 @@ async def reopen_ticket(
         user_id=user.id,
         for_update=True,
     )
-    if ticket.status != "closed":
-        raise HTTPException(status_code=409, detail="Only closed support tickets can be reopened")
+    if ticket.status not in REOPENABLE_USER_STATUSES:
+        raise HTTPException(status_code=409, detail="Only resolved or closed support tickets can be reopened")
     ticket.status = "open"
     await session.commit()
     await session.refresh(ticket)
