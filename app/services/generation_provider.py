@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Generation
 from app.providers.kie import KieClient, KieTask
+from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog
 from app.services.wallet import WalletService
 
@@ -27,15 +29,19 @@ class GenerationProviderService:
         model_id = str((generation.parameters or {}).get("_model_id") or "")
         spec = ModelCatalog.get(model_id)
         generation.status = "submitting"
-        generation.provider = "kie"
+        generation.error = None
         await session.commit()
+
+        callback_url = settings.webhook_url("webhooks/kie")
+        if callback_url:
+            callback_url = f"{callback_url}?generation_id={generation.id}"
 
         client = KieClient(settings.kie_api_key, settings.kie_base_url)
         try:
             task_id = await client.create_task(
                 model=spec.kie_model,
                 input_data=cls._input_for(generation),
-                callback_url=settings.webhook_url("webhooks/kie"),
+                callback_url=callback_url,
             )
         except Exception as exc:
             await cls.fail_and_refund(session, generation.id, str(exc))
@@ -48,9 +54,14 @@ class GenerationProviderService:
         )
         if generation is None:
             raise LookupError("Generation disappeared after provider submission")
+        if generation.status == "failed":
+            # A concurrent recovery path already made this terminal.
+            return generation
         generation.external_id = task_id
         generation.provider = "kie"
         generation.status = "generating"
+        generation.error = None
+        generation.updated_at = datetime.now(timezone.utc)
         await session.commit()
         return generation
 
@@ -60,10 +71,31 @@ class GenerationProviderService:
         session: AsyncSession,
         *,
         task_id: str,
+        generation_id: uuid.UUID | None = None,
     ) -> Generation | None:
         generation = await session.scalar(
             select(Generation).where(Generation.external_id == task_id).with_for_update()
         )
+
+        # If the worker died after Kie accepted createTask but before taskId was
+        # persisted, the callback still carries our local generation_id in its URL.
+        if generation is None and generation_id is not None:
+            candidate = await session.scalar(
+                select(Generation).where(Generation.id == generation_id).with_for_update()
+            )
+            if (
+                candidate is not None
+                and candidate.external_id is None
+                and candidate.status in {"queued", "retry", "submitting", "generating"}
+            ):
+                candidate.external_id = task_id
+                candidate.provider = "kie"
+                candidate.status = "generating"
+                candidate.error = None
+                candidate.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+                generation = candidate
+
         if generation is None:
             return None
 
@@ -85,6 +117,7 @@ class GenerationProviderService:
         if task.state == "success":
             generation.status = "succeeded"
             generation.error = None
+            generation.updated_at = datetime.now(timezone.utc)
             if task.result_urls:
                 generation.result_url = task.result_urls[0]
             generation.parameters = {
@@ -92,6 +125,11 @@ class GenerationProviderService:
                 "_result_urls": task.result_urls,
             }
             await session.commit()
+            await GenerationOutboxService.mark_generation_terminal(
+                session,
+                generation.id,
+                failed=False,
+            )
             return
 
         if task.state == "fail":
@@ -100,6 +138,7 @@ class GenerationProviderService:
             return
 
         generation.status = "generating"
+        generation.updated_at = datetime.now(timezone.utc)
         await session.commit()
 
     @classmethod
@@ -118,6 +157,7 @@ class GenerationProviderService:
             return
         generation.status = "failed"
         generation.error = error[:4000]
+        generation.updated_at = datetime.now(timezone.utc)
         await WalletService.credit(
             session,
             user_id=generation.user_id,
@@ -128,6 +168,12 @@ class GenerationProviderService:
             idempotency_key=f"generation:{generation.id}:refund",
         )
         await session.commit()
+        await GenerationOutboxService.mark_generation_terminal(
+            session,
+            generation.id,
+            failed=True,
+            error=error,
+        )
 
     @staticmethod
     def _input_for(generation: Generation) -> dict[str, Any]:
