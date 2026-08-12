@@ -19,7 +19,23 @@
     document.head.appendChild(script);
   }
 
+  function mountProfileTools() {
+    if (!document.getElementById("profileView")) return;
+    if (!document.querySelector('link[href="/mini-app/profile-tools.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/profile-tools.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/profile-tools.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/profile-tools.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountPartnerCabinet();
+  mountProfileTools();
 
   if (!overlay || !createHome || !builder) return;
 
