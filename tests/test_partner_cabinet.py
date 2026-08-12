@@ -27,6 +27,7 @@ async def test_partner_withdrawal_reserves_available_income_and_cancel_restores(
         source = User(telegram_id=920000000000002, first_name="Source")
         session.add_all([partner, source])
         await session.flush()
+        partner_id = partner.id
         source_tx = WalletTransaction(
             user_id=source.id,
             kind="payment_credit",
@@ -39,7 +40,7 @@ async def test_partner_withdrawal_reserves_available_income_and_cancel_restores(
         await session.flush()
         session.add(
             ReferralReward(
-                partner_user_id=partner.id,
+                partner_user_id=partner_id,
                 source_user_id=source.id,
                 source_transaction_id=source_tx.id,
                 level=1,
@@ -50,25 +51,26 @@ async def test_partner_withdrawal_reserves_available_income_and_cancel_restores(
         )
         await session.commit()
 
-        before = await PartnerService.accounting(session, partner.id)
+        before = await PartnerService.accounting(session, partner_id)
         assert before["total_earned"] == Decimal("30.00")
         assert before["available"] == Decimal("30.00")
 
         withdrawal = await PartnerService.create_withdrawal(
             session,
-            user_id=partner.id,
+            user_id=partner_id,
             amount=Decimal("20.00"),
             requisites="SBP +7 900 000-00-00",
         )
         await session.commit()
-        after = await PartnerService.accounting(session, partner.id)
+        withdrawal_id = withdrawal.id
+        after = await PartnerService.accounting(session, partner_id)
         assert after["available"] == Decimal("10.00")
         assert after["pending_withdrawals"] == Decimal("20.00")
 
         with pytest.raises(PartnerInsufficientFunds):
             await PartnerService.create_withdrawal(
                 session,
-                user_id=partner.id,
+                user_id=partner_id,
                 amount=Decimal("11.00"),
                 requisites="same",
             )
@@ -76,12 +78,12 @@ async def test_partner_withdrawal_reserves_available_income_and_cancel_restores(
 
         canceled = await PartnerService.cancel_withdrawal(
             session,
-            user_id=partner.id,
-            withdrawal_id=withdrawal.id,
+            user_id=partner_id,
+            withdrawal_id=withdrawal_id,
         )
         await session.commit()
         assert canceled.status == "canceled"
-        restored = await PartnerService.accounting(session, partner.id)
+        restored = await PartnerService.accounting(session, partner_id)
         assert restored["available"] == Decimal("30.00")
         assert restored["pending_withdrawals"] == Decimal("0")
 
@@ -92,19 +94,21 @@ async def test_only_pending_withdrawal_can_be_user_canceled() -> None:
         partner = User(telegram_id=920000000000003, first_name="Partner2")
         session.add(partner)
         await session.flush()
+        partner_id = partner.id
         item = PartnerWithdrawal(
-            user_id=partner.id,
+            user_id=partner_id,
             amount=Decimal("5.00"),
             status="processing",
             requisites={"details": "private"},
         )
         session.add(item)
         await session.commit()
+        item_id = item.id
         with pytest.raises(PartnerWithdrawalError):
             await PartnerService.cancel_withdrawal(
                 session,
-                user_id=partner.id,
-                withdrawal_id=item.id,
+                user_id=partner_id,
+                withdrawal_id=item_id,
             )
 
 
