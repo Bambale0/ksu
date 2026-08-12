@@ -20,7 +20,11 @@ Wallet
   |       Idempotency-Key: UUID
   |       {provider, package_id}
   |
-  +--> open provider payment_url
+  +--> render current-payment card
+  |       |
+  |       +--> explicit user click: Open payment
+  |               |
+  |               +--> Telegram openLink/openTelegramLink
   |
   +--> GET /api/v1/payments/{id} polling
   |
@@ -99,9 +103,19 @@ openTelegramLink(url)   t.me / telegram.me links
 openLink(url)           normal provider HTTPS links
 ```
 
-Outside Telegram the fallback is a secure new browser tab/window with `noopener,noreferrer`.
+Telegram documents that `openLink` is available only in response to direct Mini App user interaction. A network `await` between the original checkout tap and navigation is therefore not treated as a reliable navigation gesture.
 
-A payment URL is also retained on the server Payment payload and exposed back to the owning user, so the current-payment card can offer **Open payment** again after returning to KSU.
+KSU enforces this at runtime with `payment-link-guard.js`:
+
+- only HTTPS payment URLs are accepted;
+- `openLink` / `openTelegramLink` are allowed only during a direct click or keyboard activation;
+- an automatic open attempted after asynchronous payment creation is blocked;
+- the server-created current-payment card exposes **Open payment**, and that explicit button click opens the provider synchronously;
+- returning to or reopening KSU keeps the same server payment and the same Open payment action while it is non-terminal.
+
+Outside Telegram the fallback remains a secure new browser tab/window with `noopener,noreferrer`.
+
+A payment URL is retained on the server Payment payload and exposed only to the owning user.
 
 ## Payment states
 
@@ -152,11 +166,13 @@ Wallet distinguishes:
 ## Files
 
 ```text
-app/api/v1/payments.py             user recent-payment API + existing checkout/status routes
-app/web/mini_app/index.html        Wallet checkout/status/history surfaces
-app/web/mini_app/wallet.js         server-driven checkout/recovery/polling controller
-app/web/mini_app/wallet.css        Telegram-first Wallet payment presentation
-tests/test_wallet_checkout.py      backend ownership + client contract tests
+app/api/v1/payments.py                    user recent-payment API + existing checkout/status routes
+app/web/mini_app/index.html               Wallet checkout/status/history surfaces
+app/web/mini_app/payment-link-guard.js    HTTPS + direct-activation navigation guard
+app/web/mini_app/wallet.js                server-driven checkout/recovery/polling controller
+app/web/mini_app/wallet.css               Telegram-first Wallet payment presentation
+tests/test_wallet_checkout.py             backend ownership + client contract tests
+tests/test_payment_link_guard.py          navigation-activation contract tests
 ```
 
 ## Security boundaries
@@ -167,7 +183,8 @@ tests/test_wallet_checkout.py      backend ownership + client contract tests
 - payment ownership is checked on history/detail routes;
 - `Idempotency-Key` is not proof of payment and never causes local crediting;
 - provider webhooks/status APIs and the payment worker remain settlement truth;
-- wallet/payment records are not persisted as browser financial truth.
+- wallet/payment records are not persisted as browser financial truth;
+- payment navigation accepts HTTPS only and requires direct user activation in Telegram.
 
 ## Follow-up
 
