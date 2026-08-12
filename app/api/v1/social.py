@@ -3,8 +3,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import func, select
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.db.models import User
 from app.services.social import (
     SelfSubscriptionError,
     SocialProfileNotFoundError,
@@ -78,6 +80,30 @@ async def unlike_generation(
     )
     await session.commit()
     return {"generation_id": str(generation.id), **result}
+
+
+@router.get("/profiles")
+async def public_profile_by_username(
+    user: CurrentUserDep,
+    session: SessionDep,
+    username: str = Query(min_length=1, max_length=64),
+) -> dict[str, object]:
+    normalized = username.strip().lstrip("@").lower()
+    if not normalized:
+        raise HTTPException(status_code=422, detail="Username is required")
+    author = await session.scalar(
+        select(User).where(func.lower(User.username) == normalized)
+    )
+    if author is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    try:
+        return await SocialService.public_profile(
+            session,
+            author_user_id=author.id,
+            viewer_user_id=user.id,
+        )
+    except SocialProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Profile not found") from exc
 
 
 @router.get("/profiles/{author_id}")
