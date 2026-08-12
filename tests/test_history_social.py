@@ -179,7 +179,7 @@ def test_social_mini_app_uses_server_truth_and_confirmation() -> None:
         "originalFetch",
         ".clone()",
         "profile.profile_discoverable",
-        "Скрытый профиль",
+        "Профиль скрыт",
         "Создать контент",
     ):
         assert token in script, token
