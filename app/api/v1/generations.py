@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_, select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.db.history_models import GenerationHistoryState
 from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
@@ -59,7 +61,22 @@ def _result_urls(generation: Generation) -> list[str]:
     return values
 
 
-def _generation_view(generation: Generation) -> dict[str, object]:
+def _public_settings(generation: Generation) -> dict[str, Any]:
+    params = dict(generation.parameters or {})
+    model_id = str(params.get("_model_id") or "")
+    try:
+        spec = ModelCatalog.get(model_id)
+    except UnknownModelError:
+        return {}
+    allowed = set(spec.known_fields)
+    return {
+        key: value
+        for key, value in params.items()
+        if key in allowed and not key.startswith("_") and key != "prompt"
+    }
+
+
+def _generation_view(generation: Generation, *, hidden: bool = False) -> dict[str, object]:
     cost = generation.cost_rox
     params = generation.parameters or {}
     return {
@@ -67,15 +84,28 @@ def _generation_view(generation: Generation) -> dict[str, object]:
         "status": generation.status,
         "prompt": generation.prompt,
         "model": _model_view(generation),
+        "settings": _public_settings(generation),
         "cost_credits": str(cost),
         "cost_rub": str(InternalCreditService.rubles_for(cost)),
         "billing_seconds": params.get("_billing_seconds"),
         "result_url": generation.result_url,
         "result_urls": _result_urls(generation),
         "error": generation.error,
+        "hidden_from_history": hidden,
         "created_at": generation.created_at.isoformat(),
         "updated_at": generation.updated_at.isoformat(),
     }
+
+
+async def _owned_generation(
+    generation_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> Generation:
+    generation = await session.get(Generation, generation_id)
+    if generation is None or generation.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    return generation
 
 
 @router.get("/models")
@@ -134,7 +164,23 @@ async def list_generations(
     before: uuid.UUID | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
 ) -> dict[str, object]:
-    statement = select(Generation).where(Generation.user_id == user.id)
+    statement = (
+        select(Generation)
+        .outerjoin(
+            GenerationHistoryState,
+            and_(
+                GenerationHistoryState.generation_id == Generation.id,
+                GenerationHistoryState.user_id == user.id,
+            ),
+        )
+        .where(
+            Generation.user_id == user.id,
+            or_(
+                GenerationHistoryState.generation_id.is_(None),
+                GenerationHistoryState.hidden_at.is_(None),
+            ),
+        )
+    )
     if status_filter:
         statement = statement.where(Generation.status == status_filter)
 
@@ -171,10 +217,10 @@ async def get_generation(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    generation = await session.get(Generation, generation_id)
-    if generation is None or generation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Generation not found")
-    return _generation_view(generation)
+    generation = await _owned_generation(generation_id, user, session)
+    history_state = await session.get(GenerationHistoryState, generation.id)
+    hidden = bool(history_state and history_state.user_id == user.id and history_state.hidden_at)
+    return _generation_view(generation, hidden=hidden)
 
 
 @router.get("/{generation_id}/recreate")
@@ -183,9 +229,7 @@ async def recreate_generation_payload(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    generation = await session.get(Generation, generation_id)
-    if generation is None or generation.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Generation not found")
+    generation = await _owned_generation(generation_id, user, session)
 
     params = dict(generation.parameters or {})
     model_id = str(params.get("_model_id") or "")
@@ -209,6 +253,40 @@ async def recreate_generation_payload(
         "billing_seconds": params.get("_billing_seconds"),
         "parameters": clean,
     }
+
+
+@router.delete("/{generation_id}/history")
+async def hide_generation_from_history(
+    generation_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, bool]:
+    generation = await _owned_generation(generation_id, user, session)
+    state = await session.get(GenerationHistoryState, generation.id)
+    if state is None:
+        state = GenerationHistoryState(generation_id=generation.id, user_id=user.id)
+        session.add(state)
+    elif state.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Generation not found")
+    state.hidden_at = datetime.now(timezone.utc)
+    await session.commit()
+    return {"hidden": True}
+
+
+@router.post("/{generation_id}/history/restore")
+async def restore_generation_to_history(
+    generation_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, bool]:
+    generation = await _owned_generation(generation_id, user, session)
+    state = await session.get(GenerationHistoryState, generation.id)
+    if state is not None:
+        if state.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Generation not found")
+        state.hidden_at = None
+        await session.commit()
+    return {"hidden": False}
 
 
 @router.post("", status_code=202)
