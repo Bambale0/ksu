@@ -73,6 +73,7 @@ jobs:
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/wallet.js
           node --check app/web/mini_app/partner.js
+          node --check app/web/mini_app/profile-tools.js
 
       - name: Apply migrations
         run: alembic upgrade head
