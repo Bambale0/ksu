@@ -12,6 +12,7 @@ from app.api.deps import SessionDep
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.admin_security import AdminAuditService
+from app.services.payment_refunds import PaymentRefundService
 from app.services.payments import (
     PaymentIdempotencyConflict,
     PaymentService,
@@ -79,7 +80,7 @@ async def refund_payment(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
-        refund = await PaymentService.initiate_refund(
+        refund = await PaymentRefundService.initiate(
             session,
             payment_id=payment_id,
             amount=payload.amount,
