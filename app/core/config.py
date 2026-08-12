@@ -55,6 +55,18 @@ class Settings(BaseSettings):
     kie_circuit_failure_window_seconds: int = 60
     kie_circuit_open_seconds: int = 60
 
+    # Production observability.
+    log_level: str = "INFO"
+    json_logs: bool = True
+    metrics_enabled: bool = True
+    metrics_bearer_token: str = ""
+    worker_heartbeat_ttl_seconds: int = 180
+    worker_stale_after_seconds: int = 120
+    otel_enabled: bool = False
+    otel_service_name: str = "ksu"
+    otel_exporter_otlp_traces_endpoint: str = ""
+    otel_trace_sample_ratio: float = 0.10
+
     # Separate privileged-admin security domain.
     # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
     admin_security_key: str = ""
