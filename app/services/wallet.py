@@ -88,6 +88,60 @@ class WalletService:
         reference_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> WalletTransaction:
+        return await cls._debit(
+            session,
+            user_id=user_id,
+            amount=amount,
+            kind=kind,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            idempotency_key=idempotency_key,
+            allow_negative=False,
+        )
+
+    @classmethod
+    async def accounting_debit(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        amount: Decimal,
+        kind: str,
+        reference_type: str | None = None,
+        reference_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> WalletTransaction:
+        """Debit an external-accounting reversal even if credits were already spent.
+
+        A provider refund/chargeback must be represented faithfully. Allowing a
+        negative balance prevents the system from silently keeping refunded credits;
+        normal user debits still reject insufficient balance.
+        """
+
+        return await cls._debit(
+            session,
+            user_id=user_id,
+            amount=amount,
+            kind=kind,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            idempotency_key=idempotency_key,
+            allow_negative=True,
+        )
+
+    @classmethod
+    async def _debit(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        amount: Decimal,
+        kind: str,
+        reference_type: str | None,
+        reference_id: str | None,
+        idempotency_key: str | None,
+        allow_negative: bool,
+    ) -> WalletTransaction:
         if amount <= 0:
             raise ValueError("Debit amount must be positive")
         existing = await cls._existing_by_key(session, idempotency_key)
@@ -97,7 +151,11 @@ class WalletService:
         wallet = await session.scalar(
             select(Wallet).where(Wallet.user_id == user_id).with_for_update()
         )
-        if wallet is None or Decimal(wallet.balance) < amount:
+        if wallet is None:
+            wallet = Wallet(user_id=user_id, balance=Decimal("0"))
+            session.add(wallet)
+            await session.flush()
+        if not allow_negative and Decimal(wallet.balance) < amount:
             raise InsufficientBalanceError("Not enough ROX")
 
         before = Decimal(wallet.balance)

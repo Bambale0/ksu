@@ -73,6 +73,31 @@ class CryptoPayClient:
             raise PaymentProviderError(f"Crypto Pay returned incomplete invoice: {body!r}")
         return CreatedPayment(str(external_id), str(payment_url), body)
 
+    async def get_invoice(self, external_id: str) -> dict[str, Any] | None:
+        response = await self._client.get(
+            "/api/getInvoices",
+            params={"invoice_ids": external_id, "count": 1},
+        )
+        response.raise_for_status()
+        body = response.json()
+        if not body.get("ok"):
+            raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
+        rows = body.get("result") or []
+        return dict(rows[0]) if rows else None
+
+    async def find_invoice_by_payload(self, local_id: str) -> dict[str, Any] | None:
+        # Crypto Pay exposes no createInvoice idempotency key and no payload filter.
+        # Scanning the latest invoice window is a recovery path for a lost create response.
+        response = await self._client.get("/api/getInvoices", params={"count": 1000, "offset": 0})
+        response.raise_for_status()
+        body = response.json()
+        if not body.get("ok"):
+            raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
+        for item in body.get("result") or []:
+            if str(item.get("payload") or "") == local_id:
+                return dict(item)
+        return None
+
     def verify_webhook(self, raw_body: bytes, signature: str | None) -> bool:
         if not signature:
             return False
@@ -100,6 +125,16 @@ class TBankClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def _signed_post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        request_body = {"TerminalKey": self.terminal_key, **body}
+        request_body["Token"] = make_tbank_token(request_body, self.password)
+        response = await self._client.post(path, json=request_body)
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("Success") is False:
+            raise PaymentProviderError(f"T-Bank {path} failed: {payload!r}")
+        return dict(payload)
+
     async def create_payment(
         self,
         *,
@@ -111,7 +146,6 @@ class TBankClient:
     ) -> CreatedPayment:
         cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         request_body: dict[str, Any] = {
-            "TerminalKey": self.terminal_key,
             "Amount": cents,
             "OrderId": local_id,
             "Description": description[:140],
@@ -122,18 +156,25 @@ class TBankClient:
         if return_url:
             request_body["SuccessURL"] = return_url
             request_body["FailURL"] = return_url
-        request_body["Token"] = make_tbank_token(request_body, self.password)
-
-        response = await self._client.post("/v2/Init", json=request_body)
-        response.raise_for_status()
-        body = response.json()
-        if not body.get("Success"):
-            raise PaymentProviderError(f"T-Bank Init failed: {body!r}")
+        body = await self._signed_post("/v2/Init", request_body)
         external_id = body.get("PaymentId")
         payment_url = body.get("PaymentURL")
         if external_id is None or not payment_url:
             raise PaymentProviderError(f"T-Bank returned incomplete payment: {body!r}")
         return CreatedPayment(str(external_id), str(payment_url), body)
+
+    async def get_state(self, external_id: str) -> dict[str, Any]:
+        return await self._signed_post("/v2/GetState", {"PaymentId": external_id})
+
+    async def check_order(self, local_id: str) -> dict[str, Any]:
+        return await self._signed_post("/v2/CheckOrder", {"OrderId": local_id})
+
+    async def refund_full(self, *, external_id: str, request_key: str) -> dict[str, Any]:
+        # /v2/Cancel without Amount performs a full refund for CONFIRMED payments.
+        return await self._signed_post(
+            "/v2/Cancel",
+            {"PaymentId": external_id, "ExternalRequestId": request_key},
+        )
 
     def verify_notification(self, payload: dict[str, Any]) -> bool:
         supplied = str(payload.get("Token") or "")
@@ -211,5 +252,26 @@ class YooKassaClient:
 
     async def get_payment(self, external_id: str) -> dict[str, Any]:
         response = await self._client.get(f"/v3/payments/{external_id}")
+        response.raise_for_status()
+        return response.json()
+
+    async def create_refund(
+        self,
+        *,
+        external_payment_id: str,
+        amount: Decimal,
+        currency: str,
+        idempotency_key: str,
+        description: str,
+    ) -> dict[str, Any]:
+        response = await self._client.post(
+            "/v3/refunds",
+            headers={"Idempotence-Key": idempotency_key},
+            json={
+                "payment_id": external_payment_id,
+                "amount": {"value": _money(amount), "currency": currency},
+                "description": description[:250],
+            },
+        )
         response.raise_for_status()
         return response.json()

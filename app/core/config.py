@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     generation_reconcile_stale_seconds: int = 60
     generation_recovery_batch_size: int = 50
 
+    # Payment lifecycle reconciliation.
+    payment_reconcile_interval_seconds: int = 60
+    payment_reconcile_stale_seconds: int = 30
+    payment_reconcile_batch_size: int = 100
+
     # Separate privileged-admin security domain.
     # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
     admin_security_key: str = ""

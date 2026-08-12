@@ -1,132 +1,84 @@
 # KSU API reference
 
-**Status:** route/auth reference for the current backend on 2026-08-12.
+**Status:** current backend on 2026-08-12.
 
-This is an operational route map, not a generated OpenAPI dump. In non-production environments the backend exposes `/docs` and `/redoc`; in production those UIs are disabled.
+This is an operational route/auth map. `/docs` and `/redoc` are available only outside production.
 
 ## Authentication classes
 
 ### Public
 
-No product user identity is required. Current examples include health probes, model catalog, generation quote and credit package catalog. Provider/Telegram webhook endpoints authenticate by provider-specific mechanisms rather than product-user sessions.
+No product identity required. Examples: health probes, generation model catalog/quote and credit package catalog.
 
 ### Telegram user
-
-Authenticated REST calls use:
 
 ```http
 X-Telegram-Init-Data: <Telegram.WebApp.initData>
 ```
 
-The backend validates signed Telegram WebApp data using `BOT_TOKEN`, resolves/creates the product user, and rejects inactive users. Do not trust `initDataUnsafe` as authentication.
+The backend validates signed Telegram WebApp data with `BOT_TOKEN`, resolves the user and rejects inactive users. `initDataUnsafe` is never an authentication source.
 
 ### Admin
-
-Admin API uses:
 
 ```http
 Authorization: Bearer <opaque-admin-session-token>
 ```
 
-Admin login/enrollment/step-up also uses fresh `X-Telegram-Init-Data`. Admin sessions are separate from normal product-user authentication. See `ADMIN_SECURITY.md`.
+Admin login/enrollment/step-up also requires fresh Telegram `initData`. Sensitive financial mutations require fresh MFA step-up.
 
-## Health
+## Health and Mini App
 
-### `GET /health/live`
+```text
+GET /health/live
+GET /health/ready
+GET /mini-app/
+```
 
-Public process liveness probe.
-
-### `GET /health/ready`
-
-Public readiness probe that checks PostgreSQL and Redis connectivity.
-
-## Static Mini App
-
-### `GET /mini-app/`
-
-Serves the bundled generation Mini App (`app/web/mini_app`). The page is static/public; authenticated actions inside it use Telegram `initData`.
+`/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
 
 ## User/profile
 
-### `GET /api/v1/me`
-
-**Auth:** Telegram user. Returns basic product user identity and current wallet balance. Some legacy response naming still uses `balance_rox`; product terminology is internal credits.
-
-### `GET /api/v1/me/transactions`
-
-**Auth:** Telegram user. Returns recent wallet ledger transactions.
-
-## Generation
-
-### `GET /api/v1/generations/models`
-
-**Auth:** public. Returns `schema_version`, `internal_credit_rub`, server model catalog, Kie mapping/billing metadata and `ui_schema`. The Mini App treats this endpoint as the runtime screen contract.
-
-### `POST /api/v1/generations/quote`
-
-**Auth:** public.
-
-```json
-{
-  "model_id": "...",
-  "prompt": "...",
-  "input_url": null,
-  "billing_seconds": null,
-  "parameters": {}
-}
+```text
+GET /api/v1/me
+GET /api/v1/me/transactions
 ```
-
-The server validates model fields/rules and calculates credit/RUB pricing from server configuration.
-
-### `POST /api/v1/generations`
 
 **Auth:** Telegram user.
 
-Creates a paid generation with durable local delivery semantics:
-
-1. validates the model request and recalculates price;
-2. creates the generation row;
-3. debits the wallet idempotently;
-4. creates one `generation_outbox` row;
-5. commits generation + wallet + outbox atomically in PostgreSQL;
-6. emits a best-effort Redis wake signal;
-7. returns HTTP 202.
-
-Redis is not authoritative generation state. If the wake-up is lost or Redis is unavailable after the PostgreSQL commit, `generation-worker` still polls and claims the outbox row.
-
-The worker uses leased PostgreSQL claims with `FOR UPDATE SKIP LOCKED`. Expired processing leases are reclaimable, so a worker crash before provider submission does not lose the job.
-
-The Kie callback URL contains the local `generation_id`. If Kie accepted `createTask` but the worker died before persisting the returned provider `taskId`, a signed Kie callback can bind that task back to the original local generation. An uncertain `submitting` generation is not blindly resubmitted; if it cannot be recovered before the configured timeout, the user is refunded idempotently.
-
-Stale `generating` rows with a Kie task ID are periodically reconciled through `/api/v1/jobs/recordInfo` as a callback fallback.
-
-## Uploads
-
-### `POST /api/v1/uploads/kie`
-
-**Auth:** Telegram user. `multipart/form-data` with one `file`.
-
-Allowed MIME prefixes:
+## Generations
 
 ```text
-image/
-video/
-audio/
+GET  /api/v1/generations/models       public
+POST /api/v1/generations/quote        public
+POST /api/v1/generations              Telegram user
+POST /api/v1/uploads/kie              Telegram user
 ```
 
-The global size ceiling comes from `KIE_UPLOAD_MAX_BYTES` when size metadata is available. Model/UI-specific limits can be stricter.
+Generation creation atomically commits generation + wallet debit + PostgreSQL `generation_outbox`. Redis is only a wake signal; `generation-worker` polls/leases durable outbox work and Kie callbacks/status reconciliation close the provider lifecycle.
 
 ## Payment packages
 
 ### `GET /api/v1/payments/packages`
 
-**Auth:** public. Returns server-defined packages and `internal_credit_rub`. The client cannot define payment amount or credit quantity.
+**Auth:** public.
+
+Returns server-defined packages and `internal_credit_rub`. Client cannot submit arbitrary amount/credits.
 
 ## Payment creation
 
 ### `POST /api/v1/payments`
 
 **Auth:** Telegram user.
+
+Required headers:
+
+```http
+X-Telegram-Init-Data: <signed Telegram data>
+Idempotency-Key: <UUID>
+Content-Type: application/json
+```
+
+Body:
 
 ```json
 {
@@ -135,110 +87,193 @@ The global size ceiling comes from `KIE_UPLOAD_MAX_BYTES` when size metadata is 
 }
 ```
 
-Returns local payment ID/status/provider/amount/currency/credits and provider payment URL.
+Semantics:
 
-## Promo codes
+1. validates server package/provider;
+2. creates local Payment + `payment_requests` idempotency record;
+3. commits local intent before crossing provider boundary;
+4. creates provider payment;
+5. saves external ID/payment URL or leaves `creation_unknown` if response outcome is uncertain.
 
-### `POST /api/v1/promocodes/redeem`
+Retrying the **same** provider/package with the same key returns the existing local payment. Reusing the key for a different intent returns HTTP 409.
 
-**Auth:** Telegram user.
+### `GET /api/v1/payments/{payment_id}`
 
-```json
-{"code":"PROMO"}
+**Auth:** Telegram user owning the payment.
+
+Returns current local status/payment URL. Intended for payment UI polling and recovery after provider redirect.
+
+Important local states include:
+
+```text
+creating
+creation_unknown
+pending
+succeeded
+partially_refunded
+refunded
+refund_review
+canceled
+expired
+failed
 ```
 
-Promo redemption is validated server-side and wallet credit uses the product ledger.
+A dedicated `payment-worker` periodically reconciles nonterminal/unknown payments against provider-authoritative state.
 
-## Referrals
+## Provider reconciliation
 
-### `GET /api/v1/referrals/stats`
+### Crypto Pay
 
-**Auth:** Telegram user. Returns referral stats, configured level percentages and `ref_<telegram_id>` payload. Payment completion accrues configured first/second-line rewards idempotently.
+- creation recovery uses `getInvoices` and local UUID stored in invoice `payload`;
+- signed `invoice_paid` webhook completes payment;
+- statuses `active/paid/expired` map to local lifecycle;
+- Crypto Pay invoice API exposes no merchant refund method, so local admin refund initiation is unsupported.
 
-## Support
+### T-Bank
 
-### `POST /api/v1/support/tickets`
+- creation: `/v2/Init`;
+- missing external ID recovery: `/v2/CheckOrder` by local `OrderId`;
+- state recovery: `/v2/GetState`;
+- signed notifications are processed through the same state mapper;
+- `CONFIRMED` credits once;
+- full `REFUNDED/REVERSED` creates an idempotent local reversal;
+- `PARTIAL_REFUNDED/PARTIAL_REVERSED` enters `refund_review` unless a provider-authoritative partial amount is available through a supported operation;
+- admin full refund uses classic `/v2/Cancel` without `Amount`.
 
-**Auth:** Telegram user. Creates a support ticket and its first user message.
+Admin-initiated T-Bank partial refunds are intentionally disabled because an online-cash-register integration can require a refund `Receipt`, which is not currently stored by KSU.
 
-### `GET /api/v1/support/tickets`
+### YooKassa
 
-**Auth:** Telegram user. Lists that user's support tickets. Admin reply/status operations are under the privileged admin API.
+- creation uses local payment UUID as provider `Idempotence-Key` and metadata;
+- unknown creation can safely repeat the same create request/idempotency key;
+- webhook is treated as a signal, then payment is re-fetched from YooKassa;
+- cumulative provider `refunded_amount` drives partial/full local reversal, including refunds performed outside KSU;
+- admin refund uses `/v3/refunds` with UUID `Idempotence-Key`;
+- `refund.succeeded` triggers authoritative payment re-fetch before accounting changes.
+
+## Refund/reversal accounting
+
+Provider-confirmed refund/reversal creates immutable `payment_reversals` rows.
+
+For a cumulative refunded share:
+
+```text
+reversed_credits = original_credits × refunded_amount / original_payment_amount
+```
+
+The final full reversal is clamped to exactly the original credit amount to avoid rounding drift.
+
+Effects are idempotent:
+
+- internal credits are debited once;
+- referral rewards are reversed proportionally through immutable `referral_reward_reversals`;
+- payment becomes `partially_refunded` or `refunded`.
+
+If purchased credits were already spent, an external refund may produce a negative internal balance. This is deliberate accounting debt. Normal user spending still blocks insufficient balance.
+
+## Admin payment lifecycle
+
+### `POST /api/v1/admin/payments/{payment_id}/reconcile`
+
+**Auth:** privileged admin + financial wallet-adjust permission + fresh MFA step-up.
+
+Queries the configured provider and applies authoritative local state.
+
+### `POST /api/v1/admin/payments/{payment_id}/refund`
+
+**Auth:** same high-risk financial controls.
+
+Body:
+
+```json
+{
+  "amount": "300.00",
+  "request_id": "uuid-v4",
+  "reason": "Customer refund"
+}
+```
+
+Supported initiation:
+
+```text
+YooKassa: partial + full
+T-Bank:   full original payment only
+Crypto Pay: unsupported
+```
+
+Every action is admin-audited.
+
+## Promo/referral/support
+
+```text
+POST /api/v1/promocodes/redeem       Telegram user
+GET  /api/v1/referrals/stats         Telegram user
+POST /api/v1/support/tickets         Telegram user
+GET  /api/v1/support/tickets         Telegram user
+```
 
 ## Webhooks
 
-Webhook routes are omitted from production OpenAPI (`include_in_schema=False`).
-
-### `POST /webhooks/telegram`
-
-Checks `X-Telegram-Bot-Api-Secret-Token` when `TELEGRAM_WEBHOOK_SECRET` is configured.
-
-### `POST /webhooks/kie`
-
-Checks `X-Webhook-Timestamp` and `X-Webhook-Signature` using Kie HMAC when configured, can recover the local generation from the callback query `generation_id`, then reconciles provider state through Kie `recordInfo`.
-
-### `POST /webhooks/payments/cryptobot`
-
-Checks `crypto-pay-api-signature` against the raw body. Only `invoice_paid` is treated as completion.
-
-### `POST /webhooks/payments/tbank`
-
-Checks token, terminal, local/external IDs and amount. Successful handling returns plain-text `OK`.
-
-### `POST /webhooks/payments/yookassa`
-
-Re-fetches the payment from YooKassa and verifies authoritative metadata/ID/amount/currency/status before completing the local payment.
-
-## Admin API
-
-Prefix: `/api/v1/admin`.
-
-Admin endpoints require separate opaque bearer-session authentication and explicit permission dependencies. Sensitive actions additionally require a fresh step-up window.
-
-Main groups:
+Provider/Telegram webhooks are omitted from production OpenAPI.
 
 ```text
-/admin/auth/*
-/admin/dashboard
-/admin/users/*
-/admin/generations/*
-/admin/payments
-/admin/support/*
-/admin/withdrawals/*
-/admin/promocodes/*
-/admin/referrals/*
-/admin/roles
-/admin/admins/*
-/admin/audit
-/admin/security/*
+POST /webhooks/telegram
+POST /webhooks/kie
+POST /webhooks/payments/cryptobot
+POST /webhooks/payments/tbank
+POST /webhooks/payments/yookassa
 ```
 
-See `ADMIN_SECURITY.md` for exact auth/session/role behavior.
+Trust boundaries:
 
-## Pricing and trust boundaries
+- Telegram: webhook secret header when configured;
+- Kie: HMAC signature, then authoritative `recordInfo`;
+- Crypto Pay: HMAC over raw body;
+- T-Bank: signed `Token`, terminal/payment identity and state checks; successful acknowledgement is plain `OK`;
+- YooKassa: incoming event triggers authenticated provider API re-fetch before payment/refund accounting.
 
-The browser is never authoritative for model/provider slug, generation cost, package price, credit amount, payment success, admin authorization or Kie callback success. Server-side components re-evaluate these from configuration or provider-authoritative data.
-
-## HTTP error conventions
-
-Typical classes:
+## Other admin API groups
 
 ```text
-400 invalid application/provider input
-401 missing/invalid user/admin authentication
-403 authenticated but forbidden / invalid webhook signature
-404 resource/package/payment not found
-409 state/mismatch conflict
+/api/v1/admin/auth/*
+/api/v1/admin/dashboard
+/api/v1/admin/users/*
+/api/v1/admin/generations/*
+/api/v1/admin/payments*
+/api/v1/admin/support/*
+/api/v1/admin/withdrawals/*
+/api/v1/admin/promocodes/*
+/api/v1/admin/referrals/*
+/api/v1/admin/roles
+/api/v1/admin/admins/*
+/api/v1/admin/audit
+/api/v1/admin/security/*
+```
+
+See `ADMIN_SECURITY.md`.
+
+## Trust rules
+
+Browser/client is never authoritative for:
+
+- generation model/provider slug or cost;
+- package amount/credit quantity;
+- payment success/refund state;
+- provider callback success;
+- admin authorization.
+
+## Common HTTP classes
+
+```text
+400 invalid request/idempotency header
+401 invalid user/admin authentication
+403 forbidden or invalid webhook signature
+404 resource not found
+409 idempotency/state/unsupported-operation conflict
 413 upload too large
-415 unsupported upload media type
-422 request/model validation error
-429 admin rate limit/lock condition
-502 upstream provider creation/upload failure
-503 required service/configuration unavailable
+415 unsupported media type
+422 model/refund validation error
+429 admin rate limit/lock
+502 upstream provider operation failure
+503 service/config unavailable
 ```
-
-Do not build client logic around exact human error strings when a status/state field is available.
-
-## Versioning note
-
-REST uses `/api/v1`; generation UI also carries `schema_version` / `ui_schema.version`. Incompatible dynamic-form changes should bump/document the UI schema contract instead of silently changing semantics.

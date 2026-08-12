@@ -1,16 +1,18 @@
 import hmac
 import json
 import uuid
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl
 
 from aiogram.types import Update
 from fastapi import APIRouter, Header, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models import Payment
+from app.db.payment_models import PaymentRefundRequest
 from app.db.session import SessionFactory
 from app.providers.kie import extract_kie_task_id, verify_kie_webhook
 from app.providers.payments import CryptoPayClient, YooKassaClient, make_tbank_token
@@ -104,8 +106,11 @@ async def cryptobot_webhook(
         payment = await session.get(Payment, payment_id)
         if payment is None or payment.provider != "cryptobot":
             raise HTTPException(status_code=404, detail="Payment not found")
-        if str(invoice.get("invoice_id")) != str(payment.external_id):
+        invoice_id = str(invoice.get("invoice_id") or "")
+        if payment.external_id and invoice_id != str(payment.external_id):
             raise HTTPException(status_code=409, detail="Crypto Pay invoice mismatch")
+        if not payment.external_id:
+            payment.external_id = invoice_id
         PaymentService.assert_amount(
             payment,
             amount=Decimal(str(invoice.get("amount") or "0")),
@@ -134,33 +139,37 @@ async def tbank_webhook(request: Request) -> PlainTextResponse:
     if str(payload.get("TerminalKey") or "") != settings.tbank_terminal_key:
         raise HTTPException(status_code=403, detail="Invalid T-Bank terminal")
 
-    payment_id = _uuid_or_400(payload.get("OrderId"))
     async with SessionFactory() as session:
-        payment = await session.get(Payment, payment_id)
+        payment: Payment | None = None
+        raw_order_id = payload.get("OrderId")
+        if raw_order_id:
+            try:
+                payment = await session.get(Payment, uuid.UUID(str(raw_order_id)))
+            except ValueError:
+                payment = None
+        if payment is None and payload.get("PaymentId"):
+            payment = await session.scalar(
+                select(Payment).where(
+                    Payment.provider == "tbank",
+                    Payment.external_id == str(payload.get("PaymentId")),
+                )
+            )
         if payment is None or payment.provider != "tbank":
             raise HTTPException(status_code=404, detail="Payment not found")
-        if str(payload.get("PaymentId") or "") != str(payment.external_id):
+        if payment.external_id and str(payload.get("PaymentId") or "") != str(payment.external_id):
             raise HTTPException(status_code=409, detail="T-Bank payment mismatch")
-        expected_cents = int(
-            (Decimal(payment.amount) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
-        if int(payload.get("Amount") or 0) != expected_cents:
-            raise HTTPException(status_code=409, detail="T-Bank amount mismatch")
 
-        provider_status = str(payload.get("Status") or "").upper()
-        if provider_status == "CONFIRMED":
-            await PaymentService.complete(
-                session,
-                payment_id=payment.id,
-                provider_payload=payload,
-            )
-        elif provider_status in {"REJECTED", "REVERSED", "CANCELED"}:
-            await PaymentService.mark_status(
-                session,
-                payment_id=payment.id,
-                status="canceled",
-                provider_payload=payload,
-            )
+        state_payload = dict(payload)
+        if str(payload.get("Status") or "").upper() in {
+            "PARTIAL_REFUNDED",
+            "PARTIAL_REVERSED",
+        }:
+            # Notification Amount can describe the refund operation rather than the
+            # original payment. Signature validation already used the untouched body;
+            # downstream accounting must not mistake this value for total payment size.
+            state_payload.pop("Amount", None)
+            state_payload["NotificationAmount"] = payload.get("Amount")
+        await PaymentService.apply_tbank_state(session, payment.id, state_payload)
     return PlainTextResponse("OK", status_code=200)
 
 
@@ -169,10 +178,16 @@ async def yookassa_webhook(request: Request) -> dict[str, bool]:
     update = await request.json()
     event = str(update.get("event") or "")
     webhook_object = update.get("object") or {}
-    external_id = str(webhook_object.get("id") or "")
-    metadata = webhook_object.get("metadata") or {}
-    payment_id = _uuid_or_400(metadata.get("payment_id"))
-    if not external_id:
+
+    refund_event_id: str | None = None
+    if event == "refund.succeeded":
+        provider_payment_id = str(webhook_object.get("payment_id") or "")
+        refund_event_id = str(webhook_object.get("id") or "") or None
+    elif event.startswith("payment."):
+        provider_payment_id = str(webhook_object.get("id") or "")
+    else:
+        return {"ok": True}
+    if not provider_payment_id:
         raise HTTPException(status_code=400, detail="Missing YooKassa payment id")
 
     client = YooKassaClient(
@@ -181,40 +196,43 @@ async def yookassa_webhook(request: Request) -> dict[str, bool]:
         settings.yookassa_base_url,
     )
     try:
-        authoritative = await client.get_payment(external_id)
+        # The webhook body is only a signal. The authoritative payment object also
+        # exposes cumulative refunded_amount, so partial/manual refunds reconcile safely.
+        authoritative = await client.get_payment(provider_payment_id)
     finally:
         await client.aclose()
 
-    auth_metadata = authoritative.get("metadata") or {}
-    if str(auth_metadata.get("payment_id") or "") != str(payment_id):
-        raise HTTPException(status_code=409, detail="YooKassa metadata mismatch")
-
+    metadata = authoritative.get("metadata") or {}
+    payment_id = _uuid_or_400(metadata.get("payment_id"))
     async with SessionFactory() as session:
         payment = await session.get(Payment, payment_id)
         if payment is None or payment.provider != "yookassa":
             raise HTTPException(status_code=404, detail="Payment not found")
-        if str(payment.external_id) != external_id:
+        if payment.external_id and str(payment.external_id) != provider_payment_id:
             raise HTTPException(status_code=409, detail="YooKassa payment mismatch")
-        amount = authoritative.get("amount") or {}
-        PaymentService.assert_amount(
-            payment,
-            amount=Decimal(str(amount.get("value") or "0")),
-            currency=str(amount.get("currency") or ""),
+        if not payment.external_id:
+            payment.external_id = provider_payment_id
+            await session.commit()
+
+        await PaymentService.apply_yookassa_state(
+            session,
+            payment.id,
+            authoritative,
+            refund_event_id=refund_event_id,
         )
-        authoritative_status = str(authoritative.get("status") or "")
-        if authoritative_status == "succeeded" and event == "payment.succeeded":
-            await PaymentService.complete(
-                session,
-                payment_id=payment.id,
-                provider_payload=authoritative,
+
+        if refund_event_id:
+            refund_request = await session.scalar(
+                select(PaymentRefundRequest).where(
+                    PaymentRefundRequest.payment_id == payment.id,
+                    PaymentRefundRequest.provider_refund_id == refund_event_id,
+                )
             )
-        elif authoritative_status == "canceled":
-            await PaymentService.mark_status(
-                session,
-                payment_id=payment.id,
-                status="canceled",
-                provider_payload=authoritative,
-            )
+            if refund_request is not None:
+                refund_request.status = "succeeded"
+                refund_request.provider_payload = webhook_object
+                refund_request.last_error = None
+                await session.commit()
     return {"ok": True}
 
 
