@@ -14,12 +14,14 @@ from app.db.history_models import GenerationHistoryState
 from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
+from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import (
     InvalidModelParametersError,
     ModelCatalog,
     UnknownModelError,
 )
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/generations", tags=["generations"])
@@ -58,7 +60,7 @@ def _model_view(generation: Generation) -> dict[str, str | None]:
     }
 
 
-def _result_urls(generation: Generation) -> list[str]:
+def _provider_result_urls(generation: Generation) -> list[str]:
     raw = (generation.parameters or {}).get("_result_urls")
     values = [str(item) for item in raw] if isinstance(raw, list) else []
     if generation.result_url and generation.result_url not in values:
@@ -81,9 +83,17 @@ def _public_settings(generation: Generation) -> dict[str, Any]:
     }
 
 
-def _generation_view(generation: Generation, *, hidden: bool = False) -> dict[str, object]:
+def _generation_view(
+    generation: Generation,
+    *,
+    hidden: bool = False,
+    owned_media: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     cost = Decimal(generation.cost_rox)
     params = generation.parameters or {}
+    owned_media = owned_media or []
+    owned_urls = [str(item["url"]) for item in owned_media if item.get("url")]
+    result_urls = owned_urls or _provider_result_urls(generation)
     return {
         "id": str(generation.id),
         "status": generation.status,
@@ -93,13 +103,38 @@ def _generation_view(generation: Generation, *, hidden: bool = False) -> dict[st
         "cost_credits": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
         "billing_seconds": params.get("_billing_seconds"),
-        "result_url": generation.result_url,
-        "result_urls": _result_urls(generation),
+        "result_url": result_urls[0] if result_urls else None,
+        "result_urls": result_urls,
+        "media": owned_media,
+        "result_storage": "owned" if owned_urls else "provider",
         "error": generation.error,
         "hidden_from_history": hidden,
         "created_at": generation.created_at.isoformat(),
         "updated_at": generation.updated_at.isoformat(),
     }
+
+
+async def _owned_media_views(
+    session: SessionDep,
+    *,
+    user_id: uuid.UUID,
+    generations: list[Generation],
+) -> dict[uuid.UUID, list[dict[str, object]]]:
+    assets = await MediaAssetService.ready_assets_for_generations(
+        session,
+        user_id=user_id,
+        generation_ids=[item.id for item in generations],
+    )
+    if not assets:
+        return {}
+    try:
+        storage = ObjectStorage()
+    except ObjectStorageNotConfigured:
+        return {}
+    result: dict[uuid.UUID, list[dict[str, object]]] = {}
+    for generation_id, rows in assets.items():
+        result[generation_id] = [MediaAssetService.public_view(row, storage) for row in rows]
+    return result
 
 
 async def _owned_generation(
@@ -209,8 +244,12 @@ async def list_generations(
     )
     has_more = len(rows) > limit
     page = rows[:limit]
+    media = await _owned_media_views(session, user_id=user.id, generations=page)
     return {
-        "items": [_generation_view(row) for row in page],
+        "items": [
+            _generation_view(row, owned_media=media.get(row.id, []))
+            for row in page
+        ],
         "has_more": has_more,
         "next_before": str(page[-1].id) if has_more and page else None,
     }
@@ -225,7 +264,8 @@ async def get_generation(
     generation = await _owned_generation(generation_id, user, session)
     history_state = await session.get(GenerationHistoryState, generation.id)
     hidden = bool(history_state and history_state.user_id == user.id and history_state.hidden_at)
-    return _generation_view(generation, hidden=hidden)
+    media = await _owned_media_views(session, user_id=user.id, generations=[generation])
+    return _generation_view(generation, hidden=hidden, owned_media=media.get(generation.id, []))
 
 
 @router.get("/{generation_id}/recreate")

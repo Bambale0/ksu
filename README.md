@@ -1,6 +1,6 @@
 # KSU bot
 
-Production-oriented Telegram AI content platform: Telegram bot + schema-driven Mini App + FastAPI backend + durable Kie generation pipeline + resilient payments + privileged admin API.
+Production-oriented Telegram AI content platform: Telegram bot + schema-driven Mini App + FastAPI backend + durable Kie generation pipeline + product-owned media storage + resilient payments + privileged admin API.
 
 **Documentation status:** synchronized with this branch on 2026-08-12.
 
@@ -15,6 +15,7 @@ Production-oriented Telegram AI content platform: Telegram bot + schema-driven M
 - Per-model draft state, scenario validation, selected-settings summary and live server quote.
 - Authenticated media upload proxy at `/api/v1/uploads/kie`; provider keys stay server-side.
 - Live generation result polling, result gallery and owned cursor-paginated history.
+- Product-owned generation media: Kie result URLs are temporary ingest sources, not permanent storage.
 - Safe recreation/variant draft from historical generations with a fresh server quote before charging again.
 - Reversible soft-hide history state without deleting financially significant generation/accounting rows.
 - Internal-credit wallet/ledger, promo codes, referrals, support data and notifications.
@@ -28,6 +29,10 @@ Production-oriented Telegram AI content platform: Telegram bot + schema-driven M
 - Redis is a best-effort `wake:generations` channel for delivery latency; PostgreSQL remains durable work state.
 - Recovery for missing outbox rows, expired leases, uncertain `submitting` state and stale `generating` Kie tasks.
 - Idempotent generation refund on unrecoverable provider failure.
+- Successful Kie results create `media_assets` + `media_ingest_jobs` in the same PostgreSQL transaction as the generation terminal state.
+- `media-worker` claims durable ingest jobs with `FOR UPDATE SKIP LOCKED`, validates public HTTPS sources, streams bounded downloads and uploads to private S3-compatible storage.
+- Deterministic object keys make retries converge after a crash between object upload and DB commit.
+- Generation detail/history prefer short-lived product-owned presigned URLs once media is ready and retain provider fallback while ingestion is pending.
 - Nano Banana, Seedream, GPT Image, Wan, Seedance, Kling Motion and Grok model families.
 - Image flat billing and video per-second billing, calculated server-side.
 
@@ -65,8 +70,8 @@ When the Kie circuit/rate guard is closed to new provider calls, already-paid ge
 - Structured JSON logging with `request_id`, `trace_id` and `span_id` correlation.
 - Bounded `X-Request-ID` propagation with UUID fallback.
 - Prometheus endpoint at `/metrics`, optionally protected by `METRICS_BEARER_TOKEN`.
-- Worker heartbeat health at `/health/operational` for `generation-worker` and `payment-worker`.
-- Generation/outbox/payment snapshot gauges, worker health, provider circuit state and bounded Redis cross-process counters.
+- Worker heartbeat health at `/health/operational` for `generation-worker`, `media-worker` and `payment-worker`.
+- Generation/outbox/payment/media snapshot gauges, worker health, provider circuit state and bounded Redis cross-process counters.
 - Optional OpenTelemetry FastAPI/HTTPX tracing through OTLP HTTP.
 - Production alert rules in `ops/prometheus-alerts.yml`.
 
@@ -87,6 +92,7 @@ Operational contract and alert semantics: `docs/OBSERVABILITY.md`.
 - FastAPI + aiogram 3
 - PostgreSQL 17 + async SQLAlchemy 2
 - Redis 7.4
+- Private S3-compatible object storage via Boto3 managed transfers
 - Alembic
 - Docker Compose
 - Vanilla HTML/CSS/JavaScript Telegram Mini App
@@ -105,12 +111,14 @@ Telegram / browser
  FastAPI app :8000 --------------------> PostgreSQL
     |                                      |-- business state
     |                                      |-- generation_outbox
+    |                                      |-- media_assets / media_ingest_jobs
     |                                      |-- payment requests/reversals
     |                                      |-- history presentation state
     |
     +--> Redis --------------------------> distributed limits / FSM / wake / worker telemetry
     |          |                               |
     |          +--> generation-worker --------+--> Kie.ai
+    |          +--> media-worker -----------------> private S3-compatible bucket
     |
     +--------------------> payment-worker --------> payment providers
 
@@ -125,6 +133,7 @@ Compose services:
 - `redis`
 - `app`
 - `generation-worker`
+- `media-worker`
 - `payment-worker`
 
 ## Documentation map
@@ -133,6 +142,7 @@ Compose services:
 - `docs/OPERATIONS_RUNBOOK.md` — production deployment, workers, webhooks, limits, incidents, backups and rollback.
 - `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract.
 - `docs/RESULTS_HISTORY.md` — generation result polling, history, reuse and soft-hide semantics.
+- `docs/MEDIA_STORAGE.md` — private S3-compatible storage, ingest recovery, CORS, multipart lifecycle and media API.
 - `docs/OBSERVABILITY.md` — metrics, worker heartbeats, traces, logs and alerts.
 - `docs/ADMIN_SECURITY.md` — admin bootstrap, MFA, permissions, sessions and audit.
 
@@ -159,6 +169,8 @@ GET    /api/v1/generations/{generation_id}
 GET    /api/v1/generations/{generation_id}/recreate
 DELETE /api/v1/generations/{generation_id}/history
 POST   /api/v1/generations/{generation_id}/history/restore
+GET    /api/v1/media/{asset_id}
+GET    /api/v1/media/{asset_id}/download
 POST   /api/v1/uploads/kie
 GET    /api/v1/payments/packages
 POST   /api/v1/payments
@@ -207,6 +219,26 @@ GENERATION_RECONCILE_INTERVAL_SECONDS=60
 GENERATION_RECONCILE_STALE_SECONDS=60
 GENERATION_RECOVERY_BATCH_SIZE=50
 ```
+
+### Durable media storage
+
+```dotenv
+S3_BUCKET=ksu-production-media
+S3_REGION=us-east-1
+S3_ENDPOINT_URL=
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_SESSION_TOKEN=
+S3_ADDRESSING_STYLE=auto
+
+MEDIA_WORKER_POLL_SECONDS=5
+MEDIA_INGEST_LEASE_SECONDS=600
+MEDIA_INGEST_MAX_ATTEMPTS=5
+MEDIA_INGEST_MAX_BYTES=1073741824
+MEDIA_PRESIGN_TTL_SECONDS=900
+```
+
+Keep the bucket private. Configure bucket CORS for the exact Telegram/web origins that need browser downloads and configure `AbortIncompleteMultipartUpload` lifecycle cleanup for multipart uploads. Full policy and lifecycle guidance is in `docs/MEDIA_STORAGE.md`.
 
 ### Payment lifecycle
 
@@ -289,6 +321,7 @@ Current migration chain:
 0003_generation_outbox
 0004_payment_lifecycle
 0005_generation_history_state
+0006_durable_media_storage
 ```
 
 Anti-abuse and observability controls use existing PostgreSQL/Redis infrastructure and add no separate schema migration.
@@ -304,11 +337,11 @@ alembic upgrade head
 pytest -q
 ```
 
-CI uses real PostgreSQL and Redis containers.
+CI uses real PostgreSQL and Redis containers. S3 behavior is isolated behind the storage adapter so CI does not require production object-storage credentials.
 
 ## Known production limitations / next epics
 
-1. **Provider media URLs are not product-owned durable storage.** Permanent S3-compatible object storage is the next product/infrastructure epic.
+1. **Full Mini App product shell/navigation** is the next P1 product epic after durable media storage.
 2. **No dedicated visual admin client yet.**
 3. **Payment chargeback files/settlement registries are not ingested automatically.** Webhook/API-visible refunds are handled; offline acquiring-register reconciliation remains an accounting extension.
 4. Compose publishes app port 8000 for development; production must place it behind HTTPS and keep PostgreSQL/Redis private.
@@ -320,10 +353,11 @@ CI uses real PostgreSQL and Redis containers.
 - Redis distributed rate limiting guidance and atomic Lua-based counters.
 - PostgreSQL `SKIP LOCKED` queue-style work claiming.
 - Kie Market task detail/webhook/upload documentation.
+- AWS S3/Boto3 presigned URL, managed transfer and multipart lifecycle documentation.
 - Crypto Pay API.
 - T-Bank Internet Acquiring payment/refund contracts.
 - YooKassa payment/refund/idempotency/webhook documentation.
-- Telegram Mini Apps documentation.
+- Telegram Mini Apps documentation, including native `downloadFile` response requirements.
 - Prometheus Python client documentation.
 - OpenTelemetry Python SDK, OTLP HTTP exporter and FastAPI/HTTPX instrumentation documentation.
 - OWASP ASVS 5.0.0 / Authorization guidance.

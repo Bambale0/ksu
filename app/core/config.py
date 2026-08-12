@@ -36,6 +36,28 @@ class Settings(BaseSettings):
     generation_reconcile_stale_seconds: int = 60
     generation_recovery_batch_size: int = 50
 
+    # Durable provider-result ingestion into private S3-compatible object storage.
+    media_worker_poll_seconds: int = 5
+    media_ingest_lease_seconds: int = 600
+    media_ingest_max_attempts: int = 5
+    media_ingest_max_bytes: int = 1024 * 1024 * 1024
+    media_ingest_connect_timeout_seconds: float = 10.0
+    media_ingest_read_timeout_seconds: float = 180.0
+    media_ingest_max_redirects: int = 5
+    media_presign_ttl_seconds: int = 900
+    media_legacy_reconcile_seconds: int = 60
+
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_session_token: str = ""
+    s3_addressing_style: str = "auto"
+    s3_multipart_threshold_bytes: int = 8 * 1024 * 1024
+    s3_multipart_chunk_bytes: int = 8 * 1024 * 1024
+    s3_max_concurrency: int = 4
+
     # Payment lifecycle reconciliation.
     payment_reconcile_interval_seconds: int = 60
     payment_reconcile_stale_seconds: int = 30

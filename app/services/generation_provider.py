@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.models import Generation
 from app.providers.kie import KieClient, KieTask
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
 from app.services.wallet import WalletService
 
@@ -55,11 +56,8 @@ class GenerationProviderService:
         if generation is None:
             raise LookupError("Generation disappeared after provider submission")
         if generation.status in {"succeeded", "failed"}:
-            # A fast callback/recovery path has already made the task terminal.
             return generation
         if generation.external_id and generation.external_id != task_id:
-            # A callback has already bound a provider task. Never replace it with a
-            # second/ambiguous provider identity.
             return generation
         generation.external_id = task_id
         generation.provider = "kie"
@@ -81,8 +79,6 @@ class GenerationProviderService:
             select(Generation).where(Generation.external_id == task_id).with_for_update()
         )
 
-        # If the worker died after Kie accepted createTask but before taskId was
-        # persisted, the callback still carries our local generation_id in its URL.
         if generation is None and generation_id is not None:
             candidate = await session.scalar(
                 select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -128,6 +124,9 @@ class GenerationProviderService:
                 **generation.parameters,
                 "_result_urls": task.result_urls,
             }
+            # Generation terminal state and the durable media ingest rows commit together.
+            # The media worker can therefore recover without relying on a callback or Redis wake-up.
+            await MediaAssetService.enqueue_results(session, generation, task.result_urls)
             await session.commit()
             await GenerationOutboxService.mark_generation_terminal(
                 session,

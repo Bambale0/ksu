@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.media_models import MediaAsset, MediaIngestJob
 from app.db.models import Generation, Payment
 from app.db.reliability_models import GenerationOutbox
 
@@ -86,6 +87,20 @@ PAYMENT_STATE = Gauge(
     "Current payment rows by lifecycle state",
     ("status",),
 )
+MEDIA_ASSET_STATE = Gauge(
+    "ksu_media_assets",
+    "Current product-owned media assets by lifecycle state",
+    ("status",),
+)
+MEDIA_INGEST_STATE = Gauge(
+    "ksu_media_ingest_jobs",
+    "Current durable media ingest jobs by lifecycle state",
+    ("status",),
+)
+MEDIA_INGEST_OLDEST_SECONDS = Gauge(
+    "ksu_media_ingest_oldest_pending_seconds",
+    "Age of the oldest pending/processing media ingest job",
+)
 WORKER_UP = Gauge(
     "ksu_worker_up",
     "Whether the worker heartbeat is within the configured stale threshold",
@@ -115,6 +130,9 @@ DISTRIBUTED_EVENT_NAMES = (
     "payment_reconcile_success",
     "payment_reconcile_failure",
     "payment_worker_loop_error",
+    "media_ingest_processed",
+    "media_reconcile_failure",
+    "media_worker_loop_error",
 )
 
 _tracer_provider: TracerProvider | None = None
@@ -282,7 +300,45 @@ async def refresh_snapshot_metrics(session: AsyncSession, redis: Redis) -> None:
     for status_name, count in payment_rows:
         PAYMENT_STATE.labels(status=str(status_name)).set(int(count))
 
-    for worker in ("generation-worker", "payment-worker"):
+    media_asset_rows = list(
+        (
+            await session.execute(
+                select(MediaAsset.status, func.count()).group_by(MediaAsset.status)
+            )
+        ).all()
+    )
+    for status_name in ("pending", "ready", "failed"):
+        MEDIA_ASSET_STATE.labels(status=status_name).set(0)
+    for status_name, count in media_asset_rows:
+        MEDIA_ASSET_STATE.labels(status=str(status_name)).set(int(count))
+
+    media_job_rows = list(
+        (
+            await session.execute(
+                select(MediaIngestJob.status, func.count()).group_by(MediaIngestJob.status)
+            )
+        ).all()
+    )
+    for status_name in ("pending", "processing", "completed", "failed"):
+        MEDIA_INGEST_STATE.labels(status=status_name).set(0)
+    for status_name, count in media_job_rows:
+        MEDIA_INGEST_STATE.labels(status=str(status_name)).set(int(count))
+
+    media_oldest = await session.scalar(
+        select(func.min(MediaIngestJob.created_at)).where(
+            MediaIngestJob.status.in_(("pending", "processing"))
+        )
+    )
+    if media_oldest is None:
+        MEDIA_INGEST_OLDEST_SECONDS.set(0)
+    else:
+        if media_oldest.tzinfo is None:
+            media_oldest = media_oldest.replace(tzinfo=timezone.utc)
+        MEDIA_INGEST_OLDEST_SECONDS.set(
+            max(0.0, (datetime.now(timezone.utc) - media_oldest).total_seconds())
+        )
+
+    for worker in ("generation-worker", "payment-worker", "media-worker"):
         await worker_health(redis, worker)
 
     for event in DISTRIBUTED_EVENT_NAMES:
