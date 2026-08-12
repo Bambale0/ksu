@@ -41,6 +41,20 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
+    # OWASP API4 / resource-consumption controls. Zero disables an optional quota.
+    abuse_protection_enabled: bool = True
+    abuse_fail_closed: bool = True
+    generation_rate_limit_per_minute: int = 10
+    generation_max_active_per_user: int = 3
+    generation_daily_spend_limit_credits: Decimal = Decimal("0")
+    upload_rate_limit_per_minute: int = 12
+    upload_daily_bytes_limit: int = 1024 * 1024 * 1024
+    payment_create_rate_limit_per_minute: int = 6
+    kie_submit_rate_limit_per_minute: int = 60
+    kie_circuit_failure_threshold: int = 5
+    kie_circuit_failure_window_seconds: int = 60
+    kie_circuit_open_seconds: int = 60
+
     # Separate privileged-admin security domain.
     # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
     admin_security_key: str = ""

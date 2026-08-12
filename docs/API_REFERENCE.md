@@ -26,6 +26,39 @@ Authorization: Bearer <opaque-admin-session-token>
 
 Admin login/enrollment/step-up also requires fresh Telegram `initData`. Sensitive financial mutations require fresh MFA step-up.
 
+## Resource-consumption response contract
+
+Expensive user/provider operations are protected by distributed Redis limits plus database admission checks.
+
+Quota/circuit response:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 27
+Content-Type: application/json
+
+{
+  "detail": "Generation rate limit exceeded",
+  "code": "resource_limit_exceeded",
+  "retry_after": 27
+}
+```
+
+If `ABUSE_FAIL_CLOSED=true` and Redis cannot verify an expensive operation:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Retry-After: 5
+
+{
+  "detail": "Resource protection store is unavailable",
+  "code": "protection_backend_unavailable",
+  "retry_after": 5
+}
+```
+
+Clients should respect `Retry-After`; do not immediately retry in a tight loop.
+
 ## Health and Mini App
 
 ```text
@@ -54,15 +87,36 @@ POST /api/v1/generations              Telegram user
 POST /api/v1/uploads/kie              Telegram user
 ```
 
-Generation creation atomically commits generation + wallet debit + PostgreSQL `generation_outbox`. Redis is only a wake signal; `generation-worker` polls/leases durable outbox work and Kie callbacks/status reconciliation close the provider lifecycle.
+Generation creation atomically commits generation + wallet debit + PostgreSQL transactional outbox. Redis wake-up is not durable generation state.
+
+Before any debit, `POST /api/v1/generations` enforces:
+
+- per-user generation request rate;
+- configured maximum active generations (`queued/retry/submitting/generating`);
+- optional UTC daily credit-spend ceiling.
+
+The active/daily admission decision locks the product user row until the generation/wallet/outbox transaction commits, preventing concurrent requests from racing through the active-task cap.
+
+`generation-worker` additionally applies a global Kie submission rate and Kie availability circuit breaker. When throttled/open, the outbox item is released with delay instead of being marked failed/refunded.
+
+## Uploads
+
+### `POST /api/v1/uploads/kie`
+
+**Auth:** Telegram user.
+
+In addition to MIME allowlist and `KIE_UPLOAD_MAX_BYTES`, the endpoint enforces:
+
+- uploads per user/minute;
+- uploaded bytes per user/day.
+
+If Starlette does not expose multipart size metadata, the server measures the already-spooled file so chunked clients do not bypass byte accounting. Production reverse proxy must still enforce its own request-body ceiling before application parsing.
 
 ## Payment packages
 
 ### `GET /api/v1/payments/packages`
 
-**Auth:** public.
-
-Returns server-defined packages and `internal_credit_rub`. Client cannot submit arbitrary amount/credits.
+**Auth:** public. Returns server-defined packages and `internal_credit_rub`.
 
 ## Payment creation
 
@@ -87,23 +141,13 @@ Body:
 }
 ```
 
-Semantics:
-
-1. validates server package/provider;
-2. creates local Payment + `payment_requests` idempotency record;
-3. commits local intent before crossing provider boundary;
-4. creates provider payment;
-5. saves external ID/payment URL or leaves `creation_unknown` if response outcome is uncertain.
-
-Retrying the **same** provider/package with the same key returns the existing local payment. Reusing the key for a different intent returns HTTP 409.
+Before external invoice creation the endpoint also applies a per-user payment-creation rate limit. Payment idempotency remains authoritative: retrying the same intent with the same UUID returns the same local payment; reusing the key for a different intent returns 409.
 
 ### `GET /api/v1/payments/{payment_id}`
 
-**Auth:** Telegram user owning the payment.
+**Auth:** Telegram user owning the payment. Returns current local payment state/payment URL.
 
-Returns current local status/payment URL. Intended for payment UI polling and recovery after provider redirect.
-
-Important local states include:
+Important states:
 
 ```text
 creating
@@ -118,90 +162,51 @@ expired
 failed
 ```
 
-A dedicated `payment-worker` periodically reconciles nonterminal/unknown payments against provider-authoritative state.
+`payment-worker` periodically reconciles nonterminal/unknown provider state.
 
 ## Provider reconciliation
 
 ### Crypto Pay
 
-- creation recovery uses `getInvoices` and local UUID stored in invoice `payload`;
+- creation recovery via `getInvoices` and local UUID stored in `payload`;
 - signed `invoice_paid` webhook completes payment;
-- statuses `active/paid/expired` map to local lifecycle;
-- Crypto Pay invoice API exposes no merchant refund method, so local admin refund initiation is unsupported.
+- no merchant invoice-refund operation is invented.
 
 ### T-Bank
 
-- creation: `/v2/Init`;
-- missing external ID recovery: `/v2/CheckOrder` by local `OrderId`;
-- state recovery: `/v2/GetState`;
-- signed notifications are processed through the same state mapper;
-- `CONFIRMED` credits once;
-- full `REFUNDED/REVERSED` creates an idempotent local reversal;
-- `PARTIAL_REFUNDED/PARTIAL_REVERSED` enters `refund_review` unless a provider-authoritative partial amount is available through a supported operation;
-- admin full refund uses classic `/v2/Cancel` without `Amount`.
-
-Admin-initiated T-Bank partial refunds are intentionally disabled because an online-cash-register integration can require a refund `Receipt`, which is not currently stored by KSU.
+- `/v2/Init`, `/v2/CheckOrder`, `/v2/GetState`;
+- signed notification state mapping;
+- full `REFUNDED/REVERSED` creates idempotent local reversal;
+- partial reversal without safe authoritative amount enters `refund_review`;
+- admin full refund uses `/v2/Cancel` without `Amount`.
 
 ### YooKassa
 
-- creation uses local payment UUID as provider `Idempotence-Key` and metadata;
-- unknown creation can safely repeat the same create request/idempotency key;
-- webhook is treated as a signal, then payment is re-fetched from YooKassa;
-- cumulative provider `refunded_amount` drives partial/full local reversal, including refunds performed outside KSU;
-- admin refund uses `/v3/refunds` with UUID `Idempotence-Key`;
-- `refund.succeeded` triggers authoritative payment re-fetch before accounting changes.
+- create uses local payment UUID as provider `Idempotence-Key` and metadata;
+- webhook is a signal, then payment is re-fetched;
+- cumulative provider `refunded_amount` drives partial/full local reversal;
+- admin refund uses `/v3/refunds` with UUID `Idempotence-Key`.
 
 ## Refund/reversal accounting
 
-Provider-confirmed refund/reversal creates immutable `payment_reversals` rows.
-
-For a cumulative refunded share:
-
-```text
-reversed_credits = original_credits × refunded_amount / original_payment_amount
-```
-
-The final full reversal is clamped to exactly the original credit amount to avoid rounding drift.
-
-Effects are idempotent:
-
-- internal credits are debited once;
-- referral rewards are reversed proportionally through immutable `referral_reward_reversals`;
-- payment becomes `partially_refunded` or `refunded`.
-
-If purchased credits were already spent, an external refund may produce a negative internal balance. This is deliberate accounting debt. Normal user spending still blocks insufficient balance.
+Provider-confirmed reversal creates immutable `payment_reversals`. Credits and referral rewards are reversed proportionally and idempotently. A refund may produce negative product-credit balance if purchased credits were already spent; normal user spending still rejects insufficient balance.
 
 ## Admin payment lifecycle
 
-### `POST /api/v1/admin/payments/{payment_id}/reconcile`
-
-**Auth:** privileged admin + financial wallet-adjust permission + fresh MFA step-up.
-
-Queries the configured provider and applies authoritative local state.
-
-### `POST /api/v1/admin/payments/{payment_id}/refund`
-
-**Auth:** same high-risk financial controls.
-
-Body:
-
-```json
-{
-  "amount": "300.00",
-  "request_id": "uuid-v4",
-  "reason": "Customer refund"
-}
+```text
+POST /api/v1/admin/payments/{payment_id}/reconcile
+POST /api/v1/admin/payments/{payment_id}/refund
 ```
 
-Supported initiation:
+**Auth:** privileged financial permission + fresh MFA step-up.
+
+Refund initiation matrix:
 
 ```text
 YooKassa: partial + full
 T-Bank:   full original payment only
 Crypto Pay: unsupported
 ```
-
-Every action is admin-audited.
 
 ## Promo/referral/support
 
@@ -214,8 +219,6 @@ GET  /api/v1/support/tickets         Telegram user
 
 ## Webhooks
 
-Provider/Telegram webhooks are omitted from production OpenAPI.
-
 ```text
 POST /webhooks/telegram
 POST /webhooks/kie
@@ -224,15 +227,9 @@ POST /webhooks/payments/tbank
 POST /webhooks/payments/yookassa
 ```
 
-Trust boundaries:
+Provider/Telegram webhook trust boundaries remain signature/secret/provider-authoritative checks; user-facing resource-limit counters are not substitutes for webhook authenticity.
 
-- Telegram: webhook secret header when configured;
-- Kie: HMAC signature, then authoritative `recordInfo`;
-- Crypto Pay: HMAC over raw body;
-- T-Bank: signed `Token`, terminal/payment identity and state checks; successful acknowledgement is plain `OK`;
-- YooKassa: incoming event triggers authenticated provider API re-fetch before payment/refund accounting.
-
-## Other admin API groups
+## Admin API groups
 
 ```text
 /api/v1/admin/auth/*
@@ -252,16 +249,6 @@ Trust boundaries:
 
 See `ADMIN_SECURITY.md`.
 
-## Trust rules
-
-Browser/client is never authoritative for:
-
-- generation model/provider slug or cost;
-- package amount/credit quantity;
-- payment success/refund state;
-- provider callback success;
-- admin authorization.
-
 ## Common HTTP classes
 
 ```text
@@ -273,7 +260,9 @@ Browser/client is never authoritative for:
 413 upload too large
 415 unsupported media type
 422 model/refund validation error
-429 admin rate limit/lock
+429 resource quota/circuit/admin rate limit
 502 upstream provider operation failure
-503 service/config unavailable
+503 service/config/protection-store unavailable
 ```
+
+For 429/anti-abuse 503, read and honor `Retry-After`.

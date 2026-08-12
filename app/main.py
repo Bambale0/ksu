@@ -3,7 +3,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from aiogram import Bot
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
@@ -15,6 +16,7 @@ from app.core.config import settings
 from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.db.session import engine
+from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
 
 configure_logging()
 
@@ -60,6 +62,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.exception_handler(ResourcePolicyError)
+async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> JSONResponse:
+    status_code = 503 if isinstance(exc, ProtectionBackendUnavailable) else 429
+    return JSONResponse(
+        status_code=status_code,
+        headers={"Retry-After": str(exc.retry_after)},
+        content={
+            "detail": str(exc),
+            "code": exc.code,
+            "retry_after": exc.retry_after,
+        },
+    )
+
+
 app.include_router(health_router)
 app.include_router(webhook_router)
 app.include_router(api_router)

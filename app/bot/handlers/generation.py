@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.abuse_protection import ResourcePolicyError
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError
 from app.services.users import UserService
@@ -48,7 +49,13 @@ async def generation_prompt(
             prompt=message.text,
         )
     except InsufficientBalanceError:
-        await message.answer("Недостаточно ROX. Пополни баланс и повтори.")
+        await message.answer("Недостаточно кредитов. Пополни баланс и повтори.")
+        return
+    except ResourcePolicyError as exc:
+        await message.answer(
+            f"Сейчас нельзя запустить ещё одну генерацию: {exc}. "
+            f"Повтори примерно через {exc.retry_after} сек."
+        )
         return
     except InvalidModelParametersError as exc:
         await message.answer(f"Параметры генерации не приняты: {exc}")
@@ -56,5 +63,5 @@ async def generation_prompt(
     await state.clear()
     await message.answer(
         f"⏳ Задача поставлена в очередь: {generation.id}\n"
-        f"Списано: {generation.cost_rox} ROX"
+        f"Списано: {generation.cost_rox} кр."
     )

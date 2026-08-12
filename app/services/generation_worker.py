@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models import Generation
 from app.db.session import SessionFactory
+from app.services.abuse_protection import AbuseProtectionService, ResourcePolicyError
 from app.services.generation_provider import GenerationProviderService
 from app.services.generation_reliability import GenerationOutboxService, utcnow
 
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class GenerationWorkerService:
     @classmethod
-    async def process_one(cls) -> bool:
+    async def process_one(cls, redis: Redis) -> bool:
         async with SessionFactory() as session:
             claim = await GenerationOutboxService.claim(session)
         if claim is None:
@@ -43,12 +45,10 @@ class GenerationWorkerService:
                 )
                 return True
             if generation.external_id and generation.status in {"generating", "submitting"}:
-                # Provider submission is already durable locally. Callback/poller owns completion.
                 await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
-                # Never blindly repeat an uncertain createTask call: it could duplicate provider spend.
                 age = utcnow() - generation.updated_at
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
                     message = "Kie submission outcome remained unknown after worker interruption"
@@ -68,9 +68,25 @@ class GenerationWorkerService:
                 return True
 
             try:
+                await AbuseProtectionService.provider_submission_gate(redis, "kie")
+            except ResourcePolicyError as exc:
+                # Resource throttling is not a generation failure and must not refund.
+                # Keep the durable outbox pending until the provider guard allows work.
+                await GenerationOutboxService.release(
+                    session,
+                    claim.outbox_id,
+                    error=str(exc),
+                    delay_seconds=exc.retry_after,
+                )
+                return True
+
+            try:
                 result = await GenerationProviderService.submit_kie(session, generation.id)
             except Exception as exc:
-                # submit_kie refunds and makes the generation terminal on provider failure.
+                if AbuseProtectionService.availability_failure(exc):
+                    await AbuseProtectionService.record_provider_failure(redis, "kie")
+                # submit_kie currently refunds and makes explicit provider submission
+                # failures terminal. The circuit prevents a rapid cascade of new calls.
                 logger.exception("Generation submission failed: %s", generation.id)
                 refreshed = await session.get(Generation, generation.id)
                 if refreshed is not None and refreshed.status == "failed":
@@ -87,6 +103,7 @@ class GenerationWorkerService:
                     )
                 return True
 
+            await AbuseProtectionService.record_provider_success(redis, "kie")
             if result.status == "failed":
                 await GenerationOutboxService.fail(
                     session,
@@ -180,6 +197,4 @@ class GenerationWorkerService:
                         generation_id=generation_id,
                     )
                 except Exception:
-                    # Reconciliation is a fallback. Do not fail/refund a task merely because
-                    # the status endpoint is temporarily unavailable.
                     logger.exception("Kie reconciliation failed for %s", generation_id)

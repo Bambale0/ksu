@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
+from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.wallet import WalletService
@@ -33,9 +34,6 @@ class GenerationService:
     ) -> int | None:
         if billing_seconds is not None:
             return billing_seconds
-
-        # Grok upscale does not accept a duration parameter. When the source task
-        # was created by this service, reuse the duration that was billed for it.
         if model_id != "grok-video-upscale":
             return None
 
@@ -131,6 +129,15 @@ class GenerationService:
             billing_seconds=billing_seconds,
         )
 
+        # Reject abusive/over-budget work before any wallet debit/provider side effect.
+        # The DB admission lock remains held until the same transaction commits.
+        await AbuseProtectionService.generation_rate(redis, user_id)
+        await GenerationAdmissionService.enforce(
+            session,
+            user_id=user_id,
+            next_cost=cost_rox,
+        )
+
         generation = Generation(
             user_id=user_id,
             kind=spec.operation,
@@ -151,8 +158,6 @@ class GenerationService:
         session.add(generation)
         await session.flush()
 
-        # The outbox row and wallet debit live in the same PostgreSQL transaction.
-        # A Redis outage can delay execution, but can no longer lose paid work.
         GenerationOutboxService.add(session, generation.id)
         await WalletService.debit(
             session,
@@ -165,8 +170,6 @@ class GenerationService:
         )
         await session.commit()
 
-        # Best-effort latency optimization only. The worker polls the DB outbox, so
-        # failure here must not turn a successfully committed generation into 5xx.
         try:
             await redis.rpush(cls.WAKE_KEY, str(generation.id))
         except RedisError:
