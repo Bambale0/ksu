@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Wallet, WalletTransaction
 
 
-class InsufficientBalanceError(ValueError):
+class InsufficientBalanceError(RuntimeError):
     def __init__(self, *, current_balance: Decimal, required_amount: Decimal) -> None:
         self.current_balance = Decimal(current_balance)
         self.required_amount = Decimal(required_amount)
