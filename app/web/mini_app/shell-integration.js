@@ -6,6 +6,7 @@
   const createHome = document.getElementById("createHome");
   const builder = document.getElementById("builderView");
   const detail = document.getElementById("generationDetailView");
+  const builderHome = document.getElementById("builderHomeButton");
   let historyActionInFlight = false;
   let bridgedBuilder = false;
 
@@ -70,6 +71,19 @@
     switchToCreateShell();
   });
   observer.observe(overlay, { attributes: true, attributeFilter: ["hidden"] });
+
+  builderHome?.addEventListener("click", () => {
+    if (bridgedBuilder) closeBridgedBuilder();
+  });
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const nav = event.target.closest(".bottom-nav-item[data-shell-nav]");
+      if (nav && bridgedBuilder) closeBridgedBuilder();
+    },
+    true,
+  );
 
   tg?.BackButton?.onClick?.(() => {
     if (!bridgedBuilder) return;
