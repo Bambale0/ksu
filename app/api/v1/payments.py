@@ -4,9 +4,10 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
+from app.services.abuse_protection import AbuseProtectionService
 from app.services.credits import InternalCreditService
 from app.services.payments import (
     PaymentIdempotencyConflict,
@@ -59,6 +60,7 @@ async def create_payment(
     payload: CreatePaymentRequest,
     user: CurrentUserDep,
     session: SessionDep,
+    redis: RedisDep,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> dict[str, str]:
     if not idempotency_key:
@@ -67,6 +69,8 @@ async def create_payment(
         request_key = str(uuid.UUID(idempotency_key))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Idempotency-Key must be a UUID") from exc
+
+    await AbuseProtectionService.payment_rate(redis, user.id)
 
     try:
         payment = await PaymentService.create(
