@@ -34,6 +34,30 @@ class PaymentRequest(TimestampMixin, Base):
     last_error: Mapped[str | None] = mapped_column(Text)
 
 
+class PaymentRefundRequest(TimestampMixin, Base):
+    """Idempotent merchant-initiated provider refund request."""
+
+    __tablename__ = "payment_refund_requests"
+    __table_args__ = (
+        UniqueConstraint("payment_id", "request_key", name="uq_payment_refund_request_key"),
+        Index("ix_payment_refund_requests_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    request_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_refund_id: Mapped[str | None] = mapped_column(String(128), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="creating", nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class PaymentReversal(Base):
     """Immutable local accounting record for a provider refund/reversal."""
 
