@@ -10,6 +10,7 @@ dependencies = [
   "cryptography>=45,<47",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
+  "prometheus-client>=0.25,<1",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<1",
   "redis>=6.2,<7",
