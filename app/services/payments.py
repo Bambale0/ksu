@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Payment, WalletTransaction
-from app.db.payment_models import PaymentRequest, PaymentReversal
+from app.db.payment_models import PaymentRefundRequest, PaymentRequest, PaymentReversal
 from app.providers.payments import (
     CreatedPayment,
     CryptoPayClient,
@@ -34,6 +34,10 @@ class UnknownPaymentProviderError(ValueError):
 
 
 class PaymentIdempotencyConflict(ValueError):
+    pass
+
+
+class UnsupportedPaymentOperation(ValueError):
     pass
 
 
@@ -163,8 +167,7 @@ class PaymentService:
         )
         session.add(payment_request)
         try:
-            # Commit intent before crossing the provider boundary. A concurrent retry
-            # with the same key now resolves to this payment and cannot create another invoice.
+            # The local intent becomes durable before the external side effect.
             await session.commit()
         except IntegrityError:
             await session.rollback()
@@ -194,8 +197,6 @@ class PaymentService:
                 description=description,
             )
         except Exception as exc:
-            # The request may have reached the provider even when our process only saw
-            # a transport error. Keep the intent recoverable instead of creating a new invoice.
             payment = await session.get(Payment, payment.id)
             request_row = await session.get(PaymentRequest, payment_request.id)
             if payment is not None:
@@ -354,16 +355,7 @@ class PaymentService:
         if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
             raise PaymentProviderError("Cannot reverse a payment that was not credited")
 
-        already_amount = Decimal(
-            (
-                await session.scalar(
-                    select(func.coalesce(func.sum(PaymentReversal.amount), 0)).where(
-                        PaymentReversal.payment_id == payment.id
-                    )
-                )
-            )
-            or 0
-        )
+        already_amount = await cls.reversed_amount(session, payment.id)
         remaining_amount = Decimal(payment.amount) - already_amount
         if amount > remaining_amount:
             raise PaymentProviderError("Provider reversal exceeds remaining payment amount")
@@ -396,7 +388,7 @@ class PaymentService:
             idempotency_key=idempotency_key,
             amount=amount,
             credits=incremental_credits,
-            reason=reason,
+            reason=reason[:64],
             provider_payload=provider_payload,
         )
         session.add(reversal)
@@ -440,6 +432,146 @@ class PaymentService:
         }
         await session.commit()
         return payment
+
+    @staticmethod
+    async def reversed_amount(session: AsyncSession, payment_id: uuid.UUID) -> Decimal:
+        return Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(PaymentReversal.amount), 0)).where(
+                        PaymentReversal.payment_id == payment_id
+                    )
+                )
+            )
+            or 0
+        )
+
+    @classmethod
+    async def initiate_refund(
+        cls,
+        session: AsyncSession,
+        *,
+        payment_id: uuid.UUID,
+        amount: Decimal,
+        request_key: str,
+        reason: str,
+    ) -> PaymentRefundRequest:
+        if amount <= 0:
+            raise ValueError("Refund amount must be positive")
+        if not request_key or len(request_key) > 64:
+            raise ValueError("Refund idempotency key must contain 1-64 characters")
+
+        existing = await session.scalar(
+            select(PaymentRefundRequest).where(
+                PaymentRefundRequest.payment_id == payment_id,
+                PaymentRefundRequest.request_key == request_key,
+            )
+        )
+        if existing is not None:
+            if Decimal(existing.amount) != amount:
+                raise PaymentIdempotencyConflict(
+                    "Refund idempotency key was already used for another amount"
+                )
+            return existing
+
+        payment = await session.scalar(
+            select(Payment).where(Payment.id == payment_id).with_for_update()
+        )
+        if payment is None:
+            raise LookupError("Payment not found")
+        if payment.provider != "yookassa":
+            raise UnsupportedPaymentOperation(
+                "Merchant-initiated refunds are currently implemented only for YooKassa"
+            )
+        if payment.status not in {"succeeded", "partially_refunded"}:
+            raise PaymentProviderError("Only a credited payment can be refunded")
+        remaining = Decimal(payment.amount) - await cls.reversed_amount(session, payment.id)
+        if amount > remaining:
+            raise PaymentProviderError("Refund amount exceeds remaining payment amount")
+        if not payment.external_id:
+            raise PaymentProviderError("Payment has no provider id")
+
+        request_row = PaymentRefundRequest(
+            payment_id=payment.id,
+            request_key=request_key,
+            provider=payment.provider,
+            amount=amount,
+            currency=payment.currency,
+            status="creating",
+            reason=reason[:255],
+        )
+        session.add(request_row)
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            winner = await session.scalar(
+                select(PaymentRefundRequest).where(
+                    PaymentRefundRequest.payment_id == payment_id,
+                    PaymentRefundRequest.request_key == request_key,
+                )
+            )
+            if winner is None:
+                raise
+            if Decimal(winner.amount) != amount:
+                raise PaymentIdempotencyConflict(
+                    "Refund idempotency key was already used for another amount"
+                )
+            return winner
+
+        client = YooKassaClient(
+            settings.yookassa_shop_id,
+            settings.yookassa_secret_key,
+            settings.yookassa_base_url,
+        )
+        try:
+            provider_refund = await client.create_refund(
+                external_payment_id=str(payment.external_id),
+                amount=amount,
+                currency=payment.currency,
+                idempotency_key=request_key,
+                description=reason,
+            )
+        except Exception as exc:
+            request_row = await session.get(PaymentRefundRequest, request_row.id)
+            if request_row is not None:
+                request_row.status = "unknown"
+                request_row.last_error = str(exc)[:4000]
+            await session.commit()
+            raise
+        finally:
+            await client.aclose()
+
+        request_row = await session.get(PaymentRefundRequest, request_row.id)
+        if request_row is None:
+            raise LookupError("Refund request disappeared")
+        if str(provider_refund.get("payment_id") or "") != str(payment.external_id):
+            raise PaymentProviderError("YooKassa refund payment id mismatch")
+        refund_amount = provider_refund.get("amount") or {}
+        if (
+            Decimal(str(refund_amount.get("value") or "0")) != amount
+            or str(refund_amount.get("currency") or "").upper() != payment.currency.upper()
+        ):
+            raise PaymentProviderError("YooKassa refund amount mismatch")
+
+        request_row.provider_refund_id = str(provider_refund.get("id") or "") or None
+        request_row.status = str(provider_refund.get("status") or "pending")
+        request_row.provider_payload = provider_refund
+        request_row.last_error = None
+        await session.commit()
+
+        if request_row.status == "succeeded":
+            await cls.apply_reversal(
+                session,
+                payment_id=payment.id,
+                amount=amount,
+                provider="yookassa",
+                idempotency_key=f"yookassa:refund:{request_row.provider_refund_id or request_key}",
+                reason="refund",
+                provider_payload=provider_refund,
+                provider_event_id=request_row.provider_refund_id,
+            )
+        return request_row
 
     @classmethod
     async def reconcile(cls, session: AsyncSession, *, payment_id: uuid.UUID) -> Payment:
@@ -528,35 +660,85 @@ class PaymentService:
                 authoritative = await client.get_payment(str(payment.external_id))
             finally:
                 await client.aclose()
-            metadata = authoritative.get("metadata") or {}
-            if str(metadata.get("payment_id") or "") != str(payment.id):
-                raise PaymentProviderError("YooKassa metadata mismatch")
-            amount = authoritative.get("amount") or {}
-            cls.assert_amount(
-                payment,
-                amount=Decimal(str(amount.get("value") or "0")),
-                currency=str(amount.get("currency") or ""),
+            return await cls.apply_yookassa_state(
+                session,
+                payment.id,
+                authoritative,
             )
-            state = str(authoritative.get("status") or "")
-            if state == "succeeded":
-                return await cls.complete(
-                    session,
-                    payment_id=payment.id,
-                    provider_payload=authoritative,
-                )
-            if state == "canceled" and payment.status not in {
-                "succeeded",
-                "partially_refunded",
-                "refunded",
-            }:
-                payment.status = "canceled"
-            elif payment.status not in cls.TERMINAL_STATUSES:
-                payment.status = "pending"
-            payment.payload = {**payment.payload, "last_provider_state": authoritative}
-            await session.commit()
-            return payment
 
         raise UnknownPaymentProviderError(payment.provider)
+
+    @classmethod
+    async def apply_yookassa_state(
+        cls,
+        session: AsyncSession,
+        payment_id: uuid.UUID,
+        authoritative: dict[str, Any],
+        *,
+        refund_event_id: str | None = None,
+    ) -> Payment:
+        payment = await session.get(Payment, payment_id)
+        if payment is None:
+            raise LookupError("Payment not found")
+        if str(authoritative.get("id") or "") != str(payment.external_id):
+            raise PaymentProviderError("YooKassa payment mismatch")
+        metadata = authoritative.get("metadata") or {}
+        if str(metadata.get("payment_id") or "") != str(payment.id):
+            raise PaymentProviderError("YooKassa metadata mismatch")
+        amount = authoritative.get("amount") or {}
+        cls.assert_amount(
+            payment,
+            amount=Decimal(str(amount.get("value") or "0")),
+            currency=str(amount.get("currency") or ""),
+        )
+
+        provider_status = str(authoritative.get("status") or "")
+        if provider_status == "succeeded" and payment.status not in {
+            "succeeded",
+            "partially_refunded",
+            "refunded",
+        }:
+            payment = await cls.complete(
+                session,
+                payment_id=payment.id,
+                provider_payload=authoritative,
+            )
+        elif provider_status == "canceled" and payment.status not in {
+            "succeeded",
+            "partially_refunded",
+            "refunded",
+        }:
+            payment.status = "canceled"
+            payment.payload = {**payment.payload, "last_provider_state": authoritative}
+            await session.commit()
+        elif payment.status not in cls.TERMINAL_STATUSES and payment.status != "partially_refunded":
+            payment.status = "pending"
+            payment.payload = {**payment.payload, "last_provider_state": authoritative}
+            await session.commit()
+
+        refunded = authoritative.get("refunded_amount") or {}
+        cumulative_refunded = Decimal(str(refunded.get("value") or "0"))
+        refunded_currency = str(refunded.get("currency") or payment.currency)
+        if refunded_currency.upper() != payment.currency.upper():
+            raise PaymentProviderError("YooKassa refunded currency mismatch")
+        already_reversed = await cls.reversed_amount(session, payment.id)
+        delta = cumulative_refunded - already_reversed
+        if delta > 0:
+            payment = await cls.apply_reversal(
+                session,
+                payment_id=payment.id,
+                amount=delta,
+                provider="yookassa",
+                idempotency_key=(
+                    f"yookassa:refund:{refund_event_id}"
+                    if refund_event_id
+                    else f"yookassa:cumulative:{payment.external_id}:{cumulative_refunded}"
+                ),
+                reason="refund",
+                provider_payload=authoritative,
+                provider_event_id=refund_event_id,
+            )
+        return payment
 
     @classmethod
     async def apply_tbank_state(
@@ -592,17 +774,8 @@ class PaymentService:
             "succeeded",
             "partially_refunded",
         }:
-            existing_total = Decimal(
-                (
-                    await session.scalar(
-                        select(func.coalesce(func.sum(PaymentReversal.amount), 0)).where(
-                            PaymentReversal.payment_id == payment.id
-                        )
-                    )
-                )
-                or 0
-            )
-            remaining = max(Decimal("0"), Decimal(payment.amount) - existing_total)
+            already = await cls.reversed_amount(session, payment.id)
+            remaining = max(Decimal("0"), Decimal(payment.amount) - already)
             if remaining > 0:
                 return await cls.apply_reversal(
                     session,
@@ -615,9 +788,8 @@ class PaymentService:
                 )
             return payment
         if state in {"PARTIAL_REFUNDED", "PARTIAL_REVERSED"}:
-            # The current classic notification/state contract does not give this
-            # integration a provider-authoritative cumulative refunded amount we can
-            # safely turn into credits. Preserve the state for review instead of guessing.
+            # Do not guess a partial amount from fields whose semantics differ by
+            # T-Bank operation/notification. Preserve it for explicit reconciliation.
             payment.status = "refund_review"
         elif state in {"REJECTED", "CANCELED"} and payment.status not in {
             "succeeded",
