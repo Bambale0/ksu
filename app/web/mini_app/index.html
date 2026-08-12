@@ -4,77 +4,232 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>Ксю · Генерация</title>
+  <meta name="theme-color" content="#0f1115">
+  <title>Ксю · AI Studio</title>
   <link rel="stylesheet" href="/mini-app/styles.css">
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <script defer src="/mini-app/app.js"></script>
+  <script defer src="/mini-app/shell.js"></script>
+  <script defer src="/mini-app/shell-integration.js"></script>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">КСЮ · AI STUDIO</div>
-        <h1>Создать контент</h1>
-      </div>
-      <div class="balance" id="balance" aria-live="polite">
+  <div class="offline-banner" id="offlineBanner" hidden role="status">Нет сети · показываю доступный интерфейс</div>
+
+  <div class="app-shell" id="appShell">
+    <header class="product-header" id="productHeader">
+      <button class="brand-button" type="button" id="brandHomeButton" aria-label="На главный экран создания">
+        <span class="brand-mark" aria-hidden="true">К</span>
+        <span class="brand-copy">
+          <strong>Ксю</strong>
+          <small>AI Studio</small>
+        </span>
+      </button>
+      <button class="balance" id="balance" type="button" data-shell-nav="wallet" aria-label="Открыть баланс">
         <span class="balance-label">Баланс</span>
         <strong id="balanceValue">—</strong>
-      </div>
+      </button>
     </header>
 
-    <main>
-      <section class="card model-card" aria-labelledby="modelHeading">
-        <div class="section-heading">
-          <div>
-            <span class="step">1</span>
-            <h2 id="modelHeading">Модель</h2>
-          </div>
-          <span class="muted" id="modelCount"></span>
+    <main class="app-main" id="appMain">
+      <section class="app-view is-active" id="createView" data-view="create" aria-labelledby="createViewTitle">
+        <div class="create-home" id="createHome">
+          <section class="hero-card">
+            <div class="hero-copy">
+              <span class="eyebrow">КСЮ · AI STUDIO</span>
+              <h1 id="createViewTitle">Что создаём?</h1>
+              <p>Выберите направление — настройки и точная цена появятся перед запуском.</p>
+            </div>
+            <div class="hero-orb" aria-hidden="true"><span>✦</span></div>
+          </section>
+
+          <section class="home-section" aria-labelledby="familiesHeading">
+            <div class="home-section-head">
+              <div>
+                <span class="section-kicker">Модели</span>
+                <h2 id="familiesHeading">Направления</h2>
+              </div>
+              <span class="muted" id="shellModelCount">Загрузка…</span>
+            </div>
+            <div class="family-grid" id="shellFamilyGrid" aria-live="polite">
+              <div class="shell-skeleton tall"></div>
+              <div class="shell-skeleton tall"></div>
+            </div>
+          </section>
+
+          <section class="home-section" id="activeGenerationSection" hidden aria-labelledby="activeGenerationHeading">
+            <div class="home-section-head">
+              <div>
+                <span class="section-kicker">Сейчас</span>
+                <h2 id="activeGenerationHeading">Активная генерация</h2>
+              </div>
+            </div>
+            <div id="activeGenerationCard"></div>
+          </section>
+
+          <section class="home-section" aria-labelledby="recentHeading">
+            <div class="home-section-head">
+              <div>
+                <span class="section-kicker">Недавнее</span>
+                <h2 id="recentHeading">Последние работы</h2>
+              </div>
+              <button class="text-button" type="button" data-shell-nav="history">Вся история</button>
+            </div>
+            <div class="recent-grid" id="recentGenerations" aria-live="polite">
+              <div class="shell-skeleton"></div>
+              <div class="shell-skeleton"></div>
+            </div>
+          </section>
         </div>
-        <div class="family-tabs" id="familyTabs" role="tablist" aria-label="Семейства моделей"></div>
-        <label class="field-label" for="modelSelect">Выберите модель</label>
-        <select class="input" id="modelSelect"></select>
-        <div class="model-meta" id="modelMeta"></div>
+
+        <div class="builder-view" id="builderView" hidden>
+          <header class="view-heading">
+            <div>
+              <span class="section-kicker">Создание</span>
+              <h1>Настройте генерацию</h1>
+            </div>
+            <button type="button" class="quiet-button" id="builderHomeButton">Обзор</button>
+          </header>
+
+          <div class="builder-layout">
+            <div class="builder-main-column">
+              <section class="card model-card" aria-labelledby="modelHeading">
+                <div class="section-heading">
+                  <div>
+                    <span class="step">1</span>
+                    <h2 id="modelHeading">Модель</h2>
+                  </div>
+                  <span class="muted" id="modelCount"></span>
+                </div>
+                <div class="family-tabs" id="familyTabs" role="tablist" aria-label="Семейства моделей"></div>
+                <label class="field-label" for="modelSelect">Выберите модель</label>
+                <select class="input" id="modelSelect"></select>
+                <div class="model-meta" id="modelMeta"></div>
+              </section>
+
+              <section class="card settings-card" aria-labelledby="settingsHeading">
+                <div class="section-heading">
+                  <div>
+                    <span class="step">2</span>
+                    <h2 id="settingsHeading">Настройки</h2>
+                  </div>
+                  <button type="button" class="ghost-button" id="resetButton">Сбросить</button>
+                </div>
+                <div id="scenarioBlock" class="scenario-block" hidden></div>
+                <div id="dynamicForm" class="dynamic-form"></div>
+              </section>
+
+              <section class="result-card" id="resultCard" hidden aria-live="polite"></section>
+            </div>
+
+            <aside class="builder-side-column">
+              <section class="card summary-card" aria-labelledby="summaryHeading">
+                <div class="section-heading">
+                  <div>
+                    <span class="step">3</span>
+                    <h2 id="summaryHeading">Вы выбрали</h2>
+                  </div>
+                  <span class="quote-status" id="quoteStatus"></span>
+                </div>
+
+                <div class="summary-model" id="summaryModel"></div>
+                <div class="summary-chips" id="summaryChips"></div>
+
+                <div class="price-panel">
+                  <div>
+                    <span class="muted">Стоимость</span>
+                    <strong class="price" id="priceCredits">—</strong>
+                  </div>
+                  <div class="price-rub" id="priceRub"></div>
+                </div>
+
+                <div class="validation-message" id="validationMessage" role="status"></div>
+                <button type="button" class="primary-button" id="createButton" disabled>Создать</button>
+              </section>
+            </aside>
+          </div>
+        </div>
+
+        <div class="shell-detail" id="generationDetailView" hidden aria-live="polite"></div>
       </section>
 
-      <section class="card settings-card" aria-labelledby="settingsHeading">
-        <div class="section-heading">
+      <section class="app-view" id="historyView" data-view="history" hidden aria-labelledby="historyViewTitle">
+        <header class="view-heading compact">
           <div>
-            <span class="step">2</span>
-            <h2 id="settingsHeading">Настройки</h2>
+            <span class="section-kicker">Библиотека</span>
+            <h1 id="historyViewTitle">История</h1>
           </div>
-          <button type="button" class="ghost-button" id="resetButton">Сбросить</button>
-        </div>
-        <div id="scenarioBlock" class="scenario-block" hidden></div>
-        <div id="dynamicForm" class="dynamic-form"></div>
+        </header>
+        <div id="historyMount" class="history-mount"></div>
       </section>
 
-      <section class="card summary-card" aria-labelledby="summaryHeading">
-        <div class="section-heading">
+      <section class="app-view" id="walletView" data-view="wallet" hidden aria-labelledby="walletViewTitle">
+        <header class="view-heading compact">
           <div>
-            <span class="step">3</span>
-            <h2 id="summaryHeading">Вы выбрали</h2>
+            <span class="section-kicker">Финансы</span>
+            <h1 id="walletViewTitle">Баланс</h1>
           </div>
-          <span class="quote-status" id="quoteStatus"></span>
+        </header>
+        <div class="wallet-hero shell-panel" id="walletHero">
+          <span class="muted">Доступно</span>
+          <strong id="walletBalance">—</strong>
+          <small>Внутренние кредиты Ксю</small>
         </div>
-
-        <div class="summary-model" id="summaryModel"></div>
-        <div class="summary-chips" id="summaryChips"></div>
-
-        <div class="price-panel">
-          <div>
-            <span class="muted">Стоимость</span>
-            <strong class="price" id="priceCredits">—</strong>
+        <section class="home-section" aria-labelledby="transactionsHeading">
+          <div class="home-section-head">
+            <div>
+              <span class="section-kicker">Операции</span>
+              <h2 id="transactionsHeading">Последние движения</h2>
+            </div>
           </div>
-          <div class="price-rub" id="priceRub"></div>
-        </div>
-
-        <div class="validation-message" id="validationMessage" role="status"></div>
-        <button type="button" class="primary-button" id="createButton" disabled>Создать</button>
+          <div class="transaction-list shell-panel" id="transactionList" aria-live="polite">
+            <div class="shell-skeleton"></div>
+            <div class="shell-skeleton"></div>
+          </div>
+        </section>
       </section>
 
-      <section class="result-card" id="resultCard" hidden aria-live="polite"></section>
+      <section class="app-view" id="profileView" data-view="profile" hidden aria-labelledby="profileViewTitle">
+        <header class="view-heading compact">
+          <div>
+            <span class="section-kicker">Аккаунт</span>
+            <h1 id="profileViewTitle">Профиль</h1>
+          </div>
+        </header>
+        <div class="profile-card shell-panel" id="profileCard" aria-live="polite">
+          <div class="shell-skeleton tall"></div>
+        </div>
+        <section class="home-section" aria-labelledby="partnerPreviewHeading">
+          <div class="home-section-head">
+            <div>
+              <span class="section-kicker">Партнёрам</span>
+              <h2 id="partnerPreviewHeading">Реферальная программа</h2>
+            </div>
+          </div>
+          <div class="partner-preview shell-panel" id="partnerPreview">
+            <div class="shell-skeleton"></div>
+          </div>
+        </section>
+      </section>
     </main>
+
+    <nav class="bottom-nav" id="bottomNav" aria-label="Основная навигация">
+      <button class="bottom-nav-item is-active" type="button" data-shell-nav="create" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg>
+        <span>Создать</span>
+      </button>
+      <button class="bottom-nav-item" type="button" data-shell-nav="history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+        <span>История</span>
+      </button>
+      <button class="bottom-nav-item" type="button" data-shell-nav="wallet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H19v14H6.5A2.5 2.5 0 0 1 4 16.5v-9ZM16 11h3v4h-3a2 2 0 1 1 0-4Z"/></svg>
+        <span>Баланс</span>
+      </button>
+      <button class="bottom-nav-item" type="button" data-shell-nav="profile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 8a7 7 0 0 0-14 0"/></svg>
+        <span>Профиль</span>
+      </button>
+    </nav>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

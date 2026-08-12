@@ -1,6 +1,6 @@
 # KSU bot
 
-Production-oriented Telegram AI content platform: Telegram bot + schema-driven Mini App + FastAPI backend + durable Kie generation pipeline + product-owned media storage + resilient payments + privileged admin API.
+Production-oriented Telegram AI content platform: Telegram bot + Telegram-first Mini App product shell + FastAPI backend + durable Kie generation pipeline + product-owned media storage + resilient payments + privileged admin API.
 
 **Documentation status:** synchronized with this branch on 2026-08-12.
 
@@ -9,12 +9,16 @@ Production-oriented Telegram AI content platform: Telegram bot + schema-driven M
 ### User product
 
 - Telegram bot commands `/start`, `/balance`, `/profile`, `/support`.
-- Telegram Mini App at `/mini-app/`.
-- Telegram WebApp `initData` validation for authenticated REST actions.
-- Dynamic model-specific generation screens driven by backend `ui_schema`.
+- Telegram Mini App at `/mini-app/` with persistent **Create / History / Wallet / Profile** navigation.
+- Telegram WebApp `initData` validation for authenticated REST actions; `initDataUnsafe` is never an authentication source.
+- Telegram-native nested navigation with `BackButton`, stable viewport sizing, live theme updates and safe/content-safe-area handling.
+- Create home discovers model families from the runtime backend catalog and surfaces recent/active generations.
+- Dynamic model-specific generation builder driven by backend `ui_schema`.
 - Per-model draft state, scenario validation, selected-settings summary and live server quote.
 - Authenticated media upload proxy at `/api/v1/uploads/kie`; provider keys stay server-side.
 - Live generation result polling, result gallery and owned cursor-paginated history.
+- Existing History/recreate flow is mounted into the product shell rather than duplicated in a second client implementation.
+- Wallet tab shows authoritative balance/ledger data; Profile shows account and referral summary. Full payment checkout and partner-cabinet workflows are follow-up epics.
 - Product-owned generation media: Kie result URLs are temporary ingest sources, not permanent storage.
 - Safe recreation/variant draft from historical generations with a fresh server quote before charging again.
 - Reversible soft-hide history state without deleting financially significant generation/accounting rows.
@@ -95,7 +99,7 @@ Operational contract and alert semantics: `docs/OBSERVABILITY.md`.
 - Private S3-compatible object storage via Boto3 managed transfers
 - Alembic
 - Docker Compose
-- Vanilla HTML/CSS/JavaScript Telegram Mini App
+- Vanilla HTML/CSS/JavaScript Telegram Mini App product shell
 - Prometheus client + optional OpenTelemetry OTLP tracing
 - GitHub Actions CI
 
@@ -140,7 +144,8 @@ Compose services:
 
 - `docs/API_REFERENCE.md` — route and authorization boundaries.
 - `docs/OPERATIONS_RUNBOOK.md` — production deployment, workers, webhooks, limits, incidents, backups and rollback.
-- `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract.
+- `docs/GENERATION_MINI_APP.md` — schema-driven model-builder contract.
+- `docs/MINI_APP_SHELL.md` — product shell/navigation, Telegram BackButton/safe-area/theme behavior and feature boundaries.
 - `docs/RESULTS_HISTORY.md` — generation result polling, history, reuse and soft-hide semantics.
 - `docs/MEDIA_STORAGE.md` — private S3-compatible storage, ingest recovery, CORS, multipart lifecycle and media API.
 - `docs/OBSERVABILITY.md` — metrics, worker heartbeats, traces, logs and alerts.
@@ -333,6 +338,8 @@ pip install -e '.[dev]'
 ruff check .
 python -m compileall -q app tests
 node --check app/web/mini_app/app.js
+node --check app/web/mini_app/shell.js
+node --check app/web/mini_app/shell-integration.js
 alembic upgrade head
 pytest -q
 ```
@@ -341,11 +348,14 @@ CI uses real PostgreSQL and Redis containers. S3 behavior is isolated behind the
 
 ## Known production limitations / next epics
 
-1. **Full Mini App product shell/navigation** is the next P1 product epic after durable media storage.
-2. **No dedicated visual admin client yet.**
-3. **Payment chargeback files/settlement registries are not ingested automatically.** Webhook/API-visible refunds are handled; offline acquiring-register reconciliation remains an accounting extension.
-4. Compose publishes app port 8000 for development; production must place it behind HTTPS and keep PostgreSQL/Redis private.
-5. Proxy-level hard request-body limits remain part of production edge configuration; application upload limits do not replace a reverse-proxy body-size cap.
+1. **Wallet/Payments checkout UI** is the next P1 user-product epic: package/provider selection, idempotent checkout, provider redirect and live payment-status refresh inside Wallet.
+2. **Partner cabinet/withdrawals** should extend Profile using the existing referral/withdrawal backend rather than add a second navigation surface.
+3. **Support/notifications/profile management** should extend Profile/More.
+4. **Likes/subscriptions/content discovery** remain product-surface follow-ups.
+5. **No dedicated visual admin client yet.**
+6. **Payment chargeback files/settlement registries are not ingested automatically.** Webhook/API-visible refunds are handled; offline acquiring-register reconciliation remains an accounting extension.
+7. Compose publishes app port 8000 for development; production must place it behind HTTPS and keep PostgreSQL/Redis private.
+8. Proxy-level hard request-body limits remain part of production edge configuration; application upload limits do not replace a reverse-proxy body-size cap.
 
 ## External references checked
 
@@ -357,7 +367,7 @@ CI uses real PostgreSQL and Redis containers. S3 behavior is isolated behind the
 - Crypto Pay API.
 - T-Bank Internet Acquiring payment/refund contracts.
 - YooKassa payment/refund/idempotency/webhook documentation.
-- Telegram Mini Apps documentation, including native `downloadFile` response requirements.
+- Telegram Mini Apps documentation, including `BackButton`, stable viewport, theme changes, safe/content-safe areas and download behavior.
 - Prometheus Python client documentation.
 - OpenTelemetry Python SDK, OTLP HTTP exporter and FastAPI/HTTPX instrumentation documentation.
 - OWASP ASVS 5.0.0 / Authorization guidance.
