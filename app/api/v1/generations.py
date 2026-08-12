@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -30,6 +31,10 @@ class CreateGenerationRequest(BaseModel):
     input_url: str | None = Field(default=None, max_length=4000)
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+def _amount(value: Decimal | str | int | float) -> str:
+    return format(Decimal(str(value)), ".2f")
 
 
 def _model_view(generation: Generation) -> dict[str, str | None]:
@@ -77,7 +82,7 @@ def _public_settings(generation: Generation) -> dict[str, Any]:
 
 
 def _generation_view(generation: Generation, *, hidden: bool = False) -> dict[str, object]:
-    cost = generation.cost_rox
+    cost = Decimal(generation.cost_rox)
     params = generation.parameters or {}
     return {
         "id": str(generation.id),
@@ -85,8 +90,8 @@ def _generation_view(generation: Generation, *, hidden: bool = False) -> dict[st
         "prompt": generation.prompt,
         "model": _model_view(generation),
         "settings": _public_settings(generation),
-        "cost_credits": str(cost),
-        "cost_rub": str(InternalCreditService.rubles_for(cost)),
+        "cost_credits": _amount(cost),
+        "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
         "billing_seconds": params.get("_billing_seconds"),
         "result_url": generation.result_url,
         "result_urls": _result_urls(generation),
@@ -115,13 +120,13 @@ async def generation_models() -> dict[str, object]:
         enriched = dict(item)
         unit_credits = enriched.get("price_rox")
         if unit_credits is not None:
-            enriched["price_credits"] = str(unit_credits)
-            enriched["price_rub"] = str(InternalCreditService.rubles_for(str(unit_credits)))
+            enriched["price_credits"] = _amount(unit_credits)
+            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(str(unit_credits)))
         enriched["ui_schema"] = build_public_model_ui_schema(enriched)
         models.append(enriched)
     return {
         "schema_version": 1,
-        "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
+        "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
         "models": models,
     }
 
@@ -145,14 +150,14 @@ async def quote_generation(
     return {
         "model_id": spec.id,
         "price_mode": spec.price_mode,
-        "unit_price_credits": str(unit_price),
-        "unit_price_rox": str(unit_price),
-        "unit_price_rub": str(InternalCreditService.rubles_for(unit_price)),
+        "unit_price_credits": _amount(unit_price),
+        "unit_price_rox": _amount(unit_price),
+        "unit_price_rub": _amount(InternalCreditService.rubles_for(unit_price)),
         "billing_seconds": seconds,
-        "cost_credits": str(cost),
-        "cost_rox": str(cost),
-        "cost_rub": str(InternalCreditService.rubles_for(cost)),
-        "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
+        "cost_credits": _amount(cost),
+        "cost_rox": _amount(cost),
+        "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+        "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
     }
 
 
@@ -315,8 +320,8 @@ async def create_generation(
     return {
         "id": str(generation.id),
         "status": generation.status,
-        "cost_credits": str(generation.cost_rox),
-        "cost_rox": str(generation.cost_rox),
-        "cost_rub": str(InternalCreditService.rubles_for(generation.cost_rox)),
+        "cost_credits": _amount(generation.cost_rox),
+        "cost_rox": _amount(generation.cost_rox),
+        "cost_rub": _amount(InternalCreditService.rubles_for(generation.cost_rox)),
         "result_url": generation.result_url,
     }
