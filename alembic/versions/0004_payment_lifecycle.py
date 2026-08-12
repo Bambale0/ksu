@@ -48,6 +48,40 @@ def upgrade() -> None:
     )
 
     op.create_table(
+        "payment_refund_requests",
+        sa.Column("id", UUID, primary_key=True),
+        sa.Column(
+            "payment_id",
+            UUID,
+            sa.ForeignKey("payments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("request_key", sa.String(64), nullable=False),
+        sa.Column("provider", sa.String(64), nullable=False),
+        sa.Column("provider_refund_id", sa.String(128)),
+        sa.Column("amount", sa.Numeric(18, 2), nullable=False),
+        sa.Column("currency", sa.String(8), nullable=False),
+        sa.Column("status", sa.String(24), nullable=False, server_default="creating"),
+        sa.Column("reason", sa.String(255), nullable=False),
+        sa.Column("provider_payload", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
+        sa.Column("last_error", sa.Text()),
+        sa.Column("created_at", TS, nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", TS, nullable=False, server_default=sa.func.now()),
+        sa.UniqueConstraint("payment_id", "request_key", name="uq_payment_refund_request_key"),
+    )
+    op.create_index("ix_payment_refund_requests_payment_id", "payment_refund_requests", ["payment_id"])
+    op.create_index(
+        "ix_payment_refund_requests_provider_refund_id",
+        "payment_refund_requests",
+        ["provider_refund_id"],
+    )
+    op.create_index(
+        "ix_payment_refund_requests_status_created",
+        "payment_refund_requests",
+        ["status", "created_at"],
+    )
+
+    op.create_table(
         "payment_reversals",
         sa.Column("id", UUID, primary_key=True),
         sa.Column(
@@ -107,6 +141,13 @@ def downgrade() -> None:
     op.drop_index("ix_payment_reversals_payment_created", table_name="payment_reversals")
     op.drop_index("ix_payment_reversals_payment_id", table_name="payment_reversals")
     op.drop_table("payment_reversals")
+    op.drop_index("ix_payment_refund_requests_status_created", table_name="payment_refund_requests")
+    op.drop_index(
+        "ix_payment_refund_requests_provider_refund_id",
+        table_name="payment_refund_requests",
+    )
+    op.drop_index("ix_payment_refund_requests_payment_id", table_name="payment_refund_requests")
+    op.drop_table("payment_refund_requests")
     op.drop_index("ix_payment_requests_status_created", table_name="payment_requests")
     op.drop_index("ix_payment_requests_user_id", table_name="payment_requests")
     op.drop_table("payment_requests")
