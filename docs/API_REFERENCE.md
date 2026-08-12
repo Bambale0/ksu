@@ -64,10 +64,11 @@ Clients should respect `Retry-After`; do not immediately retry in a tight loop.
 ```text
 GET /health/live
 GET /health/ready
+GET /health/operational
 GET /mini-app/
 ```
 
-`/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
+`/health/operational` verifies generation, media and payment worker heartbeats. `/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
 
 ## User/profile
 
@@ -81,10 +82,15 @@ GET /api/v1/me/transactions
 ## Generations
 
 ```text
-GET  /api/v1/generations/models       public
-POST /api/v1/generations/quote        public
-POST /api/v1/generations              Telegram user
-POST /api/v1/uploads/kie              Telegram user
+GET    /api/v1/generations/models                   public
+POST   /api/v1/generations/quote                    public
+POST   /api/v1/generations                          Telegram user
+GET    /api/v1/generations                          Telegram user
+GET    /api/v1/generations/{generation_id}          Telegram user
+GET    /api/v1/generations/{generation_id}/recreate Telegram user
+DELETE /api/v1/generations/{generation_id}/history Telegram user
+POST   /api/v1/generations/{generation_id}/history/restore Telegram user
+POST   /api/v1/uploads/kie                          Telegram user
 ```
 
 Generation creation atomically commits generation + wallet debit + PostgreSQL transactional outbox. Redis wake-up is not durable generation state.
@@ -98,6 +104,47 @@ Before any debit, `POST /api/v1/generations` enforces:
 The active/daily admission decision locks the product user row until the generation/wallet/outbox transaction commits, preventing concurrent requests from racing through the active-task cap.
 
 `generation-worker` additionally applies a global Kie submission rate and Kie availability circuit breaker. When throttled/open, the outbox item is released with delay instead of being marked failed/refunded.
+
+### Generation result storage
+
+Kie result URLs are temporary provider sources. On successful Kie completion, the same PostgreSQL transaction that marks the generation succeeded also creates one `MediaAsset` + durable `MediaIngestJob` per provider result URL.
+
+`media-worker` copies these results into the configured private S3-compatible bucket. Generation detail/history then prefer short-lived product-owned presigned URLs. Until an owned asset is ready, the provider URL remains a compatibility fallback.
+
+Generation detail/history adds:
+
+```json
+{
+  "result_storage": "owned | provider",
+  "media": [
+    {
+      "id": "uuid",
+      "url": "short-lived-presigned-view-url",
+      "download_url": "/api/v1/media/<uuid>/download",
+      "content_type": "image/png",
+      "size_bytes": 12345,
+      "ordinal": 0
+    }
+  ]
+}
+```
+
+Presigned URLs are temporary capabilities and must not be stored as permanent media identifiers.
+
+## Media assets
+
+```text
+GET /api/v1/media/{asset_id}
+GET /api/v1/media/{asset_id}/download
+```
+
+**Auth:** Telegram user owning the asset.
+
+`GET /api/v1/media/{asset_id}` returns non-secret metadata and readiness state. Foreign/missing assets return 404 to avoid cross-user enumeration.
+
+`GET /api/v1/media/{asset_id}/download` requires a ready owned asset and returns a redirect to a short-lived presigned S3 `GetObject` URL with attachment `Content-Disposition`. A pending/failed asset returns 409; missing storage configuration returns 503.
+
+The underlying bucket stays private; this route does not proxy the object bytes through FastAPI.
 
 ## Uploads
 
