@@ -14,6 +14,9 @@ Production-oriented Telegram AI content platform: Telegram bot + schema-driven M
 - Dynamic model-specific generation screens driven by backend `ui_schema`.
 - Per-model draft state, scenario validation, selected-settings summary and live server quote.
 - Authenticated media upload proxy at `/api/v1/uploads/kie`; provider keys stay server-side.
+- Live generation result polling, result gallery and owned cursor-paginated history.
+- Safe recreation/variant draft from historical generations with a fresh server quote before charging again.
+- Reversible soft-hide history state without deleting financially significant generation/accounting rows.
 - Internal-credit wallet/ledger, promo codes, referrals, support data and notifications.
 
 ### Generation
@@ -39,7 +42,7 @@ Production-oriented Telegram AI content platform: Telegram bot + schema-driven M
 
 ### Anti-abuse / resource consumption
 
-The expensive product paths now have centralized OWASP API4-style resource controls:
+The expensive product paths have centralized OWASP API4-style resource controls:
 
 - distributed Redis fixed-window counters implemented atomically with Lua;
 - generation requests per user/minute;
@@ -56,6 +59,18 @@ The expensive product paths now have centralized OWASP API4-style resource contr
 Generation admission happens **before wallet debit**. Active-generation and daily-spend decisions are serialized with a PostgreSQL user-row lock, so concurrent requests for one user cannot race past the configured active-task cap.
 
 When the Kie circuit/rate guard is closed to new provider calls, already-paid generation work remains in the durable PostgreSQL outbox and is delayed until `Retry-After`; protection throttling itself does not mark the task failed or issue a false refund.
+
+### Observability
+
+- Structured JSON logging with `request_id`, `trace_id` and `span_id` correlation.
+- Bounded `X-Request-ID` propagation with UUID fallback.
+- Prometheus endpoint at `/metrics`, optionally protected by `METRICS_BEARER_TOKEN`.
+- Worker heartbeat health at `/health/operational` for `generation-worker` and `payment-worker`.
+- Generation/outbox/payment snapshot gauges, worker health, provider circuit state and bounded Redis cross-process counters.
+- Optional OpenTelemetry FastAPI/HTTPX tracing through OTLP HTTP.
+- Production alert rules in `ops/prometheus-alerts.yml`.
+
+Operational contract and alert semantics: `docs/OBSERVABILITY.md`.
 
 ### Admin/security
 
@@ -75,6 +90,7 @@ When the Kie circuit/rate guard is closed to new provider calls, already-paid ge
 - Alembic
 - Docker Compose
 - Vanilla HTML/CSS/JavaScript Telegram Mini App
+- Prometheus client + optional OpenTelemetry OTLP tracing
 - GitHub Actions CI
 
 ## Runtime topology
@@ -90,8 +106,9 @@ Telegram / browser
     |                                      |-- business state
     |                                      |-- generation_outbox
     |                                      |-- payment requests/reversals
+    |                                      |-- history presentation state
     |
-    +--> Redis --------------------------> distributed limits / FSM / wake
+    +--> Redis --------------------------> distributed limits / FSM / wake / worker telemetry
     |          |                               |
     |          +--> generation-worker --------+--> Kie.ai
     |
@@ -99,6 +116,7 @@ Telegram / browser
 
 Kie callbacks ---------> /webhooks/kie
 Payment providers -----> /webhooks/payments/*
+Monitoring ------------> /metrics
 ```
 
 Compose services:
@@ -114,6 +132,8 @@ Compose services:
 - `docs/API_REFERENCE.md` — route and authorization boundaries.
 - `docs/OPERATIONS_RUNBOOK.md` — production deployment, workers, webhooks, limits, incidents, backups and rollback.
 - `docs/GENERATION_MINI_APP.md` — dynamic model-screen contract.
+- `docs/RESULTS_HISTORY.md` — generation result polling, history, reuse and soft-hide semantics.
+- `docs/OBSERVABILITY.md` — metrics, worker heartbeats, traces, logs and alerts.
 - `docs/ADMIN_SECURITY.md` — admin bootstrap, MFA, permissions, sessions and audit.
 
 ## Local development
@@ -126,16 +146,23 @@ docker compose up --build
 Useful endpoints:
 
 ```text
-GET  /health/live
-GET  /health/ready
-GET  /mini-app/
-GET  /api/v1/generations/models
-POST /api/v1/generations/quote
-POST /api/v1/generations
-POST /api/v1/uploads/kie
-GET  /api/v1/payments/packages
-POST /api/v1/payments
-GET  /api/v1/payments/{payment_id}
+GET    /health/live
+GET    /health/ready
+GET    /health/operational
+GET    /metrics
+GET    /mini-app/
+GET    /api/v1/generations/models
+POST   /api/v1/generations/quote
+POST   /api/v1/generations
+GET    /api/v1/generations
+GET    /api/v1/generations/{generation_id}
+GET    /api/v1/generations/{generation_id}/recreate
+DELETE /api/v1/generations/{generation_id}/history
+POST   /api/v1/generations/{generation_id}/history/restore
+POST   /api/v1/uploads/kie
+GET    /api/v1/payments/packages
+POST   /api/v1/payments
+GET    /api/v1/payments/{payment_id}
 ```
 
 Swagger/ReDoc are disabled in production.
@@ -198,8 +225,6 @@ PAYMENT_RETURN_URL=https://app.example.com/payment-result
 
 ### Resource-consumption controls
 
-All operational limits are configurable without code changes:
-
 ```dotenv
 ABUSE_PROTECTION_ENABLED=true
 ABUSE_FAIL_CLOSED=true
@@ -215,11 +240,25 @@ KIE_CIRCUIT_FAILURE_WINDOW_SECONDS=60
 KIE_CIRCUIT_OPEN_SECONDS=60
 ```
 
-`GENERATION_DAILY_SPEND_LIMIT_CREDITS=0` disables the separate daily-spend quota; wallet balance still applies. Other zero/disabled values are documented in `.env.example`.
+`GENERATION_DAILY_SPEND_LIMIT_CREDITS=0` disables the separate daily-spend quota; wallet balance still applies.
 
-When a user quota is exceeded the API returns `429` with a `Retry-After` header and a JSON `retry_after` value. If `ABUSE_FAIL_CLOSED=true` and Redis cannot verify an expensive user mutation, the API returns `503` rather than allowing unmetered provider spend.
+### Observability
 
-A Redis outage after a generation has already been atomically committed does not lose the generation. However, while fail-closed provider protection cannot verify Kie submission limits, the generation worker may deliberately delay new external submissions until Redis recovers.
+```dotenv
+LOG_LEVEL=INFO
+JSON_LOGS=true
+METRICS_ENABLED=true
+METRICS_BEARER_TOKEN=<random-monitoring-secret>
+WORKER_HEARTBEAT_TTL_SECONDS=180
+WORKER_STALE_AFTER_SECONDS=120
+
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=ksu
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+OTEL_TRACE_SAMPLE_RATIO=0.10
+```
+
+Keep `/metrics` on a monitoring/private network where possible even when bearer authentication is configured. `/health/operational` is an alerting endpoint for worker availability; orchestration readiness should remain bound to `/health/ready`.
 
 ## Internal credit accounting
 
@@ -249,9 +288,10 @@ Current migration chain:
 0002_admin_security
 0003_generation_outbox
 0004_payment_lifecycle
+0005_generation_history_state
 ```
 
-Anti-abuse controls use existing PostgreSQL/Redis infrastructure and add no schema migration.
+Anti-abuse and observability controls use existing PostgreSQL/Redis infrastructure and add no separate schema migration.
 
 ## CI
 
@@ -264,16 +304,15 @@ alembic upgrade head
 pytest -q
 ```
 
-CI uses real PostgreSQL and Redis containers; anti-abuse tests exercise real Redis Lua/TTL behavior.
+CI uses real PostgreSQL and Redis containers.
 
 ## Known production limitations / next epics
 
-1. **Observability is the next P0 epic:** metrics, traces, worker heartbeats and actionable production alerts.
-2. **Provider media URLs are not product-owned durable storage.** Permanent object storage is still required.
-3. **No dedicated visual admin client yet.**
-4. **Payment chargeback files/settlement registries are not ingested automatically.** Webhook/API-visible refunds are handled; offline acquiring-register reconciliation remains an accounting extension.
-5. Compose publishes app port 8000 for development; production must place it behind HTTPS and keep PostgreSQL/Redis private.
-6. Proxy-level hard request-body limits remain part of production edge configuration; application upload limits do not replace a reverse-proxy body-size cap.
+1. **Provider media URLs are not product-owned durable storage.** Permanent S3-compatible object storage is the next product/infrastructure epic.
+2. **No dedicated visual admin client yet.**
+3. **Payment chargeback files/settlement registries are not ingested automatically.** Webhook/API-visible refunds are handled; offline acquiring-register reconciliation remains an accounting extension.
+4. Compose publishes app port 8000 for development; production must place it behind HTTPS and keep PostgreSQL/Redis private.
+5. Proxy-level hard request-body limits remain part of production edge configuration; application upload limits do not replace a reverse-proxy body-size cap.
 
 ## External references checked
 
@@ -281,8 +320,10 @@ CI uses real PostgreSQL and Redis containers; anti-abuse tests exercise real Red
 - Redis distributed rate limiting guidance and atomic Lua-based counters.
 - PostgreSQL `SKIP LOCKED` queue-style work claiming.
 - Kie Market task detail/webhook/upload documentation.
-- Crypto Pay API 1.5.2.
+- Crypto Pay API.
 - T-Bank Internet Acquiring payment/refund contracts.
 - YooKassa payment/refund/idempotency/webhook documentation.
 - Telegram Mini Apps documentation.
+- Prometheus Python client documentation.
+- OpenTelemetry Python SDK, OTLP HTTP exporter and FastAPI/HTTPX instrumentation documentation.
 - OWASP ASVS 5.0.0 / Authorization guidance.
