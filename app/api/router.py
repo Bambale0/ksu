@@ -5,6 +5,7 @@ from app.api.v1 import (
     admin_audit,
     admin_auth,
     admin_operations,
+    admin_payments,
     admin_users,
     generations,
     me,
@@ -26,5 +27,6 @@ api_router.include_router(uploads.router)
 api_router.include_router(admin_auth.router)
 api_router.include_router(admin_users.router)
 api_router.include_router(admin_operations.router)
+api_router.include_router(admin_payments.router)
 api_router.include_router(admin_accounts.router)
 api_router.include_router(admin_audit.router)
