@@ -69,6 +69,7 @@ jobs:
         run: |
           node --check app/web/mini_app/app.js
           node --check app/web/mini_app/shell.js
+          node --check app/web/mini_app/shell-integration.js
 
       - name: Apply migrations
         run: alembic upgrade head
