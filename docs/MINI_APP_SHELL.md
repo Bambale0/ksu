@@ -66,7 +66,7 @@ The existing history module remains authoritative for:
 
 The shell only changes presentation/navigation: the module is mounted into `#historyMount` instead of behaving as a floating product entrypoint.
 
-## Wallet
+## Wallet/Payments
 
 Wallet now contains the complete user top-up flow while keeping backend payment state authoritative.
 
@@ -208,6 +208,7 @@ app/web/mini_app/wallet.css             Wallet/package/provider/payment presenta
 app/web/mini_app/app.js                 existing schema-driven generation/results engine
 app/web/mini_app/shell.js               shell routing/data/loading/detail controller
 app/web/mini_app/shell-integration.js   bridge between existing History actions and shell builder
+app/web/mini_app/payment-link-guard.js  direct-activation HTTPS payment navigation guard
 app/web/mini_app/wallet.js              idempotent checkout/recovery/payment polling controller
 ```
 
@@ -219,6 +220,7 @@ Every shipped JavaScript entrypoint must pass Node syntax validation:
 node --check app/web/mini_app/app.js
 node --check app/web/mini_app/shell.js
 node --check app/web/mini_app/shell-integration.js
+node --check app/web/mini_app/payment-link-guard.js
 node --check app/web/mini_app/wallet.js
 ```
 
