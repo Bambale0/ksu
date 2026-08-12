@@ -10,6 +10,17 @@
   let historyActionInFlight = false;
   let bridgedBuilder = false;
 
+  function mountPartnerCabinet() {
+    if (!document.getElementById("partnerPreview")) return;
+    if (document.querySelector('script[src="/mini-app/partner.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/partner.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
+  mountPartnerCabinet();
+
   if (!overlay || !createHome || !builder) return;
 
   function historyNavIsActive() {
