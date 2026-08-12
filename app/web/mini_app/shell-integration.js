@@ -16,6 +16,15 @@
     return document.querySelector('[data-shell-nav="history"].is-active') !== null;
   }
 
+  function syncMainButtonScope() {
+    if (!builder.hidden) return;
+    try {
+      tg?.MainButton?.hide?.();
+    } catch (_error) {
+      // MainButton is optional outside supported Telegram clients.
+    }
+  }
+
   function switchToCreateShell() {
     const createNav = document.querySelector('.bottom-nav-item[data-shell-nav="create"]');
     createNav?.click();
@@ -45,6 +54,7 @@
     builder.hidden = true;
     createHome.hidden = false;
     if (detail) detail.hidden = true;
+    syncMainButtonScope();
     try {
       tg?.BackButton?.hide?.();
     } catch (_error) {
@@ -65,12 +75,16 @@
     true,
   );
 
-  const observer = new MutationObserver(() => {
+  const historyObserver = new MutationObserver(() => {
     if (!overlay.hidden || !historyActionInFlight || !historyNavIsActive()) return;
     historyActionInFlight = false;
     switchToCreateShell();
   });
-  observer.observe(overlay, { attributes: true, attributeFilter: ["hidden"] });
+  historyObserver.observe(overlay, { attributes: true, attributeFilter: ["hidden"] });
+
+  const builderObserver = new MutationObserver(syncMainButtonScope);
+  builderObserver.observe(builder, { attributes: true, attributeFilter: ["hidden"] });
+  syncMainButtonScope();
 
   builderHome?.addEventListener("click", () => {
     if (bridgedBuilder) closeBridgedBuilder();
