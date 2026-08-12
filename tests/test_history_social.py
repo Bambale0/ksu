@@ -1,4 +1,3 @@
-import uuid
 from decimal import Decimal
 from pathlib import Path
 
