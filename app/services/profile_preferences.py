@@ -33,9 +33,10 @@ class ProfilePreferenceService:
         if ui_language not in cls.ALLOWED_LANGUAGES:
             raise ValueError("Unsupported interface language")
         preference = await cls.get_or_create(session, user_id)
+        enabled = bool(notifications_enabled)
         preference.ui_language = ui_language
-        preference.notifications_enabled = bool(notifications_enabled)
-        preference.marketing_notifications = bool(marketing_notifications)
+        preference.notifications_enabled = enabled
+        preference.marketing_notifications = bool(marketing_notifications and enabled)
         preference.profile_discoverable = bool(profile_discoverable)
         await session.flush()
         return preference
