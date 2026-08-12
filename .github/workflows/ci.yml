@@ -70,6 +70,7 @@ jobs:
           node --check app/web/mini_app/app.js
           node --check app/web/mini_app/shell.js
           node --check app/web/mini_app/shell-integration.js
+          node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/wallet.js
 
       - name: Apply migrations
