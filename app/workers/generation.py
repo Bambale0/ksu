@@ -29,17 +29,14 @@ async def run() -> None:
                 next_recovery_at = now + settings.generation_reconcile_interval_seconds
 
             try:
-                processed = await GenerationWorkerService.process_one()
+                processed = await GenerationWorkerService.process_one(redis)
             except Exception:
                 logger.exception("Generation outbox worker iteration failed")
                 processed = False
 
             if processed:
-                # Drain durable work without sleeping while backlog exists.
                 continue
 
-            # Redis is only a low-latency wake-up primitive. A finite timeout is
-            # mandatory so DB outbox polling still progresses if a wake-up is lost.
             try:
                 await redis.blpop(
                     GenerationService.WAKE_KEY,
