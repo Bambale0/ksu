@@ -17,8 +17,13 @@ from app.services.wallet import WalletService
 
 
 class BrokenWakeRedis:
+    """Limiter works, but the post-commit best-effort wake signal fails."""
+
+    async def eval(self, *_args: object, **_kwargs: object) -> list[int]:
+        return [1, 60]
+
     async def rpush(self, *_args: object, **_kwargs: object) -> int:
-        raise RedisError("redis unavailable")
+        raise RedisError("redis unavailable after admission")
 
 
 @pytest.mark.asyncio
@@ -57,7 +62,6 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert wallet is not None
         assert wallet.balance == Decimal("92.00")
 
-        # Keep later queue-claim tests independent from this test's pending work.
         await GenerationOutboxService.mark_generation_terminal(
             session,
             generation.id,
@@ -92,8 +96,6 @@ async def test_outbox_claim_is_leased_and_reclaimable() -> None:
             select(GenerationOutbox).where(GenerationOutbox.generation_id == generation.id)
         )
         assert row is not None
-        # Force deterministic queue ordering even though the integration database is
-        # shared by all tests in the CI job.
         row.created_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
         row.updated_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
         await session.commit()
