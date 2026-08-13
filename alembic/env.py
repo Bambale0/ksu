@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.db.base import Base
+from app.db import admin_content_models  # noqa: F401
 from app.db import admin_models  # noqa: F401
 from app.db import history_models  # noqa: F401
 from app.db import media_models  # noqa: F401
