@@ -57,6 +57,7 @@ def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_create_button()],
+            [InlineKeyboardButton(text="🌐 Лента", callback_data="feed:open")],
             [
                 InlineKeyboardButton(text="💎 Баланс", callback_data="balance"),
                 InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
