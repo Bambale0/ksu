@@ -65,7 +65,12 @@ def upgrade() -> None:
         sa.Column(
             "task_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("prompt_tool_tasks.id", ondelete="CASCADE"),
+            sa.ForeignKey(
+                "prompt_tool_tasks.id",
+                ondelete="CASCADE",
+                deferrable=True,
+                initially="DEFERRED",
+            ),
             nullable=False,
         ),
         sa.Column("status", sa.String(length=24), nullable=False, server_default="pending"),
