@@ -130,11 +130,14 @@ async def test_expired_and_invalid_promos_return_stable_error_codes() -> None:
         )
         session.add_all([user, expired])
         await session.commit()
+        user_id = user.id
 
         with pytest.raises(HTTPException) as expired_error:
             await redeem(RedeemPromoRequest(code="OLD"), user, session)
         assert expired_error.value.detail["code"] == "expired"
 
+        user = await session.get(User, user_id)
+        assert user is not None
         with pytest.raises(HTTPException) as invalid_error:
             await redeem(RedeemPromoRequest(code="NO-SUCH-CODE"), user, session)
         assert invalid_error.value.detail["code"] == "invalid"
