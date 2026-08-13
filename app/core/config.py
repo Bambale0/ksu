@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     notification_retry_max_seconds: int = 900
     notification_delivery_batch_size: int = 50
 
+    broadcast_worker_poll_seconds: int = 3
+    broadcast_fanout_batch_size: int = 250
+
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True
     generation_rate_limit_per_minute: int = 10
