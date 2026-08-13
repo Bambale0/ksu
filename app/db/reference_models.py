@@ -4,17 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    BigInteger,
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    JSON,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -25,7 +15,7 @@ class UserReference(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("kind IN ('image', 'video', 'audio')", name="ck_user_references_kind"),
         CheckConstraint("status IN ('ready', 'deleted')", name="ck_user_references_status"),
-        UniqueConstraint("user_id", "sha256", name="uq_user_references_user_sha256"),
+        UniqueConstraint("user_id", "source_url", name="uq_user_references_user_source"),
         Index("ix_user_references_user_kind_created", "user_id", "kind", "created_at"),
     )
 
@@ -36,13 +26,9 @@ class UserReference(TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
     label: Mapped[str | None] = mapped_column(String(120))
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
     original_filename: Mapped[str | None] = mapped_column(String(255))
-    content_type: Mapped[str] = mapped_column(String(255), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    bucket: Mapped[str] = mapped_column(String(255), nullable=False)
-    object_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    etag: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(255))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
