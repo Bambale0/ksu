@@ -89,10 +89,12 @@ def test_public_payment_surface_is_vendor_neutral() -> None:
         ROOT / "app" / "bot" / "keyboards.py",
     ]
     combined = "\n".join(path.read_text(encoding="utf-8") for path in public_files)
+    webhook_source = (ROOT / "app" / "api" / "card_webhooks.py").read_text(encoding="utf-8")
+    main_source = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     assert PUBLIC_LABEL in combined
-    assert "/webhooks/payments/card" in (ROOT / "app" / "api" / "card_webhooks.py").read_text(
-        encoding="utf-8"
-    )
+    assert 'APIRouter(prefix="/webhooks"' in webhook_source
+    assert '@router.post("/payments/card"' in webhook_source
+    assert "app.include_router(card_webhook_router)" in main_source
     assert "lava" not in combined.lower()
     assert "lavatop" not in combined.lower()
 
