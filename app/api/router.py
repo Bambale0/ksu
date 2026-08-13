@@ -11,6 +11,7 @@ from app.api.v1 import (
     me,
     media,
     notifications,
+    onboarding,
     payments,
     promocodes,
     referrals,
@@ -21,6 +22,7 @@ from app.api.v1 import (
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(me.router)
+api_router.include_router(onboarding.router)
 api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(generations.router)
