@@ -7,6 +7,7 @@ from app.api.v1 import (
     admin_capabilities,
     admin_control,
     admin_operations,
+    admin_partner_approval,
     admin_payments,
     admin_users,
     card_payments,
@@ -51,4 +52,5 @@ api_router.include_router(admin_payments.router)
 api_router.include_router(admin_accounts.router)
 api_router.include_router(admin_audit.router)
 api_router.include_router(admin_capabilities.router)
+api_router.include_router(admin_partner_approval.router)
 api_router.include_router(admin_control.router)
