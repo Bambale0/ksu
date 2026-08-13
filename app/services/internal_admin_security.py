@@ -10,6 +10,8 @@ from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
 
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
+
 
 @dataclass(frozen=True, slots=True)
 class InternalAdminSignature:
@@ -52,8 +54,8 @@ def calculate_signature(
     ).hexdigest()
 
 
-def _parse_networks(value: str) -> tuple[ipaddress._BaseNetwork, ...]:  # type: ignore[name-defined]
-    networks = []
+def _parse_networks(value: str) -> tuple[Network, ...]:
+    networks: list[Network] = []
     for item in value.split(","):
         raw = item.strip()
         if not raw:
