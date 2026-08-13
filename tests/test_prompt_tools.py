@@ -6,7 +6,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.db.admin_models import TariffVersion
@@ -24,6 +24,12 @@ from app.services.wallet import WalletService
 
 
 async def _fixture_user_and_tariff(session) -> tuple[User, AdminAccount]:  # type: ignore[no-untyped-def]
+    # These integration tests intentionally share one CI database. Keep the
+    # prompt-tools queue isolated so a worker test never claims another test's
+    # pending job.
+    await session.execute(delete(PromptToolOutbox))
+    await session.execute(delete(PromptToolTask))
+
     admin_user = User(
         telegram_id=random.randint(9_100_000_000_000, 9_199_999_999_999),
         first_name="Prompt tools admin",
@@ -157,12 +163,13 @@ async def test_prompt_tool_worker_persists_structured_success(
             payload={"text": "portrait", "image_url": None},
             idempotency_key=f"prompt-success-{uuid.uuid4()}",
         )
+        task_id = task.id
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None
-        assert claimed.task_id == task.id
+        assert claimed.task_id == task_id
         await PromptToolProcessor.process(session, AsyncMock(), claimed)
 
-        refreshed = await session.get(PromptToolTask, task.id)
+        refreshed = await session.get(PromptToolTask, task_id)
         assert refreshed is not None
         assert refreshed.status == "succeeded"
         assert refreshed.result_payload == {
@@ -201,15 +208,17 @@ async def test_terminal_provider_failure_refunds_user(
             payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
             idempotency_key=f"prompt-failure-{uuid.uuid4()}",
         )
+        task_id = task.id
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
         assert Decimal(wallet_after_charge.balance) == Decimal("18.00")
 
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None
+        assert claimed.task_id == task_id
         await PromptToolProcessor.process(session, AsyncMock(), claimed)
 
-        refreshed = await session.get(PromptToolTask, task.id)
+        refreshed = await session.get(PromptToolTask, task_id)
         wallet = await session.get(Wallet, user.id)
         assert refreshed is not None
         assert refreshed.status == "failed"
