@@ -106,7 +106,7 @@ async def test_signed_balance_adjustment_replays_same_idempotency_key_once(
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         session.add(admin)
         await WalletService.ensure_wallet(session, target_user.id)
@@ -167,7 +167,7 @@ async def test_support_reply_creates_outbox_instead_of_request_side_send() -> No
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         ticket = SupportTicket(user_id=customer.id, topic="integration support", status="open")
         session.add_all([admin, ticket])
@@ -213,7 +213,7 @@ async def test_campaign_start_materializes_recipients_once() -> None:
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         session.add(admin)
         await session.flush()
@@ -287,7 +287,7 @@ async def test_operation_replay_creates_zero_cost_child_and_outbox() -> None:
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         source = Generation(
             user_id=customer.id,
