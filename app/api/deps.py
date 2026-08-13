@@ -22,6 +22,10 @@ def get_redis(request: Request) -> Redis:
 RedisDep = Annotated[Redis, Depends(get_redis)]
 
 
+def _path_is_under(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
 def _onboarding_gate_applies(request: Request) -> bool:
     if not settings.onboarding_enabled:
         return False
@@ -36,7 +40,7 @@ def _onboarding_gate_applies(request: Request) -> bool:
         "/api/v1/support",
         "/api/v1/notifications",
     )
-    if path.startswith(safe_prefixes):
+    if any(_path_is_under(path, prefix) for prefix in safe_prefixes):
         return False
 
     # Recovery/reversal actions must stay possible after an onboarding version bump.
