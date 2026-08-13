@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
+    # Versioned product onboarding. Copy/links are deployment-owned rather than legal text in code.
+    onboarding_enabled: bool = True
+    onboarding_version: str = "1"
+    onboarding_title: str = "Добро пожаловать в Ксю"
+    onboarding_body: str = "Перед началом работы завершите короткий вводный экран."
+    onboarding_rules_url: str = ""
+    onboarding_privacy_url: str = ""
+
     start_balance_rox: Decimal = Decimal("0")
     internal_credit_rub: Decimal = Decimal("10")
     referral_first_percent: Decimal = Decimal("30")
