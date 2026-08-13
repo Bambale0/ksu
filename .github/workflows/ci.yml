@@ -75,6 +75,7 @@ jobs:
           node --check app/web/mini_app/partner.js
           node --check app/web/mini_app/profile-tools.js
           node --check app/web/mini_app/social.js
+          node --check app/web/mini_app/promo-recovery.js
 
       - name: Apply migrations
         run: alembic upgrade head
