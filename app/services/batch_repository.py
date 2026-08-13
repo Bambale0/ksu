@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,3 +36,24 @@ class BatchRepository:
             .order_by(BatchGenerationItem.ordinal.asc())
         )
         return list(result.all())
+
+    @classmethod
+    async def refresh(cls, session: AsyncSession, job: BatchGenerationJob) -> tuple[str, int, int, int]:
+        rows = await cls.rows(session, job.id)
+        succeeded = sum(g.status == "succeeded" for _item, g in rows)
+        failed = sum(g.status == "failed" for _item, g in rows)
+        active = sum(g.status in {"queued", "retry", "submitting", "generating"} for _item, g in rows)
+        if succeeded == job.input_count:
+            status = "succeeded"
+        elif active:
+            status = "running"
+        elif succeeded and failed:
+            status = "partial"
+        else:
+            status = "failed"
+        job.status = status
+        job.succeeded_count = succeeded
+        job.failed_count = failed
+        job.completed_at = None if status == "running" else datetime.now(timezone.utc)
+        await session.commit()
+        return status, succeeded, failed, active
