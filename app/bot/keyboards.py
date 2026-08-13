@@ -10,6 +10,10 @@ def _mini_app_url() -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/"
 
 
+def _batch_url() -> str:
+    return f"{settings.public_base_url.rstrip('/')}/mini-app/batch.html"
+
+
 def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
@@ -21,6 +25,15 @@ def _create_button() -> InlineKeyboardButton:
             web_app=WebAppInfo(url=_mini_app_url()),
         )
     return InlineKeyboardButton(text="✨ Создать контент", callback_data="create")
+
+
+def _batch_button() -> InlineKeyboardButton:
+    if settings.public_base_url:
+        return InlineKeyboardButton(
+            text="🗂 Пакетная обработка",
+            web_app=WebAppInfo(url=_batch_url()),
+        )
+    return InlineKeyboardButton(text="🗂 Пакетная обработка", callback_data="create")
 
 
 def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
@@ -74,6 +87,7 @@ def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_create_button()],
+            [_batch_button()],
             [
                 InlineKeyboardButton(text="🧠 AI-инструменты", callback_data="prompt-tools:open"),
                 InlineKeyboardButton(text="🔥 Тренды", callback_data="trends:open"),
