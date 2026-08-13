@@ -2,6 +2,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from app.core.config import settings
 
+BACK_TEXT = "⬅️ Назад"
+
 
 def _create_button() -> InlineKeyboardButton:
     if settings.public_base_url:
@@ -10,6 +12,12 @@ def _create_button() -> InlineKeyboardButton:
             web_app=WebAppInfo(url=f"{settings.public_base_url.rstrip('/')}/mini-app/"),
         )
     return InlineKeyboardButton(text="✨ Создать контент", callback_data="create")
+
+
+def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=BACK_TEXT, callback_data=callback_data)]]
+    )
 
 
 def onboarding_menu() -> InlineKeyboardMarkup:
