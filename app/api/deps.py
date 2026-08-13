@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import get_session
+from app.services.onboarding import OnboardingService
 from app.services.users import UserService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -54,3 +55,21 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+async def get_onboarded_user(
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> User:
+    if not await OnboardingService.is_complete(session, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail={
+                "code": "onboarding_required",
+                "version": settings.onboarding_version.strip() or "1",
+            },
+        )
+    return user
+
+
+OnboardedUserDep = Annotated[User, Depends(get_onboarded_user)]
