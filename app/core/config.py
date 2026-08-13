@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
+    # Primary hosted checkout. User-facing product copy uses only the neutral
+    # "Оплата картой · USD / EUR / RUB / СБП" label.
+    card_api_key: str = ""
+    card_api_base_url: str = "https://gate.lava.top"
+    card_webhook_key: str = ""
+    card_offer_id: str = ""
+    card_packages_json: str = "{}"
+    card_payment_route_by_currency_json: str = "{}"
+
     notification_worker_poll_seconds: int = 3
     notification_delivery_lease_seconds: int = 90
     notification_delivery_max_attempts: int = 8
