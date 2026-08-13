@@ -18,6 +18,7 @@ from app.api.v1 import (
     onboarding,
     payments,
     promocodes,
+    prompt_tools,
     referrals,
     social,
     support,
@@ -33,6 +34,7 @@ api_router.include_router(referrals.router)
 api_router.include_router(generations.router)
 api_router.include_router(feed.router)
 api_router.include_router(trends.router)
+api_router.include_router(prompt_tools.router)
 api_router.include_router(media.router)
 api_router.include_router(card_payments.router)
 api_router.include_router(payments.router)
