@@ -4,6 +4,7 @@ from app.api.v1 import (
     admin_accounts,
     admin_audit,
     admin_auth,
+    admin_capabilities,
     admin_operations,
     admin_payments,
     admin_users,
@@ -40,3 +41,4 @@ api_router.include_router(admin_operations.router)
 api_router.include_router(admin_payments.router)
 api_router.include_router(admin_accounts.router)
 api_router.include_router(admin_audit.router)
+api_router.include_router(admin_capabilities.router)
