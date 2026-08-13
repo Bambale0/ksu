@@ -92,11 +92,12 @@ async def test_batch_insufficient_balance_rolls_back_everything(monkeypatch: pyt
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
     async with SessionFactory() as session:
         user = await _user(session, Decimal("1"))
+        user_id = user.id
         with pytest.raises(InsufficientBalanceError):
             await GenerationBatchService.create(
                 session,
                 AsyncMock(),
-                user_id=user.id,
+                user_id=user_id,
                 model_id="nano-banana-edit",
                 prompt="Edit both",
                 parameters={"aspect_ratio": "1:1", "output_format": "png"},
@@ -113,19 +114,19 @@ async def test_batch_insufficient_balance_rolls_back_everything(monkeypatch: pyt
             await session.scalar(
                 select(func.count())
                 .select_from(BatchGenerationJob)
-                .where(BatchGenerationJob.user_id == user.id)
+                .where(BatchGenerationJob.user_id == user_id)
             )
             or 0
         )
         generation_count = int(
             await session.scalar(
-                select(func.count()).select_from(Generation).where(Generation.user_id == user.id)
+                select(func.count()).select_from(Generation).where(Generation.user_id == user_id)
             )
             or 0
         )
         assert batch_count == 0
         assert generation_count == 0
-        wallet = await session.get(Wallet, user.id)
+        wallet = await session.get(Wallet, user_id)
         assert wallet is not None
         assert Decimal(wallet.balance) == Decimal("1")
 
