@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>Ксю · Admin</title>
+  <link rel="stylesheet" href="/admin-app/admin.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/admin-app/admin.js" defer></script>
+</head>
+<body>
+  <div class="admin-auth" id="authView">
+    <section class="auth-card" aria-labelledby="authTitle">
+      <div class="brand-mark" aria-hidden="true">К</div>
+      <span class="eyebrow">KSU OPERATIONS</span>
+      <h1 id="authTitle">Админ-панель</h1>
+      <p class="muted" id="authIntro">Вход доступен только администратору из Telegram.</p>
+      <form id="loginForm" class="stack">
+        <label class="field" id="otpField">
+          <span>Код MFA</span>
+          <input id="loginOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456">
+          <small>Оставьте пустым при первом входе, если MFA ещё не настроена.</small>
+        </label>
+        <label class="field">
+          <span>Recovery code</span>
+          <input id="loginRecovery" autocomplete="off" maxlength="128" placeholder="Использовать вместо OTP">
+        </label>
+        <button class="primary" id="loginButton" type="submit">Войти</button>
+      </form>
+      <div class="form-message" id="loginMessage" role="status" aria-live="polite"></div>
+      <button class="ghost" id="bootstrapButton" type="button">Первичная регистрация owner</button>
+      <div class="bootstrap-panel" id="bootstrapPanel" hidden>
+        <p class="muted">Используется только для Telegram ID из ADMIN_BOOTSTRAP_TELEGRAM_IDS.</p>
+        <button class="primary" id="bootstrapConfirm" type="button">Создать owner</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="admin-shell" id="adminShell" hidden>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small" aria-hidden="true">К</div>
+        <div><strong>Ксю</strong><small>operations</small></div>
+      </div>
+      <nav class="admin-nav" id="adminNav" aria-label="Админ-навигация"></nav>
+      <div class="sidebar-footer">
+        <div class="admin-identity" id="adminIdentity"></div>
+        <button class="ghost danger-text" id="logoutButton" type="button">Выйти</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <button class="icon-button mobile-only" id="sidebarToggle" type="button" aria-label="Открыть меню">☰</button>
+        <div>
+          <span class="eyebrow" id="viewKicker">OPERATIONS</span>
+          <h1 id="viewTitle">Обзор</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="status-dot" id="sessionStatus"><i></i><span>Сессия активна</span></span>
+          <button class="icon-button" id="refreshButton" type="button" aria-label="Обновить">↻</button>
+        </div>
+      </header>
+      <section class="view" id="adminView" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <dialog class="admin-dialog" id="mfaSetupDialog">
+    <form method="dialog" class="dialog-card" id="mfaSetupForm">
+      <span class="eyebrow">SECURITY</span>
+      <h2>Настройка MFA</h2>
+      <p class="muted">Добавьте секрет в приложение-аутентификатор. Секрет показывается только для настройки.</p>
+      <div class="secret-box"><code id="mfaSecret"></code></div>
+      <div class="uri-box" id="mfaUri"></div>
+      <label class="field"><span>Код из приложения</span><input id="mfaConfirmOtp" required inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+      <div class="form-message" id="mfaSetupMessage" role="status"></div>
+      <div class="dialog-actions"><button class="primary" value="noop" id="mfaConfirmButton" type="button">Подтвердить MFA</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="recoveryDialog">
+    <div class="dialog-card">
+      <span class="eyebrow">SAVE ONCE</span>
+      <h2>Recovery codes</h2>
+      <p class="muted">Сохраните их сейчас. Панель не будет хранить эти коды в браузере.</p>
+      <div class="recovery-codes" id="recoveryCodes"></div>
+      <div class="dialog-actions"><button class="primary" id="recoveryDone" type="button">Я сохранил коды</button></div>
+    </div>
+  </dialog>
+
+  <dialog class="admin-dialog" id="stepUpDialog">
+    <div class="dialog-card">
+      <span class="eyebrow">STEP-UP MFA</span>
+      <h2 id="stepUpTitle">Подтвердите чувствительное действие</h2>
+      <p class="muted" id="stepUpDescription">Введите свежий MFA-код.</p>
+      <label class="field"><span>OTP</span><input id="stepUpOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+      <label class="field"><span>Recovery code</span><input id="stepUpRecovery" autocomplete="off" maxlength="128"></label>
+      <div class="form-message" id="stepUpMessage" role="status"></div>
+      <div class="step-confirm" id="stepConfirm" hidden>
+        <strong>Step-up подтверждён.</strong>
+        <span>Действие ещё не выполнено.</span>
+      </div>
+      <div class="dialog-actions">
+        <button class="ghost" id="stepUpCancel" type="button">Отмена</button>
+        <button class="primary" id="stepUpVerify" type="button">Подтвердить MFA</button>
+        <button class="danger" id="stepUpExecute" type="button" hidden>Выполнить действие</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="admin-dialog" id="formDialog">
+    <form class="dialog-card" id="genericForm">
+      <span class="eyebrow" id="formKicker">ACTION</span>
+      <h2 id="formTitle">Действие</h2>
+      <div id="formFields" class="stack"></div>
+      <div class="form-message" id="formMessage" role="status"></div>
+      <div class="dialog-actions"><button class="ghost" id="formCancel" type="button">Отмена</button><button class="primary" id="formSubmit" type="submit">Сохранить</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="adminToast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

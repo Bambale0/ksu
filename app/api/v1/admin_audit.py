@@ -4,18 +4,27 @@ import uuid
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
 from app.db.models import AdminAccount, AdminAuditLog, AdminSession
-from app.services.admin_security import audit_integrity_hash, utcnow
+from app.services.admin_security import AdminAuditService, audit_integrity_hash, utcnow
 
 router = APIRouter(prefix="/admin", tags=["admin-audit"])
 
 AuditReadDep = Annotated[AdminContext, Depends(require_permission("audit.read"))]
 SecurityReadDep = Annotated[AdminContext, Depends(require_permission("security.read"))]
+SessionsManageDep = Annotated[
+    AdminContext,
+    Depends(require_permission("sessions.manage", step_up=True)),
+]
+
+
+class SessionRevokeRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 def _integrity_payload(row: AdminAuditLog) -> dict[str, Any]:
@@ -188,3 +197,35 @@ async def list_all_sessions(
             for row in rows
         ]
     }
+
+
+@router.delete("/security/sessions/{session_id}")
+async def revoke_admin_session(
+    session_id: uuid.UUID,
+    payload: SessionRevokeRequest,
+    request: Request,
+    context: SessionsManageDep,
+    session: SessionDep,
+) -> dict[str, str]:
+    target = await session.scalar(
+        select(AdminSession).where(AdminSession.id == session_id).with_for_update()
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Admin session not found")
+    if target.revoked_at is None:
+        target.revoked_at = utcnow()
+        target.revoke_reason = payload.reason.strip()
+    await AdminAuditService.record(
+        session,
+        action="admin.session.revoked",
+        outcome="success",
+        admin=context.account,
+        admin_session=context.session,
+        request=request,
+        resource_type="admin_session",
+        resource_id=str(target.id),
+        reason=payload.reason,
+        metadata={"target_admin_id": str(target.admin_id)},
+    )
+    await session.commit()
+    return {"id": str(target.id), "status": "revoked"}
