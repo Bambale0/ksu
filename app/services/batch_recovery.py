@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,3 +65,30 @@ class BatchRecoveryService:
         ):
             raise BatchIdempotencyConflict("Idempotency key was already used")
         return existing, key, fingerprint
+
+    @classmethod
+    async def execute(
+        cls,
+        session: AsyncSession,
+        redis: Redis,
+        *,
+        user_id: uuid.UUID,
+        batch_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> tuple[object, bool, int]:
+        _ = redis
+        existing, _key, _fingerprint = await cls.replay_check(
+            session,
+            user_id=user_id,
+            batch_id=batch_id,
+            idempotency_key=idempotency_key,
+        )
+        job = await BatchRepository.load(
+            session,
+            user_id=user_id,
+            batch_id=batch_id,
+            lock=existing is None,
+        )
+        if existing is not None:
+            return job, True, len(existing.result_generation_ids)
+        return job, False, 0
