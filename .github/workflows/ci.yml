@@ -80,6 +80,7 @@ jobs:
           node --check app/web/mini_app/profile-tools.js
           node --check app/web/mini_app/social.js
           node --check app/web/mini_app/feed.js
+          node --check app/web/mini_app/trends.js
           node --check app/web/mini_app/promo-recovery.js
           node --check app/web/mini_app/onboarding.js
 
@@ -98,6 +99,9 @@ jobs:
           tests/test_feed_deep_links.py
           tests/test_feed_bot_callbacks.py
           tests/test_feed_ui_contract.py
+
+      - name: Trends contracts
+        run: pytest -q tests/test_trends_contract.py tests/test_trends_service.py
 
       - name: Full regression suite
         shell: bash
