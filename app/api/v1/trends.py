@@ -26,7 +26,7 @@ def _domain_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail="Insufficient credits")
     if isinstance(exc, (TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
         return HTTPException(status_code=422, detail=str(exc))
-    return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=500, detail="Trend operation failed")
 
 
 @router.get("")
@@ -36,15 +36,9 @@ async def list_trends(
     limit: int = Query(default=50, ge=1, le=100),
     media_type: Literal["image", "video"] | None = Query(default=None),
 ) -> dict[str, object]:
-    # Authentication is intentional: the curated catalog is a product surface,
-    # not an anonymous endpoint for scraping model/provider recipes.
     _ = user
     try:
-        return await TrendService.list_public(
-            session,
-            limit=limit,
-            media_type=media_type,
-        )
+        return await TrendService.list_public(session, limit=limit, media_type=media_type)
     except Exception as exc:
         raise _domain_error(exc) from exc
 
