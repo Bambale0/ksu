@@ -100,4 +100,14 @@ jobs:
           tests/test_feed_ui_contract.py
 
       - name: Full regression suite
-        run: pytest -q -x --tb=short
+        shell: bash
+        run: |
+          set +e
+          pytest -q -x --tb=short 2>&1 | tee /tmp/pytest-regression.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -E "FAILED|ERROR|AssertionError|TypeError|AttributeError|KeyError|IntegrityError" /tmp/pytest-regression.log | tail -n 20 | while IFS= read -r line; do
+              echo "::error title=Pytest regression::$line"
+            done
+            exit "$code"
+          fi
