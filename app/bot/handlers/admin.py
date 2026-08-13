@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, W
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards import back_menu
 from app.core.config import settings
 from app.db.models import AdminAccount
 from app.services.users import UserService
@@ -23,10 +24,16 @@ async def admin_console(message: Message, session: AsyncSession) -> None:
         )
     )
     if admin is None:
-        await message.answer("Админ-панель недоступна для этого аккаунта.")
+        await message.answer(
+            "Админ-панель недоступна для этого аккаунта.",
+            reply_markup=back_menu(),
+        )
         return
     if not settings.public_base_url:
-        await message.answer("Админ-панель не настроена: PUBLIC_BASE_URL отсутствует.")
+        await message.answer(
+            "Админ-панель не настроена: PUBLIC_BASE_URL отсутствует.",
+            reply_markup=back_menu(),
+        )
         return
     url = f"{settings.public_base_url.rstrip('/')}/admin-app/"
     keyboard = InlineKeyboardMarkup(
@@ -36,7 +43,8 @@ async def admin_console(message: Message, session: AsyncSession) -> None:
                     text="🛡 Открыть админ-панель",
                     web_app=WebAppInfo(url=url),
                 )
-            ]
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="nav:main")],
         ]
     )
     await message.answer(
