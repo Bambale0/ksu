@@ -82,20 +82,21 @@ def test_sensitive_actions_require_separate_step_up_and_execute_click() -> None:
     assert 'dom.stepUpExecute.addEventListener("click", executePendingSensitive)' in js
 
 
-def test_admin_self_sessions_use_backend_items_shape() -> None:
+def test_admin_self_sessions_match_backend_sessions_shape() -> None:
     js = _read(ADMIN / "admin.js")
+    auth = _read(ROOT / "app" / "api" / "v1" / "admin_auth.py")
     marker = 'const data = await api("/api/v1/admin/auth/sessions")'
     assert marker in js
     after = js.split(marker, 1)[1]
     render_block = after.split("async function", 1)[0]
-    assert "data.items || []" in render_block
-    assert "data.sessions || []" not in render_block
+    assert "data.sessions || []" in render_block
+    assert 'return {"sessions": [_session_view(row, context.session.id) for row in rows]}' in auth
 
 
 def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_accounts.py")
     assert 'SessionsManageDep = Annotated[AdminContext, Depends(require_permission("sessions.manage"))]' in source
-    signature = source.split('async def revoke_admin_session(', 1)[1].split(') -> dict[str, str]:', 1)[0]
+    signature = source.split('async def revoke_any_session(', 1)[1].split(') -> dict[str, bool]:', 1)[0]
     assert "context: SessionsManageDep" in signature
     assert "context: AdminSecurityReadDep" not in signature
 
