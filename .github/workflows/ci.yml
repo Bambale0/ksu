@@ -100,4 +100,4 @@ jobs:
           tests/test_feed_ui_contract.py
 
       - name: Full regression suite
-        run: pytest -q
+        run: pytest -q -x --tb=short
