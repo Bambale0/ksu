@@ -119,6 +119,9 @@ class GenerationService:
         input_url: str | None = None,
         parameters: dict[str, Any] | None = None,
         billing_seconds: int | None = None,
+        source_feed_gen_id: uuid.UUID | None = None,
+        parent_generation_id: uuid.UUID | None = None,
+        action_type: str | None = None,
     ) -> Generation:
         spec, clean, cost_rox, seconds, unit_price = await cls.prepare_request(
             session,
@@ -154,6 +157,14 @@ class GenerationService:
                 "_unit_price_rox": str(unit_price),
             },
             status="queued",
+            source_feed_gen_id=source_feed_gen_id,
+            parent_generation_id=parent_generation_id,
+            action_type=action_type,
+            publication_scope="private",
+            is_public_feed=False,
+            is_profile_visible=False,
+            feed_prompt_visible=False if source_feed_gen_id else False,
+            feed_references_visible=False if source_feed_gen_id else False,
         )
         session.add(generation)
         await session.flush()

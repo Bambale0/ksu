@@ -10,6 +10,10 @@ def _mini_app_url() -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/"
 
 
+def _prompt_tool_url(mode: str) -> str:
+    return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
+
+
 def _create_button() -> InlineKeyboardButton:
     if settings.public_base_url:
         return InlineKeyboardButton(
@@ -40,6 +44,19 @@ def balance_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def prompt_tools_menu() -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if settings.public_base_url:
+        rows.extend(
+            [
+                [InlineKeyboardButton(text="🖼 Промпт по фото", web_app=WebAppInfo(url=_prompt_tool_url("image")))],
+                [InlineKeyboardButton(text="✨ Улучшить промпт", web_app=WebAppInfo(url=_prompt_tool_url("prompt")))],
+            ]
+        )
+    rows.append([InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def onboarding_menu() -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     links: list[InlineKeyboardButton] = []
@@ -57,6 +74,11 @@ def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_create_button()],
+            [
+                InlineKeyboardButton(text="🧠 AI-инструменты", callback_data="prompt-tools:open"),
+                InlineKeyboardButton(text="🔥 Тренды", callback_data="trends:open"),
+            ],
+            [InlineKeyboardButton(text="🌐 Лента", callback_data="feed:open")],
             [
                 InlineKeyboardButton(text="💎 Баланс", callback_data="balance"),
                 InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),

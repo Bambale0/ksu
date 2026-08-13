@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     notification_retry_max_seconds: int = 900
     notification_delivery_batch_size: int = 50
 
+    support_outbox_worker_poll_seconds: int = 3
+    support_outbox_lease_seconds: int = 90
+    support_outbox_max_attempts: int = 8
+    support_outbox_batch_size: int = 50
+    campaign_worker_poll_seconds: int = 3
+    campaign_delivery_lease_seconds: int = 90
+    campaign_delivery_max_attempts: int = 8
+    campaign_delivery_batch_size: int = 50
+
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True
     generation_rate_limit_per_minute: int = 10
@@ -119,6 +128,10 @@ class Settings(BaseSettings):
     admin_request_rate_limit_per_minute: int = 120
     admin_login_max_failures: int = 5
     admin_login_lock_minutes: int = 15
+
+    internal_admin_hmac_secret: str = ""
+    internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
+    internal_admin_timestamp_skew_seconds: int = 300
 
     kie_api_key: str = ""
     kie_base_url: str = "https://api.kie.ai"

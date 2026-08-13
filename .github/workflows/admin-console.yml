@@ -19,4 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Validate admin console JavaScript
-        run: node --check app/web/admin_app/admin.js
+        run: |
+          node --check app/web/admin_app/admin.js
+          node --check app/web/admin_app/control.js

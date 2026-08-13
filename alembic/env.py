@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.db.base import Base
+from app.db import admin_content_models  # noqa: F401
+from app.db import admin_models  # noqa: F401
+from app.db import feed_models  # noqa: F401
 from app.db import history_models  # noqa: F401
 from app.db import media_models  # noqa: F401
 from app.db import models  # noqa: F401
@@ -13,6 +16,8 @@ from app.db import notification_models  # noqa: F401
 from app.db import onboarding_models  # noqa: F401
 from app.db import payment_models  # noqa: F401
 from app.db import profile_models  # noqa: F401
+from app.db import prompt_tool_models  # noqa: F401
+from app.db import reference_models  # noqa: F401
 from app.db import reliability_models  # noqa: F401
 from app.db import social_models  # noqa: F401
 
