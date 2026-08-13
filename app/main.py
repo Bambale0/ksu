@@ -14,6 +14,7 @@ from app.api.internal_admin import router as internal_admin_router
 from app.api.metrics import router as metrics_router
 from app.api.router import api_router
 from app.api.v1.batches import router as batch_router
+from app.api.v1.partner_approval import router as partner_approval_router
 from app.api.webhooks import router as webhook_router
 from app.bot.dispatcher import create_dispatcher
 from app.core.config import settings
@@ -96,6 +97,7 @@ app.include_router(card_webhook_router)
 app.include_router(internal_admin_router)
 app.include_router(api_router)
 app.include_router(batch_router, prefix="/api/v1")
+app.include_router(partner_approval_router, prefix="/api/v1")
 
 web_dir = Path(__file__).resolve().parent / "web"
 mini_app_dir = web_dir / "mini_app"
