@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -141,7 +142,21 @@ class ReferralReward(Base):
 
 class Generation(TimestampMixin, Base):
     __tablename__ = "generations"
-    __table_args__ = (Index("ix_generations_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_generations_user_created", "user_id", "created_at"),
+        Index("ix_generations_feed_recent", "is_public_feed", "feed_published_at"),
+        Index(
+            "ix_generations_profile_recent",
+            "user_id",
+            "is_profile_visible",
+            "feed_published_at",
+        ),
+        Index("ix_generations_source_feed", "source_feed_gen_id"),
+        CheckConstraint(
+            "publication_scope IN ('private', 'profile', 'feed')",
+            name="ck_generations_publication_scope",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -157,6 +172,23 @@ class Generation(TimestampMixin, Base):
     external_id: Mapped[str | None] = mapped_column(String(128), index=True)
     error: Mapped[str | None] = mapped_column(Text)
     parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+
+    # Feed/profile publication is explicit and orthogonal to private history state.
+    publication_scope: Mapped[str] = mapped_column(String(16), default="private", nullable=False)
+    is_public_feed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_profile_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    feed_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    shares_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    feed_prompt_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    feed_references_visible: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source_feed_gen_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generations.id", ondelete="RESTRICT"), nullable=True
+    )
+    parent_generation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generations.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
+    action_type: Mapped[str | None] = mapped_column(String(32))
+    is_adult_content: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class Payment(TimestampMixin, Base):
