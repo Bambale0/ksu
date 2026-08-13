@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import AdminAccount, PartnerWithdrawal, ReferralRelation, ReferralReward
 from app.services.admin_commands import AdminCommandLedger, redact_secrets
 from app.services.admin_policy import AdminPolicy
+from app.services.partner_approval import PartnerApprovalService
 
 
 class AdminPartnerService:
@@ -142,6 +143,11 @@ class AdminPartnerService:
             if status not in transitions.get(withdrawal.status, set()):
                 raise ValueError(
                     f"Invalid withdrawal transition: {withdrawal.status} -> {status}"
+                )
+            if status in {"processing", "paid"}:
+                await PartnerApprovalService.require_approved(
+                    session,
+                    user_id=withdrawal.user_id,
                 )
             withdrawal.status = status
             await session.flush()
