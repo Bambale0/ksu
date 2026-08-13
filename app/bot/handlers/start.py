@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.handlers.feed import handle_deep_link
 from app.bot.keyboards import back_menu, balance_menu, main_menu, onboarding_menu
 from app.core.config import settings
-from app.db.models import Wallet
+from app.db.models import User, Wallet
 from app.services.account_profile import AccountProfileService
+from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
 from app.services.onboarding import OnboardingService
 from app.services.referrals import ReferralService
@@ -24,7 +25,50 @@ def _start_link(text: str | None) -> FeedDeepLink | None:
 
 def _parse_inviter(text: str | None) -> int | None:
     link = _start_link(text)
-    return link.referral_telegram_id if link is not None else None
+    if link is None or link.action != "ref":
+        return None
+    return link.referral_telegram_id
+
+
+async def _validated_inviter(
+    session: AsyncSession,
+    link: FeedDeepLink | None,
+) -> int | None:
+    if link is None:
+        return None
+    if link.action == "ref":
+        return link.referral_telegram_id
+    if link.action == "posts" and link.profile_referral_code:
+        if str(link.referral_telegram_id) != link.profile_referral_code:
+            return None
+        try:
+            author = await FeedService.author_by_referral_code(
+                session,
+                link.profile_referral_code,
+            )
+        except FeedNotFoundError:
+            return None
+        return author.telegram_id
+    if link.generation_id is None:
+        return None
+
+    generation = None
+    for surface in ("feed", "profile"):
+        try:
+            generation = await FeedService.assert_surface_visible(
+                session,
+                link.generation_id,
+                surface=surface,
+            )
+            break
+        except FeedNotFoundError:
+            continue
+    if generation is None:
+        return None
+    author = await session.get(User, generation.user_id)
+    if author is None or author.telegram_id != link.referral_telegram_id:
+        return None
+    return author.telegram_id
 
 
 async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
@@ -55,7 +99,7 @@ async def start(
     user = await UserService.get_or_create(
         session,
         message.from_user,
-        inviter_telegram_id=link.referral_telegram_id if link else None,
+        inviter_telegram_id=await _validated_inviter(session, link),
     )
     await session.flush()
     if not await OnboardingService.is_complete(session, user.id):
