@@ -34,3 +34,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  prompt-tools-worker:
+    build: .
+    command: python -m app.workers.prompt_tools
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
