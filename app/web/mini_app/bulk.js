@@ -49,7 +49,7 @@
       if (field.name === "prompt" || INPUT_FIELDS.has(field.name) || field.control === "file" || field.control === "files") continue;
       const wrap = node("label", "batch-field"); wrap.appendChild(node("span", "field-label", field.label || field.name)); let input;
       if (field.control === "toggle") { input = document.createElement("input"); input.type = "checkbox"; input.checked = Boolean(state.values[field.name]); input.addEventListener("change", () => setValue(field.name, input.checked)); }
-      else if (field.control === "textarea" || field.control === "json") { input = document.createElement("textarea"); input.className = "textarea"; input.value = state.values[field.name] ?? ""; input.addEventListener("input", () => setValue(field.name, input.value)); }
+      else if (field.control === "textarea" || field.control === "json") { input = document.createElement("textarea"); input.className = "textarea"; input.value = field.control === "json" && typeof state.values[field.name] === "object" ? JSON.stringify(state.values[field.name], null, 2) : (state.values[field.name] ?? ""); input.addEventListener("input", () => setValue(field.name, input.value)); }
       else {
         input = document.createElement("input"); input.className = "input"; input.type = field.control === "number" ? "number" : "text";
         if (field.min !== undefined) input.min = String(field.min); if (field.max !== undefined) input.max = String(field.max); if (field.step !== undefined) input.step = String(field.step); input.value = state.values[field.name] ?? "";
@@ -72,12 +72,23 @@
   function scheduleQuote() { clearTimeout(state.quoteTimer); state.quote = null; renderQuote(); if (state.uploads.length < 2 || !state.model) return; state.quoteTimer = setTimeout(loadQuote, 350); }
   async function loadQuote() { try { state.quote = await api("/api/v1/batch-generations/quote", { method: "POST", body: JSON.stringify(requestPayload()) }); setMessage(); } catch (error) { state.quote = null; setMessage(error.message || "Не удалось рассчитать цену", true); } renderQuote(); }
 
+  async function retryFailed(batchId) {
+    try {
+      const quote = await api(`/api/v1/batch-generations/${encodeURIComponent(batchId)}/retry-quote`);
+      if (!quote.failed_count) { setMessage("Ошибок для повтора нет."); return; }
+      const ok = window.confirm(`Повторить ${quote.failed_count} неудачных задач за ${quote.total_cost_credits} кр. (≈ ${quote.total_cost_rub} ₽)?`);
+      if (!ok) return;
+      const batch = await api(`/api/v1/batch-generations/${encodeURIComponent(batchId)}/retry`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } });
+      renderProgress(batch); setMessage(`Повтор запущен: ${batch.retried_count} задач.`); await pollBatch(batch.id);
+    } catch (error) { setMessage(error.message || "Не удалось повторить ошибки", true); }
+  }
   function renderProgress(batch) {
     dom.progress.hidden = false; clear(dom.progress);
     const head = node("div", "batch-progress-head"); head.append(node("h2", "", `Пакет · ${batch.progress_percent}%`), node("span", "", `${batch.succeeded_count}/${batch.input_count}`)); dom.progress.appendChild(head);
     const bar = node("div", "batch-progress-bar"); const fill = node("span"); fill.style.width = `${batch.progress_percent}%`; bar.appendChild(fill); dom.progress.appendChild(bar);
     const results = node("div", "batch-results");
     (batch.items || []).forEach((item) => { const row = node("div", "batch-result"); row.append(node("strong", "", String(item.ordinal + 1)), node("span", "", item.generation.status)); const action = node("a", "", item.generation.result_url ? "Открыть" : "—"); if (item.generation.result_url) { action.href = item.generation.result_url; action.target = "_blank"; action.rel = "noopener noreferrer"; } row.appendChild(action); results.appendChild(row); }); dom.progress.appendChild(results);
+    if (batch.status !== "running" && batch.failed_count > 0) { const retry = node("button", "upload-button batch-retry", `Повторить ошибки · ${batch.failed_count}`); retry.type = "button"; retry.addEventListener("click", () => retryFailed(batch.id)); dom.progress.appendChild(retry); }
   }
   async function pollBatch(batchId) {
     const token = ++state.pollToken;
