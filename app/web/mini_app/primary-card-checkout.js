@@ -2,6 +2,7 @@
   "use strict";
 
   const LABEL = "Оплата картой · USD / EUR / RUB / СБП";
+  const NONTERMINAL = new Set(["creating", "creation_unknown", "pending"]);
   const tg = window.Telegram?.WebApp;
   const walletView = document.getElementById("walletView");
   const legacyTopup = document.getElementById("topupHeading")?.closest(".home-section");
@@ -104,7 +105,7 @@
   const pay = document.createElement("button");
   pay.type = "button";
   pay.className = "primary-button";
-  pay.textContent = "Перейти к оплате";
+  pay.textContent = "Создать оплату";
   pay.disabled = true;
   const refresh = document.createElement("button");
   refresh.type = "button";
@@ -179,14 +180,29 @@
     return value.length >= 3 && value.length <= 254 && !value.includes(" ") && value.split("@").length === 2;
   }
 
+  function resetCurrentPayment() {
+    clearTimeout(state.pollTimer);
+    state.pollTimer = null;
+    state.current = null;
+  }
+
+  function canOpenCurrent() {
+    return Boolean(state.current?.payment_url && NONTERMINAL.has(state.current.status));
+  }
+
   function sync() {
     const pkg = selectedPackage();
     const amount = priceFor(pkg);
     summaryText.textContent = pkg && amount != null
       ? `${format(pkg.credits)} кр. · ${format(amount)} ${state.currency === "RUB" ? "₽" : state.currency}`
       : `Нет выбранного пакета для ${state.currency}`;
-    pay.disabled = state.busy || !tg?.initData || !pkg || amount == null || !validEmail();
-    pay.textContent = state.busy ? "Создаём оплату…" : "Перейти к оплате";
+    const canCreate = Boolean(tg?.initData && pkg && amount != null && validEmail());
+    pay.disabled = state.busy || (!canOpenCurrent() && !canCreate);
+    pay.textContent = state.busy
+      ? "Создаём оплату…"
+      : canOpenCurrent()
+        ? "Открыть оплату"
+        : "Создать оплату";
     refresh.hidden = !state.current;
   }
 
@@ -212,6 +228,7 @@
         Object.assign(document.createElement("span"), { textContent: `${format(priceFor(pkg))} ${state.currency === "RUB" ? "₽" : state.currency}` }),
       );
       button.addEventListener("click", () => {
+        if (state.packageId !== pkg.id) resetCurrentPayment();
         state.packageId = pkg.id;
         state.intent = null;
         renderPackages();
@@ -243,9 +260,9 @@
   function intent() {
     const pkg = selectedPackage();
     if (!pkg) return null;
-    const key = `${pkg.id}:${state.currency}:${state.email.trim().toLowerCase()}`;
-    if (state.intent?.fingerprint === key) return state.intent;
-    state.intent = { fingerprint: key, id: uuid() };
+    const fingerprint = `${pkg.id}:${state.currency}:${state.email.trim().toLowerCase()}`;
+    if (state.intent?.fingerprint === fingerprint) return state.intent;
+    state.intent = { fingerprint, id: uuid() };
     return state.intent;
   }
 
@@ -287,8 +304,14 @@
       partially_refunded: "частичный возврат",
       refund_review: "проверяем возврат",
     };
-    const text = `Статус: ${labels[payment.status] || payment.status}. ${format(payment.amount)} ${payment.currency}.`;
-    setMessage(text, payment.status === "succeeded" ? "ok" : (["failed", "canceled", "expired"].includes(payment.status) ? "error" : ""));
+    const suffix = canOpenCurrent() ? " Нажмите «Открыть оплату»." : "";
+    const text = `Статус: ${labels[payment.status] || payment.status}. ${format(payment.amount)} ${payment.currency}.${suffix}`;
+    setMessage(
+      text,
+      payment.status === "succeeded"
+        ? "ok"
+        : (["failed", "canceled", "expired"].includes(payment.status) ? "error" : ""),
+    );
     sync();
     rewriteNeutralHistoryLabels();
   }
@@ -317,7 +340,7 @@
       if (walletView.hidden || !state.current) return;
       const payment = await api(`/api/v1/payments/card/${encodeURIComponent(state.current.id)}`).catch(() => null);
       if (payment) renderStatus(payment);
-      if (payment && ["creating", "creation_unknown", "pending"].includes(payment.status)) {
+      if (payment && NONTERMINAL.has(payment.status)) {
         state.pollTimer = setTimeout(tick, 5000);
       }
     };
@@ -325,6 +348,10 @@
   }
 
   async function checkout() {
+    if (canOpenCurrent()) {
+      openUrl(state.current.payment_url);
+      return;
+    }
     if (state.busy || !validEmail()) return;
     const pkg = selectedPackage();
     const currentIntent = intent();
@@ -343,7 +370,6 @@
         }),
       });
       renderStatus(payment);
-      if (payment.payment_url) openUrl(payment.payment_url);
       startPolling();
     } catch (error) {
       if (error.status === 409) state.intent = null;
@@ -364,13 +390,17 @@
   }
 
   currency.addEventListener("change", () => {
+    if (state.currency !== currency.value) resetCurrentPayment();
     state.currency = currency.value;
     state.intent = null;
     renderPackages();
   });
   email.addEventListener("input", () => {
     const next = email.value;
-    if (state.email !== next) state.intent = null;
+    if (state.email !== next) {
+      resetCurrentPayment();
+      state.intent = null;
+    }
     state.email = next;
     sync();
   });
@@ -384,17 +414,20 @@
   });
 
   const walletObserver = new MutationObserver(() => {
-    if (!walletView.hidden) {
-      void loadPackages();
-      rewriteNeutralHistoryLabels();
-    } else {
-      clearTimeout(state.pollTimer);
-    }
+    if (!walletView.hidden) void loadPackages();
+    else clearTimeout(state.pollTimer);
   });
-  walletObserver.observe(walletView, { attributes: true, subtree: true, childList: true, attributeFilter: ["hidden"] });
+  walletObserver.observe(walletView, { attributes: true, attributeFilter: ["hidden"] });
+
+  const historyList = document.getElementById("paymentHistoryList");
+  if (historyList) {
+    const historyObserver = new MutationObserver(rewriteNeutralHistoryLabels);
+    historyObserver.observe(historyList, { childList: true, subtree: true });
+  }
+
   tg?.onEvent?.("activated", () => { if (!walletView.hidden) void loadPackages(); });
   window.addEventListener("online", () => { if (!walletView.hidden) void loadPackages(); });
 
-  void loadPackages();
+  if (!walletView.hidden) void loadPackages();
   sync();
 })();
