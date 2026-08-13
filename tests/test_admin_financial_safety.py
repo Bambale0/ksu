@@ -32,7 +32,7 @@ async def test_completed_payment_reprocess_does_not_double_credit(
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         payment = Payment(
             user_id=customer.id,
@@ -107,7 +107,7 @@ async def test_operation_refund_is_single_effect_even_with_new_idempotency_key()
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         generation = Generation(
             user_id=customer.id,
