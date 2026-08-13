@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
-    # Versioned product onboarding. Copy/links are deployment-owned rather than legal text in code.
     onboarding_enabled: bool = True
     onboarding_version: str = "1"
     onboarding_title: str = "Добро пожаловать в Ксю"
@@ -33,13 +32,10 @@ class Settings(BaseSettings):
     internal_credit_rub: Decimal = Decimal("10")
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
-    # Product spec defines a minimum withdrawal but does not fix the business value.
-    # Zero means no separate minimum beyond amount > 0.
     partner_min_withdrawal_rub: Decimal = Decimal("0")
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 
-    # Generation reliability. PostgreSQL outbox is authoritative; Redis only wakes workers.
     generation_worker_poll_seconds: int = 5
     generation_outbox_lease_seconds: int = 90
     generation_submission_max_attempts: int = 5
@@ -48,7 +44,6 @@ class Settings(BaseSettings):
     generation_reconcile_stale_seconds: int = 60
     generation_recovery_batch_size: int = 50
 
-    # Durable provider-result ingestion into private S3-compatible object storage.
     media_worker_poll_seconds: int = 5
     media_ingest_lease_seconds: int = 600
     media_ingest_max_attempts: int = 5
@@ -70,12 +65,17 @@ class Settings(BaseSettings):
     s3_multipart_chunk_bytes: int = 8 * 1024 * 1024
     s3_max_concurrency: int = 4
 
-    # Payment lifecycle reconciliation.
     payment_reconcile_interval_seconds: int = 60
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
-    # OWASP API4 / resource-consumption controls. Zero disables an optional quota.
+    notification_worker_poll_seconds: int = 3
+    notification_delivery_lease_seconds: int = 90
+    notification_delivery_max_attempts: int = 8
+    notification_retry_base_seconds: int = 5
+    notification_retry_max_seconds: int = 900
+    notification_delivery_batch_size: int = 50
+
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True
     generation_rate_limit_per_minute: int = 10
@@ -89,7 +89,6 @@ class Settings(BaseSettings):
     kie_circuit_failure_window_seconds: int = 60
     kie_circuit_open_seconds: int = 60
 
-    # Production observability.
     log_level: str = "INFO"
     json_logs: bool = True
     metrics_enabled: bool = True
@@ -101,8 +100,6 @@ class Settings(BaseSettings):
     otel_exporter_otlp_traces_endpoint: str = ""
     otel_trace_sample_ratio: float = 0.10
 
-    # Separate privileged-admin security domain.
-    # ADMIN_SECURITY_KEY must be a random 32+ character secret in deployments using admin routes.
     admin_security_key: str = ""
     admin_bootstrap_telegram_ids: str = ""
     admin_require_mfa: bool = True
