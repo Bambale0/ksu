@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import onboarding_menu
+from app.bot.keyboards import back_menu, onboarding_menu
 from app.services.abuse_protection import ResourcePolicyError
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError
@@ -40,7 +40,8 @@ async def generation_start(
     await state.set_state(GenerationFlow.waiting_prompt)
     if callback.message:
         await callback.message.answer(
-            "Отправь промпт для генерации. Цена рассчитывается сервером по выбранной модели."
+            "Отправь промпт для генерации. Цена рассчитывается сервером по выбранной модели.",
+            reply_markup=back_menu(),
         )
 
 
@@ -52,7 +53,7 @@ async def generation_prompt(
     redis: Redis,
 ) -> None:
     if message.from_user is None or not message.text:
-        await message.answer("Нужен текстовый промпт.")
+        await message.answer("Нужен текстовый промпт.", reply_markup=back_menu())
         return
     user = await UserService.get_or_create(session, message.from_user)
     if not await OnboardingService.is_complete(session, user.id):
@@ -71,19 +72,27 @@ async def generation_prompt(
             prompt=message.text,
         )
     except InsufficientBalanceError:
-        await message.answer("Недостаточно кредитов. Пополни баланс и повтори.")
+        await message.answer(
+            "Недостаточно кредитов. Пополни баланс и повтори.",
+            reply_markup=back_menu(),
+        )
         return
     except ResourcePolicyError as exc:
         await message.answer(
             f"Сейчас нельзя запустить ещё одну генерацию: {exc}. "
-            f"Повтори примерно через {exc.retry_after} сек."
+            f"Повтори примерно через {exc.retry_after} сек.",
+            reply_markup=back_menu(),
         )
         return
     except InvalidModelParametersError as exc:
-        await message.answer(f"Параметры генерации не приняты: {exc}")
+        await message.answer(
+            f"Параметры генерации не приняты: {exc}",
+            reply_markup=back_menu(),
+        )
         return
     await state.clear()
     await message.answer(
         f"⏳ Задача поставлена в очередь: {generation.id}\n"
-        f"Списано: {generation.cost_rox} кр."
+        f"Списано: {generation.cost_rox} кр.",
+        reply_markup=back_menu(),
     )
