@@ -36,6 +36,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_batch_generation_jobs_user_id", "batch_generation_jobs", ["user_id"])
     op.create_index("ix_batch_generation_jobs_user_created", "batch_generation_jobs", ["user_id", "created_at"])
+    op.create_index("ix_batch_generation_jobs_status_updated", "batch_generation_jobs", ["status", "updated_at"])
 
 
 def downgrade() -> None:
