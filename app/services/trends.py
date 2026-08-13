@@ -77,14 +77,20 @@ class TrendService:
         else:
             raise TrendRecipeError("input_mode must be 'none' or 'image'")
 
+        reference_field = TrendService._reference_field(spec)
+        default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
         min_references = int(payload.get("min_references", 1 if input_mode == "image" else 0))
-        max_references = int(payload.get("max_references", 8 if input_mode == "image" else 0))
+        max_references = int(
+            payload.get("max_references", default_max if input_mode == "image" else 0)
+        )
         if min_references < 0 or max_references < min_references or max_references > 16:
             raise TrendRecipeError("Reference limits are invalid")
         if input_mode == "none" and (min_references or max_references):
             raise TrendRecipeError("Reference limits require input_mode='image'")
-        if input_mode == "image" and not TrendService._reference_field(spec):
+        if input_mode == "image" and reference_field is None:
             raise TrendRecipeError("Selected model does not accept image references")
+        if reference_field in _REFERENCE_SINGLE_FIELDS and max_references > 1:
+            raise TrendRecipeError("Selected model accepts only one reference image")
 
         billing_seconds_raw = payload.get("billing_seconds")
         if billing_seconds_raw is None and spec.duration_field:
@@ -306,6 +312,8 @@ class TrendService:
         field = TrendService._reference_field(spec)
         if field is None:
             raise TrendRecipeError("Selected model does not accept image references")
+        if field in _REFERENCE_SINGLE_FIELDS and len(reference_urls) != 1:
+            raise TrendRecipeError("Selected model requires exactly one reference image")
         parameters[field] = reference_urls if field in _REFERENCE_LIST_FIELDS else reference_urls[0]
         return parameters
 
