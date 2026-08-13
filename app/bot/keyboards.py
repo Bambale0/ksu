@@ -12,6 +12,19 @@ def _create_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="✨ Создать контент", callback_data="create")
 
 
+def onboarding_menu() -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    links: list[InlineKeyboardButton] = []
+    if settings.onboarding_rules_url.startswith("https://"):
+        links.append(InlineKeyboardButton(text="Правила", url=settings.onboarding_rules_url))
+    if settings.onboarding_privacy_url.startswith("https://"):
+        links.append(InlineKeyboardButton(text="Конфиденциальность", url=settings.onboarding_privacy_url))
+    if links:
+        rows.append(links)
+    rows.append([InlineKeyboardButton(text="🚀 Начать", callback_data="onboarding_complete")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
