@@ -81,6 +81,7 @@ jobs:
           node --check app/web/mini_app/feed.js
           node --check app/web/mini_app/trends.js
           node --check app/web/mini_app/prompt-tools.js
+          node --check app/web/mini_app/bulk.js
           node --check app/web/mini_app/promo-recovery.js
           node --check app/web/mini_app/onboarding.js
 
@@ -105,6 +106,9 @@ jobs:
 
       - name: Prompt Tools contracts
         run: pytest -q tests/test_prompt_tools_contract.py tests/test_prompt_tools.py
+
+      - name: Batch generation contracts
+        run: pytest -q tests/test_generation_batches.py tests/test_batch_recovery.py
 
       - name: Full regression suite
         shell: bash
