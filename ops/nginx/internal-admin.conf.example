@@ -1,0 +1,36 @@
+# Example PRIVATE listener for the signed internal admin API.
+# Do not include this location in the public Telegram/Mini App virtual host.
+# Bind to a private interface/VPN address and also restrict source networks here.
+
+server {
+    listen 10.20.0.10:8443 ssl;
+    server_name ksu-admin.internal;
+
+    # Replace with your internal PKI certificate/key.
+    ssl_certificate /etc/nginx/tls/ksu-admin.crt;
+    ssl_certificate_key /etc/nginx/tls/ksu-admin.key;
+
+    # Match INTERNAL_ADMIN_NETWORK_ALLOWLIST and keep both controls narrow.
+    allow 10.20.0.0/16;
+    allow 127.0.0.1;
+    deny all;
+
+    client_max_body_size 2m;
+
+    location /internal/admin/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    location / {
+        return 404;
+    }
+}
