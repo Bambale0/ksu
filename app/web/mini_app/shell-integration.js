@@ -48,9 +48,24 @@
     document.head.appendChild(script);
   }
 
+  function mountPromoRecovery() {
+    if (!document.querySelector('link[href="/mini-app/promo-recovery.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/promo-recovery.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/promo-recovery.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/promo-recovery.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountPartnerCabinet();
   mountProfileTools();
   mountSocialTools();
+  mountPromoRecovery();
 
   if (!overlay || !createHome || !builder) return;
 
