@@ -41,6 +41,15 @@ def _item() -> SimpleNamespace:
     )
 
 
+def _generation() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        status="queued",
+        cost_rox=Decimal("20.00"),
+        result_url=None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_public_view_does_not_serialize_curated_prompt_or_settings() -> None:
     item = _item()
@@ -60,12 +69,7 @@ async def test_run_uses_server_owned_recipe_and_only_merges_reference_urls(monke
     session = AsyncMock()
     session.get.return_value = item
     session.scalar.return_value = item
-    generation = SimpleNamespace(
-        id=uuid.uuid4(),
-        status="queued",
-        cost_rox=Decimal("20.00"),
-        result_url=None,
-    )
+    generation = _generation()
     create = AsyncMock(return_value=generation)
     monkeypatch.setattr(GenerationService, "create", create)
 
@@ -90,3 +94,25 @@ async def test_run_uses_server_owned_recipe_and_only_merges_reference_urls(monke
     assert meta["prompt_hidden"] is True
     assert item.payload["usage_count"] == 4
     session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_usage_counter_failure_does_not_fail_created_generation(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.side_effect = RuntimeError("analytics unavailable")
+    generation = _generation()
+    monkeypatch.setattr(GenerationService, "create", AsyncMock(return_value=generation))
+
+    returned, meta = await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=["https://cdn.example.invalid/reference.jpg"],
+    )
+
+    assert returned is generation
+    assert meta["prompt_hidden"] is True
+    session.rollback.assert_awaited_once()
