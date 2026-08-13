@@ -26,7 +26,6 @@ from app.services.wallet import InsufficientBalanceError
 router = Router(name="feed")
 
 _SORT_CODES = {"r": "recent", "d": "top_day", "t": "top"}
-_SORT_TO_CODE = {value: key for key, value in _SORT_CODES.items()}
 
 
 class FeedCommentFlow(StatesGroup):
@@ -102,7 +101,11 @@ def _caption(card: dict[str, Any], comments: list[dict[str, Any]] | None = None)
             lines.append("Пока нет комментариев")
         for item in comments[:4]:
             author_info = item.get("author") or {}
-            name = str(author_info.get("display_name") or author_info.get("username") or "Пользователь")
+            name = str(
+                author_info.get("display_name")
+                or author_info.get("username")
+                or "Пользователь"
+            )
             text = str(item.get("text") or "")
             if len(text) > 120:
                 text = text[:117] + "…"
@@ -110,9 +113,12 @@ def _caption(card: dict[str, Any], comments: list[dict[str, Any]] | None = None)
     return "\n".join(lines)[:1024]
 
 
-def _keyboard(card: dict[str, Any], context: str, total: int | None = None) -> InlineKeyboardMarkup:
+def _keyboard(
+    card: dict[str, Any],
+    context: str,
+    total: int | None = None,
+) -> InlineKeyboardMarkup:
     generation_id = str(card["id"])
-    surface = _surface_for_context(context)
     rows: list[list[InlineKeyboardButton]] = []
     index = _context_index(context)
     if index is not None and total:
@@ -120,9 +126,18 @@ def _keyboard(card: dict[str, Any], context: str, total: int | None = None) -> I
         next_index = (index + 1) % total
         rows.append(
             [
-                InlineKeyboardButton(text="◀️", callback_data=f"fd:n:{_context_with_index(context, prev_index)}"),
-                InlineKeyboardButton(text=f"{index + 1}/{total}", callback_data="fd:noop"),
-                InlineKeyboardButton(text="▶️", callback_data=f"fd:n:{_context_with_index(context, next_index)}"),
+                InlineKeyboardButton(
+                    text="◀️",
+                    callback_data=f"fd:n:{_context_with_index(context, prev_index)}",
+                ),
+                InlineKeyboardButton(
+                    text=f"{index + 1}/{total}",
+                    callback_data="fd:noop",
+                ),
+                InlineKeyboardButton(
+                    text="▶️",
+                    callback_data=f"fd:n:{_context_with_index(context, next_index)}",
+                ),
             ]
         )
     rows.append(
@@ -131,8 +146,14 @@ def _keyboard(card: dict[str, Any], context: str, total: int | None = None) -> I
                 text=f"{'❤️' if card.get('liked_by_me') else '♡'} {card.get('likes_count', 0)}",
                 callback_data=f"fd:l:{context}:{generation_id}",
             ),
-            InlineKeyboardButton(text="🔗 Ссылка", callback_data=f"fd:s:{context}:{generation_id}"),
-            InlineKeyboardButton(text="🔁 Повторить", callback_data=f"fd:r:{context}:{generation_id}"),
+            InlineKeyboardButton(
+                text="🔗 Ссылка",
+                callback_data=f"fd:s:{context}:{generation_id}",
+            ),
+            InlineKeyboardButton(
+                text="🔁 Повторить",
+                callback_data=f"fd:r:{context}:{generation_id}",
+            ),
         ]
     )
     rows.append(
@@ -154,7 +175,9 @@ def _keyboard(card: dict[str, Any], context: str, total: int | None = None) -> I
             InlineKeyboardButton(text="⭐ Топ", callback_data="fd:n:g:t:0"),
         ]
     )
-    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")])
+    rows.append(
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -168,7 +191,12 @@ def _comments_keyboard(card: dict[str, Any], context: str) -> InlineKeyboardMark
                     callback_data=f"fd:w:{context}:{generation_id}",
                 )
             ],
-            [InlineKeyboardButton(text="⬅️ К посту", callback_data=f"fd:b:{context}:{generation_id}")],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ К посту",
+                    callback_data=f"fd:b:{context}:{generation_id}",
+                )
+            ],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")],
         ]
     )
@@ -187,7 +215,12 @@ async def _load_context(
             index = max(0, int(parts[2]))
         except ValueError:
             index = 0
-        rows = await FeedService.get_feed_generations(session, sort=sort, limit=50, offset=0)
+        rows = await FeedService.get_feed_generations(
+            session,
+            sort=sort,
+            limit=50,
+            offset=0,
+        )
         cards = await FeedService.cards_for_generations(
             session,
             rows,
@@ -238,7 +271,12 @@ async def _card_by_id(
     )
 
 
-async def _send_card(message: Message, card: dict[str, Any], context: str, total: int | None = None) -> None:
+async def _send_card(
+    message: Message,
+    card: dict[str, Any],
+    context: str,
+    total: int | None = None,
+) -> None:
     url = str(card.get("result_url") or "")
     if not url:
         await message.answer("Медиа публикации недоступно.")
@@ -246,12 +284,22 @@ async def _send_card(message: Message, card: dict[str, Any], context: str, total
     caption = _caption(card)
     keyboard = _keyboard(card, context, total)
     if _is_video(card):
-        await message.answer_video(url, caption=caption, reply_markup=keyboard, supports_streaming=True)
+        await message.answer_video(
+            url,
+            caption=caption,
+            reply_markup=keyboard,
+            supports_streaming=True,
+        )
     else:
         await message.answer_photo(url, caption=caption, reply_markup=keyboard)
 
 
-async def _edit_card(callback: CallbackQuery, card: dict[str, Any], context: str, total: int | None = None) -> None:
+async def _edit_card(
+    callback: CallbackQuery,
+    card: dict[str, Any],
+    context: str,
+    total: int | None = None,
+) -> None:
     if not isinstance(callback.message, Message):
         await callback.answer()
         return
@@ -266,7 +314,10 @@ async def _edit_card(callback: CallbackQuery, card: dict[str, Any], context: str
         else InputMediaPhoto(media=url, caption=caption)
     )
     try:
-        await callback.message.edit_media(media=media, reply_markup=_keyboard(card, context, total))
+        await callback.message.edit_media(
+            media=media,
+            reply_markup=_keyboard(card, context, total),
+        )
     except TelegramBadRequest:
         # Telegram cannot always swap media kinds. Replace the single active carousel message.
         try:
@@ -277,27 +328,47 @@ async def _edit_card(callback: CallbackQuery, card: dict[str, Any], context: str
     await callback.answer()
 
 
-async def _open_context(callback: CallbackQuery, session: AsyncSession, context: str) -> None:
+async def _open_context(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    context: str,
+) -> None:
     user = await UserService.get_or_create(session, callback.from_user)
     try:
-        cards, index = await _load_context(session, viewer_user_id=user.id, context=context)
+        cards, index = await _load_context(
+            session,
+            viewer_user_id=user.id,
+            context=context,
+        )
     except FeedNotFoundError:
         await callback.answer("Лента недоступна", show_alert=True)
         return
     if not cards:
         await callback.answer(
-            "В профиле пока нет публикаций" if context.startswith("p:") else "В ленте пока пусто",
+            "В профиле пока нет публикаций"
+            if context.startswith("p:")
+            else "В ленте пока пусто",
             show_alert=True,
         )
         return
     index %= len(cards)
-    await _edit_card(callback, cards[index], _context_with_index(context, index), len(cards))
+    await _edit_card(
+        callback,
+        cards[index],
+        _context_with_index(context, index),
+        len(cards),
+    )
 
 
 @router.callback_query(F.data == "feed:open")
 async def feed_open(callback: CallbackQuery, session: AsyncSession) -> None:
     user = await UserService.get_or_create(session, callback.from_user)
-    rows = await FeedService.get_feed_generations(session, sort="recent", limit=50, offset=0)
+    rows = await FeedService.get_feed_generations(
+        session,
+        sort="recent",
+        limit=50,
+        offset=0,
+    )
     cards = await FeedService.cards_for_generations(
         session,
         rows,
@@ -375,7 +446,11 @@ async def feed_like(callback: CallbackQuery, session: AsyncSession) -> None:
         return
     total = None
     if _context_index(context) is not None:
-        cards, _ = await _load_context(session, viewer_user_id=user.id, context=context)
+        cards, _ = await _load_context(
+            session,
+            viewer_user_id=user.id,
+            context=context,
+        )
         total = len(cards)
     await _edit_card(callback, card, context, total)
 
@@ -404,7 +479,10 @@ async def feed_share(callback: CallbackQuery, session: AsyncSession) -> None:
             surface=surface,
         )
         await session.commit()
-        link = FeedService.post_deep_link(generation_id, str(card["author_referral_code"]))
+        link = FeedService.post_deep_link(
+            generation_id,
+            str(card["author_referral_code"]),
+        )
     except (FeedError, FeedNotFoundError):
         await callback.answer("Публикация больше недоступна", show_alert=True)
         return
@@ -414,7 +492,11 @@ async def feed_share(callback: CallbackQuery, session: AsyncSession) -> None:
 
 
 @router.callback_query(F.data.startswith("fd:r:"))
-async def feed_remix(callback: CallbackQuery, session: AsyncSession, redis: Redis) -> None:
+async def feed_remix(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    redis: Redis,
+) -> None:
     raw = (callback.data or "")[5:]
     context, generation_raw = raw.rsplit(":", 1)
     try:
@@ -440,7 +522,8 @@ async def feed_remix(callback: CallbackQuery, session: AsyncSession, redis: Redi
     await callback.answer("Remix запущен")
     if isinstance(callback.message, Message):
         await callback.message.answer(
-            f"⏳ Повтор запущен: {generation.id}\nPrompt исходной работы не передавался клиенту."
+            f"⏳ Повтор запущен: {generation.id}\n"
+            "Prompt исходной работы не передавался клиенту."
         )
 
 
@@ -480,7 +563,10 @@ async def feed_comments(callback: CallbackQuery, session: AsyncSession) -> None:
 
 
 @router.callback_query(F.data.startswith("fd:b:"))
-async def feed_back_to_post(callback: CallbackQuery, session: AsyncSession) -> None:
+async def feed_back_to_post(
+    callback: CallbackQuery,
+    session: AsyncSession,
+) -> None:
     raw = (callback.data or "")[5:]
     context, generation_raw = raw.rsplit(":", 1)
     try:
@@ -502,7 +588,11 @@ async def feed_back_to_post(callback: CallbackQuery, session: AsyncSession) -> N
         return
     total = None
     if _context_index(context) is not None:
-        cards, _ = await _load_context(session, viewer_user_id=user.id, context=context)
+        cards, _ = await _load_context(
+            session,
+            viewer_user_id=user.id,
+            context=context,
+        )
         total = len(cards)
     if isinstance(callback.message, Message):
         await callback.message.edit_caption(
@@ -525,10 +615,13 @@ async def feed_comment_start(
     except ValueError:
         await callback.answer("Некорректный пост", show_alert=True)
         return
-    user = await UserService.get_or_create(session, callback.from_user)
     surface = _surface_for_context(context)
     try:
-        await FeedService.assert_surface_visible(session, generation_id, surface=surface)
+        await FeedService.assert_surface_visible(
+            session,
+            generation_id,
+            surface=surface,
+        )
     except FeedNotFoundError:
         await callback.answer("Публикация недоступна", show_alert=True)
         return
@@ -614,7 +707,10 @@ async def handle_deep_link(
         return False
     if link.action == "posts" and link.profile_referral_code:
         try:
-            author = await FeedService.author_by_referral_code(session, link.profile_referral_code)
+            author = await FeedService.author_by_referral_code(
+                session,
+                link.profile_referral_code,
+            )
             rows = await FeedService.get_user_feed_generations(
                 session,
                 author_user_id=author.id,
@@ -634,7 +730,12 @@ async def handle_deep_link(
         if not cards:
             await message.answer("В профиле автора пока нет публикаций.")
             return True
-        await _send_card(message, cards[0], f"p:{link.profile_referral_code}:0", len(cards))
+        await _send_card(
+            message,
+            cards[0],
+            f"p:{link.profile_referral_code}:0",
+            len(cards),
+        )
         return True
 
     if link.generation_id is None:
@@ -668,10 +769,18 @@ async def handle_deep_link(
     if link.action == "remix":
         surface = "feed"
         try:
-            await FeedService.assert_surface_visible(session, link.generation_id, surface="feed")
+            await FeedService.assert_surface_visible(
+                session,
+                link.generation_id,
+                surface="feed",
+            )
         except FeedNotFoundError:
             try:
-                await FeedService.assert_surface_visible(session, link.generation_id, surface="profile")
+                await FeedService.assert_surface_visible(
+                    session,
+                    link.generation_id,
+                    surface="profile",
+                )
                 surface = "profile"
             except FeedNotFoundError:
                 await message.answer("Исходная публикация удалена или недоступна.")
