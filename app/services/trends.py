@@ -43,25 +43,20 @@ class TrendService:
         clean_title = str(title or "").strip()
         if not clean_title or len(clean_title) > 80:
             raise TrendRecipeError("Trend title must contain 1..80 characters")
-
         description = str(payload.get("description") or "").strip()
         if len(description) > 240:
             raise TrendRecipeError("Trend description must be at most 240 characters")
-
         model_id = str(payload.get("model_id") or payload.get("model") or "").strip()
         if not model_id:
             raise TrendRecipeError("model_id is required")
         spec = ModelCatalog.get(model_id)
-
         prompt = str(payload.get("prompt") or payload.get("prompt_text") or "").strip()
         if not prompt or len(prompt) > 8000:
             raise TrendRecipeError("Hidden trend prompt must contain 1..8000 characters")
-
         preview_url = TrendService._safe_http_url(payload.get("preview_url"), field="preview_url")
         media_type = str(payload.get("media_type") or spec.media_type).strip().lower()
         if media_type not in {"image", "video"} or media_type != spec.media_type:
             raise TrendRecipeError("media_type must match the selected model")
-
         parameters = payload.get("parameters")
         if parameters is None:
             parameters = payload.get("generation_settings") or {}
@@ -70,7 +65,6 @@ class TrendService:
         parameters = dict(parameters)
         for key in ("model", "model_id", "kind", "user_input", "count"):
             parameters.pop(key, None)
-
         raw_input_mode = payload.get("input_mode") or payload.get("user_input") or "none"
         input_mode = str(raw_input_mode).strip().lower()
         if input_mode in {"photo", "image", "reference", "references"}:
@@ -79,13 +73,10 @@ class TrendService:
             input_mode = "none"
         else:
             raise TrendRecipeError("input_mode must be 'none' or 'image'")
-
         reference_field = TrendService._reference_field(spec)
         default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
         min_references = int(payload.get("min_references", 1 if input_mode == "image" else 0))
-        max_references = int(
-            payload.get("max_references", default_max if input_mode == "image" else 0)
-        )
+        max_references = int(payload.get("max_references", default_max if input_mode == "image" else 0))
         if min_references < 0 or max_references < min_references or max_references > 16:
             raise TrendRecipeError("Reference limits are invalid")
         if input_mode == "none" and (min_references or max_references):
@@ -94,14 +85,12 @@ class TrendService:
             raise TrendRecipeError("Selected model does not accept image references")
         if reference_field in _REFERENCE_SINGLE_FIELDS and max_references > 1:
             raise TrendRecipeError("Selected model accepts only one reference image")
-
         billing_seconds_raw = payload.get("billing_seconds")
         if billing_seconds_raw is None and spec.duration_field:
             billing_seconds_raw = parameters.get(spec.duration_field)
         billing_seconds = int(billing_seconds_raw) if billing_seconds_raw not in (None, "") else None
         if billing_seconds is not None and billing_seconds <= 0:
             raise TrendRecipeError("billing_seconds must be positive")
-
         tags = payload.get("tags") or []
         if not isinstance(tags, list):
             raise TrendRecipeError("tags must be an array")
@@ -110,12 +99,10 @@ class TrendService:
             value = str(item).strip().lower()
             if value and len(value) <= 40 and value not in clean_tags:
                 clean_tags.append(value)
-
         sort_order = int(payload.get("sort_order", 0))
         if sort_order < -100_000 or sort_order > 100_000:
             raise TrendRecipeError("sort_order is out of range")
         usage_count = max(0, int(payload.get("usage_count", 0)))
-
         return {
             "schema_version": 1,
             "description": description,
@@ -134,12 +121,7 @@ class TrendService:
         }
 
     @staticmethod
-    async def validate_recipe(
-        session: AsyncSession,
-        *,
-        title: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
+    async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
         refs = ["https://example.invalid/trend-reference.jpg"] * recipe["min_references"]
         parameters = TrendService._parameters_with_references(recipe, refs)
@@ -179,7 +161,6 @@ class TrendService:
                     select(AdminTrend)
                     .where(AdminTrend.is_active.is_(True))
                     .order_by(AdminTrend.created_at.desc())
-                    .limit(max(1, min(limit, 100)))
                 )
             ).all()
         )
@@ -192,11 +173,8 @@ class TrendService:
             if media_type and view["media_type"] != media_type:
                 continue
             items.append(view)
-        items.sort(
-            key=lambda item: (int(item["sort_order"]), item["created_at"]),
-            reverse=True,
-        )
-        return {"items": items}
+        items.sort(key=lambda item: (int(item["sort_order"]), item["created_at"]), reverse=True)
+        return {"items": items[: max(1, min(limit, 100))]}
 
     @staticmethod
     async def get_public(session: AsyncSession, *, trend_id: uuid.UUID) -> dict[str, Any]:
@@ -226,11 +204,7 @@ class TrendService:
             "description": recipe["description"],
             "media_type": recipe["media_type"],
             "preview_url": recipe["preview_url"],
-            "model": {
-                "id": spec.id,
-                "title": spec.title,
-                "family": spec.family,
-            },
+            "model": {"id": spec.id, "title": spec.title, "family": spec.family},
             "cost_credits": TrendService._amount(cost),
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
             "billing_seconds": seconds,
@@ -267,7 +241,6 @@ class TrendService:
             )
         if recipe["input_mode"] == "none" and refs:
             raise TrendRecipeError("This trend does not accept reference images")
-
         parameters = TrendService._parameters_with_references(recipe, refs)
         generation = await GenerationService.create(
             session,
@@ -279,14 +252,8 @@ class TrendService:
             billing_seconds=recipe["billing_seconds"],
             action_type="trend",
         )
-
-        # Usage is analytics only. GenerationService has already committed the financially
-        # authoritative generation/debit/outbox transaction, so analytics must never turn
-        # a successful charge and task creation into an HTTP 500.
         try:
-            locked = await session.scalar(
-                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
-            )
+            locked = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update())
             if locked is not None:
                 payload = dict(locked.payload or {})
                 payload["usage_count"] = max(0, int(payload.get("usage_count", 0))) + 1
@@ -295,22 +262,15 @@ class TrendService:
         except Exception:
             await session.rollback()
             logger.warning("Trend usage analytics failed for %s", trend_id, exc_info=True)
-
         return generation, {
             "trend_id": str(trend_id),
             "prompt_hidden": True,
             "prompt_actions_allowed": False,
-            "model": {
-                "id": recipe["model_id"],
-                "title": ModelCatalog.get(recipe["model_id"]).title,
-            },
+            "model": {"id": recipe["model_id"], "title": ModelCatalog.get(recipe["model_id"]).title},
         }
 
     @staticmethod
-    def _parameters_with_references(
-        recipe: dict[str, Any],
-        reference_urls: list[str],
-    ) -> dict[str, Any]:
+    def _parameters_with_references(recipe: dict[str, Any], reference_urls: list[str]) -> dict[str, Any]:
         parameters = dict(recipe.get("parameters") or {})
         spec = ModelCatalog.get(str(recipe["model_id"]))
         for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
-from app.db.models import User
+from app.db.models import Generation, User
 from app.services.feed import (
     FeedDerivativePublicationError,
     FeedError,
@@ -54,6 +54,21 @@ def _http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Feed operation failed")
 
 
+def _sanitize_trend_card(card: dict[str, object], generation: Generation) -> dict[str, object]:
+    if generation.action_type != "trend":
+        return card
+    card = dict(card)
+    card["prompt"] = ""
+    card["prompt_hidden"] = True
+    card["prompt_actions_allowed"] = False
+    card["feed_prompt_visible"] = False
+    card["reference_images"] = []
+    card["reference_videos"] = []
+    card["references_hidden"] = True
+    card["feed_references_visible"] = False
+    return card
+
+
 @router.get("/feed")
 async def feed(
     user: CurrentUserDep,
@@ -62,18 +77,17 @@ async def feed(
     limit: int = Query(default=20, ge=1, le=50),
     offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
-    rows = await FeedService.get_feed_generations(
-        session,
-        sort=sort,
-        limit=limit,
-        offset=offset,
-    )
+    rows = await FeedService.get_feed_generations(session, sort=sort, limit=limit, offset=offset)
     cards = await FeedService.cards_for_generations(
-        session,
-        rows,
-        viewer_user_id=user.id,
-        surface="feed",
+        session, rows, viewer_user_id=user.id, surface="feed"
     )
+    by_id = {str(row.id): row for row in rows}
+    cards = [
+        _sanitize_trend_card(card, by_id[str(card["id"])])
+        if str(card.get("id")) in by_id
+        else card
+        for card in cards
+    ]
     return {"items": cards, "sort": sort, "limit": limit, "offset": offset}
 
 
@@ -85,17 +99,16 @@ async def feed_item(
     surface: Literal["feed", "profile"] = Query(default="feed"),
 ) -> dict[str, object]:
     try:
+        generation = await FeedService.assert_surface_visible(session, generation_id, surface=surface)
         if surface == "feed":
-            return await FeedService.get_feed_generation_card(
-                session,
-                generation_id=generation_id,
-                viewer_user_id=user.id,
+            card = await FeedService.get_feed_generation_card(
+                session, generation_id=generation_id, viewer_user_id=user.id
             )
-        return await FeedService.get_profile_generation_card(
-            session,
-            generation_id=generation_id,
-            viewer_user_id=user.id,
-        )
+        else:
+            card = await FeedService.get_profile_generation_card(
+                session, generation_id=generation_id, viewer_user_id=user.id
+            )
+        return _sanitize_trend_card(card, generation)
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
 
@@ -111,18 +124,18 @@ async def profile_feed(
     try:
         author = await FeedService.author_by_referral_code(session, referral_code)
         rows = await FeedService.get_user_feed_generations(
-            session,
-            author_user_id=author.id,
-            profile_visible_only=True,
-            limit=limit,
-            offset=offset,
+            session, author_user_id=author.id, profile_visible_only=True, limit=limit, offset=offset
         )
         cards = await FeedService.cards_for_generations(
-            session,
-            rows,
-            viewer_user_id=user.id,
-            surface="profile",
+            session, rows, viewer_user_id=user.id, surface="profile"
         )
+        by_id = {str(row.id): row for row in rows}
+        cards = [
+            _sanitize_trend_card(card, by_id[str(card["id"])])
+            if str(card.get("id")) in by_id
+            else card
+            for card in cards
+        ]
     except FeedNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
@@ -147,22 +160,22 @@ async def publish(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
+        source = await session.get(Generation, generation_id)
+        trend_owned = bool(source and source.user_id == user.id and source.action_type == "trend")
         generation = await FeedService.share_to_feed(
             session,
             generation_id=generation_id,
             owner_user_id=user.id,
             publication_scope=payload.publication_scope,
-            prompt_visible=payload.prompt_visible,
-            references_visible=payload.references_visible,
+            prompt_visible=False if trend_owned else payload.prompt_visible,
+            references_visible=False if trend_owned else payload.references_visible,
         )
         await session.commit()
         surface = "feed" if generation.publication_scope == "feed" else "profile"
         card = await FeedService.to_card(
-            session,
-            generation,
-            viewer_user_id=user.id,
-            surface=surface,
+            session, generation, viewer_user_id=user.id, surface=surface
         )
+        card = _sanitize_trend_card(card, generation)
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
     return {
@@ -208,10 +221,7 @@ async def like(
 ) -> dict[str, object]:
     try:
         result = await FeedService.like_feed_generation(
-            session,
-            generation_id=generation_id,
-            user_id=user.id,
-            surface=payload.surface,
+            session, generation_id=generation_id, user_id=user.id, surface=payload.surface
         )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
@@ -228,10 +238,7 @@ async def unlike(
 ) -> dict[str, object]:
     try:
         result = await FeedService.unlike_feed_generation(
-            session,
-            generation_id=generation_id,
-            user_id=user.id,
-            surface=surface,
+            session, generation_id=generation_id, user_id=user.id, surface=surface
         )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
@@ -249,14 +256,10 @@ async def share(
     del user
     try:
         generation = await FeedService.assert_surface_visible(
-            session,
-            generation_id,
-            surface=payload.surface,
+            session, generation_id, surface=payload.surface
         )
         shares_count = await FeedService.increment_feed_share(
-            session,
-            generation_id=generation_id,
-            surface=payload.surface,
+            session, generation_id=generation_id, surface=payload.surface
         )
         author = await session.get(User, generation.user_id)
         if author is None:
@@ -280,11 +283,7 @@ async def comments(
     del user
     try:
         items = await FeedService.get_feed_comments(
-            session,
-            generation_id=generation_id,
-            surface=surface,
-            limit=limit,
-            offset=offset,
+            session, generation_id=generation_id, surface=surface, limit=limit, offset=offset
         )
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
@@ -327,6 +326,11 @@ async def remix(
     redis: RedisDep,
 ) -> dict[str, object]:
     try:
+        source = await FeedService.assert_surface_visible(
+            session, generation_id, surface=payload.surface
+        )
+        if source.action_type == "trend":
+            raise FeedError("Trend generations cannot be remixed")
         generation = await FeedService.remix(
             session,
             redis,
@@ -357,9 +361,7 @@ async def link(
     del user
     try:
         generation = await FeedService.assert_surface_visible(
-            session,
-            generation_id,
-            surface=surface,
+            session, generation_id, surface=surface
         )
         author = await session.get(User, generation.user_id)
         if author is None:
