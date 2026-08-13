@@ -5,9 +5,11 @@ from aiogram.types import CallbackQuery, Message
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards import onboarding_menu
 from app.services.abuse_protection import ResourcePolicyError
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError
+from app.services.onboarding import OnboardingService
 from app.services.users import UserService
 from app.services.wallet import InsufficientBalanceError
 
@@ -20,7 +22,20 @@ class GenerationFlow(StatesGroup):
 
 
 @router.callback_query(F.data == "create")
-async def generation_start(callback: CallbackQuery, state: FSMContext) -> None:
+async def generation_start(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    user = await UserService.get_or_create(session, callback.from_user)
+    if not await OnboardingService.is_complete(session, user.id):
+        await callback.answer("Сначала завершите вводный экран", show_alert=True)
+        if callback.message:
+            await callback.message.answer(
+                "Чтобы создавать контент, сначала нажмите «Начать».",
+                reply_markup=onboarding_menu(),
+            )
+        return
     await callback.answer()
     await state.set_state(GenerationFlow.waiting_prompt)
     if callback.message:
@@ -40,6 +55,13 @@ async def generation_prompt(
         await message.answer("Нужен текстовый промпт.")
         return
     user = await UserService.get_or_create(session, message.from_user)
+    if not await OnboardingService.is_complete(session, user.id):
+        await state.clear()
+        await message.answer(
+            "Версия вводного экрана обновилась. Нажмите «Начать», затем запустите генерацию снова.",
+            reply_markup=onboarding_menu(),
+        )
+        return
     try:
         generation = await GenerationService.create(
             session,
