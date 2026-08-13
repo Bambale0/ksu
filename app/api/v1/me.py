@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Wallet, WalletTransaction
+from app.services.account_profile import AccountProfileService
 from app.services.profile_preferences import ProfilePreferenceService
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -40,9 +41,18 @@ async def me(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "last_name": user.last_name,
         "language_code": user.language_code,
         "balance_rox": str(wallet.balance if wallet else 0),
+        "created_at": user.created_at.isoformat(),
+        "is_active": user.is_active,
         "telegram_identity_read_only": True,
         "preferences": _preference_view(preference),
     }
+
+
+@router.get("/overview")
+async def overview(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
+    result = await AccountProfileService.overview(session, user)
+    await session.commit()
+    return result
 
 
 @router.get("/preferences")
