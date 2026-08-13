@@ -30,6 +30,13 @@
     const script = document.createElement("script");
     script.src = "/mini-app/partner.js";
     script.defer = true;
+    script.addEventListener("load", () => {
+      if (document.querySelector('script[src="/mini-app/partner-approval.js"]')) return;
+      const approval = document.createElement("script");
+      approval.src = "/mini-app/partner-approval.js";
+      approval.defer = true;
+      document.head.appendChild(approval);
+    });
     document.head.appendChild(script);
   }
 
@@ -155,9 +162,7 @@
       const action = event.target.closest(".ksu-history-action");
       if (!action) return;
       const label = (action.textContent || "").trim().toLowerCase();
-      if (label.startsWith("открыть") || label.startsWith("повторить")) {
-        historyActionInFlight = true;
-      }
+      if (label.startsWith("открыть") || label.startsWith("повторить")) historyActionInFlight = true;
     },
     true,
   );
@@ -172,25 +177,12 @@
   const builderObserver = new MutationObserver(syncMainButtonScope);
   builderObserver.observe(builder, { attributes: true, attributeFilter: ["hidden"] });
   syncMainButtonScope();
-
-  builderHome?.addEventListener("click", () => {
-    if (bridgedBuilder) closeBridgedBuilder();
-  });
-
-  document.addEventListener(
-    "click",
-    (event) => {
-      const nav = event.target.closest(".bottom-nav-item[data-shell-nav]");
-      if (nav && bridgedBuilder) closeBridgedBuilder();
-    },
-    true,
-  );
-
-  tg?.BackButton?.onClick?.(() => {
-    if (!bridgedBuilder) return;
-    closeBridgedBuilder();
-  });
-
+  builderHome?.addEventListener("click", () => { if (bridgedBuilder) closeBridgedBuilder(); });
+  document.addEventListener("click", (event) => {
+    const nav = event.target.closest(".bottom-nav-item[data-shell-nav]");
+    if (nav && bridgedBuilder) closeBridgedBuilder();
+  }, true);
+  tg?.BackButton?.onClick?.(() => { if (bridgedBuilder) closeBridgedBuilder(); });
   window.addEventListener("popstate", (event) => {
     if (bridgedBuilder && event.state?.ksuShellBridge !== "builder") closeBridgedBuilder();
   });
