@@ -103,6 +103,7 @@ async def test_onboarding_disabled_is_complete_and_external_links_require_https(
         ("POST", "/api/v1/payments", True),
         ("POST", "/api/v1/promocodes/redeem", True),
         ("POST", "/api/v1/uploads", True),
+        ("POST", "/api/v1/media/presign", True),
         ("POST", "/api/v1/social/profiles/a/subscribe", True),
         ("POST", "/api/v1/referrals/withdrawals", True),
     ],
