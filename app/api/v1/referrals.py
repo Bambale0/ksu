@@ -17,7 +17,8 @@ from app.services.partner import (
     PartnerWithdrawalBelowMinimum,
     PartnerWithdrawalError,
 )
-from app.services.partner_approval import PartnerApprovalRequired, PartnerApprovalService
+from app.services.partner_apply import PartnerApplyService
+from app.services.partner_approval import PartnerApprovalRequired
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -170,8 +171,7 @@ async def create_withdrawal(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
-        await PartnerApprovalService.require_approved(session, user_id=user.id)
-        item = await PartnerService.create_withdrawal(
+        item = await PartnerApplyService.create_withdrawal(
             session,
             user_id=user.id,
             amount=payload.amount,
