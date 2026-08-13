@@ -47,10 +47,13 @@ def parse_feed_deep_link(payload: str | None) -> FeedDeepLink | None:
             referral_telegram_id=int(match.group(2)),
         )
     if match := _PROFILE_RE.fullmatch(payload):
+        profile_code, referral_code = match.groups()
+        if profile_code != referral_code:
+            return None
         return FeedDeepLink(
             action="posts",
-            profile_referral_code=match.group(1),
-            referral_telegram_id=int(match.group(2)),
+            profile_referral_code=profile_code,
+            referral_telegram_id=int(referral_code),
         )
     if match := _REMIX_RE.fullmatch(payload):
         try:
