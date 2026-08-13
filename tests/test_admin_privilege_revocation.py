@@ -3,9 +3,15 @@ import uuid
 
 import pytest
 
+from app.core.config import settings
 from app.db.models import AdminAccount, User
 from app.db.session import SessionFactory
 from app.services.admin_users import AdminUserService
+
+
+@pytest.fixture(autouse=True)
+def _configured_admin_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "admin_security_key", "a" * 64)
 
 
 @pytest.mark.asyncio
