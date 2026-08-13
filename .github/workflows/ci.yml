@@ -79,6 +79,7 @@ jobs:
           node --check app/web/mini_app/partner.js
           node --check app/web/mini_app/profile-tools.js
           node --check app/web/mini_app/social.js
+          node --check app/web/mini_app/feed.js
           node --check app/web/mini_app/promo-recovery.js
           node --check app/web/mini_app/onboarding.js
 
