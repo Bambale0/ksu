@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
+    # Durable transactional Telegram notifications.
+    notification_worker_poll_seconds: int = 3
+    notification_delivery_lease_seconds: int = 90
+    notification_delivery_max_attempts: int = 8
+    notification_retry_base_seconds: int = 5
+    notification_retry_max_seconds: int = 900
+    notification_delivery_batch_size: int = 50
+
     # OWASP API4 / resource-consumption controls. Zero disables an optional quota.
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True
