@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
+from app.api.card_webhooks import router as card_webhook_router
 from app.api.health import router as health_router
 from app.api.metrics import router as metrics_router
 from app.api.router import api_router
@@ -89,6 +90,7 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
 app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(webhook_router)
+app.include_router(card_webhook_router)
 app.include_router(api_router)
 
 web_dir = Path(__file__).resolve().parent / "web"

@@ -12,6 +12,7 @@ from app.api.deps import SessionDep
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.admin_security import AdminAuditService
+from app.services.card_payments import CardPaymentService
 from app.services.payment_refunds import PaymentRefundService
 from app.services.payments import (
     PaymentIdempotencyConflict,
@@ -21,8 +22,6 @@ from app.services.payments import (
 
 router = APIRouter(prefix="/admin/payments", tags=["admin-payments"])
 
-# Financial mutations use the existing high-risk wallet-adjust permission and a
-# fresh MFA step-up. This currently maps to owner/admin/finance, not support/auditor.
 PaymentFinanceDep = Annotated[
     AdminContext,
     Depends(require_permission("users.wallet.adjust", step_up=True)),
@@ -46,7 +45,10 @@ async def reconcile_payment(
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found")
     try:
-        updated = await PaymentService.reconcile(session, payment_id=payment.id)
+        if payment.provider == CardPaymentService.PROVIDER:
+            updated = await CardPaymentService.reconcile(session, payment_id=payment.id)
+        else:
+            updated = await PaymentService.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

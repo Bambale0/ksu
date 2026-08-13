@@ -29,6 +29,14 @@
     });
   }
 
+  function loadExtension(src) {
+    if (document.querySelector(`script[src="${src}"]`)) return;
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = false;
+    document.head.appendChild(script);
+  }
+
   window.addEventListener("click", markActivation, true);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") markActivation();
@@ -42,4 +50,7 @@
   window.KsuPaymentLinkGuard = Object.freeze({
     isAllowedPaymentUrl,
   });
+
+  loadExtension("/mini-app/primary-card-checkout.js");
+  loadExtension("/mini-app/account-overview.js");
 })();

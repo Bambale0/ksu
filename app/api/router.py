@@ -7,6 +7,7 @@ from app.api.v1 import (
     admin_operations,
     admin_payments,
     admin_users,
+    card_payments,
     generations,
     me,
     media,
@@ -27,6 +28,7 @@ api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(generations.router)
 api_router.include_router(media.router)
+api_router.include_router(card_payments.router)
 api_router.include_router(payments.router)
 api_router.include_router(notifications.router)
 api_router.include_router(social.router)

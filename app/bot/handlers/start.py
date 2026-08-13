@@ -1,11 +1,13 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import main_menu, onboarding_menu
+from app.bot.keyboards import back_menu, balance_menu, main_menu, onboarding_menu
 from app.core.config import settings
 from app.db.models import Wallet
+from app.services.account_profile import AccountProfileService
 from app.services.onboarding import OnboardingService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
@@ -34,10 +36,16 @@ async def _send_main_menu(message: Message, user, session: AsyncSession) -> None
     )
 
 
+async def _profile_text(session: AsyncSession, user) -> str:  # type: ignore[no-untyped-def]
+    overview = await AccountProfileService.overview(session, user)
+    return AccountProfileService.text(overview)
+
+
 @router.message(CommandStart())
-async def start(message: Message, session: AsyncSession) -> None:
+async def start(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if message.from_user is None:
         return
+    await state.clear()
     user = await UserService.get_or_create(
         session,
         message.from_user,
@@ -52,6 +60,15 @@ async def start(message: Message, session: AsyncSession) -> None:
         await message.answer(text, reply_markup=onboarding_menu())
         return
     await _send_main_menu(message, user, session)
+
+
+@router.callback_query(F.data == "nav:main")
+async def nav_main(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
+    user = await UserService.get_or_create(session, callback.from_user)
+    await state.clear()
+    await callback.answer()
+    if callback.message:
+        await _send_main_menu(callback.message, user, session)
 
 
 @router.callback_query(F.data == "onboarding_complete")
@@ -70,28 +87,32 @@ async def balance_command(message: Message, session: AsyncSession) -> None:
         return
     user = await UserService.get_or_create(session, message.from_user)
     wallet = await session.get(Wallet, user.id)
-    await message.answer(f"💎 Баланс: {wallet.balance if wallet else 0} ROX")
+    await message.answer(
+        f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
+        reply_markup=balance_menu(),
+    )
 
 
 @router.callback_query(F.data == "balance")
 async def balance_callback(callback: CallbackQuery, session: AsyncSession) -> None:
-    if callback.from_user is None:
-        return
     user = await UserService.get_or_create(session, callback.from_user)
     wallet = await session.get(Wallet, user.id)
     await callback.answer()
     if callback.message:
-        await callback.message.answer(f"💎 Баланс: {wallet.balance if wallet else 0} ROX")
+        await callback.message.answer(
+            f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
+            reply_markup=balance_menu(),
+        )
 
 
 @router.callback_query(F.data == "profile")
 async def profile_callback(callback: CallbackQuery, session: AsyncSession) -> None:
     user = await UserService.get_or_create(session, callback.from_user)
+    text = await _profile_text(session, user)
+    await session.commit()
     await callback.answer()
     if callback.message:
-        await callback.message.answer(
-            f"👤 Профиль\nID: {user.telegram_id}\nUsername: @{user.username or '—'}"
-        )
+        await callback.message.answer(text, reply_markup=back_menu())
 
 
 @router.callback_query(F.data == "referrals")
@@ -104,9 +125,10 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
             "🤝 Партнёрская программа\n"
             f"1 линия: {stats['first_line']}\n"
             f"2 линия: {stats['second_line']}\n"
-            f"Доступно: {stats['available']}\n"
-            f"В ожидании: {stats['pending']}\n\n"
-            f"Реферальная ссылка: https://t.me/{(await callback.bot.me()).username}?start=ref_{user.telegram_id}"
+            f"Доступно: {stats['available']} ₽\n"
+            f"В ожидании: {stats['pending']} ₽\n\n"
+            f"Реферальная ссылка: https://t.me/{(await callback.bot.me()).username}?start=ref_{user.telegram_id}",
+            reply_markup=back_menu(),
         )
 
 
@@ -115,4 +137,6 @@ async def profile_command(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
     user = await UserService.get_or_create(session, message.from_user)
-    await message.answer(f"👤 ID: {user.telegram_id}\nUsername: @{user.username or '—'}")
+    text = await _profile_text(session, user)
+    await session.commit()
+    await message.answer(text, reply_markup=back_menu())

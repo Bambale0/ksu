@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.db.models import Payment
 from app.db.session import SessionFactory
 from app.services.admin_security import utcnow
+from app.services.card_payments import CardPaymentService
 from app.services.payments import PaymentService
 
 logger = logging.getLogger(__name__)
@@ -28,10 +29,10 @@ class PaymentReconciliationService:
     async def run_once(cls) -> int:
         cutoff = utcnow() - timedelta(seconds=settings.payment_reconcile_stale_seconds)
         async with SessionFactory() as session:
-            payment_ids = list(
+            payments = list(
                 (
-                    await session.scalars(
-                        select(Payment.id)
+                    await session.execute(
+                        select(Payment.id, Payment.provider)
                         .where(
                             Payment.status.in_(cls.RECONCILABLE_STATUSES),
                             Payment.updated_at < cutoff,
@@ -43,10 +44,13 @@ class PaymentReconciliationService:
             )
 
         processed = 0
-        for payment_id in payment_ids:
+        for payment_id, provider in payments:
             async with SessionFactory() as session:
                 try:
-                    await PaymentService.reconcile(session, payment_id=payment_id)
+                    if provider == CardPaymentService.PROVIDER:
+                        await CardPaymentService.reconcile(session, payment_id=payment_id)
+                    else:
+                        await PaymentService.reconcile(session, payment_id=payment_id)
                 except Exception:
                     # Provider reconciliation is eventually consistent. A temporary
                     # outage must not turn a recoverable payment into failed or create

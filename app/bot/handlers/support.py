@@ -4,6 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards import back_menu
 from app.db.models import SupportMessage, SupportTicket
 from app.services.users import UserService
 
@@ -18,10 +19,24 @@ class SupportFlow(StatesGroup):
 @router.callback_query(F.data == "support")
 async def support_start(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    await state.clear()
     await state.set_state(SupportFlow.waiting_topic)
     if callback.message:
         await callback.message.answer(
-            "Напиши тему обращения: оплата, ROX, генерация, промокод, партнёрка или другое."
+            "Напиши тему обращения: оплата, ROX, генерация, промокод, партнёрка или другое.",
+            reply_markup=back_menu(),
+        )
+
+
+@router.callback_query(F.data == "support:back_topic")
+async def support_back_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(SupportFlow.waiting_topic)
+    await state.update_data(topic=None)
+    if callback.message:
+        await callback.message.answer(
+            "Напиши тему обращения: оплата, ROX, генерация, промокод, партнёрка или другое.",
+            reply_markup=back_menu(),
         )
 
 
@@ -29,7 +44,10 @@ async def support_start(callback: CallbackQuery, state: FSMContext) -> None:
 async def support_topic(message: Message, state: FSMContext) -> None:
     await state.update_data(topic=(message.text or "другое")[:64])
     await state.set_state(SupportFlow.waiting_message)
-    await message.answer("Теперь опиши проблему одним сообщением.")
+    await message.answer(
+        "Теперь опиши проблему одним сообщением.",
+        reply_markup=back_menu("support:back_topic"),
+    )
 
 
 @router.message(SupportFlow.waiting_message)
@@ -38,7 +56,7 @@ async def support_message(message: Message, state: FSMContext, session: AsyncSes
         return
     data = await state.get_data()
     user = await UserService.get_or_create(session, message.from_user)
-    ticket = SupportTicket(user_id=user.id, topic=str(data.get("topic", "другое")))
+    ticket = SupportTicket(user_id=user.id, topic=str(data.get("topic") or "другое"))
     session.add(ticket)
     await session.flush()
     session.add(
@@ -49,4 +67,7 @@ async def support_message(message: Message, state: FSMContext, session: AsyncSes
         )
     )
     await state.clear()
-    await message.answer(f"✅ Обращение создано: {ticket.id}")
+    await message.answer(
+        f"✅ Обращение создано: {ticket.id}",
+        reply_markup=back_menu(),
+    )
