@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.db import history_models  # noqa: F401
 from app.db import media_models  # noqa: F401
 from app.db import models  # noqa: F401
+from app.db import onboarding_models  # noqa: F401
 from app.db import payment_models  # noqa: F401
 from app.db import profile_models  # noqa: F401
 from app.db import reliability_models  # noqa: F401
