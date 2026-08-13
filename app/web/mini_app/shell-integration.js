@@ -10,6 +10,20 @@
   let historyActionInFlight = false;
   let bridgedBuilder = false;
 
+  function mountOnboarding() {
+    if (!document.querySelector('link[href="/mini-app/onboarding.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/onboarding.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/onboarding.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/onboarding.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   function mountPartnerCabinet() {
     if (!document.getElementById("partnerPreview")) return;
     if (document.querySelector('script[src="/mini-app/partner.js"]')) return;
@@ -62,6 +76,7 @@
     document.head.appendChild(script);
   }
 
+  mountOnboarding();
   mountPartnerCabinet();
   mountProfileTools();
   mountSocialTools();

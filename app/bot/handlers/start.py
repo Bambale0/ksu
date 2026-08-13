@@ -3,8 +3,10 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import main_menu
+from app.bot.keyboards import main_menu, onboarding_menu
+from app.core.config import settings
 from app.db.models import Wallet
+from app.services.onboarding import OnboardingService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
 
@@ -23,6 +25,15 @@ def _parse_inviter(text: str | None) -> int | None:
         return None
 
 
+async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
+    wallet = await session.get(Wallet, user.id)
+    balance = wallet.balance if wallet else 0
+    await message.answer(
+        f"Привет, {user.first_name}!\n\nБаланс: {balance} ROX\nВыбери действие:",
+        reply_markup=main_menu(),
+    )
+
+
 @router.message(CommandStart())
 async def start(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
@@ -33,12 +44,24 @@ async def start(message: Message, session: AsyncSession) -> None:
         inviter_telegram_id=_parse_inviter(message.text),
     )
     await session.flush()
-    wallet = await session.get(Wallet, user.id)
-    balance = wallet.balance if wallet else 0
-    await message.answer(
-        f"Привет, {user.first_name}!\n\nБаланс: {balance} ROX\nВыбери действие:",
-        reply_markup=main_menu(),
-    )
+    if not await OnboardingService.is_complete(session, user.id):
+        body = settings.onboarding_body.strip()
+        text = settings.onboarding_title.strip() or "Добро пожаловать в Ксю"
+        if body:
+            text = f"{text}\n\n{body}"
+        await message.answer(text, reply_markup=onboarding_menu())
+        return
+    await _send_main_menu(message, user, session)
+
+
+@router.callback_query(F.data == "onboarding_complete")
+async def onboarding_complete(callback: CallbackQuery, session: AsyncSession) -> None:
+    user = await UserService.get_or_create(session, callback.from_user)
+    await OnboardingService.complete(session, user.id)
+    await session.commit()
+    await callback.answer("Готово")
+    if callback.message:
+        await _send_main_menu(callback.message, user, session)
 
 
 @router.message(Command("balance"))
