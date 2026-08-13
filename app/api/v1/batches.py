@@ -11,6 +11,7 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.batch_models import BatchGenerationJob
 from app.services.abuse_protection import ResourcePolicyError
 from app.services.batch_generation_core import BatchGenerationError, BatchIdempotencyConflict, amount
+from app.services.batch_recovery import BatchRecoveryService
 from app.services.batch_repository import BatchRepository
 from app.services.generation_batches import GenerationBatchService
 from app.services.wallet import InsufficientBalanceError
@@ -134,7 +135,15 @@ async def list_batches(
 @router.get("/{batch_id}")
 async def get_batch(batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep) -> dict[str, Any]:
     try:
-        job = await GenerationBatchService.get_owned(session, user_id=user.id, batch_id=batch_id)
+        job = await BatchRepository.load(session, user_id=user.id, batch_id=batch_id)
         return await _view(session, job)
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.get("/{batch_id}/retry-quote")
+async def retry_quote(batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
+    try:
+        return await BatchRecoveryService.quote(session, user_id=user.id, batch_id=batch_id)
     except Exception as exc:
         raise _domain_error(exc) from exc
