@@ -28,7 +28,8 @@ def test_text_bot_non_root_handlers_use_shared_back_navigation() -> None:
     admin = (ROOT / "app" / "bot" / "handlers" / "admin.py").read_text(encoding="utf-8")
 
     assert 'BACK_TEXT = "⬅️ Назад"' in keyboards
-    assert 'callback_data="nav:main"' in keyboards
+    assert 'callback_data: str = "nav:main"' in keyboards
+    assert "callback_data=callback_data" in keyboards
     assert 'F.data == "nav:main"' in start
     assert "await state.clear()" in start
     assert "back_menu()" in start
