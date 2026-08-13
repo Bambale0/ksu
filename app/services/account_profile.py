@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any
@@ -11,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Generation, Notification, PartnerWithdrawal, Payment, SupportTicket, User, Wallet
 from app.db.onboarding_models import UserOnboarding
-from app.db.profile_models import UserPreference
 from app.db.social_models import UserSubscription
 from app.services.credits import InternalCreditService
 from app.services.profile_preferences import ProfilePreferenceService
