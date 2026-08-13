@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from redis.asyncio import Redis
-from sqlalchemy import case, exists, func, literal, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,13 +98,28 @@ class FeedService:
         )
 
     @staticmethod
-    def _ready_media_exists() -> Any:
+    def _ready_media_condition() -> Any:
         return exists(
             select(MediaAsset.id).where(
                 MediaAsset.generation_id == Generation.id,
                 MediaAsset.status == "ready",
                 MediaAsset.object_key.is_not(None),
                 MediaAsset.bucket.is_not(None),
+            )
+        )
+
+    @staticmethod
+    async def _has_ready_media(session: AsyncSession, generation_id: uuid.UUID) -> bool:
+        return bool(
+            await session.scalar(
+                select(
+                    exists().where(
+                        MediaAsset.generation_id == generation_id,
+                        MediaAsset.status == "ready",
+                        MediaAsset.object_key.is_not(None),
+                        MediaAsset.bucket.is_not(None),
+                    )
+                )
             )
         )
 
@@ -135,9 +150,7 @@ class FeedService:
             moderation_state=moderation_state,
         ):
             raise FeedNotFoundError("Publication not found")
-        if not await session.scalar(
-            select(cls._ready_media_exists()).where(Generation.id == generation.id)
-        ):
+        if not await cls._has_ready_media(session, generation.id):
             raise FeedNotFoundError("Publication media is unavailable")
         return generation
 
@@ -189,7 +202,7 @@ class FeedService:
                     GenerationModerationState.generation_id.is_(None),
                     GenerationModerationState.state != "removed",
                 ),
-                cls._ready_media_exists(),
+                cls._ready_media_condition(),
             )
         )
         if sort == "recent":
@@ -223,6 +236,7 @@ class FeedService:
         offset = max(0, min(offset, 100_000))
         stmt = (
             select(Generation)
+            .join(User, User.id == Generation.user_id)
             .outerjoin(
                 GenerationModerationState,
                 GenerationModerationState.generation_id == Generation.id,
@@ -230,11 +244,12 @@ class FeedService:
             .where(
                 Generation.user_id == author_user_id,
                 Generation.status == "succeeded",
+                User.is_active.is_(True),
                 or_(
                     GenerationModerationState.generation_id.is_(None),
                     GenerationModerationState.state != "removed",
                 ),
-                cls._ready_media_exists(),
+                cls._ready_media_condition(),
             )
         )
         if profile_visible_only:
@@ -538,9 +553,7 @@ class FeedService:
             raise FeedNotFoundError("Generation not found")
         if generation.status != "succeeded":
             raise FeedPublicationError("Only completed generations can be published")
-        if not await session.scalar(
-            select(cls._ready_media_exists()).where(Generation.id == generation.id)
-        ):
+        if not await cls._has_ready_media(session, generation.id):
             raise FeedMediaUnavailableError("Generation media is not ready for publication")
 
         scope: PublicationScope = publication_scope  # type: ignore[assignment]
@@ -809,10 +822,7 @@ class FeedService:
         username = cls._bot_username()
         if not username:
             return None
-        return (
-            f"https://t.me/{username}?start="
-            f"feed_{generation_id}_ref_{author_referral_code}"
-        )
+        return f"https://t.me/{username}?start=feed_{generation_id}_ref_{author_referral_code}"
 
     @classmethod
     def profile_deep_link(cls, author_referral_code: str) -> str | None:
@@ -829,10 +839,7 @@ class FeedService:
         username = cls._bot_username()
         if not username:
             return None
-        return (
-            f"https://t.me/{username}?start="
-            f"remix_{generation_id}_ref_{author_referral_code}"
-        )
+        return f"https://t.me/{username}?start=remix_{generation_id}_ref_{author_referral_code}"
 
     @staticmethod
     async def author_by_referral_code(
