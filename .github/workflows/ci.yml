@@ -48,6 +48,8 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       BOT_TOKEN: ""
       TELEGRAM_WEBHOOK_SECRET: test-secret
+      # Existing endpoint regression tests are not onboarding fixtures. Dedicated onboarding tests enable it explicitly.
+      ONBOARDING_ENABLED: "false"
 
     steps:
       - uses: actions/checkout@v6
@@ -76,6 +78,7 @@ jobs:
           node --check app/web/mini_app/profile-tools.js
           node --check app/web/mini_app/social.js
           node --check app/web/mini_app/promo-recovery.js
+          node --check app/web/mini_app/onboarding.js
 
       - name: Apply migrations
         run: alembic upgrade head
