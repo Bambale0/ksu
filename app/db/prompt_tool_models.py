@@ -64,7 +64,13 @@ class PromptToolOutbox(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     task_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("prompt_tool_tasks.id", ondelete="CASCADE"), nullable=False
+        ForeignKey(
+            "prompt_tool_tasks.id",
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        nullable=False,
     )
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
