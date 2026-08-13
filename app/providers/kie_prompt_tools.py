@@ -54,6 +54,34 @@ _IMAGE_ANALYSIS_SCHEMA: dict[str, Any] = {
     },
 }
 
+_PROMPT_PAIR_SCHEMA: dict[str, Any] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "prompt_pair",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "prompt_ru": {"type": "string"},
+                "prompt_en": {"type": "string"},
+            },
+            "required": ["prompt_ru", "prompt_en"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_PROMPT_SYSTEM = (
+    "Ты профессиональный prompt engineer для генерации изображений и видео. "
+    "Пользователь может передать текст, изображение и/или аудиосообщение. "
+    "Сохрани творческий замысел, композицию, свет, палитру, стиль, позу, окружение и ограничения, "
+    "которые явно присутствуют во входах. Для изображения описывай только наблюдаемые свойства; "
+    "не идентифицируй реальных людей и не угадывай чувствительные характеристики. "
+    "Для аудио используй произнесённую идею как творческое направление, но не возвращай транскрипт. "
+    "Создай ровно два цельных production-ready промпта с одинаковым смыслом: prompt_ru на русском "
+    "и prompt_en на английском. Не добавляй negative prompt, рекомендации моделей, комментарии или markdown."
+)
+
 
 class KiePromptToolsClient:
     def __init__(self, api_key: str, base_url: str = "https://api.kie.ai") -> None:
@@ -117,16 +145,43 @@ class KiePromptToolsClient:
         *,
         text: str,
         image_url: str | None = None,
+        audio_url: str | None = None,
     ) -> PromptToolProviderResult:
-        system = (
-            "Ты профессиональный prompt engineer для генерации изображений и видео. "
-            "На основе текста пользователя и, если передано, изображения создай два цельных подробных "
-            "промпта с одинаковым смыслом: на русском и английском. Не идентифицируй реальных людей "
-            "по изображению и не угадывай чувствительные характеристики. Верни только JSON-объект "
-            'вида {"prompt_ru":"...","prompt_en":"..."} без markdown.'
-        )
+        # Kie documents GPT-5.5 Responses for text/image/file inputs, but does
+        # not document input_audio on that endpoint. Gemini 2.5 Pro explicitly
+        # accepts audio URLs through the same multimodal image_url content type.
+        # Use Gemini for audio and as a documented text/image fallback.
+        if audio_url:
+            return await self._build_prompt_with_gemini(
+                text=text,
+                image_url=image_url,
+                audio_url=audio_url,
+            )
+        try:
+            return await self._build_prompt_with_gpt55(text=text, image_url=image_url)
+        except PromptToolProviderError as primary_exc:
+            try:
+                return await self._build_prompt_with_gemini(
+                    text=text,
+                    image_url=image_url,
+                    audio_url=None,
+                )
+            except PromptToolProviderError as fallback_exc:
+                raise PromptToolProviderError(
+                    f"Prompt builder providers failed: primary={primary_exc}; fallback={fallback_exc}"
+                ) from fallback_exc
+
+    async def _build_prompt_with_gpt55(
+        self,
+        *,
+        text: str,
+        image_url: str | None,
+    ) -> PromptToolProviderResult:
         content: list[dict[str, Any]] = [
-            {"type": "input_text", "text": text.strip() or "Создай подробный промпт по изображению."}
+            {
+                "type": "input_text",
+                "text": text.strip() or "Создай подробный промпт по изображению.",
+            }
         ]
         if image_url:
             content.append({"type": "input_image", "image_url": image_url})
@@ -134,7 +189,7 @@ class KiePromptToolsClient:
             "model": "gpt-5-5",
             "stream": False,
             "input": [
-                {"role": "system", "content": [{"type": "input_text", "text": system}]},
+                {"role": "system", "content": [{"type": "input_text", "text": _PROMPT_SYSTEM}]},
                 {"role": "user", "content": content},
             ],
             "reasoning": {"effort": "medium"},
@@ -143,19 +198,57 @@ class KiePromptToolsClient:
             response = await self._client.post("/codex/v1/responses", json=body)
             response.raise_for_status()
             data = response.json()
-            text_output = _responses_output_text(data)
-            payload = _parse_json_object(text_output)
-            prompt_ru = str(payload.get("prompt_ru") or "").strip()
-            prompt_en = str(payload.get("prompt_en") or "").strip()
-            if not prompt_ru or not prompt_en:
-                raise ValueError("Provider returned incomplete prompt pair")
+            payload = _prompt_pair(_parse_json_object(_responses_output_text(data)))
             return PromptToolProviderResult(
                 model="gpt-5-5",
-                payload={"prompt_ru": prompt_ru, "prompt_en": prompt_en},
+                payload=payload,
                 credits_consumed=_credits(data),
             )
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
-            raise PromptToolProviderError(f"Prompt builder provider failed: {exc}") from exc
+            raise PromptToolProviderError(f"GPT-5.5 prompt builder failed: {exc}") from exc
+
+    async def _build_prompt_with_gemini(
+        self,
+        *,
+        text: str,
+        image_url: str | None,
+        audio_url: str | None,
+    ) -> PromptToolProviderResult:
+        content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": text.strip()
+                or (
+                    "Создай подробный промпт на основе переданного визуального или голосового "
+                    "референса."
+                ),
+            }
+        ]
+        for media_url in (image_url, audio_url):
+            if media_url:
+                content.append({"type": "image_url", "image_url": {"url": media_url}})
+        body = {
+            "model": "gemini-2.5-pro",
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": _PROMPT_SYSTEM},
+                {"role": "user", "content": content},
+            ],
+            "response_format": _PROMPT_PAIR_SCHEMA,
+        }
+        try:
+            response = await self._client.post("/gemini-2.5-pro/v1/chat/completions", json=body)
+            response.raise_for_status()
+            data = response.json()
+            content_text = (((data.get("choices") or [{}])[0].get("message") or {}).get("content"))
+            payload = _prompt_pair(_parse_json_object(content_text))
+            return PromptToolProviderResult(
+                model="gemini-2.5-pro",
+                payload=payload,
+                credits_consumed=_credits(data),
+            )
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise PromptToolProviderError(f"Gemini prompt builder failed: {exc}") from exc
 
 
 def _responses_output_text(data: dict[str, Any]) -> str:
@@ -165,7 +258,17 @@ def _responses_output_text(data: dict[str, Any]) -> str:
         for part in item.get("content") or []:
             if isinstance(part, dict) and part.get("type") == "output_text" and part.get("text"):
                 return str(part["text"])
+    if isinstance(data.get("output_text"), str) and data["output_text"].strip():
+        return str(data["output_text"])
     raise ValueError("Provider returned no output_text")
+
+
+def _prompt_pair(payload: dict[str, Any]) -> dict[str, str]:
+    prompt_ru = str(payload.get("prompt_ru") or "").strip()
+    prompt_en = str(payload.get("prompt_en") or "").strip()
+    if not prompt_ru or not prompt_en:
+        raise ValueError("Provider returned incomplete prompt pair")
+    return {"prompt_ru": prompt_ru, "prompt_en": prompt_en}
 
 
 def _parse_json_object(value: Any) -> dict[str, Any]:
@@ -175,7 +278,14 @@ def _parse_json_object(value: Any) -> dict[str, Any]:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*```$", "", text)
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            raise
+        parsed = json.loads(text[start : end + 1])
     if not isinstance(parsed, dict):
         raise ValueError("Expected JSON object")
     return parsed
