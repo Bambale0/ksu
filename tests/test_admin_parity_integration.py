@@ -20,6 +20,15 @@ from app.services.internal_admin_security import calculate_signature
 from app.services.wallet import WalletService
 
 
+@pytest.fixture(autouse=True)
+def _configured_admin_audit_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "admin_security_key",
+        "test-admin-security-key-0000000000000000000000000000",
+    )
+
+
 def _headers(
     *,
     secret: str,
