@@ -62,6 +62,20 @@
     document.head.appendChild(script);
   }
 
+  function mountFeedTools() {
+    if (!document.querySelector('link[href="/mini-app/feed.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/feed.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/feed.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/feed.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   function mountPromoRecovery() {
     if (!document.querySelector('link[href="/mini-app/promo-recovery.css"]')) {
       const stylesheet = document.createElement("link");
@@ -80,6 +94,7 @@
   mountPartnerCabinet();
   mountProfileTools();
   mountSocialTools();
+  mountFeedTools();
   mountPromoRecovery();
 
   if (!overlay || !createHome || !builder) return;
