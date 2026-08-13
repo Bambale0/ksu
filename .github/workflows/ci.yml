@@ -86,5 +86,18 @@ jobs:
       - name: Apply migrations
         run: alembic upgrade head
 
-      - name: Test
+      - name: Feed domain tests
+        run: pytest -q tests/test_feed_domain.py
+
+      - name: Feed remix tests
+        run: pytest -q tests/test_feed_remix.py
+
+      - name: Feed deep-link and UI contracts
+        run: >-
+          pytest -q
+          tests/test_feed_deep_links.py
+          tests/test_feed_bot_callbacks.py
+          tests/test_feed_ui_contract.py
+
+      - name: Full regression suite
         run: pytest -q
