@@ -162,3 +162,15 @@ def test_onboarding_module_is_mounted_and_checked_by_ci() -> None:
     assert "ONBOARDING_ENABLED=true" in env_example
     assert "ONBOARDING_VERSION=1" in env_example
     assert (MINI / "onboarding.css").is_file()
+
+
+def test_legacy_bot_generation_flow_rechecks_onboarding() -> None:
+    start_source = (ROOT / "app" / "bot" / "handlers" / "start.py").read_text(encoding="utf-8")
+    generation_source = (ROOT / "app" / "bot" / "handlers" / "generation.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'F.data == "onboarding_complete"' in start_source
+    assert "await OnboardingService.complete(session, user.id)" in start_source
+    assert generation_source.count("await OnboardingService.is_complete(session, user.id)") >= 2
+    assert "await state.clear()" in generation_source
+    assert "onboarding_menu()" in generation_source
