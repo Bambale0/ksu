@@ -41,3 +41,18 @@ class PartnerApprovalService:
             "submitted_at": application.submitted_at.isoformat(),
             "decided_at": application.decided_at.isoformat() if application.decided_at else None,
         }
+
+    @classmethod
+    async def require_approved(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+    ) -> PartnerApplication:
+        application = await cls.get(session, user_id=user_id)
+        if application is None or application.status != "approved":
+            current = application.status if application is not None else "not_applied"
+            raise PartnerApprovalRequired(
+                f"Cash withdrawals require approved partner status; current status: {current}"
+            )
+        return application
