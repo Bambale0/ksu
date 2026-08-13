@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.db.models import User
 from app.services.feed import (
     FeedDerivativePublicationError,
     FeedError,
@@ -95,9 +96,7 @@ async def feed_item(
             generation_id=generation_id,
             viewer_user_id=user.id,
         )
-    except FeedError as exc:
-        raise _http_error(exc) from exc
-    except FeedNotFoundError as exc:
+    except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
 
 
@@ -259,7 +258,7 @@ async def share(
             generation_id=generation_id,
             surface=payload.surface,
         )
-        author = await session.get(__import__("app.db.models", fromlist=["User"]).User, generation.user_id)
+        author = await session.get(User, generation.user_id)
         if author is None:
             raise FeedNotFoundError("Publication author not found")
         link = FeedService.post_deep_link(generation.id, str(author.telegram_id))
@@ -362,8 +361,6 @@ async def link(
             generation_id,
             surface=surface,
         )
-        from app.db.models import User
-
         author = await session.get(User, generation.user_id)
         if author is None:
             raise FeedNotFoundError("Publication author not found")
