@@ -22,6 +22,7 @@ from app.services.wallet import WalletService
 logger = logging.getLogger(__name__)
 
 INPUT_FIELDS = {"image_url", "image_urls", "image_input", "input_urls"}
+JSON_PARAMETER_FIELDS = {"bbox_list", "audio_setting"}
 ACTIVE_STATUSES = {"queued", "retry", "submitting", "generating"}
 
 
@@ -50,6 +51,23 @@ def amount(value: Decimal | int | str) -> str:
 def request_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def normalize_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(parameters)
+    for field in JSON_PARAMETER_FIELDS:
+        value = normalized.get(field)
+        if not isinstance(value, str):
+            continue
+        raw = value.strip()
+        if not raw:
+            normalized.pop(field, None)
+            continue
+        try:
+            normalized[field] = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise BatchGenerationError(f"Invalid JSON in {field}") from exc
+    return normalized
 
 
 async def resolve_inputs(
@@ -97,7 +115,9 @@ async def prepare_items(
         raise BatchGenerationError("Batch generation currently supports image models only")
     if not (INPUT_FIELDS & set(spec.known_fields)):
         raise BatchGenerationError("Selected model does not accept an image input")
-    injected = sorted(key for key in INPUT_FIELDS if parameters.get(key))
+
+    normalized_parameters = normalize_parameters(parameters)
+    injected = sorted(key for key in INPUT_FIELDS if normalized_parameters.get(key))
     if injected:
         raise BatchGenerationError(
             "Batch input images are server-owned; remove: " + ", ".join(injected)
@@ -110,7 +130,7 @@ async def prepare_items(
             model_id=model_id,
             prompt=prompt,
             input_url=input_url,
-            parameters=parameters,
+            parameters=normalized_parameters,
             billing_seconds=billing_seconds,
         )
         prepared.append(
