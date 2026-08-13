@@ -17,6 +17,7 @@ from app.services.partner import (
     PartnerWithdrawalBelowMinimum,
     PartnerWithdrawalError,
 )
+from app.services.partner_approval import PartnerApprovalRequired, PartnerApprovalService
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -45,7 +46,6 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     return {
         "first_line": first,
         "second_line": second,
-        # Backward-compatible names used by the existing Profile shell.
         "available": str(accounting["available"]),
         "pending": str(accounting["pending_rewards"]),
         "total_earned": str(accounting["total_earned"]),
@@ -170,12 +170,16 @@ async def create_withdrawal(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
+        await PartnerApprovalService.require_approved(session, user_id=user.id)
         item = await PartnerService.create_withdrawal(
             session,
             user_id=user.id,
             amount=payload.amount,
             requisites=payload.requisites,
         )
+    except PartnerApprovalRequired as exc:
+        await session.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PartnerWithdrawalBelowMinimum as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PartnerInsufficientFunds as exc:
