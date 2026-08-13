@@ -12,6 +12,7 @@ from app.db.admin_models import AdminTrend, PromptLibraryItem
 from app.db.models import AdminAccount, Generation
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
+from app.services.trends import TrendService
 
 PromptModerationAction = Literal["approve", "reject", "deactivate"]
 FeedModerationAction = Literal["visible", "blurred", "removed"]
@@ -132,18 +133,7 @@ class AdminContentService:
                 )
             ).all()
         )
-        return {
-            "items": [
-                {
-                    "id": str(item.id),
-                    "title": item.title,
-                    "payload": item.payload,
-                    "is_active": item.is_active,
-                    "created_at": item.created_at.isoformat(),
-                }
-                for item in rows
-            ]
-        }
+        return {"items": [TrendService.admin_view(item) for item in rows]}
 
     @staticmethod
     async def create_trend(
@@ -158,20 +148,23 @@ class AdminContentService:
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "social.moderate", confirmed=confirmed)
         clean_title = title.strip()
-        if not clean_title or len(clean_title) > 255:
-            raise ValueError("Trend title must contain 1..255 characters")
-        command_payload = {"title": clean_title, "payload": payload}
+        recipe = await TrendService.validate_recipe(
+            session,
+            title=clean_title,
+            payload=payload,
+        )
+        command_payload = {"title": clean_title, "payload": recipe}
 
         async def operation() -> dict[str, Any]:
             item = AdminTrend(
                 title=clean_title,
-                payload=payload,
+                payload=recipe,
                 is_active=True,
                 created_by_admin_id=admin.id,
             )
             session.add(item)
             await session.flush()
-            return {"id": str(item.id), "title": item.title, "is_active": item.is_active}
+            return TrendService.admin_view(item)
 
         return await AdminCommandLedger.execute(
             session,
