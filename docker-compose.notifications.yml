@@ -1,0 +1,12 @@
+services:
+  notification-worker:
+    build: .
+    command: python -m app.workers.notifications
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
