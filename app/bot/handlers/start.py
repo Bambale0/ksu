@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import back_menu, main_menu, onboarding_menu
+from app.bot.keyboards import back_menu, balance_menu, main_menu, onboarding_menu
 from app.core.config import settings
 from app.db.models import Wallet
 from app.services.account_profile import AccountProfileService
@@ -89,7 +89,7 @@ async def balance_command(message: Message, session: AsyncSession) -> None:
     wallet = await session.get(Wallet, user.id)
     await message.answer(
         f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
-        reply_markup=back_menu(),
+        reply_markup=balance_menu(),
     )
 
 
@@ -101,7 +101,7 @@ async def balance_callback(callback: CallbackQuery, session: AsyncSession) -> No
     if callback.message:
         await callback.message.answer(
             f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
-            reply_markup=back_menu(),
+            reply_markup=balance_menu(),
         )
 
 
