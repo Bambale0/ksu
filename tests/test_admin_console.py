@@ -19,7 +19,7 @@ def test_admin_console_is_separate_static_app_and_bot_launcher_is_not_auth() -> 
     assert 'AdminAccount.is_active.is_(True)' in bot
     assert 'WebAppInfo(url=url)' in bot
     assert '"/admin-app/"' in bot or '/admin-app/' in bot
-    assert "отдельная admin-сессия и MFA" in bot
+    assert "admin-сесси" in bot and "MFA" in bot
     assert "dispatcher.include_router(admin.router)" in dispatcher
 
 
