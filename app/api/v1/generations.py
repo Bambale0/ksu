@@ -69,6 +69,8 @@ def _provider_result_urls(generation: Generation) -> list[str]:
 
 
 def _public_settings(generation: Generation) -> dict[str, Any]:
+    if generation.action_type == "trend":
+        return {}
     params = dict(generation.parameters or {})
     model_id = str(params.get("_model_id") or "")
     try:
@@ -94,12 +96,15 @@ def _generation_view(
     owned_media = owned_media or []
     owned_urls = [str(item["url"]) for item in owned_media if item.get("url")]
     result_urls = owned_urls or _provider_result_urls(generation)
+    trend_hidden = generation.action_type == "trend"
     return {
         "id": str(generation.id),
         "status": generation.status,
-        "prompt": generation.prompt,
+        "prompt": "" if trend_hidden else generation.prompt,
         "model": _model_view(generation),
         "settings": _public_settings(generation),
+        "prompt_hidden": trend_hidden,
+        "prompt_actions_allowed": not trend_hidden,
         "cost_credits": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
         "billing_seconds": params.get("_billing_seconds"),
@@ -275,6 +280,11 @@ async def recreate_generation_payload(
     session: SessionDep,
 ) -> dict[str, object]:
     generation = await _owned_generation(generation_id, user, session)
+    if generation.action_type == "trend":
+        raise HTTPException(
+            status_code=409,
+            detail="Trend generations can only be repeated from the Trends catalog",
+        )
 
     params = dict(generation.parameters or {})
     model_id = str(params.get("_model_id") or "")
