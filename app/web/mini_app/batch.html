@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Ксю · Пакетная обработка</title>
+  <link rel="stylesheet" href="/mini-app/styles.css">
+  <link rel="stylesheet" href="/mini-app/batch.css">
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script defer src="/mini-app/bulk.js"></script>
+</head>
+<body>
+  <main class="batch-app">
+    <header class="batch-header">
+      <a href="/mini-app/">← Ксю AI Studio</a>
+      <span class="section-kicker">BATCH</span>
+      <h1>Пакетная обработка</h1>
+      <p>Один промпт и настройки — для серии изображений. Цена считается сервером до запуска.</p>
+    </header>
+
+    <section class="card batch-card">
+      <div class="section-heading"><div><span class="step">1</span><h2>Изображения</h2></div><strong id="batchCount">0 / 20</strong></div>
+      <input id="batchFiles" type="file" accept="image/*" multiple hidden>
+      <button id="batchUpload" class="upload-button" type="button">Добавить изображения</button>
+      <div id="batchUploads" class="batch-uploads" aria-live="polite"></div>
+    </section>
+
+    <section class="card batch-card">
+      <div class="section-heading"><div><span class="step">2</span><h2>Модель и настройки</h2></div></div>
+      <label class="field-label" for="batchModel">Модель</label>
+      <select id="batchModel" class="input"></select>
+      <label class="field-label" for="batchPrompt">Промпт</label>
+      <textarea id="batchPrompt" class="textarea" maxlength="8000" placeholder="Что изменить во всех изображениях?"></textarea>
+      <div id="batchFields" class="dynamic-form"></div>
+    </section>
+
+    <section class="card batch-card batch-summary">
+      <div class="section-heading"><div><span class="step">3</span><h2>Проверка и запуск</h2></div></div>
+      <div id="batchQuote" class="batch-quote">Добавьте минимум 2 изображения.</div>
+      <div id="batchMessage" class="batch-message" aria-live="polite"></div>
+      <button id="batchStart" class="primary-button" type="button" disabled>Запустить пакет</button>
+    </section>
+
+    <section id="batchProgress" class="card batch-card" hidden aria-live="polite"></section>
+  </main>
+</body>
+</html>
