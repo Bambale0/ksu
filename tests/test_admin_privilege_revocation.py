@@ -26,14 +26,14 @@ async def test_blocking_linked_admin_user_revokes_admin_account() -> None:
             role="owner",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         target_admin = AdminAccount(
             user_id=target_user.id,
             role="admin",
             permission_overrides={},
             is_active=True,
-            mfa_enrolled=True,
+            mfa_enabled=True,
         )
         session.add_all([owner, target_admin])
         await session.flush()
