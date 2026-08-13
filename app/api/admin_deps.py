@@ -10,12 +10,12 @@ from sqlalchemy import select
 from app.api.deps import RedisDep, SessionDep
 from app.core.config import settings
 from app.db.models import AdminAccount, AdminSession, User
+from app.services.admin_policy import AdminPolicy
 from app.services.admin_security import (
     AdminAuditService,
     AdminAuthService,
     AdminSecurityConfigurationError,
     fingerprint,
-    has_permission,
     hash_admin_token,
     utcnow,
 )
@@ -130,7 +130,7 @@ def require_permission(permission: str, *, step_up: bool = False) -> Callable[..
         context: VerifiedAdminDep,
         session: SessionDep,
     ) -> AdminContext:
-        if not has_permission(context.account, permission):
+        if not AdminPolicy.has_permission(context.account, permission):
             await AdminAuditService.record(
                 session,
                 action="admin.authorization.denied",
