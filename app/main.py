@@ -10,6 +10,7 @@ from redis.asyncio import Redis
 
 from app.api.card_webhooks import router as card_webhook_router
 from app.api.health import router as health_router
+from app.api.internal_admin import router as internal_admin_router
 from app.api.metrics import router as metrics_router
 from app.api.router import api_router
 from app.api.webhooks import router as webhook_router
@@ -91,6 +92,7 @@ app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(webhook_router)
 app.include_router(card_webhook_router)
+app.include_router(internal_admin_router)
 app.include_router(api_router)
 
 web_dir = Path(__file__).resolve().parent / "web"
