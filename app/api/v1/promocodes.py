@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
-from app.db.models import Notification, Wallet
+from app.db.models import Wallet
+from app.services.notifications import NotificationService
 from app.services.promocodes import PromoCodeError, PromoCodeService
 
 router = APIRouter(prefix="/promocodes", tags=["promocodes"])
@@ -29,13 +30,12 @@ async def redeem(
     try:
         promo = await PromoCodeService.redeem(session, user_id=user.id, code=payload.code)
         wallet = await session.get(Wallet, user.id)
-        session.add(
-            Notification(
-                user_id=user.id,
-                kind="promo_redeemed",
-                title="Промокод применён",
-                body=f"Начислено {promo.reward_amount} кредитов.",
-            )
+        await NotificationService.create(
+            session,
+            user_id=user.id,
+            kind="promo_redeemed",
+            title="Промокод применён",
+            body=f"Начислено {promo.reward_amount} кредитов.",
         )
         await session.commit()
     except PromoCodeError as exc:
