@@ -20,8 +20,10 @@ from app.core.logging import configure_logging
 from app.core.observability import configure_telemetry, shutdown_telemetry
 from app.db.session import engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
+from app.services.notification_events import register_notification_events
 
 configure_logging()
+register_notification_events()
 
 
 @asynccontextmanager
