@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -14,6 +15,8 @@ from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+
+logger = logging.getLogger(__name__)
 
 _REFERENCE_LIST_FIELDS = (
     "reference_image_urls",
@@ -277,16 +280,21 @@ class TrendService:
             action_type="trend",
         )
 
-        # Usage is analytics only. GenerationService already committed the financially
-        # authoritative generation/debit/outbox transaction before this counter changes.
-        locked = await session.scalar(
-            select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
-        )
-        if locked is not None:
-            payload = dict(locked.payload or {})
-            payload["usage_count"] = max(0, int(payload.get("usage_count", 0))) + 1
-            locked.payload = payload
-            await session.commit()
+        # Usage is analytics only. GenerationService has already committed the financially
+        # authoritative generation/debit/outbox transaction, so analytics must never turn
+        # a successful charge and task creation into an HTTP 500.
+        try:
+            locked = await session.scalar(
+                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
+            )
+            if locked is not None:
+                payload = dict(locked.payload or {})
+                payload["usage_count"] = max(0, int(payload.get("usage_count", 0))) + 1
+                locked.payload = payload
+                await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.warning("Trend usage analytics failed for %s", trend_id, exc_info=True)
 
         return generation, {
             "trend_id": str(trend_id),
