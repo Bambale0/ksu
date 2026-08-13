@@ -4,15 +4,13 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.admin_models import AdminCommand
-
-T = TypeVar("T")
 
 SECRET_KEYS = frozenset(
     {
