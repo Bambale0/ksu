@@ -48,7 +48,6 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       BOT_TOKEN: ""
       TELEGRAM_WEBHOOK_SECRET: test-secret
-      # Existing endpoint regression tests are not onboarding fixtures. Dedicated onboarding tests enable it explicitly.
       ONBOARDING_ENABLED: "false"
 
     steps:
@@ -81,6 +80,7 @@ jobs:
           node --check app/web/mini_app/social.js
           node --check app/web/mini_app/feed.js
           node --check app/web/mini_app/trends.js
+          node --check app/web/mini_app/prompt-tools.js
           node --check app/web/mini_app/promo-recovery.js
           node --check app/web/mini_app/onboarding.js
 
@@ -102,6 +102,9 @@ jobs:
 
       - name: Trends contracts
         run: pytest -q tests/test_trends_contract.py tests/test_trends_service.py
+
+      - name: Prompt Tools contracts
+        run: pytest -q tests/test_prompt_tools_contract.py tests/test_prompt_tools.py
 
       - name: Full regression suite
         shell: bash
