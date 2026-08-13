@@ -45,6 +45,8 @@ def _headers(
             raw_body=body,
         ),
     }
+    if body:
+        headers["Content-Type"] = "application/json"
     if admin_user_id is not None:
         headers["X-Admin-User-Id"] = str(admin_user_id)
     if idempotency_key is not None:
