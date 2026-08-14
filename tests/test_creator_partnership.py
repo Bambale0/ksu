@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 from app.db.creator_partner_models import (
     CreatorPartnershipAgreement,
     CreatorPartnershipApplication,
-    CreatorPartnershipGrant,
 )
 from app.db.models import AdminAccount, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
@@ -245,6 +244,6 @@ async def test_creator_status_exposes_agreement_and_grant_history() -> None:
         payload = await CreatorPartnershipService.status(session, user_id=user.id)
         assert payload["application"]["status"] == "approved"
         assert payload["agreement"]["status"] == "active"
-        assert payload["agreement"]["monthly_rox"] == "500.00"
-        assert payload["total_granted_rox"] == "500.00"
+        assert Decimal(payload["agreement"]["monthly_rox"]) == Decimal("500.00")
+        assert Decimal(payload["total_granted_rox"]) == Decimal("500.00")
         assert len(payload["grants"]) == 1

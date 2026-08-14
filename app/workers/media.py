@@ -15,6 +15,7 @@ from app.core.observability import (
 )
 from app.db.session import SessionFactory, engine
 from app.services.media_assets import MediaAssetService, MediaIngestService
+from app.services.music_media import MusicMediaIngestService
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "media-worker"
@@ -48,14 +49,26 @@ async def run() -> None:
                     await _event(redis, "media_reconcile_failure")
                 next_legacy_reconcile_at = now + settings.media_legacy_reconcile_seconds
 
+            processed = False
             try:
                 async with SessionFactory() as session:
-                    processed = await MediaIngestService.process_one(session)
+                    processed = await MusicMediaIngestService.process_one(session)
+                if processed:
+                    await _event(redis, "music_audio_ingest_processed")
             except Exception:
                 WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
-                logger.exception("Media ingest worker iteration failed")
-                await _event(redis, "media_worker_loop_error")
-                processed = False
+                logger.exception("Music audio ingest worker iteration failed")
+                await _event(redis, "music_audio_worker_loop_error")
+
+            if not processed:
+                try:
+                    async with SessionFactory() as session:
+                        processed = await MediaIngestService.process_one(session)
+                except Exception:
+                    WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
+                    logger.exception("Media ingest worker iteration failed")
+                    await _event(redis, "media_worker_loop_error")
+                    processed = False
 
             if processed:
                 await _event(redis, "media_ingest_processed")

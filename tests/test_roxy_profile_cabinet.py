@@ -30,10 +30,11 @@ def test_creator_partnership_is_explicitly_separate_from_referral_economy() -> N
     for token in (
         "Creator-партнёрство",
         "не реферальные 30% / 5%",
-        "ежемесячные начисления ROX",
-        "Персональные условия согласуются вручную",
+        "не являются выводимым реферальным доходом",
         "Автоматическая реферальная программа",
         "Рефералы 30% / 5%",
+        "Бонусные ROX на контент",
+        "условия и ежемесячный ROX-лимит согласуются индивидуально",
     ):
         assert token in source
     assert "ReferralReward" not in source
@@ -41,12 +42,26 @@ def test_creator_partnership_is_explicitly_separate_from_referral_economy() -> N
     assert "/payments" not in source
 
 
-def test_creator_contact_uses_existing_support_flow_until_partnership_epic() -> None:
+def test_creator_partnership_uses_real_application_and_status_lifecycle() -> None:
     source = _read("roxy-profile-cabinet.js")
-    assert 'document.getElementById("supportComposeForm")' in source
-    assert 'topic.value = "Creator-партнёрство ROXY"' in source
-    assert "Канал / аудитория / формат сотрудничества" in source
-    assert "method:" not in source
+    for token in (
+        'api("/api/v1/creator-partnership")',
+        'api("/api/v1/creator-partnership/applications", {',
+        'method: "POST"',
+        '"Idempotency-Key": crypto.randomUUID()',
+        'form.addEventListener("submit", submitCreatorApplication)',
+        '"Название канала / проекта"',
+        '"Подписчики"',
+        '"Средние просмотры"',
+        '"Формат сотрудничества"',
+        '"На рассмотрении"',
+        '"Одобрено"',
+        '"Отклонено"',
+        '"Начисления по соглашению"',
+    ):
+        assert token in source
+    assert 'document.getElementById("supportComposeForm")' not in source
+    assert 'topic.value = "Creator-партнёрство ROXY"' not in source
 
 
 def test_profile_cabinet_hides_technical_account_overview_from_customer_surface() -> None:

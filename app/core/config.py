@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 
+    # Music is a distinct Kie/Suno provider contract but uses the same ROXY wallet,
+    # generation history and durable worker/recovery infrastructure.
+    music_generation_model: str = "V5_5"
+    music_generation_price_rox: Decimal = Decimal("100")
+
     generation_worker_poll_seconds: int = 5
     generation_outbox_lease_seconds: int = 90
     generation_submission_max_attempts: int = 5

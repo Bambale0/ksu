@@ -61,7 +61,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
 
       - name: Ruff
-        run: ruff check .
+        run: ruff check . --output-format=github
 
       - name: Compile
         run: python -m compileall -q app tests
@@ -78,6 +78,7 @@ jobs:
           node --check app/web/mini_app/roxy-customer-navigation.js
           node --check app/web/mini_app/roxy-discovery.js
           node --check app/web/mini_app/roxy-create-center.js
+          node --check app/web/mini_app/roxy-music.js
           node --check app/web/mini_app/roxy-profile-cabinet.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
@@ -133,6 +134,9 @@ jobs:
 
       - name: ROXY Create center contracts
         run: pytest -q tests/test_roxy_create_center.py
+
+      - name: ROXY Music generation contracts
+        run: pytest -q tests/test_music_generation.py
 
       - name: ROXY Profile cabinet contracts
         run: pytest -q tests/test_roxy_profile_cabinet.py
