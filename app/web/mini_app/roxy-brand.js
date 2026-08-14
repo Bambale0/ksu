@@ -47,8 +47,8 @@
       js: "/mini-app/roxy-profile-cabinet.js",
     });
     mountLayer({
-      css: "/mini-app/roxy-account-center.css",
-      js: "/mini-app/roxy-account-center.js",
+      css: "/mini-app/roxy-parity-navigation.css",
+      js: "/mini-app/roxy-parity-navigation.js",
     });
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
     // Mount last: acceptance CSS intentionally owns final safe-area/keyboard/mobile
