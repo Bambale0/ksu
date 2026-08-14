@@ -17,7 +17,6 @@ from app.api.v1 import (
     generations,
     me,
     media,
-    music_generations,
     notifications,
     onboarding,
     payments,
@@ -37,10 +36,6 @@ api_router.include_router(onboarding.router)
 api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(creator_partnership.router)
-# Music overrides only the shared generation catalog/quote/create/history read routes.
-# It is registered first so Suno can remain a first-class audio domain while old
-# image/video contracts keep their original implementation untouched.
-api_router.include_router(music_generations.router)
 api_router.include_router(generations.router)
 api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
