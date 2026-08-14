@@ -59,10 +59,10 @@ def test_card_package_prices_are_explicit_and_never_fx_derived(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"30","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}',
+        '{"starter":{"credits":"300","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}',
     )
     package = CardPackageCatalog.package("starter")
-    assert package.credits == Decimal("30")
+    assert package.credits == Decimal("300")
     assert package.prices == {
         "RUB": Decimal("300"),
         "USD": Decimal("6.00"),
@@ -74,11 +74,11 @@ def test_empty_card_catalog_only_inherits_legacy_rub_price(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "card_packages_json", "{}")
-    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("10"))
+    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("1"))
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"starter":{"credits":"30","currency":"RUB"}}',
+        '{"starter":{"credits":"300","currency":"RUB"}}',
     )
     package = CardPackageCatalog.package("starter")
     assert package.prices == {"RUB": Decimal("300.00")}
@@ -96,7 +96,7 @@ def test_card_webhook_key_is_required_and_constant_compared() -> None:
 def test_public_payment_surface_is_vendor_neutral() -> None:
     public_files = [
         ROOT / "app" / "api" / "v1" / "card_payments.py",
-        ROOT / "app" / "api" / "card_webhooks.py",
+        ROOT / "app" / "api" / "v1" / "card_webhooks.py",
         ROOT / "app" / "web" / "mini_app" / "primary-card-checkout.js",
         ROOT / "app" / "web" / "mini_app" / "account-overview.js",
         ROOT / "app" / "bot" / "handlers" / "start.py",
@@ -144,7 +144,7 @@ async def test_invalid_configured_price_is_rejected_before_payment_intent(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"30","prices":{"USD":"4.00"}}}',
+        '{"starter":{"credits":"300","prices":{"USD":"4.00"}}}',
     )
     async with SessionFactory() as session:
         buyer = User(telegram_id=_telegram_id(), first_name="Invalid price")
@@ -168,10 +168,10 @@ async def test_invalid_configured_price_is_rejected_before_payment_intent(
 
 
 @pytest.mark.asyncio
-async def test_usd_card_payment_credits_once_and_referral_uses_rub_accounting_basis(
+async def test_usd_card_payment_credits_once_and_referral_uses_purchased_rox_basis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("10"))
+    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("1"))
     async with SessionFactory() as session:
         inviter = User(telegram_id=_telegram_id(), first_name="Referrer")
         buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
@@ -186,7 +186,7 @@ async def test_usd_card_payment_credits_once_and_referral_uses_rub_accounting_ba
             external_id=f"card-{uuid.uuid4()}",
             amount=Decimal("6.00"),
             currency="USD",
-            rox_amount=Decimal("30.00"),
+            rox_amount=Decimal("300.00"),
             status="pending",
             payload={},
         )
@@ -214,7 +214,7 @@ async def test_usd_card_payment_credits_once_and_referral_uses_rub_accounting_ba
             )
         )
         assert wallet is not None
-        assert wallet.balance == Decimal("30.00")
+        assert wallet.balance == Decimal("300.00")
         assert reward is not None
         assert reward.amount == Decimal("90.00")
         assert int(reward_count or 0) == 1
