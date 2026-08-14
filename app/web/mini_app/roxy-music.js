@@ -13,6 +13,10 @@
     try { tg?.HapticFeedback?.impactOccurred?.(kind); } catch (_error) { /* optional */ }
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   function musicModel() {
     return state.musicModel || state.models.find((model) => model.media_type === "audio") || null;
   }
@@ -42,13 +46,12 @@
     const card = document.querySelector('[data-roxy-media="audio"]');
     if (!card) return;
     const model = musicModel();
-    card.disabled = !model;
+    if (card.disabled === Boolean(model)) card.disabled = !model;
     card.classList.toggle("is-disabled", !model);
-    card.setAttribute("aria-disabled", model ? "false" : "true");
-    const count = card.querySelector('[data-roxy-media-count="audio"]');
-    if (count) count.textContent = model ? "Suno V5.5" : "Недоступно";
-    const copy = card.querySelector(".roxy-media-card-copy small");
-    if (copy && model) copy.textContent = "Песня или инструментальный трек через Suno";
+    const aria = model ? "false" : "true";
+    if (card.getAttribute("aria-disabled") !== aria) card.setAttribute("aria-disabled", aria);
+    setText(card.querySelector('[data-roxy-media-count="audio"]'), model ? "Suno V5.5" : "Недоступно");
+    if (model) setText(card.querySelector(".roxy-media-card-copy small"), "Песня или инструментальный трек через Suno");
   }
 
   function closeCreateCenter() {
@@ -109,18 +112,15 @@
   function patchBuilder() {
     const isMusic = selectedIsMusic();
     const helper = document.getElementById("roxyPromptHelper");
-    if (helper) helper.hidden = isMusic;
+    if (helper && helper.hidden !== isMusic) helper.hidden = isMusic;
 
     if (!isMusic) return;
-    const heading = document.querySelector("#builderView .view-heading h1");
-    if (heading) heading.textContent = "Создать музыку";
-    const settings = document.getElementById("settingsHeading");
-    if (settings) settings.textContent = "Параметры трека";
+    setText(document.querySelector("#builderView .view-heading h1"), "Создать музыку");
+    setText(document.getElementById("settingsHeading"), "Параметры трека");
     document.querySelectorAll("#modelMeta .meta-pill").forEach((pill) => {
-      if (/изображение|image/i.test(pill.textContent || "")) pill.textContent = "Музыка";
+      if (/изображение|image/i.test(pill.textContent || "")) setText(pill, "Музыка");
     });
-    const summary = document.getElementById("summaryHeading");
-    if (summary) summary.textContent = "Ваш трек";
+    setText(document.getElementById("summaryHeading"), "Ваш трек");
   }
 
   function patchFamilyCards() {
@@ -129,15 +129,12 @@
     const card = [...document.querySelectorAll(".shell-family-card")]
       .find((item) => item.dataset.family === model.family);
     if (card) {
-      const icon = card.querySelector(".shell-family-icon");
-      const title = card.querySelector("strong");
-      const meta = card.querySelector("small");
-      if (icon) icon.textContent = "♪";
-      if (title) title.textContent = "Музыка";
-      if (meta) meta.textContent = "Suno · AI music";
+      setText(card.querySelector(".shell-family-icon"), "♪");
+      setText(card.querySelector("strong"), "Музыка");
+      setText(card.querySelector("small"), "Suno · AI music");
     }
     document.querySelectorAll(".family-tab").forEach((tab) => {
-      if (/^suno$/i.test(tab.textContent?.trim() || "")) tab.textContent = "Suno Music";
+      if (/^suno$/i.test(tab.textContent?.trim() || "")) setText(tab, "Suno Music");
     });
   }
 
@@ -172,24 +169,23 @@
   }
 
   function patchRecentCards() {
-    const model = musicModel();
-    if (!model) return;
+    if (!musicModel()) return;
     document.querySelectorAll(".shell-generation-card, .active-generation-card").forEach((card) => {
       const title = card.querySelector(".generation-copy strong")?.textContent || "";
       if (!/Suno V5\.5|Suno.*Music/i.test(title)) return;
       const thumb = card.querySelector(".generation-thumb");
-      if (thumb && !thumb.querySelector("img,video,audio")) thumb.textContent = "♪";
+      if (thumb && !thumb.querySelector("img,video,audio")) setText(thumb, "♪");
     });
   }
 
   function restoreGenericBuilderHeading() {
     if (selectedIsMusic()) return;
     const heading = document.querySelector("#builderView .view-heading h1");
-    if (heading && heading.textContent === "Создать музыку") heading.textContent = "Настройте генерацию";
+    if (heading?.textContent === "Создать музыку") setText(heading, "Настройте генерацию");
     const settings = document.getElementById("settingsHeading");
-    if (settings && settings.textContent === "Параметры трека") settings.textContent = "Настройки";
+    if (settings?.textContent === "Параметры трека") setText(settings, "Настройки");
     const summary = document.getElementById("summaryHeading");
-    if (summary && summary.textContent === "Ваш трек") summary.textContent = "Вы выбрали";
+    if (summary?.textContent === "Ваш трек") setText(summary, "Вы выбрали");
   }
 
   function apply() {
