@@ -28,6 +28,7 @@ class PresetWrite(BaseModel):
     prompt: str = Field(default="", max_length=8000)
     parameters: dict[str, Any] = Field(default_factory=dict)
     reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=16)
+    billing_seconds: int | None = Field(default=None, ge=1)
 
 
 def _error(exc: Exception) -> HTTPException:
