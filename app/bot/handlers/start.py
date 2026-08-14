@@ -107,7 +107,7 @@ async def start(
         if link is not None and link.action != "ref" and payload:
             await state.update_data(pending_start_payload=payload)
         body = settings.onboarding_body.strip()
-        text = settings.onboarding_title.strip() or "Добро пожаловать в Ксю"
+        text = settings.onboarding_title.strip() or "Добро пожаловать в ROXY"
         if body:
             text = f"{text}\n\n{body}"
         await message.answer(text, reply_markup=onboarding_menu())
