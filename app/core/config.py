@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     onboarding_enabled: bool = True
     onboarding_version: str = "1"
-    onboarding_title: str = "Добро пожаловать в Ксю"
+    onboarding_title: str = "Добро пожаловать в ROXY"
     onboarding_body: str = "Перед началом работы завершите короткий вводный экран."
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""

@@ -143,7 +143,7 @@ async def profile_feed(
             "id": str(author.id),
             "telegram_id": author.telegram_id,
             "username": author.username,
-            "display_name": author.first_name or author.username or "Пользователь Ксю",
+            "display_name": author.first_name or author.username or "Пользователь ROXY",
             "referral_code": str(author.telegram_id),
         },
         "items": cards,

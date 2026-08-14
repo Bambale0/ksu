@@ -3,27 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#0f1115">
-  <title>Ксю · AI Studio</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09080f">
+  <title>ROXY · AI Creative Studio</title>
   <link rel="stylesheet" href="/mini-app/styles.css">
+  <link rel="stylesheet" href="/mini-app/roxy-brand.css">
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <script defer src="/mini-app/app.js"></script>
   <script defer src="/mini-app/shell.js"></script>
   <script defer src="/mini-app/shell-integration.js"></script>
   <script defer src="/mini-app/payment-link-guard.js"></script>
   <script defer src="/mini-app/wallet.js"></script>
+  <script defer src="/mini-app/roxy-brand.js"></script>
 </head>
 <body>
   <div class="offline-banner" id="offlineBanner" hidden role="status">Нет сети · показываю доступный интерфейс</div>
 
   <div class="app-shell" id="appShell">
     <header class="product-header" id="productHeader">
-      <button class="brand-button" type="button" id="brandHomeButton" aria-label="На главный экран создания">
-        <span class="brand-mark" aria-hidden="true">К</span>
+      <button class="brand-button" type="button" id="brandHomeButton" aria-label="На главную ROXY">
+        <span class="brand-mark" aria-hidden="true">X</span>
         <span class="brand-copy">
-          <strong>Ксю</strong>
-          <small>AI Studio</small>
+          <strong>ROXY</strong>
+          <small>AI CREATIVE STUDIO</small>
         </span>
       </button>
       <button class="balance" id="balance" type="button" data-shell-nav="wallet" aria-label="Открыть баланс">
@@ -37,9 +39,9 @@
         <div class="create-home" id="createHome">
           <section class="hero-card">
             <div class="hero-copy">
-              <span class="eyebrow">КСЮ · AI STUDIO</span>
-              <h1 id="createViewTitle">Что создаём?</h1>
-              <p>Выберите направление — настройки и точная цена появятся перед запуском.</p>
+              <span class="eyebrow">ROXY · AI CREATIVE STUDIO</span>
+              <h1 id="createViewTitle">Привет! Это ROXY ✨</h1>
+              <p>Твори. Генерируй. Зарабатывай.</p>
             </div>
             <div class="hero-orb" aria-hidden="true"><span>✦</span></div>
           </section>
@@ -175,7 +177,7 @@
         <div class="wallet-hero shell-panel" id="walletHero">
           <span class="muted">Доступно</span>
           <strong id="walletBalance">—</strong>
-          <small>Внутренние кредиты Ксю</small>
+          <small>Внутренние кредиты ROXY</small>
         </div>
 
         <section class="home-section" aria-labelledby="topupHeading">
