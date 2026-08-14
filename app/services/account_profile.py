@@ -109,6 +109,8 @@ class AccountProfileService:
         referral = await ReferralService.stats(session, user.id)
         preferences = await ProfilePreferenceService.get_or_create(session, user.id)
         onboarding = await session.get(UserOnboarding, user.id)
+        withdrawable_rox = InternalCreditService.credits_for(referral["available"])
+        pending_withdrawable_rox = InternalCreditService.credits_for(referral["pending"])
 
         return {
             "account": {
@@ -122,9 +124,13 @@ class AccountProfileService:
                 "created_at": user.created_at.isoformat(),
             },
             "balance": {
+                # `credits` stays for API compatibility; the public product unit is ROX.
                 "credits": str(credits),
+                "bonus_rox": str(credits),
+                "withdrawable_rox": str(withdrawable_rox),
                 "rub_accounting_equivalent": str(InternalCreditService.rubles_for(credits)),
                 "rub_per_credit": str(InternalCreditService.rub_per_credit()),
+                "rub_per_rox": str(InternalCreditService.rub_per_credit()),
             },
             "generations": {
                 "total": sum(generations.values()),
@@ -138,6 +144,7 @@ class AccountProfileService:
                         "successful_count": int(bucket["successful_count"]),
                         "successful_amount": str(bucket["successful_amount"]),
                         "credited": str(bucket["credited"]),
+                        "credited_rox": str(bucket["credited"]),
                         "statuses": bucket["statuses"],
                     }
                     for currency, bucket in sorted(payment_currencies.items())
@@ -152,6 +159,8 @@ class AccountProfileService:
                 "second_line": int(referral["second_line"]),
                 "available_rub": str(referral["available"]),
                 "pending_rub": str(referral["pending"]),
+                "withdrawable_rox": str(withdrawable_rox),
+                "pending_withdrawable_rox": str(pending_withdrawable_rox),
                 "withdrawals": withdrawals,
             },
             "social": {"following": following, "followers": followers},
@@ -191,7 +200,7 @@ class AccountProfileService:
         payment_lines = []
         for currency, bucket in payments["currencies"].items():
             payment_lines.append(
-                f"  • {currency}: {bucket['successful_count']} успешных · {bucket['successful_amount']} {currency} · {bucket['credited']} кр."
+                f"  • {currency}: {bucket['successful_count']} успешных · {bucket['successful_amount']} {currency} · +{bucket['credited']} ROX"
             )
         payment_text = "\n".join(payment_lines) if payment_lines else "  • платежей пока нет"
         statuses = generations["statuses"]
@@ -206,18 +215,19 @@ class AccountProfileService:
             f"Язык Telegram: {account.get('language_code') or '—'}\n"
             f"Регистрация: {account['created_at']}\n"
             f"Статус: {'активен' if account['is_active'] else 'ограничен'}\n\n"
-            "💎 Баланс\n"
-            f"Кредиты: {balance['credits']}\n"
-            f"Учётный эквивалент: {balance['rub_accounting_equivalent']} ₽\n\n"
+            "💎 Мои ROX\n"
+            f"🟣 Бонусные ROX: {balance['bonus_rox']}\n"
+            f"🟢 Выводимые ROX: {balance['withdrawable_rox']}\n"
+            "1 ROX = 1 ₽\n\n"
             "✨ Генерации\n"
             f"Всего: {generations['total']} · готово: {statuses.get('succeeded', 0)} · активных: {active_generations} · ошибок: {statuses.get('failed', 0)}\n\n"
-            "💳 Платежи\n"
+            "💳 Пополнения\n"
             f"{payment_text}\n\n"
             "🆘 Поддержка\n"
             f"Обращений: {support['total']} · открыто: {support['statuses'].get('open', 0)} · в работе: {support['statuses'].get('in_progress', 0)}\n\n"
-            "🤝 Партнёрская программа\n"
+            "👥 Заработать\n"
             f"1 линия: {partner['first_line']} · 2 линия: {partner['second_line']}\n"
-            f"Доступно: {partner['available_rub']} ₽ · в ожидании: {partner['pending_rub']} ₽\n\n"
+            f"Доступно к выводу: {partner['withdrawable_rox']} ROX · в ожидании: {partner['pending_withdrawable_rox']} ROX\n\n"
             "👥 Социальное\n"
             f"Подписки: {social['following']} · подписчики: {social['followers']}\n"
             f"Непрочитанных уведомлений: {notifications['unread']}\n"
