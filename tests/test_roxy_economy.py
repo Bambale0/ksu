@@ -65,7 +65,7 @@ async def test_stats_expose_reference_economy_contract() -> None:
         await session.commit()
 
         payload = await stats(user, session)
-        assert payload["bonus_rox"] == "280"
+        assert payload["bonus_rox"] == "280.00"
         assert payload["withdrawable_rox"] == "0.00"
         assert payload["rub_per_rox"] == "1"
         assert payload["welcome_bonus_rox"] == "50"
@@ -123,5 +123,6 @@ def test_mini_app_economy_matches_reference_copy_and_split_balances() -> None:
         assert token in script
     assert "roxy-balance-grid" in style
     assert "roxy-rule-row" in style
+    assert "#studioHomeOrchestration" in style
     assert '/mini-app/roxy-economy.js' in integration
     assert '/mini-app/roxy-economy.css' in integration
