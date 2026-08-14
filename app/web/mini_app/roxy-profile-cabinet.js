@@ -5,21 +5,25 @@
   const state = {
     overview: null,
     economy: null,
+    creator: null,
     loading: false,
+    creatorSubmitting: false,
     mounted: false,
     observer: null,
   };
   const dom = {};
 
-  function authHeaders() {
+  function authHeaders(json = false) {
     const headers = { Accept: "application/json" };
     if (tg?.initData) headers["X-Telegram-Init-Data"] = tg.initData;
+    if (json) headers["Content-Type"] = "application/json";
     return headers;
   }
 
-  async function api(path) {
+  async function api(path, options = {}) {
     const response = await fetch(path, {
-      headers: authHeaders(),
+      ...options,
+      headers: { ...authHeaders(options.body !== undefined), ...(options.headers || {}) },
       credentials: "same-origin",
       cache: "no-store",
     });
@@ -46,6 +50,12 @@
     const number = Number(value);
     if (!Number.isFinite(number)) return "0";
     return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: digits }).format(number);
+  }
+
+  function dateLabel(value) {
+    const parsed = new Date(value || "");
+    if (Number.isNaN(parsed.getTime())) return "";
+    return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", year: "numeric" }).format(parsed);
   }
 
   function haptic(kind = "light") {
@@ -123,18 +133,7 @@
 
     const creator = el("section", "roxy-creator-partnership-card");
     creator.id = "creatorPartnershipEntry";
-    const creatorCopy = el("div", "roxy-creator-partnership-copy");
-    creatorCopy.append(
-      el("span", "section-kicker", "Для авторов и каналов"),
-      el("h3", "", "Creator-партнёрство"),
-      el("p", "", "Это отдельная программа, не реферальные 30% / 5%. Условия зависят от канала, аудитории и формата сотрудничества; после согласования возможны ежемесячные начисления ROX."),
-    );
-    const creatorActions = el("div", "roxy-creator-partnership-actions");
-    creatorActions.append(
-      button("Связаться по партнёрству", contactPartnership, "roxy-creator-primary"),
-      el("small", "", "Персональные условия согласуются вручную"),
-    );
-    creator.append(creatorCopy, creatorActions);
+    creator.setAttribute("aria-live", "polite");
 
     const message = el("div", "roxy-cabinet-message");
     message.id = "roxyCabinetMessage";
@@ -157,6 +156,7 @@
     dom.root = build();
     profileCard.insertAdjacentElement("afterend", dom.root);
     markReferralProgram();
+    renderCreator();
   }
 
   function markReferralProgram() {
@@ -199,6 +199,181 @@
         metric("Повторы промптов", format(economy.prompt_repeats || 0, 0), "Использований ваших работ"),
       );
     }
+    renderCreator();
+  }
+
+  function creatorShell(title, body) {
+    const copy = el("div", "roxy-creator-partnership-copy");
+    copy.append(
+      el("span", "section-kicker", "Для авторов и каналов"),
+      el("h3", "", title),
+      el("p", "", body),
+    );
+    return copy;
+  }
+
+  function formField(label, name, type = "text", placeholder = "") {
+    const wrapper = el("label", "roxy-creator-field");
+    wrapper.appendChild(el("span", "", label));
+    const input = document.createElement(type === "textarea" ? "textarea" : "input");
+    input.name = name;
+    if (type !== "textarea") input.type = type;
+    if (placeholder) input.placeholder = placeholder;
+    wrapper.appendChild(input);
+    return wrapper;
+  }
+
+  function renderCreatorApplicationForm(root, rejected = false) {
+    const form = el("form", "roxy-creator-application-form");
+    form.id = "creatorPartnershipForm";
+    const row = el("div", "roxy-creator-fields-row");
+    row.append(
+      formField("Название канала / проекта", "channel_name", "text", "Например: ROXY Media"),
+      formField("Ссылка", "channel_url", "url", "https://t.me/..."),
+    );
+    const stats = el("div", "roxy-creator-fields-row");
+    stats.append(
+      formField("Подписчики", "audience_size", "number", "2000"),
+      formField("Средние просмотры", "average_views", "number", "1200"),
+    );
+    const formatField = formField("Формат сотрудничества", "cooperation_format", "text", "Обзоры, интеграции, контент, амбассадорство"),
+      messageField = formField("Комментарий", "message", "textarea", "Расскажите об аудитории и как хотите сотрудничать");
+    const submit = button(rejected ? "Подать новую заявку" : "Отправить заявку", () => {}, "roxy-creator-primary");
+    submit.type = "submit";
+    submit.disabled = state.creatorSubmitting;
+    form.append(row, stats, formatField, messageField, submit);
+    form.addEventListener("submit", submitCreatorApplication);
+    root.appendChild(form);
+  }
+
+  function statusBadge(status) {
+    const labels = {
+      pending: "На рассмотрении",
+      approved: "Одобрено",
+      rejected: "Отклонено",
+      canceled: "Отменено",
+      active: "Активно",
+      paused: "Приостановлено",
+      ended: "Завершено",
+    };
+    return el("span", `roxy-creator-status ${status || "unknown"}`, labels[status] || status || "—");
+  }
+
+  function renderGrantList(grants) {
+    const list = el("div", "roxy-creator-grants");
+    list.appendChild(el("strong", "", "Начисления по соглашению"));
+    if (!Array.isArray(grants) || !grants.length) {
+      list.appendChild(el("small", "", "Начислений пока нет."));
+      return list;
+    }
+    grants.slice(0, 6).forEach((grant) => {
+      const row = el("div", "roxy-creator-grant-row");
+      row.append(el("span", "", grant.period), el("strong", "", `+${format(grant.amount_rox)} ROX`));
+      list.appendChild(row);
+    });
+    return list;
+  }
+
+  function renderCreator() {
+    const root = document.getElementById("creatorPartnershipEntry");
+    if (!root) return;
+    root.replaceChildren();
+    const creator = state.creator;
+    if (!creator) {
+      root.appendChild(creatorShell(
+        "Creator-партнёрство",
+        "Отдельная программа, не реферальные 30% / 5%. Условия рассчитываются индивидуально по каналу, аудитории, просмотрам и формату сотрудничества.",
+      ));
+      root.appendChild(el("div", "roxy-creator-loading", tg?.initData ? "Загружаю статус…" : "Открой ROXY через Telegram, чтобы подать заявку."));
+      return;
+    }
+
+    const application = creator.application;
+    const agreement = creator.agreement;
+    if (agreement) {
+      const copy = creatorShell(
+        "Creator-партнёрство",
+        "Это отдельный договорной контур. Ежемесячные ROX начисляются только по согласованным персональным условиям и не являются выводимым реферальным доходом.",
+      );
+      const summary = el("div", "roxy-creator-agreement-summary");
+      summary.append(
+        statusBadge(agreement.status),
+        metric("Ежемесячно", `${format(agreement.monthly_rox)} ROX`, "Бонусные ROX на контент"),
+        metric("Начало", agreement.starts_on || "—", agreement.ends_on ? `до ${agreement.ends_on}` : "Без даты окончания"),
+        metric("Всего начислено", `${format(creator.total_granted_rox)} ROX`, "По Creator-партнёрству"),
+      );
+      const terms = el("div", "roxy-creator-terms");
+      terms.append(el("strong", "", "Ваши условия"), el("p", "", agreement.terms_summary || "Индивидуальные условия согласованы."));
+      root.append(copy, summary, terms, renderGrantList(creator.grants));
+      return;
+    }
+
+    if (application?.status === "pending") {
+      root.append(
+        creatorShell("Creator-партнёрство", "Заявка отправлена и сейчас проверяется вручную. Условия не назначаются автоматически — они зависят от вашего канала и формата сотрудничества."),
+        statusBadge("pending"),
+        metric("Канал", application.channel_name, `${format(application.audience_size, 0)} подписчиков`),
+        el("small", "roxy-creator-meta", `Отправлено ${dateLabel(application.created_at)}`),
+      );
+      return;
+    }
+
+    if (application?.status === "rejected") {
+      root.append(
+        creatorShell("Creator-партнёрство", "Сейчас сотрудничество не подтверждено. Можно скорректировать предложение и отправить новую заявку."),
+        statusBadge("rejected"),
+      );
+      if (application.decision_note) root.appendChild(el("p", "roxy-creator-decision-note", application.decision_note));
+      renderCreatorApplicationForm(root, true);
+      return;
+    }
+
+    root.appendChild(creatorShell(
+      "Creator-партнёрство",
+      "Расскажите о канале. ROXY не назначает всем одинаковые бонусы: условия и ежемесячный ROX-лимит согласуются индивидуально.",
+    ));
+    renderCreatorApplicationForm(root, false);
+  }
+
+  async function submitCreatorApplication(event) {
+    event.preventDefault();
+    if (state.creatorSubmitting) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const audience = Number(data.get("audience_size"));
+    const averageRaw = String(data.get("average_views") || "").trim();
+    const payload = {
+      channel_name: String(data.get("channel_name") || "").trim(),
+      channel_url: String(data.get("channel_url") || "").trim(),
+      audience_size: audience,
+      average_views: averageRaw ? Number(averageRaw) : null,
+      cooperation_format: String(data.get("cooperation_format") || "").trim(),
+      message: String(data.get("message") || "").trim(),
+    };
+    if (!payload.channel_name || !payload.channel_url || !Number.isFinite(audience) || audience < 1 || !payload.cooperation_format) {
+      message("Заполни канал, HTTPS-ссылку, аудиторию и формат сотрудничества.", true);
+      return;
+    }
+    state.creatorSubmitting = true;
+    renderCreator();
+    message("Отправляю заявку…");
+    try {
+      await api("/api/v1/creator-partnership/applications", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify(payload),
+      });
+      state.creator = await api("/api/v1/creator-partnership");
+      renderCreator();
+      message("Заявка принята. ROXY уведомит о решении.");
+      notify("success");
+    } catch (error) {
+      message(error.message || "Не удалось отправить заявку.", true);
+      notify("error");
+    } finally {
+      state.creatorSubmitting = false;
+      renderCreator();
+    }
   }
 
   function message(text = "", error = false) {
@@ -211,16 +386,18 @@
   async function load(force = false) {
     const profile = document.getElementById("profileView");
     if (!profile || profile.hidden || !tg?.initData || state.loading) return;
-    if (!force && state.overview && state.economy) return;
+    if (!force && state.overview && state.economy && state.creator) return;
     state.loading = true;
     message("Обновляю кабинет…");
     try {
-      const [overview, economy] = await Promise.all([
+      const [overview, economy, creator] = await Promise.all([
         api("/api/v1/me/overview"),
         api("/api/v1/referrals/stats"),
+        api("/api/v1/creator-partnership"),
       ]);
       state.overview = overview;
       state.economy = economy;
+      state.creator = creator;
       render();
       message();
     } catch (error) {
@@ -239,26 +416,6 @@
   function scrollSettings() {
     if (scrollTo("profileTools")) return;
     window.setTimeout(() => scrollTo("profileTools"), 120);
-  }
-
-  function contactPartnership() {
-    haptic("medium");
-    const tryOpen = (attempt = 0) => {
-      const form = document.getElementById("supportComposeForm");
-      if (!form) {
-        if (attempt < 30) window.setTimeout(() => tryOpen(attempt + 1), 80);
-        return;
-      }
-      const topic = form.querySelector('input[type="text"]');
-      const body = form.querySelector("textarea");
-      if (topic && !topic.value.trim()) topic.value = "Creator-партнёрство ROXY";
-      if (body && !body.value.trim()) body.value = "Хочу обсудить индивидуальные условия партнёрства. Канал / аудитория / формат сотрудничества: ";
-      form.scrollIntoView({ behavior: "smooth", block: "start" });
-      topic?.focus({ preventScroll: true });
-      notify("success");
-    };
-    scrollSettings();
-    tryOpen();
   }
 
   function syncVisibility() {
