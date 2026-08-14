@@ -74,6 +74,7 @@ jobs:
           node --check app/web/mini_app/studio-shell.js
           node --check app/web/mini_app/studio-workspace.js
           node --check app/web/mini_app/payment-link-guard.js
+          node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
           node --check app/web/mini_app/primary-card-checkout.js
           node --check app/web/mini_app/account-overview.js
@@ -114,6 +115,9 @@ jobs:
 
       - name: Studio shell contracts
         run: pytest -q tests/test_studio_shell_contract.py
+
+      - name: Payment surface contracts
+        run: pytest -q tests/test_payment_surface_contract.py
 
       - name: Full regression suite
         shell: bash
