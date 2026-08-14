@@ -9,8 +9,10 @@ from sqlalchemy import func, select
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.core.config import settings
-from app.db.models import PartnerWithdrawal, ReferralReward, User
+from app.db.feed_models import FeedRemixEvent
+from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, Wallet
 from app.db.payment_models import ReferralRewardReversal
+from app.services.credits import InternalCreditService
 from app.services.partner import (
     PartnerInsufficientFunds,
     PartnerService,
@@ -30,6 +32,7 @@ def _withdrawal_view(item: PartnerWithdrawal) -> dict[str, object]:
     return {
         "id": str(item.id),
         "amount": str(item.amount),
+        "amount_rox": str(InternalCreditService.credits_for(item.amount)),
         "status": item.status,
         "created_at": item.created_at.isoformat(),
         "updated_at": item.updated_at.isoformat(),
@@ -42,19 +45,71 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     first, second = await PartnerService.invitation_counts(session, user.id)
     accounting = await PartnerService.accounting(session, user.id)
     payload = f"ref_{user.telegram_id}"
+    wallet = await session.get(Wallet, user.id)
+    internal_rox = Decimal(wallet.balance if wallet is not None else 0)
+    withdrawable_rox = InternalCreditService.credits_for(accounting["available"])
+    pending_rox = InternalCreditService.credits_for(accounting["pending_rewards"])
+    partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
+
+    prompts_created = int(
+        (
+            await session.scalar(
+                select(func.count()).select_from(Generation).where(
+                    Generation.user_id == user.id,
+                    Generation.source_feed_gen_id.is_(None),
+                    Generation.prompt != "",
+                )
+            )
+        )
+        or 0
+    )
+    prompt_repeats = int(
+        (
+            await session.scalar(
+                select(func.count()).select_from(FeedRemixEvent).where(
+                    FeedRemixEvent.source_author_id == user.id,
+                    FeedRemixEvent.remix_author_id != user.id,
+                )
+            )
+        )
+        or 0
+    )
+    latest_withdrawal = await session.scalar(
+        select(PartnerWithdrawal)
+        .where(PartnerWithdrawal.user_id == user.id)
+        .order_by(PartnerWithdrawal.created_at.desc())
+        .limit(1)
+    )
+    minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
+    minimum_rox = InternalCreditService.credits_for(minimum_rub)
+
     return {
         "first_line": first,
         "second_line": second,
-        # Backward-compatible names used by the existing Profile shell.
+        # Existing names remain for backward compatibility with the partner cabinet.
         "available": str(accounting["available"]),
         "pending": str(accounting["pending_rewards"]),
         "total_earned": str(accounting["total_earned"]),
         "pending_withdrawals": str(accounting["pending_withdrawals"]),
-        "minimum_withdrawal": str(max(Decimal("0"), settings.partner_min_withdrawal_rub)),
+        "minimum_withdrawal": str(minimum_rub),
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
         "referral_link": PartnerService.referral_link(user.telegram_id),
+        # ROXY product contract from the approved economy reference.
+        "bonus_rox": str(internal_rox),
+        "withdrawable_rox": str(withdrawable_rox),
+        "withdrawable_pending_rox": str(pending_rox),
+        "partner_total_earned_rox": str(partner_total_rox),
+        "total_rox": str(internal_rox + withdrawable_rox),
+        "rub_per_rox": str(InternalCreditService.rub_per_credit()),
+        "welcome_bonus_rox": str(settings.start_balance_rox),
+        "invite_bonus_rox": str(settings.invite_bonus_rox),
+        "prompt_repeat_bonus_rox": str(settings.prompt_repeat_bonus_rox),
+        "minimum_withdrawal_rox": str(minimum_rox),
+        "prompts_created": prompts_created,
+        "prompt_repeats": prompt_repeats,
+        "withdrawal_status": latest_withdrawal.status if latest_withdrawal is not None else "NONE",
     }
 
 
@@ -128,9 +183,15 @@ async def rewards(
                 "line": reward.level,
                 "percent": str(reward.percent),
                 "amount": str(reward.amount),
+                "amount_rox": str(InternalCreditService.credits_for(reward.amount)),
                 "reversed_amount": str(Decimal(reversed_amount or 0)),
                 "net_amount": str(
                     max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
+                ),
+                "net_amount_rox": str(
+                    InternalCreditService.credits_for(
+                        max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
+                    )
                 ),
                 "status": reward.status,
                 "created_at": reward.created_at.isoformat(),
