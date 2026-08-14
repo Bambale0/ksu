@@ -20,7 +20,9 @@ def test_customer_navigation_has_approved_primary_routes_and_central_create() ->
     for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
         assert label in script
     assert 'catalog: "feed"' in script  # transitional until Catalog epic replaces the backing surface
+    assert 'wallet: "wallet"' in script  # secondary deep route, intentionally absent from primary nav
     assert 'new URLSearchParams(window.location.search).get("route")' in script
+    assert "OPEN_ROUTES" in script
     assert "roxy-central-create" in script
     assert ".roxy-central-create" in css
     assert "--tg-content-safe-area" not in css  # inherited from the existing Studio nav shell
@@ -51,6 +53,10 @@ def test_route_aware_mini_app_urls_are_used_by_bot_menu(monkeypatch) -> None:
         assert button.web_app is not None
         assert button.web_app.url == f"https://roxy.example/mini-app/?route={route}"
         assert button.callback_data is None
+
+    payment_button = keyboards.balance_menu().inline_keyboard[0][0]
+    assert payment_button.web_app is not None
+    assert payment_button.web_app.url == "https://roxy.example/mini-app/?route=wallet"
 
 
 def test_bot_menu_keeps_callback_fallbacks_without_public_base_url(monkeypatch) -> None:
