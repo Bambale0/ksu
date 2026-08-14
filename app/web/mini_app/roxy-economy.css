@@ -1,3 +1,7 @@
+.roxy-brand-ready #studioHomeOrchestration {
+  display: none !important;
+}
+
 .roxy-economy-overview {
   display: grid;
   gap: 14px;
