@@ -18,6 +18,7 @@ from aiogram.types import (
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards import BACK_TEXT, back_menu
 from app.services.feed import FeedError, FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink
 from app.services.users import UserService
@@ -175,9 +176,7 @@ def _keyboard(
             InlineKeyboardButton(text="⭐ Топ", callback_data="fd:n:g:t:0"),
         ]
     )
-    rows.append(
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")]
-    )
+    rows.append([InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -197,7 +196,7 @@ def _comments_keyboard(card: dict[str, Any], context: str) -> InlineKeyboardMark
                     callback_data=f"fd:b:{context}:{generation_id}",
                 )
             ],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")],
+            [InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:main")],
         ]
     )
 
@@ -279,7 +278,7 @@ async def _send_card(
 ) -> None:
     url = str(card.get("result_url") or "")
     if not url:
-        await message.answer("Медиа публикации недоступно.")
+        await message.answer("Медиа публикации недоступно.", reply_markup=back_menu())
         return
     caption = _caption(card)
     keyboard = _keyboard(card, context, total)
@@ -379,7 +378,10 @@ async def feed_open(callback: CallbackQuery, session: AsyncSession) -> None:
     if not isinstance(callback.message, Message):
         return
     if not cards:
-        await callback.message.answer("🌐 В публичной ленте пока нет работ.")
+        await callback.message.answer(
+            "🌐 В публичной ленте пока нет работ.",
+            reply_markup=back_menu(),
+        )
         return
     await _send_card(callback.message, cards[0], "g:r:0", len(cards))
 
@@ -488,7 +490,7 @@ async def feed_share(callback: CallbackQuery, session: AsyncSession) -> None:
         return
     await callback.answer(f"Share #{count}")
     if isinstance(callback.message, Message) and link:
-        await callback.message.answer(f"🔗 {link}")
+        await callback.message.answer(f"🔗 {link}", reply_markup=back_menu())
 
 
 @router.callback_query(F.data.startswith("fd:r:"))
@@ -523,7 +525,8 @@ async def feed_remix(
     if isinstance(callback.message, Message):
         await callback.message.answer(
             f"⏳ Повтор запущен: {generation.id}\n"
-            "Prompt исходной работы не передавался клиенту."
+            "Prompt исходной работы не передавался клиенту.",
+            reply_markup=back_menu(),
         )
 
 
@@ -690,7 +693,7 @@ async def feed_comment_submit(
         except TelegramBadRequest:
             pass
     except (FeedError, FeedNotFoundError) as exc:
-        await message.answer(f"Комментарий не добавлен: {exc}")
+        await message.answer(f"Комментарий не добавлен: {exc}", reply_markup=back_menu())
     finally:
         await state.clear()
 
@@ -725,10 +728,13 @@ async def handle_deep_link(
                 surface="profile",
             )
         except FeedNotFoundError:
-            await message.answer("Профиль не найден.")
+            await message.answer("Профиль не найден.", reply_markup=back_menu())
             return True
         if not cards:
-            await message.answer("В профиле автора пока нет публикаций.")
+            await message.answer(
+                "В профиле автора пока нет публикаций.",
+                reply_markup=back_menu(),
+            )
             return True
         await _send_card(
             message,
@@ -761,7 +767,10 @@ async def handle_deep_link(
             except FeedNotFoundError:
                 pass
         if card is None:
-            await message.answer("Публикация удалена или недоступна.")
+            await message.answer(
+                "Публикация удалена или недоступна.",
+                reply_markup=back_menu(),
+            )
             return True
         await _send_card(message, card, context)
         return True
@@ -783,7 +792,10 @@ async def handle_deep_link(
                 )
                 surface = "profile"
             except FeedNotFoundError:
-                await message.answer("Исходная публикация удалена или недоступна.")
+                await message.answer(
+                    "Исходная публикация удалена или недоступна.",
+                    reply_markup=back_menu(),
+                )
                 return True
         try:
             generation = await FeedService.remix(
@@ -794,14 +806,18 @@ async def handle_deep_link(
                 surface=surface,
             )
         except InsufficientBalanceError:
-            await message.answer("Недостаточно кредитов для повтора.")
+            await message.answer(
+                "Недостаточно кредитов для повтора.",
+                reply_markup=back_menu(),
+            )
             return True
         except FeedError as exc:
-            await message.answer(f"Повтор не запущен: {exc}")
+            await message.answer(f"Повтор не запущен: {exc}", reply_markup=back_menu())
             return True
         await message.answer(
             f"⏳ Remix запущен: {generation.id}\n"
-            "Исходный prompt восстановлен сервером и не передавался в deep link."
+            "Исходный prompt восстановлен сервером и не передавался в deep link.",
+            reply_markup=back_menu(),
         )
         return True
     return False
