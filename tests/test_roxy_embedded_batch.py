@@ -1,4 +1,8 @@
 from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,6 +11,18 @@ MINI = ROOT / "app" / "web" / "mini_app"
 
 def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
+
+
+def test_embedded_batch_javascript_is_syntactically_valid() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    subprocess.run(
+        [node, "--check", str(MINI / "roxy-batch-embedded.js")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_batch_is_embedded_without_duplicating_backend_client() -> None:
