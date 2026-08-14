@@ -23,6 +23,7 @@ class KieTask:
     fail_code: str = ""
     fail_message: str = ""
     raw: dict[str, Any] | None = None
+    tracks: list[dict[str, Any]] | None = None
 
 
 class KieClient:
@@ -74,6 +75,68 @@ class KieClient:
             raw=payload,
         )
 
+    async def create_music_task(
+        self,
+        *,
+        model: str,
+        input_data: dict[str, Any],
+        callback_url: str = "",
+    ) -> str:
+        body = dict(input_data)
+        body["model"] = model
+        if callback_url:
+            body["callBackUrl"] = callback_url
+        response = await self._client.post("/api/v1/generate", json=body)
+        response.raise_for_status()
+        payload = response.json()
+        if int(payload.get("code") or 0) != 200:
+            raise KieProviderError(
+                f"Kie music generation rejected: {payload.get('msg') or payload!r}"
+            )
+        task_id = (payload.get("data") or {}).get("taskId")
+        if not task_id:
+            raise KieProviderError(f"Kie music generation returned no taskId: {payload!r}")
+        return str(task_id)
+
+    async def get_music_task(self, task_id: str) -> KieTask:
+        response = await self._client.get(
+            "/api/v1/generate/record-info",
+            params={"taskId": task_id},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if int(payload.get("code") or 0) != 200:
+            raise KieProviderError(
+                f"Kie music record-info failed: {payload.get('msg') or payload!r}"
+            )
+        data = payload.get("data") or {}
+        provider_status = str(data.get("status") or "PENDING").upper()
+        tracks = _extract_music_tracks(data)
+        if provider_status == "SUCCESS":
+            state = "success"
+        elif provider_status in {
+            "CREATE_TASK_FAILED",
+            "GENERATE_AUDIO_FAILED",
+            "CALLBACK_EXCEPTION",
+            "SENSITIVE_WORD_ERROR",
+        }:
+            state = "fail"
+        else:
+            state = "generating"
+        return KieTask(
+            task_id=str(data.get("taskId") or task_id),
+            state=state,
+            result_urls=[
+                str(item["audio_url"])
+                for item in tracks
+                if item.get("audio_url")
+            ],
+            fail_code=str(data.get("errorCode") or ""),
+            fail_message=str(data.get("errorMessage") or ""),
+            raw=payload,
+            tracks=tracks,
+        )
+
 
 def extract_kie_task_id(payload: dict[str, Any]) -> str:
     data = payload.get("data")
@@ -108,6 +171,40 @@ def verify_kie_webhook(
     digest = hmac.new(hmac_key.encode(), message, hashlib.sha256).digest()
     expected = base64.b64encode(digest).decode()
     return hmac.compare_digest(expected, signature)
+
+
+def _extract_music_tracks(data: dict[str, Any]) -> list[dict[str, Any]]:
+    response = data.get("response")
+    rows = response.get("sunoData") if isinstance(response, dict) else None
+    if not isinstance(rows, list):
+        rows = data.get("data") if isinstance(data.get("data"), list) else []
+    tracks: list[dict[str, Any]] = []
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        audio_url = raw.get("audioUrl") or raw.get("audio_url")
+        stream_url = raw.get("streamAudioUrl") or raw.get("stream_audio_url")
+        image_url = raw.get("imageUrl") or raw.get("image_url")
+        duration = raw.get("duration")
+        try:
+            normalized_duration = float(duration) if duration is not None else None
+        except (TypeError, ValueError):
+            normalized_duration = None
+        tracks.append(
+            {
+                "id": str(raw.get("id") or ""),
+                "audio_url": str(audio_url or ""),
+                "stream_audio_url": str(stream_url or ""),
+                "image_url": str(image_url or ""),
+                "prompt": str(raw.get("prompt") or ""),
+                "model_name": str(raw.get("modelName") or raw.get("model_name") or ""),
+                "title": str(raw.get("title") or ""),
+                "tags": str(raw.get("tags") or ""),
+                "duration": normalized_duration,
+                "create_time": str(raw.get("createTime") or raw.get("create_time") or ""),
+            }
+        )
+    return tracks
 
 
 def _extract_result_urls(data: dict[str, Any]) -> list[str]:
