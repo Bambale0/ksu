@@ -58,7 +58,7 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "/api/v1/payments": ("wallet.js", "payment-surface.js"),
         "/api/v1/social": ("social.js",),
         "/api/v1/support/tickets": ("profile-tools.js",),
-        "/api/v1/batches": ("bulk.js",),
+        "/api/v1/batch-generations": ("bulk.js",),
     }
     uncovered = []
     for endpoint, files in endpoint_contracts.items():
