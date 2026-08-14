@@ -14,10 +14,15 @@ from app.providers.kie import KieClient, KieTask
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
+from app.services.music_media import MusicMediaAssetService
 from app.services.wallet import WalletService
 
 
 class GenerationProviderService:
+    @staticmethod
+    def _provider_api(generation: Generation) -> str:
+        return str((generation.parameters or {}).get("_provider_api") or "jobs")
+
     @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
         generation = await session.scalar(
@@ -28,8 +33,16 @@ class GenerationProviderService:
         if generation.status not in {"queued", "retry"}:
             return generation
 
-        model_id = str((generation.parameters or {}).get("_model_id") or "")
-        spec = ModelCatalog.get(model_id)
+        provider_api = cls._provider_api(generation)
+        if provider_api == "suno_music":
+            kie_model = str(
+                (generation.parameters or {}).get("_kie_model")
+                or settings.music_generation_model
+            )
+        else:
+            model_id = str((generation.parameters or {}).get("_model_id") or "")
+            kie_model = ModelCatalog.get(model_id).kie_model
+
         generation.status = "submitting"
         generation.error = None
         await session.commit()
@@ -40,11 +53,18 @@ class GenerationProviderService:
 
         client = KieClient(settings.kie_api_key, settings.kie_base_url)
         try:
-            task_id = await client.create_task(
-                model=spec.kie_model,
-                input_data=cls._input_for(generation),
-                callback_url=callback_url,
-            )
+            if provider_api == "suno_music":
+                task_id = await client.create_music_task(
+                    model=kie_model,
+                    input_data=cls._input_for(generation),
+                    callback_url=callback_url,
+                )
+            else:
+                task_id = await client.create_task(
+                    model=kie_model,
+                    input_data=cls._input_for(generation),
+                    callback_url=callback_url,
+                )
         except Exception as exc:
             await cls.fail_and_refund(session, generation.id, str(exc))
             raise
@@ -102,7 +122,10 @@ class GenerationProviderService:
 
         client = KieClient(settings.kie_api_key, settings.kie_base_url)
         try:
-            task = await client.get_task(task_id)
+            if cls._provider_api(generation) == "suno_music":
+                task = await client.get_music_task(task_id)
+            else:
+                task = await client.get_task(task_id)
         finally:
             await client.aclose()
         await cls.apply_kie_task(session, generation, task)
@@ -146,16 +169,26 @@ class GenerationProviderService:
             generation.updated_at = datetime.now(timezone.utc)
             if task.result_urls:
                 generation.result_url = task.result_urls[0]
-            generation.parameters = {
+            parameters: dict[str, Any] = {
                 **generation.parameters,
                 "_result_urls": task.result_urls,
             }
+            if task.tracks is not None:
+                parameters["_music_tracks"] = task.tracks
+            generation.parameters = parameters
             # Prompt-author rewards settle only after a successful paid repeat.
             # This prevents failed/refunded provider attempts from minting bonus ROX.
             await cls._award_prompt_repeat_bonus(session, generation)
             # Generation terminal state, author reward, and durable media ingest rows
             # commit together so retries cannot duplicate any of them.
-            await MediaAssetService.enqueue_results(session, generation, task.result_urls)
+            if cls._provider_api(generation) == "suno_music":
+                await MusicMediaAssetService.enqueue_results(
+                    session,
+                    generation,
+                    task.result_urls,
+                )
+            else:
+                await MediaAssetService.enqueue_results(session, generation, task.result_urls)
             await session.commit()
             await GenerationOutboxService.mark_generation_terminal(
                 session,
