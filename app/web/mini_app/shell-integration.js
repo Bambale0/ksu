@@ -104,6 +104,20 @@
     document.head.appendChild(script);
   }
 
+  function mountStudioWorkspace() {
+    if (!document.querySelector('link[href="/mini-app/studio-workspace.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/studio-workspace.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/studio-workspace.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/studio-workspace.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountOnboarding();
   mountPartnerCabinet();
   mountProfileTools();
@@ -111,6 +125,7 @@
   mountFeedTools();
   mountPromoRecovery();
   mountStudioShell();
+  mountStudioWorkspace();
 
   if (!overlay || !createHome || !builder) return;
 
