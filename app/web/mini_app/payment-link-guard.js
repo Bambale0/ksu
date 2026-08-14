@@ -29,6 +29,14 @@
     });
   }
 
+  function loadStyle(href) {
+    if (document.querySelector(`link[href="${href}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  }
+
   function loadExtension(src) {
     if (document.querySelector(`script[src="${src}"]`)) return;
     const script = document.createElement("script");
@@ -51,6 +59,8 @@
     isAllowedPaymentUrl,
   });
 
+  loadStyle("/mini-app/payment-surface.css");
   loadExtension("/mini-app/primary-card-checkout.js");
+  loadExtension("/mini-app/payment-surface.js");
   loadExtension("/mini-app/account-overview.js");
 })();
