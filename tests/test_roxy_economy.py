@@ -161,8 +161,11 @@ def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
         "👥 Заработать",
     ):
         assert legacy not in main_menu
-    for route in ("home", "catalog", "create", "history", "profile"):
+    for route in ("home", "catalog", "history", "profile"):
         assert f'route="{route}"' in main_menu
+    assert "[_create_button()]" in main_menu
+    create_button = keyboard.split("def _create_button()", 1)[1].split("def _batch_button()", 1)[0]
+    assert 'route="create"' in create_button
 
 
 def test_mini_app_economy_matches_reference_copy_and_split_balances() -> None:
