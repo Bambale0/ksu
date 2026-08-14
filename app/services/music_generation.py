@@ -33,6 +33,9 @@ _MUSIC_FIELDS = (
     "styleWeight",
     "weirdnessConstraint",
     "audioWeight",
+    "personaId",
+    "personaModel",
+    "duration",
 )
 
 
@@ -93,7 +96,6 @@ class MusicGenerationService:
                 "Идея / текст песни",
                 "textarea",
                 "prompt",
-                required=True,
                 placeholder="Опиши настроение, сюжет, жанр или вставь текст песни",
             ),
             _field("customMode", "Расширенный режим", "toggle", "output"),
@@ -126,7 +128,15 @@ class MusicGenerationService:
                 "advanced",
                 suggestions=["m", "f"],
             ),
-            _field("styleWeight", "Вес стиля", "number", "advanced", minimum=0, maximum=1, step=0.05),
+            _field(
+                "styleWeight",
+                "Вес стиля",
+                "number",
+                "advanced",
+                minimum=0,
+                maximum=1,
+                step=0.05,
+            ),
             _field(
                 "weirdnessConstraint",
                 "Экспериментальность",
@@ -136,7 +146,37 @@ class MusicGenerationService:
                 maximum=1,
                 step=0.05,
             ),
-            _field("audioWeight", "Вес аудио", "number", "advanced", minimum=0, maximum=1, step=0.05),
+            _field(
+                "audioWeight",
+                "Вес аудио",
+                "number",
+                "advanced",
+                minimum=0,
+                maximum=1,
+                step=0.05,
+            ),
+            _field(
+                "personaId",
+                "Persona ID",
+                "text",
+                "advanced",
+                placeholder="Необязательно · только Custom Mode",
+            ),
+            _field(
+                "personaModel",
+                "Persona model",
+                "text",
+                "advanced",
+                placeholder="Например: style_persona",
+            ),
+            _field(
+                "duration",
+                "Длительность V5.5, сек.",
+                "number",
+                "advanced",
+                minimum=1,
+                step=1,
+            ),
         ]
         return {
             "id": MUSIC_MODEL_ID,
@@ -146,7 +186,8 @@ class MusicGenerationService:
             "media_type": MUSIC_MEDIA_TYPE,
             "operation": MUSIC_OPERATION,
             "known_fields": list(_MUSIC_FIELDS),
-            "required_fields": ["prompt"],
+            # Prompt requirements are conditional: Custom+Instrumental may omit it.
+            "required_fields": [],
             "price_mode": "flat",
             "price_rox": _amount(price),
             "price_credits": _amount(price),
@@ -155,6 +196,7 @@ class MusicGenerationService:
             "max_seconds": None,
             "notes": [
                 "Один запрос может вернуть несколько вариантов трека.",
+                "В Simple Mode нужен только промпт; дополнительные поля применяются в Custom Mode.",
                 "Результаты Kie сохраняются в хранилище ROXY после генерации.",
             ],
             "ui_schema": {
@@ -172,6 +214,8 @@ class MusicGenerationService:
                     "style",
                     "title",
                     "vocalGender",
+                    "personaId",
+                    "duration",
                 ],
             },
         }
@@ -188,12 +232,21 @@ class MusicGenerationService:
         raw["instrumental"] = instrumental
 
         text = str(raw.get("prompt") or "").strip()
-        if not text:
-            raise MusicGenerationError("Опишите музыку или добавьте текст песни")
-        max_prompt = 5000 if custom_mode else 500
-        if len(text) > max_prompt:
-            raise MusicGenerationError(f"Промпт длиннее {max_prompt} символов")
-        raw["prompt"] = text
+        if custom_mode:
+            if not instrumental and not text:
+                raise MusicGenerationError("Для песни с вокалом в Custom Mode нужен текст / промпт")
+            if len(text) > 5000:
+                raise MusicGenerationError("Промпт длиннее 5000 символов")
+            if text:
+                raw["prompt"] = text
+            else:
+                raw.pop("prompt", None)
+        else:
+            if not text:
+                raise MusicGenerationError("Опишите музыку или добавьте текст песни")
+            if len(text) > 3000:
+                raise MusicGenerationError("Промпт длиннее 3000 символов")
+            raw["prompt"] = text
 
         if custom_mode:
             style = str(raw.get("style") or "").strip()
@@ -209,7 +262,7 @@ class MusicGenerationService:
             raw["style"] = style
             raw["title"] = title
         else:
-            # Kie Simple Mode expects only the prompt plus mode flags/model/callback.
+            # Kie Simple Mode requires prompt only; all custom-only options stay empty.
             for key in (
                 "style",
                 "title",
@@ -218,6 +271,9 @@ class MusicGenerationService:
                 "styleWeight",
                 "weirdnessConstraint",
                 "audioWeight",
+                "personaId",
+                "personaModel",
+                "duration",
             ):
                 raw.pop(key, None)
 
@@ -243,6 +299,28 @@ class MusicGenerationService:
             raw["negativeTags"] = str(raw["negativeTags"]).strip()[:1000]
             if not raw["negativeTags"]:
                 raw.pop("negativeTags", None)
+
+        for key in ("personaId", "personaModel"):
+            if raw.get(key) is None:
+                continue
+            value = str(raw[key]).strip()
+            if value:
+                raw[key] = value
+            else:
+                raw.pop(key, None)
+
+        if raw.get("duration") not in (None, ""):
+            if str(settings.music_generation_model).upper() != "V5_5":
+                raise MusicGenerationError("duration поддерживается только моделью V5_5")
+            try:
+                duration = int(raw["duration"])
+            except (TypeError, ValueError) as exc:
+                raise MusicGenerationError("duration должен быть целым числом секунд") from exc
+            if duration <= 0:
+                raise MusicGenerationError("duration должен быть больше 0")
+            raw["duration"] = duration
+        else:
+            raw.pop("duration", None)
 
         price = Decimal(settings.music_generation_price_rox).quantize(Decimal("0.01"))
         if price <= 0:
