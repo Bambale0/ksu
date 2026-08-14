@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 from app.db.creator_partner_models import (
     CreatorPartnershipAgreement,
     CreatorPartnershipApplication,
-    CreatorPartnershipGrant,
 )
 from app.db.models import AdminAccount, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
