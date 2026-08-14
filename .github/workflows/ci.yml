@@ -71,6 +71,8 @@ jobs:
           node --check app/web/mini_app/app.js
           node --check app/web/mini_app/shell.js
           node --check app/web/mini_app/shell-integration.js
+          node --check app/web/mini_app/studio-shell.js
+          node --check app/web/mini_app/studio-workspace.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/wallet.js
           node --check app/web/mini_app/primary-card-checkout.js
@@ -109,6 +111,9 @@ jobs:
 
       - name: Batch generation contracts
         run: pytest -q tests/test_generation_batches.py tests/test_batch_recovery.py
+
+      - name: Studio shell contracts
+        run: pytest -q tests/test_studio_shell_contract.py
 
       - name: Full regression suite
         shell: bash
