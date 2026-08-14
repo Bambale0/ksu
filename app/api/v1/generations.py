@@ -21,6 +21,11 @@ from app.services.model_catalog import (
     UnknownModelError,
 )
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.services.music_generation import (
+    MUSIC_MODEL_ID,
+    MusicGenerationError,
+    MusicGenerationService,
+)
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 from app.services.wallet import InsufficientBalanceError
 
@@ -47,7 +52,16 @@ def _public_catalog_unit_price(model_id: str, value: Decimal | str | int | float
 
 
 def _model_view(generation: Generation) -> dict[str, str | None]:
-    model_id = str((generation.parameters or {}).get("_model_id") or "")
+    params = generation.parameters or {}
+    model_id = str(params.get("_model_id") or "")
+    if MusicGenerationService.is_music_model(model_id):
+        return {
+            "id": MUSIC_MODEL_ID,
+            "title": str(params.get("_model_title") or "Suno V5.5 · Music"),
+            "family": "suno",
+            "operation": "text_to_music",
+            "media_type": "audio",
+        }
     try:
         spec = ModelCatalog.get(model_id)
     except UnknownModelError:
@@ -80,6 +94,8 @@ def _public_settings(generation: Generation) -> dict[str, Any]:
         return {}
     params = dict(generation.parameters or {})
     model_id = str(params.get("_model_id") or "")
+    if MusicGenerationService.is_music_model(model_id):
+        return MusicGenerationService.public_settings(params)
     try:
         spec = ModelCatalog.get(model_id)
     except UnknownModelError:
@@ -104,15 +120,17 @@ def _generation_view(
     owned_urls = [str(item["url"]) for item in owned_media if item.get("url")]
     result_urls = owned_urls or _provider_result_urls(generation)
     trend_hidden = generation.action_type == "trend"
-    return {
+    model = _model_view(generation)
+    view: dict[str, object] = {
         "id": str(generation.id),
         "status": generation.status,
         "prompt": "" if trend_hidden else generation.prompt,
-        "model": _model_view(generation),
+        "model": model,
         "settings": _public_settings(generation),
         "prompt_hidden": trend_hidden,
         "prompt_actions_allowed": not trend_hidden,
         "cost_credits": _amount(cost),
+        "cost_rox": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
         "billing_seconds": params.get("_billing_seconds"),
         "result_url": result_urls[0] if result_urls else None,
@@ -124,6 +142,10 @@ def _generation_view(
         "created_at": generation.created_at.isoformat(),
         "updated_at": generation.updated_at.isoformat(),
     }
+    if model.get("media_type") == "audio":
+        tracks = params.get("_music_tracks")
+        view["music_tracks"] = tracks if isinstance(tracks, list) else []
+    return view
 
 
 async def _owned_media_views(
@@ -173,6 +195,7 @@ async def generation_models() -> dict[str, object]:
             enriched["price_rub"] = _amount(InternalCreditService.rubles_for(unit_credits))
         enriched["ui_schema"] = build_public_model_ui_schema(enriched)
         models.append(enriched)
+    models.append(MusicGenerationService.public_model())
     return {
         "schema_version": 1,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
@@ -185,6 +208,24 @@ async def quote_generation(
     payload: CreateGenerationRequest,
     session: SessionDep,
 ) -> dict[str, Any]:
+    if MusicGenerationService.is_music_model(payload.model_id):
+        try:
+            _clean, cost = MusicGenerationService.prepare(payload.parameters, payload.prompt)
+        except MusicGenerationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "model_id": MUSIC_MODEL_ID,
+            "price_mode": "flat",
+            "unit_price_credits": _amount(cost),
+            "unit_price_rox": _amount(cost),
+            "unit_price_rub": _amount(InternalCreditService.rubles_for(cost)),
+            "billing_seconds": None,
+            "cost_credits": _amount(cost),
+            "cost_rox": _amount(cost),
+            "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+            "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
+        }
+
     try:
         spec, _clean, cost, seconds, unit_price = await GenerationService.prepare_request(
             session,
@@ -299,6 +340,15 @@ async def recreate_generation_payload(
     model_id = str(params.get("_model_id") or "")
     if not model_id:
         raise HTTPException(status_code=409, detail="Generation has no reusable model")
+    if MusicGenerationService.is_music_model(model_id):
+        return {
+            "model_id": MUSIC_MODEL_ID,
+            "prompt": generation.prompt,
+            "input_url": None,
+            "billing_seconds": None,
+            "parameters": MusicGenerationService.reusable_parameters(params),
+        }
+
     try:
         spec = ModelCatalog.get(model_id)
     except UnknownModelError as exc:
@@ -361,17 +411,26 @@ async def create_generation(
     redis: RedisDep,
 ) -> dict[str, str | None]:
     try:
-        generation = await GenerationService.create(
-            session,
-            redis,
-            user_id=user.id,
-            model_id=payload.model_id,
-            prompt=payload.prompt,
-            input_url=payload.input_url,
-            parameters=payload.parameters,
-            billing_seconds=payload.billing_seconds,
-        )
-    except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
+        if MusicGenerationService.is_music_model(payload.model_id):
+            generation = await MusicGenerationService.create(
+                session,
+                redis,
+                user_id=user.id,
+                prompt=payload.prompt,
+                parameters=payload.parameters,
+            )
+        else:
+            generation = await GenerationService.create(
+                session,
+                redis,
+                user_id=user.id,
+                model_id=payload.model_id,
+                prompt=payload.prompt,
+                input_url=payload.input_url,
+                parameters=payload.parameters,
+                billing_seconds=payload.billing_seconds,
+            )
+    except (UnknownModelError, InvalidModelParametersError, MusicGenerationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except InsufficientBalanceError as exc:
         raise HTTPException(status_code=409, detail="Insufficient credits") from exc
