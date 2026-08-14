@@ -46,6 +46,37 @@
   object-fit: contain;
 }
 
+.roxy-brand-ready .studio-reference-preview {
+  min-height: 72px;
+  max-height: 120px;
+}
+.roxy-brand-ready .studio-reference-preview img,
+.roxy-brand-ready .studio-reference-preview video {
+  width: 100%;
+  height: 100%;
+  max-height: 120px;
+  object-fit: cover;
+}
+
+/* Standalone Mini App tools use the same density contract. */
+.roxy-brand-ready #trendsApp { max-width: 1540px; }
+.roxy-brand-ready #trendCatalog { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.roxy-brand-ready .trend-card { border-radius: 16px; }
+.roxy-brand-ready .trend-card-media { aspect-ratio: 16 / 10; max-height: 180px; }
+.roxy-brand-ready .trend-card-body { padding: 10px; }
+.roxy-brand-ready .trend-card-body strong { font-size: 14px; }
+.roxy-brand-ready .trend-card-body p { min-height: 32px; margin-bottom: 8px; font-size: 11px; }
+.roxy-brand-ready .trend-runner-preview,
+.roxy-brand-ready #trendResult img,
+.roxy-brand-ready #trendResult video { max-height: var(--roxy-media-detail-h); object-fit: contain; }
+
+.roxy-brand-ready .batch-app { max-width: 1280px; }
+.roxy-brand-ready .batch-uploads { grid-template-columns: repeat(auto-fill, minmax(72px, 92px)); gap: 8px; }
+.roxy-brand-ready .batch-upload { width: 92px; border-radius: 11px; }
+.roxy-brand-ready .batch-upload img { object-fit: cover; }
+
+.roxy-brand-ready #promptToolsApp { max-width: 1120px; }
+
 .roxy-brand-ready .hero-card { min-height: 150px; }
 .roxy-brand-ready .roxy-home-balance { padding-block: 14px; }
 .roxy-brand-ready .roxy-create-cta { min-height: 50px; }
@@ -85,11 +116,13 @@
   .roxy-brand-ready .roxy-template-copy { padding: 9px 10px 11px; }
   .roxy-brand-ready .roxy-template-copy strong { font-size: 12px; }
   .roxy-brand-ready .roxy-template-copy small { font-size: 9px; }
+  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
 @media (min-width: 1800px) {
   .studio-shell-ready .app-shell { width: min(calc(100% - 48px), 1800px); }
   .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -100,10 +133,15 @@
   .roxy-brand-ready .roxy-template-media { aspect-ratio: 4 / 3; }
   .roxy-brand-ready .roxy-promo-card,
   .roxy-brand-ready .roxy-promo-copy { min-height: 138px; }
+  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .roxy-brand-ready .trend-card-media { max-height: 132px; }
+  .roxy-brand-ready .batch-uploads { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+  .roxy-brand-ready .batch-upload { width: auto; max-width: 88px; }
 }
 
 @media (max-width: 380px) {
   :root { --roxy-media-thumb-h: 116px; }
   .roxy-brand-ready .recent-grid,
   .roxy-brand-ready .roxy-catalog-grid { gap: 6px; }
+  .roxy-brand-ready .trend-card-media { max-height: 116px; }
 }
