@@ -8,9 +8,11 @@ from sqlalchemy import select
 
 from app.api.v1.referrals import stats
 from app.core.config import settings
-from app.db.models import User, Wallet, WalletTransaction
+from app.db.models import ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
+from app.services.referrals import ReferralService
 from app.services.users import UserService
+from app.services.wallet import WalletService
 
 ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "app" / "web" / "mini_app"
@@ -59,6 +61,45 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
             ).all()
         )
         assert {"welcome_bonus", "referral_invite_bonus"}.issubset(kinds)
+
+
+@pytest.mark.asyncio
+async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+    async with SessionFactory() as session:
+        inviter = User(telegram_id=_telegram_id(), first_name="Partner")
+        buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
+        session.add_all([inviter, buyer])
+        await session.flush()
+        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=inviter.id))
+        payment_tx = await WalletService.credit(
+            session,
+            user_id=buyer.id,
+            amount=Decimal("300"),
+            kind="payment",
+            reference_type="payment",
+            reference_id="foreign-currency-payment",
+            idempotency_key=f"test-payment:{buyer.id}",
+        )
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+            payment_amount=Decimal("6"),
+        )
+        await session.commit()
+
+        reward = await session.scalar(
+            select(ReferralReward).where(
+                ReferralReward.partner_user_id == inviter.id,
+                ReferralReward.source_transaction_id == payment_tx.id,
+                ReferralReward.level == 1,
+            )
+        )
+        assert reward is not None
+        assert reward.amount == Decimal("90.00")
 
 
 @pytest.mark.asyncio
