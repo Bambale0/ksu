@@ -13,9 +13,15 @@ def _read(name: str) -> str:
 
 def test_studio_shell_is_loaded_by_existing_compatibility_bridge() -> None:
     bridge = _read("shell-integration.js")
-    assert '/mini-app/studio-shell.css' in bridge
-    assert '/mini-app/studio-shell.js' in bridge
+    for asset in (
+        "/mini-app/studio-shell.css",
+        "/mini-app/studio-shell.js",
+        "/mini-app/studio-workspace.css",
+        "/mini-app/studio-workspace.js",
+    ):
+        assert asset in bridge
     assert "mountStudioShell" in bridge
+    assert "mountStudioWorkspace" in bridge
 
 
 def test_studio_shell_exposes_five_primary_product_routes() -> None:
@@ -30,6 +36,7 @@ def test_studio_shell_exposes_five_primary_product_routes() -> None:
 
 def test_studio_shell_keeps_models_schema_driven() -> None:
     script = _read("studio-shell.js")
+    workspace = _read("studio-workspace.js")
     for model_family in (
         "nanobanana",
         "seedream",
@@ -40,8 +47,10 @@ def test_studio_shell_keeps_models_schema_driven() -> None:
         "grok",
     ):
         assert model_family not in script
+        assert model_family not in workspace
     assert "ksu-selected-model" in script
     assert "ksu-generation-drafts-v1" in script
+    assert "/api/v1/generations/models" in script
 
 
 def test_studio_shell_integrates_existing_product_domains() -> None:
@@ -59,12 +68,31 @@ def test_studio_shell_integrates_existing_product_domains() -> None:
     assert "studio-result-pane" in script
 
 
+def test_studio_workspace_completes_reference_and_result_product_loops() -> None:
+    workspace = _read("studio-workspace.js")
+    for endpoint in (
+        "/api/v1/references?limit=100",
+        "/api/v1/references",
+        "/api/v1/feed/",
+    ):
+        assert endpoint in workspace
+    for label in ("Из библиотеки", "В профиль", "В ленту", "В референсы"):
+        assert label in workspace
+    assert ".upload-row" in workspace
+    assert "upload-url" in workspace
+    assert "publication_scope" in workspace
+    assert "prompt_visible: false" in workspace
+    assert "references_visible: false" in workspace
+
+
 def test_studio_shell_uses_signed_telegram_auth_and_safe_area_css() -> None:
-    script = _read("studio-shell.js")
+    shell = _read("studio-shell.js")
+    workspace = _read("studio-workspace.js")
     css = _read("studio-shell.css")
-    assert "X-Telegram-Init-Data" in script
-    assert "tg.initData" in script
-    assert "initDataUnsafe" not in script
+    for script in (shell, workspace):
+        assert "X-Telegram-Init-Data" in script
+        assert "tg.initData" in script
+        assert "initDataUnsafe" not in script
     for token in (
         "--tg-content-safe-area-inset-top",
         "--tg-content-safe-area-inset-bottom",
