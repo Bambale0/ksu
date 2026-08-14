@@ -16,6 +16,12 @@ class CardCheckoutClient:
         "USD": frozenset({"UNLIMINT", "PAYPAL", "STRIPE"}),
         "EUR": frozenset({"UNLIMINT", "PAYPAL", "STRIPE"}),
     }
+    # Official custom-price limits for POST /api/v3/invoice.
+    AMOUNT_LIMITS = {
+        "RUB": (Decimal("50"), Decimal("1000000")),
+        "USD": (Decimal("5"), Decimal("10000")),
+        "EUR": (Decimal("5"), Decimal("10000")),
+    }
 
     def __init__(self, api_key: str, base_url: str, webhook_key: str = "") -> None:
         self.api_key = api_key
@@ -48,6 +54,17 @@ class CardCheckoutClient:
                 f"Payment route {provider} is not supported for {currency}"
             )
 
+    @classmethod
+    def validate_amount(cls, currency: str, amount: Decimal) -> None:
+        currency = currency.upper()
+        if currency not in cls.AMOUNT_LIMITS:
+            raise PaymentProviderError(f"Unsupported card checkout currency: {currency}")
+        minimum, maximum = cls.AMOUNT_LIMITS[currency]
+        if amount < minimum or amount > maximum:
+            raise PaymentProviderError(
+                f"Card checkout amount for {currency} must be between {minimum} and {maximum}"
+            )
+
     async def create_invoice(
         self,
         *,
@@ -59,6 +76,7 @@ class CardCheckoutClient:
     ) -> CreatedPayment:
         currency = currency.upper()
         self.validate_route(currency, payment_provider)
+        self.validate_amount(currency, amount)
         if not offer_id:
             raise PaymentProviderError("Card checkout offer id is not configured")
         payload: dict[str, Any] = {
