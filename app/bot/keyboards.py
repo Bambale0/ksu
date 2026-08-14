@@ -6,8 +6,11 @@ BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой · USD / EUR / RUB / СБП"
 
 
-def _mini_app_url() -> str:
-    return f"{settings.public_base_url.rstrip('/')}/mini-app/"
+def _mini_app_url(route: str | None = None) -> str:
+    base = f"{settings.public_base_url.rstrip('/')}/mini-app/"
+    if not route:
+        return base
+    return f"{base}?route={route}"
 
 
 def _batch_url() -> str:
@@ -18,13 +21,26 @@ def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
 
-def _create_button() -> InlineKeyboardButton:
+def _route_button(
+    *,
+    text: str,
+    route: str,
+    fallback_callback: str,
+) -> InlineKeyboardButton:
     if settings.public_base_url:
         return InlineKeyboardButton(
-            text="✨ Создать",
-            web_app=WebAppInfo(url=_mini_app_url()),
+            text=text,
+            web_app=WebAppInfo(url=_mini_app_url(route)),
         )
-    return InlineKeyboardButton(text="✨ Создать", callback_data="create")
+    return InlineKeyboardButton(text=text, callback_data=fallback_callback)
+
+
+def _create_button() -> InlineKeyboardButton:
+    return _route_button(
+        text="✨ Создать",
+        route="create",
+        fallback_callback="create",
+    )
 
 
 def _batch_button() -> InlineKeyboardButton:
@@ -49,7 +65,7 @@ def balance_menu() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=PRIMARY_PAYMENT_TEXT,
-                    web_app=WebAppInfo(url=_mini_app_url()),
+                    web_app=WebAppInfo(url=_mini_app_url("profile")),
                 )
             ]
         )
@@ -62,8 +78,18 @@ def prompt_tools_menu() -> InlineKeyboardMarkup:
     if settings.public_base_url:
         rows.extend(
             [
-                [InlineKeyboardButton(text="🖼 Промпт по фото", web_app=WebAppInfo(url=_prompt_tool_url("image")))],
-                [InlineKeyboardButton(text="✨ Улучшить промпт", web_app=WebAppInfo(url=_prompt_tool_url("prompt")))],
+                [
+                    InlineKeyboardButton(
+                        text="🖼 Промпт по фото",
+                        web_app=WebAppInfo(url=_prompt_tool_url("image")),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="✨ Улучшить промпт",
+                        web_app=WebAppInfo(url=_prompt_tool_url("prompt")),
+                    )
+                ],
             ]
         )
     rows.append([InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:main")])
@@ -84,13 +110,37 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """The public ROXY menu intentionally mirrors the approved five-item reference."""
+    """Customer-approved ROXY launcher: product work happens inside the Mini App."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                _route_button(
+                    text="🏠 Главная",
+                    route="home",
+                    fallback_callback="nav:main",
+                )
+            ],
+            [
+                _route_button(
+                    text="▦ Каталог",
+                    route="catalog",
+                    fallback_callback="feed:open",
+                )
+            ],
             [_create_button()],
-            [InlineKeyboardButton(text="🔁 Промпты", callback_data="feed:open")],
-            [InlineKeyboardButton(text="💎 Мои ROX", callback_data="balance")],
-            [InlineKeyboardButton(text="👥 Заработать", callback_data="referrals")],
-            [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
+            [
+                _route_button(
+                    text="≡ История",
+                    route="history",
+                    fallback_callback="nav:main",
+                )
+            ],
+            [
+                _route_button(
+                    text="👤 Профиль",
+                    route="profile",
+                    fallback_callback="profile",
+                )
+            ],
         ]
     )
