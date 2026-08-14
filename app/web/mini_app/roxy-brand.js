@@ -7,6 +7,7 @@
   const BRAND_TEST_RE = /Ксю|КСЮ/;
   let observer = null;
   let balanceObserver = null;
+  let rateObserver = null;
 
   function setTelegramChrome() {
     try {
@@ -98,7 +99,7 @@
       value.textContent = "—";
       const note = document.createElement("small");
       note.className = "roxy-home-balance-note";
-      note.textContent = "Баланс и курс остаются серверными";
+      note.textContent = "ROX · курс обновляется автоматически";
       card.append(label, value, note);
       hero.insertAdjacentElement("afterend", card);
     }
@@ -126,18 +127,41 @@
     }
   }
 
+  function roxBalanceText(value) {
+    return String(value || "—").trim().replace(/\s*кр\.?$/i, " ROX");
+  }
+
+  function roxRateText(value) {
+    const raw = String(value || "").trim();
+    return raw ? raw.replace(/кр\./i, "ROX") : "ROX · курс обновляется автоматически";
+  }
+
   function syncHomeBalance() {
     const source = document.getElementById("balanceValue");
     const target = document.getElementById("roxyHomeBalanceValue");
     if (!source || !target) return;
     const update = () => {
-      const next = (source.textContent || "—").trim();
+      const next = roxBalanceText(source.textContent);
       if (target.textContent !== next) target.textContent = next;
     };
     update();
     if (balanceObserver) return;
     balanceObserver = new MutationObserver(update);
     balanceObserver.observe(source, { childList: true, characterData: true, subtree: true });
+  }
+
+  function syncHomeRate() {
+    const source = document.getElementById("paymentRateLabel");
+    const target = document.querySelector(".roxy-home-balance-note");
+    if (!source || !target) return;
+    const update = () => {
+      const next = roxRateText(source.textContent);
+      if (target.textContent !== next) target.textContent = next;
+    };
+    update();
+    if (rateObserver) return;
+    rateObserver = new MutationObserver(update);
+    rateObserver.observe(source, { childList: true, characterData: true, subtree: true });
   }
 
   function styleWalletCopy() {
@@ -155,6 +179,7 @@
     styleHomeHero();
     styleWalletCopy();
     syncHomeBalance();
+    syncHomeRate();
     replaceBrandText(document.body);
   }
 
