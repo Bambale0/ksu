@@ -83,13 +83,19 @@ async def test_stats_expose_reference_economy_contract() -> None:
         assert payload["withdrawal_status"] == "NONE"
 
 
-def test_prompt_repeat_bonus_is_idempotent_and_blocks_self_reward() -> None:
-    source = (ROOT / "app" / "services" / "generations.py").read_text(encoding="utf-8")
-    assert 'action_type == "remix"' in source
-    assert "source.user_id != user_id" in source
-    assert 'kind="prompt_repeat_bonus"' in source
-    assert 'idempotency_key=f"prompt-repeat:{generation.id}"' in source
-    assert "settings.prompt_repeat_bonus_rox" in source
+def test_prompt_repeat_bonus_is_idempotent_success_only_and_blocks_self_reward() -> None:
+    provider = (ROOT / "app" / "services" / "generation_provider.py").read_text(encoding="utf-8")
+    generation_create = (ROOT / "app" / "services" / "generations.py").read_text(encoding="utf-8")
+    assert 'generation.action_type != "remix"' in provider
+    assert "source.user_id == generation.user_id" in provider
+    assert 'kind="prompt_repeat_bonus"' in provider
+    assert 'idempotency_key=f"prompt-repeat:{generation.id}"' in provider
+    assert "settings.prompt_repeat_bonus_rox" in provider
+    assert "await cls._award_prompt_repeat_bonus(session, generation)" in provider
+    assert provider.index("if task.state == \"success\":") < provider.index(
+        "await cls._award_prompt_repeat_bonus(session, generation)"
+    )
+    assert 'kind="prompt_repeat_bonus"' not in generation_create
 
 
 def test_public_roxy_menu_matches_reference() -> None:
