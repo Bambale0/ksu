@@ -1,0 +1,161 @@
+.roxy-account-center {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.roxy-account-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.roxy-account-quick-card,
+.roxy-account-section {
+  border: 1px solid rgba(255,255,255,.1);
+  background: linear-gradient(145deg, rgba(34,32,42,.9), rgba(21,20,28,.94));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 10px 26px rgba(0,0,0,.14);
+}
+
+.roxy-account-quick-card {
+  min-height: 88px;
+  padding: 13px;
+  border-radius: 16px;
+  color: var(--roxy-text, #fff);
+  text-align: left;
+  cursor: pointer;
+}
+
+.roxy-account-quick-card:hover { border-color: rgba(191,126,255,.28); transform: translateY(-1px); }
+.roxy-account-quick-icon { display: block; margin-bottom: 8px; font-size: 20px; }
+.roxy-account-quick-card strong { display: block; font-size: 13px; }
+.roxy-account-quick-card small { display: block; margin-top: 3px; color: var(--roxy-muted, #aaa); font-size: 10px; }
+
+.roxy-account-section {
+  padding: 16px;
+  border-radius: 20px;
+  scroll-margin-top: 88px;
+}
+
+.roxy-account-section-head,
+.roxy-ticket-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.roxy-account-section-head h3 { margin: 3px 0 0; font-size: 17px; }
+.roxy-account-inline-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.roxy-account-secondary {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 10px;
+  background: rgba(255,255,255,.045);
+  color: var(--roxy-text, #fff);
+  cursor: pointer;
+}
+.roxy-account-secondary.compact { min-height: 30px; font-size: 11px; }
+.roxy-account-secondary.is-active { border-color: rgba(184,108,255,.55); background: rgba(184,108,255,.14); }
+
+.roxy-account-list,
+.roxy-support-ticket-list,
+.roxy-ticket-messages,
+.roxy-social-subscriptions { display: grid; gap: 8px; }
+
+.roxy-notification-row,
+.roxy-ticket-row,
+.roxy-social-profile-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 13px;
+  background: rgba(7,7,11,.32);
+}
+.roxy-notification-row.is-unread { border-color: rgba(184,108,255,.3); background: rgba(184,108,255,.07); }
+.roxy-notification-copy { min-width: 0; }
+.roxy-notification-copy strong,
+.roxy-social-profile-card strong { font-size: 13px; }
+.roxy-notification-copy p { margin: 4px 0; color: #d6d2dc; font-size: 12px; line-height: 1.35; }
+.roxy-notification-copy small,
+.roxy-ticket-row small,
+.roxy-ticket-detail-head small,
+.roxy-social-profile-card small,
+.roxy-social-profile-card span { color: var(--roxy-muted, #aaa); font-size: 10px; }
+
+.roxy-promo-form,
+.roxy-social-search,
+.roxy-ticket-reply {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.roxy-support-composer,
+.roxy-preferences-form { display: grid; gap: 9px; }
+.roxy-support-composer[hidden] { display: none; }
+.roxy-support-composer { margin-bottom: 12px; }
+
+.roxy-support-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, .75fr) minmax(0, 1.6fr);
+  gap: 12px;
+}
+.roxy-support-ticket-list { align-content: start; max-height: 430px; overflow: auto; }
+.roxy-ticket-row { width: 100%; color: inherit; text-align: left; cursor: pointer; }
+.roxy-ticket-row.is-active { border-color: rgba(184,108,255,.45); background: rgba(184,108,255,.09); }
+.roxy-ticket-row > div { display: grid; gap: 3px; }
+.roxy-ticket-arrow { color: #dba7ff; font-size: 20px; }
+.roxy-support-ticket-detail { min-height: 170px; }
+.roxy-ticket-messages { max-height: 330px; overflow: auto; padding-right: 4px; }
+.roxy-ticket-message { max-width: 84%; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.055); }
+.roxy-ticket-message.user { justify-self: end; background: rgba(155,91,255,.14); }
+.roxy-ticket-message p { margin: 0; white-space: pre-wrap; font-size: 12px; line-height: 1.4; }
+.roxy-ticket-message small { display: block; margin-top: 5px; color: var(--roxy-muted, #aaa); font-size: 9px; }
+.roxy-ticket-reply { margin-top: 10px; }
+
+.roxy-social-result { margin: 10px 0; }
+.roxy-social-subscriptions h4 { margin: 7px 0 2px; font-size: 13px; }
+.roxy-social-profile-card > div { display: grid; gap: 2px; min-width: 0; }
+
+.roxy-preferences-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+}
+.roxy-preference-language,
+.roxy-preference-check { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.roxy-preference-language { display: grid; gap: 5px; }
+.roxy-preference-check { min-height: 42px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.075); border-radius: 11px; }
+.roxy-preference-check input { width: 16px; height: 16px; }
+.roxy-preferences-form .primary-button { justify-self: start; }
+
+.roxy-account-empty,
+.roxy-account-message { padding: 10px 0; color: var(--roxy-muted, #aaa); font-size: 12px; }
+.roxy-account-message.ok { color: #8ce5a8; }
+.roxy-account-message.error { color: #ff9cae; }
+
+@media (max-width: 900px) {
+  .roxy-account-quick-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .roxy-support-layout { grid-template-columns: 1fr; }
+  .roxy-support-ticket-list { max-height: 240px; }
+}
+
+@media (max-width: 560px) {
+  .roxy-account-center { gap: 10px; }
+  .roxy-account-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .roxy-account-quick-card { min-height: 76px; padding: 11px; }
+  .roxy-account-section { padding: 13px; border-radius: 16px; }
+  .roxy-account-section-head { align-items: flex-start; }
+  .roxy-promo-form,
+  .roxy-social-search,
+  .roxy-ticket-reply,
+  .roxy-preferences-form { grid-template-columns: 1fr; }
+  .roxy-notification-row,
+  .roxy-social-profile-card { align-items: flex-start; }
+}
