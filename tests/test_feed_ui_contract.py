@@ -57,7 +57,10 @@ def test_bot_feed_is_single_media_carousel_with_surface_context() -> None:
     assert "FeedService.get_profile_generation_card" in source
     assert "FeedService.get_feed_generation_card" in source
     assert 'dispatcher.include_router(feed.router)' in dispatcher
-    assert 'callback_data="feed:open"' in keyboard
+    # The customer-approved launcher opens Catalog in the Mini App first; the
+    # text-bot feed callback stays available only as a no-PUBLIC_BASE_URL fallback.
+    assert 'route="catalog"' in keyboard
+    assert 'fallback_callback="feed:open"' in keyboard
 
 
 def test_start_flow_preserves_feed_deep_link_through_onboarding() -> None:
