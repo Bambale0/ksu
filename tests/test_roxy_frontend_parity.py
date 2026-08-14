@@ -107,12 +107,12 @@ def test_parity_and_fhd_layers_are_mounted_before_mobile_acceptance_overrides() 
 def test_full_hd_density_uses_wide_canvas_without_giant_media() -> None:
     css = _read("roxy-fhd-density.css")
     for token in (
-        "--roxy-fhd-max: 1760px",
+        "--roxy-fhd-max: 1880px",
         "@media (min-width: 1440px)",
         "@media (min-width: 1800px)",
-        "grid-template-columns: repeat(6",
         "grid-template-columns: repeat(7",
-        "--roxy-media-thumb-h: 150px",
+        "grid-template-columns: repeat(8",
+        "--roxy-media-thumb-h: 142px",
         "max-height: var(--roxy-media-thumb-h)",
         "max-height: var(--roxy-media-detail-h)",
         "object-fit: cover",
