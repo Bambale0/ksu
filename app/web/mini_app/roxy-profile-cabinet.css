@@ -139,9 +139,7 @@
 
 .roxy-creator-partnership-card {
   display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
-  align-items: center;
-  gap: 20px;
+  gap: 16px;
   padding: 20px;
   border: 1px solid color-mix(in srgb,var(--roxy-pink,#ff73ca) 28%,transparent);
   border-radius: 22px;
@@ -156,17 +154,13 @@
   font-size: 22px;
 }
 
-.roxy-creator-partnership-copy p {
+.roxy-creator-partnership-copy p,
+.roxy-creator-decision-note,
+.roxy-creator-terms p {
   margin: 0;
-  max-width: 680px;
+  max-width: 760px;
   color: var(--roxy-muted,#aaa5b3);
   line-height: 1.5;
-}
-
-.roxy-creator-partnership-actions {
-  display: grid;
-  justify-items: end;
-  gap: 7px;
 }
 
 .roxy-creator-primary {
@@ -181,12 +175,124 @@
   box-shadow: 0 10px 26px color-mix(in srgb,var(--roxy-violet,#8f6bff) 22%,transparent);
 }
 
-.roxy-creator-partnership-actions small {
-  max-width: 190px;
-  color: var(--roxy-muted,#aaa5b3);
-  text-align: right;
-  line-height: 1.35;
+.roxy-creator-primary:disabled {
+  opacity: .55;
+  cursor: wait;
 }
+
+.roxy-creator-application-form {
+  display: grid;
+  gap: 11px;
+  padding-top: 3px;
+}
+
+.roxy-creator-fields-row {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px;
+}
+
+.roxy-creator-field {
+  display: grid;
+  gap: 6px;
+}
+
+.roxy-creator-field > span {
+  color: var(--roxy-muted,#aaa5b3);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roxy-creator-field input,
+.roxy-creator-field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 13px;
+  outline: none;
+  background: rgba(8,7,12,.38);
+  color: var(--roxy-text,#fbf8ff);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.roxy-creator-field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.roxy-creator-field input:focus,
+.roxy-creator-field textarea:focus {
+  border-color: color-mix(in srgb,var(--roxy-violet,#8f6bff) 60%,transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb,var(--roxy-violet,#8f6bff) 16%,transparent);
+}
+
+.roxy-creator-status {
+  justify-self: start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(143,107,255,.14);
+  color: var(--roxy-pink,#ff73ca);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.roxy-creator-status.active,
+.roxy-creator-status.approved {
+  background: rgba(65,210,132,.12);
+  color: #8ce7b3;
+}
+
+.roxy-creator-status.rejected,
+.roxy-creator-status.ended {
+  background: rgba(255,105,125,.1);
+  color: #ff9daf;
+}
+
+.roxy-creator-status.paused,
+.roxy-creator-status.pending {
+  background: rgba(255,198,77,.1);
+  color: #ffd47a;
+}
+
+.roxy-creator-agreement-summary {
+  display: grid;
+  grid-template-columns: auto repeat(3,minmax(0,1fr));
+  align-items: stretch;
+  gap: 9px;
+}
+
+.roxy-creator-agreement-summary .roxy-creator-status {
+  align-self: center;
+}
+
+.roxy-creator-terms,
+.roxy-creator-grants {
+  display: grid;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 15px;
+  background: rgba(8,7,12,.25);
+}
+
+.roxy-creator-grants > small,
+.roxy-creator-meta,
+.roxy-creator-loading {
+  color: var(--roxy-muted,#aaa5b3);
+  font-size: 13px;
+}
+
+.roxy-creator-grant-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.roxy-creator-grant-row strong { color: #8ce7b3; }
 
 .roxy-cabinet-message {
   min-height: 18px;
@@ -195,15 +301,18 @@
 }
 .roxy-cabinet-message.is-error { color: #ff9daf; }
 
+@media(max-width:820px) {
+  .roxy-creator-agreement-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
 @media(max-width:720px) {
   .roxy-cabinet-actions { grid-template-columns: 1fr; }
   .roxy-cabinet-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .roxy-creator-partnership-card { grid-template-columns: 1fr; }
-  .roxy-creator-partnership-actions { justify-items: start; }
-  .roxy-creator-partnership-actions small { text-align: left; }
+  .roxy-creator-fields-row { grid-template-columns: 1fr; }
 }
 
 @media(max-width:480px) {
   .roxy-cabinet-balances { grid-template-columns: 1fr; }
   .roxy-cabinet-metrics { grid-template-columns: 1fr 1fr; }
+  .roxy-creator-agreement-summary { grid-template-columns: 1fr; }
 }

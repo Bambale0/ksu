@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
+    # Creator/Influencer partnership grants are spend-only ROX and are processed
+    # independently from withdrawable 30% / 5% referral accounting.
+    creator_partnership_grant_interval_seconds: int = 3600
+
     # Primary hosted checkout. User-facing product copy uses only the neutral
     # "Оплата картой · USD / EUR / RUB / СБП" label.
     card_api_key: str = ""

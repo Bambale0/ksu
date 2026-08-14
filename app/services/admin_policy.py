@@ -84,6 +84,15 @@ ACTION_POLICIES: dict[str, AdminActionPolicy] = {
     "partners.withdrawal_manage": AdminActionPolicy(
         "partners.manage", confirmation_required=True, step_up_required=True
     ),
+    "creator_partnership.decide": AdminActionPolicy(
+        "partners.manage", confirmation_required=True
+    ),
+    "creator_partnership.update": AdminActionPolicy(
+        "partners.manage", confirmation_required=True
+    ),
+    "creator_partnership.grant": AdminActionPolicy(
+        "partners.manage", confirmation_required=True, step_up_required=True
+    ),
     "payments.recheck": AdminActionPolicy("payments.read"),
     "payments.reprocess": AdminActionPolicy(
         "payments.manage", confirmation_required=True, step_up_required=True
