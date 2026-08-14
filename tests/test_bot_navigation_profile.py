@@ -26,6 +26,14 @@ def test_text_bot_non_root_handlers_use_shared_back_navigation() -> None:
     )
     support = (ROOT / "app" / "bot" / "handlers" / "support.py").read_text(encoding="utf-8")
     admin = (ROOT / "app" / "bot" / "handlers" / "admin.py").read_text(encoding="utf-8")
+    admin_extensions = (
+        ROOT / "app" / "bot" / "handlers" / "admin_extensions.py"
+    ).read_text(encoding="utf-8")
+    feed = (ROOT / "app" / "bot" / "handlers" / "feed.py").read_text(encoding="utf-8")
+    trends = (ROOT / "app" / "bot" / "handlers" / "trends.py").read_text(encoding="utf-8")
+    prompt_tools = (
+        ROOT / "app" / "bot" / "handlers" / "prompt_tools.py"
+    ).read_text(encoding="utf-8")
 
     assert 'BACK_TEXT = "⬅️ Назад"' in keyboards
     assert 'callback_data: str = "nav:main"' in keyboards
@@ -37,6 +45,22 @@ def test_text_bot_non_root_handlers_use_shared_back_navigation() -> None:
     assert 'back_menu("support:back_topic")' in support
     assert 'F.data == "support:back_topic"' in support
     assert "back_menu()" in admin
+    assert "⬅️ Админ" in admin_extensions
+
+    # These routes were added after the original Back-navigation tranche. Keep them
+    # on the same shared navigation contract, including empty/error text states.
+    assert "from app.bot.keyboards import BACK_TEXT, back_menu" in feed
+    assert "text=BACK_TEXT" in feed
+    assert "reply_markup=back_menu()" in feed
+    assert "🏠 Главное меню" not in feed
+
+    assert "from app.bot.keyboards import BACK_TEXT, back_menu" in trends
+    assert "text=BACK_TEXT" in trends
+    assert "reply_markup=back_menu()" in trends
+    assert "🏠 Главное меню" not in trends
+
+    assert "prompt_tools_menu()" in prompt_tools
+    assert "rows.append([InlineKeyboardButton(text=BACK_TEXT" in keyboards
 
 
 def test_detailed_profile_is_shared_by_bot_and_mini_app() -> None:
@@ -69,7 +93,7 @@ async def test_profile_keeps_payment_currency_totals_separate() -> None:
                     user_id=user.id,
                     provider="card",
                     external_id=f"usd-{uuid.uuid4()}",
-                    amount=Decimal("4.00"),
+                    amount=Decimal("6.00"),
                     currency="USD",
                     rox_amount=Decimal("30.00"),
                     status="succeeded",
@@ -91,7 +115,7 @@ async def test_profile_keeps_payment_currency_totals_separate() -> None:
         overview = await AccountProfileService.overview(session, user)
 
         currencies = overview["payments"]["currencies"]
-        assert currencies["USD"]["successful_amount"] == "4.00"
+        assert currencies["USD"]["successful_amount"] == "6.00"
         assert currencies["RUB"]["successful_amount"] == "100.00"
         assert currencies["USD"]["credited"] == "30.00"
         assert currencies["RUB"]["credited"] == "10.00"
@@ -99,5 +123,5 @@ async def test_profile_keeps_payment_currency_totals_separate() -> None:
         text = AccountProfileService.text(overview)
         assert "Telegram ID:" in text
         assert "Регистрация:" in text
-        assert "USD: 1 успешных · 4.00 USD" in text
+        assert "USD: 1 успешных · 6.00 USD" in text
         assert "RUB: 1 успешных · 100.00 RUB" in text
