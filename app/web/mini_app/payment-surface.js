@@ -33,6 +33,10 @@
     try { tg?.setBottomBarColor?.(palette.bottom); } catch (_error) { /* optional Telegram chrome */ }
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   applyTheme();
   tg?.onEvent?.("themeChanged", applyTheme);
 
@@ -72,30 +76,27 @@
     const kicker = lavaSection.querySelector(".section-kicker");
     const badge = lavaSection.querySelector(".primary-card-badge");
     const note = lavaSection.querySelector(".primary-card-summary small");
-    if (heading) heading.textContent = "Lava.top";
-    if (kicker) kicker.textContent = "Карта / СБП";
-    if (badge) badge.textContent = "Основной";
-    if (note) note.textContent = "RUB · USD · EUR";
+    setText(heading, "Lava.top");
+    setText(kicker, "Карта / СБП");
+    setText(badge, "Основной");
+    setText(note, "RUB · USD · EUR");
     lavaSection.dataset.checkoutProvider = "lavatop";
   }
 
   function brandCrypto(cryptoSection) {
     const heading = document.getElementById("topupHeading");
     const kicker = cryptoSection.querySelector(".section-kicker");
-    if (heading) heading.textContent = "CryptoBot";
-    if (kicker) kicker.textContent = "Криптовалюта";
+    setText(heading, "CryptoBot");
+    setText(kicker, "Криптовалюта");
 
     removeLegacyProviders(cryptoSection);
     const provider = cryptoSection.querySelector('[data-payment-provider="cryptobot"]');
     if (!provider) return;
     provider.classList.add("is-selected");
     provider.setAttribute("aria-checked", "true");
-    const strong = provider.querySelector("strong");
-    const small = provider.querySelector("small");
-    const mark = provider.querySelector(".provider-mark");
-    if (strong) strong.textContent = "CryptoBot";
-    if (small) small.textContent = "USDT · TON · BTC и другие";
-    if (mark) mark.textContent = "◈";
+    setText(provider.querySelector("strong"), "CryptoBot");
+    setText(provider.querySelector("small"), "USDT · TON · BTC и другие");
+    setText(provider.querySelector(".provider-mark"), "◈");
   }
 
   function mount(attempt = 0) {
