@@ -10,6 +10,7 @@ from app.api.v1 import (
     admin_payments,
     admin_users,
     card_payments,
+    discovery,
     feed,
     generations,
     me,
@@ -33,6 +34,7 @@ api_router.include_router(onboarding.router)
 api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(generations.router)
+api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
 api_router.include_router(trends.router)
 api_router.include_router(prompt_tools.router)
