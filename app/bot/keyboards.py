@@ -110,37 +110,35 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """Customer-approved ROXY launcher: product work happens inside the Mini App."""
+    """Minimal ROXY launcher: every visible product action opens the Mini App."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 _route_button(
-                    text="🏠 Главная",
+                    text="🚀 Открыть ROXY",
                     route="home",
                     fallback_callback="nav:main",
                 )
             ],
             [
+                _create_button(),
                 _route_button(
                     text="▦ Каталог",
                     route="catalog",
                     fallback_callback="feed:open",
-                )
+                ),
             ],
-            [_create_button()],
             [
                 _route_button(
                     text="≡ История",
                     route="history",
                     fallback_callback="nav:main",
-                )
-            ],
-            [
+                ),
                 _route_button(
                     text="👤 Профиль",
                     route="profile",
                     fallback_callback="profile",
-                )
+                ),
             ],
         ]
     )

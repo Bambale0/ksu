@@ -40,23 +40,22 @@ def test_roxy_brand_mounts_product_layers() -> None:
     assert "mountProductLayers();" in brand
 
 
-def test_route_aware_mini_app_urls_are_used_by_bot_menu(monkeypatch) -> None:
+def test_route_aware_mini_app_urls_are_used_by_minimal_bot_menu(monkeypatch) -> None:
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
     menu = keyboards.main_menu()
     expected = [
-        ("🏠 Главная", "home"),
-        ("▦ Каталог", "catalog"),
-        ("✨ Создать", "create"),
-        ("≡ История", "history"),
-        ("👤 Профиль", "profile"),
+        [("🚀 Открыть ROXY", "home")],
+        [("✨ Создать", "create"), ("▦ Каталог", "catalog")],
+        [("≡ История", "history"), ("👤 Профиль", "profile")],
     ]
-    assert len(menu.inline_keyboard) == len(expected)
-    for row, (label, route) in zip(menu.inline_keyboard, expected, strict=True):
-        button = row[0]
-        assert button.text == label
-        assert button.web_app is not None
-        assert button.web_app.url == f"https://roxy.example/mini-app/?route={route}"
-        assert button.callback_data is None
+    assert [len(row) for row in menu.inline_keyboard] == [1, 2, 2]
+    for row, expected_row in zip(menu.inline_keyboard, expected, strict=True):
+        assert len(row) == len(expected_row)
+        for button, (label, route) in zip(row, expected_row, strict=True):
+            assert button.text == label
+            assert button.web_app is not None
+            assert button.web_app.url == f"https://roxy.example/mini-app/?route={route}"
+            assert button.callback_data is None
 
     payment_button = keyboards.balance_menu().inline_keyboard[0][0]
     assert payment_button.web_app is not None
@@ -66,5 +65,10 @@ def test_route_aware_mini_app_urls_are_used_by_bot_menu(monkeypatch) -> None:
 def test_bot_menu_keeps_callback_fallbacks_without_public_base_url(monkeypatch) -> None:
     monkeypatch.setattr(settings, "public_base_url", "")
     menu = keyboards.main_menu()
-    callbacks = [row[0].callback_data for row in menu.inline_keyboard]
-    assert callbacks == ["nav:main", "feed:open", "create", "nav:main", "profile"]
+    callbacks = [[button.callback_data for button in row] for row in menu.inline_keyboard]
+    assert callbacks == [
+        ["nav:main"],
+        ["create", "feed:open"],
+        ["nav:main", "profile"],
+    ]
+    assert all(button.web_app is None for row in menu.inline_keyboard for button in row)
