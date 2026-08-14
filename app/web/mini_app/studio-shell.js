@@ -152,16 +152,39 @@
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  function enterBuilder(attempt = 0) {
+  let selectedFamilyPromise = null;
+
+  async function preferredFamily() {
+    const modelId = localStorage.getItem("ksu-selected-model");
+    if (!modelId) return null;
+    if (!selectedFamilyPromise) {
+      selectedFamilyPromise = api("/api/v1/generations/models")
+        .then((payload) => {
+          const models = Array.isArray(payload?.models) ? payload.models : [];
+          return new Map(models.map((model) => [model.id, model.family]));
+        })
+        .catch(() => new Map());
+    }
+    const families = await selectedFamilyPromise;
+    return families.get(modelId) || null;
+  }
+
+  async function enterBuilder(attempt = 0) {
     const builder = byId("builderView");
     if (builder && !builder.hidden) return;
-    const card = document.querySelector(".shell-family-card");
-    if (card) {
+    const cards = [...document.querySelectorAll(".shell-family-card")];
+    if (cards.length) {
+      const family = await preferredFamily();
+      const card = family
+        ? cards.find((item) => item.dataset.family === family) || cards[0]
+        : cards[0];
       card.click();
       return;
     }
     if (attempt < 40) {
-      window.setTimeout(() => enterBuilder(attempt + 1), 75);
+      window.setTimeout(() => {
+        void enterBuilder(attempt + 1);
+      }, 75);
     }
   }
 
@@ -171,7 +194,7 @@
     nativeNav("create");
     state.route = "create";
     syncRouteUi();
-    enterBuilder();
+    void enterBuilder();
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
@@ -225,6 +248,7 @@
   }
 
   function route(name) {
+    if (!PRIMARY_ROUTES.includes(name) && name !== "wallet") return;
     haptic();
     if (name === "home") openHome();
     else if (name === "feed") openFeed();
