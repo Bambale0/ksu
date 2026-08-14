@@ -9,6 +9,20 @@
   let balanceObserver = null;
   let rateObserver = null;
 
+  function mountCustomerNavigation() {
+    if (!document.querySelector('link[href="/mini-app/roxy-customer-navigation.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/roxy-customer-navigation.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/roxy-customer-navigation.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/roxy-customer-navigation.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   function setTelegramChrome() {
     try {
       tg?.setHeaderColor?.("#09080f");
@@ -184,6 +198,7 @@
   }
 
   function init() {
+    mountCustomerNavigation();
     setTelegramChrome();
     apply();
     if (observer || !document.body) return;

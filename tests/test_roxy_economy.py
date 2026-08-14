@@ -139,19 +139,33 @@ def test_prompt_repeat_bonus_is_idempotent_success_only_and_blocks_self_reward()
     assert 'kind="prompt_repeat_bonus"' not in generation_create
 
 
-def test_public_roxy_menu_matches_reference() -> None:
+def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
     keyboard = (ROOT / "app" / "bot" / "keyboards.py").read_text(encoding="utf-8")
     for label in (
+        "🏠 Главная",
+        "▦ Каталог",
         "✨ Создать",
-        "🔁 Промпты",
-        "💎 Мои ROX",
-        "👥 Заработать",
+        "≡ История",
         "👤 Профиль",
     ):
         assert label in keyboard
     main_menu = keyboard.split("def main_menu()", 1)[1]
-    for legacy in ("Пакетная обработка", "AI-инструменты", "Тренды", "🌐 Лента", "🆘 Поддержка"):
+    for legacy in (
+        "Пакетная обработка",
+        "AI-инструменты",
+        "Тренды",
+        "🌐 Лента",
+        "🆘 Поддержка",
+        "🔁 Промпты",
+        "💎 Мои ROX",
+        "👥 Заработать",
+    ):
         assert legacy not in main_menu
+    for route in ("home", "catalog", "history", "profile"):
+        assert f'route="{route}"' in main_menu
+    assert "[_create_button()]" in main_menu
+    create_button = keyboard.split("def _create_button()", 1)[1].split("def _batch_button()", 1)[0]
+    assert 'route="create"' in create_button
 
 
 def test_mini_app_economy_matches_reference_copy_and_split_balances() -> None:
