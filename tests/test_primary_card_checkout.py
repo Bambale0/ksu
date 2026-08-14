@@ -39,20 +39,34 @@ def test_official_card_routes_are_currency_scoped() -> None:
         CardCheckoutClient.validate_route("USD", "BANK131")
 
 
+def test_official_custom_price_limits_are_enforced() -> None:
+    for currency, minimum, maximum in (
+        ("RUB", Decimal("50"), Decimal("1000000")),
+        ("USD", Decimal("5"), Decimal("10000")),
+        ("EUR", Decimal("5"), Decimal("10000")),
+    ):
+        CardCheckoutClient.validate_amount(currency, minimum)
+        CardCheckoutClient.validate_amount(currency, maximum)
+        with pytest.raises(PaymentProviderError):
+            CardCheckoutClient.validate_amount(currency, minimum - Decimal("0.01"))
+        with pytest.raises(PaymentProviderError):
+            CardCheckoutClient.validate_amount(currency, maximum + Decimal("0.01"))
+
+
 def test_card_package_prices_are_explicit_and_never_fx_derived(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"30","prices":{"RUB":"300","USD":"4.00","EUR":"3.70"}}}',
+        '{"starter":{"credits":"30","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}',
     )
     package = CardPackageCatalog.package("starter")
     assert package.credits == Decimal("30")
     assert package.prices == {
         "RUB": Decimal("300"),
-        "USD": Decimal("4.00"),
-        "EUR": Decimal("3.70"),
+        "USD": Decimal("6.00"),
+        "EUR": Decimal("5.70"),
     }
 
 
@@ -124,6 +138,36 @@ def test_primary_checkout_requires_second_direct_click_to_open_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_invalid_configured_price_is_rejected_before_payment_intent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"starter":{"credits":"30","prices":{"USD":"4.00"}}}',
+    )
+    async with SessionFactory() as session:
+        buyer = User(telegram_id=_telegram_id(), first_name="Invalid price")
+        session.add(buyer)
+        await session.commit()
+
+        with pytest.raises(PaymentProviderError):
+            await CardPaymentService.create(
+                session,
+                user_id=buyer.id,
+                package_id="starter",
+                currency="USD",
+                billing_email="buyer@example.com",
+                request_key=str(uuid.uuid4()),
+            )
+
+        payment_count = await session.scalar(
+            select(func.count()).select_from(Payment).where(Payment.user_id == buyer.id)
+        )
+        assert int(payment_count or 0) == 0
+
+
+@pytest.mark.asyncio
 async def test_usd_card_payment_credits_once_and_referral_uses_rub_accounting_basis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -140,7 +184,7 @@ async def test_usd_card_payment_credits_once_and_referral_uses_rub_accounting_ba
             user_id=buyer.id,
             provider="card",
             external_id=f"card-{uuid.uuid4()}",
-            amount=Decimal("4.00"),
+            amount=Decimal("6.00"),
             currency="USD",
             rox_amount=Decimal("30.00"),
             status="pending",
