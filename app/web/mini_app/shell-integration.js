@@ -90,12 +90,27 @@
     document.head.appendChild(script);
   }
 
+  function mountStudioShell() {
+    if (!document.querySelector('link[href="/mini-app/studio-shell.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/studio-shell.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/studio-shell.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/studio-shell.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountOnboarding();
   mountPartnerCabinet();
   mountProfileTools();
   mountSocialTools();
   mountFeedTools();
   mountPromoRecovery();
+  mountStudioShell();
 
   if (!overlay || !createHome || !builder) return;
 
