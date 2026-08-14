@@ -120,7 +120,12 @@ html.roxy-mobile-runtime,
 .roxy-mobile-runtime .shell-detail-media img,
 .roxy-mobile-runtime .ksu-result-media video,
 .roxy-mobile-runtime .ksu-result-media img {
-  max-height: min(62vh, calc(var(--roxy-stable-height, 100dvh) - 190px));
+  max-height: min(
+    52vh,
+    var(--roxy-media-detail-h, 420px),
+    calc(var(--roxy-stable-height, 100dvh) - 190px)
+  );
+  object-fit: contain;
 }
 
 .roxy-mobile-runtime .roxy-audio-player {
