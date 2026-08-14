@@ -4,6 +4,7 @@
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
   const BRAND_RE = /Ксю|КСЮ/g;
+  const BRAND_TEST_RE = /Ксю|КСЮ/;
   let observer = null;
   let balanceObserver = null;
 
@@ -27,7 +28,7 @@
       acceptNode(node) {
         const parent = node.parentElement;
         if (!parent || parent.closest("script,style,textarea")) return NodeFilter.FILTER_REJECT;
-        return BRAND_RE.test(node.nodeValue || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        return BRAND_TEST_RE.test(node.nodeValue || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       },
     });
     const nodes = [];
@@ -40,7 +41,7 @@
     elements.forEach((element) => {
       for (const attribute of ["aria-label", "title", "placeholder"]) {
         const current = element.getAttribute(attribute);
-        if (!current || !BRAND_RE.test(current)) continue;
+        if (!current || !BRAND_TEST_RE.test(current)) continue;
         element.setAttribute(attribute, replaceBrandString(current));
       }
     });
@@ -59,7 +60,9 @@
       setText(".brand-mark", "X", headerBrand);
       setText(".brand-copy strong", BRAND, headerBrand);
       setText(".brand-copy small", "AI CREATIVE STUDIO", headerBrand);
-      headerBrand.setAttribute("aria-label", "На главную ROXY");
+      if (headerBrand.getAttribute("aria-label") !== "На главную ROXY") {
+        headerBrand.setAttribute("aria-label", "На главную ROXY");
+      }
     }
 
     const sidebar = document.getElementById("studioSidebar");
@@ -67,7 +70,9 @@
       setText(".studio-sidebar-mark", "X", sidebar);
       setText(".studio-sidebar-copy strong", BRAND, sidebar);
       setText(".studio-sidebar-copy small", "AI CREATIVE STUDIO", sidebar);
-      sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
+      if (sidebar.getAttribute("aria-label") !== "Навигация ROXY Studio") {
+        sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
+      }
     }
   }
 
