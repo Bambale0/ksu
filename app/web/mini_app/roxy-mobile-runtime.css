@@ -1,0 +1,243 @@
+:root {
+  --roxy-safe-top: 0px;
+  --roxy-safe-right: 0px;
+  --roxy-safe-bottom: 0px;
+  --roxy-safe-left: 0px;
+  --roxy-content-safe-top: 0px;
+  --roxy-content-safe-right: 0px;
+  --roxy-content-safe-bottom: 0px;
+  --roxy-content-safe-left: 0px;
+  --roxy-keyboard-height: 0px;
+  --roxy-stable-height: var(--tg-viewport-stable-height, 100dvh);
+}
+
+html.roxy-mobile-runtime,
+.roxy-mobile-runtime body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.roxy-mobile-runtime .app-shell {
+  min-height: var(--tg-viewport-stable-height, var(--roxy-stable-height, 100dvh));
+  padding-left: max(
+    12px,
+    var(--tg-content-safe-area-inset-left, var(--roxy-content-safe-left, env(safe-area-inset-left, 0px)))
+  );
+  padding-right: max(
+    12px,
+    var(--tg-content-safe-area-inset-right, var(--roxy-content-safe-right, env(safe-area-inset-right, 0px)))
+  );
+}
+
+.roxy-mobile-runtime .product-header {
+  padding-top: max(
+    10px,
+    var(--tg-content-safe-area-inset-top, var(--roxy-content-safe-top, env(safe-area-inset-top, 0px)))
+  );
+}
+
+.roxy-mobile-runtime .studio-bottom-nav {
+  min-height: calc(
+    var(--nav-height)
+    + var(--tg-content-safe-area-inset-bottom, var(--roxy-content-safe-bottom, env(safe-area-inset-bottom, 0px)))
+  );
+  padding-right: max(
+    8px,
+    var(--tg-content-safe-area-inset-right, var(--roxy-content-safe-right, env(safe-area-inset-right, 0px)))
+  );
+  padding-bottom: max(
+    7px,
+    var(--tg-content-safe-area-inset-bottom, var(--roxy-content-safe-bottom, env(safe-area-inset-bottom, 0px)))
+  );
+  padding-left: max(
+    8px,
+    var(--tg-content-safe-area-inset-left, var(--roxy-content-safe-left, env(safe-area-inset-left, 0px)))
+  );
+}
+
+.roxy-mobile-runtime .app-main,
+.roxy-mobile-runtime .studio-standalone-view,
+.roxy-mobile-runtime .roxy-catalog-view {
+  scroll-margin-bottom: calc(var(--nav-height) + 24px);
+}
+
+.roxy-mobile-runtime img,
+.roxy-mobile-runtime video,
+.roxy-mobile-runtime audio,
+.roxy-mobile-runtime canvas,
+.roxy-mobile-runtime svg {
+  max-width: 100%;
+}
+
+.roxy-mobile-runtime video,
+.roxy-mobile-runtime audio {
+  touch-action: manipulation;
+}
+
+.roxy-mobile-runtime .studio-nav-item,
+.roxy-mobile-runtime .roxy-promo-cta,
+.roxy-mobile-runtime .roxy-catalog-quick-card,
+.roxy-mobile-runtime .roxy-media-card,
+.roxy-mobile-runtime .roxy-cabinet-action,
+.roxy-mobile-runtime .primary-button,
+.roxy-mobile-runtime .shell-action,
+.roxy-mobile-runtime .studio-action,
+.roxy-mobile-runtime .upload-button,
+.roxy-mobile-runtime .text-button,
+.roxy-mobile-runtime .quiet-button,
+.roxy-mobile-runtime .ghost-button {
+  touch-action: manipulation;
+}
+
+.roxy-mobile-runtime .studio-nav-item,
+.roxy-mobile-runtime .primary-button,
+.roxy-mobile-runtime .shell-action,
+.roxy-mobile-runtime .studio-action,
+.roxy-mobile-runtime .upload-button {
+  min-height: 44px;
+}
+
+.roxy-mobile-runtime .family-tabs,
+.roxy-mobile-runtime .segmented,
+.roxy-mobile-runtime .roxy-promo-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+
+.roxy-mobile-runtime .roxy-promo-viewport {
+  scroll-padding-inline: 2px;
+}
+
+.roxy-mobile-runtime .shell-detail-media,
+.roxy-mobile-runtime .ksu-result-media {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.roxy-mobile-runtime .shell-detail-media video,
+.roxy-mobile-runtime .shell-detail-media img,
+.roxy-mobile-runtime .ksu-result-media video,
+.roxy-mobile-runtime .ksu-result-media img {
+  max-height: min(62vh, calc(var(--roxy-stable-height, 100dvh) - 190px));
+}
+
+.roxy-mobile-runtime .roxy-audio-player {
+  width: 100%;
+  max-width: 100%;
+}
+
+.roxy-mobile-runtime.roxy-low-motion *,
+.roxy-mobile-runtime .roxy-low-motion * {
+  scroll-behavior: auto !important;
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+}
+
+html.roxy-low-motion .product-header,
+html.roxy-low-motion .studio-bottom-nav,
+html.roxy-low-motion .feed-tabs,
+html.roxy-low-motion .roxy-community-card > small {
+  backdrop-filter: none !important;
+}
+
+.roxy-keyboard-open .studio-bottom-nav {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(100% + 8px));
+}
+
+.roxy-keyboard-open .app-main,
+.roxy-keyboard-open .studio-standalone-view,
+.roxy-keyboard-open .roxy-catalog-view {
+  padding-bottom: max(18px, var(--roxy-content-safe-bottom, 0px)) !important;
+}
+
+.roxy-keyboard-open .product-header {
+  position: static;
+}
+
+@media (max-width: 520px) {
+  .roxy-mobile-runtime input:not([type="checkbox"]):not([type="radio"]),
+  .roxy-mobile-runtime textarea,
+  .roxy-mobile-runtime select {
+    font-size: 16px;
+  }
+
+  .roxy-mobile-runtime .studio-bottom-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .roxy-mobile-runtime .studio-nav-item {
+    min-width: 0;
+    padding-inline: 1px;
+  }
+
+  .roxy-mobile-runtime .studio-nav-item > span:last-child {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .roxy-mobile-runtime .roxy-promo-viewport {
+    grid-auto-columns: minmax(92%, 1fr);
+  }
+
+  .roxy-mobile-runtime .roxy-promo-copy {
+    padding: 20px 18px;
+  }
+
+  .roxy-mobile-runtime .roxy-catalog-heading {
+    display: grid;
+    gap: 8px;
+  }
+
+  .roxy-mobile-runtime .shell-detail-actions,
+  .roxy-mobile-runtime .studio-result-empty-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .roxy-mobile-runtime .shell-detail-actions > *,
+  .roxy-mobile-runtime .studio-result-empty-actions > * {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .roxy-mobile-runtime .app-shell {
+    padding-left: max(
+      9px,
+      var(--tg-content-safe-area-inset-left, var(--roxy-content-safe-left, env(safe-area-inset-left, 0px)))
+    );
+    padding-right: max(
+      9px,
+      var(--tg-content-safe-area-inset-right, var(--roxy-content-safe-right, env(safe-area-inset-right, 0px)))
+    );
+  }
+
+  .roxy-mobile-runtime .studio-nav-item {
+    font-size: 8px;
+  }
+
+  .roxy-mobile-runtime .studio-nav-icon {
+    font-size: 17px;
+  }
+
+  .roxy-mobile-runtime .roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create .studio-nav-icon {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roxy-mobile-runtime .app-view,
+  .roxy-mobile-runtime .shell-skeleton,
+  .roxy-mobile-runtime .roxy-promo-dot,
+  .roxy-mobile-runtime .roxy-central-create .studio-nav-icon {
+    animation: none !important;
+    transition: none !important;
+  }
+}
