@@ -2,13 +2,15 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  const ROUTES = ["home", "catalog", "create", "history", "profile"];
+  const PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"];
+  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     catalog: "feed",
     create: "create",
     history: "history",
     profile: "profile",
+    wallet: "wallet",
   });
   const MENU = Object.freeze([
     ["home", "⌂", "Главная"],
@@ -26,7 +28,7 @@
 
   function requestedRoute() {
     const route = new URLSearchParams(window.location.search).get("route");
-    return ROUTES.includes(route) ? route : null;
+    return OPEN_ROUTES.includes(route) ? route : null;
   }
 
   function haptic(kind = "light") {
@@ -41,9 +43,13 @@
     return SHELL_ROUTE[route] || "home";
   }
 
+  function primaryRouteFor(route) {
+    return route === "wallet" ? "profile" : route;
+  }
+
   function open(route, { feedback = true } = {}) {
-    if (!ROUTES.includes(route)) return;
-    state.active = route;
+    if (!OPEN_ROUTES.includes(route)) return;
+    state.active = primaryRouteFor(route);
     syncActive();
     if (feedback) haptic(route === "create" ? "medium" : "light");
 
@@ -93,13 +99,14 @@
   function inferredRoute() {
     const shellRoute = window.KsuStudioShell?.route;
     if (shellRoute === "feed") return "catalog";
-    if (ROUTES.includes(shellRoute)) return shellRoute;
+    if (shellRoute === "wallet") return "profile";
+    if (PRIMARY_ROUTES.includes(shellRoute)) return shellRoute;
     return state.active;
   }
 
   function syncActive() {
     const inferred = inferredRoute();
-    if (ROUTES.includes(inferred)) state.active = inferred;
+    if (PRIMARY_ROUTES.includes(inferred)) state.active = inferred;
     document.querySelectorAll("[data-roxy-customer-route]").forEach((button) => {
       const active = button.dataset.roxyCustomerRoute === state.active;
       button.classList.toggle("is-active", active);
@@ -145,7 +152,7 @@
 
   window.RoxyCustomerNavigation = Object.freeze({
     open,
-    routes: [...ROUTES],
+    routes: [...PRIMARY_ROUTES],
     get active() {
       return state.active;
     },
