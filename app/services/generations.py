@@ -8,7 +8,6 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
 from app.services.credits import InternalCreditService
@@ -192,27 +191,6 @@ class GenerationService:
             reference_id=str(generation.id),
             idempotency_key=f"generation:{generation.id}:charge",
         )
-
-        # A paid prompt repeat is an internal, non-withdrawable bonus for the
-        # original author. Self-repeats never create rewards, and the generation
-        # id makes the credit idempotent across retries/deep-link paths.
-        if (
-            action_type == "remix"
-            and source_feed_gen_id is not None
-            and settings.prompt_repeat_bonus_rox > Decimal("0")
-        ):
-            source = await session.get(Generation, source_feed_gen_id)
-            if source is not None and source.user_id != user_id:
-                await WalletService.credit(
-                    session,
-                    user_id=source.user_id,
-                    amount=settings.prompt_repeat_bonus_rox,
-                    kind="prompt_repeat_bonus",
-                    reference_type="generation",
-                    reference_id=str(generation.id),
-                    idempotency_key=f"prompt-repeat:{generation.id}",
-                )
-
         await session.commit()
 
         try:
