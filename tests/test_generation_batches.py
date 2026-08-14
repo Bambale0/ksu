@@ -19,7 +19,7 @@ from app.services.generation_batches import GenerationBatchService
 from app.services.wallet import InsufficientBalanceError, WalletService
 
 
-async def _user(session, balance: Decimal = Decimal("100")) -> User:  # type: ignore[no-untyped-def]
+async def _user(session, balance: Decimal = Decimal("1000")) -> User:  # type: ignore[no-untyped-def]
     user = User(
         telegram_id=random.randint(8_000_000_000_000, 8_999_999_999_999),
         first_name="Batch user",
@@ -80,7 +80,7 @@ async def test_batch_create_is_atomic_and_idempotent(monkeypatch: pytest.MonkeyP
         assert generation_count == 2
         assert outbox_count >= 2
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("100") - first_cost
+        assert Decimal(wallet.balance) == Decimal("1000") - first_cost
 
         conflicting = {**payload, "prompt": "Different request"}
         with pytest.raises(BatchIdempotencyConflict):
