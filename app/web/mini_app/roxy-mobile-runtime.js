@@ -8,9 +8,11 @@
     keyboardOpen: false,
     observer: null,
     scrollTimer: null,
+    backFrame: 0,
   };
 
   const FOCUSABLE_INPUTS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+  const NAV_MUTATION_SELECTOR = "#builderView, #generationDetailView, #feedOverlay, dialog";
 
   function px(value) {
     const number = Number(value || 0);
@@ -116,6 +118,14 @@
     }
   }
 
+  function scheduleBackSync() {
+    if (state.backFrame) return;
+    state.backFrame = window.requestAnimationFrame(() => {
+      state.backFrame = 0;
+      syncBackButton();
+    });
+  }
+
   function hideKeyboardForNavigation() {
     const control = focusedControl();
     if (control) control.blur();
@@ -140,7 +150,7 @@
     } else {
       window.RoxyCustomerNavigation?.open?.("home", { feedback: false });
     }
-    window.requestAnimationFrame(syncBackButton);
+    scheduleBackSync();
   }
 
   function markPerformanceClass() {
@@ -156,7 +166,7 @@
     const routeButton = event.target.closest?.("[data-roxy-customer-route], [data-shell-nav]");
     if (!routeButton) return;
     hideKeyboardForNavigation();
-    window.requestAnimationFrame(syncBackButton);
+    scheduleBackSync();
     window.setTimeout(syncBackButton, 80);
   }
 
@@ -193,6 +203,19 @@
     }
   }
 
+  function nodeAffectsNavigation(node) {
+    if (!(node instanceof Element)) return false;
+    return node.matches(NAV_MUTATION_SELECTOR) || Boolean(node.querySelector?.(NAV_MUTATION_SELECTOR));
+  }
+
+  function mutationAffectsNavigation(mutation) {
+    if (mutation.type === "attributes") {
+      if (mutation.target === document.body && mutation.attributeName === "class") return true;
+      return mutation.target instanceof Element && mutation.target.matches(NAV_MUTATION_SELECTOR);
+    }
+    return [...mutation.addedNodes, ...mutation.removedNodes].some(nodeAffectsNavigation);
+  }
+
   function init() {
     document.documentElement.classList.add("roxy-mobile-runtime");
     document.body?.classList.add("roxy-mobile-runtime");
@@ -220,9 +243,9 @@
     document.addEventListener("click", onDocumentClick, true);
 
     if (!state.observer && document.body) {
-      state.observer = new MutationObserver(() => {
-        syncNestedSnapshot();
-        window.requestAnimationFrame(syncBackButton);
+      state.observer = new MutationObserver((mutations) => {
+        if (!mutations.some(mutationAffectsNavigation)) return;
+        scheduleBackSync();
       });
       state.observer.observe(document.body, {
         subtree: true,

@@ -8,6 +8,8 @@
   let observer = null;
   let balanceObserver = null;
   let rateObserver = null;
+  let brandFrame = 0;
+  const pendingBrandRoots = new Set();
 
   function mountLayer({ css, js }) {
     if (css && !document.querySelector(`link[href="${css}"]`)) {
@@ -66,8 +68,34 @@
     return typeof value === "string" ? value.replace(BRAND_RE, BRAND) : value;
   }
 
+  function replaceTextNode(node) {
+    const parent = node?.parentElement;
+    if (!parent || parent.closest("script,style,textarea")) return;
+    const value = node.nodeValue || "";
+    if (BRAND_TEST_RE.test(value)) node.nodeValue = replaceBrandString(value);
+  }
+
+  function replaceBrandAttributes(element) {
+    if (!element?.getAttribute) return;
+    for (const attribute of ["aria-label", "title", "placeholder"]) {
+      const current = element.getAttribute(attribute);
+      if (!current || !BRAND_TEST_RE.test(current)) continue;
+      element.setAttribute(attribute, replaceBrandString(current));
+    }
+  }
+
   function replaceBrandText(root = document.body) {
     if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+      replaceTextNode(root);
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+    if (root.nodeType === Node.ELEMENT_NODE) {
+      if (root.closest("script,style,textarea")) return;
+      replaceBrandAttributes(root);
+    }
+
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const parent = node.parentElement;
@@ -77,18 +105,10 @@
     });
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach((node) => {
-      node.nodeValue = replaceBrandString(node.nodeValue || "");
-    });
+    nodes.forEach(replaceTextNode);
 
     const elements = root.querySelectorAll?.("[aria-label], [title], [placeholder]") || [];
-    elements.forEach((element) => {
-      for (const attribute of ["aria-label", "title", "placeholder"]) {
-        const current = element.getAttribute(attribute);
-        if (!current || !BRAND_TEST_RE.test(current)) continue;
-        element.setAttribute(attribute, replaceBrandString(current));
-      }
-    });
+    elements.forEach(replaceBrandAttributes);
   }
 
   function setText(selector, text, root = document) {
@@ -218,7 +238,7 @@
     }
   }
 
-  function apply() {
+  function refreshBrandChrome() {
     document.documentElement.classList.add("roxy-brand-ready");
     document.body?.classList.add("roxy-brand-ready");
     if (document.title) document.title = replaceBrandString(document.title);
@@ -227,7 +247,33 @@
     styleWalletCopy();
     syncHomeBalance();
     syncHomeRate();
+  }
+
+  function apply() {
+    refreshBrandChrome();
     replaceBrandText(document.body);
+  }
+
+  function queueBrandRoot(node) {
+    if (!node) return;
+    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      pendingBrandRoots.add(node);
+    }
+  }
+
+  function flushDynamicBranding() {
+    brandFrame = 0;
+    refreshBrandChrome();
+    for (const root of pendingBrandRoots) replaceBrandText(root);
+    pendingBrandRoots.clear();
+  }
+
+  function scheduleDynamicBranding(mutations) {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) queueBrandRoot(node);
+    }
+    if (!pendingBrandRoots.size || brandFrame) return;
+    brandFrame = window.requestAnimationFrame(flushDynamicBranding);
   }
 
   function init() {
@@ -235,12 +281,10 @@
     setTelegramChrome();
     apply();
     if (observer || !document.body) return;
-    observer = new MutationObserver((mutations) => {
-      const relevant = mutations.some((mutation) => mutation.addedNodes.length || mutation.type === "characterData");
-      if (!relevant) return;
-      window.requestAnimationFrame(apply);
-    });
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    // Dynamic product surfaces are branded incrementally. Do not rescan the full body
+    // on balance/progress/text updates: that used to create persistent main-thread jank.
+    observer = new MutationObserver(scheduleDynamicBranding);
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   if (document.readyState === "loading") {
