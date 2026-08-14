@@ -81,6 +81,7 @@ jobs:
           node --check app/web/mini_app/roxy-music.js
           node --check app/web/mini_app/roxy-mobile-runtime.js
           node --check app/web/mini_app/roxy-profile-cabinet.js
+          node --check app/web/mini_app/roxy-account-center.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
@@ -144,6 +145,9 @@ jobs:
 
       - name: ROXY Profile cabinet contracts
         run: pytest -q tests/test_roxy_profile_cabinet.py
+
+      - name: ROXY frontend parity and FHD contracts
+        run: pytest -q tests/test_roxy_frontend_parity.py
 
       - name: ROXY economy contracts
         run: >-
