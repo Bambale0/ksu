@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from app.api.v1.prompt_tools import ImageAnalysisRequest, PromptBuilderRequest
+from app.api.v1.prompt_tools import (
+    ImageAnalysisRequest,
+    PromptBuilderRequest,
+    _prompt_builder_payload,
+)
 from app.providers.kie_prompt_tools import _parse_json_object, _responses_output_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,11 +12,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_public_requests_cannot_select_model_or_price() -> None:
     assert set(ImageAnalysisRequest.model_fields) == {"image_url", "instruction"}
-    assert set(PromptBuilderRequest.model_fields) == {"text", "image_url"}
+    assert set(PromptBuilderRequest.model_fields) == {"text", "image_url", "purpose"}
     for schema in (ImageAnalysisRequest.model_fields, PromptBuilderRequest.model_fields):
         assert "model" not in schema
         assert "cost" not in schema
         assert "provider" not in schema
+
+
+def test_prompt_builder_purpose_is_bounded_server_owned_context() -> None:
+    video = PromptBuilderRequest(text="Девушка идёт по Токио", purpose="video")
+    video_payload = _prompt_builder_payload(video)
+    assert "генерации видео" in str(video_payload["text"])
+    assert "движение камеры" in str(video_payload["text"])
+    assert "Идея пользователя: Девушка идёт по Токио" in str(video_payload["text"])
+
+    image = PromptBuilderRequest(text="Предметная съёмка", purpose="image")
+    image_payload = _prompt_builder_payload(image)
+    assert "статичного изображения" in str(image_payload["text"])
+    assert "оптику/ракурс" in str(image_payload["text"])
+
+    general = PromptBuilderRequest(text="Как есть")
+    assert _prompt_builder_payload(general)["text"] == "Как есть"
 
 
 def test_provider_json_parsers_accept_documented_response_shapes() -> None:
@@ -24,7 +44,12 @@ def test_provider_json_parsers_accept_documented_response_shapes() -> None:
         "output": [
             {
                 "type": "message",
-                "content": [{"type": "output_text", "text": "{\"prompt_ru\":\"a\",\"prompt_en\":\"b\"}"}],
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "{\"prompt_ru\":\"a\",\"prompt_en\":\"b\"}",
+                    }
+                ],
             }
         ]
     }
