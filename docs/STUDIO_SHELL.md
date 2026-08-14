@@ -8,8 +8,9 @@ The implementation is intentionally additive:
 
 - `app.js` remains the schema-driven generation renderer;
 - `shell.js` remains the compatibility shell for the original `create/history/wallet/profile` views;
-- `shell-integration.js` mounts `studio-shell.css` and `studio-shell.js` after the existing product modules;
-- `studio-shell.js` composes those modules into the product-level Studio information architecture.
+- `shell-integration.js` mounts the Studio shell and workspace enhancement layers after the existing product modules;
+- `studio-shell.js` composes those modules into the product-level Studio information architecture;
+- `studio-workspace.js` closes the reusable-reference and post-generation product loops without duplicating model validation.
 
 ## Primary product routes
 
@@ -44,8 +45,9 @@ Desktop composition:
 ControlsPane                     ResultPane
 ----------------------------     ----------------------------
 Model                            empty / processing / result
-Scenario                         result actions supplied by
-Dynamic ui_schema fields         existing result/social layers
+Scenario                         repeat / share / download
+Dynamic ui_schema fields         publish profile / feed
+Saved references                 save result as reference
 Quote
 Generate
 ```
@@ -56,7 +58,7 @@ On narrow screens the same DOM becomes a single-column controls -> result flow.
 
 ## Schema-driven model contract
 
-`studio-shell.js` contains no model-family switch statements and no model IDs. Model capabilities still come from:
+The Studio modules contain no model-family switch statements and no model IDs. Model capabilities still come from:
 
 ```text
 /api/v1/generations/models
@@ -66,7 +68,7 @@ On narrow screens the same DOM becomes a single-column controls -> result flow.
         -> generation admission
 ```
 
-The Studio shell only chooses product placement and navigation.
+When Studio needs to reopen a persisted model, it resolves `model_id -> family` from the current server catalog before selecting the compatibility shell card. The server catalog remains authoritative.
 
 ## References and presets
 
@@ -77,7 +79,10 @@ References support:
 - list;
 - register by HTTPS URL;
 - image/video/audio kind;
-- delete.
+- delete;
+- choose a saved reference directly from every dynamic media upload field.
+
+The Create reference picker does not hardcode model fields. It progressively enhances the `ui_schema`-rendered `.upload-row`, reads the field's native `accept` contract, filters reusable references by media kind, and feeds the selected URL through the existing upload URL path. That means normal `app.js` limits and validation still apply.
 
 Presets support:
 
@@ -90,9 +95,19 @@ Video preset duration is preserved through `billing_seconds`. The API write sche
 
 Applying a preset stores the draft using the same local keys already used by `app.js`, remembers the selected model, and reloads once so the normal app initialization sanitizes the draft against the current server `ui_schema`. This avoids a second client-side model validator.
 
+## Result product loop
+
+The core renderer already provides repeat/change, native share and open/download actions. Studio adds the missing continuation actions after a successful generation:
+
+- **В профиль** -> `POST /api/v1/feed/{generation_id}/publish` with `publication_scope=profile`;
+- **В ленту** -> the same server-owned publication endpoint with `publication_scope=feed`;
+- **В референсы** -> registers the first generated media URL through `/api/v1/references`.
+
+Studio never decides derivative/trend publication policy in the browser. Publication requests default to `prompt_visible=false` and `references_visible=false`; Feed service authorization and downgrade rules remain authoritative. If the backend downgrades a feed publication to profile, the UI reports the actual result returned by the server.
+
 ## Feed compatibility
 
-`feed.js` remains the Feed transport/rendering implementation. The Studio layer remounts its overlay into `#studioFeedView`, hides the legacy floating launcher, and opens the existing Feed through its own launcher event. Feed visibility, remix authorization, hidden-prompt policy, comments, likes, and shares remain backend-owned.
+`feed.js` remains the Feed transport/rendering implementation. The Studio layer remounts its overlay into `#studioFeedView`, hides the legacy floating launcher, and opens the existing Feed through its own launcher event. Feed visibility, remix authorization, hidden-prompt policy, comments, likes, shares and publication rules remain backend-owned.
 
 ## Telegram integration
 
@@ -108,10 +123,12 @@ The Studio layer keeps the existing Telegram shell contracts:
 
 CI validates:
 
-- JavaScript syntax for `studio-shell.js` using `node --check`;
+- JavaScript syntax for `studio-shell.js` and `studio-workspace.js` using `node --check`;
 - primary Studio routes;
-- absence of hardcoded model families in Studio composition;
+- absence of hardcoded model families in Studio composition/workspace enhancement;
 - References/Presets product integration;
+- reference picker integration with the existing upload URL path;
+- result publication/reference actions and privacy-safe publication defaults;
 - signed Telegram auth usage;
 - safe-area and reduced-motion CSS;
 - `billing_seconds` in the preset write contract;
@@ -127,6 +144,8 @@ Before merging a Studio UI change, verify at minimum:
 - Home -> trend, scratch, Prompt Tools, References quick starts;
 - Feed: list, likes/comments/share/remix via existing module;
 - Create: model switching, scenario switching, quote, submit, progress, result;
+- Create references: saved image/video/audio items are filtered by the current media field and inserted through the existing URL control;
+- Result: repeat/share/download plus publish-to-profile, publish-to-feed and save-as-reference;
 - References: list/register/delete;
 - Presets: save/apply/delete, including per-second video duration;
 - History -> open/repeat -> builder bridge;
