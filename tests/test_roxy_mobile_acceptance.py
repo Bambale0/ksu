@@ -55,6 +55,8 @@ def test_mobile_css_has_safe_area_fallbacks_and_five_item_bottom_navigation() ->
         "--roxy-content-safe-left",
         "env(safe-area-inset-bottom, 0px)",
         "grid-template-columns: repeat(5",
+        "overflow-x: hidden",
+        "overflow-x: clip",
     ):
         assert token in mobile
 
@@ -65,7 +67,9 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
     navigation = _read("roxy-customer-navigation.js")
 
     assert "tg?.BackButton?.onClick?.(onBackButton)" in runtime
-    assert "if (state.nestedVisible) return;" in runtime
+    assert "if (state.nestedVisible || nestedVisible()) return;" in runtime
+    assert 'const feed = document.getElementById("feedOverlay")' in runtime
+    assert "|| (feed && !feed.hidden)" in runtime
     assert 'window.RoxyCustomerNavigation?.open?.("profile", { feedback: false })' in runtime
     assert 'window.RoxyCustomerNavigation?.open?.("home", { feedback: false })' in runtime
     assert "if (visible) back.show();" in runtime
