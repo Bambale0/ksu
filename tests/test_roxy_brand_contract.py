@@ -88,4 +88,7 @@ def test_shell_integration_mounts_brand_after_product_layers() -> None:
     assert "function mountRoxyBrand()" in bridge
     assert '/mini-app/roxy-brand.css' in bridge
     assert '/mini-app/roxy-brand.js' in bridge
+    assert 'let stylesheet = document.querySelector' in bridge
+    assert "document.head.appendChild(stylesheet);" in bridge
+    assert "brand overrides win the cascade" in bridge
     assert bridge.index("mountStudioWorkspace();") < bridge.index("mountRoxyBrand();")
