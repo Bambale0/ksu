@@ -1,0 +1,121 @@
+.roxy-embedded-batch {
+  width: min(1180px, calc(100vw - 28px));
+  max-width: 1180px;
+  height: min(900px, calc(100dvh - 28px));
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 22px;
+  background: #09080f;
+  color: var(--roxy-text, #fbf8ff);
+  box-shadow: 0 28px 90px rgba(0,0,0,.64);
+}
+
+.roxy-embedded-batch::backdrop {
+  background: rgba(2,2,5,.78);
+}
+
+.roxy-embedded-batch .roxy-embedded-batch-app {
+  max-width: none;
+  padding: 18px;
+  gap: 12px;
+}
+
+.roxy-embedded-batch-header {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  padding: 2px 0 10px;
+  background: linear-gradient(180deg, #09080f 78%, rgba(9,8,15,0));
+}
+
+.roxy-embedded-batch-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roxy-embedded-batch-top h1 {
+  margin: 3px 0 0;
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.roxy-embedded-batch-close {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 11px;
+  background: rgba(255,255,255,.055);
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.roxy-embedded-batch .batch-card {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.roxy-embedded-batch .batch-uploads {
+  grid-template-columns: repeat(auto-fill, minmax(68px, 82px));
+  gap: 7px;
+}
+
+.roxy-embedded-batch .batch-upload {
+  width: 82px;
+  border-radius: 10px;
+}
+
+.roxy-embedded-batch .batch-field {
+  gap: 5px;
+}
+
+.roxy-embedded-batch .batch-progress-bar {
+  height: 7px;
+}
+
+@media (min-width: 900px) {
+  .roxy-embedded-batch .roxy-embedded-batch-app {
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  }
+
+  .roxy-embedded-batch .batch-header,
+  .roxy-embedded-batch .batch-progress {
+    grid-column: 1 / -1;
+  }
+
+  .roxy-embedded-batch .batch-summary,
+  .roxy-embedded-batch #batchProgress {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .roxy-embedded-batch {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .roxy-embedded-batch .roxy-embedded-batch-app {
+    padding:
+      max(12px, env(safe-area-inset-top, 0px))
+      10px
+      max(18px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .roxy-embedded-batch .batch-uploads {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .roxy-embedded-batch .batch-upload {
+    width: auto;
+    max-width: 76px;
+  }
+}
