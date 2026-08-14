@@ -61,6 +61,9 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dynamic_copy_aligned() -> 
         "ROXY · AI CREATIVE STUDIO",
         "roxyHomeBalance",
         "roxyCreateCta",
+        "paymentRateLabel",
+        "roxBalanceText",
+        "roxRateText",
     ):
         assert token in script
     assert "initDataUnsafe" not in script
