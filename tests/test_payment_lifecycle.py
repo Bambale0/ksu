@@ -134,7 +134,7 @@ async def test_full_reversal_is_idempotent_and_can_create_accounting_debt() -> N
             external_id=f"yk-{uuid.uuid4()}",
             amount=Decimal("300"),
             currency="RUB",
-            rox_amount=Decimal("30"),
+            rox_amount=Decimal("300"),
             status="succeeded",
             payload={},
         )
@@ -143,7 +143,7 @@ async def test_full_reversal_is_idempotent_and_can_create_accounting_debt() -> N
         await WalletService.credit(
             session,
             user_id=user.id,
-            amount=Decimal("30"),
+            amount=Decimal("300"),
             kind="payment",
             reference_type="payment",
             reference_id=str(payment.id),
@@ -204,7 +204,7 @@ async def test_yookassa_cumulative_refunded_amount_drives_partial_then_full_reve
             external_id=f"yk-{uuid.uuid4()}",
             amount=Decimal("300"),
             currency="RUB",
-            rox_amount=Decimal("30"),
+            rox_amount=Decimal("300"),
             status="pending",
             payload={},
         )
@@ -224,7 +224,7 @@ async def test_yookassa_cumulative_refunded_amount_drives_partial_then_full_reve
         await PaymentService.apply_yookassa_state(session, payment.id, first_state)
         wallet = await session.get(Wallet, user.id)
         first_payment = await session.get(Payment, payment.id)
-        assert wallet is not None and wallet.balance == Decimal("20.00")
+        assert wallet is not None and wallet.balance == Decimal("200.00")
         assert first_payment is not None and first_payment.status == "partially_refunded"
 
         full_state = {
@@ -262,7 +262,7 @@ async def test_referral_rewards_are_reversed_proportionally() -> None:
             external_id=f"yk-{uuid.uuid4()}",
             amount=Decimal("300"),
             currency="RUB",
-            rox_amount=Decimal("30"),
+            rox_amount=Decimal("300"),
             status="pending",
             payload={},
         )
@@ -312,7 +312,7 @@ async def test_tbank_full_refunded_state_reverses_credited_payment() -> None:
             external_id=str(random.randint(10_000_000, 99_999_999)),
             amount=Decimal("300"),
             currency="RUB",
-            rox_amount=Decimal("30"),
+            rox_amount=Decimal("300"),
             status="succeeded",
             payload={},
         )
@@ -321,7 +321,7 @@ async def test_tbank_full_refunded_state_reverses_credited_payment() -> None:
         await WalletService.credit(
             session,
             user_id=user.id,
-            amount=Decimal("30"),
+            amount=Decimal("300"),
             kind="payment",
             reference_type="payment",
             reference_id=str(payment.id),
