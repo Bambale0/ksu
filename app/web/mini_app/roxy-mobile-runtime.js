@@ -128,10 +128,10 @@
   }
 
   function onBackButton() {
-    // shell.js and Feed own nested history. This snapshot is intentionally updated
-    // asynchronously by MutationObserver, so another BackButton handler that runs
-    // first cannot turn one Telegram Back press into two navigation steps.
-    if (state.nestedVisible) return;
+    // shell.js and Feed own nested history. The snapshot covers the case where their
+    // handler runs first and closes synchronously; the direct check covers a just-opened
+    // nested surface before MutationObserver has published the next snapshot.
+    if (state.nestedVisible || nestedVisible()) return;
     const route = activeRoute();
     if (route === "home") return;
     hideKeyboardForNavigation();
