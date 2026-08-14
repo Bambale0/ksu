@@ -36,7 +36,7 @@ The callback still enters ROXY through `/webhooks/kie?generation_id=<uuid>`. The
 
 ## Public request fields
 
-The initial product surface exposes:
+The V5.5 product surface exposes:
 
 - `prompt`;
 - `customMode`;
@@ -47,11 +47,20 @@ The initial product surface exposes:
 - `vocalGender` (`m` / `f`);
 - `styleWeight` (`0..1`);
 - `weirdnessConstraint` (`0..1`);
-- `audioWeight` (`0..1`).
+- `audioWeight` (`0..1`);
+- `personaId`;
+- `personaModel`;
+- `duration` (V5_5 only).
 
-Simple mode accepts a prompt up to 500 characters and strips fields that do not belong to the provider Simple Mode request.
+The requirements are conditional rather than represented by a single static `required_fields` list:
 
-Custom mode accepts a prompt up to 5000 characters and requires `style` and `title`; style is bounded to 1000 characters and title to 80.
+- Simple Mode (`customMode=false`): `prompt` is required; current Generate Music docs allow up to 3000 characters; other custom fields are stripped before submission.
+- Custom + instrumental: `style` and `title` are required; `prompt` may be omitted.
+- Custom + vocal: `style`, `prompt`, and `title` are required.
+- V5_5 custom prompt: up to 5000 characters.
+- V5_5 style: up to 1000 characters.
+- title: up to 80 characters.
+- `duration` is accepted only while the configured provider model is `V5_5`.
 
 The server is authoritative for these constraints even if the browser is bypassed.
 
