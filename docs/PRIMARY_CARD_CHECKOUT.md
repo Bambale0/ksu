@@ -33,16 +33,28 @@ Checkout requires a UUID `Idempotency-Key`, package id, explicit currency and bi
 Foreign exchange is never invented by KSU. Each package can have explicit RUB, USD and EUR prices:
 
 ```text
-CARD_PACKAGES_JSON={"starter":{"credits":"30","prices":{"RUB":"300","USD":"4.00","EUR":"3.70"}}}
+CARD_PACKAGES_JSON={"starter":{"credits":"30","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}
+```
+
+The current official custom-price limits are validated by KSU before a local payment intent is committed:
+
+```text
+RUB  50 .. 1_000_000
+USD   5 ..    10_000
+EUR   5 ..    10_000
 ```
 
 When `CARD_PACKAGES_JSON` is empty, legacy `ROX_PACKAGES_JSON` is exposed to this checkout only as RUB pricing. USD/EUR are unavailable until explicitly configured.
 
 Internal credits keep their configured RUB accounting value. Referral rewards on USD/EUR purchases therefore use `credits × INTERNAL_CREDIT_RUB` as the RUB reward basis rather than pretending that the foreign-currency numeric payment amount is RUB.
 
-## Provider routing
+## Payment methods and provider routing
 
-The adapter implements every payment route documented by the official SDK:
+The public product does not ask users to choose an upstream technical provider. By default `paymentProvider` is omitted and the hosted checkout may expose every payment method that is enabled for the merchant and selected currency.
+
+For RUB this includes supported Russian bank cards and SBP when enabled. For USD/EUR the hosted page may expose the merchant-enabled foreign-card and alternative methods, including Apple Pay, PayPal and PIX where available to that account/region.
+
+The adapter also implements every explicit technical route documented by the official SDK:
 
 ```text
 RUB     BANK131
@@ -58,7 +70,7 @@ Routes are internal implementation details and must not become customer-facing p
 CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={"RUB":"BANK131","USD":"UNLIMINT","EUR":"PAYPAL"}
 ```
 
-If a currency has no pinned route, `paymentProvider` is omitted and the hosted checkout can use the methods enabled for the merchant account.
+Leave `CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={}` in the normal production setup unless there is a deliberate reason to restrict a currency to one route. This keeps all merchant-enabled hosted payment methods available instead of hiding them behind a forced provider.
 
 ## Invoice lifecycle
 
@@ -72,7 +84,7 @@ amount
 paymentProvider  # optional
 ```
 
-The local `Payment` and `PaymentRequest` intent is committed before the remote create call. A network ambiguity after create becomes `creation_unknown`; reconciliation deliberately does not create another invoice because the create API has no merchant idempotency key in our verified contract.
+The local `Payment` and `PaymentRequest` intent is committed before the remote create call only after currency, email, package and official amount limits pass validation. A network ambiguity after create becomes `creation_unknown`; reconciliation deliberately does not create another invoice because the create API has no merchant idempotency key in our verified contract.
 
 Successful create stores the external invoice id and HTTPS payment URL. Mini App requires two direct user actions:
 
@@ -100,7 +112,7 @@ payment.failed
 
 The webhook is only a signal. Before wallet mutation KSU fetches the authoritative invoice and validates invoice id, amount and currency. Wallet credit is idempotent.
 
-Background payment reconciliation also routes local `provider=card` payments through the same authoritative invoice lookup so a lost webhook does not strand a paid invoice.
+The provider can retry a failed webhook many times, so duplicate deliveries are expected and safe. Background payment reconciliation also routes local `provider=card` payments through the same authoritative invoice lookup so a lost webhook does not strand a paid invoice.
 
 ## Refunds
 
