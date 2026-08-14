@@ -1,6 +1,6 @@
 /* ROXY density layer: desktop master canvas targets 1920x1080 without breaking Telegram mobile. */
 :root {
-  --roxy-fhd-max: 1760px;
+  --roxy-fhd-max: 1880px;
   --roxy-media-thumb-h: 168px;
   --roxy-media-detail-h: 420px;
 }
@@ -59,10 +59,10 @@
 }
 
 /* Standalone Mini App tools use the same density contract. */
-.roxy-brand-ready #trendsApp { max-width: 1540px; }
-.roxy-brand-ready #trendCatalog { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.roxy-brand-ready #trendsApp { max-width: 1700px; }
+.roxy-brand-ready #trendCatalog { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
 .roxy-brand-ready .trend-card { border-radius: 16px; }
-.roxy-brand-ready .trend-card-media { aspect-ratio: 16 / 10; max-height: 180px; }
+.roxy-brand-ready .trend-card-media { aspect-ratio: 16 / 10; max-height: 170px; }
 .roxy-brand-ready .trend-card-body { padding: 10px; }
 .roxy-brand-ready .trend-card-body strong { font-size: 14px; }
 .roxy-brand-ready .trend-card-body p { min-height: 32px; margin-bottom: 8px; font-size: 11px; }
@@ -75,7 +75,7 @@
 .roxy-brand-ready .batch-upload { width: 92px; border-radius: 11px; }
 .roxy-brand-ready .batch-upload img { object-fit: cover; }
 
-.roxy-brand-ready #promptToolsApp { max-width: 1120px; }
+.roxy-brand-ready #promptToolsApp { max-width: 1240px; }
 
 .roxy-brand-ready .hero-card { min-height: 150px; }
 .roxy-brand-ready .roxy-home-balance { padding-block: 14px; }
@@ -89,9 +89,9 @@
 
 @media (min-width: 1024px) {
   .studio-shell-ready .app-shell {
-    width: min(calc(100% - 36px), var(--roxy-fhd-max));
+    width: min(calc(100% - 28px), var(--roxy-fhd-max));
   }
-  .studio-shell-ready { --studio-sidebar-width: 224px; --studio-gap: 18px; }
+  .studio-shell-ready { --studio-sidebar-width: 218px; --studio-gap: 16px; }
   .roxy-brand-ready .recent-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
   .roxy-brand-ready .studio-home-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
@@ -103,26 +103,28 @@
     padding: 12px;
   }
   .roxy-brand-ready .studio-home-action-icon { margin: 0; }
-  .roxy-brand-ready .roxy-promo-viewport { grid-auto-columns: minmax(420px, 48%); }
+  .roxy-brand-ready .roxy-promo-viewport { grid-auto-columns: minmax(420px, 42%); }
 }
 
 @media (min-width: 1440px) {
-  :root { --roxy-media-thumb-h: 150px; --roxy-media-detail-h: 460px; }
+  :root { --roxy-media-thumb-h: 148px; --roxy-media-detail-h: 450px; }
   .studio-shell-ready .app-main { max-width: none; }
-  .roxy-brand-ready .recent-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .roxy-brand-ready .roxy-catalog-heading h1 { font-size: 40px; }
-  .roxy-brand-ready .hero-copy h1 { font-size: 38px; }
+  .roxy-brand-ready .recent-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .roxy-brand-ready .roxy-catalog-heading h1 { font-size: 38px; }
+  .roxy-brand-ready .hero-copy h1 { font-size: 36px; }
   .roxy-brand-ready .roxy-template-copy { padding: 9px 10px 11px; }
   .roxy-brand-ready .roxy-template-copy strong { font-size: 12px; }
   .roxy-brand-ready .roxy-template-copy small { font-size: 9px; }
-  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 
 @media (min-width: 1800px) {
-  .studio-shell-ready .app-shell { width: min(calc(100% - 48px), 1800px); }
-  .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  :root { --roxy-media-thumb-h: 142px; }
+  .studio-shell-ready .app-shell { width: min(calc(100% - 24px), 1880px); }
+  .roxy-brand-ready .recent-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
