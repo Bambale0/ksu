@@ -79,6 +79,7 @@ jobs:
           node --check app/web/mini_app/roxy-discovery.js
           node --check app/web/mini_app/roxy-create-center.js
           node --check app/web/mini_app/roxy-music.js
+          node --check app/web/mini_app/roxy-mobile-runtime.js
           node --check app/web/mini_app/roxy-profile-cabinet.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
@@ -137,6 +138,9 @@ jobs:
 
       - name: ROXY Music generation contracts
         run: pytest -q tests/test_music_generation.py
+
+      - name: ROXY Telegram mobile acceptance contracts
+        run: pytest -q tests/test_roxy_mobile_acceptance.py
 
       - name: ROXY Profile cabinet contracts
         run: pytest -q tests/test_roxy_profile_cabinet.py

@@ -44,6 +44,12 @@
       css: "/mini-app/roxy-profile-cabinet.css",
       js: "/mini-app/roxy-profile-cabinet.js",
     });
+    // Mount last: acceptance CSS intentionally owns final safe-area/keyboard/mobile
+    // overrides without changing the product architecture of any feature surface.
+    mountLayer({
+      css: "/mini-app/roxy-mobile-runtime.css",
+      js: "/mini-app/roxy-mobile-runtime.js",
+    });
   }
 
   function setTelegramChrome() {
