@@ -143,6 +143,21 @@ html.roxy-low-motion .roxy-community-card > small {
   backdrop-filter: none !important;
 }
 
+/* Telegram's iOS/Android WebViews pay a high compositing cost for large sticky
+   backdrop-filter layers while scrolling. Keep the same opaque dark surfaces but
+   avoid live blur on mobile; desktop/browser preview retains the richer effect. */
+html[data-roxy-platform="ios"] .product-header,
+html[data-roxy-platform="ios"] .studio-bottom-nav,
+html[data-roxy-platform="ios"] .bottom-nav,
+html[data-roxy-platform="ios"] .feed-tabs,
+html[data-roxy-platform="android"] .product-header,
+html[data-roxy-platform="android"] .studio-bottom-nav,
+html[data-roxy-platform="android"] .bottom-nav,
+html[data-roxy-platform="android"] .feed-tabs {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .roxy-keyboard-open .studio-bottom-nav {
   opacity: 0;
   pointer-events: none;
