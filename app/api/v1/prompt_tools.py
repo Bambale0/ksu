@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -26,6 +27,7 @@ class ImageAnalysisRequest(BaseModel):
 class PromptBuilderRequest(BaseModel):
     text: str = Field(default="", max_length=8000)
     image_url: str | None = Field(default=None, max_length=4000)
+    purpose: Literal["general", "image", "video"] = "general"
 
 
 def _domain_error(exc: Exception) -> HTTPException:
