@@ -129,6 +129,14 @@
     // after all dynamically mounted product CSS so brand overrides win the cascade.
     document.head.appendChild(stylesheet);
 
+    let compatibility = document.querySelector('link[href="/mini-app/roxy-theme-compat.css"]');
+    if (!compatibility) {
+      compatibility = document.createElement("link");
+      compatibility.rel = "stylesheet";
+      compatibility.href = "/mini-app/roxy-theme-compat.css";
+    }
+    document.head.appendChild(compatibility);
+
     if (document.querySelector('script[src="/mini-app/roxy-brand.js"]')) return;
     const script = document.createElement("script");
     script.src = "/mini-app/roxy-brand.js";
