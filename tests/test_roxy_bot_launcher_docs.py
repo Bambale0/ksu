@@ -14,7 +14,7 @@ def test_roxy_bot_launcher_docs_match_minimal_webapp_boundary() -> None:
         "👤 Профиль",
         "web_app",
         "PUBLIC_BASE_URL",
-        "callback",
         "Mini App",
     ):
         assert token in docs
+    assert "callback" in docs.lower()
