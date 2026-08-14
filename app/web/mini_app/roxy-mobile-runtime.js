@@ -76,10 +76,12 @@
   function nestedVisible() {
     const builder = document.getElementById("builderView");
     const detail = document.getElementById("generationDetailView");
+    const feed = document.getElementById("feedOverlay");
     const dialog = document.querySelector("dialog[open]");
     return Boolean(
       (builder && !builder.hidden)
       || (detail && !detail.hidden)
+      || (feed && !feed.hidden)
       || dialog,
     );
   }
@@ -126,9 +128,9 @@
   }
 
   function onBackButton() {
-    // shell.js owns nested builder/result history. This snapshot is intentionally
-    // updated asynchronously by MutationObserver, so a shell handler that runs first
-    // cannot turn one Telegram Back press into two navigation steps.
+    // shell.js and Feed own nested history. This snapshot is intentionally updated
+    // asynchronously by MutationObserver, so another BackButton handler that runs
+    // first cannot turn one Telegram Back press into two navigation steps.
     if (state.nestedVisible) return;
     const route = activeRoute();
     if (route === "home") return;
