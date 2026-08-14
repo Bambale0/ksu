@@ -9,7 +9,9 @@ ROXY is the user-facing brand for the KSU Telegram AI product.
 - Russian home greeting: **Привет! Это ROXY ✨**
 - Tagline: **Твори. Генерируй. Зарабатывай.**
 
-The repository/package/runtime identifiers may continue using `ksu` for compatibility. User-facing Mini App surfaces should use ROXY.
+The repository/package/runtime identifiers may continue using `ksu` for compatibility. User-facing product surfaces should use ROXY.
+
+The default Telegram onboarding title is `Добро пожаловать в ROXY`. Production environments that explicitly set `ONBOARDING_TITLE` must update that environment value as part of the release; an environment override intentionally wins over the code default.
 
 ## Palette
 
@@ -61,9 +63,11 @@ ROXY keeps the existing Telegram integration contracts:
 
 ## BotFather release checklist
 
-The web repository cannot change the Telegram Mini App loading screen configuration. For a fully consistent release, configure the Main Mini App in BotFather with:
+The web repository cannot change Telegram account-level branding or the Main Mini App loading screen. For a fully consistent release, configure the bot/Main Mini App in BotFather with:
 
-- dark loading background close to `#09080F`;
+- visible bot name: **ROXY**;
+- short/about text aligned with **ROXY · AI Creative Studio**;
+- dark Mini App loading background close to `#09080F`;
 - ROXY icon/placeholder artwork;
 - matching dark header/loading treatment for both supported appearance modes.
 
@@ -73,4 +77,5 @@ The web repository cannot change the Telegram Mini App loading screen configurat
 - `app/web/mini_app/roxy-brand.js` — brand copy, Telegram chrome and home presentation;
 - `app/web/mini_app/index.html` — first-paint ROXY identity;
 - `trends.html`, `prompt-tools.html`, `batch.html` — standalone ROXY surfaces;
+- `app/core/config.py` and `app/bot/handlers/start.py` — default Telegram onboarding brand;
 - `tests/test_roxy_brand_contract.py` — regression contract.
