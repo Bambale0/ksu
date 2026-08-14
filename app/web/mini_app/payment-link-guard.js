@@ -36,10 +36,12 @@
   loadExtension("/mini-app/primary-card-checkout.js", () => {
     loadExtension("/mini-app/payment-surface.js");
   });
-  loadExtension("/mini-app/account-overview.js");
 
   const tg = window.Telegram?.WebApp;
   if (!tg) return;
+
+  // Account data is authenticated and remains Telegram-scoped.
+  loadExtension("/mini-app/account-overview.js");
 
   let directUserActivation = false;
 
