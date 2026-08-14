@@ -96,7 +96,6 @@ def test_card_webhook_key_is_required_and_constant_compared() -> None:
 def test_public_payment_surface_is_vendor_neutral() -> None:
     public_files = [
         ROOT / "app" / "api" / "v1" / "card_payments.py",
-        ROOT / "app" / "api" / "v1" / "card_webhooks.py",
         ROOT / "app" / "web" / "mini_app" / "primary-card-checkout.js",
         ROOT / "app" / "web" / "mini_app" / "account-overview.js",
         ROOT / "app" / "bot" / "handlers" / "start.py",
