@@ -73,6 +73,7 @@ def test_roxy_visual_rebrand_does_not_hardcode_reference_economics() -> None:
             "index.html",
             "roxy-brand.js",
             "roxy-brand.css",
+            "roxy-theme-compat.css",
             "trends.html",
             "prompt-tools.html",
             "batch.html",
@@ -87,17 +88,32 @@ def test_shell_integration_mounts_brand_after_product_layers() -> None:
     bridge = _read("shell-integration.js")
     assert "function mountRoxyBrand()" in bridge
     assert '/mini-app/roxy-brand.css' in bridge
+    assert '/mini-app/roxy-theme-compat.css' in bridge
     assert '/mini-app/roxy-brand.js' in bridge
     assert 'let stylesheet = document.querySelector' in bridge
     assert "document.head.appendChild(stylesheet);" in bridge
+    assert "document.head.appendChild(compatibility);" in bridge
     assert "brand overrides win the cascade" in bridge
     assert bridge.index("mountStudioWorkspace();") < bridge.index("mountRoxyBrand();")
+
+
+def test_roxy_theme_wins_over_payment_surface_light_dark_tokens() -> None:
+    css = _read("roxy-theme-compat.css")
+    assert "html.roxy-brand-ready[data-ksu-theme]" in css
+    assert "--bg: var(--roxy-bg)" in css
+    assert "--button: var(--roxy-purple)" in css
+    assert "color-scheme: dark" in css
+    assert ".payment-method-choice.is-selected" in css
+    assert ".payment-status-actions .primary" in css
 
 
 def test_telegram_bot_default_onboarding_uses_roxy_name() -> None:
     config = (ROOT / "app" / "core" / "config.py").read_text(encoding="utf-8")
     start = (ROOT / "app" / "bot" / "handlers" / "start.py").read_text(encoding="utf-8")
+    feed_api = (ROOT / "app" / "api" / "v1" / "feed.py").read_text(encoding="utf-8")
     assert 'onboarding_title: str = "Добро пожаловать в ROXY"' in config
     assert 'or "Добро пожаловать в ROXY"' in start
+    assert 'or "Пользователь ROXY"' in feed_api
     assert "Добро пожаловать в Ксю" not in config
     assert "Добро пожаловать в Ксю" not in start
+    assert "Пользователь Ксю" not in feed_api
