@@ -1,34 +1,6 @@
 (() => {
   "use strict";
 
-  const tg = window.Telegram?.WebApp;
-  if (!tg) return;
-
-  let directUserActivation = false;
-
-  function isAllowedPaymentUrl(rawUrl) {
-    try {
-      const parsed = new URL(String(rawUrl), window.location.href);
-      return parsed.protocol === "https:";
-    } catch (_error) {
-      return false;
-    }
-  }
-
-  function withDirectActivation(callback) {
-    return function guardedPaymentOpen(rawUrl, ...rest) {
-      if (!directUserActivation || !isAllowedPaymentUrl(rawUrl)) return false;
-      return callback.call(this, rawUrl, ...rest);
-    };
-  }
-
-  function markActivation() {
-    directUserActivation = true;
-    queueMicrotask(() => {
-      directUserActivation = false;
-    });
-  }
-
   function loadStyle(href) {
     if (document.querySelector(`link[href="${href}"]`)) return;
     const link = document.createElement("link");
@@ -57,6 +29,43 @@
     return script;
   }
 
+  // Product payment assets are part of the Mini App surface, not of Telegram
+  // authorization itself. Mount them even in browser preview/fallback mode so
+  // the wallet never falls back to the legacy multi-provider appearance.
+  loadStyle("/mini-app/payment-surface.css");
+  loadExtension("/mini-app/primary-card-checkout.js", () => {
+    loadExtension("/mini-app/payment-surface.js");
+  });
+  loadExtension("/mini-app/account-overview.js");
+
+  const tg = window.Telegram?.WebApp;
+  if (!tg) return;
+
+  let directUserActivation = false;
+
+  function isAllowedPaymentUrl(rawUrl) {
+    try {
+      const parsed = new URL(String(rawUrl), window.location.href);
+      return parsed.protocol === "https:";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function withDirectActivation(callback) {
+    return function guardedPaymentOpen(rawUrl, ...rest) {
+      if (!directUserActivation || !isAllowedPaymentUrl(rawUrl)) return false;
+      return callback.call(this, rawUrl, ...rest);
+    };
+  }
+
+  function markActivation() {
+    directUserActivation = true;
+    queueMicrotask(() => {
+      directUserActivation = false;
+    });
+  }
+
   window.addEventListener("click", markActivation, true);
   window.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") markActivation();
@@ -70,10 +79,4 @@
   window.KsuPaymentLinkGuard = Object.freeze({
     isAllowedPaymentUrl,
   });
-
-  loadStyle("/mini-app/payment-surface.css");
-  loadExtension("/mini-app/primary-card-checkout.js", () => {
-    loadExtension("/mini-app/payment-surface.js");
-  });
-  loadExtension("/mini-app/account-overview.js");
 })();
