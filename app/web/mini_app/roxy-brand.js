@@ -9,18 +9,29 @@
   let balanceObserver = null;
   let rateObserver = null;
 
-  function mountCustomerNavigation() {
-    if (!document.querySelector('link[href="/mini-app/roxy-customer-navigation.css"]')) {
+  function mountLayer({ css, js }) {
+    if (css && !document.querySelector(`link[href="${css}"]`)) {
       const stylesheet = document.createElement("link");
       stylesheet.rel = "stylesheet";
-      stylesheet.href = "/mini-app/roxy-customer-navigation.css";
+      stylesheet.href = css;
       document.head.appendChild(stylesheet);
     }
-    if (document.querySelector('script[src="/mini-app/roxy-customer-navigation.js"]')) return;
+    if (!js || document.querySelector(`script[src="${js}"]`)) return;
     const script = document.createElement("script");
-    script.src = "/mini-app/roxy-customer-navigation.js";
+    script.src = js;
     script.defer = true;
     document.head.appendChild(script);
+  }
+
+  function mountProductLayers() {
+    mountLayer({
+      css: "/mini-app/roxy-customer-navigation.css",
+      js: "/mini-app/roxy-customer-navigation.js",
+    });
+    mountLayer({
+      css: "/mini-app/roxy-discovery.css",
+      js: "/mini-app/roxy-discovery.js",
+    });
   }
 
   function setTelegramChrome() {
@@ -130,6 +141,10 @@
         } catch (_error) {
           // Optional Telegram haptics.
         }
+        if (window.RoxyCustomerNavigation?.open) {
+          window.RoxyCustomerNavigation.open("create");
+          return;
+        }
         if (window.KsuStudioShell?.open) {
           window.KsuStudioShell.open("create");
           return;
@@ -198,7 +213,7 @@
   }
 
   function init() {
-    mountCustomerNavigation();
+    mountProductLayers();
     setTelegramChrome();
     apply();
     if (observer || !document.body) return;

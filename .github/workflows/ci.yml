@@ -76,6 +76,7 @@ jobs:
           node --check app/web/mini_app/roxy-brand.js
           node --check app/web/mini_app/roxy-economy.js
           node --check app/web/mini_app/roxy-customer-navigation.js
+          node --check app/web/mini_app/roxy-discovery.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
@@ -124,6 +125,9 @@ jobs:
 
       - name: ROXY customer navigation contracts
         run: pytest -q tests/test_roxy_customer_navigation.py
+
+      - name: ROXY discovery contracts
+        run: pytest -q tests/test_roxy_discovery.py
 
       - name: ROXY economy contracts
         run: >-

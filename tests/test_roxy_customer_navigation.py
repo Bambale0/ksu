@@ -19,7 +19,9 @@ def test_customer_navigation_has_approved_primary_routes_and_central_create() ->
         assert f'"{route}"' in script
     for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
         assert label in script
-    assert 'catalog: "feed"' in script  # transitional until Catalog epic replaces the backing surface
+    assert 'catalog: "feed"' in script  # safe fallback if discovery layer cannot mount
+    assert "RoxyDiscovery?.openCatalog" in script
+    assert 'classList.contains("roxy-discovery-catalog-open")' in script
     assert 'wallet: "wallet"' in script  # secondary deep route, intentionally absent from primary nav
     assert 'new URLSearchParams(window.location.search).get("route")' in script
     assert "OPEN_ROUTES" in script
@@ -28,12 +30,14 @@ def test_customer_navigation_has_approved_primary_routes_and_central_create() ->
     assert "--tg-content-safe-area" not in css  # inherited from the existing Studio nav shell
 
 
-def test_roxy_brand_mounts_customer_navigation_layer() -> None:
+def test_roxy_brand_mounts_product_layers() -> None:
     brand = _read("roxy-brand.js")
-    assert "function mountCustomerNavigation()" in brand
+    assert "function mountProductLayers()" in brand
     assert '/mini-app/roxy-customer-navigation.css' in brand
     assert '/mini-app/roxy-customer-navigation.js' in brand
-    assert "mountCustomerNavigation();" in brand
+    assert '/mini-app/roxy-discovery.css' in brand
+    assert '/mini-app/roxy-discovery.js' in brand
+    assert "mountProductLayers();" in brand
 
 
 def test_route_aware_mini_app_urls_are_used_by_bot_menu(monkeypatch) -> None:
