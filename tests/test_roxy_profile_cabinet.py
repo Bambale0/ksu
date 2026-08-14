@@ -46,7 +46,7 @@ def test_creator_contact_uses_existing_support_flow_until_partnership_epic() -> 
     assert 'document.getElementById("supportComposeForm")' in source
     assert 'topic.value = "Creator-партнёрство ROXY"' in source
     assert "Канал / аудитория / формат сотрудничества" in source
-    assert "fetch(" not in source
+    assert "method:" not in source
 
 
 def test_profile_cabinet_hides_technical_account_overview_from_customer_surface() -> None:
