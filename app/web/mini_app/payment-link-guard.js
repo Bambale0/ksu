@@ -37,12 +37,24 @@
     document.head.appendChild(link);
   }
 
-  function loadExtension(src) {
-    if (document.querySelector(`script[src="${src}"]`)) return;
+  function loadExtension(src, onload = null) {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (onload) {
+        if (existing.dataset.loaded === "true") onload();
+        else existing.addEventListener("load", onload, { once: true });
+      }
+      return existing;
+    }
     const script = document.createElement("script");
     script.src = src;
     script.async = false;
+    script.addEventListener("load", () => {
+      script.dataset.loaded = "true";
+      onload?.();
+    }, { once: true });
     document.head.appendChild(script);
+    return script;
   }
 
   window.addEventListener("click", markActivation, true);
@@ -60,7 +72,8 @@
   });
 
   loadStyle("/mini-app/payment-surface.css");
-  loadExtension("/mini-app/primary-card-checkout.js");
-  loadExtension("/mini-app/payment-surface.js");
+  loadExtension("/mini-app/primary-card-checkout.js", () => {
+    loadExtension("/mini-app/payment-surface.js");
+  });
   loadExtension("/mini-app/account-overview.js");
 })();
