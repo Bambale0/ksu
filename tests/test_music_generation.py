@@ -36,7 +36,11 @@ def test_music_model_is_first_class_audio_contract() -> None:
         "styleWeight",
         "weirdnessConstraint",
         "audioWeight",
+        "personaId",
+        "personaModel",
+        "duration",
     } <= fields
+    assert model["required_fields"] == []
 
 
 def test_simple_music_mode_is_bounded_and_drops_custom_only_fields() -> None:
@@ -48,6 +52,9 @@ def test_simple_music_mode_is_bounded_and_drops_custom_only_fields() -> None:
             "style": "should not reach simple-mode provider payload",
             "title": "ignored",
             "styleWeight": 0.9,
+            "personaId": "persona_ignored",
+            "personaModel": "style_persona",
+            "duration": 120,
         }
     )
     assert clean == {
@@ -57,8 +64,8 @@ def test_simple_music_mode_is_bounded_and_drops_custom_only_fields() -> None:
     }
     assert cost > Decimal("0")
 
-    with pytest.raises(MusicGenerationError, match="500"):
-        MusicGenerationService.prepare({"prompt": "x" * 501, "customMode": False})
+    with pytest.raises(MusicGenerationError, match="3000"):
+        MusicGenerationService.prepare({"prompt": "x" * 3001, "customMode": False})
 
 
 def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> None:
@@ -73,12 +80,18 @@ def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> No
             "styleWeight": 0.65,
             "weirdnessConstraint": 0.2,
             "audioWeight": 0.7,
+            "personaId": "persona_123",
+            "personaModel": "style_persona",
+            "duration": 212,
         }
     )
     assert clean["style"] == "cinematic synthwave, female vocal"
     assert clean["title"] == "Night Drive"
     assert clean["vocalGender"] == "f"
     assert clean["styleWeight"] == 0.65
+    assert clean["personaId"] == "persona_123"
+    assert clean["personaModel"] == "style_persona"
+    assert clean["duration"] == 212
 
     with pytest.raises(MusicGenerationError, match="стиль"):
         MusicGenerationService.prepare(
@@ -94,6 +107,41 @@ def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> No
                 "audioWeight": 2,
             }
         )
+    with pytest.raises(MusicGenerationError, match="текст / промпт"):
+        MusicGenerationService.prepare(
+            {
+                "customMode": True,
+                "instrumental": False,
+                "style": "pop",
+                "title": "Song",
+            }
+        )
+    with pytest.raises(MusicGenerationError, match="больше 0"):
+        MusicGenerationService.prepare(
+            {
+                "customMode": True,
+                "instrumental": True,
+                "style": "ambient",
+                "title": "Focus",
+                "duration": 0,
+            }
+        )
+
+
+def test_custom_instrumental_music_can_omit_prompt() -> None:
+    clean, _cost = MusicGenerationService.prepare(
+        {
+            "customMode": True,
+            "instrumental": True,
+            "style": "minimal ambient piano",
+            "title": "Focus Room",
+            "duration": 180,
+        }
+    )
+    assert "prompt" not in clean
+    assert clean["style"] == "minimal ambient piano"
+    assert clean["title"] == "Focus Room"
+    assert clean["duration"] == 180
 
 
 @pytest.mark.asyncio
