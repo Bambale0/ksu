@@ -1,0 +1,84 @@
+/*
+ * payment-surface.css intentionally supports Telegram light/dark themes and uses
+ * selectors that are more specific than the generic product tokens. ROXY is a
+ * dark branded surface, so this compatibility layer wins only when ROXY is
+ * active and preserves the checkout behavior while keeping the visual system.
+ */
+html.roxy-brand-ready[data-ksu-theme] {
+  --bg: var(--roxy-bg);
+  --text: var(--roxy-text);
+  --hint: var(--roxy-muted);
+  --link: #d8b4ff;
+  --button: var(--roxy-purple);
+  --button-text: #130d18;
+  --surface: var(--roxy-surface);
+  --section: var(--roxy-surface-strong);
+  --header-bg: rgba(9, 8, 15, .86);
+  --bottom-bg: rgba(9, 8, 15, .92);
+  --accent-text: var(--roxy-pink-soft);
+  --border: var(--roxy-line);
+  --border-strong: var(--roxy-line-strong);
+  --soft: rgba(184, 108, 255, .13);
+  --soft-strong: rgba(184, 108, 255, .22);
+  --shadow: 0 18px 48px rgba(0, 0, 0, .28);
+  color-scheme: dark;
+}
+
+html.roxy-brand-ready[data-ksu-theme] body.roxy-brand-ready {
+  background:
+    radial-gradient(circle at -8% 72%, rgba(113, 71, 255, .24), transparent 28rem),
+    radial-gradient(circle at 108% 56%, rgba(255, 67, 184, .2), transparent 30rem),
+    radial-gradient(circle at 64% -14%, rgba(143, 86, 255, .12), transparent 24rem),
+    linear-gradient(180deg, #0a0910 0%, #08070d 100%);
+  color: var(--roxy-text);
+}
+
+html.roxy-brand-ready[data-ksu-theme] .shell-panel,
+html.roxy-brand-ready[data-ksu-theme] .card,
+html.roxy-brand-ready[data-ksu-theme] .studio-sidebar,
+html.roxy-brand-ready[data-ksu-theme] .studio-library-compose,
+html.roxy-brand-ready[data-ksu-theme] .studio-library-list-section {
+  border-color: rgba(255,255,255,.11);
+  background: linear-gradient(145deg, rgba(35,33,43,.9), rgba(24,23,31,.92));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 12px 34px rgba(0,0,0,.17);
+}
+
+html.roxy-brand-ready[data-ksu-theme] .hero-card {
+  border-color: rgba(210, 146, 255, .2);
+  background:
+    radial-gradient(circle at 84% 18%, rgba(194, 101, 255, .32), transparent 34%),
+    radial-gradient(circle at 98% 76%, rgba(255, 80, 185, .22), transparent 38%),
+    linear-gradient(145deg, rgba(25, 23, 33, .98), rgba(14, 13, 20, .98));
+}
+
+html.roxy-brand-ready[data-ksu-theme] .brand-mark,
+html.roxy-brand-ready[data-ksu-theme] .studio-sidebar-mark {
+  border: 1px solid rgba(255,255,255,.17);
+  background: rgba(24, 21, 33, .84);
+  color: #f6d8ff;
+  text-shadow: 0 0 10px rgba(187, 105, 255, .9), 0 0 22px rgba(255, 92, 195, .7);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 0 22px rgba(165, 91, 255, .26), 0 0 36px rgba(255, 91, 196, .13);
+}
+
+html.roxy-brand-ready[data-ksu-theme] .primary-button,
+html.roxy-brand-ready[data-ksu-theme] .studio-action.primary,
+html.roxy-brand-ready[data-ksu-theme] .payment-status-actions .primary,
+html.roxy-brand-ready[data-ksu-theme] .payment-pay-button {
+  border: 1px solid rgba(255,255,255,.26);
+  background: var(--roxy-gradient);
+  color: #17101c;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.46), 0 0 24px rgba(167, 94, 255, .18), 0 10px 24px rgba(0,0,0,.2);
+}
+
+html.roxy-brand-ready[data-ksu-theme] .payment-method-shell {
+  border-color: rgba(255,255,255,.12);
+  background:
+    radial-gradient(circle at 95% -25%, rgba(255, 86, 193, .14), transparent 48%),
+    linear-gradient(145deg, rgba(35,33,43,.93), rgba(24,23,31,.95));
+}
+
+html.roxy-brand-ready[data-ksu-theme] .payment-method-choice.is-selected {
+  border-color: rgba(205, 139, 255, .46);
+  background: linear-gradient(145deg, rgba(184,108,255,.15), rgba(35,33,43,.94));
+  box-shadow: 0 0 0 3px rgba(184,108,255,.1), 0 12px 30px rgba(0,0,0,.18);
+}
