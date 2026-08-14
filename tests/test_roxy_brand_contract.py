@@ -92,3 +92,12 @@ def test_shell_integration_mounts_brand_after_product_layers() -> None:
     assert "document.head.appendChild(stylesheet);" in bridge
     assert "brand overrides win the cascade" in bridge
     assert bridge.index("mountStudioWorkspace();") < bridge.index("mountRoxyBrand();")
+
+
+def test_telegram_bot_default_onboarding_uses_roxy_name() -> None:
+    config = (ROOT / "app" / "core" / "config.py").read_text(encoding="utf-8")
+    start = (ROOT / "app" / "bot" / "handlers" / "start.py").read_text(encoding="utf-8")
+    assert 'onboarding_title: str = "Добро пожаловать в ROXY"' in config
+    assert 'or "Добро пожаловать в ROXY"' in start
+    assert "Добро пожаловать в Ксю" not in config
+    assert "Добро пожаловать в Ксю" not in start
