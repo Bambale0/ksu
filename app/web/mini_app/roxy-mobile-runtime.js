@@ -1,0 +1,247 @@
+(() => {
+  "use strict";
+
+  const tg = window.Telegram?.WebApp ?? null;
+  const vv = window.visualViewport ?? null;
+  const state = {
+    nestedVisible: false,
+    keyboardOpen: false,
+    observer: null,
+    scrollTimer: null,
+  };
+
+  const FOCUSABLE_INPUTS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+
+  function px(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) && number > 0 ? `${Math.round(number)}px` : "0px";
+  }
+
+  function setVar(name, value) {
+    const root = document.documentElement;
+    if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value);
+  }
+
+  function syncTelegramMetrics() {
+    const safe = tg?.safeAreaInset || {};
+    const content = tg?.contentSafeAreaInset || {};
+    setVar("--roxy-safe-top", px(safe.top));
+    setVar("--roxy-safe-right", px(safe.right));
+    setVar("--roxy-safe-bottom", px(safe.bottom));
+    setVar("--roxy-safe-left", px(safe.left));
+    setVar("--roxy-content-safe-top", px(content.top));
+    setVar("--roxy-content-safe-right", px(content.right));
+    setVar("--roxy-content-safe-bottom", px(content.bottom));
+    setVar("--roxy-content-safe-left", px(content.left));
+
+    const stable = Number(tg?.viewportStableHeight || 0);
+    if (stable > 0) setVar("--roxy-stable-height", `${Math.round(stable)}px`);
+    document.documentElement.dataset.roxyPlatform = String(tg?.platform || "web").toLowerCase();
+  }
+
+  function focusedControl() {
+    const active = document.activeElement;
+    return active && FOCUSABLE_INPUTS.has(active.tagName) ? active : null;
+  }
+
+  function keyboardHeight() {
+    if (!vv) return 0;
+    return Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  }
+
+  function keepFocusedControlVisible() {
+    const control = focusedControl();
+    if (!control || !state.keyboardOpen) return;
+    window.clearTimeout(state.scrollTimer);
+    state.scrollTimer = window.setTimeout(() => {
+      const rect = control.getBoundingClientRect();
+      const visibleBottom = vv ? vv.height + vv.offsetTop : window.innerHeight;
+      const topGuard = 72;
+      const bottomGuard = 24;
+      if (rect.bottom > visibleBottom - bottomGuard || rect.top < topGuard) {
+        control.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }, 80);
+  }
+
+  function syncKeyboard() {
+    const height = keyboardHeight();
+    const open = height >= 120 && focusedControl() !== null;
+    state.keyboardOpen = open;
+    setVar("--roxy-keyboard-height", `${Math.round(height)}px`);
+    document.body?.classList.toggle("roxy-keyboard-open", open);
+    if (open) keepFocusedControlVisible();
+  }
+
+  function nestedVisible() {
+    const builder = document.getElementById("builderView");
+    const detail = document.getElementById("generationDetailView");
+    const dialog = document.querySelector("dialog[open]");
+    return Boolean(
+      (builder && !builder.hidden)
+      || (detail && !detail.hidden)
+      || dialog,
+    );
+  }
+
+  function walletVisible() {
+    const wallet = document.querySelector('.app-view[data-view="wallet"]');
+    return Boolean(wallet && !wallet.hidden);
+  }
+
+  function activeRoute() {
+    if (document.body?.classList.contains("roxy-discovery-catalog-open")) return "catalog";
+    if (document.body?.classList.contains("roxy-create-center-open")) return "create";
+    if (walletVisible()) return "wallet";
+    return window.RoxyCustomerNavigation?.active || "home";
+  }
+
+  function syncNestedSnapshot() {
+    state.nestedVisible = nestedVisible();
+  }
+
+  function syncBackButton() {
+    const back = tg?.BackButton;
+    if (!back) return;
+    syncNestedSnapshot();
+    const route = activeRoute();
+    const visible = state.nestedVisible || route !== "home";
+    try {
+      if (visible) back.show();
+      else back.hide();
+    } catch (_error) {
+      // Telegram clients older than BackButton support keep native close behavior.
+    }
+  }
+
+  function hideKeyboardForNavigation() {
+    const control = focusedControl();
+    if (control) control.blur();
+    try {
+      tg?.hideKeyboard?.();
+    } catch (_error) {
+      // hideKeyboard was added after the original Mini App API and is optional.
+    }
+    window.requestAnimationFrame(syncKeyboard);
+  }
+
+  function onBackButton() {
+    // shell.js owns nested builder/result history. This snapshot is intentionally
+    // updated asynchronously by MutationObserver, so a shell handler that runs first
+    // cannot turn one Telegram Back press into two navigation steps.
+    if (state.nestedVisible) return;
+    const route = activeRoute();
+    if (route === "home") return;
+    hideKeyboardForNavigation();
+    if (route === "wallet") {
+      window.RoxyCustomerNavigation?.open?.("profile", { feedback: false });
+    } else {
+      window.RoxyCustomerNavigation?.open?.("home", { feedback: false });
+    }
+    window.requestAnimationFrame(syncBackButton);
+  }
+
+  function markPerformanceClass() {
+    const cores = Number(navigator.hardwareConcurrency || 0);
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const constrainedAndroid = String(tg?.platform || "").toLowerCase() === "android"
+      && cores > 0
+      && cores <= 4;
+    document.documentElement.classList.toggle("roxy-low-motion", Boolean(reduce || constrainedAndroid));
+  }
+
+  function onDocumentClick(event) {
+    const routeButton = event.target.closest?.("[data-roxy-customer-route], [data-shell-nav]");
+    if (!routeButton) return;
+    hideKeyboardForNavigation();
+    window.requestAnimationFrame(syncBackButton);
+    window.setTimeout(syncBackButton, 80);
+  }
+
+  function onFocusIn(event) {
+    if (!FOCUSABLE_INPUTS.has(event.target?.tagName)) return;
+    window.setTimeout(syncKeyboard, 40);
+    window.setTimeout(keepFocusedControlVisible, 180);
+  }
+
+  function onFocusOut() {
+    window.setTimeout(syncKeyboard, 80);
+  }
+
+  function bindTelegram() {
+    try {
+      tg?.ready?.();
+      tg?.expand?.();
+    } catch (_error) {
+      // Browser preview and older Telegram versions may not expose these methods.
+    }
+    tg?.BackButton?.onClick?.(onBackButton);
+    for (const eventName of [
+      "viewportChanged",
+      "safeAreaChanged",
+      "contentSafeAreaChanged",
+      "fullscreenChanged",
+      "activated",
+    ]) {
+      tg?.onEvent?.(eventName, () => {
+        syncTelegramMetrics();
+        syncKeyboard();
+        syncBackButton();
+      });
+    }
+  }
+
+  function init() {
+    document.documentElement.classList.add("roxy-mobile-runtime");
+    document.body?.classList.add("roxy-mobile-runtime");
+    syncTelegramMetrics();
+    markPerformanceClass();
+    syncNestedSnapshot();
+    syncKeyboard();
+    bindTelegram();
+    syncBackButton();
+
+    vv?.addEventListener("resize", syncKeyboard, { passive: true });
+    vv?.addEventListener("scroll", syncKeyboard, { passive: true });
+    window.addEventListener("resize", () => {
+      syncTelegramMetrics();
+      syncKeyboard();
+      syncBackButton();
+    }, { passive: true });
+    window.addEventListener("orientationchange", () => window.setTimeout(() => {
+      syncTelegramMetrics();
+      syncKeyboard();
+      syncBackButton();
+    }, 120), { passive: true });
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("click", onDocumentClick, true);
+
+    if (!state.observer && document.body) {
+      state.observer = new MutationObserver(() => {
+        syncNestedSnapshot();
+        window.requestAnimationFrame(syncBackButton);
+      });
+      state.observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["hidden", "class", "open"],
+      });
+    }
+  }
+
+  window.RoxyMobileRuntime = Object.freeze({
+    sync: () => {
+      syncTelegramMetrics();
+      syncKeyboard();
+      syncBackButton();
+    },
+    get keyboardOpen() {
+      return state.keyboardOpen;
+    },
+  });
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else init();
+})();
