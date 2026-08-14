@@ -81,7 +81,7 @@ jobs:
           node --check app/web/mini_app/roxy-music.js
           node --check app/web/mini_app/roxy-mobile-runtime.js
           node --check app/web/mini_app/roxy-profile-cabinet.js
-          node --check app/web/mini_app/roxy-account-center.js
+          node --check app/web/mini_app/roxy-parity-navigation.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
