@@ -12,14 +12,19 @@ from app.db.admin_models import CmsDocument, CmsDocumentVersion
 class DiscoveryService:
     HOME_PROMOS_SLUG = "roxy-home-promos"
     MAX_SLIDES = 8
-    ALLOWED_ROUTE_TARGETS = frozenset({"home", "catalog", "create", "history", "profile", "wallet"})
+    ALLOWED_ROUTE_TARGETS = frozenset(
+        {"home", "catalog", "create", "history", "profile", "wallet"}
+    )
 
     DEFAULT_SLIDES: tuple[dict[str, Any], ...] = (
         {
             "id": "creator-partnership",
             "eyebrow": "Зарабатывай с ROXY",
             "title": "Партнёрская программа",
-            "body": "Для авторов и каналов: индивидуальные условия сотрудничества и ежемесячные ROX после согласования.",
+            "body": (
+                "Для авторов и каналов: индивидуальные условия сотрудничества "
+                "и ежемесячные ROX после согласования."
+            ),
             "cta": "Узнать условия",
             "action": {"type": "route", "target": "profile"},
             "image_url": None,
@@ -28,7 +33,10 @@ class DiscoveryService:
             "id": "create-content",
             "eyebrow": "AI Creative Studio",
             "title": "Создавай фото и видео",
-            "body": "Выбери формат, модель и настройки — ROXY соберёт рабочий сценарий генерации.",
+            "body": (
+                "Выбери формат, модель и настройки — ROXY соберёт рабочий сценарий "
+                "генерации."
+            ),
             "cta": "Создать",
             "action": {"type": "route", "target": "create"},
             "image_url": None,
@@ -37,7 +45,9 @@ class DiscoveryService:
             "id": "discover",
             "eyebrow": "Каталог",
             "title": "Шаблоны, тренды и работы сообщества",
-            "body": "Начни с готовой идеи или посмотри, что создают другие пользователи ROXY.",
+            "body": (
+                "Начни с готовой идеи или посмотри, что создают другие пользователи ROXY."
+            ),
             "cta": "Открыть каталог",
             "action": {"type": "route", "target": "catalog"},
             "image_url": None,
@@ -74,8 +84,12 @@ class DiscoveryService:
         if image_url is not None and not image_url.startswith("https://"):
             image_url = None
         return {
-            "id": cls._clean_text(raw.get("id"), limit=80, fallback=f"slide-{index + 1}"),
-            "eyebrow": cls._clean_text(raw.get("eyebrow"), limit=80, fallback="ROXY"),
+            "id": cls._clean_text(
+                raw.get("id"), limit=80, fallback=f"slide-{index + 1}"
+            ),
+            "eyebrow": cls._clean_text(
+                raw.get("eyebrow"), limit=80, fallback="ROXY"
+            ),
             "title": title,
             "body": cls._clean_text(raw.get("body"), limit=280),
             "cta": cls._clean_text(raw.get("cta"), limit=60, fallback="Открыть"),
@@ -111,14 +125,17 @@ class DiscoveryService:
                 CmsDocumentVersion.document_id == document.id,
                 CmsDocumentVersion.status == "published",
             )
-            .order_by(CmsDocumentVersion.published_at.desc().nullslast(), CmsDocumentVersion.version.desc())
+            .order_by(
+                CmsDocumentVersion.published_at.desc().nullslast(),
+                CmsDocumentVersion.version.desc(),
+            )
             .limit(1)
         )
         if version is None:
             return []
         try:
             payload = json.loads(version.body)
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError):
             return []
         return cls.normalize_slides(payload)
 
