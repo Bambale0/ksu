@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, ReferralReward
+from app.db.models import ReferralRelation, ReferralReward, WalletTransaction
 from app.db.payment_models import ReferralRewardReversal
 
 
@@ -74,6 +74,21 @@ class ReferralService:
         if first_relation is None:
             return
 
+        # Referral income is denominated in withdrawable ROX/RUB. For a real
+        # successful top-up the wallet payment transaction records exactly how many
+        # public ROX were purchased, independent of provider currency. Since
+        # 1 ROX = 1 RUB this is the correct reward basis for RUB, USD, EUR and crypto
+        # checkouts alike. Fall back to payment_amount only for legacy/direct callers.
+        wallet_tx = await session.get(WalletTransaction, source_transaction_id)
+        reward_basis = Decimal(payment_amount)
+        if (
+            wallet_tx is not None
+            and wallet_tx.user_id == source_user_id
+            and wallet_tx.kind == "payment"
+            and Decimal(wallet_tx.amount) > 0
+        ):
+            reward_basis = Decimal(wallet_tx.amount)
+
         await cls._create_reward(
             session,
             partner_user_id=first_relation.inviter_user_id,
@@ -81,7 +96,7 @@ class ReferralService:
             source_transaction_id=source_transaction_id,
             level=1,
             percent=settings.referral_first_percent,
-            payment_amount=payment_amount,
+            payment_amount=reward_basis,
         )
 
         second_relation = await session.get(
@@ -98,7 +113,7 @@ class ReferralService:
             source_transaction_id=source_transaction_id,
             level=2,
             percent=settings.referral_second_percent,
-            payment_amount=payment_amount,
+            payment_amount=reward_basis,
         )
 
     @staticmethod

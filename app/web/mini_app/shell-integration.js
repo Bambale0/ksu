@@ -144,6 +144,20 @@
     document.head.appendChild(script);
   }
 
+  function mountRoxyEconomy() {
+    if (!document.querySelector('link[href="/mini-app/roxy-economy.css"]')) {
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "/mini-app/roxy-economy.css";
+      document.head.appendChild(stylesheet);
+    }
+    if (document.querySelector('script[src="/mini-app/roxy-economy.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/roxy-economy.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
   mountOnboarding();
   mountPartnerCabinet();
   mountProfileTools();
@@ -153,6 +167,7 @@
   mountStudioShell();
   mountStudioWorkspace();
   mountRoxyBrand();
+  mountRoxyEconomy();
 
   if (!overlay || !createHome || !builder) return;
 

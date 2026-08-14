@@ -60,7 +60,8 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert outbox is not None
         assert outbox.status == "pending"
         assert wallet is not None
-        assert wallet.balance == Decimal("92.00")
+        assert generation.cost_rox == Decimal("80.00")
+        assert wallet.balance == Decimal("20.00")
 
         await GenerationOutboxService.mark_generation_terminal(
             session,

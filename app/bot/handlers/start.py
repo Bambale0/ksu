@@ -10,6 +10,7 @@ from app.bot.keyboards import back_menu, balance_menu, main_menu, onboarding_men
 from app.core.config import settings
 from app.db.models import User, Wallet
 from app.services.account_profile import AccountProfileService
+from app.services.credits import InternalCreditService
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
 from app.services.onboarding import OnboardingService
@@ -71,11 +72,22 @@ async def _validated_inviter(
     return author.telegram_id
 
 
+async def _rox_balances(session: AsyncSession, user_id) -> tuple[object, object]:  # type: ignore[no-untyped-def]
+    wallet = await session.get(Wallet, user_id)
+    referral = await ReferralService.stats(session, user_id)
+    bonus_rox = wallet.balance if wallet else 0
+    withdrawable_rox = InternalCreditService.credits_for(referral["available"])
+    return bonus_rox, withdrawable_rox
+
+
 async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
-    wallet = await session.get(Wallet, user.id)
-    balance = wallet.balance if wallet else 0
+    bonus_rox, withdrawable_rox = await _rox_balances(session, user.id)
     await message.answer(
-        f"Привет, {user.first_name}!\n\nБаланс: {balance} ROX\nВыбери действие:",
+        f"Привет, {user.first_name}!\n\n"
+        f"🟣 Бонусные ROX: {bonus_rox}\n"
+        f"🟢 Выводимые ROX: {withdrawable_rox}\n"
+        "1 ROX = 1 ₽\n\n"
+        "Выбери действие:",
         reply_markup=main_menu(),
     )
 
@@ -83,6 +95,19 @@ async def _send_main_menu(message: Message, user, session: AsyncSession) -> None
 async def _profile_text(session: AsyncSession, user) -> str:  # type: ignore[no-untyped-def]
     overview = await AccountProfileService.overview(session, user)
     return AccountProfileService.text(overview)
+
+
+async def _balance_text(session: AsyncSession, user_id) -> str:  # type: ignore[no-untyped-def]
+    bonus_rox, withdrawable_rox = await _rox_balances(session, user_id)
+    return (
+        "💎 Мои ROX\n\n"
+        f"🟣 Бонусные ROX: {bonus_rox}\n"
+        "Тратятся только внутри ROXY.\n\n"
+        f"🟢 Выводимые ROX: {withdrawable_rox}\n"
+        "Зарабатываются только с реальных пополнений по реферальной системе.\n\n"
+        f"1 ROX = {InternalCreditService.rub_per_credit()} ₽\n"
+        f"💰 Вывод от {InternalCreditService.credits_for(settings.partner_min_withdrawal_rub)} ROX."
+    )
 
 
 @router.message(CommandStart())
@@ -166,21 +191,16 @@ async def balance_command(message: Message, session: AsyncSession) -> None:
     if message.from_user is None:
         return
     user = await UserService.get_or_create(session, message.from_user)
-    wallet = await session.get(Wallet, user.id)
-    await message.answer(
-        f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
-        reply_markup=balance_menu(),
-    )
+    await message.answer(await _balance_text(session, user.id), reply_markup=balance_menu())
 
 
 @router.callback_query(F.data == "balance")
 async def balance_callback(callback: CallbackQuery, session: AsyncSession) -> None:
     user = await UserService.get_or_create(session, callback.from_user)
-    wallet = await session.get(Wallet, user.id)
     await callback.answer()
     if callback.message:
         await callback.message.answer(
-            f"💎 Баланс: {wallet.balance if wallet else 0} ROX",
+            await _balance_text(session, user.id),
             reply_markup=balance_menu(),
         )
 
@@ -199,14 +219,20 @@ async def profile_callback(callback: CallbackQuery, session: AsyncSession) -> No
 async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> None:
     user = await UserService.get_or_create(session, callback.from_user)
     stats = await ReferralService.stats(session, user.id)
+    withdrawable = InternalCreditService.credits_for(stats["available"])
+    minimum = InternalCreditService.credits_for(settings.partner_min_withdrawal_rub)
     await callback.answer()
     if callback.message:
         await callback.message.answer(
-            "🤝 Партнёрская программа\n"
-            f"1 линия: {stats['first_line']}\n"
-            f"2 линия: {stats['second_line']}\n"
-            f"Доступно: {stats['available']} ₽\n"
-            f"В ожидании: {stats['pending']} ₽\n\n"
+            "👥 Заработать ROX\n\n"
+            f"🎁 {settings.start_balance_rox} ROX — приветственный бонус\n"
+            f"👤 +{settings.invite_bonus_rox} ROX — за приглашённого друга\n"
+            f"🔁 +{settings.prompt_repeat_bonus_rox} ROX — за каждый повтор твоего промпта\n"
+            f"👥 {settings.referral_first_percent}% — 1-я линия с пополнений\n"
+            f"👥 {settings.referral_second_percent}% — 2-я линия с пополнений\n"
+            f"💰 от {minimum} ROX — вывод заработка\n\n"
+            f"🟢 Сейчас доступно к выводу: {withdrawable} ROX\n"
+            f"1 линия: {stats['first_line']} · 2 линия: {stats['second_line']}\n\n"
             f"Реферальная ссылка: https://t.me/{(await callback.bot.me()).username}?start=ref_{user.telegram_id}",
             reply_markup=back_menu(),
         )

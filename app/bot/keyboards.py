@@ -21,10 +21,10 @@ def _prompt_tool_url(mode: str) -> str:
 def _create_button() -> InlineKeyboardButton:
     if settings.public_base_url:
         return InlineKeyboardButton(
-            text="✨ Создать контент",
+            text="✨ Создать",
             web_app=WebAppInfo(url=_mini_app_url()),
         )
-    return InlineKeyboardButton(text="✨ Создать контент", callback_data="create")
+    return InlineKeyboardButton(text="✨ Создать", callback_data="create")
 
 
 def _batch_button() -> InlineKeyboardButton:
@@ -84,20 +84,13 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
+    """The public ROXY menu intentionally mirrors the approved five-item reference."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_create_button()],
-            [_batch_button()],
-            [
-                InlineKeyboardButton(text="🧠 AI-инструменты", callback_data="prompt-tools:open"),
-                InlineKeyboardButton(text="🔥 Тренды", callback_data="trends:open"),
-            ],
-            [InlineKeyboardButton(text="🌐 Лента", callback_data="feed:open")],
-            [
-                InlineKeyboardButton(text="💎 Баланс", callback_data="balance"),
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
-            ],
-            [InlineKeyboardButton(text="🤝 Партнёрская программа", callback_data="referrals")],
-            [InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")],
+            [InlineKeyboardButton(text="🔁 Промпты", callback_data="feed:open")],
+            [InlineKeyboardButton(text="💎 Мои ROX", callback_data="balance")],
+            [InlineKeyboardButton(text="👥 Заработать", callback_data="referrals")],
+            [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")],
         ]
     )

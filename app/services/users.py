@@ -56,5 +56,15 @@ class UserService:
                 session.add(
                     ReferralRelation(referred_user_id=user.id, inviter_user_id=inviter.id)
                 )
+                if settings.invite_bonus_rox > Decimal("0"):
+                    await WalletService.credit(
+                        session,
+                        user_id=inviter.id,
+                        amount=settings.invite_bonus_rox,
+                        kind="referral_invite_bonus",
+                        reference_type="referral_user",
+                        reference_id=str(user.id),
+                        idempotency_key=f"invite-bonus:{user.id}",
+                    )
 
         return user

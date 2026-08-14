@@ -28,11 +28,15 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    start_balance_rox: Decimal = Decimal("0")
-    internal_credit_rub: Decimal = Decimal("10")
+    # ROXY economy: 1 ROX = 1 RUB. Internal ROX are spend-only; partner ROX
+    # are backed by real paid referrals and are the only withdrawable balance.
+    start_balance_rox: Decimal = Decimal("50")
+    invite_bonus_rox: Decimal = Decimal("30")
+    prompt_repeat_bonus_rox: Decimal = Decimal("5")
+    internal_credit_rub: Decimal = Decimal("1")
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
-    partner_min_withdrawal_rub: Decimal = Decimal("0")
+    partner_min_withdrawal_rub: Decimal = Decimal("3000")
     rox_packages_json: str = "{}"
     generation_pricing_json: str = "{}"
 

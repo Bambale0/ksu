@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -108,6 +109,31 @@ class GenerationProviderService:
         return generation
 
     @classmethod
+    async def _award_prompt_repeat_bonus(
+        cls,
+        session: AsyncSession,
+        generation: Generation,
+    ) -> None:
+        if (
+            generation.action_type != "remix"
+            or generation.source_feed_gen_id is None
+            or settings.prompt_repeat_bonus_rox <= Decimal("0")
+        ):
+            return
+        source = await session.get(Generation, generation.source_feed_gen_id)
+        if source is None or source.user_id == generation.user_id:
+            return
+        await WalletService.credit(
+            session,
+            user_id=source.user_id,
+            amount=settings.prompt_repeat_bonus_rox,
+            kind="prompt_repeat_bonus",
+            reference_type="generation",
+            reference_id=str(generation.id),
+            idempotency_key=f"prompt-repeat:{generation.id}",
+        )
+
+    @classmethod
     async def apply_kie_task(
         cls,
         session: AsyncSession,
@@ -124,8 +150,11 @@ class GenerationProviderService:
                 **generation.parameters,
                 "_result_urls": task.result_urls,
             }
-            # Generation terminal state and the durable media ingest rows commit together.
-            # The media worker can therefore recover without relying on a callback or Redis wake-up.
+            # Prompt-author rewards settle only after a successful paid repeat.
+            # This prevents failed/refunded provider attempts from minting bonus ROX.
+            await cls._award_prompt_repeat_bonus(session, generation)
+            # Generation terminal state, author reward, and durable media ingest rows
+            # commit together so retries cannot duplicate any of them.
             await MediaAssetService.enqueue_results(session, generation, task.result_urls)
             await session.commit()
             await GenerationOutboxService.mark_generation_terminal(

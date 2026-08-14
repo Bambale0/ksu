@@ -39,6 +39,13 @@ def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
 
+def _public_catalog_unit_price(model_id: str, value: Decimal | str | int | float) -> Decimal:
+    raw = Decimal(str(value))
+    if model_id in ModelCatalog._pricing_overrides():
+        return raw
+    return InternalCreditService.legacy_credits_to_rox(raw)
+
+
 def _model_view(generation: Generation) -> dict[str, str | None]:
     model_id = str((generation.parameters or {}).get("_model_id") or "")
     try:
@@ -160,8 +167,10 @@ async def generation_models() -> dict[str, object]:
         enriched = dict(item)
         unit_credits = enriched.get("price_rox")
         if unit_credits is not None:
+            unit_credits = _public_catalog_unit_price(str(enriched["id"]), unit_credits)
+            enriched["price_rox"] = _amount(unit_credits)
             enriched["price_credits"] = _amount(unit_credits)
-            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(str(unit_credits)))
+            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(unit_credits))
         enriched["ui_schema"] = build_public_model_ui_schema(enriched)
         models.append(enriched)
     return {

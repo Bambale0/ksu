@@ -74,6 +74,7 @@ jobs:
           node --check app/web/mini_app/studio-shell.js
           node --check app/web/mini_app/studio-workspace.js
           node --check app/web/mini_app/roxy-brand.js
+          node --check app/web/mini_app/roxy-economy.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
@@ -119,6 +120,13 @@ jobs:
 
       - name: ROXY brand contracts
         run: pytest -q tests/test_roxy_brand_contract.py
+
+      - name: ROXY economy contracts
+        run: >-
+          pytest -q
+          tests/test_roxy_economy.py
+          tests/test_internal_credits.py
+          tests/test_roxy_pricing_denomination.py
 
       - name: Payment surface contracts
         run: pytest -q tests/test_payment_surface_contract.py

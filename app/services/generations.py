@@ -1,6 +1,6 @@
 import logging
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from redis.asyncio import Redis
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.wallet import WalletService
@@ -101,11 +102,22 @@ class GenerationService:
             parameters=merged,
             billing_seconds=billing_seconds,
         )
-        return ModelCatalog.prepare(
+        spec, clean, cost_rox, seconds, unit_price = ModelCatalog.prepare(
             model_id,
             merged,
             billing_seconds=resolved_seconds,
         )
+
+        # Built-in catalog prices were authored when one internal credit represented
+        # 10 RUB. ROXY is 1 RUB, so redenominate only built-in defaults. Explicit
+        # GENERATION_PRICING_JSON overrides are already operator-owned public ROX.
+        if model_id not in ModelCatalog._pricing_overrides():
+            unit_price = InternalCreditService.legacy_credits_to_rox(unit_price)
+            multiplier = Decimal(seconds) if seconds is not None else Decimal("1")
+            cost_rox = (unit_price * multiplier).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        return spec, clean, cost_rox, seconds, unit_price
 
     @classmethod
     async def create(
