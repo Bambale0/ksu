@@ -32,6 +32,10 @@
       css: "/mini-app/roxy-discovery.css",
       js: "/mini-app/roxy-discovery.js",
     });
+    mountLayer({
+      css: "/mini-app/roxy-create-center.css",
+      js: "/mini-app/roxy-create-center.js",
+    });
   }
 
   function setTelegramChrome() {
