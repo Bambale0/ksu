@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -75,8 +76,8 @@ def _scale_tariff_prompt_costs(factor: Decimal) -> None:
         if payload == row["payload"]:
             continue
         bind.execute(
-            sa.text("UPDATE tariff_versions SET payload = :payload WHERE id = :id"),
-            {"payload": payload, "id": row["id"]},
+            sa.text("UPDATE tariff_versions SET payload = CAST(:payload AS JSON) WHERE id = :id"),
+            {"payload": json.dumps(payload, ensure_ascii=False), "id": row["id"]},
         )
 
 
