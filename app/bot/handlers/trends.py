@@ -16,6 +16,7 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.keyboards import BACK_TEXT, back_menu
 from app.core.config import settings
 from app.services.trends import TrendService
 from app.services.users import UserService
@@ -72,7 +73,7 @@ def _keyboard(card: dict[str, object], index: int, total: int) -> InlineKeyboard
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="nav:main")])
+    rows.append([InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -131,7 +132,7 @@ async def _open(message: Message, session: AsyncSession) -> None:
     await UserService.get_or_create(session, message.from_user)
     cards = await _cards(session)
     if not cards:
-        await message.answer("🔥 Тренды пока не опубликованы.")
+        await message.answer("🔥 Тренды пока не опубликованы.", reply_markup=back_menu())
         return
     await _send_card(message, cards[0], 0, len(cards))
 
@@ -150,7 +151,7 @@ async def trends_open(callback: CallbackQuery, session: AsyncSession) -> None:
     if not isinstance(callback.message, Message):
         return
     if not cards:
-        await callback.message.answer("🔥 Тренды пока не опубликованы.")
+        await callback.message.answer("🔥 Тренды пока не опубликованы.", reply_markup=back_menu())
         return
     await _send_card(callback.message, cards[0], 0, len(cards))
 
