@@ -150,6 +150,9 @@ class CardPaymentService:
         amount = package.prices.get(currency)
         if amount is None:
             raise UnknownPaymentPackageError(f"{package_id}:{currency}")
+        # Validate the operator-owned package before committing a local payment intent.
+        # This avoids creation_unknown rows for prices the upstream API will always reject.
+        CardCheckoutClient.validate_amount(currency, amount)
 
         existing_request = await session.scalar(
             select(PaymentRequest).where(
@@ -380,7 +383,11 @@ class CardPaymentService:
             # itself refunded but omits the cumulative amount, keep it in manual review
             # instead of guessing how many credits to debit.
             payment.status = "refund_review"
-            payment.payload = {**payment.payload, "refund_review": True, "last_provider_state": invoice}
+            payment.payload = {
+                **payment.payload,
+                "refund_review": True,
+                "last_provider_state": invoice,
+            }
             await session.commit()
         return payment
 
