@@ -26,7 +26,7 @@ async def _funded_user(session) -> User:  # type: ignore[no-untyped-def]
     await WalletService.credit(
         session,
         user_id=user.id,
-        amount=Decimal("100"),
+        amount=Decimal("1000"),
         kind="test_seed",
         reference_type="test",
         reference_id=str(user.id),
