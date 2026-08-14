@@ -119,12 +119,16 @@
   }
 
   function mountRoxyBrand() {
-    if (!document.querySelector('link[href="/mini-app/roxy-brand.css"]')) {
-      const stylesheet = document.createElement("link");
+    let stylesheet = document.querySelector('link[href="/mini-app/roxy-brand.css"]');
+    if (!stylesheet) {
+      stylesheet = document.createElement("link");
       stylesheet.rel = "stylesheet";
       stylesheet.href = "/mini-app/roxy-brand.css";
-      document.head.appendChild(stylesheet);
     }
+    // Keep first-paint branding from index.html, but move the same stylesheet
+    // after all dynamically mounted product CSS so brand overrides win the cascade.
+    document.head.appendChild(stylesheet);
+
     if (document.querySelector('script[src="/mini-app/roxy-brand.js"]')) return;
     const script = document.createElement("script");
     script.src = "/mini-app/roxy-brand.js";
