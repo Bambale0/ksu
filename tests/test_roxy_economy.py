@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 from aiogram.types import User as TelegramUser
+from sqlalchemy import select
 
 from app.api.v1.referrals import stats
 from app.core.config import settings
@@ -45,12 +46,13 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
         kinds = set(
             (
                 await session.scalars(
-                    WalletTransaction.__table__.select()
-                    .where(WalletTransaction.user_id.in_([friend.id, inviter.id]))
+                    select(WalletTransaction.kind).where(
+                        WalletTransaction.user_id.in_([friend.id, inviter.id])
+                    )
                 )
             ).all()
         )
-        assert kinds
+        assert {"welcome_bonus", "referral_invite_bonus"}.issubset(kinds)
 
 
 @pytest.mark.asyncio
