@@ -1,3 +1,4 @@
+import random
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "app" / "web" / "mini_app"
 
 
+def _telegram_id() -> int:
+    return random.randint(9_700_000_000_000_000, 9_799_999_999_999_999)
+
+
 @pytest.mark.asyncio
 async def test_registration_and_invite_create_spend_only_rox_bonuses(
     monkeypatch: pytest.MonkeyPatch,
@@ -22,13 +27,14 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
     monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
     monkeypatch.setattr(settings, "invite_bonus_rox", Decimal("30"))
     async with SessionFactory() as session:
-        inviter = User(telegram_id=930000000000001, first_name="Inviter")
+        inviter = User(telegram_id=_telegram_id(), first_name="Inviter")
+        friend_telegram_id = _telegram_id()
         session.add(inviter)
         await session.flush()
         await UserService.get_or_create(
             session,
             TelegramUser(
-                id=930000000000002,
+                id=friend_telegram_id,
                 is_bot=False,
                 first_name="Friend",
             ),
@@ -36,7 +42,7 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
         )
         await session.commit()
 
-        friend = await UserService.get_by_telegram_id(session, 930000000000002)
+        friend = await UserService.get_by_telegram_id(session, friend_telegram_id)
         assert friend is not None
         friend_wallet = await session.get(Wallet, friend.id)
         inviter_wallet = await session.get(Wallet, inviter.id)
@@ -58,7 +64,7 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
 @pytest.mark.asyncio
 async def test_stats_expose_reference_economy_contract() -> None:
     async with SessionFactory() as session:
-        user = User(telegram_id=930000000000003, first_name="Economy")
+        user = User(telegram_id=_telegram_id(), first_name="Economy")
         session.add(user)
         await session.flush()
         session.add(Wallet(user_id=user.id, balance=Decimal("280")))
