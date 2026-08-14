@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
@@ -26,6 +27,28 @@ class ImageAnalysisRequest(BaseModel):
 class PromptBuilderRequest(BaseModel):
     text: str = Field(default="", max_length=8000)
     image_url: str | None = Field(default=None, max_length=4000)
+    purpose: Literal["general", "image", "video"] = "general"
+
+
+_PURPOSE_CONTEXT = {
+    "image": (
+        "Сформируй production-ready промпт именно для генерации статичного изображения. "
+        "Сделай явными композицию, оптику/ракурс, свет, материалы, палитру и визуальный стиль."
+    ),
+    "video": (
+        "Сформируй production-ready промпт именно для генерации видео. "
+        "Опиши действие по времени, движение камеры и объектов, динамику сцены, свет, "
+        "непрерывность кадров и финальное состояние; не выдумывай длительность, если её нет во входе."
+    ),
+}
+
+
+def _prompt_builder_payload(payload: PromptBuilderRequest) -> dict[str, str | None]:
+    text = payload.text.strip()
+    context = _PURPOSE_CONTEXT.get(payload.purpose)
+    if context:
+        text = f"{context}\n\nИдея пользователя: {text}" if text else context
+    return {"text": text, "image_url": payload.image_url}
 
 
 def _domain_error(exc: Exception) -> HTTPException:
@@ -94,7 +117,7 @@ async def create_prompt_builder(
             redis,
             user_id=user.id,
             tool="prompt_builder",
-            payload=payload.model_dump(),
+            payload=_prompt_builder_payload(payload),
             idempotency_key=idempotency_key,
         )
         return PromptToolService.public_view(task, replayed=replayed)

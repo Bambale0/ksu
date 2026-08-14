@@ -25,6 +25,7 @@
     startupApplied: false,
     observer: null,
     catalogAttempt: 0,
+    createAttempt: 0,
   };
 
   function requestedRoute() {
@@ -64,6 +65,22 @@
     window.KsuStudioShell?.open?.("feed");
   }
 
+  function openCreateWhenReady() {
+    if (state.active !== "create") return;
+    if (window.RoxyCreateCenter?.open) {
+      state.createAttempt = 0;
+      window.RoxyCreateCenter.open();
+      return;
+    }
+    state.createAttempt += 1;
+    if (state.createAttempt <= 40) {
+      window.setTimeout(openCreateWhenReady, 50);
+      return;
+    }
+    state.createAttempt = 0;
+    window.KsuStudioShell?.open?.("create");
+  }
+
   function open(route, { feedback = true } = {}) {
     if (!OPEN_ROUTES.includes(route)) return;
     state.active = primaryRouteFor(route);
@@ -71,12 +88,20 @@
     if (feedback) haptic(route === "create" ? "medium" : "light");
 
     if (route === "catalog") {
+      window.RoxyCreateCenter?.close?.();
       state.catalogAttempt = 0;
       openCatalogWhenReady();
       return;
     }
+    if (route === "create") {
+      window.RoxyDiscovery?.closeCatalog?.();
+      state.createAttempt = 0;
+      openCreateWhenReady();
+      return;
+    }
 
     window.RoxyDiscovery?.closeCatalog?.();
+    window.RoxyCreateCenter?.close?.();
     const target = shellRouteFor(route);
     if (window.KsuStudioShell?.open) {
       window.KsuStudioShell.open(target);
@@ -122,6 +147,7 @@
 
   function inferredRoute() {
     if (document.body?.classList.contains("roxy-discovery-catalog-open")) return "catalog";
+    if (document.body?.classList.contains("roxy-create-center-open")) return "create";
     const shellRoute = window.KsuStudioShell?.route;
     if (shellRoute === "feed") return "catalog";
     if (shellRoute === "wallet") return "profile";
