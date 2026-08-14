@@ -1,0 +1,39 @@
+.roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create {
+  position: relative;
+  color: var(--roxy-text, var(--text));
+}
+
+.roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create .studio-nav-icon {
+  width: 44px;
+  height: 44px;
+  margin-top: -20px;
+  border: 1px solid color-mix(in srgb, var(--roxy-pink, #ff73ca) 45%, transparent);
+  border-radius: 16px;
+  background: var(--roxy-gradient, linear-gradient(135deg, #8f6bff, #b86cff 52%, #ff73ca));
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  box-shadow:
+    0 10px 28px color-mix(in srgb, var(--roxy-violet, #8f6bff) 38%, transparent),
+    0 0 24px color-mix(in srgb, var(--roxy-pink, #ff73ca) 24%, transparent);
+}
+
+.roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create.is-active {
+  background: transparent;
+  color: var(--roxy-pink, var(--button));
+}
+
+.roxy-customer-navigation-ready .studio-bottom-nav .roxy-customer-nav-item:not(.roxy-central-create).is-active,
+.roxy-customer-navigation-ready #studioSidebar .roxy-customer-nav-item.is-active {
+  color: var(--roxy-pink, var(--button));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create .studio-nav-icon {
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+
+  .roxy-customer-navigation-ready .studio-bottom-nav .roxy-central-create:active .studio-nav-icon {
+    transform: translateY(1px) scale(.96);
+  }
+}
