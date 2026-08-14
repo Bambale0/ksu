@@ -122,7 +122,11 @@ jobs:
         run: pytest -q tests/test_roxy_brand_contract.py
 
       - name: ROXY economy contracts
-        run: pytest -q tests/test_roxy_economy.py tests/test_internal_credits.py
+        run: >-
+          pytest -q
+          tests/test_roxy_economy.py
+          tests/test_internal_credits.py
+          tests/test_roxy_pricing_denomination.py
 
       - name: Payment surface contracts
         run: pytest -q tests/test_payment_surface_contract.py
