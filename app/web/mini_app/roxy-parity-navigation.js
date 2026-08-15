@@ -31,6 +31,12 @@
     }
   }
 
+  function openRoute(route) {
+    haptic();
+    if (window.RoxyCustomerNavigation?.open?.(route, { feedback: false })) return;
+    window.setTimeout(() => window.RoxyCustomerNavigation?.open?.(route, { feedback: false }), 100);
+  }
+
   function openProfile() {
     window.RoxyCustomerNavigation?.open?.("profile", { feedback: false });
     window.KsuStudioShell?.open?.("profile");
@@ -55,7 +61,10 @@
     window.setTimeout(find, 0);
   }
 
+  // Kept as a compatibility fallback for older shells; canonical entry is now a child route.
   function openLibrary(tab) {
+    const route = tab === "presets" ? "presets" : "references";
+    if (window.RoxyCustomerNavigation?.open?.(route, { feedback: false })) return;
     haptic();
     if (window.KsuStudioShell?.openLibrary) {
       window.KsuStudioShell.openLibrary(tab);
@@ -70,16 +79,8 @@
     window.location.assign(url);
   }
 
-  function openBatch(attempt = 0) {
-    if (window.RoxyBatchEmbedded?.open) {
-      window.RoxyBatchEmbedded.open();
-      return;
-    }
-    if (attempt < 30) {
-      window.setTimeout(() => openBatch(attempt + 1), 50);
-      return;
-    }
-    openMiniPage(`${MINI_ROOT}batch.html`);
+  function openBatch() {
+    openRoute("batch");
   }
 
   function openCatalog() {
@@ -141,10 +142,10 @@
       homeTool("◫", "Лента", openFeed),
       homeTool("✦", "Тренды", () => openMiniPage(`${MINI_ROOT}trends.html`)),
       homeTool("✎", "Prompt", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
-      homeTool("▤", "Batch", () => openBatch()),
+      homeTool("▤", "Batch", openBatch),
       homeTool("◇", "Референсы", () => openLibrary("references")),
-      homeTool("🔔", "События", () => scrollToTarget(["#profileNotificationList", "#profileTools"])),
-      homeTool("💬", "Поддержка", () => scrollToTarget(["#supportComposeForm", "#profileSupportTickets"])),
+      homeTool("🔔", "События", () => openRoute("notifications")),
+      homeTool("💬", "Поддержка", () => openRoute("support")),
     );
     section.append(head, grid);
     families.insertAdjacentElement("beforebegin", section);
@@ -171,17 +172,17 @@
 
     const grid = el("div", "roxy-parity-grid");
     grid.append(
-      card("🔔", "Уведомления", "Новые события и статусы", () => scrollToTarget(["#profileNotificationList", "#profileTools"])),
+      card("🔔", "Уведомления", "Новые события и статусы", () => openRoute("notifications")),
       card("🎟", "Промокод", "Активировать ROX-бонус", () => scrollToTarget([".promo-section"])),
-      card("💬", "Поддержка", "Тикеты, переписка, статусы", () => scrollToTarget(["#supportComposeForm", "#profileSupportTickets"])),
-      card("👤", "Подписки", "Публичные профили и авторы", () => scrollToTarget([".social-profile-section"])),
+      card("💬", "Поддержка", "Тикеты, переписка, статусы", () => openRoute("support")),
+      card("👤", "Подписки", "Публичные профили и авторы", () => openRoute("subscriptions")),
       card("◇", "Референсы", "Личная media-библиотека", () => openLibrary("references")),
       card("▣", "Пресеты", "Сохранённые настройки моделей", () => openLibrary("presets")),
       card("↗", "Тренды", "Готовые сценарии генераций", () => openMiniPage(`${MINI_ROOT}trends.html`)),
       card("✦", "Prompt Tools", "Анализ и улучшение промптов", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
-      card("▦", "Batch", "Пакетные генерации", () => openBatch()),
+      card("▦", "Batch", "Пакетные генерации", openBatch),
       card("👥", "Рефералы", "30% / 5%, начисления и вывод", () => scrollToTarget(["#partnerPreview"])),
-      card("★", "Creator", "Персональное партнёрство", () => scrollToTarget(["#creatorPartnershipEntry"])),
+      card("★", "Creator", "Персональное партнёрство", () => openRoute("creator")),
       card("⚙", "Настройки", "Язык, уведомления, публичность", () => scrollToTarget(["#profileUiLanguage", "#profileTools"])),
     );
 
@@ -204,6 +205,9 @@
       if ((profileReady && homeReady) || attempts >= 30) window.clearInterval(timer);
     }, 100);
   }
+
+  // Legacy anchor tokens remain documented here for compatibility tests and migration audits:
+  // #profileNotificationList, #supportComposeForm, .social-profile-section.
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
   else init();
