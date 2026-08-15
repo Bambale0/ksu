@@ -2,7 +2,16 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  const state = { stats: null, loading: false, activeMenu: "create", observer: null };
+  const state = {
+    stats: null,
+    loading: false,
+    activeMenu: "create",
+    contentObserver: null,
+    routeObserver: null,
+    contentRoots: new Set(),
+    routeRoots: new Set(),
+    frame: 0,
+  };
 
   function ensureStyles() {
     if (document.querySelector('link[href="/mini-app/roxy-economy.css"]')) return;
@@ -43,6 +52,11 @@
   }
 
   function openStudio(route) {
+    const customerRoute = route === "feed" ? "catalog" : route;
+    if (window.RoxyCustomerNavigation?.open) {
+      window.RoxyCustomerNavigation.open(customerRoute);
+      return;
+    }
     window.KsuStudioShell?.open?.(route);
   }
 
@@ -62,6 +76,8 @@
     window.setTimeout(scroll, 50);
   }
 
+  // Legacy menu vocabulary is kept only for compatibility with old contracts.
+  // RoxyCustomerNavigation is the sole owner of visible primary menus.
   const MENU = [
     ["create", "✨", "Создать", () => openStudio("create")],
     ["prompts", "🔁", "Промпты", () => openStudio("feed")],
@@ -69,23 +85,7 @@
     ["earn", "👥", "Заработать", scrollToPartner],
     ["profile", "👤", "Профиль", () => openStudio("profile")],
   ];
-
-  function menuButton([key, glyph, label, handler]) {
-    const button = el("button", "studio-nav-item roxy-menu-item");
-    button.type = "button";
-    button.dataset.roxyMenu = key;
-    const icon = el("span", "studio-nav-icon", glyph);
-    icon.setAttribute("aria-hidden", "true");
-    button.append(icon, el("span", "", label));
-    button.addEventListener("click", () => {
-      state.activeMenu = key;
-      syncMenuActive();
-      try { tg?.HapticFeedback?.impactOccurred?.("light"); } catch (_error) { /* optional */ }
-      handler();
-      if (key === "rox") window.setTimeout(loadStats, 0);
-    });
-    return button;
-  }
+  void MENU;
 
   function syncMenuActive() {
     document.querySelectorAll("[data-roxy-menu]").forEach((button) => {
@@ -94,22 +94,6 @@
       if (active) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
     });
-  }
-
-  function mountMenus() {
-    const bottom = document.getElementById("studioBottomNav");
-    if (bottom && bottom.dataset.roxyEconomy !== "true") {
-      bottom.dataset.roxyEconomy = "true";
-      bottom.replaceChildren(...MENU.map(menuButton));
-    }
-    const sidebar = document.querySelector("#studioSidebar .studio-sidebar-nav:not(.studio-sidebar-secondary)");
-    if (sidebar && sidebar.dataset.roxyEconomy !== "true") {
-      sidebar.dataset.roxyEconomy = "true";
-      sidebar.replaceChildren(...MENU.map(menuButton));
-      const label = sidebar.previousElementSibling;
-      if (label?.classList.contains("studio-nav-label")) label.textContent = "Главное меню";
-    }
-    syncMenuActive();
   }
 
   function ruleRow(icon, label, amount, withdrawable) {
@@ -259,7 +243,7 @@
       state.stats = await api("/api/v1/referrals/stats");
       renderStats(state.stats);
     } catch (_error) {
-      // The existing wallet/partner views remain usable if this enhancement fails.
+      // Existing wallet/partner views remain usable if this enhancement fails.
     } finally {
       state.loading = false;
     }
@@ -278,26 +262,77 @@
   }
 
   function apply() {
+    state.frame = 0;
     ensureStyles();
-    mountMenus();
     ensureWalletEconomy();
     rewritePartnerCurrency();
     rewriteWalletCreditCopy();
     syncVisibleRoute();
     const wallet = document.getElementById("walletView");
     if (wallet && !wallet.hidden) void loadStats();
+    attachScopedObservers();
+  }
+
+  function scheduleApply() {
+    if (state.frame) return;
+    state.frame = window.requestAnimationFrame(apply);
+  }
+
+  function ensureObservers() {
+    if (!state.contentObserver) {
+      state.contentObserver = new MutationObserver(scheduleApply);
+    }
+    if (!state.routeObserver) {
+      state.routeObserver = new MutationObserver(scheduleApply);
+    }
+  }
+
+  function attachScopedObservers() {
+    ensureObservers();
+    for (const root of [
+      document.getElementById("walletView"),
+      document.getElementById("partnerPreview"),
+    ]) {
+      if (!root || state.contentRoots.has(root)) continue;
+      state.contentRoots.add(root);
+      state.contentObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+    for (const root of [
+      document.getElementById("walletView"),
+      document.getElementById("profileView"),
+      document.getElementById("builderView"),
+      document.getElementById("feedOverlay"),
+    ]) {
+      if (!root || state.routeRoots.has(root)) continue;
+      state.routeRoots.add(root);
+      state.routeObserver.observe(root, {
+        attributes: true,
+        attributeFilter: ["hidden"],
+      });
+    }
   }
 
   function init() {
     apply();
-    if (state.observer || !document.body) return;
-    state.observer = new MutationObserver(() => window.requestAnimationFrame(apply));
-    state.observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+    for (const delay of [80, 240, 700]) {
+      window.setTimeout(() => {
+        attachScopedObservers();
+        scheduleApply();
+      }, delay);
+    }
     tg?.onEvent?.("activated", () => {
       void loadStats();
-      apply();
+      scheduleApply();
     });
     window.addEventListener("online", () => void loadStats());
+    window.addEventListener("roxy:route-changed", (event) => {
+      if (event.detail?.route === "wallet") void loadStats();
+      scheduleApply();
+    });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
