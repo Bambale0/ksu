@@ -268,8 +268,6 @@
     rewritePartnerCurrency();
     rewriteWalletCreditCopy();
     syncVisibleRoute();
-    const wallet = document.getElementById("walletView");
-    if (wallet && !wallet.hidden) void loadStats();
     attachScopedObservers();
   }
 
@@ -278,12 +276,19 @@
     state.frame = window.requestAnimationFrame(apply);
   }
 
+  function routeMutation(mutations) {
+    scheduleApply();
+    if (mutations.some((mutation) => mutation.target?.id === "walletView" && !mutation.target.hidden)) {
+      void loadStats();
+    }
+  }
+
   function ensureObservers() {
     if (!state.contentObserver) {
       state.contentObserver = new MutationObserver(scheduleApply);
     }
     if (!state.routeObserver) {
-      state.routeObserver = new MutationObserver(scheduleApply);
+      state.routeObserver = new MutationObserver(routeMutation);
     }
   }
 
@@ -318,6 +323,8 @@
 
   function init() {
     apply();
+    const wallet = document.getElementById("walletView");
+    if (wallet && !wallet.hidden) void loadStats();
     for (const delay of [80, 240, 700]) {
       window.setTimeout(() => {
         attachScopedObservers();
