@@ -31,6 +31,7 @@
     mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
     mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });
     mountLayer({ css: "/mini-app/roxy-history-management.css", js: "/mini-app/roxy-history-management.js" });
+    mountLayer({ js: "/mini-app/roxy-preset-editor.js" });
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
     mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });
     mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
