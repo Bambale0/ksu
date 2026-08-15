@@ -124,7 +124,7 @@
       copyText(referralText());
       return;
     }
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Присоединяйся к Ксю AI Studio")}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Присоединяйся к ROXY · AI Creative Studio")}`;
     if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
     else window.open(shareUrl, "_blank", "noopener,noreferrer");
   }
