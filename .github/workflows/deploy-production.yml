@@ -152,8 +152,10 @@ jobs:
           [[ -n "${DEPLOY_KNOWN_HOSTS}" ]] || missing+=(DEPLOY_KNOWN_HOSTS)
 
           if (( ${#missing[@]} )); then
-            printf 'Missing required GitHub Actions secrets: %s\n' "${missing[*]}" >&2
-            exit 1
+            printf '::warning::Production deploy is not activated yet. Missing Actions secrets: %s\n' "${missing[*]}"
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "port=22" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
 
           port="${DEPLOY_PORT:-22}"
@@ -162,10 +164,11 @@ jobs:
             exit 1
           fi
 
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
           echo "port=${port}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure SSH
-        if: steps.target.outputs.superseded != 'true'
+        if: steps.target.outputs.superseded != 'true' && steps.ssh.outputs.configured == 'true'
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
@@ -178,7 +181,7 @@ jobs:
           chmod 600 "${HOME}/.ssh/ksu_deploy" "${HOME}/.ssh/known_hosts"
 
       - name: Deploy exact main commit
-        if: steps.target.outputs.superseded != 'true'
+        if: steps.target.outputs.superseded != 'true' && steps.ssh.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -288,6 +291,7 @@ jobs:
         env:
           DEPLOY_SHA: ${{ steps.target.outputs.sha }}
           SUPERSEDED: ${{ steps.target.outputs.superseded }}
+          CONFIGURED: ${{ steps.ssh.outputs.configured }}
         shell: bash
         run: |
           {
@@ -295,5 +299,6 @@ jobs:
             echo
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
+            echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
