@@ -10,7 +10,7 @@
     model: document.getElementById("batchModel"), prompt: document.getElementById("batchPrompt"), fields: document.getElementById("batchFields"), quote: document.getElementById("batchQuote"),
     message: document.getElementById("batchMessage"), start: document.getElementById("batchStart"), progress: document.getElementById("batchProgress"),
   };
-  const state = { models: [], model: null, uploads: [], values: {}, billingSeconds: null, quote: null, quoteTimer: null, requestKey: "", pollToken: 0 };
+  const state = { models: [], model: null, uploads: [], values: {}, billingSeconds: null, quote: null, quoteTimer: null, requestKey: "", pollToken: 0, currentBatchId: null };
 
   function node(tag, className = "", text = "") { const element = document.createElement(tag); if (className) element.className = className; if (text) element.textContent = text; return element; }
   function clear(element) { while (element.firstChild) element.removeChild(element.firstChild); }
@@ -82,13 +82,40 @@
       renderProgress(batch); setMessage(`Повтор запущен: ${batch.retried_count} задач.`); await pollBatch(batch.id);
     } catch (error) { setMessage(error.message || "Не удалось повторить ошибки", true); }
   }
+
+  async function hideBatchHistory(batchId, action) {
+    if (!batchId || action.disabled) return;
+    const ok = window.confirm("Убрать этот пакет из истории? Генерации и списания не удаляются.");
+    if (!ok) return;
+    action.disabled = true;
+    try {
+      await api(`/api/v1/batch-generations/${encodeURIComponent(batchId)}/history`, { method: "DELETE" });
+      state.pollToken += 1;
+      state.currentBatchId = null;
+      dom.progress.hidden = true;
+      clear(dom.progress);
+      setMessage("Пакет убран из истории.");
+      tg?.HapticFeedback?.notificationOccurred?.("success");
+    } catch (error) {
+      action.disabled = false;
+      setMessage(error.message || "Не удалось убрать пакет из истории", true);
+      tg?.HapticFeedback?.notificationOccurred?.("error");
+    }
+  }
+
   function renderProgress(batch) {
+    state.currentBatchId = batch.id;
     dom.progress.hidden = false; clear(dom.progress);
     const head = node("div", "batch-progress-head"); head.append(node("h2", "", `Пакет · ${batch.progress_percent}%`), node("span", "", `${batch.succeeded_count}/${batch.input_count}`)); dom.progress.appendChild(head);
     const bar = node("div", "batch-progress-bar"); const fill = node("span"); fill.style.width = `${batch.progress_percent}%`; bar.appendChild(fill); dom.progress.appendChild(bar);
     const results = node("div", "batch-results");
     (batch.items || []).forEach((item) => { const row = node("div", "batch-result"); row.append(node("strong", "", String(item.ordinal + 1)), node("span", "", item.generation.status)); const action = node("a", "", item.generation.result_url ? "Открыть" : "—"); if (item.generation.result_url) { action.href = item.generation.result_url; action.target = "_blank"; action.rel = "noopener noreferrer"; } row.appendChild(action); results.appendChild(row); }); dom.progress.appendChild(results);
-    if (batch.status !== "running" && batch.failed_count > 0) { const retry = node("button", "upload-button batch-retry", `Повторить ошибки · ${batch.failed_count}`); retry.type = "button"; retry.addEventListener("click", () => retryFailed(batch.id)); dom.progress.appendChild(retry); }
+    if (batch.status !== "running") {
+      const actions = node("div", "batch-progress-actions");
+      if (batch.failed_count > 0) { const retry = node("button", "upload-button batch-retry", `Повторить ошибки · ${batch.failed_count}`); retry.type = "button"; retry.addEventListener("click", () => retryFailed(batch.id)); actions.appendChild(retry); }
+      const hide = node("button", "upload-button batch-history-hide", "Убрать из истории"); hide.type = "button"; hide.addEventListener("click", () => hideBatchHistory(batch.id, hide)); actions.appendChild(hide);
+      dom.progress.appendChild(actions);
+    }
   }
   async function pollBatch(batchId) {
     const token = ++state.pollToken;
