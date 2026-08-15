@@ -4,6 +4,7 @@
   const tg = window.Telegram?.WebApp ?? null;
   const MINI_ROOT = "/mini-app/";
   let mounted = false;
+  let homeMounted = false;
 
   function el(tag, className = "", text = "") {
     const node = document.createElement(tag);
@@ -81,6 +82,24 @@
     openMiniPage(`${MINI_ROOT}batch.html`);
   }
 
+  function openCatalog() {
+    haptic();
+    if (window.RoxyDiscovery?.openCatalog) {
+      window.RoxyDiscovery.openCatalog();
+      return;
+    }
+    window.setTimeout(() => window.RoxyDiscovery?.openCatalog?.(), 100);
+  }
+
+  function openFeed() {
+    haptic();
+    if (window.RoxyDiscovery?.openCommunityFeed) {
+      window.RoxyDiscovery.openCommunityFeed();
+      return;
+    }
+    window.KsuStudioShell?.open?.("feed");
+  }
+
   function card(glyph, title, note, handler) {
     const button = el("button", "roxy-parity-card");
     button.type = "button";
@@ -93,6 +112,45 @@
     copy.append(el("strong", "", title), el("small", "", note));
     button.addEventListener("click", handler);
     return button;
+  }
+
+  function homeTool(glyph, title, handler) {
+    const button = el("button", "roxy-home-tool");
+    button.type = "button";
+    button.append(el("span", "roxy-home-tool-glyph", glyph), el("strong", "", title));
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function mountHomeTools() {
+    if (homeMounted) return true;
+    const home = document.getElementById("createHome");
+    const families = home?.querySelector('.home-section[aria-labelledby="familiesHeading"]');
+    if (!home || !families) return false;
+
+    const section = el("section", "roxy-home-tools");
+    section.id = "roxyHomeTools";
+    const head = el("div", "roxy-home-tools-head");
+    const copy = el("div");
+    copy.append(el("span", "section-kicker", "Рабочее пространство"), el("h2", "", "Инструменты"));
+    head.appendChild(copy);
+
+    const grid = el("div", "roxy-home-tools-grid");
+    grid.append(
+      homeTool("▦", "Каталог", openCatalog),
+      homeTool("◫", "Лента", openFeed),
+      homeTool("✦", "Тренды", () => openMiniPage(`${MINI_ROOT}trends.html`)),
+      homeTool("✎", "Prompt", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
+      homeTool("▤", "Batch", () => openBatch()),
+      homeTool("◇", "Референсы", () => openLibrary("references")),
+      homeTool("🔔", "События", () => scrollToTarget(["#profileNotificationList", "#profileTools"])),
+      homeTool("💬", "Поддержка", () => scrollToTarget(["#supportComposeForm", "#profileSupportTickets"])),
+    );
+    section.append(head, grid);
+    families.insertAdjacentElement("beforebegin", section);
+    homeMounted = true;
+    document.body?.classList.add("roxy-home-tools-ready");
+    return true;
   }
 
   function mount() {
@@ -136,11 +194,14 @@
 
   function init() {
     mountBatchIntegration();
-    if (mount()) return;
+    mountHomeTools();
+    mount();
     let attempts = 0;
     const timer = window.setInterval(() => {
       attempts += 1;
-      if (mount() || attempts >= 30) window.clearInterval(timer);
+      const profileReady = mount();
+      const homeReady = mountHomeTools();
+      if ((profileReady && homeReady) || attempts >= 30) window.clearInterval(timer);
     }, 100);
   }
 
