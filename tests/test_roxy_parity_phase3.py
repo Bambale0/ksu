@@ -105,6 +105,20 @@ def test_child_screen_intercepts_legacy_standalone_links() -> None:
     assert "window.RoxyCustomerNavigation?.open?.(route)" in source
 
 
+def test_legacy_standalone_urls_forward_to_canonical_shell_routes() -> None:
+    redirect = _read("roxy-legacy-route-redirect.js")
+    assert 'params.set("route", route)' in redirect
+    assert 'window.location.replace(target)' in redirect
+    for file_name, route in (
+        ("trends.html", "trends"),
+        ("prompt-tools.html", "prompt-tools"),
+        ("batch.html", "batch"),
+    ):
+        html = _read(file_name)
+        assert '/mini-app/roxy-legacy-route-redirect.js' in html
+        assert f'data-roxy-route="{route}"' in html
+
+
 def test_child_screen_assets_are_mounted_before_customer_navigation() -> None:
     brand = _read("roxy-brand.js")
     css = _read("roxy-child-screens.css")
