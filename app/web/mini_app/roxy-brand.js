@@ -25,6 +25,7 @@
 
   function mountProductLayers() {
     mountLayer({ js: "/mini-app/roxy-generation-context.js" });
+    mountLayer({ css: "/mini-app/roxy-child-screens.css", js: "/mini-app/roxy-child-screens.js" });
     mountLayer({ css: "/mini-app/roxy-customer-navigation.css", js: "/mini-app/roxy-customer-navigation.js" });
     mountLayer({ css: "/mini-app/roxy-discovery.css", js: "/mini-app/roxy-discovery.js" });
     mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
