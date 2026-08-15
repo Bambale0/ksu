@@ -7,6 +7,23 @@
     frame: 0,
   };
 
+  function mountReferenceHomeLayer() {
+    const css = "/mini-app/roxy-reference-home.css";
+    const js = "/mini-app/roxy-reference-home.js";
+    if (!document.querySelector(`link[href="${css}"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = css;
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector(`script[src="${js}"]`)) {
+      const script = document.createElement("script");
+      script.src = js;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+  }
+
   function unreadValue() {
     const source = document.getElementById("profileUnreadBadge");
     if (!source || source.hidden) return 0;
@@ -66,6 +83,7 @@
   }
 
   function init() {
+    mountReferenceHomeLayer();
     let attempts = 0;
     const timer = window.setInterval(() => {
       attempts += 1;
