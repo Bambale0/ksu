@@ -47,6 +47,66 @@
       title: "Batch",
       batch: true,
     },
+    trends: {
+      parent: "catalog",
+      kicker: "Каталог",
+      title: "Тренды",
+      legacyApp: "trends",
+    },
+    "prompt-tools": {
+      parent: "catalog",
+      kicker: "AI-инструменты",
+      title: "Prompt Tools",
+      legacyApp: "prompt-tools",
+    },
+  });
+
+  const LEGACY_APPS = Object.freeze({
+    trends: {
+      rootId: "trendsApp",
+      css: "/mini-app/trends.css",
+      script: "/mini-app/trends.js",
+      build() {
+        const root = el("main");
+        root.id = "trendsApp";
+        const filters = el("div");
+        filters.id = "trendFilters";
+        const catalog = el("section");
+        catalog.id = "trendCatalog";
+        catalog.setAttribute("aria-live", "polite");
+        const runner = el("aside");
+        runner.id = "trendRunner";
+        runner.hidden = true;
+        runner.setAttribute("aria-live", "polite");
+        const result = el("section");
+        result.id = "trendResult";
+        result.hidden = true;
+        result.setAttribute("aria-live", "polite");
+        root.append(filters, catalog, runner, result);
+        return root;
+      },
+    },
+    "prompt-tools": {
+      rootId: "promptToolsApp",
+      css: "/mini-app/prompt-tools.css",
+      script: "/mini-app/prompt-tools.js",
+      build() {
+        const root = el("main");
+        root.id = "promptToolsApp";
+        const tabs = el("nav", "tool-tabs");
+        tabs.id = "toolTabs";
+        tabs.setAttribute("aria-label", "AI-инструменты");
+        const panel = el("section", "tool-panel");
+        panel.id = "toolPanel";
+        panel.setAttribute("aria-live", "polite");
+        const result = el("section", "tool-result");
+        result.id = "toolResult";
+        result.hidden = true;
+        result.setAttribute("aria-live", "polite");
+        root.append(tabs, panel, result);
+        return root;
+      },
+    },
   });
 
   const state = {
@@ -55,6 +115,7 @@
     target: null,
     placeholder: null,
     openToken: 0,
+    appRoots: new Map(),
   };
   const dom = {};
 
@@ -63,6 +124,22 @@
     if (className) node.className = className;
     if (text !== "") node.textContent = String(text);
     return node;
+  }
+
+  function ensureStylesheet(href) {
+    if (!href || document.querySelector(`link[href="${href}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  }
+
+  function ensureScript(src) {
+    if (!src || document.querySelector(`script[src="${src}"]`)) return;
+    const script = document.createElement("script");
+    script.src = src;
+    script.dataset.roxyChildRuntime = "true";
+    document.head.appendChild(script);
   }
 
   function mount() {
@@ -184,7 +261,28 @@
     run();
   }
 
+  function openLegacyApp(route, config) {
+    restoreMovedTarget();
+    const app = LEGACY_APPS[config.legacyApp];
+    if (!app) {
+      showState("Раздел не настроен.");
+      hideBaseViews();
+      return;
+    }
+    let root = state.appRoots.get(config.legacyApp);
+    const firstMount = !root;
+    if (!root) {
+      root = app.build();
+      state.appRoots.set(config.legacyApp, root);
+    }
+    dom.body.replaceChildren(root);
+    hideBaseViews();
+    ensureStylesheet(app.css);
+    if (firstMount) ensureScript(app.script);
+  }
+
   function closeSpecial(route) {
+    window.dispatchEvent(new CustomEvent("roxy:child-route-closing", { detail: { route } }));
     if (route === "batch") {
       window.RoxyBatchEmbedded?.close?.({ historyBack: false });
     }
@@ -213,6 +311,10 @@
       openBatch();
       return true;
     }
+    if (config.legacyApp) {
+      openLegacyApp(route, config);
+      return true;
+    }
 
     window.KsuStudioShell?.open?.(config.parent);
     window.setTimeout(() => openDomRoute(route, config, token), 0);
@@ -232,14 +334,32 @@
       dom.body.replaceChildren();
     }
     document.body?.classList.remove("roxy-child-screen-open");
-    delete document.body?.dataset.roxyChildRoute;
+    if (document.body) delete document.body.dataset.roxyChildRoute;
   }
 
   function parentFor(route) {
     return CONFIG[route]?.parent || null;
   }
 
+  function interceptLegacyLinks(event) {
+    const anchor = event.target.closest?.("a[href]");
+    if (!anchor) return;
+    let url;
+    try { url = new URL(anchor.href, window.location.href); } catch (_error) { return; }
+    const route = url.pathname.endsWith("/mini-app/trends.html")
+      ? "trends"
+      : url.pathname.endsWith("/mini-app/prompt-tools.html")
+        ? "prompt-tools"
+        : url.pathname.endsWith("/mini-app/batch.html")
+          ? "batch"
+          : null;
+    if (!route) return;
+    event.preventDefault();
+    window.RoxyCustomerNavigation?.open?.(route);
+  }
+
   function init() {
+    document.addEventListener("click", interceptLegacyLinks, true);
     if (mount()) return;
     let attempts = 0;
     const timer = window.setInterval(() => {
