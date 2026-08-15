@@ -174,3 +174,264 @@
   .roxy-brand-ready .feed-media-wrap,
   .roxy-brand-ready .feed-media-wrap.is-video { max-height: 156px; }
 }
+
+/* --------------------------------------------------------------------------
+   ROXY dashboard v2
+   The previous layer only reduced media. This section changes the actual home
+   hierarchy so mobile and FHD no longer look like a stretched landing page.
+   -------------------------------------------------------------------------- */
+
+.roxy-brand-ready #createHome {
+  gap: 12px;
+}
+
+/* Header is utility chrome, not another hero. */
+.roxy-brand-ready .product-header {
+  min-height: 64px;
+  padding-block: 8px;
+}
+.roxy-brand-ready .brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  font-size: 18px;
+}
+.roxy-brand-ready .brand-copy strong { font-size: 15px; }
+.roxy-brand-ready .brand-copy small { font-size: 8px; }
+.roxy-brand-ready .balance {
+  min-width: 96px;
+  padding: 8px 12px;
+  border-radius: 15px;
+}
+.roxy-brand-ready .balance-label { font-size: 9px; }
+.roxy-brand-ready .balance strong { font-size: 15px; }
+
+/* The duplicated home balance was the largest source of wasted vertical space. */
+.roxy-brand-ready #roxyHomeBalance,
+.roxy-brand-ready .roxy-home-balance {
+  display: none !important;
+}
+
+/* Compact command panel instead of billboard greeting. */
+.roxy-brand-ready #createHome > .hero-card {
+  min-height: 112px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  overflow: hidden;
+}
+.roxy-brand-ready #createHome > .hero-card .eyebrow {
+  margin-bottom: 5px;
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+.roxy-brand-ready #createHome > .hero-card .hero-copy h1 {
+  max-width: none;
+  margin: 0;
+  font-size: clamp(22px, 5.6vw, 30px);
+  line-height: .98;
+  letter-spacing: -.045em;
+}
+.roxy-brand-ready #createHome > .hero-card .hero-copy p {
+  max-width: 480px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.roxy-brand-ready #createHome > .hero-card .hero-orb {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  transform: rotate(7deg);
+}
+.roxy-brand-ready #createHome > .hero-card .hero-orb span {
+  font-size: 24px;
+}
+
+.roxy-brand-ready #roxyCreateCta,
+.roxy-brand-ready .roxy-create-cta {
+  width: auto;
+  min-height: 42px;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 14px;
+  justify-self: start;
+  font-size: 12px;
+  letter-spacing: .02em;
+}
+
+/* Main sections read as a workspace instead of stacked landing-page blocks. */
+.roxy-brand-ready #createHome > .home-section {
+  margin-top: 2px;
+}
+.roxy-brand-ready #createHome .home-section-head {
+  margin-bottom: 8px;
+}
+.roxy-brand-ready #createHome .home-section-head h2 {
+  font-size: 17px;
+  line-height: 1.1;
+}
+.roxy-brand-ready #createHome .home-section-head .section-kicker {
+  font-size: 8px;
+  letter-spacing: .1em;
+}
+.roxy-brand-ready #shellModelCount,
+.roxy-brand-ready #createHome .home-section-head .muted {
+  font-size: 9px;
+}
+
+.roxy-brand-ready #shellFamilyGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.roxy-brand-ready #shellFamilyGrid .shell-family-card {
+  min-height: 70px;
+  padding: 10px;
+  border-radius: 15px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  column-gap: 9px;
+  row-gap: 2px;
+  align-content: center;
+}
+.roxy-brand-ready #shellFamilyGrid .shell-family-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 15px;
+}
+.roxy-brand-ready #shellFamilyGrid .shell-family-card strong {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.roxy-brand-ready #shellFamilyGrid .shell-family-card small {
+  min-width: 0;
+  font-size: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roxy-brand-ready #recentGenerations {
+  gap: 7px;
+}
+.roxy-brand-ready #recentGenerations .shell-generation-card {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* Existing home discovery/actions are intentionally compact. */
+.roxy-brand-ready .studio-home-actions {
+  gap: 7px;
+}
+.roxy-brand-ready .studio-home-action {
+  min-height: 68px;
+  padding: 9px;
+  border-radius: 14px;
+}
+.roxy-brand-ready .studio-home-action-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.roxy-brand-ready .studio-home-action strong { font-size: 11px; }
+.roxy-brand-ready .studio-home-action small { font-size: 8px; line-height: 1.25; }
+
+/* Mobile: the first viewport must already show product choices, not just branding. */
+@media (max-width: 720px) {
+  .roxy-brand-ready .app-main { padding-top: 4px; }
+  .roxy-brand-ready #createHome { gap: 10px; }
+  .roxy-brand-ready #createHome > .hero-card {
+    min-height: 96px;
+    padding: 13px 14px;
+    border-radius: 17px;
+  }
+  .roxy-brand-ready #createHome > .hero-card .eyebrow { display: none; }
+  .roxy-brand-ready #createHome > .hero-card .hero-copy h1 {
+    font-size: 22px;
+    line-height: 1;
+  }
+  .roxy-brand-ready #createHome > .hero-card .hero-copy p {
+    margin-top: 6px;
+    font-size: 10px;
+  }
+  .roxy-brand-ready #createHome > .hero-card .hero-orb {
+    width: 46px;
+    height: 46px;
+    border-radius: 15px;
+  }
+  .roxy-brand-ready #createHome > .hero-card .hero-orb span { font-size: 19px; }
+  .roxy-brand-ready #roxyCreateCta,
+  .roxy-brand-ready .roxy-create-cta {
+    min-height: 38px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-size: 11px;
+  }
+  .roxy-brand-ready .studio-home-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Desktop/FHD: use width for parallel work areas; never stretch mobile cards. */
+@media (min-width: 1024px) {
+  .roxy-brand-ready #createHome {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-auto-flow: row;
+    gap: 14px 18px;
+    align-items: start;
+  }
+  .roxy-brand-ready #createHome > .hero-card {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 132px;
+  }
+  .roxy-brand-ready #roxyCreateCta,
+  .roxy-brand-ready #createHome > .roxy-create-cta {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .roxy-brand-ready #createHome > .home-section[aria-labelledby="familiesHeading"] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin: 0;
+  }
+  .roxy-brand-ready #createHome > #activeGenerationSection,
+  .roxy-brand-ready #createHome > .home-section[aria-labelledby="recentHeading"],
+  .roxy-brand-ready #createHome > :not(.hero-card):not(.roxy-create-cta):not(.roxy-home-balance):not(.home-section[aria-labelledby="familiesHeading"]) {
+    grid-column: 1 / -1;
+  }
+  .roxy-brand-ready #shellFamilyGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .roxy-brand-ready #shellFamilyGrid .shell-family-card {
+    min-height: 74px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .roxy-brand-ready #createHome {
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  }
+  .roxy-brand-ready #shellFamilyGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .roxy-brand-ready #createHome > .hero-card .hero-copy h1 {
+    font-size: 29px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .roxy-brand-ready #shellFamilyGrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
