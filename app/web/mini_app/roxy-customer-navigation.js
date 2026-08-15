@@ -3,7 +3,17 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"];
-  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"];
+  const CHILD_PARENT = Object.freeze({
+    notifications: "profile",
+    support: "profile",
+    creator: "profile",
+    subscriptions: "profile",
+    references: "create",
+    presets: "create",
+    batch: "create",
+  });
+  const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
+  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet", ...CHILD_ROUTES];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     catalog: "feed",
@@ -29,6 +39,7 @@
     startupTimer: null,
     catalogAttempt: 0,
     createAttempt: 0,
+    childAttempt: 0,
   };
 
   function requestedRoute() {
@@ -49,7 +60,8 @@
   }
 
   function primaryRouteFor(route) {
-    return route === "wallet" ? "profile" : route;
+    if (route === "wallet") return "profile";
+    return CHILD_PARENT[route] || route;
   }
 
   function routeUrl(route) {
@@ -89,7 +101,7 @@
   }
 
   function openCatalogWhenReady() {
-    if (state.active !== "catalog") return;
+    if (state.currentRoute !== "catalog") return;
     if (window.RoxyDiscovery?.openCatalog) {
       state.catalogAttempt = 0;
       window.RoxyDiscovery.openCatalog();
@@ -105,7 +117,7 @@
   }
 
   function openCreateWhenReady() {
-    if (state.active !== "create") return;
+    if (state.currentRoute !== "create") return;
     if (window.RoxyCreateCenter?.open) {
       state.createAttempt = 0;
       window.RoxyCreateCenter.open();
@@ -120,6 +132,27 @@
     window.KsuStudioShell?.open?.("create");
   }
 
+  function openChildWhenReady(route) {
+    if (state.currentRoute !== route) return;
+    if (window.RoxyChildScreens?.open?.(route)) {
+      state.childAttempt = 0;
+      return;
+    }
+    state.childAttempt += 1;
+    if (state.childAttempt <= 50) {
+      window.setTimeout(() => openChildWhenReady(route), 60);
+      return;
+    }
+    state.childAttempt = 0;
+    window.KsuStudioShell?.open?.(CHILD_PARENT[route] || "profile");
+  }
+
+  function closeTransientSurfaces() {
+    window.RoxyDiscovery?.closeCatalog?.();
+    window.RoxyCreateCenter?.close?.();
+    window.RoxyChildScreens?.close?.();
+  }
+
   function open(route, { feedback = true, historyMode = "push" } = {}) {
     if (!OPEN_ROUTES.includes(route)) return false;
     state.currentRoute = route;
@@ -127,6 +160,17 @@
     writeBrowserRoute(route, historyMode);
     syncActive();
     if (feedback) haptic(route === "create" ? "medium" : "light");
+
+    if (CHILD_ROUTES.includes(route)) {
+      window.RoxyDiscovery?.closeCatalog?.();
+      window.RoxyCreateCenter?.close?.();
+      state.childAttempt = 0;
+      openChildWhenReady(route);
+      emitRoute(route);
+      return true;
+    }
+
+    window.RoxyChildScreens?.close?.();
 
     if (route === "catalog") {
       window.RoxyCreateCenter?.close?.();
@@ -143,8 +187,7 @@
       return true;
     }
 
-    window.RoxyDiscovery?.closeCatalog?.();
-    window.RoxyCreateCenter?.close?.();
+    closeTransientSurfaces();
     const target = shellRouteFor(route);
     if (window.KsuStudioShell?.open) {
       window.KsuStudioShell.open(target);
@@ -206,6 +249,8 @@
   }
 
   function inferredRoute() {
+    const childRoute = window.RoxyChildScreens?.route;
+    if (childRoute && CHILD_ROUTES.includes(childRoute)) return primaryRouteFor(childRoute);
     if (document.body?.classList.contains("roxy-discovery-catalog-open")) return "catalog";
     if (document.body?.classList.contains("roxy-create-center-open")) return "create";
     const shellRoute = window.KsuStudioShell?.route;
@@ -274,6 +319,7 @@
   window.RoxyCustomerNavigation = Object.freeze({
     open,
     routes: [...PRIMARY_ROUTES],
+    childRoutes: [...CHILD_ROUTES],
     get active() {
       return state.active;
     },
