@@ -25,9 +25,9 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "promocodes": ("promo-recovery.js",),
         "referrals": ("partner.js", "roxy-economy.js"),
         "creator-partnership": ("roxy-profile-cabinet.js",),
-        "generations": ("app.js", "shell.js", "social.js", "roxy-music.js"),
+        "generations": ("app.js", "shell.js", "social.js", "roxy-music.js", "roxy-history-management.js"),
         "discovery": ("roxy-discovery.js",),
-        "feed": ("feed.js", "roxy-discovery.js"),
+        "feed": ("feed.js", "roxy-discovery.js", "studio-workspace.js"),
         "trends": ("trends.js", "roxy-discovery.js"),
         "prompt-tools": ("prompt-tools.js", "roxy-create-center.js"),
         "references": ("studio-shell.js", "studio-workspace.js"),
@@ -38,7 +38,7 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "social": ("social.js",),
         "support": ("profile-tools.js",),
         "uploads": ("app.js",),
-        "batches": ("bulk.js",),
+        "batches": ("bulk.js", "roxy-batch-embedded.js"),
     }
     missing = [domain for domain, files in coverage.items() if not all((MINI / name).exists() for name in files)]
     assert not missing, f"Backend domains without frontend files: {missing}"
@@ -49,8 +49,8 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "/api/v1/promocodes/redeem": ("promo-recovery.js",),
         "/api/v1/referrals/withdrawals": ("partner.js",),
         "/api/v1/creator-partnership": ("roxy-profile-cabinet.js",),
-        "/api/v1/generations": ("app.js", "shell.js"),
-        "/api/v1/feed": ("feed.js",),
+        "/api/v1/generations": ("app.js", "shell.js", "roxy-history-management.js"),
+        "/api/v1/feed": ("feed.js", "studio-workspace.js"),
         "/api/v1/trends": ("trends.js", "roxy-discovery.js"),
         "/api/v1/prompt-tools": ("prompt-tools.js", "roxy-create-center.js"),
         "/api/v1/references": ("studio-shell.js", "studio-workspace.js"),
@@ -87,6 +87,7 @@ def test_concrete_user_backend_actions_are_exposed_in_the_mini_app() -> None:
             "/api/v1/referrals/rewards",
             "/api/v1/referrals/withdrawals",
             "/cancel",
+            "Присоединяйся к ROXY · AI Creative Studio",
         ),
         "roxy-profile-cabinet.js": (
             "/api/v1/creator-partnership",
@@ -97,21 +98,25 @@ def test_concrete_user_backend_actions_are_exposed_in_the_mini_app() -> None:
             "/api/v1/generations/quote",
             "/api/v1/generations",
             "/api/v1/uploads/kie",
-        ),
-        "shell.js": (
             "/recreate",
-            "/history/restore",
-            "/history",
+        ),
+        "roxy-history-management.js": (
+            "/api/v1/generations?limit=50",
+            "/history`, { method: \"DELETE\"",
+            "/history/restore`, { method: \"POST\"",
         ),
         "feed.js": (
             "/api/v1/feed",
-            "/publish",
-            "/remove",
             "/like",
             "/share",
             "/comments",
             "/remix",
             "/link",
+        ),
+        "studio-workspace.js": (
+            "/publish",
+            "method: \"DELETE\"",
+            "Убрать публикацию",
         ),
         "trends.js": (
             "/api/v1/trends",
@@ -148,6 +153,8 @@ def test_concrete_user_backend_actions_are_exposed_in_the_mini_app() -> None:
             "/api/v1/batch-generations/",
             "/retry-quote",
             "/retry",
+            "/history`, { method: \"DELETE\"",
+            "Убрать из истории",
         ),
         "onboarding.js": (
             "/api/v1/onboarding",
@@ -194,6 +201,8 @@ def test_parity_and_fhd_layers_are_mounted_before_mobile_acceptance_overrides() 
     brand = _read("roxy-brand.js")
     assert '/mini-app/roxy-parity-navigation.css' in brand
     assert '/mini-app/roxy-parity-navigation.js' in brand
+    assert '/mini-app/roxy-history-management.css' in brand
+    assert '/mini-app/roxy-history-management.js' in brand
     assert '/mini-app/roxy-fhd-density.css' in brand
     assert brand.index('/mini-app/roxy-profile-cabinet.js') < brand.index('/mini-app/roxy-parity-navigation.js')
     assert brand.index('/mini-app/roxy-fhd-density.css') < brand.index('/mini-app/roxy-mobile-runtime.css')
