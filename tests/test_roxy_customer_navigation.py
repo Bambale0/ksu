@@ -12,13 +12,14 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_customer_navigation_has_approved_primary_routes_and_central_create() -> None:
+def test_customer_navigation_has_reference_style_six_primary_routes() -> None:
     script = _read("roxy-customer-navigation.js")
     css = _read("roxy-customer-navigation.css")
-    for route in ("home", "catalog", "create", "history", "profile"):
+    for route in ("home", "feed", "create", "catalog", "history", "profile"):
         assert f'"{route}"' in script
-    for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
+    for label in ("Главная", "Лента", "Создать", "Каталог", "История", "Профиль"):
         assert label in script
+    assert 'feed: "feed"' in script
     assert 'catalog: "feed"' in script  # safe fallback if discovery layer cannot mount
     assert "RoxyDiscovery?.openCatalog" in script
     assert 'classList.contains("roxy-discovery-catalog-open")' in script
@@ -26,8 +27,11 @@ def test_customer_navigation_has_approved_primary_routes_and_central_create() ->
     assert 'new URLSearchParams(window.location.search).get("route")' in script
     assert "OPEN_ROUTES" in script
     assert "roxy-central-create" in script
+    assert "<svg" in script
+    assert "repeat(6" in css
+    assert "border-radius: 24px" in css
+    assert "backdrop-filter" in css
     assert ".roxy-central-create" in css
-    assert "--tg-content-safe-area" not in css  # inherited from the existing Studio nav shell
 
 
 def test_roxy_brand_mounts_product_layers() -> None:
