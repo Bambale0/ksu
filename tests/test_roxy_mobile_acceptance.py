@@ -70,8 +70,10 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
     assert "if (state.nestedVisible || nestedVisible()) return;" in runtime
     assert 'const feed = document.getElementById("feedOverlay")' in runtime
     assert "|| (feed && !feed.hidden)" in runtime
-    assert 'window.RoxyCustomerNavigation?.open?.("profile", { feedback: false })' in runtime
-    assert 'window.RoxyCustomerNavigation?.open?.("home", { feedback: false })' in runtime
+    assert "window.history.state?.roxyNavigation" in runtime
+    assert "window.history.back();" in runtime
+    assert 'window.RoxyCustomerNavigation?.open?.("profile", { feedback: false, historyMode: "replace" })' in runtime
+    assert 'window.RoxyCustomerNavigation?.open?.("home", { feedback: false, historyMode: "replace" })' in runtime
     assert "if (visible) back.show();" in runtime
     assert "else back.hide();" in runtime
 
@@ -79,9 +81,12 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
     assert "tg?.BackButton?.onClick?.(() => closeNested())" in shell
     assert "history.back()" in shell
 
-    # Startup deep routes remain bounded to the customer navigation allow-list.
+    # Startup deep routes remain bounded and seed the same history stack used by Telegram Back.
     assert 'new URLSearchParams(window.location.search).get("route")' in navigation
     assert 'const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"]' in navigation
+    assert "window.history.replaceState(historyState(\"home\")" in navigation
+    assert "window.history.pushState(historyState(initial)" in navigation
+    assert 'window.addEventListener("popstate", handlePopState)' in navigation
 
 
 def test_keyboard_runtime_handles_visual_viewport_and_ios_zoom() -> None:
