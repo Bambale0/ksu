@@ -130,7 +130,6 @@
     setText(".eyebrow", "ROXY · AI CREATIVE STUDIO", hero);
     setText(".hero-copy h1", "Привет! Это ROXY ✨", hero);
     setText(".hero-copy p", "Твори. Генерируй. Зарабатывай.", hero);
-
     document.getElementById("roxyHomeBalance")?.remove();
 
     let cta = document.getElementById("roxyCreateCta");
@@ -156,6 +155,14 @@
     if (cta.parentElement !== copy) copy.appendChild(cta);
   }
 
+  function arrangeHomeDashboard() {
+    const home = document.getElementById("createHome");
+    const families = home?.querySelector('.home-section[aria-labelledby="familiesHeading"]');
+    const promo = document.getElementById("roxyPromoSection");
+    if (!home || !families || !promo) return;
+    if (families.nextElementSibling !== promo) families.insertAdjacentElement("afterend", promo);
+  }
+
   function styleWalletCopy() {
     const walletNote = document.querySelector("#walletHero small");
     if (walletNote && walletNote.textContent !== "Внутренние кредиты ROXY") {
@@ -169,6 +176,7 @@
     if (document.title) document.title = replaceBrandString(document.title);
     styleMainBrand();
     styleHomeHero();
+    arrangeHomeDashboard();
     styleWalletCopy();
   }
 
