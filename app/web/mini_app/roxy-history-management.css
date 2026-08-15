@@ -1,0 +1,62 @@
+.roxy-history-management {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 16px;
+  background: rgba(24,23,31,.7);
+}
+
+.roxy-history-management-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.roxy-history-management-head > div { min-width: 0; }
+.roxy-history-management-head strong,
+.roxy-history-management-head small { display: block; }
+.roxy-history-management-head strong { margin-top: 2px; font-size: 14px; }
+.roxy-history-management-head small { margin-top: 3px; color: var(--roxy-muted, #aaa); font-size: 10px; }
+
+.roxy-history-secondary {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 10px;
+  background: rgba(255,255,255,.045);
+  color: inherit;
+  cursor: pointer;
+}
+.roxy-history-secondary.danger { color: #ffb1bf; }
+
+.roxy-history-management-list { display: grid; gap: 7px; }
+.roxy-history-management-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px;
+  background: rgba(7,7,11,.3);
+}
+.roxy-history-management-row.is-hidden { opacity: .72; border-style: dashed; }
+.roxy-history-management-copy { min-width: 0; }
+.roxy-history-management-copy strong,
+.roxy-history-management-copy small,
+.roxy-history-management-copy p { display: block; margin: 0; }
+.roxy-history-management-copy strong { font-size: 12px; }
+.roxy-history-management-copy small { margin-top: 2px; color: var(--roxy-muted, #aaa); font-size: 9px; }
+.roxy-history-management-copy p { margin-top: 4px; overflow: hidden; color: #cbc7d2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.roxy-history-management-actions { display: flex; gap: 6px; }
+.roxy-history-management-actions .primary-button.compact { min-height: 34px; padding: 7px 10px; }
+.roxy-history-empty { padding: 8px 2px; color: var(--roxy-muted, #aaa); font-size: 11px; }
+.roxy-history-empty.error { color: #ff9caf; }
+
+@media (max-width: 520px) {
+  .roxy-history-management { padding: 10px; }
+  .roxy-history-management-row { grid-template-columns: 1fr; }
+  .roxy-history-management-actions > * { width: 100%; }
+}
