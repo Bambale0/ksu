@@ -59,3 +59,14 @@ def test_generation_history_router_is_registered() -> None:
     source = (ROOT / "app" / "api" / "router.py").read_text(encoding="utf-8")
     assert "generation_history," in source
     assert "api_router.include_router(generation_history.router)" in source
+
+
+def test_preset_editor_exposes_backend_put_capability() -> None:
+    editor = (MINI / "roxy-preset-editor.js").read_text(encoding="utf-8")
+    brand = (MINI / "roxy-brand.js").read_text(encoding="utf-8")
+    assert 'method: "PUT"' in editor
+    assert "/api/v1/presets/${encodeURIComponent(item.id)}" in editor
+    assert 'button("Редактировать")' in editor
+    assert "parameters = JSON.parse" in editor
+    assert "referenceIds = JSON.parse" in editor
+    assert '/mini-app/roxy-preset-editor.js' in brand
