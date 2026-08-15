@@ -110,5 +110,11 @@ def test_shell_docs_define_feature_boundaries() -> None:
 
 def test_ci_checks_every_mini_app_javascript_entrypoint() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    for filename in ("app.js", "shell.js", "shell-integration.js"):
-        assert f"node --check app/web/mini_app/{filename}" in workflow
+    # CI must validate the whole Mini App directory so new JS entrypoints cannot
+    # silently bypass syntax checks. Explicit per-file lists are intentionally avoided.
+    for token in (
+        "find app/web/mini_app",
+        "-name '*.js'",
+        "xargs -0 -n1 node --check",
+    ):
+        assert token in workflow
