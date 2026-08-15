@@ -25,9 +25,9 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "promocodes": ("promo-recovery.js",),
         "referrals": ("partner.js", "roxy-economy.js"),
         "creator-partnership": ("roxy-profile-cabinet.js",),
-        "generations": ("app.js", "shell.js", "social.js", "roxy-music.js"),
+        "generations": ("app.js", "shell.js", "social.js", "roxy-music.js", "roxy-history-management.js"),
         "discovery": ("roxy-discovery.js",),
-        "feed": ("feed.js", "roxy-discovery.js"),
+        "feed": ("feed.js", "roxy-discovery.js", "studio-workspace.js"),
         "trends": ("trends.js", "roxy-discovery.js"),
         "prompt-tools": ("prompt-tools.js", "roxy-create-center.js"),
         "references": ("studio-shell.js", "studio-workspace.js"),
@@ -38,7 +38,7 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "social": ("social.js",),
         "support": ("profile-tools.js",),
         "uploads": ("app.js",),
-        "batches": ("bulk.js",),
+        "batches": ("bulk.js", "roxy-batch-embedded.js"),
     }
     missing = [domain for domain, files in coverage.items() if not all((MINI / name).exists() for name in files)]
     assert not missing, f"Backend domains without frontend files: {missing}"
@@ -49,8 +49,8 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         "/api/v1/promocodes/redeem": ("promo-recovery.js",),
         "/api/v1/referrals/withdrawals": ("partner.js",),
         "/api/v1/creator-partnership": ("roxy-profile-cabinet.js",),
-        "/api/v1/generations": ("app.js", "shell.js"),
-        "/api/v1/feed": ("feed.js",),
+        "/api/v1/generations": ("app.js", "shell.js", "roxy-history-management.js"),
+        "/api/v1/feed": ("feed.js", "studio-workspace.js"),
         "/api/v1/trends": ("trends.js", "roxy-discovery.js"),
         "/api/v1/prompt-tools": ("prompt-tools.js", "roxy-create-center.js"),
         "/api/v1/references": ("studio-shell.js", "studio-workspace.js"),
@@ -66,6 +66,108 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
         if endpoint not in source:
             uncovered.append(endpoint)
     assert not uncovered, f"User endpoints without a frontend call: {uncovered}"
+
+
+def test_concrete_user_backend_actions_are_exposed_in_the_mini_app() -> None:
+    """Guard mutations and secondary actions, not only top-level endpoint prefixes."""
+    contracts = {
+        "profile-tools.js": (
+            "/api/v1/me/preferences",
+            "/api/v1/notifications?limit=50",
+            "/api/v1/notifications/read-all",
+            "/read`, { method: \"POST\"",
+            "/api/v1/support/tickets",
+            "/messages`,",
+            "/${action}",
+        ),
+        "promo-recovery.js": ("/api/v1/promocodes/redeem",),
+        "partner.js": (
+            "/api/v1/referrals/stats",
+            "/api/v1/referrals/invitations",
+            "/api/v1/referrals/rewards",
+            "/api/v1/referrals/withdrawals",
+            "/cancel",
+            "Присоединяйся к ROXY · AI Creative Studio",
+        ),
+        "roxy-profile-cabinet.js": (
+            "/api/v1/creator-partnership",
+            "/applications",
+        ),
+        "app.js": (
+            "/api/v1/generations/models",
+            "/api/v1/generations/quote",
+            "/api/v1/generations",
+            "/api/v1/uploads/kie",
+            "/recreate",
+        ),
+        "roxy-history-management.js": (
+            "/api/v1/generations?limit=50",
+            "/history`, { method: \"DELETE\"",
+            "/history/restore`, { method: \"POST\"",
+        ),
+        "feed.js": (
+            "/api/v1/feed",
+            "/like",
+            "/share",
+            "/comments",
+            "/remix",
+            "/link",
+        ),
+        "studio-workspace.js": (
+            "/publish",
+            "method: \"DELETE\"",
+            "Убрать публикацию",
+        ),
+        "trends.js": (
+            "/api/v1/trends",
+            "/run",
+        ),
+        "prompt-tools.js": (
+            "/api/v1/prompt-tools",
+            "/image-analysis",
+            "/prompt-builder",
+        ),
+        "studio-shell.js": (
+            "/api/v1/references",
+            "/api/v1/presets",
+        ),
+        "primary-card-checkout.js": (
+            "/api/v1/payments/card/packages",
+            "/api/v1/payments/card/checkout",
+            "/reconcile",
+        ),
+        "wallet.js": (
+            "/api/v1/payments/packages",
+            "/api/v1/payments",
+            "/api/v1/me/transactions",
+        ),
+        "social.js": (
+            "/api/v1/social/generations/",
+            "/like",
+            "/api/v1/social/profiles",
+            "/subscribe",
+            "/api/v1/social/subscriptions",
+        ),
+        "bulk.js": (
+            "/api/v1/batch-generations/quote",
+            "/api/v1/batch-generations/",
+            "/retry-quote",
+            "/retry",
+            "/history`, { method: \"DELETE\"",
+            "Убрать из истории",
+        ),
+        "onboarding.js": (
+            "/api/v1/onboarding",
+            "/complete",
+        ),
+    }
+    missing: list[str] = []
+    for filename, tokens in contracts.items():
+        source = _read(filename)
+        for token in tokens:
+            if token not in source:
+                missing.append(f"{filename}: {token}")
+    assert not missing, "Backend actions without frontend hooks:\n" + "\n".join(missing)
 
 
 def test_frontend_parity_navigation_surfaces_existing_tools_without_duplicate_api_clients() -> None:
@@ -99,6 +201,8 @@ def test_parity_and_fhd_layers_are_mounted_before_mobile_acceptance_overrides() 
     brand = _read("roxy-brand.js")
     assert '/mini-app/roxy-parity-navigation.css' in brand
     assert '/mini-app/roxy-parity-navigation.js' in brand
+    assert '/mini-app/roxy-history-management.css' in brand
+    assert '/mini-app/roxy-history-management.js' in brand
     assert '/mini-app/roxy-fhd-density.css' in brand
     assert brand.index('/mini-app/roxy-profile-cabinet.js') < brand.index('/mini-app/roxy-parity-navigation.js')
     assert brand.index('/mini-app/roxy-fhd-density.css') < brand.index('/mini-app/roxy-mobile-runtime.css')
@@ -107,16 +211,19 @@ def test_parity_and_fhd_layers_are_mounted_before_mobile_acceptance_overrides() 
 def test_full_hd_density_uses_wide_canvas_without_giant_media() -> None:
     css = _read("roxy-fhd-density.css")
     for token in (
-        "--roxy-fhd-max: 1760px",
+        "--roxy-fhd-max: 1880px",
         "@media (min-width: 1440px)",
         "@media (min-width: 1800px)",
-        "grid-template-columns: repeat(6",
         "grid-template-columns: repeat(7",
-        "--roxy-media-thumb-h: 150px",
+        "grid-template-columns: repeat(8",
+        "--roxy-media-thumb-h: 142px",
         "max-height: var(--roxy-media-thumb-h)",
         "max-height: var(--roxy-media-detail-h)",
         "object-fit: cover",
         "object-fit: contain",
+        ".feed-list { grid-template-columns: repeat(2",
+        ".feed-media-wrap.is-video",
+        "aspect-ratio: 16 / 10",
     ):
         assert token in css
 
@@ -126,6 +233,8 @@ def test_mobile_media_stays_compact_and_responsive() -> None:
     assert "@media (max-width: 720px)" in css
     assert "--roxy-media-thumb-h: 132px" in css
     assert "grid-template-columns: repeat(2" in css
+    assert ".feed-list { grid-template-columns: 1fr; }" in css
+    assert "aspect-ratio: 4 / 3" in css
     assert "@media (max-width: 380px)" in css
     assert "--roxy-media-thumb-h: 116px" in css
 

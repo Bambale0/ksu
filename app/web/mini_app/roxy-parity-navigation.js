@@ -16,6 +16,20 @@
     try { tg?.HapticFeedback?.impactOccurred?.("light"); } catch (_error) { /* optional */ }
   }
 
+  function mountBatchIntegration() {
+    if (!document.querySelector('link[href="/mini-app/roxy-batch-embedded.css"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/mini-app/roxy-batch-embedded.css";
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('script[src="/mini-app/roxy-batch-embedded.js"]')) {
+      const script = document.createElement("script");
+      script.src = "/mini-app/roxy-batch-embedded.js";
+      document.head.appendChild(script);
+    }
+  }
+
   function openProfile() {
     window.RoxyCustomerNavigation?.open?.("profile", { feedback: false });
     window.KsuStudioShell?.open?.("profile");
@@ -53,6 +67,18 @@
     haptic();
     const url = new URL(path, window.location.origin).toString();
     window.location.assign(url);
+  }
+
+  function openBatch(attempt = 0) {
+    if (window.RoxyBatchEmbedded?.open) {
+      window.RoxyBatchEmbedded.open();
+      return;
+    }
+    if (attempt < 30) {
+      window.setTimeout(() => openBatch(attempt + 1), 50);
+      return;
+    }
+    openMiniPage(`${MINI_ROOT}batch.html`);
   }
 
   function card(glyph, title, note, handler) {
@@ -95,7 +121,7 @@
       card("▣", "Пресеты", "Сохранённые настройки моделей", () => openLibrary("presets")),
       card("↗", "Тренды", "Готовые сценарии генераций", () => openMiniPage(`${MINI_ROOT}trends.html`)),
       card("✦", "Prompt Tools", "Анализ и улучшение промптов", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
-      card("▦", "Batch", "Пакетные генерации", () => openMiniPage(`${MINI_ROOT}batch.html`)),
+      card("▦", "Batch", "Пакетные генерации", () => openBatch()),
       card("👥", "Рефералы", "30% / 5%, начисления и вывод", () => scrollToTarget(["#partnerPreview"])),
       card("★", "Creator", "Персональное партнёрство", () => scrollToTarget(["#creatorPartnershipEntry"])),
       card("⚙", "Настройки", "Язык, уведомления, публичность", () => scrollToTarget(["#profileUiLanguage", "#profileTools"])),
@@ -109,6 +135,7 @@
   }
 
   function init() {
+    mountBatchIntegration();
     if (mount()) return;
     let attempts = 0;
     const timer = window.setInterval(() => {

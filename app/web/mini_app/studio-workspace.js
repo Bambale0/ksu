@@ -155,17 +155,51 @@
           references_visible: false,
         }),
       });
+      generation.__published = true;
       notify("success");
       const actual = payload?.publication_scope === "feed" ? "ленте" : "профиле";
       action.textContent = payload?.publication_scope === "feed" ? "✓ В ленте" : "✓ В профиле";
       toast(payload?.downgraded_to_profile
         ? "Публикация размещена в профиле по правилам производного контента."
         : `Опубликовано в ${actual}.`);
+      const remove = action.closest(".studio-result-product-actions")?.querySelector("[data-remove-publication]");
+      if (remove) remove.hidden = false;
     } catch (error) {
       notify("error");
       action.textContent = original;
       action.disabled = false;
       toast(error.message || "Не удалось опубликовать результат");
+    }
+  }
+
+  async function removeGenerationPublication(generation, action) {
+    if (!generation?.id || action.disabled) return;
+    action.disabled = true;
+    const original = action.textContent;
+    action.textContent = "Убираю…";
+    try {
+      await api(`/api/v1/feed/${encodeURIComponent(generation.id)}`, { method: "DELETE" });
+      generation.__published = false;
+      notify("success");
+      action.hidden = true;
+      action.textContent = original;
+      const group = action.closest(".studio-result-product-actions");
+      group?.querySelectorAll("button").forEach((node) => {
+        if (node === action) return;
+        if (node.textContent?.startsWith("✓ В ")) node.textContent = node.dataset.originalLabel || node.textContent;
+        node.disabled = false;
+      });
+      toast("Публикация убрана из ленты и публичного профиля.");
+    } catch (error) {
+      action.textContent = original;
+      action.disabled = false;
+      if (error.status === 404) {
+        action.hidden = true;
+        toast("Публикация уже отсутствует.");
+      } else {
+        notify("error");
+        toast(error.message || "Не удалось убрать публикацию");
+      }
     }
   }
 
@@ -212,9 +246,14 @@
     try {
       const group = el("div", "studio-result-product-actions");
       const profile = button("В профиль", () => publishGeneration(generation, "profile", profile));
+      profile.dataset.originalLabel = "В профиль";
       const feed = button("В ленту", () => publishGeneration(generation, "feed", feed), "studio-action primary compact");
+      feed.dataset.originalLabel = "В ленту";
       const reference = button("В референсы", () => saveResultReference(generation, reference));
-      group.append(profile, feed, reference);
+      const remove = button("Убрать публикацию", () => removeGenerationPublication(generation, remove));
+      remove.dataset.removePublication = "true";
+      remove.hidden = !generation.__published;
+      group.append(profile, feed, reference, remove);
       actions.appendChild(group);
     } finally {
       state.decoratingResult = false;

@@ -68,6 +68,7 @@ jobs:
 
       - name: Validate Mini App JavaScript
         run: |
+          # Explicit entrypoints keep compatibility with historical regression contracts.
           node --check app/web/mini_app/app.js
           node --check app/web/mini_app/shell.js
           node --check app/web/mini_app/shell-integration.js
@@ -82,6 +83,8 @@ jobs:
           node --check app/web/mini_app/roxy-mobile-runtime.js
           node --check app/web/mini_app/roxy-profile-cabinet.js
           node --check app/web/mini_app/roxy-parity-navigation.js
+          node --check app/web/mini_app/roxy-batch-embedded.js
+          node --check app/web/mini_app/roxy-history-management.js
           node --check app/web/mini_app/payment-link-guard.js
           node --check app/web/mini_app/payment-surface.js
           node --check app/web/mini_app/wallet.js
@@ -96,6 +99,8 @@ jobs:
           node --check app/web/mini_app/bulk.js
           node --check app/web/mini_app/promo-recovery.js
           node --check app/web/mini_app/onboarding.js
+          # Universal gate covers all current and future Mini App scripts.
+          find app/web/mini_app -maxdepth 1 -type f -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
 
       - name: Apply migrations
         run: alembic upgrade head
@@ -121,6 +126,9 @@ jobs:
 
       - name: Batch generation contracts
         run: pytest -q tests/test_generation_batches.py tests/test_batch_recovery.py
+
+      - name: Embedded Batch contracts
+        run: pytest -q tests/test_roxy_embedded_batch.py
 
       - name: Studio shell contracts
         run: pytest -q tests/test_studio_shell_contract.py
@@ -160,14 +168,26 @@ jobs:
         run: pytest -q tests/test_payment_surface_contract.py
 
       - name: Full regression suite
+        id: regression
         shell: bash
         run: |
           set +e
           pytest -q -x --tb=short 2>&1 | tee /tmp/pytest-regression.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
-            grep -E "FAILED|ERROR|AssertionError|TypeError|AttributeError|KeyError|IntegrityError" /tmp/pytest-regression.log | tail -n 20 | while IFS= read -r line; do
+            echo "--- regression tail ---"
+            tail -n 120 /tmp/pytest-regression.log
+            grep -E "FAILED|ERROR|AssertionError|TypeError|AttributeError|KeyError|IntegrityError" /tmp/pytest-regression.log | tail -n 30 | while IFS= read -r line; do
               echo "::error title=Pytest regression::$line"
             done
             exit "$code"
           fi
+
+      - name: Upload regression diagnostics
+        if: failure() && steps.regression.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-regression-log
+          path: /tmp/pytest-regression.log
+          if-no-files-found: error
+          retention-days: 7
