@@ -58,6 +58,17 @@
   object-fit: cover;
 }
 
+/* Feed is a dense discovery grid on desktop, not a single giant mobile card. */
+.roxy-brand-ready .feed-shell { width: min(1120px, 100%); }
+.roxy-brand-ready .feed-list { gap: 10px; }
+.roxy-brand-ready .feed-media-wrap,
+.roxy-brand-ready .feed-media-wrap.is-video {
+  aspect-ratio: 16 / 10;
+  max-height: 190px;
+}
+.roxy-brand-ready .feed-body { padding: 11px; gap: 9px; }
+.roxy-brand-ready .feed-card { border-radius: 16px; }
+
 /* Standalone Mini App tools use the same density contract. */
 .roxy-brand-ready #trendsApp { max-width: 1700px; }
 .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
@@ -86,6 +97,10 @@
 .roxy-brand-ready .roxy-promo-card,
 .roxy-brand-ready .roxy-promo-copy { min-height: 150px; }
 .roxy-brand-ready .roxy-promo-copy { padding: 18px 20px; }
+
+@media (min-width: 900px) {
+  .roxy-brand-ready .feed-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (min-width: 1024px) {
   .studio-shell-ready .app-shell {
@@ -117,6 +132,8 @@
   .roxy-brand-ready .roxy-template-copy strong { font-size: 12px; }
   .roxy-brand-ready .roxy-template-copy small { font-size: 9px; }
   .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .roxy-brand-ready .feed-media-wrap,
+  .roxy-brand-ready .feed-media-wrap.is-video { max-height: 178px; }
 }
 
 @media (min-width: 1800px) {
@@ -125,6 +142,8 @@
   .roxy-brand-ready .recent-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .roxy-brand-ready .roxy-catalog-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
   .roxy-brand-ready #trendCatalog { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .roxy-brand-ready .feed-media-wrap,
+  .roxy-brand-ready .feed-media-wrap.is-video { max-height: 168px; }
 }
 
 @media (max-width: 720px) {
@@ -139,6 +158,12 @@
   .roxy-brand-ready .trend-card-media { max-height: 132px; }
   .roxy-brand-ready .batch-uploads { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
   .roxy-brand-ready .batch-upload { width: auto; max-width: 88px; }
+  .roxy-brand-ready .feed-list { grid-template-columns: 1fr; }
+  .roxy-brand-ready .feed-media-wrap,
+  .roxy-brand-ready .feed-media-wrap.is-video {
+    aspect-ratio: 4 / 3;
+    max-height: 180px;
+  }
 }
 
 @media (max-width: 380px) {
@@ -146,4 +171,6 @@
   .roxy-brand-ready .recent-grid,
   .roxy-brand-ready .roxy-catalog-grid { gap: 6px; }
   .roxy-brand-ready .trend-card-media { max-height: 116px; }
+  .roxy-brand-ready .feed-media-wrap,
+  .roxy-brand-ready .feed-media-wrap.is-video { max-height: 156px; }
 }
