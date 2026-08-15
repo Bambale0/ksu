@@ -7,15 +7,18 @@
     frame: 0,
   };
 
+  function mountStylesheet(href) {
+    if (document.querySelector(`link[href="${href}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  }
+
   function mountReferenceHomeLayer() {
-    const css = "/mini-app/roxy-reference-home.css";
     const js = "/mini-app/roxy-reference-home.js";
-    if (!document.querySelector(`link[href="${css}"]`)) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = css;
-      document.head.appendChild(link);
-    }
+    mountStylesheet("/mini-app/roxy-reference-home.css");
+    mountStylesheet("/mini-app/roxy-reference-order.css");
     if (!document.querySelector(`script[src="${js}"]`)) {
       const script = document.createElement("script");
       script.src = js;
