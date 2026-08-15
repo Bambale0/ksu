@@ -2,7 +2,6 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
-  const originalFetch = window.fetch.bind(window);
   const state = {
     open: false,
     sort: "recent",
@@ -22,7 +21,7 @@
 
   async function api(path, options = {}) {
     const hasBody = options.body !== undefined;
-    const response = await originalFetch(path, {
+    const response = await fetch(path, {
       ...options,
       headers: { ...authHeaders(hasBody), ...(options.headers || {}) },
       credentials: "same-origin",
@@ -366,7 +365,7 @@
       notify("success");
       toast(`Remix запущен · ${String(result.id).slice(0, 8)}`);
       closeFeed();
-      document.querySelector('[data-shell-nav="create"]')?.click();
+      window.RoxyCustomerNavigation?.open?.("create") || document.querySelector('[data-shell-nav="create"]')?.click();
     } catch (error) {
       notify("error");
       toast(error.message || "Remix не запущен");
@@ -483,29 +482,27 @@
     actions.appendChild(controls);
   }
 
-  function generationRequestInfo(input, init) {
-    const raw = typeof input === "string" ? input : input?.url;
-    if (!raw) return null;
-    let url;
-    try { url = new URL(raw, window.location.origin); } catch (_error) { return null; }
-    const match = url.pathname.match(/^\/api\/v1\/generations\/([0-9a-f-]+)$/i);
-    if (!match) return null;
-    const method = String(init?.method || (typeof input !== "string" ? input?.method : "GET") || "GET").toUpperCase();
-    return method === "GET" ? match[1] : null;
+  function applyGenerationContext(generation) {
+    state.latestGeneration = generation || null;
+    requestAnimationFrame(decorateResult);
   }
 
-  window.fetch = async (input, init) => {
-    const response = await originalFetch(input, init);
-    const id = generationRequestInfo(input, init);
-    if (!id || !response.ok) return response;
-    response.clone().json().then((payload) => {
-      if (payload?.id) {
-        state.latestGeneration = payload;
-        requestAnimationFrame(decorateResult);
-      }
-    }).catch(() => {});
-    return response;
-  };
+  function hydrateGenerationContext() {
+    const context = window.RoxyGenerationContext;
+    if (!context) return false;
+    applyGenerationContext(context.current || null);
+    void context.refreshResult?.();
+    return true;
+  }
+
+  function attachGenerationContext() {
+    window.addEventListener("roxy:generation-context", (event) => {
+      applyGenerationContext(event.detail?.generation || null);
+    });
+    window.addEventListener("roxy:generation-context-ready", hydrateGenerationContext);
+    hydrateGenerationContext();
+  }
 
   mount();
+  attachGenerationContext();
 })();
