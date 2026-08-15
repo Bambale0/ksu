@@ -61,3 +61,22 @@ def test_music_runtime_observer_is_scoped_to_music_and_generation_surfaces() -> 
     ):
         assert f'document.getElementById("{node_id}")' in source
     assert 'window.addEventListener("roxy:route-changed", scheduleApply)' in source
+
+
+def test_generation_context_replaces_global_fetch_interception() -> None:
+    context = _read("roxy-generation-context.js")
+    social = _read("social.js")
+    feed = _read("feed.js")
+    brand = _read("roxy-brand.js")
+
+    assert 'emit("roxy:history-context"' in context
+    assert 'emit("roxy:generation-context"' in context
+    assert 'state.historyObserver.observe(root, { childList: true })' in context
+    assert 'attributeFilter: ["hidden"]' in context
+    assert 'mountLayer({ js: "/mini-app/roxy-generation-context.js" })' in brand
+
+    for source in (social, feed):
+        assert "window.fetch =" not in source
+        assert "originalFetch" not in source
+        assert 'window.addEventListener("roxy:generation-context"' in source
+    assert 'window.addEventListener("roxy:history-context"' in social
