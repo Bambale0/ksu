@@ -6,6 +6,7 @@
     mounted: false,
     initialized: false,
     loading: null,
+    manageHistory: true,
   };
 
   function el(tag, className = "", text = "") {
@@ -23,6 +24,14 @@
     document.head.appendChild(link);
   }
 
+  function closeFromUser() {
+    if (!state.manageHistory && history.state?.roxyNavigation && history.state?.route === "batch") {
+      history.back();
+      return;
+    }
+    closeBatch({ historyBack: state.manageHistory });
+  }
+
   function batchMarkup() {
     const app = el("main", "batch-app roxy-embedded-batch-app");
 
@@ -32,7 +41,7 @@
     heading.append(el("span", "section-kicker", "BATCH"), el("h1", "", "Пакетная обработка"));
     const close = el("button", "roxy-embedded-batch-close", "Закрыть");
     close.type = "button";
-    close.addEventListener("click", () => closeBatch({ historyBack: true }));
+    close.addEventListener("click", closeFromUser);
     top.append(heading, close);
     header.append(top, el("p", "", "Один промпт и настройки — для серии изображений. Цена считается сервером до запуска."));
 
@@ -113,7 +122,7 @@
     dialog.appendChild(app);
     dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
-      closeBatch({ historyBack: true });
+      closeFromUser();
     });
     document.body.appendChild(dialog);
     mountStylesheet();
@@ -146,13 +155,14 @@
     return state.loading;
   }
 
-  function open() {
+  function open({ manageHistory = true } = {}) {
+    state.manageHistory = manageHistory;
     const dialog = mount();
     if (!dialog.open) {
       dialog.showModal();
       document.body.classList.add("roxy-embedded-batch-open");
       try { tg?.HapticFeedback?.impactOccurred?.("light"); } catch (_error) { /* optional */ }
-      if (!history.state?.roxyEmbeddedBatch) {
+      if (state.manageHistory && !history.state?.roxyEmbeddedBatch) {
         history.pushState({ ...(history.state || {}), roxyEmbeddedBatch: true }, "");
       }
     }
@@ -184,27 +194,27 @@
     if (!dialog?.open) return;
     // Defer the close so other Telegram BackButton handlers see dialog[open] and
     // correctly treat this as a nested surface rather than navigating the whole app.
-    window.setTimeout(() => closeBatch({ historyBack: true }), 0);
+    window.setTimeout(closeFromUser, 0);
   }
 
   function interceptLegacyBatchLinks(event) {
     const anchor = event.target.closest?.('a[href="/mini-app/batch.html"], a[href$="/mini-app/batch.html"]');
     if (!anchor) return;
     event.preventDefault();
-    open();
+    open({ manageHistory: true });
   }
 
   function init() {
     document.addEventListener("click", interceptLegacyBatchLinks, true);
     window.addEventListener("popstate", () => {
-      if (!history.state?.roxyEmbeddedBatch) closeNow();
+      if (!history.state?.roxyEmbeddedBatch && state.manageHistory) closeNow();
     });
     tg?.BackButton?.onClick?.(onBackButton);
   }
 
   window.RoxyBatchEmbedded = Object.freeze({
     open,
-    close: () => closeBatch({ historyBack: true }),
+    close: ({ historyBack = state.manageHistory } = {}) => closeBatch({ historyBack }),
     get active() {
       return Boolean(document.getElementById("roxyEmbeddedBatch")?.open);
     },
