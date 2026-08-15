@@ -121,7 +121,7 @@
   }
 
   function open(route, { feedback = true, historyMode = "push" } = {}) {
-    if (!OPEN_ROUTES.includes(route)) return;
+    if (!OPEN_ROUTES.includes(route)) return false;
     state.currentRoute = route;
     state.active = primaryRouteFor(route);
     writeBrowserRoute(route, historyMode);
@@ -133,14 +133,14 @@
       state.catalogAttempt = 0;
       openCatalogWhenReady();
       emitRoute(route);
-      return;
+      return true;
     }
     if (route === "create") {
       window.RoxyDiscovery?.closeCatalog?.();
       state.createAttempt = 0;
       openCreateWhenReady();
       emitRoute(route);
-      return;
+      return true;
     }
 
     window.RoxyDiscovery?.closeCatalog?.();
@@ -149,12 +149,13 @@
     if (window.KsuStudioShell?.open) {
       window.KsuStudioShell.open(target);
       emitRoute(route);
-      return;
+      return true;
     }
 
     const fallback = document.querySelector(`[data-shell-nav="${target}"]`);
     fallback?.click();
     emitRoute(route);
+    return true;
   }
 
   function menuButton([route, glyph, label]) {
