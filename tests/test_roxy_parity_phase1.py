@@ -70,3 +70,18 @@ def test_preset_editor_exposes_backend_put_capability() -> None:
     assert "parameters = JSON.parse" in editor
     assert "referenceIds = JSON.parse" in editor
     assert '/mini-app/roxy-preset-editor.js' in brand
+
+
+def test_feed_repeat_action_is_capability_driven() -> None:
+    source = (MINI / "feed.js").read_text(encoding="utf-8")
+    assert "item.prompt_actions_allowed !== false" in source
+    assert 'action("🔁 Повторить"' in source
+
+
+def test_notification_badge_targets_visible_roxy_navigation() -> None:
+    bridge = (MINI / "roxy-notification-badge-bridge.js").read_text(encoding="utf-8")
+    brand = (MINI / "roxy-brand.js").read_text(encoding="utf-8")
+    assert 'document.getElementById("profileUnreadBadge")' in bridge
+    assert '[data-roxy-customer-route="profile"]' in bridge
+    assert 'className = "profile-nav-badge"' in bridge
+    assert '/mini-app/roxy-notification-badge-bridge.js' in brand
