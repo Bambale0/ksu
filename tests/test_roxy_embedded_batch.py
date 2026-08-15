@@ -85,5 +85,7 @@ def test_existing_batch_runtime_remains_server_authoritative() -> None:
         "/api/v1/uploads/kie",
     ):
         assert endpoint in source
-    assert 'credentials: "same-origin"' in source
-    assert 'headers["X-Telegram-Init-Data"] = tg.initData' in source
+    # Fetch defaults to same-origin credentials; auth must still be Telegram initData
+    # and the runtime must never opt out of same-origin credentials explicitly.
+    assert 'headers.set("X-Telegram-Init-Data", initData)' in source
+    assert 'credentials: "omit"' not in source
