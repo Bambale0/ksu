@@ -23,7 +23,8 @@
   const state = {
     active: "home",
     startupApplied: false,
-    observer: null,
+    bodyClassObserver: null,
+    startupTimer: null,
     catalogAttempt: 0,
     createAttempt: 0,
   };
@@ -47,6 +48,12 @@
 
   function primaryRouteFor(route) {
     return route === "wallet" ? "profile" : route;
+  }
+
+  function emitRoute(route) {
+    window.dispatchEvent(new CustomEvent("roxy:route-changed", {
+      detail: { route, primary: state.active },
+    }));
   }
 
   function openCatalogWhenReady() {
@@ -91,12 +98,14 @@
       window.RoxyCreateCenter?.close?.();
       state.catalogAttempt = 0;
       openCatalogWhenReady();
+      emitRoute(route);
       return;
     }
     if (route === "create") {
       window.RoxyDiscovery?.closeCatalog?.();
       state.createAttempt = 0;
       openCreateWhenReady();
+      emitRoute(route);
       return;
     }
 
@@ -105,11 +114,13 @@
     const target = shellRouteFor(route);
     if (window.KsuStudioShell?.open) {
       window.KsuStudioShell.open(target);
+      emitRoute(route);
       return;
     }
 
     const fallback = document.querySelector(`[data-shell-nav="${target}"]`);
     fallback?.click();
+    emitRoute(route);
   }
 
   function menuButton([route, glyph, label]) {
@@ -132,17 +143,31 @@
   }
 
   function replaceMenu(root) {
-    if (!root || root.dataset.roxyCustomerNavigation === "true") return;
+    if (!root || root.dataset.roxyCustomerNavigation === "true") return Boolean(root);
     root.dataset.roxyCustomerNavigation = "true";
     root.replaceChildren(...MENU.map(menuButton));
+    return true;
   }
 
   function mountMenus() {
-    replaceMenu(document.getElementById("studioBottomNav"));
-    replaceMenu(
-      document.querySelector("#studioSidebar .studio-sidebar-nav:not(.studio-sidebar-secondary)"),
-    );
+    const bottom = document.getElementById("studioBottomNav");
+    const sidebar = document.querySelector("#studioSidebar .studio-sidebar-nav:not(.studio-sidebar-secondary)");
+    replaceMenu(bottom);
+    replaceMenu(sidebar);
     syncActive();
+    return Boolean(bottom && sidebar);
+  }
+
+  function mountMenusUntilReady() {
+    if (mountMenus() || state.startupTimer) return;
+    let attempts = 0;
+    state.startupTimer = window.setInterval(() => {
+      attempts += 1;
+      if (mountMenus() || attempts >= 50) {
+        window.clearInterval(state.startupTimer);
+        state.startupTimer = null;
+      }
+    }, 80);
   }
 
   function inferredRoute() {
@@ -179,26 +204,33 @@
     return true;
   }
 
-  function apply() {
-    mountMenus();
-    applyStartupRoute();
-    syncActive();
+  function attachBodyClassObserver() {
+    if (state.bodyClassObserver || !document.body) return;
+    state.bodyClassObserver = new MutationObserver(() => window.requestAnimationFrame(syncActive));
+    state.bodyClassObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
   }
 
   function init() {
     document.body?.classList.add("roxy-customer-navigation-ready");
-    apply();
-    if (!state.observer && document.body) {
-      state.observer = new MutationObserver(() => window.requestAnimationFrame(apply));
-      state.observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["hidden", "class"],
-      });
-    }
-    window.setTimeout(apply, 80);
-    window.setTimeout(apply, 240);
+    mountMenusUntilReady();
+    applyStartupRoute();
+    syncActive();
+    attachBodyClassObserver();
+
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest?.("[data-shell-nav]")) return;
+      window.requestAnimationFrame(syncActive);
+    }, true);
+    window.addEventListener("popstate", () => window.requestAnimationFrame(syncActive));
+    window.addEventListener("roxy:shell-route-changed", () => window.requestAnimationFrame(syncActive));
+    window.setTimeout(() => {
+      mountMenusUntilReady();
+      applyStartupRoute();
+      syncActive();
+    }, 120);
   }
 
   window.RoxyCustomerNavigation = Object.freeze({
