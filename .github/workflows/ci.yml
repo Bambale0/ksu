@@ -67,7 +67,11 @@ jobs:
         run: python -m compileall -q app tests
 
       - name: Validate Mini App JavaScript
-        run: find app/web/mini_app -maxdepth 1 -type f -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
+        run: |
+          # Keep the explicit social contract used by the history/social regression gate.
+          node --check app/web/mini_app/social.js
+          # And validate every current/future Mini App script so new surfaces cannot bypass syntax CI.
+          find app/web/mini_app -maxdepth 1 -type f -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
 
       - name: Apply migrations
         run: alembic upgrade head
