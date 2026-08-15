@@ -51,7 +51,7 @@ def test_roxy_palette_matches_reference_direction() -> None:
         assert token in css
 
 
-def test_roxy_brand_runtime_keeps_telegram_chrome_and_dynamic_copy_aligned() -> None:
+def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> None:
     script = _read("roxy-brand.js")
     for token in (
         'setHeaderColor?.("#09080f")',
@@ -61,11 +61,16 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dynamic_copy_aligned() -> 
         "ROXY · AI CREATIVE STUDIO",
         "roxyHomeBalance",
         "roxyCreateCta",
-        "paymentRateLabel",
-        "roxBalanceText",
-        "roxRateText",
+        'document.getElementById("roxyHomeBalance")?.remove()',
+        "if (cta.parentElement !== copy) copy.appendChild(cta)",
+        "arrangeHomeDashboard",
+        'families.insertAdjacentElement("afterend", promo)',
+        "/mini-app/roxy-home-density-v3.css",
     ):
         assert token in script
+    assert "paymentRateLabel" not in script
+    assert "roxBalanceText" not in script
+    assert "roxRateText" not in script
     assert "initDataUnsafe" not in script
 
 
