@@ -135,7 +135,7 @@
     clear(runner);
     const url = new URL(window.location.href);
     url.searchParams.delete("trend");
-    window.history.replaceState({}, "", url);
+    window.history.replaceState({ ...(window.history.state || {}) }, "", url);
   }
 
   function openRunner(item) {
@@ -182,7 +182,7 @@
 
     const url = new URL(window.location.href);
     url.searchParams.set("trend", item.id);
-    window.history.replaceState({}, "", url);
+    window.history.replaceState({ ...(window.history.state || {}) }, "", url);
     tg?.HapticFeedback?.impactOccurred("light");
   }
 
