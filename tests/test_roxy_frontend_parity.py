@@ -68,6 +68,101 @@ def test_user_backend_domains_have_frontend_consumers() -> None:
     assert not uncovered, f"User endpoints without a frontend call: {uncovered}"
 
 
+def test_concrete_user_backend_actions_are_exposed_in_the_mini_app() -> None:
+    """Guard mutations and secondary actions, not only top-level endpoint prefixes."""
+    contracts = {
+        "profile-tools.js": (
+            "/api/v1/me/preferences",
+            "/api/v1/notifications?limit=50",
+            "/api/v1/notifications/read-all",
+            "/read`, { method: \"POST\"",
+            "/api/v1/support/tickets",
+            "/messages`,",
+            "/${action}",
+        ),
+        "promo-recovery.js": ("/api/v1/promocodes/redeem",),
+        "partner.js": (
+            "/api/v1/referrals/stats",
+            "/api/v1/referrals/invitations",
+            "/api/v1/referrals/rewards",
+            "/api/v1/referrals/withdrawals",
+            "/cancel",
+        ),
+        "roxy-profile-cabinet.js": (
+            "/api/v1/creator-partnership",
+            "/applications",
+        ),
+        "app.js": (
+            "/api/v1/generations/models",
+            "/api/v1/generations/quote",
+            "/api/v1/generations",
+            "/api/v1/uploads/kie",
+        ),
+        "shell.js": (
+            "/recreate",
+            "/history/restore",
+            "/history",
+        ),
+        "feed.js": (
+            "/api/v1/feed",
+            "/publish",
+            "/remove",
+            "/like",
+            "/share",
+            "/comments",
+            "/remix",
+            "/link",
+        ),
+        "trends.js": (
+            "/api/v1/trends",
+            "/run",
+        ),
+        "prompt-tools.js": (
+            "/api/v1/prompt-tools",
+            "/image-analysis",
+            "/prompt-builder",
+        ),
+        "studio-shell.js": (
+            "/api/v1/references",
+            "/api/v1/presets",
+        ),
+        "primary-card-checkout.js": (
+            "/api/v1/payments/card/packages",
+            "/api/v1/payments/card/checkout",
+            "/reconcile",
+        ),
+        "wallet.js": (
+            "/api/v1/payments/packages",
+            "/api/v1/payments",
+            "/api/v1/me/transactions",
+        ),
+        "social.js": (
+            "/api/v1/social/generations/",
+            "/like",
+            "/api/v1/social/profiles",
+            "/subscribe",
+            "/api/v1/social/subscriptions",
+        ),
+        "bulk.js": (
+            "/api/v1/batch-generations/quote",
+            "/api/v1/batch-generations/",
+            "/retry-quote",
+            "/retry",
+        ),
+        "onboarding.js": (
+            "/api/v1/onboarding",
+            "/complete",
+        ),
+    }
+    missing: list[str] = []
+    for filename, tokens in contracts.items():
+        source = _read(filename)
+        for token in tokens:
+            if token not in source:
+                missing.append(f"{filename}: {token}")
+    assert not missing, "Backend actions without frontend hooks:\n" + "\n".join(missing)
+
+
 def test_frontend_parity_navigation_surfaces_existing_tools_without_duplicate_api_clients() -> None:
     source = _read("roxy-parity-navigation.js")
     for token in (
@@ -117,6 +212,9 @@ def test_full_hd_density_uses_wide_canvas_without_giant_media() -> None:
         "max-height: var(--roxy-media-detail-h)",
         "object-fit: cover",
         "object-fit: contain",
+        ".feed-list { grid-template-columns: repeat(2",
+        ".feed-media-wrap.is-video",
+        "aspect-ratio: 16 / 10",
     ):
         assert token in css
 
@@ -126,6 +224,8 @@ def test_mobile_media_stays_compact_and_responsive() -> None:
     assert "@media (max-width: 720px)" in css
     assert "--roxy-media-thumb-h: 132px" in css
     assert "grid-template-columns: repeat(2" in css
+    assert ".feed-list { grid-template-columns: 1fr; }" in css
+    assert "aspect-ratio: 4 / 3" in css
     assert "@media (max-width: 380px)" in css
     assert "--roxy-media-thumb-h: 116px" in css
 
