@@ -2,7 +2,6 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
-  const originalFetch = window.fetch.bind(window);
   const state = {
     historyItems: [],
     latestGeneration: null,
@@ -20,7 +19,7 @@
 
   async function api(path, options = {}) {
     const hasBody = options.body !== undefined;
-    const response = await originalFetch(path, {
+    const response = await fetch(path, {
       ...options,
       headers: { ...authHeaders(hasBody), ...(options.headers || {}) },
       credentials: "same-origin",
@@ -73,55 +72,36 @@
     return node;
   }
 
-  function generationRequestInfo(input, init) {
-    const raw = typeof input === "string" ? input : input?.url;
-    if (!raw) return null;
-    let url;
-    try {
-      url = new URL(raw, window.location.origin);
-    } catch (_error) {
-      return null;
-    }
-    if (!url.pathname.startsWith("/api/v1/generations")) return null;
-    const method = String(init?.method || (typeof input !== "string" ? input?.method : "GET") || "GET").toUpperCase();
-    return { url, method };
+  function applyHistoryContext(items) {
+    state.historyItems = Array.isArray(items) ? items : [];
+    requestAnimationFrame(decorateHistory);
   }
 
-  window.fetch = async (input, init) => {
-    const response = await originalFetch(input, init);
-    const info = generationRequestInfo(input, init);
-    if (!info || !response.ok) return response;
+  function applyGenerationContext(generation) {
+    state.latestGeneration = generation || null;
+    requestAnimationFrame(decorateResult);
+  }
 
-    response
-      .clone()
-      .json()
-      .then((payload) => {
-        if (info.method === "GET" && info.url.pathname === "/api/v1/generations") {
-          const items = Array.isArray(payload?.items) ? payload.items : [];
-          if (info.url.searchParams.has("before")) state.historyItems.push(...items);
-          else state.historyItems = items;
-          requestAnimationFrame(decorateHistory);
-          return;
-        }
-        const detailMatch = info.url.pathname.match(/^\/api\/v1\/generations\/([0-9a-f-]+)$/i);
-        if (info.method === "GET" && detailMatch && payload?.id) {
-          state.latestGeneration = payload;
-          requestAnimationFrame(decorateResult);
-          return;
-        }
-        if (info.method === "POST" && info.url.pathname === "/api/v1/generations" && payload?.id) {
-          state.latestGeneration = {
-            id: payload.id,
-            status: payload.status,
-          };
-          requestAnimationFrame(decorateResult);
-        }
-      })
-      .catch(() => {
-        // Decoration is progressive enhancement; never interfere with core generation flow.
-      });
-    return response;
-  };
+  function hydrateGenerationContext() {
+    const context = window.RoxyGenerationContext;
+    if (!context) return false;
+    applyHistoryContext(context.historyItems || []);
+    applyGenerationContext(context.current || null);
+    void context.refreshHistory?.();
+    void context.refreshResult?.();
+    return true;
+  }
+
+  function attachGenerationContext() {
+    window.addEventListener("roxy:history-context", (event) => {
+      applyHistoryContext(event.detail?.items || []);
+    });
+    window.addEventListener("roxy:generation-context", (event) => {
+      applyGenerationContext(event.detail?.generation || null);
+    });
+    window.addEventListener("roxy:generation-context-ready", hydrateGenerationContext);
+    hydrateGenerationContext();
+  }
 
   function actionButton(label, handler, className = "ksu-history-action") {
     const button = el("button", className, label);
@@ -135,7 +115,7 @@
     if (!list || state.historyItems.length || list.querySelector(".social-history-empty-cta")) return;
     const button = actionButton("Создать контент", () => {
       document.getElementById("ksuHistoryOverlay")?.setAttribute("hidden", "");
-      document.querySelector('[data-shell-nav="create"]')?.click();
+      window.RoxyCustomerNavigation?.open?.("create") || document.querySelector('[data-shell-nav="create"]')?.click();
     }, "ksu-history-action social-history-empty-cta");
     list.appendChild(button);
   }
@@ -205,6 +185,7 @@
       state.historyItems = state.historyItems.filter((item) => item.id !== generationId);
       card?.remove();
       ensureEmptyHistoryCta();
+      void window.RoxyGenerationContext?.refreshHistory?.();
       notify("success");
       toast("Удалено из истории");
     } catch (error) {
@@ -256,7 +237,7 @@
           "Удалить из истории",
           async () => {
             await confirmHistoryRemoval(generation.id);
-            document.querySelector('[data-shell-nav="history"]')?.click();
+            window.RoxyCustomerNavigation?.open?.("history") || document.querySelector('[data-shell-nav="history"]')?.click();
           },
           "ksu-history-action social-delete-result",
         ),
@@ -463,27 +444,8 @@
     }
   }
 
-  function observeDom() {
-    const historyList = document.getElementById("ksuHistoryList");
-    if (historyList) {
-      new MutationObserver(() => requestAnimationFrame(decorateHistory)).observe(historyList, {
-        childList: true,
-        subtree: true,
-      });
-    }
-    const result = document.getElementById("resultCard");
-    if (result) {
-      new MutationObserver(() => requestAnimationFrame(decorateResult)).observe(result, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["hidden"],
-      });
-    }
-  }
-
   mountProfileSocial();
-  observeDom();
+  attachGenerationContext();
   requestAnimationFrame(() => {
     decorateHistory();
     decorateResult();
