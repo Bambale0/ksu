@@ -1,0 +1,396 @@
+/* Reference-driven ROXY home. Structure inspired by high-conversion creator apps, visual language stays ROXY. */
+
+.roxy-brand-ready #createHome > .hero-card {
+  display: none;
+}
+
+.roxy-reference-home {
+  display: grid;
+  gap: 22px;
+  margin: 4px 0 26px;
+}
+
+.roxy-reference-start,
+.roxy-reference-trends,
+.roxy-reference-tools {
+  display: grid;
+  gap: 12px;
+}
+
+.roxy-reference-section-head,
+.roxy-reference-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roxy-reference-section-head {
+  justify-content: flex-start;
+}
+
+.roxy-reference-section-mark {
+  width: 4px;
+  height: 31px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f4c57a, var(--roxy-pink, #ff73ca));
+  box-shadow: 0 0 20px rgba(244, 197, 122, .16);
+}
+
+.roxy-reference-section-head h2,
+.roxy-reference-list-title h2 {
+  margin: 0;
+  color: var(--roxy-text, #f7f5fb);
+  font-size: 22px;
+  line-height: 1.05;
+  letter-spacing: -.035em;
+}
+
+.roxy-reference-start-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.roxy-reference-start-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 14px;
+  min-height: 104px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(26,24,31,.98), rgba(12,11,15,.98));
+  color: var(--roxy-text, #f8f6fb);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 16px 38px rgba(0,0,0,.18);
+}
+
+.roxy-reference-start-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .09;
+  background:
+    repeating-linear-gradient(117deg, transparent 0 16px, rgba(255,255,255,.055) 16px 17px, transparent 17px 31px),
+    radial-gradient(circle at 86% 18%, rgba(255,255,255,.11), transparent 18%);
+  mix-blend-mode: screen;
+}
+
+.roxy-reference-start-card.is-featured {
+  border-color: rgba(244,197,122,.26);
+  background:
+    radial-gradient(circle at 88% 25%, rgba(244,197,122,.14), transparent 31%),
+    linear-gradient(145deg, rgba(37,31,22,.98), rgba(17,15,17,.98));
+}
+
+.roxy-reference-start-card.is-wide {
+  min-height: 96px;
+}
+
+.roxy-reference-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  background: rgba(255,255,255,.055);
+  color: rgba(255,255,255,.86);
+}
+
+.roxy-reference-start-card > .roxy-reference-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+}
+
+.roxy-reference-start-card.is-featured > .roxy-reference-icon {
+  border-color: rgba(244,197,122,.25);
+  background: linear-gradient(145deg, rgba(244,197,122,.22), rgba(255,115,202,.08));
+  color: #f6cf8e;
+}
+
+.roxy-reference-icon svg,
+.roxy-reference-trend-type svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.roxy-reference-start-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.roxy-reference-eyebrow {
+  color: #f0c77d;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .12em;
+}
+
+.roxy-reference-start-copy strong {
+  font-size: 18px;
+  letter-spacing: -.02em;
+}
+
+.roxy-reference-start-copy > span {
+  color: rgba(236,232,241,.58);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.roxy-reference-arrow {
+  position: relative;
+  z-index: 1;
+  color: #f0c77d;
+  font-size: 23px;
+}
+
+.roxy-reference-list-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.roxy-reference-list-title > .roxy-reference-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #f0c77d;
+}
+
+.roxy-reference-list-title > span:last-child {
+  color: rgba(236,232,241,.48);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.roxy-reference-all {
+  padding: 8px 0 8px 10px;
+  border: 0;
+  background: transparent;
+  color: #f0c77d;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.roxy-reference-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.roxy-reference-trend-card {
+  position: relative;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 21px;
+  background: #111014;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(0,0,0,.15);
+}
+
+.roxy-reference-trend-media-wrap {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: #17151b;
+}
+
+.roxy-reference-trend-media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.roxy-reference-trend-media-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 45% 0 0;
+  background: linear-gradient(transparent, rgba(0,0,0,.76));
+  pointer-events: none;
+}
+
+.roxy-reference-trend-type {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: 12px;
+  background: rgba(12,12,14,.54);
+  color: #fff;
+  backdrop-filter: blur(9px);
+}
+
+.roxy-reference-trend-type svg {
+  width: 20px;
+  height: 20px;
+}
+
+.roxy-reference-trend-title {
+  position: absolute;
+  z-index: 3;
+  right: 13px;
+  bottom: 14px;
+  left: 13px;
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 820;
+  line-height: 1.15;
+  letter-spacing: -.015em;
+  text-shadow: 0 2px 10px rgba(0,0,0,.65);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.roxy-reference-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.roxy-reference-tool {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 78px;
+  padding: 10px 6px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 17px;
+  background: rgba(20,19,24,.82);
+  color: rgba(243,240,246,.78);
+  cursor: pointer;
+}
+
+.roxy-reference-tool .roxy-reference-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  color: #d7c7e8;
+}
+
+.roxy-reference-tool span:last-child {
+  width: 100%;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 720;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roxy-reference-empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  border: 1px dashed rgba(255,255,255,.09);
+  border-radius: 18px;
+  color: rgba(236,232,241,.5);
+  text-align: center;
+  font-size: 11px;
+}
+
+/* Old equal-priority dashboard duplicates the same actions; the reference menu above owns home hierarchy. */
+.roxy-brand-ready #createHome > .studio-home-orchestration,
+.roxy-brand-ready #createHome > .roxy-home-tools {
+  display: none !important;
+}
+
+/* Promo returns to being a visual lead, but remains short enough to keep start choices close to the fold. */
+.roxy-brand-ready #roxyPromoSection {
+  margin: 0 0 4px;
+}
+
+.roxy-brand-ready #roxyPromoViewport {
+  grid-auto-columns: minmax(320px, 100%);
+  gap: 10px;
+}
+
+.roxy-brand-ready .roxy-promo-card,
+.roxy-brand-ready .roxy-promo-copy {
+  min-height: 170px !important;
+  max-height: 170px;
+}
+
+.roxy-brand-ready .roxy-promo-copy {
+  align-content: end;
+  padding: 20px !important;
+  background: linear-gradient(90deg, rgba(8,8,10,.88), rgba(8,8,10,.34) 70%, transparent);
+}
+
+.roxy-brand-ready .roxy-promo-copy h2 {
+  font-size: 23px;
+}
+
+.roxy-brand-ready .roxy-promo-copy p {
+  max-width: 42ch;
+  font-size: 11px;
+  -webkit-line-clamp: 2;
+}
+
+.roxy-brand-ready .roxy-promo-cta {
+  min-height: 34px;
+  width: max-content;
+  padding: 0 14px;
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  .roxy-reference-home { gap: 19px; margin-top: 2px; }
+  .roxy-reference-section-head h2,
+  .roxy-reference-list-title h2 { font-size: 19px; }
+  .roxy-reference-start-card { min-height: 96px; padding: 14px; grid-template-columns: 52px minmax(0,1fr) 18px; gap: 12px; border-radius: 20px; }
+  .roxy-reference-start-card > .roxy-reference-icon { width: 52px; height: 52px; border-radius: 16px; }
+  .roxy-reference-start-copy strong { font-size: 17px; }
+  .roxy-reference-start-copy > span { font-size: 11px; }
+  .roxy-brand-ready #roxyPromoViewport { grid-auto-columns: 100%; }
+  .roxy-brand-ready .roxy-promo-card,
+  .roxy-brand-ready .roxy-promo-copy { min-height: 154px !important; max-height: 154px; }
+  .roxy-brand-ready .roxy-promo-copy { padding: 16px !important; }
+  .roxy-brand-ready .roxy-promo-copy h2 { font-size: 20px; }
+}
+
+@media (min-width: 760px) {
+  .roxy-reference-start-stack { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .roxy-reference-trend-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .roxy-reference-home { grid-column: 1 / -1; }
+  .roxy-reference-start { grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); }
+  .roxy-reference-start > .roxy-reference-section-head { grid-column: 1 / -1; }
+  .roxy-reference-start > .roxy-reference-start-stack { grid-column: 1; }
+  .roxy-reference-start > .is-wide { grid-column: 2; height: 100%; }
+  .roxy-reference-trend-grid { grid-template-columns: repeat(6, minmax(0,1fr)); }
+  .roxy-reference-tools-grid { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+}
