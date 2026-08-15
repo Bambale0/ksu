@@ -50,6 +50,10 @@
       css: "/mini-app/roxy-parity-navigation.css",
       js: "/mini-app/roxy-parity-navigation.js",
     });
+    mountLayer({
+      css: "/mini-app/roxy-history-management.css",
+      js: "/mini-app/roxy-history-management.js",
+    });
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
     // Mount last: acceptance CSS intentionally owns final safe-area/keyboard/mobile
     // overrides without changing the product architecture of any feature surface.
