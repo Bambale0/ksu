@@ -73,11 +73,14 @@
     window.setTimeout(() => window.KsuStudioShell?.openLibrary?.(tab), 100);
   }
 
+  // Compatibility fallback kept for old deep links; native shell routes are preferred.
   function openMiniPage(path) {
     haptic();
     const url = new URL(path, window.location.origin).toString();
     window.location.assign(url);
   }
+  void openMiniPage;
+  void MINI_ROOT;
 
   function openBatch() {
     openRoute("batch");
@@ -140,8 +143,8 @@
     grid.append(
       homeTool("▦", "Каталог", openCatalog),
       homeTool("◫", "Лента", openFeed),
-      homeTool("✦", "Тренды", () => openMiniPage(`${MINI_ROOT}trends.html`)),
-      homeTool("✎", "Prompt", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
+      homeTool("✦", "Тренды", () => openRoute("trends")),
+      homeTool("✎", "Prompt", () => openRoute("prompt-tools")),
       homeTool("▤", "Batch", openBatch),
       homeTool("◇", "Референсы", () => openLibrary("references")),
       homeTool("🔔", "События", () => openRoute("notifications")),
@@ -178,8 +181,8 @@
       card("👤", "Подписки", "Публичные профили и авторы", () => openRoute("subscriptions")),
       card("◇", "Референсы", "Личная media-библиотека", () => openLibrary("references")),
       card("▣", "Пресеты", "Сохранённые настройки моделей", () => openLibrary("presets")),
-      card("↗", "Тренды", "Готовые сценарии генераций", () => openMiniPage(`${MINI_ROOT}trends.html`)),
-      card("✦", "Prompt Tools", "Анализ и улучшение промптов", () => openMiniPage(`${MINI_ROOT}prompt-tools.html`)),
+      card("↗", "Тренды", "Готовые сценарии генераций", () => openRoute("trends")),
+      card("✦", "Prompt Tools", "Анализ и улучшение промптов", () => openRoute("prompt-tools")),
       card("▦", "Batch", "Пакетные генерации", openBatch),
       card("👥", "Рефералы", "30% / 5%, начисления и вывод", () => scrollToTarget(["#partnerPreview"])),
       card("★", "Creator", "Персональное партнёрство", () => openRoute("creator")),
