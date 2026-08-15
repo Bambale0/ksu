@@ -6,7 +6,9 @@
     models: [],
     musicModel: null,
     loading: false,
-    observer: null,
+    contentObserver: null,
+    contentRoots: new Set(),
+    frame: 0,
   };
 
   function haptic(kind = "medium") {
@@ -38,7 +40,7 @@
       state.musicModel = null;
     } finally {
       state.loading = false;
-      apply();
+      scheduleApply();
     }
   }
 
@@ -77,7 +79,7 @@
       select.value = modelId;
       select.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    apply();
+    scheduleApply();
   }
 
   function openMusicBuilder() {
@@ -89,7 +91,7 @@
     haptic();
     localStorage.setItem("ksu-selected-model", model.id);
     closeCreateCenter();
-    window.KsuStudioShell?.open?.("home");
+    window.RoxyCustomerNavigation?.open?.("home") || window.KsuStudioShell?.open?.("home");
 
     const enter = (attempt = 0) => {
       const card = [...document.querySelectorAll(".shell-family-card")]
@@ -188,7 +190,38 @@
     if (summary?.textContent === "Ваш трек") setText(summary, "Вы выбрали");
   }
 
+  function observedRoots() {
+    return [
+      document.getElementById("roxyCreateCenterView"),
+      document.getElementById("createHome"),
+      document.getElementById("builderView"),
+      document.getElementById("resultCard"),
+      document.getElementById("generationDetailView"),
+      document.getElementById("ksuHistoryOverlay"),
+    ].filter(Boolean);
+  }
+
+  function ensureObserver() {
+    if (!state.contentObserver) {
+      state.contentObserver = new MutationObserver(scheduleApply);
+    }
+  }
+
+  function attachScopedObservers() {
+    ensureObserver();
+    for (const root of observedRoots()) {
+      if (state.contentRoots.has(root)) continue;
+      state.contentRoots.add(root);
+      state.contentObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+  }
+
   function apply() {
+    state.frame = 0;
     enableCreateCard();
     patchFamilyCards();
     patchBuilder();
@@ -197,6 +230,12 @@
     patchResultContainer(document.getElementById("generationDetailView"));
     patchResultContainer(document.getElementById("ksuHistoryOverlay"));
     patchRecentCards();
+    attachScopedObservers();
+  }
+
+  function scheduleApply() {
+    if (state.frame) return;
+    state.frame = window.requestAnimationFrame(apply);
   }
 
   function interceptMusicCard(event) {
@@ -209,14 +248,17 @@
 
   function init() {
     document.addEventListener("click", interceptMusicCard, true);
-    document.getElementById("modelSelect")?.addEventListener("change", () => window.requestAnimationFrame(apply));
+    document.getElementById("modelSelect")?.addEventListener("change", scheduleApply);
     void loadCatalog();
-    apply();
-    if (!state.observer && document.body) {
-      state.observer = new MutationObserver(() => window.requestAnimationFrame(apply));
-      state.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    scheduleApply();
+    for (const delay of [80, 240, 700]) {
+      window.setTimeout(() => {
+        attachScopedObservers();
+        scheduleApply();
+      }, delay);
     }
-    tg?.onEvent?.("activated", apply);
+    tg?.onEvent?.("activated", scheduleApply);
+    window.addEventListener("roxy:route-changed", scheduleApply);
   }
 
   window.RoxyMusic = Object.freeze({ open: openMusicBuilder, refresh: loadCatalog });
