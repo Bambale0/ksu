@@ -145,10 +145,20 @@
     const route = activeRoute();
     if (route === "home") return;
     hideKeyboardForNavigation();
+
+    // Primary ROXY navigation seeds and owns browser history entries. Using the same
+    // history stack here keeps Telegram BackButton and browser Back behavior identical.
+    if (window.history.state?.roxyNavigation) {
+      window.history.back();
+      scheduleBackSync();
+      return;
+    }
+
+    // Fail-safe for legacy entry points that predate the route-history owner.
     if (route === "wallet") {
-      window.RoxyCustomerNavigation?.open?.("profile", { feedback: false });
+      window.RoxyCustomerNavigation?.open?.("profile", { feedback: false, historyMode: "replace" });
     } else {
-      window.RoxyCustomerNavigation?.open?.("home", { feedback: false });
+      window.RoxyCustomerNavigation?.open?.("home", { feedback: false, historyMode: "replace" });
     }
     scheduleBackSync();
   }
