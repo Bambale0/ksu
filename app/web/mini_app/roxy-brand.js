@@ -6,8 +6,6 @@
   const BRAND_RE = /Ксю|КСЮ/g;
   const BRAND_TEST_RE = /Ксю|КСЮ/;
   let observer = null;
-  let balanceObserver = null;
-  let rateObserver = null;
   let brandFrame = 0;
   const pendingBrandRoots = new Set();
 
@@ -26,41 +24,15 @@
   }
 
   function mountProductLayers() {
-    mountLayer({
-      css: "/mini-app/roxy-customer-navigation.css",
-      js: "/mini-app/roxy-customer-navigation.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-discovery.css",
-      js: "/mini-app/roxy-discovery.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-create-center.css",
-      js: "/mini-app/roxy-create-center.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-music.css",
-      js: "/mini-app/roxy-music.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-profile-cabinet.css",
-      js: "/mini-app/roxy-profile-cabinet.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-parity-navigation.css",
-      js: "/mini-app/roxy-parity-navigation.js",
-    });
-    mountLayer({
-      css: "/mini-app/roxy-history-management.css",
-      js: "/mini-app/roxy-history-management.js",
-    });
+    mountLayer({ css: "/mini-app/roxy-customer-navigation.css", js: "/mini-app/roxy-customer-navigation.js" });
+    mountLayer({ css: "/mini-app/roxy-discovery.css", js: "/mini-app/roxy-discovery.js" });
+    mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
+    mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
+    mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
+    mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });
+    mountLayer({ css: "/mini-app/roxy-history-management.css", js: "/mini-app/roxy-history-management.js" });
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
-    // Mount last: acceptance CSS intentionally owns final safe-area/keyboard/mobile
-    // overrides without changing the product architecture of any feature surface.
-    mountLayer({
-      css: "/mini-app/roxy-mobile-runtime.css",
-      js: "/mini-app/roxy-mobile-runtime.js",
-    });
+    mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
   }
 
   function setTelegramChrome() {
@@ -69,7 +41,7 @@
       tg?.setBackgroundColor?.("#09080f");
       tg?.setBottomBarColor?.("#09080f");
     } catch (_error) {
-      // Brand chrome is progressive enhancement; older Telegram clients can ignore it.
+      // Progressive enhancement for newer Telegram clients.
     }
   }
 
@@ -151,43 +123,25 @@
 
   function styleHomeHero() {
     const home = document.getElementById("createHome");
-    if (!home) return;
-    const hero = home.querySelector(".hero-card");
-    if (!hero) return;
+    const hero = home?.querySelector(".hero-card");
+    const copy = hero?.querySelector(".hero-copy");
+    if (!home || !hero || !copy) return;
+
     setText(".eyebrow", "ROXY · AI CREATIVE STUDIO", hero);
     setText(".hero-copy h1", "Привет! Это ROXY ✨", hero);
     setText(".hero-copy p", "Твори. Генерируй. Зарабатывай.", hero);
 
-    if (!document.getElementById("roxyHomeBalance")) {
-      const card = document.createElement("section");
-      card.className = "roxy-home-balance";
-      card.id = "roxyHomeBalance";
-      const label = document.createElement("span");
-      label.className = "roxy-home-balance-label";
-      label.textContent = "Баланс";
-      const value = document.createElement("strong");
-      value.className = "roxy-home-balance-value";
-      value.id = "roxyHomeBalanceValue";
-      value.textContent = "—";
-      const note = document.createElement("small");
-      note.className = "roxy-home-balance-note";
-      note.textContent = "ROX · курс обновляется автоматически";
-      card.append(label, value, note);
-      hero.insertAdjacentElement("afterend", card);
-    }
+    document.getElementById("roxyHomeBalance")?.remove();
 
-    if (!document.getElementById("roxyCreateCta")) {
-      const cta = document.createElement("button");
+    let cta = document.getElementById("roxyCreateCta");
+    if (!cta) {
+      cta = document.createElement("button");
       cta.type = "button";
       cta.className = "roxy-create-cta";
       cta.id = "roxyCreateCta";
-      cta.textContent = "✦  СОЗДАТЬ";
+      cta.textContent = "✦ Создать";
       cta.addEventListener("click", () => {
-        try {
-          tg?.HapticFeedback?.impactOccurred?.("medium");
-        } catch (_error) {
-          // Optional Telegram haptics.
-        }
+        try { tg?.HapticFeedback?.impactOccurred?.("medium"); } catch (_error) { /* optional */ }
         if (window.RoxyCustomerNavigation?.open) {
           window.RoxyCustomerNavigation.open("create");
           return;
@@ -198,46 +152,8 @@
         }
         document.querySelector('[data-shell-nav="create"]')?.click();
       });
-      const balance = document.getElementById("roxyHomeBalance");
-      balance?.insertAdjacentElement("afterend", cta);
     }
-  }
-
-  function roxBalanceText(value) {
-    return String(value || "—").trim().replace(/\s*кр\.?$/i, " ROX");
-  }
-
-  function roxRateText(value) {
-    const raw = String(value || "").trim();
-    return raw ? raw.replace(/кр\./i, "ROX") : "ROX · курс обновляется автоматически";
-  }
-
-  function syncHomeBalance() {
-    const source = document.getElementById("balanceValue");
-    const target = document.getElementById("roxyHomeBalanceValue");
-    if (!source || !target) return;
-    const update = () => {
-      const next = roxBalanceText(source.textContent);
-      if (target.textContent !== next) target.textContent = next;
-    };
-    update();
-    if (balanceObserver) return;
-    balanceObserver = new MutationObserver(update);
-    balanceObserver.observe(source, { childList: true, characterData: true, subtree: true });
-  }
-
-  function syncHomeRate() {
-    const source = document.getElementById("paymentRateLabel");
-    const target = document.querySelector(".roxy-home-balance-note");
-    if (!source || !target) return;
-    const update = () => {
-      const next = roxRateText(source.textContent);
-      if (target.textContent !== next) target.textContent = next;
-    };
-    update();
-    if (rateObserver) return;
-    rateObserver = new MutationObserver(update);
-    rateObserver.observe(source, { childList: true, characterData: true, subtree: true });
+    if (cta.parentElement !== copy) copy.appendChild(cta);
   }
 
   function styleWalletCopy() {
@@ -254,8 +170,6 @@
     styleMainBrand();
     styleHomeHero();
     styleWalletCopy();
-    syncHomeBalance();
-    syncHomeRate();
   }
 
   function apply() {
@@ -290,15 +204,10 @@
     setTelegramChrome();
     apply();
     if (observer || !document.body) return;
-    // Dynamic product surfaces are branded incrementally. Do not rescan the full body
-    // on balance/progress/text updates: that used to create persistent main-thread jank.
     observer = new MutationObserver(scheduleDynamicBranding);
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init, { once: true });
-  } else {
-    init();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else init();
 })();
