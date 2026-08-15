@@ -25,6 +25,26 @@ def test_native_child_screen_router_reuses_existing_live_components() -> None:
     assert "fetch(" not in source
 
 
+def test_public_author_profile_is_a_native_route_from_feed() -> None:
+    children = _read("roxy-child-screens.js")
+    navigation = _read("roxy-customer-navigation.js")
+    author = _read("roxy-author-profile.js")
+    brand = _read("roxy-brand.js")
+
+    assert "author:" in children
+    assert "authorProfile: true" in children
+    assert "window.RoxyAuthorProfile.render(dom.body, authorId)" in children
+    assert 'author: "profile"' in navigation
+    assert 'window.RoxyCustomerNavigation?.open?.("author")' in author
+    assert "/api/v1/social/profiles/${encodeURIComponent(state.authorId)}" in author
+    assert "/api/v1/social/profiles/${encodeURIComponent(state.authorId)}/subscribe" in author
+    assert "/api/v1/feed/${encodeURIComponent(generationId)}?surface=${encodeURIComponent(surface)}" in author
+    assert 'label !== "👤 Автор" && label !== "👤 Профиль"' in author
+    assert 'url.searchParams.set("author", authorId)' in author
+    assert '/mini-app/roxy-author-profile.js' in brand
+    assert brand.index('/mini-app/roxy-author-profile.js') < brand.index('/mini-app/roxy-child-screens.js')
+
+
 def test_library_and_batch_are_native_child_routes_not_duplicate_api_clients() -> None:
     children = _read("roxy-child-screens.js")
     batch = _read("roxy-batch-embedded.js")
@@ -63,6 +83,7 @@ def test_primary_router_accepts_child_routes_and_maps_them_to_parent_navigation(
         'support: "profile"',
         'creator: "profile"',
         'subscriptions: "profile"',
+        'author: "profile"',
         'references: "create"',
         'presets: "create"',
         'batch: "create"',
