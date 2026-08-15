@@ -6,7 +6,9 @@
   const state = {
     nestedVisible: false,
     keyboardOpen: false,
-    observer: null,
+    bodyObserver: null,
+    surfaceObserver: null,
+    surfaceRoots: new Set(),
     scrollTimer: null,
     backFrame: 0,
   };
@@ -107,6 +109,7 @@
   function syncBackButton() {
     const back = tg?.BackButton;
     if (!back) return;
+    attachSurfaceObservers();
     syncNestedSnapshot();
     const route = activeRoute();
     const visible = state.nestedVisible || route !== "home";
@@ -140,7 +143,7 @@
   function onBackButton() {
     // shell.js and Feed own nested history. The snapshot covers the case where their
     // handler runs first and closes synchronously; the direct check covers a just-opened
-    // nested surface before MutationObserver has published the next snapshot.
+    // nested surface before the scoped observer has published the next snapshot.
     if (state.nestedVisible || nestedVisible()) return;
     const route = activeRoute();
     if (route === "home") return;
@@ -220,10 +223,46 @@
 
   function mutationAffectsNavigation(mutation) {
     if (mutation.type === "attributes") {
-      if (mutation.target === document.body && mutation.attributeName === "class") return true;
-      return mutation.target instanceof Element && mutation.target.matches(NAV_MUTATION_SELECTOR);
+      return mutation.target === document.body && mutation.attributeName === "class";
     }
     return [...mutation.addedNodes, ...mutation.removedNodes].some(nodeAffectsNavigation);
+  }
+
+  function surfaceRoots() {
+    return [
+      document.getElementById("builderView"),
+      document.getElementById("generationDetailView"),
+      document.getElementById("feedOverlay"),
+      ...document.querySelectorAll("dialog"),
+    ].filter(Boolean);
+  }
+
+  function attachSurfaceObservers() {
+    if (!state.surfaceObserver) {
+      state.surfaceObserver = new MutationObserver(scheduleBackSync);
+    }
+    for (const root of surfaceRoots()) {
+      if (state.surfaceRoots.has(root)) continue;
+      state.surfaceRoots.add(root);
+      state.surfaceObserver.observe(root, {
+        attributes: true,
+        attributeFilter: root.tagName === "DIALOG" ? ["open"] : ["hidden"],
+      });
+    }
+  }
+
+  function attachBodyObserver() {
+    if (state.bodyObserver || !document.body) return;
+    state.bodyObserver = new MutationObserver((mutations) => {
+      if (!mutations.some(mutationAffectsNavigation)) return;
+      attachSurfaceObservers();
+      scheduleBackSync();
+    });
+    state.bodyObserver.observe(document.body, {
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
   }
 
   function init() {
@@ -234,6 +273,8 @@
     syncNestedSnapshot();
     syncKeyboard();
     bindTelegram();
+    attachSurfaceObservers();
+    attachBodyObserver();
     syncBackButton();
 
     vv?.addEventListener("resize", syncKeyboard, { passive: true });
@@ -251,19 +292,6 @@
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("click", onDocumentClick, true);
-
-    if (!state.observer && document.body) {
-      state.observer = new MutationObserver((mutations) => {
-        if (!mutations.some(mutationAffectsNavigation)) return;
-        scheduleBackSync();
-      });
-      state.observer.observe(document.body, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: ["hidden", "class", "open"],
-      });
-    }
   }
 
   window.RoxyMobileRuntime = Object.freeze({
