@@ -22,7 +22,9 @@
 
   const state = {
     active: "home",
+    currentRoute: "home",
     startupApplied: false,
+    historySeeded: false,
     bodyClassObserver: null,
     startupTimer: null,
     catalogAttempt: 0,
@@ -48,6 +50,36 @@
 
   function primaryRouteFor(route) {
     return route === "wallet" ? "profile" : route;
+  }
+
+  function routeUrl(route) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("route", route);
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function historyState(route) {
+    return { roxyNavigation: true, route };
+  }
+
+  function seedBrowserHistory(route) {
+    if (state.historySeeded) return;
+    state.historySeeded = true;
+    const initial = OPEN_ROUTES.includes(route) ? route : "home";
+    if (initial === "home") {
+      window.history.replaceState(historyState("home"), "", routeUrl("home"));
+      return;
+    }
+    window.history.replaceState(historyState("home"), "", routeUrl("home"));
+    window.history.pushState(historyState(initial), "", routeUrl(initial));
+  }
+
+  function writeBrowserRoute(route, mode = "push") {
+    if (mode === "none") return;
+    const current = window.history.state;
+    if (current?.roxyNavigation && current.route === route) return;
+    const method = mode === "replace" ? "replaceState" : "pushState";
+    window.history[method](historyState(route), "", routeUrl(route));
   }
 
   function emitRoute(route) {
@@ -88,9 +120,11 @@
     window.KsuStudioShell?.open?.("create");
   }
 
-  function open(route, { feedback = true } = {}) {
+  function open(route, { feedback = true, historyMode = "push" } = {}) {
     if (!OPEN_ROUTES.includes(route)) return;
+    state.currentRoute = route;
     state.active = primaryRouteFor(route);
+    writeBrowserRoute(route, historyMode);
     syncActive();
     if (feedback) haptic(route === "create" ? "medium" : "light");
 
@@ -194,14 +228,17 @@
   function applyStartupRoute() {
     if (state.startupApplied || !window.KsuStudioShell?.open) return false;
     state.startupApplied = true;
-    const route = requestedRoute();
-    if (route) {
-      window.setTimeout(() => open(route, { feedback: false }), 0);
-    } else {
-      state.active = inferredRoute();
-      syncActive();
-    }
+    const route = requestedRoute() || "home";
+    seedBrowserHistory(route);
+    window.setTimeout(() => open(route, { feedback: false, historyMode: "none" }), 0);
     return true;
+  }
+
+  function handlePopState(event) {
+    const route = OPEN_ROUTES.includes(event.state?.route)
+      ? event.state.route
+      : (requestedRoute() || "home");
+    open(route, { feedback: false, historyMode: "none" });
   }
 
   function attachBodyClassObserver() {
@@ -224,7 +261,7 @@
       if (!event.target.closest?.("[data-shell-nav]")) return;
       window.requestAnimationFrame(syncActive);
     }, true);
-    window.addEventListener("popstate", () => window.requestAnimationFrame(syncActive));
+    window.addEventListener("popstate", handlePopState);
     window.addEventListener("roxy:shell-route-changed", () => window.requestAnimationFrame(syncActive));
     window.setTimeout(() => {
       mountMenusUntilReady();
@@ -238,6 +275,9 @@
     routes: [...PRIMARY_ROUTES],
     get active() {
       return state.active;
+    },
+    get route() {
+      return state.currentRoute;
     },
   });
 
