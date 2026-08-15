@@ -1,0 +1,48 @@
+name: ROXY Release Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/web/mini_app/**"
+      - "scripts/check_roxy_release.py"
+      - "tests/test_roxy_release_acceptance.py"
+      - "docs/ROXY_RELEASE_ACCEPTANCE.md"
+      - ".github/workflows/roxy-release-gate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: roxy-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: ROXY release contract
+        run: python scripts/check_roxy_release.py
+
+      - name: Parse every Mini App JavaScript file
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find app/web/mini_app -name '*.js' -print0)
