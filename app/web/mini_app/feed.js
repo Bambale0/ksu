@@ -280,7 +280,11 @@
       like,
       action(`💬 ${item.comments_count || 0}`, () => toggleComments(item, card, surface)),
       action(`🔗 ${item.shares_count || 0}`, () => shareItem(item, surface)),
-      action("🔁 Повторить", () => remixItem(item, surface)),
+    );
+    if (item.prompt_actions_allowed !== false) {
+      actions.appendChild(action("🔁 Повторить", () => remixItem(item, surface)));
+    }
+    actions.append(
       action("👤 Профиль", () => loadProfile(item.author_referral_code)),
       action("↗ Пост", () => copyPostLink(item, surface)),
     );
