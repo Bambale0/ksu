@@ -8,6 +8,7 @@
     support: "profile",
     creator: "profile",
     subscriptions: "profile",
+    author: "profile",
     references: "create",
     presets: "create",
     batch: "create",
