@@ -34,7 +34,8 @@ def test_batch_is_embedded_without_duplicating_backend_client() -> None:
         'history.pushState',
         'history.back()',
         'tg?.BackButton?.onClick?.(onBackButton)',
-        'window.setTimeout(() => closeBatch({ historyBack: true }), 0)',
+        'function open({ manageHistory = true } = {})',
+        'history.state?.route === "batch"',
         'a[href="/mini-app/batch.html"]',
         'window.RoxyBatchEmbedded = Object.freeze',
         'files.id = "batchFiles"',
@@ -50,15 +51,14 @@ def test_batch_is_embedded_without_duplicating_backend_client() -> None:
     assert "MutationObserver" not in source
 
 
-def test_parity_navigation_opens_embedded_batch_first() -> None:
+def test_parity_navigation_uses_the_canonical_batch_child_route() -> None:
     source = _read("roxy-parity-navigation.js")
+    children = _read("roxy-child-screens.js")
     assert '/mini-app/roxy-batch-embedded.css' in source
     assert '/mini-app/roxy-batch-embedded.js' in source
-    assert "window.RoxyBatchEmbedded?.open" in source
-    assert "window.RoxyBatchEmbedded.open()" in source
-    assert 'card("▦", "Batch", "Пакетные генерации", () => openBatch())' in source
-    # Legacy standalone route is retained only as a bounded fallback.
-    assert 'openMiniPage(`${MINI_ROOT}batch.html`)' in source
+    assert 'openRoute("batch")' in source
+    assert 'window.RoxyBatchEmbedded.open({ manageHistory: false })' in children
+    assert 'openMiniPage(`${MINI_ROOT}batch.html`)' not in source
 
 
 def test_embedded_batch_is_compact_on_fhd_and_fullscreen_on_mobile() -> None:
