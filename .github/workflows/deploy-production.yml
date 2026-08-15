@@ -1,0 +1,304 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Resolve production SHA
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          api_header=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          main_sha="$(curl -fsSL "${api_header[@]}" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" | jq -r '.object.sha')"
+
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            deploy_sha="${WORKFLOW_SHA}"
+          else
+            deploy_sha="${main_sha}"
+          fi
+
+          if [[ -z "${deploy_sha}" || "${deploy_sha}" == "null" ]]; then
+            echo "Unable to resolve deployment SHA" >&2
+            exit 1
+          fi
+
+          if [[ "${deploy_sha}" != "${main_sha}" ]]; then
+            echo "Target ${deploy_sha} is no longer main HEAD (${main_sha}); skipping stale deployment."
+            echo "superseded=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "superseded=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for all required main checks
+        if: steps.target.outputs.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ steps.target.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=("CI" "Admin Console" "Batch Generation")
+          deadline=$((SECONDS + 900))
+
+          api_header=(
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          while (( SECONDS < deadline )); do
+            payload="$(curl -fsSL "${api_header[@]}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${DEPLOY_SHA}&event=push&per_page=100")"
+
+            waiting=0
+            failed=0
+
+            for workflow in "${required[@]}"; do
+              status="$(jq -r --arg name "${workflow}" '
+                [.workflow_runs[] | select(.name == $name)]
+                | sort_by(.run_number)
+                | last
+                | .status // "missing"
+              ' <<<"${payload}")"
+              conclusion="$(jq -r --arg name "${workflow}" '
+                [.workflow_runs[] | select(.name == $name)]
+                | sort_by(.run_number)
+                | last
+                | .conclusion // ""
+              ' <<<"${payload}")"
+
+              echo "${workflow}: status=${status} conclusion=${conclusion:-pending}"
+
+              if [[ "${status}" == "completed" && "${conclusion}" != "success" ]]; then
+                failed=1
+              elif [[ "${status}" != "completed" ]]; then
+                waiting=1
+              fi
+            done
+
+            if (( failed )); then
+              echo "A required production gate failed for ${DEPLOY_SHA}." >&2
+              exit 1
+            fi
+
+            if (( waiting == 0 )); then
+              echo "All production gates are green for ${DEPLOY_SHA}."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for required production gates." >&2
+          exit 1
+
+      - name: Validate deployment secrets
+        if: steps.target.outputs.superseded != 'true'
+        id: ssh
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          [[ -n "${DEPLOY_HOST}" ]] || missing+=(DEPLOY_HOST)
+          [[ -n "${DEPLOY_USER}" ]] || missing+=(DEPLOY_USER)
+          [[ -n "${DEPLOY_PATH}" ]] || missing+=(DEPLOY_PATH)
+          [[ -n "${DEPLOY_SSH_KEY}" ]] || missing+=(DEPLOY_SSH_KEY)
+          [[ -n "${DEPLOY_KNOWN_HOSTS}" ]] || missing+=(DEPLOY_KNOWN_HOSTS)
+
+          if (( ${#missing[@]} )); then
+            printf '::warning::Production deploy is not activated yet. Missing Actions secrets: %s\n' "${missing[*]}"
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "port=22" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          port="${DEPLOY_PORT:-22}"
+          if ! [[ "${port}" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+            echo "DEPLOY_PORT must be a valid TCP port." >&2
+            exit 1
+          fi
+
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+          echo "port=${port}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure SSH
+        if: steps.target.outputs.superseded != 'true' && steps.ssh.outputs.configured == 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "${HOME}/.ssh"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "${HOME}/.ssh/ksu_deploy"
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/ksu_deploy" "${HOME}/.ssh/known_hosts"
+
+      - name: Deploy exact main commit
+        if: steps.target.outputs.superseded != 'true' && steps.ssh.outputs.configured == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ steps.ssh.outputs.port }}
+          DEPLOY_SHA: ${{ steps.target.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh \
+            -i "${HOME}/.ssh/ksu_deploy" \
+            -p "${DEPLOY_PORT}" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "DEPLOY_SHA='${DEPLOY_SHA}' DEPLOY_PATH='${DEPLOY_PATH}' bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          cd "${DEPLOY_PATH}"
+          test -d .git
+          test -f docker-compose.yml
+          test -f .env
+
+          services=(
+            app
+            generation-worker
+            media-worker
+            payment-worker
+            creator-partnership-worker
+          )
+
+          diagnostics() {
+            code=$?
+            echo "Deployment failed with exit code ${code}." >&2
+            docker compose ps || true
+            docker compose logs --tail=200 "${services[@]}" || true
+            exit "${code}"
+          }
+          trap diagnostics ERR
+
+          echo "Deploying ${DEPLOY_SHA} into ${DEPLOY_PATH}"
+          previous_sha="$(git rev-parse HEAD)"
+          echo "Previous SHA: ${previous_sha}"
+
+          git fetch --prune origin main
+          git cat-file -e "${DEPLOY_SHA}^{commit}"
+          git reset --hard "${DEPLOY_SHA}"
+          test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
+
+          docker compose config -q
+          docker compose up -d postgres redis
+
+          postgres_ready=0
+          for _ in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U ksu -d ksu >/dev/null 2>&1; then
+              postgres_ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "${postgres_ready}" -eq 1
+
+          install -d -m 700 backups
+          backup="backups/predeploy-$(date -u +%Y%m%dT%H%M%SZ)-${DEPLOY_SHA:0:12}.dump"
+          docker compose exec -T postgres pg_dump -U ksu -d ksu -Fc > "${backup}"
+          test -s "${backup}"
+          echo "Created pre-deploy database backup: ${backup}"
+          find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -delete
+
+          docker compose build "${services[@]}"
+          docker compose run --rm app alembic upgrade head
+          docker compose up -d --remove-orphans "${services[@]}"
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health/ready >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "${ready}" -eq 1
+
+          operational=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health/operational >/dev/null 2>&1; then
+              operational=1
+              break
+            fi
+            sleep 2
+          done
+          test "${operational}" -eq 1
+
+          curl -fsS http://127.0.0.1:8000/health/live >/dev/null
+          curl -fsSI http://127.0.0.1:8000/mini-app/ >/dev/null
+
+          echo "Production is healthy on ${DEPLOY_SHA}."
+          docker compose ps
+          trap - ERR
+          REMOTE
+
+      - name: Deployment summary
+        if: always()
+        env:
+          DEPLOY_SHA: ${{ steps.target.outputs.sha }}
+          SUPERSEDED: ${{ steps.target.outputs.superseded }}
+          CONFIGURED: ${{ steps.ssh.outputs.configured }}
+        shell: bash
+        run: |
+          {
+            echo "## Production deployment"
+            echo
+            echo "- target: \`${DEPLOY_SHA:-unknown}\`"
+            echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
+            echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
+            echo "- workflow: \`${GITHUB_WORKFLOW}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
