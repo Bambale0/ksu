@@ -166,8 +166,9 @@ async def test_owner_can_view_own_safe_profile_even_when_not_discoverable() -> N
         assert profile["username"] == "SelfProfile"
 
 
-def test_social_mini_app_uses_server_truth_and_confirmation() -> None:
+def test_social_mini_app_uses_server_truth_confirmation_and_explicit_context() -> None:
     script = (MINI / "social.js").read_text(encoding="utf-8")
+    context = (MINI / "roxy-generation-context.js").read_text(encoding="utf-8")
     for token in (
         '"X-Telegram-Init-Data"',
         "/api/v1/social/generations/",
@@ -176,16 +177,21 @@ def test_social_mini_app_uses_server_truth_and_confirmation() -> None:
         '/history`, {\n        method: "DELETE"',
         "askRemovalConfirmation",
         "socialHistoryConfirm",
-        "originalFetch",
-        ".clone()",
+        "roxy:history-context",
+        "roxy:generation-context",
+        "RoxyGenerationContext",
         "profile.profile_discoverable",
         "Профиль скрыт",
         "Создать контент",
     ):
         assert token in script, token
+    assert "window.fetch =" not in script
+    assert "originalFetch" not in script
     assert "localStorage" not in script
     assert "sessionStorage" not in script
     assert "initDataUnsafe" not in script
+    assert 'emit("roxy:history-context"' in context
+    assert 'emit("roxy:generation-context"' in context
 
 
 def test_social_module_is_mounted_and_checked_by_ci() -> None:
