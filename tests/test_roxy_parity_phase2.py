@@ -80,3 +80,14 @@ def test_generation_context_replaces_global_fetch_interception() -> None:
         assert "originalFetch" not in source
         assert 'window.addEventListener("roxy:generation-context"' in source
     assert 'window.addEventListener("roxy:history-context"' in social
+
+
+def test_mobile_navigation_observation_is_top_level_and_surface_scoped() -> None:
+    source = _read("roxy-mobile-runtime.js")
+    assert "state.bodyObserver.observe(document.body" in source
+    body_block = source.split("state.bodyObserver.observe(document.body", 1)[1].split("});", 1)[0]
+    assert "subtree" not in body_block
+    assert "childList: true" in body_block
+    assert 'attributeFilter: ["class"]' in body_block
+    assert "state.surfaceObserver.observe(root" in source
+    assert 'root.tagName === "DIALOG" ? ["open"] : ["hidden"]' in source
