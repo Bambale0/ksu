@@ -29,6 +29,12 @@
       title: "Подписки и авторы",
       selector: ".social-profile-section",
     },
+    author: {
+      parent: "profile",
+      kicker: "Сообщество",
+      title: "Профиль автора",
+      authorProfile: true,
+    },
     references: {
       parent: "create",
       kicker: "Библиотека",
@@ -281,6 +287,19 @@
     if (firstMount) ensureScript(app.script);
   }
 
+  function openAuthorProfile() {
+    restoreMovedTarget();
+    hideBaseViews();
+    const authorId = new URLSearchParams(window.location.search).get("author")
+      || window.RoxyAuthorProfile?.authorId;
+    if (!window.RoxyAuthorProfile?.render) {
+      showState("Профиль автора загружается…");
+      window.setTimeout(openAuthorProfile, 75);
+      return;
+    }
+    void window.RoxyAuthorProfile.render(dom.body, authorId);
+  }
+
   function closeSpecial(route) {
     window.dispatchEvent(new CustomEvent("roxy:child-route-closing", { detail: { route } }));
     if (route === "batch") {
@@ -313,6 +332,10 @@
     }
     if (config.legacyApp) {
       openLegacyApp(route, config);
+      return true;
+    }
+    if (config.authorProfile) {
+      openAuthorProfile();
       return true;
     }
 
