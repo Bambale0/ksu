@@ -45,3 +45,19 @@ def test_economy_content_mutations_cannot_trigger_an_api_refresh_loop() -> None:
     assert "loadStats" not in apply_block
     assert "function routeMutation(mutations)" in source
     assert 'mutation.target?.id === "walletView" && !mutation.target.hidden' in source
+
+
+def test_music_runtime_observer_is_scoped_to_music_and_generation_surfaces() -> None:
+    source = _read("roxy-music.js")
+    assert "observe(document.body" not in source
+    assert "state.contentObserver.observe(root" in source
+    for node_id in (
+        "roxyCreateCenterView",
+        "createHome",
+        "builderView",
+        "resultCard",
+        "generationDetailView",
+        "ksuHistoryOverlay",
+    ):
+        assert f'document.getElementById("{node_id}")' in source
+    assert 'window.addEventListener("roxy:route-changed", scheduleApply)' in source
