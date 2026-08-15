@@ -11,6 +11,8 @@
     references: "create",
     presets: "create",
     batch: "create",
+    trends: "catalog",
+    "prompt-tools": "catalog",
   });
   const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
   const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet", ...CHILD_ROUTES];
