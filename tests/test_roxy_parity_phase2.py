@@ -37,3 +37,11 @@ def test_economy_runtime_observers_are_scoped_to_owned_surfaces() -> None:
     assert 'document.getElementById("walletView")' in source
     assert 'document.getElementById("partnerPreview")' in source
     assert 'attributeFilter: ["hidden"]' in source
+
+
+def test_economy_content_mutations_cannot_trigger_an_api_refresh_loop() -> None:
+    source = _read("roxy-economy.js")
+    apply_block = source.split("function apply()", 1)[1].split("function scheduleApply()", 1)[0]
+    assert "loadStats" not in apply_block
+    assert "function routeMutation(mutations)" in source
+    assert 'mutation.target?.id === "walletView" && !mutation.target.hidden' in source
