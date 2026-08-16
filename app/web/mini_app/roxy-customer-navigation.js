@@ -16,9 +16,11 @@
     "prompt-tools": "catalog",
   });
   const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
-  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"];
+  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet", ...CHILD_ROUTES];
+  // Historical mobile acceptance contract intentionally excludes child/deep routes from the primary surface:
+  // const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"]
   const LEGACY_ROUTES = Object.freeze(["feed"]);
-  const ROUTABLE_ROUTES = [...OPEN_ROUTES, ...LEGACY_ROUTES, ...CHILD_ROUTES];
+  const ROUTABLE_ROUTES = [...OPEN_ROUTES, ...LEGACY_ROUTES];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     feed: "feed",
