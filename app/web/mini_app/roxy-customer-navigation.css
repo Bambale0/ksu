@@ -2,7 +2,7 @@
   left: 14px;
   right: 14px;
   bottom: max(10px, var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   min-height: 74px;
   padding: 8px 7px;
   overflow: hidden;
