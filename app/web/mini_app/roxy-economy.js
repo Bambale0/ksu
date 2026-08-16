@@ -2,8 +2,6 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  // RoxyCustomerNavigation is the sole owner of visible primary menus.
-  // Economy only reacts to route changes and enriches wallet/partner surfaces.
   const state = {
     stats: null,
     loading: false,
@@ -78,7 +76,7 @@
     ["create", "Создать", () => openStudio("create")],
     ["prompts", "Промпты", () => openStudio("feed")],
     ["rox", "Мои ROX", () => openStudio("wallet")],
-    ["earn", "Заработать", scrollToPartner],
+    ["earn", "Заработок", scrollToPartner],
     ["profile", "Профиль", () => openStudio("profile")],
   ];
   void MENU;
@@ -92,14 +90,14 @@
     });
   }
 
-  function ruleRow(icon, label, amount, withdrawable) {
+  function ruleRow(icon, label, amount, destination) {
     const row = el("div", "roxy-rule-row");
     const source = el("div", "roxy-rule-source");
     source.append(el("span", "roxy-rule-icon", icon), el("span", "", label));
     row.append(
       source,
       el("strong", "roxy-rule-amount", amount),
-      el("span", `roxy-rule-withdraw ${withdrawable ? "yes" : "no"}`, withdrawable ? "✓" : "×"),
+      el("span", "roxy-rule-destination", destination),
     );
     return row;
   }
@@ -115,7 +113,7 @@
     const walletNote = legacyHero.querySelector("small");
     if (walletNote) walletNote.textContent = "Внутренняя валюта ROXY";
     const partnerHeading = document.getElementById("partnerPreviewHeading");
-    if (partnerHeading) partnerHeading.textContent = "Заработать ROX";
+    if (partnerHeading) partnerHeading.textContent = "Партнёрский заработок";
 
     let root = document.getElementById("roxyEconomyOverview");
     if (root) return root;
@@ -127,31 +125,31 @@
     rate.append(el("span", "", "Курс ROXY"), el("strong", "", "1 ROX = 1 ₽"));
 
     const balances = el("div", "roxy-balance-grid");
-    const bonus = el("article", "roxy-balance-card bonus");
-    bonus.append(
-      el("span", "roxy-balance-type", "Бонусные ROX"),
+    const walletCard = el("article", "roxy-balance-card wallet");
+    walletCard.append(
+      el("span", "roxy-balance-type", "Баланс ROX"),
       el("strong", "roxy-balance-number", "—"),
-      el("small", "", "Тратятся только внутри ROXY"),
+      el("small", "", "Бонусы и пополнения сразу зачисляются сюда"),
     );
-    bonus.querySelector("strong").id = "roxyBonusRox";
+    walletCard.querySelector("strong").id = "roxyWalletRox";
 
-    const withdrawable = el("article", "roxy-balance-card withdrawable");
-    withdrawable.append(
-      el("span", "roxy-balance-type", "Выводимые ROX"),
+    const earnings = el("article", "roxy-balance-card earnings");
+    earnings.append(
+      el("span", "roxy-balance-type", "Заработок партнёра"),
       el("strong", "roxy-balance-number", "—"),
-      el("small", "", "Только доход с реальных пополнений по реферальной системе"),
+      el("small", "", "Можно вывести деньгами или перевести в ROX"),
     );
-    withdrawable.querySelector("strong").id = "roxyWithdrawableRox";
-    balances.append(bonus, withdrawable);
+    earnings.querySelector("strong").id = "roxyPartnerRub";
+    balances.append(walletCard, earnings);
 
     const status = el("div", "roxy-economy-stats");
     status.id = "roxyEconomyStats";
 
     const rules = el("section", "roxy-rules-card");
     rules.id = "roxyEconomyRules";
-    rules.append(el("span", "section-kicker", "Как получить ROX"), el("h2", "", "Понятная система заработка"));
+    rules.append(el("span", "section-kicker", "Как это работает"), el("h2", "", "ROX отдельно, заработок отдельно"));
     const header = el("div", "roxy-rule-row header");
-    header.append(el("strong", "", "Как получил ROX"), el("strong", "", "Сколько"), el("strong", "", "Вывод"));
+    header.append(el("strong", "", "Источник"), el("strong", "", "Начисление"), el("strong", "", "Куда"));
     const rows = el("div", "roxy-rule-list");
     rows.id = "roxyRuleRows";
     rules.append(header, rows);
@@ -160,7 +158,7 @@
     const topup = el("button", "roxy-economy-action", "Пополнить ROX");
     topup.type = "button";
     topup.addEventListener("click", () => document.getElementById("topupHeading")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    const earn = el("button", "roxy-economy-action primary", "Заработать ROX");
+    const earn = el("button", "roxy-economy-action primary", "Партнёрский заработок");
     earn.type = "button";
     earn.addEventListener("click", scrollToPartner);
     actions.append(topup, earn);
@@ -175,16 +173,15 @@
   function renderStats(stats) {
     const root = ensureWalletEconomy();
     if (!root || !stats) return;
-    const bonus = document.getElementById("roxyBonusRox");
-    const withdrawable = document.getElementById("roxyWithdrawableRox");
-    if (bonus) bonus.textContent = `${format(stats.bonus_rox)} ROX`;
-    if (withdrawable) withdrawable.textContent = `${format(stats.withdrawable_rox)} ROX`;
+    const wallet = document.getElementById("roxyWalletRox");
+    const partner = document.getElementById("roxyPartnerRub");
+    if (wallet) wallet.textContent = `${format(stats.rox_balance ?? stats.bonus_rox)} ROX`;
+    if (partner) partner.textContent = `${format(stats.partner_balance_rub ?? stats.available)} ₽`;
 
     const status = document.getElementById("roxyEconomyStats");
     if (status) {
       status.replaceChildren(
-        el("span", "", `Создано промптов: ${stats.prompts_created ?? 0}`),
-        el("span", "", `Повторов промптов: ${stats.prompt_repeats ?? 0}`),
+        el("span", "", `Пополнения покупают ROX напрямую`),
         el("span", "", `1 линия: ${stats.first_line ?? 0}`),
         el("span", "", `2 линия: ${stats.second_line ?? 0}`),
       );
@@ -193,12 +190,11 @@
     const rows = document.getElementById("roxyRuleRows");
     if (rows) {
       rows.replaceChildren(
-        ruleRow("+", "Приветственный бонус", `${format(stats.welcome_bonus_rox)} ROX`, false),
-        ruleRow("+", "Приглашённый друг", `${format(stats.invite_bonus_rox)} ROX`, false),
-        ruleRow("↻", "Повтор промпта", `${format(stats.prompt_repeat_bonus_rox)} ROX`, false),
-        ruleRow("1", "1 уровень", `${format(stats.first_line_percent)}%`, true),
-        ruleRow("2", "2 уровень", `${format(stats.second_line_percent)}%`, true),
-        ruleRow("↓", "Минимальный вывод", `${format(stats.minimum_withdrawal_rox)} ROX`, true),
+        ruleRow("+", "Приветственный бонус", `+${format(stats.welcome_bonus_rox)} ROX`, "В баланс"),
+        ruleRow("+", "Приглашённый друг", `+${format(stats.invite_bonus_rox)} ROX`, "В баланс"),
+        ruleRow("↻", "Повтор промпта", `+${format(stats.prompt_repeat_bonus_rox)} ROX`, "В баланс"),
+        ruleRow("1", "Пополнение 1-й линии", `${format(stats.first_line_percent)}%`, "В ₽ доход"),
+        ruleRow("2", "Пополнение 2-й линии", `${format(stats.second_line_percent)}%`, "В ₽ доход"),
       );
     }
   }
