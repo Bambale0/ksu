@@ -93,8 +93,8 @@ def test_approved_home_explains_creator_economy_and_rox() -> None:
 def test_rox_copy_is_normalized_for_dynamic_wallet_and_generation_ui() -> None:
     script = _read("roxy-approved-home.js")
 
-    assert "normalizeCurrencyString" in script
-    assert "normalizeCurrencyText(document.body)" in script
+    assert "normalizeCopyString" in script
+    assert "normalizeVisibleCopy(document.body)" in script
     assert "кр\\." in script
     assert "кредит" in script
     assert '"/ ROX"' in script
