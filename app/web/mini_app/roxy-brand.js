@@ -4,10 +4,6 @@
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
   const BRAND_RE = /Ксю|КСЮ/g;
-  const BRAND_TEST_RE = /Ксю|КСЮ/;
-  let observer = null;
-  let brandFrame = 0;
-  const pendingBrandRoots = new Set();
 
   function mountLayer({ css, js }) {
     if (css && !document.querySelector(`link[href="${css}"]`)) {
@@ -20,10 +16,12 @@
     const script = document.createElement("script");
     script.src = js;
     script.defer = true;
+    script.async = false;
     document.head.appendChild(script);
   }
 
   function mountProductLayers() {
+    mountLayer({ js: "/mini-app/roxy-icons.js" });
     mountLayer({ js: "/mini-app/roxy-generation-context.js" });
     mountLayer({ js: "/mini-app/roxy-author-profile.js" });
     mountLayer({ css: "/mini-app/roxy-child-screens.css", js: "/mini-app/roxy-child-screens.js" });
@@ -39,6 +37,7 @@
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
     mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });
     mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
+    mountLayer({ css: "/mini-app/roxy-mature-ui.css" });
     mountLayer({ css: "/mini-app/roxy-approved-theme.css", js: "/mini-app/roxy-approved-home.js" });
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
   }
@@ -49,55 +48,12 @@
       tg?.setBackgroundColor?.("#09080f");
       tg?.setBottomBarColor?.("#09080f");
     } catch (_error) {
-      // Progressive enhancement for newer Telegram clients.
+      // Progressive enhancement for older Telegram clients.
     }
   }
 
   function replaceBrandString(value) {
     return typeof value === "string" ? value.replace(BRAND_RE, BRAND) : value;
-  }
-
-  function replaceTextNode(node) {
-    const parent = node?.parentElement;
-    if (!parent || parent.closest("script,style,textarea")) return;
-    const value = node.nodeValue || "";
-    if (BRAND_TEST_RE.test(value)) node.nodeValue = replaceBrandString(value);
-  }
-
-  function replaceBrandAttributes(element) {
-    if (!element?.getAttribute) return;
-    for (const attribute of ["aria-label", "title", "placeholder"]) {
-      const current = element.getAttribute(attribute);
-      if (!current || !BRAND_TEST_RE.test(current)) continue;
-      element.setAttribute(attribute, replaceBrandString(current));
-    }
-  }
-
-  function replaceBrandText(root = document.body) {
-    if (!root) return;
-    if (root.nodeType === Node.TEXT_NODE) {
-      replaceTextNode(root);
-      return;
-    }
-    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
-    if (root.nodeType === Node.ELEMENT_NODE) {
-      if (root.closest("script,style,textarea")) return;
-      replaceBrandAttributes(root);
-    }
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const parent = node.parentElement;
-        if (!parent || parent.closest("script,style,textarea")) return NodeFilter.FILTER_REJECT;
-        return BRAND_TEST_RE.test(node.nodeValue || "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-      },
-    });
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach(replaceTextNode);
-
-    const elements = root.querySelectorAll?.("[aria-label], [title], [placeholder]") || [];
-    elements.forEach(replaceBrandAttributes);
   }
 
   function setText(selector, text, root = document) {
@@ -113,9 +69,7 @@
       setText(".brand-mark", "RX", headerBrand);
       setText(".brand-copy strong", BRAND, headerBrand);
       setText(".brand-copy small", "AI CREATIVE STUDIO", headerBrand);
-      if (headerBrand.getAttribute("aria-label") !== "На главную ROXY") {
-        headerBrand.setAttribute("aria-label", "На главную ROXY");
-      }
+      headerBrand.setAttribute("aria-label", "На главную ROXY");
     }
 
     const sidebar = document.getElementById("studioSidebar");
@@ -123,9 +77,7 @@
       setText(".studio-sidebar-mark", "RX", sidebar);
       setText(".studio-sidebar-copy strong", BRAND, sidebar);
       setText(".studio-sidebar-copy small", "AI CREATIVE STUDIO", sidebar);
-      if (sidebar.getAttribute("aria-label") !== "Навигация ROXY Studio") {
-        sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
-      }
+      sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
     }
   }
 
@@ -173,9 +125,7 @@
 
   function styleWalletCopy() {
     const walletNote = document.querySelector("#walletHero small");
-    if (walletNote && walletNote.textContent !== "Внутренняя валюта ROXY") {
-      walletNote.textContent = "Внутренняя валюта ROXY";
-    }
+    if (walletNote) walletNote.textContent = "Внутренняя валюта ROXY";
   }
 
   function refreshBrandChrome() {
@@ -188,40 +138,20 @@
     styleWalletCopy();
   }
 
-  function apply() {
-    refreshBrandChrome();
-    replaceBrandText(document.body);
-  }
-
-  function queueBrandRoot(node) {
-    if (!node) return;
-    if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-      pendingBrandRoots.add(node);
+  function scheduleRefreshes() {
+    for (const delay of [0, 80, 180, 420, 900, 1600]) {
+      window.setTimeout(refreshBrandChrome, delay);
     }
-  }
-
-  function flushDynamicBranding() {
-    brandFrame = 0;
-    refreshBrandChrome();
-    for (const root of pendingBrandRoots) replaceBrandText(root);
-    pendingBrandRoots.clear();
-  }
-
-  function scheduleDynamicBranding(mutations) {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) queueBrandRoot(node);
-    }
-    if (!pendingBrandRoots.size || brandFrame) return;
-    brandFrame = window.requestAnimationFrame(flushDynamicBranding);
   }
 
   function init() {
     mountProductLayers();
     setTelegramChrome();
-    apply();
-    if (observer || !document.body) return;
-    observer = new MutationObserver(scheduleDynamicBranding);
-    observer.observe(document.body, { childList: true, subtree: true });
+    refreshBrandChrome();
+    scheduleRefreshes();
+    tg?.onEvent?.("activated", refreshBrandChrome);
+    window.addEventListener("roxy:shell-route-changed", refreshBrandChrome);
+    window.addEventListener("roxy:route-changed", refreshBrandChrome);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
