@@ -12,14 +12,15 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_customer_navigation_has_reference_style_six_primary_routes() -> None:
+def test_customer_navigation_has_reference_style_five_primary_routes() -> None:
     script = _read("roxy-customer-navigation.js")
     css = _read("roxy-customer-navigation.css")
-    for route in ("home", "feed", "create", "catalog", "history", "profile"):
+    for route in ("home", "catalog", "create", "history", "profile"):
         assert f'"{route}"' in script
-    for label in ("Главная", "Лента", "Создать", "Каталог", "История", "Профиль"):
+    for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
         assert label in script
-    assert 'feed: "feed"' in script
+    assert '["feed", "feed", "Лента"]' not in script
+    assert '"feed", "wallet"' in script  # legacy deep route remains supported, but is not a primary tab
     assert 'catalog: "feed"' in script  # safe fallback if discovery layer cannot mount
     assert "RoxyDiscovery?.openCatalog" in script
     assert 'classList.contains("roxy-discovery-catalog-open")' in script
@@ -28,7 +29,8 @@ def test_customer_navigation_has_reference_style_six_primary_routes() -> None:
     assert "OPEN_ROUTES" in script
     assert "roxy-central-create" in script
     assert "<svg" in script
-    assert "repeat(6" in css
+    assert "repeat(5" in css
+    assert "repeat(6" not in css
     assert "border-radius: 24px" in css
     assert "backdrop-filter" in css
     assert ".roxy-central-create" in css
