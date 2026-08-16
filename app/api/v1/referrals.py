@@ -11,6 +11,7 @@ from app.api.deps import CurrentUserDep, SessionDep
 from app.core.config import settings
 from app.db.feed_models import FeedRemixEvent
 from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, Wallet
+from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.credits import InternalCreditService
 from app.services.partner import (
@@ -19,6 +20,11 @@ from app.services.partner import (
     PartnerWithdrawalBelowMinimum,
     PartnerWithdrawalError,
 )
+from app.services.partner_wallet import (
+    PartnerWalletTransferError,
+    PartnerWalletTransferInsufficientFunds,
+    PartnerWalletTransferService,
+)
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -26,6 +32,11 @@ router = APIRouter(prefix="/referrals", tags=["referrals"])
 class CreateWithdrawalRequest(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     requisites: str = Field(min_length=3, max_length=1000)
+
+
+class CreateWalletTransferRequest(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
+    idempotency_key: str = Field(min_length=8, max_length=160)
 
 
 def _withdrawal_view(item: PartnerWithdrawal) -> dict[str, object]:
@@ -40,13 +51,27 @@ def _withdrawal_view(item: PartnerWithdrawal) -> dict[str, object]:
     }
 
 
+def _transfer_view(item: PartnerWalletTransfer) -> dict[str, object]:
+    return {
+        "id": str(item.id),
+        "amount_rub": str(item.amount_rub),
+        "rox_amount": str(item.rox_amount),
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _partner_chat_url() -> str | None:
+    value = settings.partner_telegram_url.strip()
+    return value if value.startswith("https://t.me/") else None
+
+
 @router.get("/stats")
 async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     first, second = await PartnerService.invitation_counts(session, user.id)
-    accounting = await PartnerService.accounting(session, user.id)
+    accounting = await PartnerWalletTransferService.accounting(session, user.id)
     payload = f"ref_{user.telegram_id}"
     wallet = await session.get(Wallet, user.id)
-    internal_rox = Decimal(wallet.balance if wallet is not None else 0)
+    wallet_rox = Decimal(wallet.balance if wallet is not None else 0)
     withdrawable_rox = InternalCreditService.credits_for(accounting["available"])
     pending_rox = InternalCreditService.credits_for(accounting["pending_rewards"])
     partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
@@ -86,22 +111,28 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     return {
         "first_line": first,
         "second_line": second,
-        # Existing names remain for backward compatibility with the partner cabinet.
+        # Partner earnings are real RUB. They stay separate from the bot wallet until
+        # the partner requests a payout or explicitly converts earnings into ROX.
         "available": str(accounting["available"]),
+        "partner_balance_rub": str(accounting["available"]),
         "pending": str(accounting["pending_rewards"]),
         "total_earned": str(accounting["total_earned"]),
+        "transferred_to_rox": str(accounting["transferred_to_rox"]),
         "pending_withdrawals": str(accounting["pending_withdrawals"]),
         "minimum_withdrawal": str(minimum_rub),
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
         "referral_link": PartnerService.referral_link(user.telegram_id),
-        # ROXY product contract from the approved economy reference.
-        "bonus_rox": str(internal_rox),
-        "withdrawable_rox": str(withdrawable_rox),
+        "partner_chat_url": _partner_chat_url(),
+        # Canonical wallet field. Bonuses, purchased top-ups and converted partner
+        # earnings all land in this one ROX balance.
+        "rox_balance": str(wallet_rox),
+        "bonus_rox": str(wallet_rox),  # backward compatibility
+        "withdrawable_rox": str(withdrawable_rox),  # backward compatibility
         "withdrawable_pending_rox": str(pending_rox),
         "partner_total_earned_rox": str(partner_total_rox),
-        "total_rox": str(internal_rox + withdrawable_rox),
+        "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
         "welcome_bonus_rox": str(settings.start_balance_rox),
         "invite_bonus_rox": str(settings.invite_bonus_rox),
@@ -203,6 +234,48 @@ async def rewards(
     }
 
 
+@router.get("/wallet-transfers")
+async def wallet_transfers(
+    user: CurrentUserDep,
+    session: SessionDep,
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, object]:
+    rows = list(
+        (
+            await session.scalars(
+                select(PartnerWalletTransfer)
+                .where(PartnerWalletTransfer.user_id == user.id)
+                .order_by(PartnerWalletTransfer.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).all()
+    )
+    return {"items": [_transfer_view(item) for item in rows], "limit": limit, "offset": offset}
+
+
+@router.post("/wallet-transfers", status_code=201)
+async def create_wallet_transfer(
+    payload: CreateWalletTransferRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    try:
+        item = await PartnerWalletTransferService.transfer(
+            session,
+            user_id=user.id,
+            amount=payload.amount,
+            idempotency_key=payload.idempotency_key,
+        )
+    except PartnerWalletTransferInsufficientFunds as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PartnerWalletTransferError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await session.commit()
+    return _transfer_view(item)
+
+
 @router.get("/withdrawals")
 async def withdrawals(
     user: CurrentUserDep,
@@ -231,17 +304,27 @@ async def create_withdrawal(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
+        # Use the same user row lock as wallet conversion so a partner cannot spend
+        # the same RUB concurrently on a card payout and on ROX conversion.
+        await PartnerWalletTransferService.assert_available(
+            session,
+            user_id=user.id,
+            amount=payload.amount,
+            lock=True,
+        )
         item = await PartnerService.create_withdrawal(
             session,
             user_id=user.id,
             amount=payload.amount,
             requisites=payload.requisites,
         )
-    except PartnerWithdrawalBelowMinimum as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PartnerWalletTransferInsufficientFunds as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PartnerInsufficientFunds as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except PartnerWithdrawalError as exc:
+    except PartnerWithdrawalBelowMinimum as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (PartnerWithdrawalError, PartnerWalletTransferError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await session.commit()
     return _withdrawal_view(item)
