@@ -47,7 +47,8 @@ html.roxy-approved-brand[data-ksu-theme] body,
 }
 
 .roxy-approved-brand body::before {
-  background: radial-gradient(circle at 50% 120%, rgba(155, 92, 255, .13), transparent 38%) !important;
+  background: linear-gradient(110deg, #9B5CFF 0%, #FF5FB7 100%) !important;
+  opacity: .055;
 }
 
 .roxy-approved-brand .product-header,
