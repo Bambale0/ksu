@@ -17,6 +17,14 @@
     try { tg?.HapticFeedback?.impactOccurred?.("light"); } catch (_error) { /* optional */ }
   }
 
+  function icon(name, className) {
+    const wrap = el("span", className);
+    wrap.setAttribute("aria-hidden", "true");
+    const semantic = window.RoxyIcons?.create?.(name, { size: 22 });
+    if (semantic) wrap.appendChild(semantic);
+    return wrap;
+  }
+
   function mountBatchIntegration() {
     if (!document.querySelector('link[href="/mini-app/roxy-batch-embedded.css"]')) {
       const link = document.createElement("link");
@@ -61,7 +69,6 @@
     window.setTimeout(find, 0);
   }
 
-  // Kept as a compatibility fallback for older shells; canonical entry is now a child route.
   function openLibrary(tab) {
     const route = tab === "presets" ? "presets" : "references";
     if (window.RoxyCustomerNavigation?.open?.(route, { feedback: false })) return;
@@ -73,7 +80,6 @@
     window.setTimeout(() => window.KsuStudioShell?.openLibrary?.(tab), 100);
   }
 
-  // Compatibility fallback kept for old deep links; native shell routes are preferred.
   function openMiniPage(path) {
     haptic();
     const url = new URL(path, window.location.origin).toString();
@@ -104,11 +110,11 @@
     window.KsuStudioShell?.open?.("feed");
   }
 
-  function card(glyph, title, note, handler) {
+  function card(iconName, title, note, handler) {
     const button = el("button", "roxy-parity-card");
     button.type = "button";
     button.append(
-      el("span", "roxy-parity-glyph", glyph),
+      icon(iconName, "roxy-parity-glyph"),
       el("span", "roxy-parity-copy"),
       el("span", "roxy-parity-arrow", "›"),
     );
@@ -118,10 +124,10 @@
     return button;
   }
 
-  function homeTool(glyph, title, handler) {
+  function homeTool(iconName, title, handler) {
     const button = el("button", "roxy-home-tool");
     button.type = "button";
-    button.append(el("span", "roxy-home-tool-glyph", glyph), el("strong", "", title));
+    button.append(icon(iconName, "roxy-home-tool-glyph"), el("strong", "", title));
     button.addEventListener("click", handler);
     return button;
   }
@@ -141,14 +147,14 @@
 
     const grid = el("div", "roxy-home-tools-grid");
     grid.append(
-      homeTool("▦", "Каталог", openCatalog),
-      homeTool("◫", "Лента", openFeed),
-      homeTool("✦", "Тренды", () => openRoute("trends")),
-      homeTool("✎", "Prompt", () => openRoute("prompt-tools")),
-      homeTool("▤", "Batch", openBatch),
-      homeTool("◇", "Референсы", () => openLibrary("references")),
-      homeTool("🔔", "События", () => openRoute("notifications")),
-      homeTool("💬", "Поддержка", () => openRoute("support")),
+      homeTool("catalog", "Каталог", openCatalog),
+      homeTool("feed", "Лента", openFeed),
+      homeTool("trend", "Тренды", () => openRoute("trends")),
+      homeTool("prompt", "Prompt", () => openRoute("prompt-tools")),
+      homeTool("batch", "Batch", openBatch),
+      homeTool("image", "Референсы", () => openLibrary("references")),
+      homeTool("bell", "События", () => openRoute("notifications")),
+      homeTool("support", "Поддержка", () => openRoute("support")),
     );
     section.append(head, grid);
     families.insertAdjacentElement("beforebegin", section);
@@ -175,18 +181,18 @@
 
     const grid = el("div", "roxy-parity-grid");
     grid.append(
-      card("🔔", "Уведомления", "Новые события и статусы", () => openRoute("notifications")),
-      card("🎟", "Промокод", "Активировать ROX-бонус", () => scrollToTarget([".promo-section"])),
-      card("💬", "Поддержка", "Тикеты, переписка, статусы", () => openRoute("support")),
-      card("👤", "Подписки", "Публичные профили и авторы", () => openRoute("subscriptions")),
-      card("◇", "Референсы", "Личная media-библиотека", () => openLibrary("references")),
-      card("▣", "Пресеты", "Сохранённые настройки моделей", () => openLibrary("presets")),
-      card("↗", "Тренды", "Готовые сценарии генераций", () => openRoute("trends")),
-      card("✦", "Prompt Tools", "Анализ и улучшение промптов", () => openRoute("prompt-tools")),
-      card("▦", "Batch", "Пакетные генерации", openBatch),
-      card("👥", "Рефералы", "30% / 5%, начисления и вывод", () => scrollToTarget(["#partnerPreview"])),
-      card("★", "Creator", "Персональное партнёрство", () => openRoute("creator")),
-      card("⚙", "Настройки", "Язык, уведомления, публичность", () => scrollToTarget(["#profileUiLanguage", "#profileTools"])),
+      card("bell", "Уведомления", "Новые события и статусы", () => openRoute("notifications")),
+      card("creator", "Промокод", "Активировать ROX-бонус", () => scrollToTarget([".promo-section"])),
+      card("support", "Поддержка", "Тикеты, переписка, статусы", () => openRoute("support")),
+      card("user", "Подписки", "Публичные профили и авторы", () => openRoute("subscriptions")),
+      card("image", "Референсы", "Личная media-библиотека", () => openLibrary("references")),
+      card("preset", "Пресеты", "Сохранённые настройки моделей", () => openLibrary("presets")),
+      card("trend", "Тренды", "Готовые сценарии генераций", () => openRoute("trends")),
+      card("prompt", "Prompt Tools", "Анализ и улучшение промптов", () => openRoute("prompt-tools")),
+      card("batch", "Batch", "Пакетные генерации", openBatch),
+      card("users", "Рефералы", "30% / 5%, начисления и вывод", () => scrollToTarget(["#partnerPreview"])),
+      card("creator", "Creator", "Персональное партнёрство", () => openRoute("creator")),
+      card("settings", "Настройки", "Язык, уведомления, публичность", () => scrollToTarget(["#profileUiLanguage", "#profileTools"])),
     );
 
     section.append(head, grid);
