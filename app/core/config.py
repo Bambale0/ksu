@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     bot_token: str = ""
     bot_username: str = ""
     support_telegram_url: str = ""
+    partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    # ROXY economy: 1 ROX = 1 RUB. Internal ROX are spend-only; partner ROX
-    # are backed by real paid referrals and are the only withdrawable balance.
+    # ROXY economy: 1 ROX = 1 RUB. Wallet ROX are spendable in ROXY; partner
+    # referral earnings stay in RUB until the user withdraws them or converts them to ROX.
     start_balance_rox: Decimal = Decimal("50")
     invite_bonus_rox: Decimal = Decimal("30")
     prompt_repeat_bonus_rox: Decimal = Decimal("5")
