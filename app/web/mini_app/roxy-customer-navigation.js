@@ -16,7 +16,9 @@
     "prompt-tools": "catalog",
   });
   const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
-  const OPEN_ROUTES = [...PRIMARY_ROUTES, "feed", "wallet", ...CHILD_ROUTES];
+  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"];
+  const LEGACY_ROUTES = Object.freeze(["feed"]);
+  const ROUTABLE_ROUTES = [...OPEN_ROUTES, ...LEGACY_ROUTES, ...CHILD_ROUTES];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     feed: "feed",
@@ -48,7 +50,7 @@
 
   function requestedRoute() {
     const route = new URLSearchParams(window.location.search).get("route");
-    return OPEN_ROUTES.includes(route) ? route : null;
+    return ROUTABLE_ROUTES.includes(route) ? route : null;
   }
 
   function haptic(kind = "light") {
@@ -77,7 +79,7 @@
   function seedBrowserHistory(route) {
     if (state.historySeeded) return;
     state.historySeeded = true;
-    const initial = OPEN_ROUTES.includes(route) ? route : "home";
+    const initial = ROUTABLE_ROUTES.includes(route) ? route : "home";
     if (initial === "home") {
       window.history.replaceState(historyState("home"), "", routeUrl("home"));
       return;
@@ -154,7 +156,7 @@
   }
 
   function open(route, { feedback = true, historyMode = "push" } = {}) {
-    if (!OPEN_ROUTES.includes(route)) return false;
+    if (!ROUTABLE_ROUTES.includes(route)) return false;
     state.currentRoute = route;
     state.active = primaryRouteFor(route);
     writeBrowserRoute(route, historyMode);
@@ -292,7 +294,7 @@
   }
 
   function handlePopState(event) {
-    const route = OPEN_ROUTES.includes(event.state?.route) ? event.state.route : (requestedRoute() || "home");
+    const route = ROUTABLE_ROUTES.includes(event.state?.route) ? event.state.route : (requestedRoute() || "home");
     open(route, { feedback: false, historyMode: "none" });
   }
 
