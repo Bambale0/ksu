@@ -141,23 +141,21 @@
   }
 
   function onBackButton() {
-    // shell.js and Feed own nested history. The snapshot covers the case where their
-    // handler runs first and closes synchronously; the direct check covers a just-opened
-    // nested surface before the scoped observer has published the next snapshot.
+    // shell.js and Feed own their nested views. At top level, ROXY deliberately follows
+    // browser history instead of guessing a parent route. This preserves the exact place
+    // the user came from even when legacy shell code has replaced history.state metadata.
     if (state.nestedVisible || nestedVisible()) return;
     const route = activeRoute();
     if (route === "home") return;
     hideKeyboardForNavigation();
 
-    // Primary ROXY navigation seeds and owns browser history entries. Using the same
-    // history stack here keeps Telegram BackButton and browser Back behavior identical.
-    if (window.history.state?.roxyNavigation) {
+    if (window.history.length > 1) {
       window.history.back();
       scheduleBackSync();
       return;
     }
 
-    // Fail-safe for legacy entry points that predate the route-history owner.
+    // Last-resort compatibility path for legacy direct entries with no history stack.
     if (route === "wallet") {
       window.RoxyCustomerNavigation?.open?.("profile", { feedback: false, historyMode: "replace" });
     } else {
@@ -289,6 +287,8 @@
       syncKeyboard();
       syncBackButton();
     }, 120), { passive: true });
+    window.addEventListener("roxy:route-changed", scheduleBackSync);
+    window.addEventListener("roxy:shell-route-changed", scheduleBackSync);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("click", onDocumentClick, true);
