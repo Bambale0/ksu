@@ -13,8 +13,10 @@
     invitations: [],
     rewards: [],
     withdrawals: [],
+    transfers: [],
     activeTab: "rewards",
-    submitting: false,
+    withdrawSubmitting: false,
+    transferSubmitting: false,
   };
 
   function ensureStyles() {
@@ -121,12 +123,19 @@
   function shareReferral() {
     const link = state.stats?.referral_link;
     if (!link) {
-      copyText(referralText());
+      void copyText(referralText());
       return;
     }
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Присоединяйся к ROXY · AI Creative Studio")}`;
     if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
     else window.open(shareUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function openPartnerChat() {
+    const url = state.stats?.partner_chat_url;
+    if (!url) return;
+    if (tg?.openTelegramLink) tg.openTelegramLink(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function render() {
@@ -151,9 +160,9 @@
     const summary = document.createElement("div");
     summary.className = "partner-summary-grid";
     summary.append(
-      stat("Общий доход", `${number(state.stats.total_earned)} ₽`),
-      stat("Доступно", `${number(state.stats.available)} ₽`),
-      stat("В ожидании", `${number(state.stats.pending)} ₽`),
+      stat("Доступно", `${number(state.stats.partner_balance_rub ?? state.stats.available)} ₽`),
+      stat("Всего заработано", `${number(state.stats.total_earned)} ₽`),
+      stat("Переведено в ROX", `${number(state.stats.transferred_to_rox)} ₽`),
       stat("На выводе", `${number(state.stats.pending_withdrawals)} ₽`),
       stat("1-я линия", `${state.stats.first_line} · ${number(state.stats.first_line_percent)}%`),
       stat("2-я линия", `${state.stats.second_line} · ${number(state.stats.second_line_percent)}%`),
@@ -174,6 +183,9 @@
       }),
       button("Пригласить", shareReferral, "primary"),
     );
+    if (state.stats.partner_chat_url) {
+      actions.appendChild(button("Партнёры ROXY", openPartnerChat));
+    }
     referral.append(title, code, actions);
 
     const tabs = document.createElement("div");
@@ -181,8 +193,8 @@
     tabs.setAttribute("role", "tablist");
     [
       ["rewards", "Начисления"],
-      ["invitations", "Приглашения"],
-      ["withdrawals", "Вывод"],
+      ["invitations", "Партнёры"],
+      ["money", "Деньги"],
     ].forEach(([key, label]) => {
       const tab = button(label, () => {
         state.activeTab = key;
@@ -197,7 +209,7 @@
     panel.className = "partner-panel";
     panel.setAttribute("role", "tabpanel");
     if (state.activeTab === "invitations") renderInvitations(panel);
-    else if (state.activeTab === "withdrawals") renderWithdrawals(panel);
+    else if (state.activeTab === "money") renderMoney(panel);
     else renderRewards(panel);
 
     const message = document.createElement("div");
@@ -221,7 +233,7 @@
   }
 
   function renderRewards(panel) {
-    panel.appendChild(sectionHeading("Начисления", "по подтверждённым операциям"));
+    panel.appendChild(sectionHeading("Начисления в ₽", "только с реальных пополнений 1-й и 2-й линии"));
     const list = document.createElement("div");
     list.className = "partner-list";
     if (!state.rewards.length) {
@@ -254,7 +266,7 @@
   }
 
   function renderInvitations(panel) {
-    panel.appendChild(sectionHeading("Приглашения", `${state.stats.first_line} + ${state.stats.second_line}`));
+    panel.appendChild(sectionHeading("Партнёры", `${state.stats.first_line} + ${state.stats.second_line}`));
     const list = document.createElement("div");
     list.className = "partner-list";
     if (!state.invitations.length) {
@@ -280,9 +292,77 @@
     panel.appendChild(list);
   }
 
-  function renderWithdrawals(panel) {
+  function renderTransferForm(panel) {
+    const available = Number(state.stats.partner_balance_rub ?? state.stats.available ?? 0);
+    panel.appendChild(sectionHeading("Перевести в ROX", "1 ₽ заработка = 1 ROX на баланс"));
+    const form = document.createElement("form");
+    form.className = "partner-withdrawal-form partner-transfer-form";
+    form.noValidate = true;
+    const amountLabel = document.createElement("label");
+    amountLabel.textContent = "Сумма из заработка, ₽";
+    const amount = document.createElement("input");
+    amount.type = "number";
+    amount.inputMode = "decimal";
+    amount.min = "0.01";
+    amount.step = "0.01";
+    amount.max = String(available);
+    amount.placeholder = `Доступно ${number(available)} ₽`;
+    amountLabel.appendChild(amount);
+    const preview = document.createElement("div");
+    preview.className = "partner-validation";
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className = "primary";
+    submit.textContent = "Перевести в ROX";
+
+    const validate = () => {
+      const value = Number(amount.value);
+      let error = "";
+      if (!Number.isFinite(value) || value <= 0) error = "Введите сумму перевода.";
+      else if (value > available) error = "Сумма больше доступного заработка.";
+      preview.textContent = error || `На баланс поступит ${number(value)} ROX`;
+      preview.classList.toggle("error", Boolean(error));
+      submit.disabled = Boolean(error) || state.transferSubmitting;
+      return !error;
+    };
+    amount.addEventListener("input", validate);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!validate() || state.transferSubmitting) return;
+      state.transferSubmitting = true;
+      submit.disabled = true;
+      submit.textContent = "Переводим…";
+      const idempotencyKey = globalThis.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try {
+        await api("/api/v1/referrals/wallet-transfers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: amount.value, idempotency_key: idempotencyKey }),
+        });
+        tg?.HapticFeedback?.notificationOccurred?.("success");
+        await load(true);
+        state.activeTab = "money";
+        render();
+        showMessage("Заработок переведён на баланс ROX.", "ok");
+      } catch (error) {
+        preview.textContent = error.message || "Не удалось перевести заработок в ROX.";
+        preview.classList.add("error");
+      } finally {
+        state.transferSubmitting = false;
+        submit.textContent = "Перевести в ROX";
+        validate();
+      }
+    });
+    form.append(amountLabel, preview, submit);
+    validate();
+    panel.appendChild(form);
+  }
+
+  function renderPayoutForm(panel) {
     const minimum = Number(state.stats.minimum_withdrawal || 0);
-    panel.appendChild(sectionHeading("Вывод вознаграждения", minimum > 0 ? `минимум ${number(minimum)} ₽` : ""));
+    const available = Number(state.stats.partner_balance_rub ?? state.stats.available ?? 0);
+    panel.appendChild(sectionHeading("Вывести деньгами", minimum > 0 ? `на карту / по реквизитам · минимум ${number(minimum)} ₽` : "на карту / по реквизитам"));
 
     const form = document.createElement("form");
     form.className = "partner-withdrawal-form";
@@ -294,40 +374,40 @@
     amount.inputMode = "decimal";
     amount.min = minimum > 0 ? String(minimum) : "0.01";
     amount.step = "0.01";
-    amount.max = String(state.stats.available || 0);
-    amount.placeholder = `Доступно ${number(state.stats.available)} ₽`;
+    amount.max = String(available);
+    amount.placeholder = `Доступно ${number(available)} ₽`;
     amountLabel.appendChild(amount);
     const requisitesLabel = document.createElement("label");
-    requisitesLabel.textContent = "Реквизиты";
+    requisitesLabel.textContent = "Куда вывести";
     const requisites = document.createElement("textarea");
     requisites.maxLength = 1000;
-    requisites.placeholder = "Укажите реквизиты для выплаты";
+    requisites.placeholder = "Карта, СБП или другие реквизиты для выплаты";
     requisitesLabel.appendChild(requisites);
     const validation = document.createElement("div");
     validation.className = "partner-validation";
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.className = "primary";
-    submit.textContent = "Создать заявку";
+    submit.textContent = "Оформить вывод";
 
     const validate = () => {
       const value = Number(amount.value);
       let error = "";
       if (!Number.isFinite(value) || value <= 0) error = "Введите сумму вывода.";
       else if (minimum > 0 && value < minimum) error = `Минимальная сумма — ${number(minimum)} ₽.`;
-      else if (value > Number(state.stats.available || 0)) error = "Сумма больше доступного баланса.";
+      else if (value > available) error = "Сумма больше доступного заработка.";
       else if (requisites.value.trim().length < 3) error = "Укажите реквизиты для выплаты.";
       validation.textContent = error;
       validation.classList.toggle("error", Boolean(error));
-      submit.disabled = Boolean(error) || state.submitting;
+      submit.disabled = Boolean(error) || state.withdrawSubmitting;
       return !error;
     };
     amount.addEventListener("input", validate);
     requisites.addEventListener("input", validate);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!validate() || state.submitting) return;
-      state.submitting = true;
+      if (!validate() || state.withdrawSubmitting) return;
+      state.withdrawSubmitting = true;
       submit.disabled = true;
       submit.textContent = "Отправляем…";
       try {
@@ -338,26 +418,48 @@
         });
         tg?.HapticFeedback?.notificationOccurred?.("success");
         await load(true);
-        state.activeTab = "withdrawals";
+        state.activeTab = "money";
         render();
-        showMessage("Заявка создана. Сумма зарезервирована до решения по выплате.", "ok");
+        showMessage("Заявка на выплату создана. Сумма зарезервирована.", "ok");
       } catch (error) {
         validation.textContent = error.message || "Не удалось создать заявку.";
         validation.classList.add("error");
       } finally {
-        state.submitting = false;
-        submit.textContent = "Создать заявку";
+        state.withdrawSubmitting = false;
+        submit.textContent = "Оформить вывод";
         validate();
       }
     });
     form.append(amountLabel, requisitesLabel, validation, submit);
     validate();
     panel.appendChild(form);
+  }
 
+  function renderMoneyHistory(panel) {
+    if (state.transfers.length) {
+      panel.appendChild(sectionHeading("Переводы в ROX"));
+      const transfers = document.createElement("div");
+      transfers.className = "partner-list";
+      state.transfers.slice(0, 15).forEach((transfer) => {
+        const row = document.createElement("div");
+        row.className = "partner-row";
+        const copy = document.createElement("div");
+        copy.className = "partner-row-copy";
+        copy.append(
+          Object.assign(document.createElement("strong"), { textContent: `${number(transfer.amount_rub)} ₽ → ${number(transfer.rox_amount)} ROX` }),
+          Object.assign(document.createElement("small"), { textContent: date(transfer.created_at) }),
+        );
+        row.appendChild(copy);
+        transfers.appendChild(row);
+      });
+      panel.appendChild(transfers);
+    }
+
+    panel.appendChild(sectionHeading("Заявки на выплату"));
     const list = document.createElement("div");
     list.className = "partner-list";
     if (!state.withdrawals.length) {
-      list.innerHTML = '<div class="partner-empty">Заявок на вывод пока нет.</div>';
+      list.innerHTML = '<div class="partner-empty">Заявок на выплату пока нет.</div>';
     } else {
       state.withdrawals.slice(0, 30).forEach((withdrawal) => {
         const row = document.createElement("div");
@@ -375,7 +477,7 @@
             try {
               await api(`/api/v1/referrals/withdrawals/${encodeURIComponent(withdrawal.id)}/cancel`, { method: "POST" });
               await load(true);
-              state.activeTab = "withdrawals";
+              state.activeTab = "money";
               render();
               showMessage("Заявка отменена, сумма снова доступна.", "ok");
             } catch (error) {
@@ -396,6 +498,12 @@
     panel.appendChild(list);
   }
 
+  function renderMoney(panel) {
+    renderTransferForm(panel);
+    renderPayoutForm(panel);
+    renderMoneyHistory(panel);
+  }
+
   function showMessage(text, kind = "") {
     const node = document.getElementById("partnerMessage");
     if (!node) return;
@@ -410,16 +518,18 @@
     }
     state.loading = true;
     try {
-      const [stats, invitations, rewards, withdrawals] = await Promise.all([
+      const [stats, invitations, rewards, withdrawals, transfers] = await Promise.all([
         api("/api/v1/referrals/stats"),
         api("/api/v1/referrals/invitations?limit=50"),
         api("/api/v1/referrals/rewards?limit=50"),
         api("/api/v1/referrals/withdrawals?limit=50"),
+        api("/api/v1/referrals/wallet-transfers?limit=30"),
       ]);
       state.stats = stats;
       state.invitations = invitations?.items || [];
       state.rewards = rewards?.items || [];
       state.withdrawals = withdrawals?.items || [];
+      state.transfers = transfers?.items || [];
       state.loaded = true;
     } catch (_error) {
       if (!state.loaded) state.stats = null;
@@ -430,12 +540,12 @@
   }
 
   const observer = new MutationObserver(() => {
-    if (!profileView.hidden) load(true);
+    if (!profileView.hidden) void load(true);
   });
   observer.observe(profileView, { attributes: true, attributeFilter: ["hidden"] });
-  tg?.onEvent?.("activated", () => { if (!profileView.hidden) load(true); });
-  window.addEventListener("online", () => { if (!profileView.hidden) load(true); });
+  tg?.onEvent?.("activated", () => { if (!profileView.hidden) void load(true); });
+  window.addEventListener("online", () => { if (!profileView.hidden) void load(true); });
 
   ensureStyles();
-  if (!profileView.hidden) load();
+  if (!profileView.hidden) void load();
 })();
