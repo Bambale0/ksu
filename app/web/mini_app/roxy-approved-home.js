@@ -2,6 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
+  const LEGACY_BRAND_RE = /\u041a\u0441\u044e|\u041a\u0421\u042e/g;
   let observer = null;
   let queued = false;
 
@@ -126,20 +127,21 @@
     if (node.textContent !== next) node.textContent = next;
   }
 
-  function normalizeCurrencyString(value) {
+  function normalizeCopyString(value) {
     if (typeof value !== "string" || !value) return value;
     return value
+      .replace(LEGACY_BRAND_RE, "ROXY")
       .replace(/(-?[\d\s.,]+)\s*кр\.(?=\s|$|[·,;:)])/giu, "$1 ROX")
       .replace(/(-?[\d\s.,]+)\s+кредит(?:а|ов|ы)?\b/giu, "$1 ROX")
       .replace(/\/\s*кредит\b/giu, "/ ROX");
   }
 
-  function normalizeCurrencyText(root = document.body) {
+  function normalizeVisibleCopy(root = document.body) {
     if (!root) return;
     if (root.nodeType === Node.TEXT_NODE) {
       const parent = root.parentElement;
       if (!parent || parent.closest("script,style,textarea,option")) return;
-      const next = normalizeCurrencyString(root.nodeValue || "");
+      const next = normalizeCopyString(root.nodeValue || "");
       if (next !== root.nodeValue) root.nodeValue = next;
       return;
     }
@@ -151,14 +153,23 @@
         const parent = node.parentElement;
         if (!parent || parent.closest("script,style,textarea,option")) return NodeFilter.FILTER_REJECT;
         const value = node.nodeValue || "";
-        return normalizeCurrencyString(value) !== value ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        return normalizeCopyString(value) !== value ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       },
     });
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const node of nodes) {
-      const next = normalizeCurrencyString(node.nodeValue || "");
+      const next = normalizeCopyString(node.nodeValue || "");
       if (next !== node.nodeValue) node.nodeValue = next;
+    }
+
+    const elements = root.querySelectorAll?.("[aria-label], [title], [placeholder]") || [];
+    for (const element of elements) {
+      for (const attribute of ["aria-label", "title", "placeholder"]) {
+        const value = element.getAttribute(attribute);
+        const next = normalizeCopyString(value);
+        if (next && next !== value) element.setAttribute(attribute, next);
+      }
     }
   }
 
@@ -182,7 +193,7 @@
       ensureEarnSection(home);
     }
     normalizeBalance();
-    normalizeCurrencyText(document.body);
+    normalizeVisibleCopy(document.body);
   }
 
   function schedule() {
