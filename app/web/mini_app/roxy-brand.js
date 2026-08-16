@@ -39,13 +39,14 @@
     mountLayer({ css: "/mini-app/roxy-mature-ui.css" });
     mountLayer({ css: "/mini-app/roxy-approved-theme.css", js: "/mini-app/roxy-approved-home.js" });
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
+    mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
   }
 
   function setTelegramChrome() {
     try {
-      tg?.setHeaderColor?.("#09080f");
-      tg?.setBackgroundColor?.("#09080f");
-      tg?.setBottomBarColor?.("#09080f");
+      tg?.setHeaderColor?.("#0B0B10");
+      tg?.setBackgroundColor?.("#0B0B10");
+      tg?.setBottomBarColor?.("#0B0B10");
     } catch (_error) {
       // Progressive enhancement for older Telegram clients.
     }

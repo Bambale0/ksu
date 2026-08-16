@@ -70,10 +70,12 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
     assert "if (state.nestedVisible || nestedVisible()) return;" in runtime
     assert 'const feed = document.getElementById("feedOverlay")' in runtime
     assert "|| (feed && !feed.hidden)" in runtime
-    assert "window.history.state?.roxyNavigation" in runtime
+    assert "if (window.history.length > 1)" in runtime
     assert "window.history.back();" in runtime
+    assert "history.state?.roxyNavigation" not in runtime
     assert 'window.RoxyCustomerNavigation?.open?.("profile", { feedback: false, historyMode: "replace" })' in runtime
     assert 'window.RoxyCustomerNavigation?.open?.("home", { feedback: false, historyMode: "replace" })' in runtime
+    assert 'window.addEventListener("roxy:route-changed", scheduleBackSync)' in runtime
     assert "if (visible) back.show();" in runtime
     assert "else back.hide();" in runtime
 

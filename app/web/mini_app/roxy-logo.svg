@@ -3,9 +3,8 @@
   <desc id="desc">Фирменный монограммный знак RX в фиолетово-розовом градиенте.</desc>
   <defs>
     <linearGradient id="g" x1="14" y1="18" x2="118" y2="108" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8f63ff"/>
-      <stop offset="0.48" stop-color="#b768ff"/>
-      <stop offset="1" stop-color="#ff69c9"/>
+      <stop offset="0" stop-color="#9B5CFF"/>
+      <stop offset="1" stop-color="#FF5FB7"/>
     </linearGradient>
     <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
       <feGaussianBlur stdDeviation="2.2" result="blur"/>

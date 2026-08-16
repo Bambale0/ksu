@@ -1,10 +1,11 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import back_menu
+from app.bot.keyboards import QUICK_SUPPORT_TEXT, back_menu
+from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
 from app.services.users import UserService
 
@@ -16,16 +17,57 @@ class SupportFlow(StatesGroup):
     waiting_message = State()
 
 
+def _direct_support_url() -> str | None:
+    url = settings.support_telegram_url.strip()
+    if url.startswith("https://t.me/") or url.startswith("tg://resolve?"):
+        return url
+    return None
+
+
+def _direct_support_markup(url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🆘 Написать в поддержку", url=url)],
+        ]
+    )
+
+
+async def _start_ticket(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(SupportFlow.waiting_topic)
+    await message.answer(
+        "Напиши тему обращения: оплата, ROX, генерация, промокод, партнёрка или другое.",
+        reply_markup=back_menu(),
+    )
+
+
+async def _show_direct_support(message: Message, state: FSMContext) -> bool:
+    url = _direct_support_url()
+    if not url:
+        return False
+    await state.clear()
+    await message.answer(
+        "Поддержка ROXY — напиши напрямую оператору:",
+        reply_markup=_direct_support_markup(url),
+    )
+    return True
+
+
+@router.message(F.text == QUICK_SUPPORT_TEXT)
+async def quick_support(message: Message, state: FSMContext) -> None:
+    if await _show_direct_support(message, state):
+        return
+    await _start_ticket(message, state)
+
+
 @router.callback_query(F.data == "support")
 async def support_start(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
-    await state.clear()
-    await state.set_state(SupportFlow.waiting_topic)
-    if callback.message:
-        await callback.message.answer(
-            "Напиши тему обращения: оплата, ROX, генерация, промокод, партнёрка или другое.",
-            reply_markup=back_menu(),
-        )
+    if callback.message is None:
+        return
+    if await _show_direct_support(callback.message, state):
+        return
+    await _start_ticket(callback.message, state)
 
 
 @router.callback_query(F.data == "support:back_topic")

@@ -12,7 +12,7 @@ def _read(name: str) -> str:
 def test_main_mini_app_uses_roxy_brand_from_first_paint() -> None:
     html = _read("index.html")
     assert "<title>ROXY · AI Creative Studio</title>" in html
-    assert 'content="#09080f"' in html
+    assert 'content="#0B0B10"' in html
     assert '/mini-app/roxy-brand.css' in html
     assert '/mini-app/roxy-brand.js' in html
     assert "ROXY · AI CREATIVE STUDIO" in html
@@ -29,7 +29,7 @@ def test_all_standalone_studio_surfaces_share_roxy_brand_layer() -> None:
         assert "ROXY" in html
         assert '/mini-app/roxy-brand.css' in html
         assert '/mini-app/roxy-brand.js' in html
-        assert 'content="#09080f"' in html
+        assert 'content="#0B0B10"' in html
         assert "Ксю" not in html
         assert "КСЮ" not in html
 
@@ -54,9 +54,9 @@ def test_roxy_palette_matches_reference_direction() -> None:
 def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> None:
     script = _read("roxy-brand.js")
     for token in (
-        'setHeaderColor?.("#09080f")',
-        'setBackgroundColor?.("#09080f")',
-        'setBottomBarColor?.("#09080f")',
+        'setHeaderColor?.("#0B0B10")',
+        'setBackgroundColor?.("#0B0B10")',
+        'setBottomBarColor?.("#0B0B10")',
         "ROXY · AI CREATIVE STUDIO",
         "roxyHomeBalance",
         "roxyCreateCta",
@@ -68,8 +68,10 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> Non
         "/mini-app/roxy-icons.js",
         "/mini-app/roxy-mature-ui.css",
         "/mini-app/roxy-approved-surfaces.css",
+        "/mini-app/roxy-client-feedback.css",
     ):
         assert token in script
+    assert script.index('/mini-app/roxy-client-feedback.css') > script.index('/mini-app/roxy-approved-surfaces.css')
     assert "MutationObserver" not in script
     assert "createTreeWalker" not in script
     assert "paymentRateLabel" not in script

@@ -50,25 +50,34 @@ def test_roxy_brand_mounts_product_layers() -> None:
     assert '/mini-app/roxy-approved-theme.css' in brand
     assert '/mini-app/roxy-approved-home.js' in brand
     assert '/mini-app/roxy-approved-surfaces.css' in brand
+    assert '/mini-app/roxy-client-feedback.css' in brand
+    assert brand.index('/mini-app/roxy-client-feedback.css') > brand.index('/mini-app/roxy-approved-surfaces.css')
     assert "mountProductLayers();" in brand
 
 
-def test_route_aware_mini_app_urls_are_used_by_minimal_bot_menu(monkeypatch) -> None:
+def test_route_aware_mini_app_urls_are_used_by_customer_menu(monkeypatch) -> None:
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
     menu = keyboards.main_menu()
-    expected = [
+    expected_routes = [
         [("🚀 Открыть ROXY", "home")],
         [("✨ Создать", "create"), ("▦ Каталог", "catalog")],
         [("≡ История", "history"), ("👤 Профиль", "profile")],
     ]
-    assert [len(row) for row in menu.inline_keyboard] == [1, 2, 2]
-    for row, expected_row in zip(menu.inline_keyboard, expected, strict=True):
-        assert len(row) == len(expected_row)
+    assert [len(row) for row in menu.inline_keyboard] == [1, 2, 2, 2]
+    for row, expected_row in zip(menu.inline_keyboard[:3], expected_routes, strict=True):
         for button, (label, route) in zip(row, expected_row, strict=True):
             assert button.text == label
             assert button.web_app is not None
             assert button.web_app.url == f"https://roxy.example/mini-app/?route={route}"
             assert button.callback_data is None
+
+    topup, invite = menu.inline_keyboard[3]
+    assert topup.text == "💳 Пополнить ROX"
+    assert topup.web_app is not None
+    assert topup.web_app.url == "https://roxy.example/mini-app/?route=wallet"
+    assert invite.text == "👥 Пригласить в ROXY"
+    assert invite.callback_data == "referrals"
+    assert invite.web_app is None
 
     payment_button = keyboards.balance_menu().inline_keyboard[0][0]
     assert payment_button.web_app is not None
@@ -83,5 +92,15 @@ def test_bot_menu_keeps_callback_fallbacks_without_public_base_url(monkeypatch) 
         ["nav:main"],
         ["create", "feed:open"],
         ["nav:main", "profile"],
+        ["balance", "referrals"],
     ]
     assert all(button.web_app is None for row in menu.inline_keyboard for button in row)
+
+
+def test_persistent_quick_menu_has_exact_two_primary_buttons() -> None:
+    menu = keyboards.quick_menu()
+    assert menu.is_persistent is True
+    assert menu.resize_keyboard is True
+    assert [[button.text for button in row] for row in menu.keyboard] == [
+        ["🏠 Меню", "🆘 Поддержка"]
+    ]
