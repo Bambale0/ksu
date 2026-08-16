@@ -2,6 +2,8 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
+  // RoxyCustomerNavigation is the sole owner of visible primary menus.
+  // Economy only reacts to route changes and enriches wallet/partner surfaces.
   const state = {
     stats: null,
     loading: false,
