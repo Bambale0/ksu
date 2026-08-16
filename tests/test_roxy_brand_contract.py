@@ -12,7 +12,7 @@ def _read(name: str) -> str:
 def test_main_mini_app_uses_roxy_brand_from_first_paint() -> None:
     html = _read("index.html")
     assert "<title>ROXY · AI Creative Studio</title>" in html
-    assert 'content="#09080f"' in html
+    assert 'content="#0B0B10"' in html
     assert '/mini-app/roxy-brand.css' in html
     assert '/mini-app/roxy-brand.js' in html
     assert "ROXY · AI CREATIVE STUDIO" in html
@@ -29,7 +29,7 @@ def test_all_standalone_studio_surfaces_share_roxy_brand_layer() -> None:
         assert "ROXY" in html
         assert '/mini-app/roxy-brand.css' in html
         assert '/mini-app/roxy-brand.js' in html
-        assert 'content="#09080f"' in html
+        assert 'content="#0B0B10"' in html
         assert "Ксю" not in html
         assert "КСЮ" not in html
 
