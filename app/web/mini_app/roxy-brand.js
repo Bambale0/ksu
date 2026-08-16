@@ -40,6 +40,7 @@
     mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });
     mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
     mountLayer({ css: "/mini-app/roxy-approved-theme.css", js: "/mini-app/roxy-approved-home.js" });
+    mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
   }
 
   function setTelegramChrome() {
