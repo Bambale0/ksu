@@ -103,7 +103,7 @@
   }
 
   function setBalanceDom(value) {
-    const formatted = `${formatCredits(value)} кр.`;
+    const formatted = `${formatCredits(value)} ROX`;
     for (const id of ["balanceValue", "walletBalance"]) {
       const node = document.getElementById(id);
       if (node) node.textContent = formatted;
@@ -133,7 +133,7 @@
     dialog = el("dialog", "insufficient-dialog");
     dialog.id = "insufficientCreditsDialog";
     const panel = el("div", "insufficient-panel");
-    panel.appendChild(el("span", "section-kicker", "Недостаточно кредитов"));
+    panel.appendChild(el("span", "section-kicker", "Недостаточно ROX"));
     panel.appendChild(el("h3", "", "Пополнить баланс?"));
 
     const summary = el("dl", "insufficient-summary");
@@ -201,9 +201,9 @@
 
   function renderRecoveryDialog() {
     if (!state.recovery) return;
-    document.getElementById("insufficientCurrent").textContent = `${formatCredits(state.recovery.current)} кр.`;
-    document.getElementById("insufficientRequired").textContent = `${formatCredits(state.recovery.required)} кр.`;
-    document.getElementById("insufficientShortage").textContent = `${formatCredits(state.recovery.shortage)} кр.`;
+    document.getElementById("insufficientCurrent").textContent = `${formatCredits(state.recovery.current)} ROX`;
+    document.getElementById("insufficientRequired").textContent = `${formatCredits(state.recovery.required)} ROX`;
+    document.getElementById("insufficientShortage").textContent = `${formatCredits(state.recovery.shortage)} ROX`;
     const message = document.getElementById("insufficientMessage");
     if (message) {
       message.textContent = state.recovery.shortage > 0
@@ -252,8 +252,8 @@
     const enough = state.recovery.current >= state.recovery.required;
     if (small) {
       small.textContent = enough
-        ? `Баланс ${formatCredits(state.recovery.current)} кр. — достаточно для генерации.`
-        : `Нужно ещё ${formatCredits(state.recovery.shortage)} кр. Текущий баланс: ${formatCredits(state.recovery.current)} кр.`;
+        ? `Баланс ${formatCredits(state.recovery.current)} ROX — достаточно для генерации.`
+        : `Нужно ещё ${formatCredits(state.recovery.shortage)} ROX. Текущий баланс: ${formatCredits(state.recovery.current)} ROX.`;
     }
     if (button) {
       button.disabled = !enough;
@@ -352,7 +352,7 @@
       dom.promoInput.value = "";
       setBalanceDom(result.balance_rox);
       setPromoMessage(
-        `Готово: начислено ${formatCredits(result.reward_rox)} кр. Баланс ${formatCredits(result.balance_rox)} кр.`,
+        `Готово: начислено ${formatCredits(result.reward_rox)} ROX. Баланс ${formatCredits(result.balance_rox)} ROX.`,
         "ok",
       );
       notify("success");
