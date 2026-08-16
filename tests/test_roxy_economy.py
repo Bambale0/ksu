@@ -160,7 +160,7 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
 
         payload = await stats(user, session)
         assert payload["rox_balance"] == "280.00"
-        assert payload["partner_balance_rub"] == "0.00"
+        assert payload["partner_balance_rub"] == "0"
         assert payload["transferred_to_rox"] == "0"
         assert payload["bonus_rox"] == "280.00"  # compatibility only
         assert payload["rub_per_rox"] == "1"
@@ -202,7 +202,7 @@ def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
         assert label in keyboard
     main_menu = keyboard.split("def main_menu()", 1)[1]
     assert 'route="wallet"' in main_menu
-    assert 'fallback_callback="referrals"' in main_menu
+    assert 'callback_data="referrals"' in main_menu
 
 
 def test_mini_app_economy_keeps_rox_wallet_separate_from_partner_rubles() -> None:
