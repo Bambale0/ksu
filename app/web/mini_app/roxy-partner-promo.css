@@ -1,0 +1,47 @@
+.roxy-partner-promo-ready {
+  align-items: stretch;
+}
+
+.roxy-brand-ready .roxy-partner-promo-ready .roxy-promo-card,
+.roxy-brand-ready .roxy-partner-promo-ready .roxy-promo-copy {
+  min-height: clamp(168px, 45vw, 220px) !important;
+  max-height: none !important;
+}
+
+.roxy-brand-ready .roxy-promo-card.roxy-promo-artwork {
+  aspect-ratio: 2048 / 1142;
+  padding: 0 !important;
+  border-color: rgba(155, 92, 255, .28) !important;
+  background: #0B0B10 !important;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .32), 0 0 28px rgba(155, 92, 255, .12) !important;
+  cursor: pointer;
+}
+
+.roxy-brand-ready .roxy-promo-card.roxy-promo-artwork::before,
+.roxy-brand-ready .roxy-promo-card.roxy-promo-artwork::after {
+  display: none !important;
+  content: none !important;
+}
+
+.roxy-promo-artwork .roxy-promo-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.roxy-promo-artwork:focus-visible {
+  outline: 2px solid #9B5CFF;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .roxy-brand-ready .roxy-partner-promo-ready .roxy-promo-card,
+  .roxy-brand-ready .roxy-partner-promo-ready .roxy-promo-copy {
+    min-height: clamp(164px, 45vw, 188px) !important;
+  }
+}
