@@ -2,7 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  const PRIMARY_ROUTES = ["home", "feed", "create", "catalog", "history", "profile"];
+  const PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"];
   const CHILD_PARENT = Object.freeze({
     notifications: "profile",
     support: "profile",
@@ -16,7 +16,7 @@
     "prompt-tools": "catalog",
   });
   const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
-  const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet", ...CHILD_ROUTES];
+  const OPEN_ROUTES = [...PRIMARY_ROUTES, "feed", "wallet", ...CHILD_ROUTES];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     feed: "feed",
@@ -28,9 +28,8 @@
   });
   const MENU = Object.freeze([
     ["home", "home", "Главная"],
-    ["feed", "feed", "Лента"],
-    ["create", "create", "Создать"],
     ["catalog", "catalog", "Каталог"],
+    ["create", "create", "Создать"],
     ["history", "history", "История"],
     ["profile", "profile", "Профиль"],
   ]);
