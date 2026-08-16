@@ -13,6 +13,11 @@
   backdrop-filter: blur(24px) saturate(120%);
 }
 
+/* Feed remains a supported deep route, but never occupies a primary mobile slot. */
+.roxy-customer-navigation-ready .studio-bottom-nav [data-roxy-customer-route="feed"] {
+  display: none;
+}
+
 .roxy-customer-navigation-ready .studio-bottom-nav::before {
   content: "";
   position: absolute;
