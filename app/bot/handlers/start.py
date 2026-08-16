@@ -95,14 +95,12 @@ async def _send_quick_menu(message: Message) -> None:
 
 
 async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
-    rox_balance, partner_rub = await _balances(session, user.id)
     await message.answer(
-        f"Привет, {user.first_name}!\n\n"
-        f"💎 Баланс ROX: {rox_balance}\n"
-        f"💰 Заработок партнёра: {partner_rub} ₽\n"
-        "1 ROX = 1 ₽\n\n"
-        "Выбери действие:",
+        "<b>ROXY ✨</b>\n"
+        "<b>Создавай. Вдохновляй.</b>\n\n"
+        "👇<b>Нажми, чтобы открыть ROXY</b>",
         reply_markup=main_menu(),
+        parse_mode="HTML",
     )
 
 
