@@ -123,7 +123,7 @@ class PartnerWalletTransferService:
             kind="partner_earnings_transfer",
             reference_type="partner_wallet_transfer",
             reference_id=str(transfer_id),
-            idempotency_key=f"partner-wallet:{key}",
+            idempotency_key=f"partner-wallet:{user_id}:{key}",
         )
         transfer = PartnerWalletTransfer(
             id=transfer_id,
