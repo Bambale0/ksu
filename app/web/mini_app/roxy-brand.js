@@ -39,6 +39,7 @@
     mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
     mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });
     mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
+    mountLayer({ css: "/mini-app/roxy-approved-theme.css", js: "/mini-app/roxy-approved-home.js" });
   }
 
   function setTelegramChrome() {
@@ -108,7 +109,7 @@
   function styleMainBrand() {
     const headerBrand = document.getElementById("brandHomeButton");
     if (headerBrand) {
-      setText(".brand-mark", "X", headerBrand);
+      setText(".brand-mark", "RX", headerBrand);
       setText(".brand-copy strong", BRAND, headerBrand);
       setText(".brand-copy small", "AI CREATIVE STUDIO", headerBrand);
       if (headerBrand.getAttribute("aria-label") !== "На главную ROXY") {
@@ -118,7 +119,7 @@
 
     const sidebar = document.getElementById("studioSidebar");
     if (sidebar) {
-      setText(".studio-sidebar-mark", "X", sidebar);
+      setText(".studio-sidebar-mark", "RX", sidebar);
       setText(".studio-sidebar-copy strong", BRAND, sidebar);
       setText(".studio-sidebar-copy small", "AI CREATIVE STUDIO", sidebar);
       if (sidebar.getAttribute("aria-label") !== "Навигация ROXY Studio") {
@@ -171,8 +172,8 @@
 
   function styleWalletCopy() {
     const walletNote = document.querySelector("#walletHero small");
-    if (walletNote && walletNote.textContent !== "Внутренние кредиты ROXY") {
-      walletNote.textContent = "Внутренние кредиты ROXY";
+    if (walletNote && walletNote.textContent !== "Внутренняя валюта ROXY") {
+      walletNote.textContent = "Внутренняя валюта ROXY";
     }
   }
 
