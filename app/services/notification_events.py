@@ -97,8 +97,8 @@ def _add_referral_reward_notification(session: Session, reward: ReferralReward) 
         kind=f"referral_line_{level}_topup",
         title=f"💰 Пополнение по {line_label} линии!",
         body=(
-            f"Пополнение пользователя {source_name}: {_money(payment_amount)} ROX.\n"
-            f"Ваш бонус: +{_money(reward.amount)} ROX ({_money(reward.percent)}%)."
+            f"Пополнение пользователя {source_name}: {_money(payment_amount)} ₽.\n"
+            f"Ваш заработок: +{_money(reward.amount)} ₽ ({_money(reward.percent)}%)."
         ),
     )
 
