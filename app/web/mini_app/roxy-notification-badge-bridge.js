@@ -4,6 +4,7 @@
   const state = {
     sourceObserver: null,
     navObserver: null,
+    balanceObserver: null,
     frame: 0,
   };
 
@@ -35,8 +36,18 @@
     return Math.max(0, Number.parseInt(raw, 10) || 0);
   }
 
+  function syncBalanceCurrency() {
+    const balance = document.getElementById("balanceValue");
+    if (!balance) return;
+    const current = String(balance.textContent || "").trim();
+    if (!current || current === "—" || current === "Telegram") return;
+    const normalized = current.replace(/\s*кр\.?$/iu, " ROX");
+    if (normalized !== current) balance.textContent = normalized;
+  }
+
   function sync() {
     state.frame = 0;
+    syncBalanceCurrency();
     const value = unreadValue();
     document.querySelectorAll('[data-roxy-customer-route="profile"]').forEach((nav) => {
       let badge = nav.querySelector(".profile-nav-badge");
@@ -85,6 +96,16 @@
     return true;
   }
 
+  function attachBalance() {
+    if (state.balanceObserver) return true;
+    const balance = document.getElementById("balanceValue");
+    if (!balance) return false;
+    state.balanceObserver = new MutationObserver(schedule);
+    state.balanceObserver.observe(balance, { childList: true, characterData: true, subtree: true });
+    schedule();
+    return true;
+  }
+
   function init() {
     mountReferenceHomeLayer();
     let attempts = 0;
@@ -92,7 +113,8 @@
       attempts += 1;
       const sourceReady = attachSource();
       const navReady = attachNavigation();
-      if ((sourceReady && navReady) || attempts >= 80) window.clearInterval(timer);
+      const balanceReady = attachBalance();
+      if ((sourceReady && navReady && balanceReady) || attempts >= 80) window.clearInterval(timer);
     }, 100);
   }
 
