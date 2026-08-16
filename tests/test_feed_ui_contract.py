@@ -57,10 +57,12 @@ def test_bot_feed_is_single_media_carousel_with_surface_context() -> None:
     assert "FeedService.get_profile_generation_card" in source
     assert "FeedService.get_feed_generation_card" in source
     assert 'dispatcher.include_router(feed.router)' in dispatcher
-    # The customer-approved launcher opens Catalog in the Mini App first; the
-    # text-bot feed callback stays available only as a no-PUBLIC_BASE_URL fallback.
-    assert 'route="catalog"' in keyboard
-    assert 'fallback_callback="feed:open"' in keyboard
+    # Feed callbacks/deep links remain supported, but the public Telegram launcher
+    # is intentionally Mini App only. Product navigation belongs inside ROXY.
+    main_menu = keyboard.split("def main_menu()", 1)[1]
+    assert 'route="home"' in main_menu
+    assert 'route="catalog"' not in main_menu
+    assert 'fallback_callback="feed:open"' not in main_menu
 
 
 def test_start_flow_preserves_feed_deep_link_through_onboarding() -> None:

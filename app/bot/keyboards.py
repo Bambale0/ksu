@@ -43,14 +43,6 @@ def _route_button(
     return InlineKeyboardButton(text=text, callback_data=fallback_callback)
 
 
-def _create_button() -> InlineKeyboardButton:
-    return _route_button(
-        text="✨ Создать",
-        route="create",
-        fallback_callback="create",
-    )
-
-
 def _batch_button() -> InlineKeyboardButton:
     if settings.public_base_url:
         return InlineKeyboardButton(
@@ -133,7 +125,7 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """ROXY launcher with the two high-frequency money/referral actions exposed."""
+    """Minimal Telegram launcher: all product navigation lives inside the Mini App."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -142,37 +134,6 @@ def main_menu() -> InlineKeyboardMarkup:
                     route="home",
                     fallback_callback="nav:main",
                 )
-            ],
-            [
-                _create_button(),
-                _route_button(
-                    text="▦ Каталог",
-                    route="catalog",
-                    fallback_callback="feed:open",
-                ),
-            ],
-            [
-                _route_button(
-                    text="≡ История",
-                    route="history",
-                    fallback_callback="nav:main",
-                ),
-                _route_button(
-                    text="👤 Профиль",
-                    route="profile",
-                    fallback_callback="profile",
-                ),
-            ],
-            [
-                _route_button(
-                    text="💳 Пополнить ROX",
-                    route="wallet",
-                    fallback_callback="balance",
-                ),
-                InlineKeyboardButton(
-                    text="👥 Пригласить в ROXY",
-                    callback_data="referrals",
-                ),
-            ],
+            ]
         ]
     )
