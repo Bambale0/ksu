@@ -12,7 +12,7 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_customer_navigation_has_reference_style_six_primary_routes() -> None:
+def test_customer_navigation_keeps_feed_route_but_uses_five_item_mobile_bar() -> None:
     script = _read("roxy-customer-navigation.js")
     css = _read("roxy-customer-navigation.css")
     for route in ("home", "feed", "create", "catalog", "history", "profile"):
@@ -28,7 +28,9 @@ def test_customer_navigation_has_reference_style_six_primary_routes() -> None:
     assert "OPEN_ROUTES" in script
     assert "roxy-central-create" in script
     assert "<svg" in script
-    assert "repeat(6" in css
+    assert "repeat(5" in css
+    assert '[data-roxy-customer-route="feed"]' in css
+    assert "display: none" in css
     assert "border-radius: 24px" in css
     assert "backdrop-filter" in css
     assert ".roxy-central-create" in css
