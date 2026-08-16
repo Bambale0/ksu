@@ -1,9 +1,17 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 
 from app.core.config import settings
 
 BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой · USD / EUR / RUB / СБП"
+QUICK_MENU_TEXT = "🏠 Меню"
+QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
 def _mini_app_url(route: str | None = None) -> str:
@@ -50,6 +58,21 @@ def _batch_button() -> InlineKeyboardButton:
             web_app=WebAppInfo(url=_batch_url()),
         )
     return InlineKeyboardButton(text="🗂 Пакетная обработка", callback_data="create")
+
+
+def quick_menu() -> ReplyKeyboardMarkup:
+    """Persistent two-button Telegram chrome requested for everyday navigation."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=QUICK_MENU_TEXT),
+                KeyboardButton(text=QUICK_SUPPORT_TEXT),
+            ]
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="ROXY · выбери действие",
+    )
 
 
 def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
@@ -110,7 +133,7 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """Minimal ROXY launcher: every visible product action opens the Mini App."""
+    """ROXY launcher with the two high-frequency money/referral actions exposed."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -138,6 +161,17 @@ def main_menu() -> InlineKeyboardMarkup:
                     text="👤 Профиль",
                     route="profile",
                     fallback_callback="profile",
+                ),
+            ],
+            [
+                _route_button(
+                    text="💳 Пополнить ROX",
+                    route="wallet",
+                    fallback_callback="balance",
+                ),
+                InlineKeyboardButton(
+                    text="👥 Пригласить в ROXY",
+                    callback_data="referrals",
                 ),
             ],
         ]
