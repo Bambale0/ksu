@@ -3,7 +3,6 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
-  const BRAND_RE = /Ксю|КСЮ/g;
 
   function mountLayer({ css, js }) {
     if (css && !document.querySelector(`link[href="${css}"]`)) {
@@ -50,10 +49,6 @@
     } catch (_error) {
       // Progressive enhancement for older Telegram clients.
     }
-  }
-
-  function replaceBrandString(value) {
-    return typeof value === "string" ? value.replace(BRAND_RE, BRAND) : value;
   }
 
   function setText(selector, text, root = document) {
@@ -131,7 +126,7 @@
   function refreshBrandChrome() {
     document.documentElement.classList.add("roxy-brand-ready");
     document.body?.classList.add("roxy-brand-ready");
-    if (document.title) document.title = replaceBrandString(document.title);
+    if (document.title !== "ROXY · AI Creative Studio") document.title = "ROXY · AI Creative Studio";
     styleMainBrand();
     styleHomeHero();
     arrangeHomeDashboard();
