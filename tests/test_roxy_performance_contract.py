@@ -11,14 +11,13 @@ def _read(name: str) -> str:
 
 def test_brand_runtime_never_rescans_full_body_for_dynamic_text_updates() -> None:
     source = _read("roxy-brand.js")
-    assert "pendingBrandRoots" in source
-    assert "observer = new MutationObserver(scheduleDynamicBranding)" in source
-    assert "observer.observe(document.body, { childList: true, subtree: true });" in source
-    assert "for (const root of pendingBrandRoots) replaceBrandText(root);" in source
-
-    observer_tail = source.split("observer = new MutationObserver(scheduleDynamicBranding)", 1)[1]
-    assert "characterData: true" not in observer_tail
-    assert "window.requestAnimationFrame(apply)" not in observer_tail
+    assert "MutationObserver" not in source
+    assert "createTreeWalker" not in source
+    assert "document.body, { childList: true, subtree: true }" not in source
+    assert "function refreshBrandChrome()" in source
+    assert "function scheduleRefreshes()" in source
+    assert "window.addEventListener(\"roxy:route-changed\", refreshBrandChrome)" in source
+    assert "window.addEventListener(\"roxy:shell-route-changed\", refreshBrandChrome)" in source
 
 
 def test_mobile_runtime_filters_and_coalesces_global_mutation_work() -> None:

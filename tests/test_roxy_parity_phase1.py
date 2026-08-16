@@ -75,7 +75,8 @@ def test_preset_editor_exposes_backend_put_capability() -> None:
 def test_feed_repeat_action_is_capability_driven() -> None:
     source = (MINI / "feed.js").read_text(encoding="utf-8")
     assert "item.prompt_actions_allowed !== false" in source
-    assert 'action("🔁 Повторить"' in source
+    assert 'iconAction("repeat", "Повторить", "remix"' in source
+    assert 'window.RoxyIcons?.create?.(iconName, { size: 18 })' in source
 
 
 def test_notification_badge_targets_visible_roxy_navigation() -> None:

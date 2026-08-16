@@ -32,15 +32,16 @@ def test_backend_tools_are_visible_on_home_not_profile_only() -> None:
     source = _read("roxy-parity-navigation.js")
     for token in (
         'section.id = "roxyHomeTools"',
-        'homeTool("▦", "Каталог", openCatalog)',
-        'homeTool("◫", "Лента", openFeed)',
-        'homeTool("✦", "Тренды"',
-        'homeTool("✎", "Prompt"',
-        'homeTool("▤", "Batch"',
-        'homeTool("◇", "Референсы"',
-        'homeTool("🔔", "События"',
-        'homeTool("💬", "Поддержка"',
-        "families.insertAdjacentElement(\"beforebegin\", section)",
+        'homeTool("catalog", "Каталог", openCatalog)',
+        'homeTool("feed", "Лента", openFeed)',
+        'homeTool("trend", "Тренды"',
+        'homeTool("prompt", "Prompt"',
+        'homeTool("batch", "Batch"',
+        'homeTool("image", "Референсы"',
+        'homeTool("bell", "События"',
+        'homeTool("support", "Поддержка"',
+        'window.RoxyIcons?.create?.(name, { size: 22 })',
+        'families.insertAdjacentElement("beforebegin", section)',
     ):
         assert token in source
 

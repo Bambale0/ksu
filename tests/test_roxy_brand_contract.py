@@ -57,7 +57,6 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> Non
         'setHeaderColor?.("#09080f")',
         'setBackgroundColor?.("#09080f")',
         'setBottomBarColor?.("#09080f")',
-        "MutationObserver",
         "ROXY · AI CREATIVE STUDIO",
         "roxyHomeBalance",
         "roxyCreateCta",
@@ -66,8 +65,13 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> Non
         "arrangeHomeDashboard",
         'families.insertAdjacentElement("afterend", promo)',
         "/mini-app/roxy-home-density-v3.css",
+        "/mini-app/roxy-icons.js",
+        "/mini-app/roxy-mature-ui.css",
+        "/mini-app/roxy-approved-surfaces.css",
     ):
         assert token in script
+    assert "MutationObserver" not in script
+    assert "createTreeWalker" not in script
     assert "paymentRateLabel" not in script
     assert "roxBalanceText" not in script
     assert "roxRateText" not in script

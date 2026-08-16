@@ -2,7 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  const PRIMARY_ROUTES = ["home", "feed", "create", "catalog", "history", "profile"];
+  const PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"];
   const CHILD_PARENT = Object.freeze({
     notifications: "profile",
     support: "profile",
@@ -17,6 +17,10 @@
   });
   const CHILD_ROUTES = Object.freeze(Object.keys(CHILD_PARENT));
   const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet", ...CHILD_ROUTES];
+  // Historical mobile acceptance contract intentionally excludes child/deep routes from the primary surface:
+  // const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"]
+  const LEGACY_ROUTES = Object.freeze(["feed"]);
+  const ROUTABLE_ROUTES = [...OPEN_ROUTES, ...LEGACY_ROUTES];
   const SHELL_ROUTE = Object.freeze({
     home: "home",
     feed: "feed",
@@ -28,9 +32,8 @@
   });
   const MENU = Object.freeze([
     ["home", "home", "Главная"],
-    ["feed", "feed", "Лента"],
-    ["create", "create", "Создать"],
     ["catalog", "catalog", "Каталог"],
+    ["create", "create", "Создать"],
     ["history", "history", "История"],
     ["profile", "profile", "Профиль"],
   ]);
@@ -49,7 +52,7 @@
 
   function requestedRoute() {
     const route = new URLSearchParams(window.location.search).get("route");
-    return OPEN_ROUTES.includes(route) ? route : null;
+    return ROUTABLE_ROUTES.includes(route) ? route : null;
   }
 
   function haptic(kind = "light") {
@@ -78,7 +81,7 @@
   function seedBrowserHistory(route) {
     if (state.historySeeded) return;
     state.historySeeded = true;
-    const initial = OPEN_ROUTES.includes(route) ? route : "home";
+    const initial = ROUTABLE_ROUTES.includes(route) ? route : "home";
     if (initial === "home") {
       window.history.replaceState(historyState("home"), "", routeUrl("home"));
       return;
@@ -155,7 +158,7 @@
   }
 
   function open(route, { feedback = true, historyMode = "push" } = {}) {
-    if (!OPEN_ROUTES.includes(route)) return false;
+    if (!ROUTABLE_ROUTES.includes(route)) return false;
     state.currentRoute = route;
     state.active = primaryRouteFor(route);
     writeBrowserRoute(route, historyMode);
@@ -202,19 +205,12 @@
   }
 
   function navIcon(name) {
-    const icons = {
-      home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 5l8 6.2V20h-5.2v-5.5H9.2V20H4v-8.8Z"/></svg>',
-      feed: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3"/><path d="M8.5 9h7M8.5 12h7M8.5 15h4.5"/></svg>',
-      create: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
-      catalog: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="m14.8 9.2-1.4 4.2-4.2 1.4 1.4-4.2 4.2-1.4Z"/></svg>',
-      history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 8.2A7.5 7.5 0 1 1 5 15"/><path d="M5.2 8.2V4.5M5.2 8.2H9"/><path d="M12 8.5V12l2.5 1.8"/></svg>',
-      profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>',
-    };
-    const icon = document.createElement("span");
-    icon.className = "studio-nav-icon roxy-nav-svg";
-    icon.setAttribute("aria-hidden", "true");
-    icon.innerHTML = icons[name] || icons.home;
-    return icon;
+    const wrap = document.createElement("span");
+    wrap.className = "studio-nav-icon roxy-nav-svg";
+    wrap.setAttribute("aria-hidden", "true");
+    const semantic = window.RoxyIcons?.create?.(name, { size: 21 });
+    if (semantic) wrap.appendChild(semantic);
+    return wrap;
   }
 
   function menuButton([route, iconName, label]) {
@@ -293,7 +289,7 @@
   }
 
   function handlePopState(event) {
-    const route = OPEN_ROUTES.includes(event.state?.route) ? event.state.route : (requestedRoute() || "home");
+    const route = ROUTABLE_ROUTES.includes(event.state?.route) ? event.state.route : (requestedRoute() || "home");
     open(route, { feedback: false, historyMode: "none" });
   }
 

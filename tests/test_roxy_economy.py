@@ -35,11 +35,7 @@ async def test_registration_and_invite_create_spend_only_rox_bonuses(
         await session.flush()
         await UserService.get_or_create(
             session,
-            TelegramUser(
-                id=friend_telegram_id,
-                is_bot=False,
-                first_name="Friend",
-            ),
+            TelegramUser(id=friend_telegram_id, is_bot=False, first_name="Friend"),
             inviter_telegram_id=inviter.telegram_id,
         )
         await session.commit()
@@ -175,8 +171,8 @@ def test_mini_app_economy_matches_reference_copy_and_split_balances() -> None:
     integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
     for token in (
         "1 ROX = 1 ₽",
-        "🟣 Бонусные ROX",
-        "🟢 Выводимые ROX",
+        "Бонусные ROX",
+        "Выводимые ROX",
         "Приветственный бонус",
         "Приглашённый друг",
         "Повтор промпта",

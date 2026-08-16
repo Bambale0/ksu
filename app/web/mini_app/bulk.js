@@ -66,7 +66,7 @@
 
   function renderQuote() {
     clear(dom.quote); if (state.uploads.length < 2) dom.quote.textContent = "Добавьте минимум 2 изображения."; else if (!state.quote) dom.quote.textContent = "Рассчитываю стоимость…";
-    else dom.quote.append(node("strong", "", `${state.quote.total_cost_credits} кр. · ≈ ${state.quote.total_cost_rub} ₽`), node("div", "", `${state.quote.input_count} изображений · ${state.quote.model.title}`));
+    else dom.quote.append(node("strong", "", `${state.quote.total_cost_credits} ROX · ≈ ${state.quote.total_cost_rub} ₽`), node("div", "", `${state.quote.input_count} изображений · ${state.quote.model.title}`));
     dom.start.disabled = !state.quote || state.uploads.length < 2;
   }
   function scheduleQuote() { clearTimeout(state.quoteTimer); state.quote = null; renderQuote(); if (state.uploads.length < 2 || !state.model) return; state.quoteTimer = setTimeout(loadQuote, 350); }
@@ -76,7 +76,7 @@
     try {
       const quote = await api(`/api/v1/batch-generations/${encodeURIComponent(batchId)}/retry-quote`);
       if (!quote.failed_count) { setMessage("Ошибок для повтора нет."); return; }
-      const ok = window.confirm(`Повторить ${quote.failed_count} неудачных задач за ${quote.total_cost_credits} кр. (≈ ${quote.total_cost_rub} ₽)?`);
+      const ok = window.confirm(`Повторить ${quote.failed_count} неудачных задач за ${quote.total_cost_credits} ROX (≈ ${quote.total_cost_rub} ₽)?`);
       if (!ok) return;
       const batch = await api(`/api/v1/batch-generations/${encodeURIComponent(batchId)}/retry`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } });
       renderProgress(batch); setMessage(`Повтор запущен: ${batch.retried_count} задач.`); await pollBatch(batch.id);

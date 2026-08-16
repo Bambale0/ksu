@@ -24,9 +24,7 @@
   async function api(path, options = {}) {
     const headers = new Headers(options.headers || {});
     headers.set("X-Telegram-Init-Data", initData);
-    if (options.body && !(options.body instanceof FormData)) {
-      headers.set("Content-Type", "application/json");
-    }
+    if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(path, { ...options, headers });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -38,9 +36,7 @@
     return body;
   }
 
-  function clear(node) {
-    while (node.firstChild) node.removeChild(node.firstChild);
-  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
   function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -66,17 +62,11 @@
     return node;
   }
 
-  function chip(text) {
-    return element("span", "trend-chip", text);
-  }
+  function chip(text) { return element("span", "trend-chip", text); }
 
   function renderFilters() {
     clear(filters);
-    [
-      ["", "Все"],
-      ["image", "Фото"],
-      ["video", "Видео"],
-    ].forEach(([value, label]) => {
+    [["", "Все"], ["image", "Фото"], ["video", "Видео"]].forEach(([value, label]) => {
       const button = element("button", `trend-filter${activeFilter === value ? " is-active" : ""}`, label);
       button.type = "button";
       button.addEventListener("click", () => {
@@ -105,7 +95,7 @@
       const meta = element("div", "trend-card-meta");
       meta.appendChild(chip(item.media_type === "video" ? "Видео" : "Фото"));
       meta.appendChild(chip(item.model?.title || "AI"));
-      meta.appendChild(chip(`${item.cost_credits} кр.`));
+      meta.appendChild(chip(`${item.cost_credits} ROX`));
       if (item.billing_seconds) meta.appendChild(chip(`${item.billing_seconds} сек.`));
       body.appendChild(meta);
       card.appendChild(body);
@@ -155,7 +145,7 @@
 
     const meta = element("div", "trend-card-meta");
     meta.appendChild(chip(item.model?.title || "AI"));
-    meta.appendChild(chip(`${item.cost_credits} кр. · ≈ ${item.cost_rub} ₽`));
+    meta.appendChild(chip(`${item.cost_credits} ROX · ≈ ${item.cost_rub} ₽`));
     if (item.billing_seconds) meta.appendChild(chip(`${item.billing_seconds} сек.`));
     runner.appendChild(meta);
     runner.appendChild(element("div", "trend-lock-note", "🔒 Prompt и технические настройки шаблона скрыты."));
@@ -175,7 +165,7 @@
     }
 
     runner.appendChild(element("div", "trend-message"));
-    const run = element("button", "primary-button trend-run-button", "🔥 Запустить");
+    const run = element("button", "primary-button trend-run-button", "Запустить");
     run.type = "button";
     run.addEventListener("click", () => runTrend(run));
     runner.appendChild(run);
@@ -225,11 +215,11 @@
         method: "POST",
         body: JSON.stringify({ reference_urls: uploadedUrls }),
       });
-      setRunnerMessage(`Задача создана · ${task.cost_credits} кр.`);
+      setRunnerMessage(`Задача создана · ${task.cost_credits} ROX`);
       tg?.HapticFeedback?.notificationOccurred("success");
       await pollGeneration(task.id);
     } catch (error) {
-      const message = error.status === 409 ? "Недостаточно кредитов для запуска." : error.message;
+      const message = error.status === 409 ? "Недостаточно ROX для запуска." : error.message;
       setRunnerMessage(message || "Не удалось запустить тренд.", true);
       tg?.HapticFeedback?.notificationOccurred("error");
     } finally {
@@ -257,7 +247,7 @@
       }
       if (generation.status === "failed") {
         clear(result);
-        result.appendChild(element("div", "trend-error", generation.error || "Генерация не удалась. Средства будут возвращены автоматически."));
+        result.appendChild(element("div", "trend-error", generation.error || "Генерация не удалась. ROX будут возвращены автоматически."));
         return;
       }
       if (generation.status !== "succeeded") continue;
@@ -272,9 +262,7 @@
         if (mediaType === "video") {
           node.controls = true;
           node.playsInline = true;
-        } else {
-          node.alt = "Результат генерации";
-        }
+        } else node.alt = "Результат генерации";
         result.appendChild(node);
       });
       tg?.HapticFeedback?.notificationOccurred("success");
@@ -293,11 +281,7 @@
         const found = items.find((item) => item.id === requested);
         if (found) openRunner(found);
         else {
-          try {
-            openRunner(await api(`/api/v1/trends/${encodeURIComponent(requested)}`));
-          } catch (_error) {
-            // Keep the catalog usable when a soft-deactivated/invalid deep link is opened.
-          }
+          try { openRunner(await api(`/api/v1/trends/${encodeURIComponent(requested)}`)); } catch (_error) { /* keep catalog usable */ }
         }
       }
     } catch (error) {

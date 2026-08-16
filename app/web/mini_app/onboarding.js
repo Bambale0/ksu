@@ -81,9 +81,9 @@
     overlay.setAttribute("aria-labelledby", "onboardingTitle");
 
     const card = el("section", "onboarding-card");
-    const mark = el("div", "onboarding-mark", "К");
+    const mark = el("div", "onboarding-mark", "RX");
     mark.setAttribute("aria-hidden", "true");
-    const kicker = el("span", "section-kicker", "КСЮ · AI STUDIO");
+    const kicker = el("span", "section-kicker", "ROXY · AI CREATIVE STUDIO");
     const title = el("h1", "", "Загрузка…");
     title.id = "onboardingTitle";
     const body = el("p", "onboarding-body", "Проверяем состояние профиля.");
@@ -166,7 +166,7 @@
     ensureOverlay();
     setLocked(true);
     dom.overlay.hidden = false;
-    dom.title.textContent = "Не удалось открыть Ксю";
+    dom.title.textContent = "Не удалось открыть ROXY";
     dom.body.textContent = "Состояние onboarding не подтверждено сервером.";
     dom.links.hidden = true;
     dom.message.textContent = message || "Проверьте соединение и повторите попытку.";
@@ -185,7 +185,7 @@
     }
     setLocked(true);
     dom.overlay.hidden = false;
-    dom.title.textContent = status.title || "Добро пожаловать в Ксю";
+    dom.title.textContent = status.title || "Добро пожаловать в ROXY";
     dom.body.textContent = status.body || "Завершите вводный экран, чтобы продолжить.";
     renderLinks(status);
     dom.message.textContent = "";
