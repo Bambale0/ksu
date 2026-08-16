@@ -71,7 +71,7 @@
   function paymentLines(payments) {
     const currencies = payments?.currencies || {};
     const rows = Object.entries(currencies).map(([currency, item]) => (
-      `${currency}: ${item.successful_count || 0} успешных · ${item.successful_amount || 0} ${currency} · ${item.credited || 0} кр.`
+      `${currency}: ${item.successful_count || 0} успешных · ${item.successful_amount || 0} ${currency} · ${item.credited || 0} ROX`
     ));
     return rows.length ? rows : ["Платежей пока нет"];
   }
@@ -102,9 +102,9 @@
         `Статус: ${account.is_active ? "активен" : "ограничен"}`,
       ]),
       block("Баланс", [
-        `${balance.credits || 0} кредитов`,
+        `${balance.credits || 0} ROX`,
         `Учётный эквивалент: ${balance.rub_accounting_equivalent || 0} ₽`,
-        `Учётная ставка: ${balance.rub_per_credit || 0} ₽ / кредит`,
+        `Учётная ставка: ${balance.rub_per_credit || 0} ₽ / ROX`,
       ]),
       block("Генерации", [
         `Всего: ${generations.total || 0}`,
