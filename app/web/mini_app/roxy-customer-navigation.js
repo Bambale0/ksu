@@ -205,19 +205,12 @@
   }
 
   function navIcon(name) {
-    const icons = {
-      home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 5l8 6.2V20h-5.2v-5.5H9.2V20H4v-8.8Z"/></svg>',
-      feed: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="16" rx="3"/><path d="M8.5 9h7M8.5 12h7M8.5 15h4.5"/></svg>',
-      create: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
-      catalog: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="m14.8 9.2-1.4 4.2-4.2 1.4 1.4-4.2 4.2-1.4Z"/></svg>',
-      history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 8.2A7.5 7.5 0 1 1 5 15"/><path d="M5.2 8.2V4.5M5.2 8.2H9"/><path d="M12 8.5V12l2.5 1.8"/></svg>',
-      profile: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>',
-    };
-    const icon = document.createElement("span");
-    icon.className = "studio-nav-icon roxy-nav-svg";
-    icon.setAttribute("aria-hidden", "true");
-    icon.innerHTML = icons[name] || icons.home;
-    return icon;
+    const wrap = document.createElement("span");
+    wrap.className = "studio-nav-icon roxy-nav-svg";
+    wrap.setAttribute("aria-hidden", "true");
+    const semantic = window.RoxyIcons?.create?.(name, { size: 21 });
+    if (semantic) wrap.appendChild(semantic);
+    return wrap;
   }
 
   function menuButton([route, iconName, label]) {
