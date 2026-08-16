@@ -20,15 +20,15 @@ def test_customer_navigation_has_approved_five_primary_routes() -> None:
     for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
         assert label in script
     assert '["feed", "feed", "Лента"]' not in script
-    assert 'feed: "feed"' in script  # legacy/deep route remains available
-    assert 'catalog: "feed"' in script  # safe fallback if discovery layer cannot mount
+    assert 'feed: "feed"' in script
+    assert 'catalog: "feed"' in script
     assert "RoxyDiscovery?.openCatalog" in script
     assert 'classList.contains("roxy-discovery-catalog-open")' in script
-    assert 'wallet: "wallet"' in script  # secondary deep route, intentionally absent from primary nav
+    assert 'wallet: "wallet"' in script
     assert 'new URLSearchParams(window.location.search).get("route")' in script
     assert "OPEN_ROUTES" in script
     assert "roxy-central-create" in script
-    assert "<svg" in script
+    assert 'window.RoxyIcons?.create?.(name, { size: 21 })' in script
     assert "repeat(5" in css
     assert '[data-roxy-customer-route="feed"]' in css
     assert "display: none" in css
@@ -42,6 +42,7 @@ def test_customer_navigation_has_approved_five_primary_routes() -> None:
 def test_roxy_brand_mounts_product_layers() -> None:
     brand = _read("roxy-brand.js")
     assert "function mountProductLayers()" in brand
+    assert '/mini-app/roxy-icons.js' in brand
     assert '/mini-app/roxy-customer-navigation.css' in brand
     assert '/mini-app/roxy-customer-navigation.js' in brand
     assert '/mini-app/roxy-discovery.css' in brand
