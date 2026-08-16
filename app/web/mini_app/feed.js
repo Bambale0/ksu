@@ -51,6 +51,26 @@
     return button;
   }
 
+  function iconAction(iconName, label, actionName, handler, className = "feed-action") {
+    const button = el("button", className);
+    button.type = "button";
+    button.dataset.feedAction = actionName;
+    const icon = window.RoxyIcons?.create?.(iconName, { size: 18 });
+    if (icon) button.appendChild(icon);
+    if (label !== "") button.appendChild(el("span", "feed-action-label", label));
+    button.addEventListener("click", handler);
+    return button;
+  }
+
+  function setIconActionContent(button, iconName, label) {
+    if (!button) return;
+    const icon = window.RoxyIcons?.create?.(iconName, { size: 18 });
+    const nodes = [];
+    if (icon) nodes.push(icon);
+    if (label !== "") nodes.push(el("span", "feed-action-label", label));
+    button.replaceChildren(...nodes);
+  }
+
   function toast(message) {
     let node = document.getElementById("feedToast");
     if (!node) {
@@ -82,14 +102,14 @@
   function mount() {
     if (document.getElementById("feedOverlay")) return;
 
-    const launcher = action("🌐 Лента", openFeed, "feed-launch");
+    const launcher = iconAction("feed", "Лента", "open-feed", openFeed, "feed-launch");
     launcher.id = "feedLaunch";
     document.body.appendChild(launcher);
 
     const overlay = el("section", "feed-overlay");
     overlay.id = "feedOverlay";
     overlay.hidden = true;
-    overlay.setAttribute("aria-label", "Публичная лента Ксю");
+    overlay.setAttribute("aria-label", "Публичная лента ROXY");
 
     const shell = el("div", "feed-shell");
     const head = el("header", "feed-head");
@@ -97,16 +117,12 @@
     const title = el("h1", "", "Лента");
     const subtitle = el("small", "", "Публичные работы сообщества");
     copy.append(title, subtitle);
-    const close = action("✕", closeFeed, "feed-close");
+    const close = iconAction("close", "", "close-feed", closeFeed, "feed-close");
     close.setAttribute("aria-label", "Закрыть ленту");
     head.append(copy, close);
 
     const tabs = el("div", "feed-tabs");
-    const tabConfig = [
-      ["recent", "🆕 Новые"],
-      ["top_day", "🔥 Топ дня"],
-      ["top", "⭐ Топ"],
-    ];
+    const tabConfig = [["recent", "Новые"], ["top_day", "Топ дня"], ["top", "Топ"]];
     for (const [key, label] of tabConfig) {
       const button = action(label, () => {
         state.surface = "feed";
@@ -127,17 +143,12 @@
 
     Object.assign(dom, { launcher, overlay, title, subtitle, tabs, body });
     syncTabs();
-    tg?.BackButton?.onClick?.(() => {
-      if (state.open) closeFeed();
-    });
+    tg?.BackButton?.onClick?.(() => { if (state.open) closeFeed(); });
   }
 
   function syncTabs() {
     dom.tabs?.querySelectorAll("[data-feed-sort]").forEach((button) => {
-      button.classList.toggle(
-        "is-active",
-        state.surface === "feed" && button.dataset.feedSort === state.sort,
-      );
+      button.classList.toggle("is-active", state.surface === "feed" && button.dataset.feedSort === state.sort);
     });
   }
 
@@ -163,13 +174,8 @@
     try { tg?.BackButton?.hide?.(); } catch (_error) { /* optional */ }
   }
 
-  function loading(message = "Загружаю ленту…") {
-    dom.body.replaceChildren(el("div", "feed-state", message));
-  }
-
-  function emptyState(message) {
-    dom.body.replaceChildren(el("div", "feed-state", message));
-  }
+  function loading(message = "Загружаю ленту…") { dom.body.replaceChildren(el("div", "feed-state", message)); }
+  function emptyState(message) { dom.body.replaceChildren(el("div", "feed-state", message)); }
 
   async function loadFeed() {
     if (state.loading) return;
@@ -194,7 +200,7 @@
     loading("Загружаю профиль…");
     try {
       const data = await api(`/api/v1/profiles/${encodeURIComponent(code)}/feed?limit=30`);
-      const back = action("← Общая лента", () => {
+      const back = iconAction("back", "Общая лента", "feed-back", () => {
         state.surface = "feed";
         state.authorCode = null;
         dom.title.textContent = "Лента";
@@ -203,8 +209,7 @@
         syncTabs();
         void loadFeed();
       }, "feed-secondary feed-profile-back");
-      const list = buildList(data.items || [], "profile");
-      dom.body.replaceChildren(back, list);
+      dom.body.replaceChildren(back, buildList(data.items || [], "profile"));
     } catch (error) {
       emptyState(error.status === 404 ? "Профиль или публикации недоступны" : (error.message || "Ошибка профиля"));
     }
@@ -253,39 +258,34 @@
       el("strong", "", item.author?.display_name || "Автор"),
       el("small", "", item.author?.username ? `@${item.author.username}` : `ref ${item.author_referral_code}`),
     );
-    const authorButton = action("👤 Автор", () => loadProfile(item.author_referral_code), "feed-secondary");
+    const authorButton = iconAction("user", "Автор", "author", () => loadProfile(item.author_referral_code), "feed-secondary");
     authorRow.append(authorMain, authorButton);
     body.appendChild(authorRow);
 
     if (item.prompt) body.appendChild(el("p", "feed-prompt", item.prompt));
     else if (item.prompt_hidden) body.appendChild(el("div", "feed-prompt-note", "Prompt скрыт автором или правилами remix"));
 
-    body.appendChild(
-      el(
-        "div",
-        "feed-meta",
-        `${item.model || item.gen_type || "AI"} · ${item.publication_scope === "profile" ? "только профиль" : "публично"}`,
-      ),
-    );
+    body.appendChild(el(
+      "div",
+      "feed-meta",
+      `${item.model || item.gen_type || "AI"} · ${item.publication_scope === "profile" ? "только профиль" : "публично"}`,
+    ));
 
     const actions = el("div", "feed-actions");
-    const like = action(
-      `${item.liked_by_me ? "♥" : "♡"} ${item.likes_count || 0}`,
-      () => toggleLike(item, like, surface),
-    );
+    const like = iconAction("like", String(item.likes_count || 0), "like", () => toggleLike(item, like, surface));
     like.classList.toggle("is-liked", Boolean(item.liked_by_me));
     like.setAttribute("aria-pressed", String(Boolean(item.liked_by_me)));
     actions.append(
       like,
-      action(`💬 ${item.comments_count || 0}`, () => toggleComments(item, card, surface)),
-      action(`🔗 ${item.shares_count || 0}`, () => shareItem(item, surface)),
+      iconAction("comment", String(item.comments_count || 0), "comments", () => toggleComments(item, card, surface)),
+      iconAction("share", String(item.shares_count || 0), "share", () => shareItem(item, surface)),
     );
     if (item.prompt_actions_allowed !== false) {
-      actions.appendChild(action("🔁 Повторить", () => remixItem(item, surface)));
+      actions.appendChild(iconAction("repeat", "Повторить", "remix", () => remixItem(item, surface)));
     }
     actions.append(
-      action("👤 Профиль", () => loadProfile(item.author_referral_code)),
-      action("↗ Пост", () => copyPostLink(item, surface)),
+      iconAction("user", "Профиль", "profile", () => loadProfile(item.author_referral_code)),
+      iconAction("share", "Пост", "post-link", () => copyPostLink(item, surface)),
     );
     body.appendChild(actions);
     card.append(mediaWrap, body);
@@ -301,13 +301,11 @@
       const path = method === "DELETE"
         ? `/api/v1/feed/${encodeURIComponent(item.id)}/like?surface=${encodeURIComponent(surface)}`
         : `/api/v1/feed/${encodeURIComponent(item.id)}/like`;
-      const options = method === "DELETE"
-        ? { method }
-        : { method, body: JSON.stringify({ surface }) };
+      const options = method === "DELETE" ? { method } : { method, body: JSON.stringify({ surface }) };
       const result = await api(path, options);
       item.liked_by_me = result.liked_by_me;
       item.likes_count = result.likes_count;
-      button.textContent = `${item.liked_by_me ? "♥" : "♡"} ${item.likes_count || 0}`;
+      setIconActionContent(button, "like", String(item.likes_count || 0));
       button.classList.toggle("is-liked", Boolean(item.liked_by_me));
       button.setAttribute("aria-pressed", String(Boolean(item.liked_by_me)));
     } catch (error) {
@@ -336,9 +334,7 @@
 
   async function copyPostLink(item, surface) {
     try {
-      const data = await api(
-        `/api/v1/feed/${encodeURIComponent(item.id)}/link?kind=post&surface=${encodeURIComponent(surface)}`,
-      );
+      const data = await api(`/api/v1/feed/${encodeURIComponent(item.id)}/link?kind=post&surface=${encodeURIComponent(surface)}`);
       if (!data.link) throw new Error("BOT_USERNAME не настроен");
       await copyText(data.link);
       toast("Deep link поста скопирован");
@@ -348,10 +344,7 @@
   }
 
   async function copyText(value) {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
-      return;
-    }
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(value); return; }
     tg?.showPopup?.({ title: "Ссылка", message: value, buttons: [{ type: "close" }] });
   }
 
@@ -374,17 +367,12 @@
 
   async function toggleComments(item, card, surface) {
     let panel = card.querySelector(".feed-comments-panel");
-    if (panel) {
-      panel.remove();
-      return;
-    }
+    if (panel) { panel.remove(); return; }
     panel = el("div", "feed-comments-panel");
     panel.appendChild(el("div", "feed-state", "Загружаю комментарии…"));
     card.querySelector(".feed-body")?.appendChild(panel);
     try {
-      const data = await api(
-        `/api/v1/feed/${encodeURIComponent(item.id)}/comments?surface=${encodeURIComponent(surface)}&limit=30`,
-      );
+      const data = await api(`/api/v1/feed/${encodeURIComponent(item.id)}/comments?surface=${encodeURIComponent(surface)}&limit=30`);
       renderComments(panel, item, surface, data.items || []);
     } catch (error) {
       panel.replaceChildren(el("div", "feed-state", error.message || "Комментарии недоступны"));
@@ -396,10 +384,7 @@
     if (!comments.length) list.appendChild(el("div", "feed-prompt-note", "Комментариев пока нет"));
     for (const comment of comments) {
       const row = el("div", "feed-comment");
-      row.append(
-        el("strong", "", comment.author?.display_name || comment.author?.username || "Пользователь"),
-        el("p", "", comment.text || ""),
-      );
+      row.append(el("strong", "", comment.author?.display_name || comment.author?.username || "Пользователь"), el("p", "", comment.text || ""));
       list.appendChild(row);
     }
     const form = el("form", "feed-comment-form");
@@ -422,9 +407,7 @@
           body: JSON.stringify({ surface, text }),
         });
         item.comments_count = Number(item.comments_count || 0) + 1;
-        const data = await api(
-          `/api/v1/feed/${encodeURIComponent(item.id)}/comments?surface=${encodeURIComponent(surface)}&limit=30`,
-        );
+        const data = await api(`/api/v1/feed/${encodeURIComponent(item.id)}/comments?surface=${encodeURIComponent(surface)}&limit=30`);
         renderComments(panel, item, surface, data.items || []);
       } catch (error) {
         toast(error.message || "Комментарий не отправлен");
@@ -441,18 +424,10 @@
     try {
       const result = await api(`/api/v1/feed/${encodeURIComponent(generationId)}/publish`, {
         method: "POST",
-        body: JSON.stringify({
-          publication_scope: scope,
-          prompt_visible: false,
-          references_visible: false,
-        }),
+        body: JSON.stringify({ publication_scope: scope, prompt_visible: false, references_visible: false }),
       });
       notify("success");
-      toast(
-        result.downgraded_to_profile
-          ? "Публикация ограничена профилем"
-          : (scope === "feed" ? "Опубликовано в ленте" : "Добавлено в профиль"),
-      );
+      toast(result.downgraded_to_profile ? "Публикация ограничена профилем" : (scope === "feed" ? "Опубликовано в ленте" : "Добавлено в профиль"));
     } catch (error) {
       notify("error");
       toast(error.message || "Публикация не выполнена");
@@ -468,16 +443,8 @@
     const actions = result.querySelector(".ksu-result-actions");
     if (!actions || actions.querySelector(".feed-publish-controls")) return;
     const controls = el("div", "feed-publish-controls");
-    const profile = action(
-      "👤 В профиль",
-      () => publishGeneration(generation.id, "profile", profile),
-      "feed-publish-action",
-    );
-    const feed = action(
-      "🌐 В ленту",
-      () => publishGeneration(generation.id, "feed", feed),
-      "feed-publish-action primary",
-    );
+    const profile = iconAction("user", "В профиль", "publish-profile", () => publishGeneration(generation.id, "profile", profile), "feed-publish-action");
+    const feed = iconAction("feed", "В ленту", "publish-feed", () => publishGeneration(generation.id, "feed", feed), "feed-publish-action primary");
     controls.append(profile, feed);
     actions.appendChild(controls);
   }
@@ -496,9 +463,7 @@
   }
 
   function attachGenerationContext() {
-    window.addEventListener("roxy:generation-context", (event) => {
-      applyGenerationContext(event.detail?.generation || null);
-    });
+    window.addEventListener("roxy:generation-context", (event) => applyGenerationContext(event.detail?.generation || null));
     window.addEventListener("roxy:generation-context-ready", hydrateGenerationContext);
     hydrateGenerationContext();
   }
