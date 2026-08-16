@@ -10,6 +10,7 @@ from app.api.v1.referrals import stats
 from app.core.config import settings
 from app.db.models import ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
+from app.services.partner_wallet import PartnerWalletTransferService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
 from app.services.wallet import WalletService
@@ -23,7 +24,7 @@ def _telegram_id() -> int:
 
 
 @pytest.mark.asyncio
-async def test_registration_and_invite_create_spend_only_rox_bonuses(
+async def test_registration_and_invite_create_rox_wallet_bonuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
@@ -99,7 +100,57 @@ async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
 
 
 @pytest.mark.asyncio
-async def test_stats_expose_reference_economy_contract() -> None:
+async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+    async with SessionFactory() as session:
+        partner = User(telegram_id=_telegram_id(), first_name="Partner")
+        buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
+        session.add_all([partner, buyer])
+        await session.flush()
+        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+        payment_tx = await WalletService.credit(
+            session,
+            user_id=buyer.id,
+            amount=Decimal("300"),
+            kind="payment",
+            idempotency_key=f"partner-transfer-payment:{buyer.id}",
+        )
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+            payment_amount=Decimal("300"),
+        )
+        await session.flush()
+
+        first = await PartnerWalletTransferService.transfer(
+            session,
+            user_id=partner.id,
+            amount=Decimal("40"),
+            idempotency_key="partner-transfer-test-key",
+        )
+        second = await PartnerWalletTransferService.transfer(
+            session,
+            user_id=partner.id,
+            amount=Decimal("40"),
+            idempotency_key="partner-transfer-test-key",
+        )
+        await session.commit()
+
+        assert first.id == second.id
+        wallet = await session.get(Wallet, partner.id)
+        assert wallet is not None
+        assert wallet.balance == Decimal("40.00")
+        accounting = await PartnerWalletTransferService.accounting(session, partner.id)
+        assert accounting["total_earned"] == Decimal("90.00")
+        assert accounting["transferred_to_rox"] == Decimal("40.00")
+        assert accounting["available"] == Decimal("50.00")
+
+
+@pytest.mark.asyncio
+async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
     async with SessionFactory() as session:
         user = User(telegram_id=_telegram_id(), first_name="Economy")
         session.add(user)
@@ -108,15 +159,17 @@ async def test_stats_expose_reference_economy_contract() -> None:
         await session.commit()
 
         payload = await stats(user, session)
-        assert payload["bonus_rox"] == "280.00"
-        assert payload["withdrawable_rox"] == "0.00"
+        assert payload["rox_balance"] == "280.00"
+        assert payload["partner_balance_rub"] == "0.00"
+        assert payload["transferred_to_rox"] == "0"
+        assert payload["bonus_rox"] == "280.00"  # compatibility only
         assert payload["rub_per_rox"] == "1"
         assert payload["welcome_bonus_rox"] == "50"
         assert payload["invite_bonus_rox"] == "30"
         assert payload["prompt_repeat_bonus_rox"] == "5"
         assert payload["first_line_percent"] == "30"
         assert payload["second_line_percent"] == "5"
-        assert payload["minimum_withdrawal_rox"] == "3000.00"
+        assert payload["minimum_withdrawal"] == "3000"
         assert payload["withdrawal_status"] == "NONE"
 
 
@@ -143,50 +196,41 @@ def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
         "▦ Каталог",
         "≡ История",
         "👤 Профиль",
+        "💳 Пополнить ROX",
+        "👥 Пригласить в ROXY",
     ):
         assert label in keyboard
     main_menu = keyboard.split("def main_menu()", 1)[1]
-    for legacy in (
-        "🏠 Главная",
-        "Пакетная обработка",
-        "AI-инструменты",
-        "Тренды",
-        "🌐 Лента",
-        "🆘 Поддержка",
-        "🔁 Промпты",
-        "💎 Мои ROX",
-        "👥 Заработать",
-    ):
-        assert legacy not in main_menu
-    for route in ("home", "catalog", "history", "profile"):
-        assert f'route="{route}"' in main_menu
-    assert "_create_button()," in main_menu
-    create_button = keyboard.split("def _create_button()", 1)[1].split("def _batch_button()", 1)[0]
-    assert 'route="create"' in create_button
+    assert 'route="wallet"' in main_menu
+    assert 'fallback_callback="referrals"' in main_menu
 
 
-def test_mini_app_economy_matches_reference_copy_and_split_balances() -> None:
+def test_mini_app_economy_keeps_rox_wallet_separate_from_partner_rubles() -> None:
     script = (MINI / "roxy-economy.js").read_text(encoding="utf-8")
+    profile = (MINI / "roxy-profile-cabinet.js").read_text(encoding="utf-8")
+    partner = (MINI / "partner.js").read_text(encoding="utf-8")
     style = (MINI / "roxy-economy.css").read_text(encoding="utf-8")
     integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
+
     for token in (
         "1 ROX = 1 ₽",
-        "Бонусные ROX",
-        "Выводимые ROX",
-        "Приветственный бонус",
-        "Приглашённый друг",
-        "Повтор промпта",
-        "Минимальный вывод",
-        "Создать",
-        "Промпты",
-        "Мои ROX",
-        "Заработать",
-        "Профиль",
+        "Баланс ROX",
+        "Заработок партнёра",
+        "Бонусы и пополнения сразу зачисляются сюда",
+        "Пополнение 1-й линии",
+        "Пополнение 2-й линии",
         '"/api/v1/referrals/stats"',
     ):
         assert token in script
+    assert "Бонусные ROX" not in script
+    assert "Выводимые ROX" not in script
+    assert "Бонусные ROX" not in profile
+    assert "Выводимые ROX" not in profile
+    assert "Перевести в ROX" in partner
+    assert "Вывести деньгами" in partner
+    assert "Партнёры ROXY" in partner
+    assert '"/api/v1/referrals/wallet-transfers"' in partner
     assert "roxy-balance-grid" in style
     assert "roxy-rule-row" in style
-    assert "#studioHomeOrchestration" in style
     assert '/mini-app/roxy-economy.js' in integration
     assert '/mini-app/roxy-economy.css' in integration
