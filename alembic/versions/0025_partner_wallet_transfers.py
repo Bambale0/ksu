@@ -25,15 +25,20 @@ def upgrade() -> None:
             nullable=False,
             unique=True,
         ),
-        sa.Column("idempotency_key", sa.String(160), nullable=False, unique=True),
+        sa.Column("idempotency_key", sa.String(160), nullable=False),
+        sa.CheckConstraint("amount_rub > 0", name="ck_partner_wallet_transfer_amount"),
+        sa.CheckConstraint("rox_amount > 0", name="ck_partner_wallet_transfer_rox"),
+        sa.UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_partner_wallet_transfers_user_idempotency",
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.CheckConstraint("amount_rub > 0", name="ck_partner_wallet_transfer_amount"),
-        sa.CheckConstraint("rox_amount > 0", name="ck_partner_wallet_transfer_rox"),
     )
     op.create_index(
         "ix_partner_wallet_transfers_user_id",
