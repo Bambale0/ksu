@@ -126,9 +126,46 @@
     if (node.textContent !== next) node.textContent = next;
   }
 
+  function normalizeCurrencyString(value) {
+    if (typeof value !== "string" || !value) return value;
+    return value
+      .replace(/(-?[\d\s.,]+)\s*кр\.(?=\s|$|[·,;:)])/giu, "$1 ROX")
+      .replace(/(-?[\d\s.,]+)\s+кредит(?:а|ов|ы)?\b/giu, "$1 ROX")
+      .replace(/\/\s*кредит\b/giu, "/ ROX");
+  }
+
+  function normalizeCurrencyText(root = document.body) {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+      const parent = root.parentElement;
+      if (!parent || parent.closest("script,style,textarea,option")) return;
+      const next = normalizeCurrencyString(root.nodeValue || "");
+      if (next !== root.nodeValue) root.nodeValue = next;
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+    if (root.nodeType === Node.ELEMENT_NODE && root.closest("script,style,textarea")) return;
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (!parent || parent.closest("script,style,textarea,option")) return NodeFilter.FILTER_REJECT;
+        const value = node.nodeValue || "";
+        return normalizeCurrencyString(value) !== value ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      const next = normalizeCurrencyString(node.nodeValue || "");
+      if (next !== node.nodeValue) node.nodeValue = next;
+    }
+  }
+
   function normalizeBalance() {
     normalizeBalanceNode(document.getElementById("balanceValue"));
     normalizeBalanceNode(document.getElementById("walletBalance"));
+    normalizeBalanceNode(document.querySelector(".studio-sidebar-balance-value"));
     const walletNote = document.querySelector("#walletHero small");
     if (walletNote && walletNote.textContent !== "Внутренняя валюта ROXY") {
       walletNote.textContent = "Внутренняя валюта ROXY";
@@ -137,14 +174,15 @@
 
   function apply() {
     queued = false;
+    document.documentElement.classList.add("roxy-approved-brand");
+    document.body?.classList.add("roxy-approved-brand");
     const home = document.getElementById("createHome");
     if (home) {
       ensureHero(home);
       ensureEarnSection(home);
     }
     normalizeBalance();
-    document.documentElement.classList.add("roxy-approved-brand");
-    document.body?.classList.add("roxy-approved-brand");
+    normalizeCurrencyText(document.body);
   }
 
   function schedule() {
@@ -154,6 +192,8 @@
   }
 
   function init() {
+    document.documentElement.classList.add("roxy-approved-brand");
+    document.body?.classList.add("roxy-approved-brand");
     apply();
     if (observer || !document.body) return;
     observer = new MutationObserver(schedule);
