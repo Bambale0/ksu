@@ -13,17 +13,23 @@ def test_approved_roxy_palette_is_loaded_last() -> None:
     brand = _read("roxy-brand.js")
     theme = _read("roxy-approved-theme.css")
     surfaces = _read("roxy-approved-surfaces.css")
+    feedback = _read("roxy-client-feedback.css")
 
     assert '/mini-app/roxy-approved-theme.css' in brand
     assert '/mini-app/roxy-approved-home.js' in brand
     assert '/mini-app/roxy-approved-surfaces.css' in brand
+    assert '/mini-app/roxy-client-feedback.css' in brand
     assert brand.index('/mini-app/roxy-approved-surfaces.css') > brand.index('/mini-app/roxy-approved-theme.css')
+    assert brand.index('/mini-app/roxy-client-feedback.css') > brand.index('/mini-app/roxy-approved-surfaces.css')
 
-    for token in ("#8f63ff", "#ff69c9", "--roxy-gradient"):
-        assert token in theme
-        assert token in surfaces
     assert '.roxy-approved-hero' in theme
     assert '.roxy-earn-section' in theme
+    for token in ("#0B0B10", "#9B5CFF", "#FF5FB7", "#FFFFFF", "#A6A6B3"):
+        assert token in feedback
+    assert "linear-gradient(110deg, #9B5CFF 0%, #FF5FB7 100%)" in feedback
+    assert "#b768ff" not in feedback.lower()
+    assert "#8f63ff" not in feedback.lower()
+    assert "#ff69c9" not in feedback.lower()
 
 
 def test_final_surface_layer_covers_every_customer_surface() -> None:
@@ -64,10 +70,18 @@ def test_logo_asset_is_used_by_product_chrome() -> None:
     brand = _read("roxy-brand.js")
 
     assert 'url(\'/mini-app/roxy-logo.svg\')' in surfaces
-    assert "#8f63ff" in logo
-    assert "#ff69c9" in logo
+    assert "#9B5CFF" in logo
+    assert "#FF5FB7" in logo
+    assert "#b768ff" not in logo.lower()
     assert 'setText(".brand-mark", "RX"' in brand
     assert 'setText(".studio-sidebar-mark", "RX"' in brand
+
+
+def test_withdrawable_rox_uses_white_silver_indicator() -> None:
+    feedback = _read("roxy-client-feedback.css")
+    assert ".roxy-balance-card.withdrawable .roxy-balance-type::before" in feedback
+    assert "background: #FFFFFF" in feedback
+    assert "border: 1px solid #A6A6B3" in feedback
 
 
 def test_approved_home_explains_creator_economy_and_rox() -> None:
