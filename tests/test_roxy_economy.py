@@ -188,10 +188,12 @@ def test_prompt_repeat_bonus_is_idempotent_success_only_and_blocks_self_reward()
     assert 'kind="prompt_repeat_bonus"' not in generation_create
 
 
-def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
+def test_public_roxy_menu_is_mini_app_only() -> None:
     keyboard = (ROOT / "app" / "bot" / "keyboards.py").read_text(encoding="utf-8")
+    main_menu = keyboard.split("def main_menu()", 1)[1]
+    assert 'text="🚀 Открыть ROXY"' in main_menu
+    assert 'route="home"' in main_menu
     for label in (
-        "🚀 Открыть ROXY",
         "✨ Создать",
         "▦ Каталог",
         "≡ История",
@@ -199,10 +201,9 @@ def test_public_roxy_menu_matches_latest_customer_feedback() -> None:
         "💳 Пополнить ROX",
         "👥 Пригласить в ROXY",
     ):
-        assert label in keyboard
-    main_menu = keyboard.split("def main_menu()", 1)[1]
-    assert 'route="wallet"' in main_menu
-    assert 'callback_data="referrals"' in main_menu
+        assert label not in main_menu
+    assert 'route="wallet"' not in main_menu
+    assert 'callback_data="referrals"' not in main_menu
 
 
 def test_mini_app_economy_keeps_rox_wallet_separate_from_partner_rubles() -> None:
