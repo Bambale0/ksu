@@ -146,9 +146,9 @@ async def test_referral_topups_create_first_and_second_line_telegram_notificatio
         assert second is not None
         assert first.title == "💰 Пополнение по 1-й линии!"
         assert second.title == "💰 Пополнение по 2-й линии!"
-        assert "Пополнение пользователя Anastasiya: 100 ROX." in first.body
-        assert "Ваш бонус: +30 ROX (30%)." in first.body
-        assert "Ваш бонус: +5 ROX (5%)." in second.body
+        assert "Пополнение пользователя Anastasiya: 100 ₽." in first.body
+        assert "Ваш заработок: +30 ₽ (30%)." in first.body
+        assert "Ваш заработок: +5 ₽ (5%)." in second.body
         assert "Telegram" not in first.body
         assert "Telegram" not in second.body
 
