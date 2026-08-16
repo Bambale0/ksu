@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     bot_username: str = ""
+    support_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
 
