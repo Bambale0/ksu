@@ -30,6 +30,8 @@ def test_customer_navigation_has_approved_five_primary_routes() -> None:
     assert "roxy-central-create" in script
     assert "<svg" in script
     assert "repeat(5" in css
+    assert '[data-roxy-customer-route="feed"]' in css
+    assert "display: none" in css
     assert "border-radius: 24px" in css
     assert "backdrop-filter" in css
     assert "#b184ff" in css
@@ -46,6 +48,7 @@ def test_roxy_brand_mounts_product_layers() -> None:
     assert '/mini-app/roxy-discovery.js' in brand
     assert '/mini-app/roxy-approved-theme.css' in brand
     assert '/mini-app/roxy-approved-home.js' in brand
+    assert '/mini-app/roxy-approved-surfaces.css' in brand
     assert "mountProductLayers();" in brand
 
 
