@@ -151,6 +151,9 @@ async def start(
             text = f"{text}\n\n{body}"
         await message.answer(text, reply_markup=onboarding_menu())
         return
+
+    # Mount the persistent reply keyboard before any deep-link handler can return.
+    await _send_quick_menu(message)
     if link is not None and link.action != "ref":
         if await handle_deep_link(
             message,
@@ -160,7 +163,6 @@ async def start(
             redis=redis,
         ):
             return
-    await _send_quick_menu(message)
     await _send_main_menu(message, user, session)
 
 
@@ -197,17 +199,17 @@ async def onboarding_complete(
     payload = str(pending.get("pending_start_payload") or "")
     await state.clear()
     link = parse_feed_deep_link(payload)
-    if callback.message and link is not None and link.action != "ref":
-        if await handle_deep_link(
-            callback.message,
-            user_id=user.id,
-            link=link,
-            session=session,
-            redis=redis,
-        ):
-            return
     if callback.message:
         await _send_quick_menu(callback.message)
+        if link is not None and link.action != "ref":
+            if await handle_deep_link(
+                callback.message,
+                user_id=user.id,
+                link=link,
+                session=session,
+                redis=redis,
+            ):
+                return
         await _send_main_menu(callback.message, user, session)
 
 
