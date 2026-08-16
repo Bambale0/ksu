@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  // RoxyCustomerNavigation is the sole owner of visible primary menus.
   const tg = window.Telegram?.WebApp ?? null;
   const state = {
     stats: null,
