@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,6 +13,11 @@ from app.db.base import Base
 class PartnerWalletTransfer(Base):
     __tablename__ = "partner_wallet_transfers"
     __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_partner_wallet_transfers_user_idempotency",
+        ),
         Index("ix_partner_wallet_transfers_user_created", "user_id", "created_at"),
     )
 
@@ -25,7 +30,7 @@ class PartnerWalletTransfer(Base):
     wallet_transaction_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("wallet_transactions.id", ondelete="RESTRICT"), unique=True, nullable=False
     )
-    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
