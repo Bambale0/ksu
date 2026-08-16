@@ -95,11 +95,23 @@ class PartnerWalletTransferService:
             return existing
 
         normalized = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        await cls._lock_user(session, user_id)
+
+        # Re-check after the per-user row lock. This makes retries safe even when two
+        # identical requests arrive concurrently before either transfer is committed.
+        existing = await session.scalar(
+            select(PartnerWalletTransfer).where(
+                PartnerWalletTransfer.idempotency_key == key,
+                PartnerWalletTransfer.user_id == user_id,
+            )
+        )
+        if existing is not None:
+            return existing
         await cls.assert_available(
             session,
             user_id=user_id,
             amount=normalized,
-            lock=True,
+            lock=False,
         )
 
         transfer_id = uuid.uuid4()
