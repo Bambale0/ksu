@@ -6,7 +6,14 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.feed import handle_deep_link
-from app.bot.keyboards import back_menu, balance_menu, main_menu, onboarding_menu
+from app.bot.keyboards import (
+    QUICK_MENU_TEXT,
+    back_menu,
+    balance_menu,
+    main_menu,
+    onboarding_menu,
+    quick_menu,
+)
 from app.core.config import settings
 from app.db.models import User, Wallet
 from app.services.account_profile import AccountProfileService
@@ -80,12 +87,19 @@ async def _rox_balances(session: AsyncSession, user_id) -> tuple[object, object]
     return bonus_rox, withdrawable_rox
 
 
+async def _send_quick_menu(message: Message) -> None:
+    await message.answer(
+        "Быстрый доступ ROXY",
+        reply_markup=quick_menu(),
+    )
+
+
 async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
     bonus_rox, withdrawable_rox = await _rox_balances(session, user.id)
     await message.answer(
         f"Привет, {user.first_name}!\n\n"
         f"🟣 Бонусные ROX: {bonus_rox}\n"
-        f"🟢 Выводимые ROX: {withdrawable_rox}\n"
+        f"⚪ Выводимые ROX: {withdrawable_rox}\n"
         "1 ROX = 1 ₽\n\n"
         "Выбери действие:",
         reply_markup=main_menu(),
@@ -103,7 +117,7 @@ async def _balance_text(session: AsyncSession, user_id) -> str:  # type: ignore[
         "💎 Мои ROX\n\n"
         f"🟣 Бонусные ROX: {bonus_rox}\n"
         "Тратятся только внутри ROXY.\n\n"
-        f"🟢 Выводимые ROX: {withdrawable_rox}\n"
+        f"⚪ Выводимые ROX: {withdrawable_rox}\n"
         "Зарабатываются только с реальных пополнений по реферальной системе.\n\n"
         f"1 ROX = {InternalCreditService.rub_per_credit()} ₽\n"
         f"💰 Вывод от {InternalCreditService.credits_for(settings.partner_min_withdrawal_rub)} ROX."
@@ -146,6 +160,16 @@ async def start(
             redis=redis,
         ):
             return
+    await _send_quick_menu(message)
+    await _send_main_menu(message, user, session)
+
+
+@router.message(F.text == QUICK_MENU_TEXT)
+async def quick_menu_message(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+    await state.clear()
+    user = await UserService.get_or_create(session, message.from_user)
     await _send_main_menu(message, user, session)
 
 
@@ -183,6 +207,7 @@ async def onboarding_complete(
         ):
             return
     if callback.message:
+        await _send_quick_menu(callback.message)
         await _send_main_menu(callback.message, user, session)
 
 
@@ -224,14 +249,14 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
     await callback.answer()
     if callback.message:
         await callback.message.answer(
-            "👥 Заработать ROX\n\n"
+            "👥 Пригласить в ROXY\n\n"
             f"🎁 {settings.start_balance_rox} ROX — приветственный бонус\n"
             f"👤 +{settings.invite_bonus_rox} ROX — за приглашённого друга\n"
             f"🔁 +{settings.prompt_repeat_bonus_rox} ROX — за каждый повтор твоего промпта\n"
             f"👥 {settings.referral_first_percent}% — 1-я линия с пополнений\n"
             f"👥 {settings.referral_second_percent}% — 2-я линия с пополнений\n"
             f"💰 от {minimum} ROX — вывод заработка\n\n"
-            f"🟢 Сейчас доступно к выводу: {withdrawable} ROX\n"
+            f"⚪ Сейчас доступно к выводу: {withdrawable} ROX\n"
             f"1 линия: {stats['first_line']} · 2 линия: {stats['second_line']}\n\n"
             f"Реферальная ссылка: https://t.me/{(await callback.bot.me()).username}?start=ref_{user.telegram_id}",
             reply_markup=back_menu(),
