@@ -106,7 +106,7 @@
     copy.append(
       el("span", "section-kicker", "ROXY Cabinet"),
       el("h2", "", "Всё важное в одном месте"),
-      el("p", "", "Баланс, заработок, платежи и настройки без перегруженного меню."),
+      el("p", "", "Баланс ROX, партнёрский заработок, платежи и настройки без путаницы."),
     );
     const refresh = button("↻", () => void load(true), "roxy-cabinet-refresh");
     refresh.setAttribute("aria-label", "Обновить кабинет");
@@ -114,13 +114,16 @@
 
     const balances = el("div", "roxy-cabinet-balances");
     balances.id = "roxyCabinetBalances";
-    balances.append(metric("Бонусные ROX", "—", "Только внутри ROXY"), metric("Выводимые ROX", "—", "Реферальный доход"));
+    balances.append(
+      metric("Баланс ROX", "—", "Для генераций внутри ROXY"),
+      metric("Заработок партнёра", "—", "Рубли: вывести или перевести в ROX"),
+    );
 
     const actions = el("div", "roxy-cabinet-actions");
     actions.append(
       quickAction("💎", "Мои ROX", "Баланс, пополнение и операции", () => openRoute("wallet"), true),
       quickAction("≡", "История", "Все генерации", () => openRoute("history")),
-      quickAction("👥", "Реферальная программа", "30% / 5% и вывод", () => scrollPartner()),
+      quickAction("👥", "Партнёры ROXY", "30% / 5%, заработок и вывод", () => scrollPartner()),
       quickAction("⚙", "Настройки", "Профиль и уведомления", () => scrollSettings()),
     );
 
@@ -161,10 +164,10 @@
 
   function markReferralProgram() {
     const heading = document.getElementById("partnerPreviewHeading");
-    if (heading) heading.textContent = "Автоматическая реферальная программа";
+    if (heading) heading.textContent = "Партнёры ROXY";
     const section = document.getElementById("partnerPreview")?.closest(".home-section");
     const kicker = section?.querySelector(".section-kicker");
-    if (kicker) kicker.textContent = "Рефералы 30% / 5%";
+    if (kicker) kicker.textContent = "Заработок 30% / 5%";
   }
 
   function paymentSuccessCount(payments) {
@@ -178,8 +181,8 @@
     const balances = document.getElementById("roxyCabinetBalances");
     if (balances) {
       balances.replaceChildren(
-        metric("Бонусные ROX", `${format(economy.bonus_rox)} ROX`, "Тратятся только внутри ROXY"),
-        metric("Выводимые ROX", `${format(economy.withdrawable_rox)} ROX`, `Вывод от ${format(economy.minimum_withdrawal_rox)} ROX`),
+        metric("Баланс ROX", `${format(economy.rox_balance ?? economy.bonus_rox)} ROX`, "Бонусы и пополнения уже внутри баланса"),
+        metric("Заработок партнёра", `${format(economy.partner_balance_rub ?? economy.available)} ₽`, "Вывести деньгами или перевести в ROX"),
       );
     }
 
@@ -192,8 +195,8 @@
     if (metrics) {
       metrics.replaceChildren(
         metric("Генерации", format(generations.total, 0), `${format(statuses.succeeded || 0, 0)} готово`),
-        metric("Платежи", format(paymentSuccessCount(overview.payments), 0), "Успешных пополнений"),
-        metric("Рефералы", `${format(economy.first_line || 0, 0)} + ${format(economy.second_line || 0, 0)}`, "1-я + 2-я линия"),
+        metric("Пополнения", format(paymentSuccessCount(overview.payments), 0), "Успешных покупок ROX"),
+        metric("Партнёры", `${format(economy.first_line || 0, 0)} + ${format(economy.second_line || 0, 0)}`, "1-я + 2-я линия"),
         metric("Сейчас в работе", format(active, 0), "Генераций"),
         metric("Поддержка", format(Number(supportStatuses.open || 0) + Number(supportStatuses.in_progress || 0), 0), "Открытых обращений"),
         metric("Повторы промптов", format(economy.prompt_repeats || 0, 0), "Использований ваших работ"),
@@ -293,12 +296,12 @@
     if (agreement) {
       const copy = creatorShell(
         "Creator-партнёрство",
-        "Это отдельный договорной контур. Ежемесячные ROX начисляются только по согласованным персональным условиям и не являются выводимым реферальным доходом.",
+        "Это отдельный договорной контур. Ежемесячные ROX начисляются только по согласованным персональным условиям и не являются реферальным заработком в рублях.",
       );
       const summary = el("div", "roxy-creator-agreement-summary");
       summary.append(
         statusBadge(agreement.status),
-        metric("Ежемесячно", `${format(agreement.monthly_rox)} ROX`, "Бонусные ROX на контент"),
+        metric("Ежемесячно", `${format(agreement.monthly_rox)} ROX`, "ROX на контент"),
         metric("Начало", agreement.starts_on || "—", agreement.ends_on ? `до ${agreement.ends_on}` : "Без даты окончания"),
         metric("Всего начислено", `${format(creator.total_granted_rox)} ROX`, "По Creator-партнёрству"),
       );
@@ -330,7 +333,7 @@
 
     root.appendChild(creatorShell(
       "Creator-партнёрство",
-      "Расскажите о канале. ROXY не назначает всем одинаковые бонусы: условия и ежемесячный ROX-лимит согласуются индивидуально.",
+      "Расскажите о канале. ROXY не назначает всем одинаковые начисления: условия и ежемесячный ROX-лимит согласуются индивидуально.",
     ));
     renderCreatorApplicationForm(root, false);
   }
