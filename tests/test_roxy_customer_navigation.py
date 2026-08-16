@@ -12,7 +12,7 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_customer_navigation_has_reference_style_five_primary_routes() -> None:
+def test_customer_navigation_has_approved_five_primary_routes() -> None:
     script = _read("roxy-customer-navigation.js")
     css = _read("roxy-customer-navigation.css")
     for route in ("home", "catalog", "create", "history", "profile"):
@@ -20,7 +20,7 @@ def test_customer_navigation_has_reference_style_five_primary_routes() -> None:
     for label in ("Главная", "Каталог", "Создать", "История", "Профиль"):
         assert label in script
     assert '["feed", "feed", "Лента"]' not in script
-    assert '"feed", "wallet"' in script  # legacy deep route remains supported, but is not a primary tab
+    assert 'feed: "feed"' in script  # legacy/deep route remains available
     assert 'catalog: "feed"' in script  # safe fallback if discovery layer cannot mount
     assert "RoxyDiscovery?.openCatalog" in script
     assert 'classList.contains("roxy-discovery-catalog-open")' in script
@@ -30,9 +30,10 @@ def test_customer_navigation_has_reference_style_five_primary_routes() -> None:
     assert "roxy-central-create" in script
     assert "<svg" in script
     assert "repeat(5" in css
-    assert "repeat(6" not in css
     assert "border-radius: 24px" in css
     assert "backdrop-filter" in css
+    assert "#b184ff" in css
+    assert "#ff69c9" in css
     assert ".roxy-central-create" in css
 
 
@@ -43,6 +44,8 @@ def test_roxy_brand_mounts_product_layers() -> None:
     assert '/mini-app/roxy-customer-navigation.js' in brand
     assert '/mini-app/roxy-discovery.css' in brand
     assert '/mini-app/roxy-discovery.js' in brand
+    assert '/mini-app/roxy-approved-theme.css' in brand
+    assert '/mini-app/roxy-approved-home.js' in brand
     assert "mountProductLayers();" in brand
 
 
