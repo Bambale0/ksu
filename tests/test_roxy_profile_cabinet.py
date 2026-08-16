@@ -14,8 +14,10 @@ def test_profile_cabinet_consolidates_customer_account_actions() -> None:
     for token in (
         "Мои ROX",
         "История",
-        "Реферальная программа",
+        "Партнёры ROXY",
         "Настройки",
+        "Баланс ROX",
+        "Заработок партнёра",
         'window.RoxyCustomerNavigation?.open?.(route)',
         'api("/api/v1/me/overview")',
         'api("/api/v1/referrals/stats")',
@@ -23,6 +25,8 @@ def test_profile_cabinet_consolidates_customer_account_actions() -> None:
         'scrollTo("profileTools")',
     ):
         assert token in source
+    assert "Бонусные ROX" not in source
+    assert "Выводимые ROX" not in source
 
 
 def test_creator_partnership_is_explicitly_separate_from_referral_economy() -> None:
@@ -30,10 +34,10 @@ def test_creator_partnership_is_explicitly_separate_from_referral_economy() -> N
     for token in (
         "Creator-партнёрство",
         "не реферальные 30% / 5%",
-        "не являются выводимым реферальным доходом",
-        "Автоматическая реферальная программа",
-        "Рефералы 30% / 5%",
-        "Бонусные ROX на контент",
+        "не являются реферальным заработком в рублях",
+        "Партнёры ROXY",
+        "Заработок 30% / 5%",
+        "ROX на контент",
         "условия и ежемесячный ROX-лимит согласуются индивидуально",
     ):
         assert token in source
