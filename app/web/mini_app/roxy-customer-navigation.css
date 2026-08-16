@@ -2,7 +2,7 @@
   left: 14px;
   right: 14px;
   bottom: max(10px, var(--tg-content-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   min-height: 74px;
   padding: 8px 7px;
   overflow: hidden;
@@ -11,6 +11,13 @@
   background: linear-gradient(135deg, rgba(17,16,20,.95), rgba(10,10,12,.96));
   box-shadow: 0 18px 44px rgba(0,0,0,.34), inset 0 1px rgba(255,255,255,.025);
   backdrop-filter: blur(24px) saturate(120%);
+}
+
+/* Mobile primary navigation stays focused on five product-level destinations.
+   Feed remains available as a deep route and inside Catalog, but is not duplicated
+   in the fixed bottom bar. */
+.roxy-customer-navigation-ready .studio-bottom-nav [data-roxy-customer-route="feed"] {
+  display: none;
 }
 
 .roxy-customer-navigation-ready .studio-bottom-nav::before {
