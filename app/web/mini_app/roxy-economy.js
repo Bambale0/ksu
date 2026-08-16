@@ -28,11 +28,7 @@
   }
 
   async function api(path) {
-    const response = await fetch(path, {
-      headers: authHeaders(),
-      credentials: "same-origin",
-      cache: "no-store",
-    });
+    const response = await fetch(path, { headers: authHeaders(), credentials: "same-origin", cache: "no-store" });
     const payload = await response.json().catch(() => null);
     if (!response.ok) throw new Error(payload?.detail || `HTTP ${response.status}`);
     return payload;
@@ -76,14 +72,12 @@
     window.setTimeout(scroll, 50);
   }
 
-  // Legacy menu vocabulary is kept only for compatibility with old contracts.
-  // RoxyCustomerNavigation is the sole owner of visible primary menus.
   const MENU = [
-    ["create", "✨", "Создать", () => openStudio("create")],
-    ["prompts", "🔁", "Промпты", () => openStudio("feed")],
-    ["rox", "💎", "Мои ROX", () => openStudio("wallet")],
-    ["earn", "👥", "Заработать", scrollToPartner],
-    ["profile", "👤", "Профиль", () => openStudio("profile")],
+    ["create", "Создать", () => openStudio("create")],
+    ["prompts", "Промпты", () => openStudio("feed")],
+    ["rox", "Мои ROX", () => openStudio("wallet")],
+    ["earn", "Заработать", scrollToPartner],
+    ["profile", "Профиль", () => openStudio("profile")],
   ];
   void MENU;
 
@@ -116,6 +110,10 @@
     if (title) title.textContent = "Мои ROX";
     const kicker = wallet.querySelector(".view-heading .section-kicker");
     if (kicker) kicker.textContent = "ROXY";
+    const walletNote = legacyHero.querySelector("small");
+    if (walletNote) walletNote.textContent = "Внутренняя валюта ROXY";
+    const partnerHeading = document.getElementById("partnerPreviewHeading");
+    if (partnerHeading) partnerHeading.textContent = "Заработать ROX";
 
     let root = document.getElementById("roxyEconomyOverview");
     if (root) return root;
@@ -129,7 +127,7 @@
     const balances = el("div", "roxy-balance-grid");
     const bonus = el("article", "roxy-balance-card bonus");
     bonus.append(
-      el("span", "roxy-balance-type", "🟣 Бонусные ROX"),
+      el("span", "roxy-balance-type", "Бонусные ROX"),
       el("strong", "roxy-balance-number", "—"),
       el("small", "", "Тратятся только внутри ROXY"),
     );
@@ -137,7 +135,7 @@
 
     const withdrawable = el("article", "roxy-balance-card withdrawable");
     withdrawable.append(
-      el("span", "roxy-balance-type", "🟢 Выводимые ROX"),
+      el("span", "roxy-balance-type", "Выводимые ROX"),
       el("strong", "roxy-balance-number", "—"),
       el("small", "", "Только доход с реальных пополнений по реферальной системе"),
     );
@@ -149,10 +147,7 @@
 
     const rules = el("section", "roxy-rules-card");
     rules.id = "roxyEconomyRules";
-    rules.append(
-      el("span", "section-kicker", "Как получить ROX"),
-      el("h2", "", "Понятная система заработка"),
-    );
+    rules.append(el("span", "section-kicker", "Как получить ROX"), el("h2", "", "Понятная система заработка"));
     const header = el("div", "roxy-rule-row header");
     header.append(el("strong", "", "Как получил ROX"), el("strong", "", "Сколько"), el("strong", "", "Вывод"));
     const rows = el("div", "roxy-rule-list");
@@ -160,10 +155,10 @@
     rules.append(header, rows);
 
     const actions = el("div", "roxy-economy-actions");
-    const topup = el("button", "roxy-economy-action", "💎 Пополнить ROX");
+    const topup = el("button", "roxy-economy-action", "Пополнить ROX");
     topup.type = "button";
     topup.addEventListener("click", () => document.getElementById("topupHeading")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-    const earn = el("button", "roxy-economy-action primary", "👥 Заработать ROX");
+    const earn = el("button", "roxy-economy-action primary", "Заработать ROX");
     earn.type = "button";
     earn.addEventListener("click", scrollToPartner);
     actions.append(topup, earn);
@@ -196,43 +191,13 @@
     const rows = document.getElementById("roxyRuleRows");
     if (rows) {
       rows.replaceChildren(
-        ruleRow("🎁", "Приветственный бонус", `${format(stats.welcome_bonus_rox)} ROX`, false),
-        ruleRow("👤", "Приглашённый друг", `${format(stats.invite_bonus_rox)} ROX`, false),
-        ruleRow("🔁", "Повтор промпта", `${format(stats.prompt_repeat_bonus_rox)} ROX`, false),
-        ruleRow("👥", "1 уровень", `${format(stats.first_line_percent)}%`, true),
-        ruleRow("👥", "2 уровень", `${format(stats.second_line_percent)}%`, true),
-        ruleRow("💰", "Минимальный вывод", `${format(stats.minimum_withdrawal_rox)} ROX`, true),
+        ruleRow("+", "Приветственный бонус", `${format(stats.welcome_bonus_rox)} ROX`, false),
+        ruleRow("+", "Приглашённый друг", `${format(stats.invite_bonus_rox)} ROX`, false),
+        ruleRow("↻", "Повтор промпта", `${format(stats.prompt_repeat_bonus_rox)} ROX`, false),
+        ruleRow("1", "1 уровень", `${format(stats.first_line_percent)}%`, true),
+        ruleRow("2", "2 уровень", `${format(stats.second_line_percent)}%`, true),
+        ruleRow("↓", "Минимальный вывод", `${format(stats.minimum_withdrawal_rox)} ROX`, true),
       );
-    }
-  }
-
-  function rewritePartnerCurrency(root = document.getElementById("partnerPreview")) {
-    if (!root) return;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    for (const node of nodes) {
-      const current = node.nodeValue || "";
-      const next = current
-        .replaceAll(" ₽", " ROX")
-        .replaceAll("Сумма, ₽", "Сумма, ROX")
-        .replaceAll("Присоединяйся к Ксю AI Studio", "Присоединяйся к ROXY AI Creative Studio");
-      if (next !== current) node.nodeValue = next;
-    }
-    const heading = document.getElementById("partnerPreviewHeading");
-    if (heading) heading.textContent = "Заработать ROX";
-  }
-
-  function rewriteWalletCreditCopy() {
-    const wallet = document.getElementById("walletView");
-    if (!wallet) return;
-    const walker = document.createTreeWalker(wallet, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    for (const node of nodes) {
-      const current = node.nodeValue || "";
-      const next = current.replaceAll(" кр.", " ROX").replaceAll("кредиты", "ROX");
-      if (next !== current) node.nodeValue = next;
     }
   }
 
@@ -265,8 +230,6 @@
     state.frame = 0;
     ensureStyles();
     ensureWalletEconomy();
-    rewritePartnerCurrency();
-    rewriteWalletCreditCopy();
     syncVisibleRoute();
     attachScopedObservers();
   }
@@ -278,33 +241,20 @@
 
   function routeMutation(mutations) {
     scheduleApply();
-    if (mutations.some((mutation) => mutation.target?.id === "walletView" && !mutation.target.hidden)) {
-      void loadStats();
-    }
+    if (mutations.some((mutation) => mutation.target?.id === "walletView" && !mutation.target.hidden)) void loadStats();
   }
 
   function ensureObservers() {
-    if (!state.contentObserver) {
-      state.contentObserver = new MutationObserver(scheduleApply);
-    }
-    if (!state.routeObserver) {
-      state.routeObserver = new MutationObserver(routeMutation);
-    }
+    if (!state.contentObserver) state.contentObserver = new MutationObserver(scheduleApply);
+    if (!state.routeObserver) state.routeObserver = new MutationObserver(routeMutation);
   }
 
   function attachScopedObservers() {
     ensureObservers();
-    for (const root of [
-      document.getElementById("walletView"),
-      document.getElementById("partnerPreview"),
-    ]) {
+    for (const root of [document.getElementById("walletView"), document.getElementById("partnerPreview")]) {
       if (!root || state.contentRoots.has(root)) continue;
       state.contentRoots.add(root);
-      state.contentObserver.observe(root, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
+      state.contentObserver.observe(root, { childList: true, subtree: true });
     }
     for (const root of [
       document.getElementById("walletView"),
@@ -314,10 +264,7 @@
     ]) {
       if (!root || state.routeRoots.has(root)) continue;
       state.routeRoots.add(root);
-      state.routeObserver.observe(root, {
-        attributes: true,
-        attributeFilter: ["hidden"],
-      });
+      state.routeObserver.observe(root, { attributes: true, attributeFilter: ["hidden"] });
     }
   }
 
@@ -326,15 +273,9 @@
     const wallet = document.getElementById("walletView");
     if (wallet && !wallet.hidden) void loadStats();
     for (const delay of [80, 240, 700]) {
-      window.setTimeout(() => {
-        attachScopedObservers();
-        scheduleApply();
-      }, delay);
+      window.setTimeout(() => { attachScopedObservers(); scheduleApply(); }, delay);
     }
-    tg?.onEvent?.("activated", () => {
-      void loadStats();
-      scheduleApply();
-    });
+    tg?.onEvent?.("activated", () => { void loadStats(); scheduleApply(); });
     window.addEventListener("online", () => void loadStats());
     window.addEventListener("roxy:route-changed", (event) => {
       if (event.detail?.route === "wallet") void loadStats();
