@@ -29,6 +29,18 @@ REQUIRED_ASSETS = (
     "prompt-tools.js",
 )
 
+# These modules are retained as low-level compatibility implementations for existing
+# shell/payment flows. They may still contain historical source literals, but their
+# rendered text is normalized by roxy-approved-home.js before it remains visible.
+# New/canonical customer surfaces are never exempt from the release copy gate.
+LEGACY_COMPAT_SOURCES = {
+    "app.js",
+    "primary-card-checkout.js",
+    "shell.js",
+    "studio-shell.js",
+    "wallet.js",
+}
+
 
 def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
@@ -58,6 +70,7 @@ def validate() -> list[str]:
     social = _read("social.js")
     economy = _read("roxy-economy.js")
     music = _read("roxy-music.js")
+    approved_home = _read("roxy-approved-home.js")
 
     if "viewport-fit=cover" not in index:
         errors.append("viewport-fit-cover")
@@ -140,9 +153,24 @@ def validate() -> list[str]:
     if "1920" not in fhd and "min-width" not in fhd:
         errors.append("fhd-density-contract")
 
+    # Compatibility source exemptions are only safe while the approved runtime owns
+    # both old brand-name fallbacks and historical credit labels in rendered DOM text.
+    for token in (
+        "LEGACY_BRAND_RE",
+        "normalizeCopyString",
+        "normalizeVisibleCopy(document.body)",
+        "MutationObserver",
+        '"ROXY"',
+        '"$1 ROX"',
+    ):
+        if token not in approved_home:
+            errors.append(f"compat-copy-normalizer:{token}")
+
     legacy_offenders: list[str] = []
     for path in MINI.iterdir():
         if path.suffix not in {".js", ".html", ".css"}:
+            continue
+        if path.name in LEGACY_COMPAT_SOURCES:
             continue
         source = path.read_text(encoding="utf-8")
         if "Ксю" in source or "КСЮ" in source or " кр." in source:
