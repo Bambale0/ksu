@@ -319,7 +319,7 @@
       const value = Number(amount.value);
       let error = "";
       if (!Number.isFinite(value) || value <= 0) error = "Введите сумму перевода.";
-      else if (value > available) error = "Сумма больше доступного заработка.";
+      else if (value > available) error = "Сумма больше доступного баланса заработка.";
       preview.textContent = error || `На баланс поступит ${number(value)} ROX`;
       preview.classList.toggle("error", Boolean(error));
       submit.disabled = Boolean(error) || state.transferSubmitting;
@@ -395,7 +395,7 @@
       let error = "";
       if (!Number.isFinite(value) || value <= 0) error = "Введите сумму вывода.";
       else if (minimum > 0 && value < minimum) error = `Минимальная сумма — ${number(minimum)} ₽.`;
-      else if (value > available) error = "Сумма больше доступного заработка.";
+      else if (value > available) error = "Сумма больше доступного баланса заработка.";
       else if (requisites.value.trim().length < 3) error = "Укажите реквизиты для выплаты.";
       validation.textContent = error;
       validation.classList.toggle("error", Boolean(error));
