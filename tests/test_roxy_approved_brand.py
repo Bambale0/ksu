@@ -12,7 +12,6 @@ def _read(name: str) -> str:
 def test_approved_roxy_palette_is_loaded_last() -> None:
     brand = _read("roxy-brand.js")
     theme = _read("roxy-approved-theme.css")
-    surfaces = _read("roxy-approved-surfaces.css")
     feedback = _read("roxy-client-feedback.css")
 
     assert '/mini-app/roxy-approved-theme.css' in brand
