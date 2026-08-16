@@ -50,6 +50,14 @@ def test_final_surface_layer_covers_every_customer_surface() -> None:
         assert legacy_gold not in surfaces.lower()
 
 
+def test_reference_home_has_no_legacy_gold_palette() -> None:
+    reference = _read("roxy-reference-home.css").lower()
+    for legacy_gold in ("#f0c77d", "#f4c57a", "#f6cf8e", "rgba(244,197,122"):
+        assert legacy_gold not in reference
+    assert "#8f63ff" in reference
+    assert "#ff69c9" in reference
+
+
 def test_logo_asset_is_used_by_product_chrome() -> None:
     logo = _read("roxy-logo.svg")
     surfaces = _read("roxy-approved-surfaces.css")
