@@ -87,6 +87,16 @@
     };
   }
 
+  function protectCanonicalPopState() {
+    window.addEventListener("popstate", (event) => {
+      if (!event.state?.roxyNavigation || !event.state?.route) return;
+      const navigation = window.RoxyCustomerNavigation;
+      if (!navigation?.open) return;
+      event.stopImmediatePropagation();
+      navigation.open(event.state.route, { feedback: false, historyMode: "none" });
+    });
+  }
+
   function routeFromControl(control) {
     const secondary = control.closest?.("[data-studio-secondary]")?.dataset.studioSecondary;
     if (secondary) {
@@ -98,7 +108,6 @@
         batch: "batch",
         "prompt-tools": "prompt-tools",
         support: "support",
-        partner: "profile",
       }[secondary] || null;
     }
 
@@ -208,10 +217,11 @@
     patchReadNotifications,
   });
 
-  // Critical compatibility patches must run during this defer script itself. Waiting for
-  // DOMContentLoaded would let app.js/shell.js mutate history or request UUIDs first.
+  // These critical compatibility patches run during this defer script itself. Waiting for
+  // DOMContentLoaded would let app.js/shell.js mutate history or register popstate first.
   installRandomUuidFallback();
   protectCanonicalHistory();
+  protectCanonicalPopState();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initDomRuntime, { once: true });
