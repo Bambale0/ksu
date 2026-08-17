@@ -15,6 +15,7 @@
   background: #0B0B10 !important;
   box-shadow: 0 16px 42px rgba(0, 0, 0, .32), 0 0 28px rgba(155, 92, 255, .12) !important;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .roxy-brand-ready .roxy-promo-card.roxy-promo-artwork::before,
@@ -27,11 +28,13 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   border-radius: inherit;
   user-select: none;
   -webkit-user-drag: none;
+  filter: none !important;
+  transform: none !important;
 }
 
 .roxy-promo-artwork:focus-visible {
