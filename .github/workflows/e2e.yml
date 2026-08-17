@@ -121,7 +121,7 @@ jobs:
           exit 1
 
       - name: Run real browser journeys
-        run: python e2e/roxy_browser_e2e_v2.py
+        run: python e2e/roxy_browser_e2e_runner.py
 
       - name: Print E2E report
         if: always()
