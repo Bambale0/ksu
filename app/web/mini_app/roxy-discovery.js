@@ -63,7 +63,7 @@
       return;
     }
     if (action.type === "trends") {
-      window.location.assign("/mini-app/trends.html");
+      openRoute("trends");
     }
   }
 
@@ -201,17 +201,17 @@
     heading.appendChild(copy);
 
     const quick = el("div", "roxy-catalog-quick");
-    const trends = button("", () => window.location.assign("/mini-app/trends.html"), "roxy-catalog-quick-card featured");
+    const trends = button("", () => openRoute("trends"), "roxy-catalog-quick-card featured");
     trends.append(el("span", "roxy-catalog-icon", "✦"), el("strong", "", "Шаблоны и тренды"), el("small", "", "Готовые recipe для фото и видео"));
     const community = button("", openCommunityFeed, "roxy-catalog-quick-card");
     community.append(el("span", "roxy-catalog-icon", "▦"), el("strong", "", "Лента сообщества"), el("small", "", "Фото и видео пользователей"));
-    const tools = button("", () => window.location.assign("/mini-app/prompt-tools.html"), "roxy-catalog-quick-card");
+    const tools = button("", () => openRoute("prompt-tools"), "roxy-catalog-quick-card");
     tools.append(el("span", "roxy-catalog-icon", "✎"), el("strong", "", "Prompt Tools"), el("small", "", "Разбор фото и улучшение промпта"));
     quick.append(trends, community, tools);
 
     const trendSection = el("section", "roxy-catalog-section");
     const trendHead = el("div", "roxy-catalog-section-head");
-    trendHead.append(el("div", "", ""), button("Все тренды", () => window.location.assign("/mini-app/trends.html"), "text-button"));
+    trendHead.append(el("div", "", ""), button("Все тренды", () => openRoute("trends"), "text-button"));
     trendHead.firstChild.append(el("span", "section-kicker", "Быстрый старт"), el("h2", "", "Популярные шаблоны"));
     const trendGrid = el("div", "roxy-catalog-grid trends");
     trendGrid.id = "roxyCatalogTrends";
@@ -258,7 +258,7 @@
     const copy = el("div", "roxy-template-copy");
     copy.append(el("strong", "", item?.title || "Шаблон"), el("small", "", item?.media_type === "video" ? "Видео" : "Фото"));
     card.append(media, copy);
-    card.addEventListener("click", () => window.location.assign("/mini-app/trends.html"));
+    card.addEventListener("click", () => openRoute("trends"));
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.addEventListener("keydown", (event) => {
@@ -290,6 +290,9 @@
     card.addEventListener("click", openCommunityFeed);
     card.tabIndex = 0;
     card.setAttribute("role", "button");
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") card.click();
+    });
     return card;
   }
 

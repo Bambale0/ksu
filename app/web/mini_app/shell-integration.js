@@ -10,6 +10,14 @@
   let historyActionInFlight = false;
   let bridgedBuilder = false;
 
+  function mountFunctionalRuntime() {
+    if (document.querySelector('script[src="/mini-app/roxy-functional-runtime.js"]')) return;
+    const script = document.createElement("script");
+    script.src = "/mini-app/roxy-functional-runtime.js";
+    script.async = false;
+    document.head.appendChild(script);
+  }
+
   function mountOnboarding() {
     if (!document.querySelector('link[href="/mini-app/onboarding.css"]')) {
       const stylesheet = document.createElement("link");
@@ -125,8 +133,6 @@
       stylesheet.rel = "stylesheet";
       stylesheet.href = "/mini-app/roxy-brand.css";
     }
-    // Keep first-paint branding from index.html, but move the same stylesheet
-    // after all dynamically mounted product CSS so brand overrides win the cascade.
     document.head.appendChild(stylesheet);
 
     let compatibility = document.querySelector('link[href="/mini-app/roxy-theme-compat.css"]');
@@ -140,7 +146,7 @@
     if (document.querySelector('script[src="/mini-app/roxy-brand.js"]')) return;
     const script = document.createElement("script");
     script.src = "/mini-app/roxy-brand.js";
-    script.defer = true;
+    script.async = false;
     document.head.appendChild(script);
   }
 
@@ -158,6 +164,7 @@
     document.head.appendChild(script);
   }
 
+  mountFunctionalRuntime();
   mountOnboarding();
   mountPartnerCabinet();
   mountProfileTools();

@@ -107,8 +107,10 @@ def test_shell_integration_mounts_brand_after_product_layers() -> None:
     assert 'let stylesheet = document.querySelector' in bridge
     assert "document.head.appendChild(stylesheet);" in bridge
     assert "document.head.appendChild(compatibility);" in bridge
-    assert "brand overrides win the cascade" in bridge
     assert bridge.index("mountStudioWorkspace();") < bridge.index("mountRoxyBrand();")
+    assert bridge.index("mountFunctionalRuntime();") < bridge.index("mountRoxyBrand();")
+    assert 'script.src = "/mini-app/roxy-functional-runtime.js";' in bridge
+    assert "script.async = false;" in bridge
 
 
 def test_roxy_theme_wins_over_payment_surface_light_dark_tokens() -> None:
