@@ -22,6 +22,7 @@ REQUIRED_ASSETS = (
     "roxy-customer-navigation.js",
     "roxy-child-screens.js",
     "roxy-mobile-runtime.js",
+    "roxy-functional-runtime.js",
     "roxy-mobile-runtime.css",
     "roxy-fhd-density.css",
     "feed.js",
@@ -64,6 +65,7 @@ def validate() -> list[str]:
     nav = _read("roxy-customer-navigation.js")
     children = _read("roxy-child-screens.js")
     mobile_js = _read("roxy-mobile-runtime.js")
+    functional_js = _read("roxy-functional-runtime.js")
     mobile_css = _read("roxy-mobile-runtime.css")
     fhd = _read("roxy-fhd-density.css")
     feed = _read("feed.js")
@@ -149,6 +151,19 @@ def validate() -> list[str]:
     ):
         if token not in mobile_js:
             errors.append(f"mobile-runtime:{token}")
+
+    for token in (
+        "installRandomUuidFallback()",
+        "protectCanonicalHistory()",
+        "observeNotificationSemantics()",
+        "nativeReplaceState(data, title, url)",
+        "current?.roxyNavigation",
+        "button.disabled = !unread",
+        "navigator.clipboard?.writeText",
+        'document.execCommand("copy")',
+    ):
+        if token not in functional_js:
+            errors.append(f"functional-runtime:{token}")
 
     if "1920" not in fhd and "min-width" not in fhd:
         errors.append("fhd-density-contract")
