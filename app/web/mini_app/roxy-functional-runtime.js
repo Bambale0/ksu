@@ -125,6 +125,14 @@
     return null;
   }
 
+  function openCanonicalRoute(event, route) {
+    if (!route || !window.RoxyCustomerNavigation?.open) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.RoxyCustomerNavigation.open(route);
+    return true;
+  }
+
   function routeCustomerControl(event) {
     const control = event.target.closest?.(
       [
@@ -136,12 +144,27 @@
         ".studio-sidebar-secondary [data-studio-secondary]",
       ].join(", "),
     );
-    if (!control || !window.RoxyCustomerNavigation?.open) return;
-    const route = routeFromControl(control);
-    if (!route) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    window.RoxyCustomerNavigation.open(route);
+    if (!control) return;
+    openCanonicalRoute(event, routeFromControl(control));
+  }
+
+  function routeTrustedLegacyChrome(event) {
+    if (!event.isTrusted) return;
+    const control = event.target.closest?.(
+      "#brandHomeButton, #productHeader [data-shell-nav], #createHome [data-shell-nav], #bottomNav .bottom-nav-item[data-shell-nav]",
+    );
+    if (!control) return;
+    if (control.id === "brandHomeButton") {
+      openCanonicalRoute(event, "home");
+      return;
+    }
+    const route = {
+      create: "create",
+      history: "history",
+      wallet: "wallet",
+      profile: "profile",
+    }[control.dataset.shellNav];
+    openCanonicalRoute(event, route);
   }
 
   function patchReadNotifications(root = document) {
@@ -206,6 +229,7 @@
 
   function initDomRuntime() {
     observeNotificationSemantics();
+    document.addEventListener("click", routeTrustedLegacyChrome, true);
     document.addEventListener("click", routeCustomerControl, true);
     document.addEventListener("click", (event) => { void interceptPromptToolCopy(event); }, true);
     document.addEventListener("keydown", addKeyboardParity);
