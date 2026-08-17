@@ -8,6 +8,18 @@ from playwright.async_api import BrowserContext, Page, expect
 from e2e import roxy_browser_e2e_v2 as suite
 
 
+async def robust_route(page: Page, name: str) -> None:
+    # Canonical ROXY navigation is mounted by the runtime after the static shell.
+    # DOMContentLoaded alone does not guarantee those buttons exist yet.
+    target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
+    await expect(target).to_be_visible(timeout=10000)
+    await target.click()
+    await expect(page).to_have_url(
+        re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"),
+        timeout=8000,
+    )
+
+
 async def scenario_concurrent_boot(context: BrowserContext, report: suite.Report) -> None:
     pages = [await context.new_page() for _ in range(4)]
     try:
@@ -105,6 +117,7 @@ async def scenario_wallet(page: Page, report: suite.Report) -> None:
     report.passed("Lava/card + CryptoBot checkout controls")
 
 
+suite.route = robust_route
 suite.scenario_concurrent_boot = scenario_concurrent_boot
 suite.scenario_navigation = scenario_navigation
 suite.scenario_wallet = scenario_wallet
