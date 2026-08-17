@@ -1,15 +1,14 @@
-from pathlib import Path
-
 import pytest
 
-from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
+from app.services.model_catalog import (
+    InvalidModelParametersError,
+    ModelCatalog,
+    UnknownModelError,
+)
 from app.services.model_ui_contract import build_public_model_ui_schema
 
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def test_requested_reference_models_are_in_public_catalog() -> None:
+def test_requested_reference_models_are_kie_only() -> None:
     models = {item["id"]: item for item in ModelCatalog.list()}
     expected = {
         "nano-banana-pro",
@@ -26,16 +25,21 @@ def test_requested_reference_models_are_in_public_catalog() -> None:
         "grok-video-t2v",
         "grok-video-1.5",
         "gemini-omni-video",
-        "kling-3.0-omni",
         "kling-motion-3.0",
         "kling-motion-2.6",
-        "heygen-avatar",
     }
     assert expected.issubset(models)
+    assert "heygen-avatar" not in models
+    assert "kling-3.0-omni" not in models
     assert models["kling-3.0"]["kie_model"] == "kling-3.0/video"
     assert models["gemini-omni-video"]["kie_model"] == "gemini-omni-video"
     assert models["veo-3.1"]["media_type"] == "video"
-    assert models["heygen-avatar"]["price_mode"] == "per_second"
+
+
+@pytest.mark.parametrize("model_id", ["heygen-avatar", "kling-3.0-omni"])
+def test_non_kie_models_are_rejected(model_id: str) -> None:
+    with pytest.raises(UnknownModelError):
+        ModelCatalog.get(model_id)
 
 
 def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
@@ -139,7 +143,7 @@ def test_veo_modes_and_reference_rules_are_server_validated() -> None:
         )
 
 
-def test_requested_models_have_rich_dynamic_controls() -> None:
+def test_requested_kie_models_have_rich_dynamic_controls() -> None:
     models = {item["id"]: item for item in ModelCatalog.list()}
 
     kling = build_public_model_ui_schema(models["kling-3.0"])
@@ -159,22 +163,3 @@ def test_requested_models_have_rich_dynamic_controls() -> None:
     controls = {field["name"]: field for field in gemini["fields"]}
     assert controls["video_list"]["control"] == "json"
     assert controls["character_ids"]["control"] == "json"
-
-    heygen = build_public_model_ui_schema(models["heygen-avatar"])
-    controls = {field["name"]: field for field in heygen["fields"]}
-    assert controls["input_text"]["control"] == "textarea"
-    assert controls["caption"]["control"] == "toggle"
-    assert heygen["billing_seconds"]["required"] is True
-
-
-def test_provider_dispatch_does_not_fake_omni_as_kie_kling_3() -> None:
-    service = (ROOT / "app" / "services" / "generation_provider.py").read_text(encoding="utf-8")
-    config = (ROOT / "app" / "core" / "config.py").read_text(encoding="utf-8")
-    assert 'model_id == "veo-3.1"' in service
-    assert 'model_id == "heygen-avatar"' in service
-    assert 'model_id == "kling-3.0-omni"' in service
-    assert "KieVeoClient" in service
-    assert "HeyGenClient" in service
-    assert "KlingOmniClient" in service
-    assert "kling_omni_create_url" in config
-    assert "heygen_api_key" in config

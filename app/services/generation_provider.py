@@ -10,10 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
-from app.providers.heygen import HeyGenClient
 from app.providers.kie import KieClient, KieTask
 from app.providers.kie_veo import KieVeoClient
-from app.providers.kling_omni import KlingOmniClient
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
@@ -31,21 +29,12 @@ class GenerationProviderService:
         return str((generation.parameters or {}).get("_model_id") or "")
 
     @classmethod
-    def _provider_name(cls, generation: Generation) -> str:
-        model_id = cls._model_id(generation)
-        if model_id == "heygen-avatar":
-            return "heygen"
-        if model_id == "kling-3.0-omni":
-            return "kling"
-        return "kie"
-
-    @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
-        """Submit a generation to its configured provider.
+        """Submit a generation to Kie.
 
-        The method name is retained for worker/API compatibility. Dispatch is model-aware:
-        Kie Market, Kie's dedicated Veo API, direct HeyGen and direct Kling Omni all
-        share the same durable outbox, refund and media-ingest lifecycle.
+        Kie Market models use the generic jobs API while Veo 3.1 uses Kie's
+        dedicated Veo API. Both share the same durable outbox, refund and
+        media-ingest lifecycle.
         """
 
         generation = await session.scalar(
@@ -94,23 +83,6 @@ class GenerationProviderService:
                     task_id = await client.create_task(input_data=input_data)
                 finally:
                     await client.aclose()
-            elif model_id == "heygen-avatar":
-                client = HeyGenClient(settings.heygen_api_key, settings.heygen_base_url)
-                try:
-                    task_id = await client.create_task(input_data=input_data)
-                finally:
-                    await client.aclose()
-            elif model_id == "kling-3.0-omni":
-                client = KlingOmniClient(
-                    api_key=settings.kling_omni_api_key,
-                    create_url=settings.kling_omni_create_url,
-                    status_url_template=settings.kling_omni_status_url_template,
-                    model_name=settings.kling_omni_model_name,
-                )
-                try:
-                    task_id = await client.create_task(input_data=input_data)
-                finally:
-                    await client.aclose()
             else:
                 client = KieClient(settings.kie_api_key, settings.kie_base_url)
                 try:
@@ -135,7 +107,7 @@ class GenerationProviderService:
         if generation.external_id and generation.external_id != task_id:
             return generation
         generation.external_id = task_id
-        generation.provider = cls._provider_name(generation)
+        generation.provider = "kie"
         generation.status = "generating"
         generation.error = None
         generation.updated_at = datetime.now(timezone.utc)
@@ -150,7 +122,7 @@ class GenerationProviderService:
         task_id: str,
         generation_id: uuid.UUID | None = None,
     ) -> Generation | None:
-        """Synchronize a provider task using the model's actual status API."""
+        """Synchronize a Kie task using the model's actual status API."""
 
         generation = await session.scalar(
             select(Generation).where(Generation.external_id == task_id).with_for_update()
@@ -166,7 +138,7 @@ class GenerationProviderService:
                 and candidate.status in {"queued", "retry", "submitting", "generating"}
             ):
                 candidate.external_id = task_id
-                candidate.provider = cls._provider_name(candidate)
+                candidate.provider = "kie"
                 candidate.status = "generating"
                 candidate.error = None
                 candidate.updated_at = datetime.now(timezone.utc)
@@ -185,23 +157,6 @@ class GenerationProviderService:
                 await client.aclose()
         elif model_id == "veo-3.1":
             client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
-            try:
-                task = await client.get_task(task_id)
-            finally:
-                await client.aclose()
-        elif model_id == "heygen-avatar":
-            client = HeyGenClient(settings.heygen_api_key, settings.heygen_base_url)
-            try:
-                task = await client.get_task(task_id)
-            finally:
-                await client.aclose()
-        elif model_id == "kling-3.0-omni":
-            client = KlingOmniClient(
-                api_key=settings.kling_omni_api_key,
-                create_url=settings.kling_omni_create_url,
-                status_url_template=settings.kling_omni_status_url_template,
-                model_name=settings.kling_omni_model_name,
-            )
             try:
                 task = await client.get_task(task_id)
             finally:
@@ -278,7 +233,7 @@ class GenerationProviderService:
             return
 
         if task.state == "fail":
-            message = task.fail_message or task.fail_code or "Generation provider failed"
+            message = task.fail_message or task.fail_code or "Kie generation failed"
             await cls.fail_and_refund(session, generation.id, message)
             return
 
