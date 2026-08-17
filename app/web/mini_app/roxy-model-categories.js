@@ -3,6 +3,7 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const MEDIA_LABELS = Object.freeze({ image: "Фото", video: "Видео", audio: "Музыка" });
+  const MEDIA_ICONS = Object.freeze({ image: "image", video: "create", audio: "music" });
   const FAMILY_LABELS = Object.freeze({
     nanobanana: "Nano Banana",
     seedream: "Seedream",
@@ -128,18 +129,28 @@
   function filterOptions() {
     const select = document.getElementById("modelSelect");
     if (!select || !state.activeMedia) return;
-    let visibleCount = 0;
     for (const option of select.options) {
       const model = state.byId.get(option.value);
       const visible = !model || model.media_type === state.activeMedia;
       option.hidden = !visible;
       option.disabled = !visible;
-      if (visible) visibleCount += 1;
     }
     const count = document.getElementById("modelCount");
     if (count) {
       const total = state.models.filter((model) => model.media_type === state.activeMedia).length;
       count.textContent = `${total} моделей`;
+    }
+  }
+
+  function normalizeCreateIcons() {
+    for (const card of document.querySelectorAll("[data-roxy-media]")) {
+      const mediaType = card.dataset.roxyMedia;
+      const label = MEDIA_LABELS[mediaType] || mediaType;
+      if (label) card.setAttribute("aria-label", `Создать · ${label}`);
+      const iconNode = card.querySelector(".roxy-media-card-icon");
+      if (!iconNode || iconNode.querySelector("svg")) continue;
+      const icon = window.RoxyIcons?.create?.(MEDIA_ICONS[mediaType], { size: 22 });
+      if (icon) iconNode.replaceChildren(icon);
     }
   }
 
@@ -150,6 +161,7 @@
 
   function apply() {
     state.scheduled = false;
+    normalizeCreateIcons();
     if (!state.models.length) return;
     syncActiveMedia();
     renderTabs();
@@ -164,11 +176,14 @@
   }
 
   function init() {
+    normalizeCreateIcons();
     void loadModels();
     const builder = document.getElementById("builderView");
+    const createCenter = document.getElementById("roxyCreateCenterView");
     if (builder && !state.observer) {
       state.observer = new MutationObserver(scheduleApply);
       state.observer.observe(builder, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-selected"] });
+      if (createCenter) state.observer.observe(createCenter, { childList: true, subtree: true });
     }
     document.getElementById("modelSelect")?.addEventListener("change", scheduleApply);
     window.addEventListener("roxy:route-changed", scheduleApply);
