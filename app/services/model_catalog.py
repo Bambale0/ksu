@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from app.core.config import settings
@@ -90,37 +90,92 @@ WAN_IMAGE_FIELDS = (
     "seed",
     "bbox_list",
 )
+KLING_3_FIELDS = (
+    "prompt",
+    "image_urls",
+    "sound",
+    "duration",
+    "aspect_ratio",
+    "mode",
+    "multi_shots",
+    "multi_prompt",
+    "kling_elements",
+)
+VEO_31_FIELDS = (
+    "prompt",
+    "image_urls",
+    "veo_model",
+    "watermark_text",
+    "aspect_ratio",
+    "enable_fallback",
+    "enable_translation",
+    "generation_type",
+)
+GEMINI_OMNI_FIELDS = (
+    "prompt",
+    "image_urls",
+    "audio_ids",
+    "video_list",
+    "character_ids",
+    "duration",
+)
+KLING_OMNI_FIELDS = (
+    "prompt",
+    "image_urls",
+    "video_urls",
+    "element_ids",
+    "voice_ids",
+    "duration",
+    "aspect_ratio",
+    "mode",
+    "multi_shots",
+    "multi_prompt",
+)
+HEYGEN_AVATAR_FIELDS = (
+    "avatar_id",
+    "avatar_style",
+    "input_text",
+    "voice_id",
+    "voice_speed",
+    "voice_pitch",
+    "background_type",
+    "background_value",
+    "width",
+    "height",
+    "caption",
+    "title",
+)
 
 
 SPECS: tuple[ModelSpec, ...] = (
     # Nano Banana
     ModelSpec("nano-banana", "Nano Banana", "nanobanana", "google/nano-banana", "image", "text_to_image", ("prompt", "output_format", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("8")),
     ModelSpec("nano-banana-edit", "Nano Banana Edit", "nanobanana", "google/nano-banana-edit", "image", "image_edit", ("prompt", "image_urls", "output_format", "aspect_ratio"), ("prompt", "image_urls"), default_price_rox=Decimal("10")),
-    ModelSpec("nano-banana-pro", "Nano Banana Pro", "nanobanana", "nano-banana-pro", "image", "generate_or_edit", ("prompt", "image_input", "aspect_ratio", "resolution", "output_format"), ("prompt",), default_price_rox=Decimal("20")),
-    ModelSpec("nano-banana-2", "Nano Banana 2", "nanobanana", "nano-banana-2", "image", "generate_or_edit", ("prompt", "image_input", "aspect_ratio", "resolution", "output_format"), ("prompt",), default_price_rox=Decimal("15")),
-    ModelSpec("nano-banana-2-lite", "Nano Banana 2 Lite", "nanobanana", "nano-banana-2-lite", "image", "generate_or_edit", ("prompt", "image_urls", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("10")),
+    ModelSpec("nano-banana-pro", "NanoBanana PRO", "nanobanana", "nano-banana-pro", "image", "generate_or_edit", ("prompt", "image_input", "aspect_ratio", "resolution", "output_format"), ("prompt",), default_price_rox=Decimal("20")),
+    ModelSpec("nano-banana-2", "NanoBanana 2", "nanobanana", "nano-banana-2", "image", "generate_or_edit", ("prompt", "image_input", "aspect_ratio", "resolution", "output_format"), ("prompt",), default_price_rox=Decimal("15")),
+    ModelSpec("nano-banana-2-lite", "NanoBanana 2 Lite", "nanobanana", "nano-banana-2-lite", "image", "generate_or_edit", ("prompt", "image_urls", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("10")),
 
     # Seedream
     ModelSpec("seedream-3-t2i", "Seedream 3.0 · Text to Image", "seedream", "bytedance/seedream", "image", "text_to_image", ("prompt", "image_size", "guidance_scale", "seed"), ("prompt",), default_price_rox=Decimal("8")),
     ModelSpec("seedream-4-t2i", "Seedream 4.0 · Text to Image", "seedream", "bytedance/seedream-v4-text-to-image", "image", "text_to_image", ("prompt", "image_size", "image_resolution", "max_images", "seed", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("9")),
     ModelSpec("seedream-4-edit", "Seedream 4.0 · Edit", "seedream", "bytedance/seedream-v4-edit", "image", "image_edit", ("prompt", "image_urls", "image_size", "image_resolution", "max_images", "seed", "nsfw_checker"), ("prompt", "image_urls"), default_price_rox=Decimal("10")),
-    ModelSpec("seedream-4.5-t2i", "Seedream 4.5 · Text to Image", "seedream", "seedream/4.5-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("10")),
+    ModelSpec("seedream-4.5-t2i", "Seedream 4.5", "seedream", "seedream/4.5-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("10")),
     ModelSpec("seedream-4.5-edit", "Seedream 4.5 · Edit", "seedream", "seedream/4.5-edit", "image", "image_edit", ("prompt", "image_urls", "aspect_ratio", "quality", "nsfw_checker"), ("prompt", "image_urls"), default_price_rox=Decimal("12")),
     ModelSpec("seedream-5-lite-t2i", "Seedream 5.0 Lite · Text to Image", "seedream", "seedream/5-lite-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("10")),
     ModelSpec("seedream-5-lite-i2i", "Seedream 5.0 Lite · Image to Image", "seedream", "seedream/5-lite-image-to-image", "image", "image_to_image", ("prompt", "image_urls", "aspect_ratio", "quality", "nsfw_checker"), ("prompt", "image_urls"), default_price_rox=Decimal("12")),
-    ModelSpec("seedream-5-pro-t2i", "Seedream 5.0 Pro · Text to Image", "seedream", "seedream/5-pro-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality", "output_format", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("16")),
-    ModelSpec("seedream-5-pro-i2i", "Seedream 5.0 Pro · Image to Image", "seedream", "seedream/5-pro-image-to-image", "image", "image_to_image", ("prompt", "image_urls", "aspect_ratio", "quality", "output_format", "nsfw_checker"), ("prompt", "image_urls"), default_price_rox=Decimal("18")),
-    ModelSpec("seedream-5-pro-layers", "Seedream 5.0 Pro · Layer Decomposition", "seedream", "seedream/5-pro-layer-decomposition", "image", "layer_decomposition", ("prompt", "image_url", "size", "output_format"), ("prompt", "image_url"), default_price_rox=Decimal("18")),
+    ModelSpec("seedream-5-pro-t2i", "Seedream 5 Pro", "seedream", "seedream/5-pro-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality", "output_format", "nsfw_checker"), ("prompt",), default_price_rox=Decimal("16")),
+    ModelSpec("seedream-5-pro-i2i", "Seedream 5 Pro · Image to Image", "seedream", "seedream/5-pro-image-to-image", "image", "image_to_image", ("prompt", "image_urls", "aspect_ratio", "quality", "output_format", "nsfw_checker"), ("prompt", "image_urls"), default_price_rox=Decimal("18")),
+    ModelSpec("seedream-5-pro-layers", "Seedream 5 Pro · Layer Decomposition", "seedream", "seedream/5-pro-layer-decomposition", "image", "layer_decomposition", ("prompt", "image_url", "size", "output_format"), ("prompt", "image_url"), default_price_rox=Decimal("18")),
 
     # GPT Image
     ModelSpec("gpt-image-1.5-t2i", "GPT Image 1.5 · Text to Image", "gpt-image", "gpt-image/1.5-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio", "quality"), ("prompt",), default_price_rox=Decimal("14")),
     ModelSpec("gpt-image-1.5-i2i", "GPT Image 1.5 · Image to Image", "gpt-image", "gpt-image/1.5-image-to-image", "image", "image_to_image", ("prompt", "input_urls", "aspect_ratio", "quality"), ("prompt", "input_urls"), default_price_rox=Decimal("16")),
-    ModelSpec("gpt-image-2-t2i", "GPT Image 2 · Text to Image", "gpt-image", "gpt-image-2-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("18")),
+    ModelSpec("gpt-image-2-t2i", "GPT Image 2", "gpt-image", "gpt-image-2-text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("18")),
     ModelSpec("gpt-image-2-i2i", "GPT Image 2 · Image to Image", "gpt-image", "gpt-image-2-image-to-image", "image", "image_to_image", ("prompt", "input_urls", "aspect_ratio"), ("prompt", "input_urls"), default_price_rox=Decimal("20")),
 
     # Wan 2.7 images and full video modes
-    ModelSpec("wan-2.7-image", "Wan 2.7 Image", "wan", "wan/2-7-image", "image", "generate_or_edit", WAN_IMAGE_FIELDS, ("prompt",), default_price_rox=Decimal("12")),
-    ModelSpec("wan-2.7-image-pro", "Wan 2.7 Image Pro", "wan", "wan/2-7-image-pro", "image", "generate_or_edit", WAN_IMAGE_FIELDS, ("prompt",), default_price_rox=Decimal("18")),
+    ModelSpec("wan-2.7-image", "WAN 2.7", "wan", "wan/2-7-image", "image", "generate_or_edit", WAN_IMAGE_FIELDS, ("prompt",), default_price_rox=Decimal("12")),
+    ModelSpec("wan-2.7-image-pro", "WAN 2.7 Pro", "wan", "wan/2-7-image-pro", "image", "generate_or_edit", WAN_IMAGE_FIELDS, ("prompt",), default_price_rox=Decimal("18")),
     ModelSpec("wan-2.7-t2v", "Wan 2.7 · Text to Video", "wan", "wan/2-7-text-to-video", "video", "text_to_video", VIDEO_COMMON + ("audio_url", "ratio"), ("prompt", "duration"), "per_second", Decimal("10"), 1, 30),
     ModelSpec("wan-2.7-i2v", "Wan 2.7 · Image to Video", "wan", "wan/2-7-image-to-video", "video", "image_to_video", VIDEO_COMMON + ("first_frame_url", "last_frame_url", "first_clip_url", "driving_audio_url"), ("prompt", "duration"), "per_second", Decimal("12"), 1, 30, notes=("Provide first_frame_url, first+last frames, or first_clip_url for continuation.",)),
     ModelSpec("wan-2.7-video-edit", "Wan 2.7 · Video Edit", "wan", "wan/2-7-videoedit", "video", "video_edit", VIDEO_COMMON + ("video_url", "reference_image", "audio_setting"), ("prompt", "video_url"), "per_second", Decimal("14"), 1, 60, notes=("When provider duration is 0/auto, billing_seconds is required.",)),
@@ -133,18 +188,29 @@ SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("seedance-2.0-mini", "Seedance 2.0 Mini", "seedance", "bytedance/seedance-2-mini", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("8"), 1, 30),
     ModelSpec("seedance-2.5", "Seedance 2.5", "seedance", "bytedance/seedance-2-5", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("12"), 1, 30),
 
-    # Kling Motion Control
-    ModelSpec("kling-motion-2.6", "Kling 2.6 Motion Control", "kling", "kling-2.6/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("13"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
-    ModelSpec("kling-motion-3.0", "Kling 3.0 Motion Control", "kling", "kling-3.0/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation", "background_source"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("15"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
+    # Kling 3.0 + Motion Control
+    ModelSpec("kling-3.0", "Kling 3.0", "kling", "kling-3.0/video", "video", "text_or_image_to_video", KLING_3_FIELDS, ("duration",), "per_second", Decimal("15"), 3, 15, notes=("Single-shot supports up to first+last frame; multi-shot uses multi_prompt; up to three element references.",)),
+    ModelSpec("kling-motion-2.6", "Kling Motion 2.6", "kling", "kling-2.6/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("13"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
+    ModelSpec("kling-motion-3.0", "Kling Motion 3.0", "kling", "kling-3.0/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation", "background_source"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("15"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
+    ModelSpec("kling-3.0-omni", "Kling O3 · Omni", "kling", "kling-v3-omni", "video", "multimodal_video", KLING_OMNI_FIELDS, ("prompt", "duration"), "per_second", Decimal("18"), 3, 15, notes=("Direct Kling provider adapter; endpoint and credentials are server-side configuration, never exposed to clients.",)),
+
+    # Veo 3.1 is a dedicated Kie API (not the Market createTask endpoint).
+    ModelSpec("veo-3.1", "Veo 3.1", "veo", "veo3_fast", "video", "text_or_image_to_video", VEO_31_FIELDS, ("prompt",), "per_second", Decimal("20"), 1, 30, None, ("Supports Veo 3.1 quality/fast/lite and text, first-last-frame, or reference generation modes.",)),
+
+    # Gemini Omni Video
+    ModelSpec("gemini-omni-video", "Gemini Omni", "gemini", "gemini-omni-video", "video", "multimodal_video", GEMINI_OMNI_FIELDS, ("prompt", "duration"), "per_second", Decimal("14"), 1, 30, notes=("Upload quota: images + 2×videos + character IDs must not exceed 7; maximum one video and three character IDs.",)),
 
     # Grok Imagine images + all video operations
     ModelSpec("grok-image-t2i", "Grok Imagine · Text to Image", "grok", "grok-imagine/text-to-image", "image", "text_to_image", ("prompt", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("12")),
     ModelSpec("grok-image-i2i", "Grok Imagine · Image to Image", "grok", "grok-imagine/image-to-image", "image", "image_to_image", ("prompt", "image_urls"), ("prompt", "image_urls"), default_price_rox=Decimal("14")),
-    ModelSpec("grok-video-t2v", "Grok Imagine · Text to Video", "grok", "grok-imagine/text-to-video", "video", "text_to_video", ("prompt", "aspect_ratio", "mode", "duration", "resolution"), ("prompt", "duration"), "per_second", Decimal("10"), 1, 30),
-    ModelSpec("grok-video-i2v", "Grok Imagine · Image to Video", "grok", "grok-imagine/image-to-video", "video", "image_to_video", ("task_id", "image_urls", "prompt", "mode", "duration", "resolution", "aspect_ratio"), ("prompt", "image_urls", "duration"), "per_second", Decimal("11"), 1, 30),
-    ModelSpec("grok-video-1.5", "Grok Imagine Video 1.5 Preview", "grok", "grok-imagine-video-1-5-preview", "video", "text_or_image_to_video", ("prompt", "image_urls", "aspect_ratio", "resolution", "duration"), ("prompt", "duration"), "per_second", Decimal("12"), 1, 30),
+    ModelSpec("grok-video-t2v", "Grok", "grok", "grok-imagine/text-to-video", "video", "text_to_video", ("prompt", "aspect_ratio", "mode", "duration", "resolution"), ("prompt", "duration"), "per_second", Decimal("10"), 1, 30),
+    ModelSpec("grok-video-i2v", "Grok · Image to Video", "grok", "grok-imagine/image-to-video", "video", "image_to_video", ("task_id", "image_urls", "prompt", "mode", "duration", "resolution", "aspect_ratio"), ("prompt", "image_urls", "duration"), "per_second", Decimal("11"), 1, 30),
+    ModelSpec("grok-video-1.5", "Grok Imagine 1.5", "grok", "grok-imagine-video-1-5-preview", "video", "text_or_image_to_video", ("prompt", "image_urls", "aspect_ratio", "resolution", "duration"), ("prompt", "duration"), "per_second", Decimal("12"), 1, 30),
     ModelSpec("grok-video-upscale", "Grok Imagine · Video Upscale", "grok", "grok-imagine/upscale", "video", "video_upscale", ("task_id",), ("task_id",), "per_second", Decimal("5"), 1, 600, None, ("task_id must reference a video generated by Kie AI.",)),
     ModelSpec("grok-video-extend", "Grok Imagine · Video Extend", "grok", "grok-imagine/extend", "video", "video_extend", ("task_id", "prompt", "extend_at", "extend_times"), ("task_id",), "per_second", Decimal("10"), 1, 60, None, ("task_id must reference a video generated by Kie AI; billing_seconds is the billed extension length.",)),
+
+    # Direct HeyGen Studio Avatar generation.
+    ModelSpec("heygen-avatar", "HeyGen Avatar", "heygen", "heygen-avatar-v2", "video", "avatar_video", HEYGEN_AVATAR_FIELDS, ("avatar_id", "input_text", "voice_id"), "per_second", Decimal("10"), 1, 1800, None, ("billing_seconds is the expected output duration used for ROX billing; provider output is polled by video_id.",)),
 )
 
 
@@ -211,6 +277,100 @@ class ModelCatalog:
             raise InvalidModelParametersError(
                 "Wan 2.7 image-to-video requires first_frame_url or first_clip_url"
             )
+
+        if spec.id == "kling-3.0":
+            images = clean.get("image_urls") or []
+            if not isinstance(images, list) or len(images) > 2:
+                raise InvalidModelParametersError("Kling 3.0 accepts at most two frame images")
+            elements = clean.get("kling_elements") or []
+            if not isinstance(elements, list) or len(elements) > 3:
+                raise InvalidModelParametersError("Kling 3.0 accepts at most three elements")
+            for element in elements:
+                if not isinstance(element, dict):
+                    raise InvalidModelParametersError("Kling elements must be objects")
+                refs = element.get("element_input_urls") or []
+                if not isinstance(refs, list) or not 2 <= len(refs) <= 4:
+                    raise InvalidModelParametersError(
+                        "Each Kling element requires two to four reference images"
+                    )
+            if clean.get("multi_shots"):
+                shots = clean.get("multi_prompt") or []
+                if not isinstance(shots, list) or not 1 <= len(shots) <= 6:
+                    raise InvalidModelParametersError("Kling multi-shot requires one to six shots")
+                total = 0
+                for shot in shots:
+                    if not isinstance(shot, dict) or not str(shot.get("prompt") or "").strip():
+                        raise InvalidModelParametersError("Every Kling shot requires a prompt")
+                    try:
+                        shot_duration = int(shot.get("duration"))
+                    except (TypeError, ValueError) as exc:
+                        raise InvalidModelParametersError(
+                            "Every Kling shot requires an integer duration"
+                        ) from exc
+                    if not 1 <= shot_duration <= 12:
+                        raise InvalidModelParametersError("Kling shot duration must be 1-12 seconds")
+                    if len(str(shot.get("prompt") or "")) > 500:
+                        raise InvalidModelParametersError("Kling shot prompt must be at most 500 chars")
+                    total += shot_duration
+                if clean.get("duration") not in (None, "") and total != int(clean["duration"]):
+                    raise InvalidModelParametersError(
+                        "Kling multi-shot durations must add up to total duration"
+                    )
+
+        if spec.id == "gemini-omni-video":
+            images = clean.get("image_urls") or []
+            videos = clean.get("video_list") or []
+            characters = clean.get("character_ids") or []
+            if not isinstance(images, list) or not isinstance(videos, list) or not isinstance(characters, list):
+                raise InvalidModelParametersError(
+                    "Gemini Omni image_urls, video_list and character_ids must be arrays"
+                )
+            if len(videos) > 1:
+                raise InvalidModelParametersError("Gemini Omni accepts at most one video")
+            if len(characters) > 3:
+                raise InvalidModelParametersError("Gemini Omni accepts at most three character IDs")
+            if len(images) + len(videos) * 2 + len(characters) > 7:
+                raise InvalidModelParametersError("Gemini Omni upload quota exceeds 7 units")
+
+        if spec.id == "veo-3.1":
+            images = clean.get("image_urls") or []
+            if not isinstance(images, list) or len(images) > 3:
+                raise InvalidModelParametersError("Veo 3.1 accepts at most three image references")
+            veo_model = str(clean.get("veo_model") or "veo3_fast")
+            if veo_model not in {"veo3", "veo3_fast", "veo3_lite", "veo3_fast_r2v", "veo3_r2v"}:
+                raise InvalidModelParametersError("Unsupported Veo 3.1 model variant")
+            generation_type = str(clean.get("generation_type") or "TEXT_2_VIDEO")
+            if generation_type not in {
+                "TEXT_2_VIDEO",
+                "FIRST_AND_LAST_FRAMES_2_VIDEO",
+                "REFERENCE_2_VIDEO",
+            }:
+                raise InvalidModelParametersError("Unsupported Veo 3.1 generation type")
+            if generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and len(images) != 2:
+                raise InvalidModelParametersError(
+                    "Veo first/last-frame generation requires exactly two images"
+                )
+            if generation_type == "REFERENCE_2_VIDEO" and not images:
+                raise InvalidModelParametersError("Veo reference generation requires image references")
+
+        if spec.id == "heygen-avatar":
+            background_type = str(clean.get("background_type") or "")
+            if background_type and background_type not in {"color", "image", "video"}:
+                raise InvalidModelParametersError("Unsupported HeyGen background type")
+            if background_type and not clean.get("background_value"):
+                raise InvalidModelParametersError("HeyGen background value is required")
+            for name in ("width", "height"):
+                if clean.get(name) not in (None, "") and int(clean[name]) <= 0:
+                    raise InvalidModelParametersError(f"HeyGen {name} must be positive")
+
+        if spec.id == "kling-3.0-omni":
+            images = clean.get("image_urls") or []
+            videos = clean.get("video_urls") or []
+            if not isinstance(images, list) or not isinstance(videos, list):
+                raise InvalidModelParametersError("Kling Omni references must be arrays")
+            shots = clean.get("multi_prompt") or []
+            if clean.get("multi_shots") and (not isinstance(shots, list) or not 1 <= len(shots) <= 6):
+                raise InvalidModelParametersError("Kling Omni multi-shot requires one to six shots")
 
     @classmethod
     def prepare(

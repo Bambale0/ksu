@@ -148,11 +148,23 @@ class Settings(BaseSettings):
     internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
     internal_admin_timestamp_skew_seconds: int = 300
 
+    # Kie Market + dedicated Veo 3.1 API.
     kie_api_key: str = ""
     kie_base_url: str = "https://api.kie.ai"
     kie_upload_base_url: str = "https://kieai.redpandaai.co"
     kie_upload_max_bytes: int = 100 * 1024 * 1024
     kie_webhook_hmac_key: str = ""
+
+    # Direct HeyGen Studio Avatar generation. The API key never reaches Mini App clients.
+    heygen_api_key: str = ""
+    heygen_base_url: str = "https://api.heygen.com"
+
+    # Kling VIDEO 3.0 Omni is intentionally not aliased to Kie's separate Kling 3.0 model.
+    # Configure the direct official/account endpoint issued for the deployment.
+    kling_omni_api_key: str = ""
+    kling_omni_create_url: str = ""
+    kling_omni_status_url_template: str = ""
+    kling_omni_model_name: str = "kling-v3-omni"
 
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
