@@ -52,6 +52,11 @@ jobs:
       PUBLIC_BASE_URL: http://127.0.0.1:8000
       START_BALANCE_ROX: "100000"
       ROX_PACKAGES_JSON: '{"e2e":{"amount":"100","credits":"100","currency":"RUB"}}'
+      CARD_API_KEY: e2e-card-key
+      CARD_API_BASE_URL: http://127.0.0.1:18082
+      CARD_OFFER_ID: e2e-offer
+      CARD_PACKAGES_JSON: '{"e2e":{"credits":"100","prices":{"RUB":"100","USD":"5","EUR":"5"}}}'
+      CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON: '{"RUB":"BANK131","USD":"UNLIMINT","EUR":"UNLIMINT"}'
       ABUSE_PROTECTION_ENABLED: false
       KIE_API_KEY: e2e-kie-key
       KIE_BASE_URL: http://127.0.0.1:18081
@@ -89,40 +94,47 @@ jobs:
       - name: Apply migrations
         run: alembic upgrade head
 
-      - name: Start deterministic provider, API and workers
+      - name: Start deterministic providers, API and workers
         run: |
           mkdir -p artifacts
           python -m uvicorn e2e.fake_provider:app --host 127.0.0.1 --port 18081 > artifacts/fake-provider.log 2>&1 &
           echo $! > artifacts/fake-provider.pid
+          python -m uvicorn e2e.fake_card_provider:app --host 127.0.0.1 --port 18082 > artifacts/fake-card-provider.log 2>&1 &
+          echo $! > artifacts/fake-card-provider.pid
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > artifacts/app.log 2>&1 &
           echo $! > artifacts/app.pid
           python -m app.workers.generation > artifacts/generation-worker.log 2>&1 &
           echo $! > artifacts/generation-worker.pid
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:18081/health >/dev/null && curl -fsS http://127.0.0.1:8000/health/ready >/dev/null; then
+            if curl -fsS http://127.0.0.1:18081/health >/dev/null \
+              && curl -fsS http://127.0.0.1:18082/health >/dev/null \
+              && curl -fsS http://127.0.0.1:8000/health/ready >/dev/null; then
               exit 0
             fi
             sleep 1
           done
           echo 'E2E services did not become ready' >&2
           cat artifacts/fake-provider.log || true
+          cat artifacts/fake-card-provider.log || true
           cat artifacts/app.log || true
           cat artifacts/generation-worker.log || true
           exit 1
 
       - name: Run real browser journeys
-        run: python e2e/roxy_browser_e2e.py
+        run: python e2e/roxy_browser_e2e_v2.py
 
       - name: Print E2E report
         if: always()
         run: |
           test ! -f artifacts/e2e-report.json || cat artifacts/e2e-report.json
           echo '--- app log tail ---'
-          tail -n 120 artifacts/app.log 2>/dev/null || true
+          tail -n 160 artifacts/app.log 2>/dev/null || true
           echo '--- generation worker log tail ---'
           tail -n 120 artifacts/generation-worker.log 2>/dev/null || true
           echo '--- fake provider log tail ---'
           tail -n 120 artifacts/fake-provider.log 2>/dev/null || true
+          echo '--- fake card provider log tail ---'
+          tail -n 120 artifacts/fake-card-provider.log 2>/dev/null || true
 
       - name: Upload browser traces, screenshots and service logs
         if: always()
