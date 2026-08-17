@@ -6,8 +6,10 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0B0B10">
   <title>ROXY · AI Creative Studio</title>
+  <link rel="preload" href="/mini-app/assets/roxy-rx-logo.webp" as="image" type="image/webp">
   <link rel="stylesheet" href="/mini-app/styles.css">
   <link rel="stylesheet" href="/mini-app/roxy-brand.css">
+  <link rel="stylesheet" href="/mini-app/boot-loader.css">
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
   <script defer src="/mini-app/roxy-functional-runtime.js"></script>
   <script defer src="/mini-app/app.js"></script>
@@ -16,8 +18,28 @@
   <script defer src="/mini-app/payment-link-guard.js"></script>
   <script defer src="/mini-app/wallet.js"></script>
   <script defer src="/mini-app/roxy-brand.js"></script>
+  <script defer src="/mini-app/boot-loader.js"></script>
 </head>
 <body>
+  <div class="rx-boot-loader" id="rxBootLoader" role="status" aria-label="ROXY загружается">
+    <div class="rx-loader-stage">
+      <div class="rx-loader-emblem" aria-hidden="true">
+        <span class="rx-loader-ring"></span>
+        <span class="rx-loader-ring rx-loader-ring--inner"></span>
+        <span class="rx-loader-hairline"></span>
+        <span class="rx-loader-orbit"></span>
+        <div class="rx-loader-core">
+          <img src="/mini-app/assets/roxy-rx-logo.webp" alt="" width="512" height="512" decoding="sync">
+        </div>
+      </div>
+      <div class="rx-loader-copy" aria-hidden="true">
+        <span class="rx-loader-word">ROXY</span>
+        <span class="rx-loader-subtitle">AI Creative Studio</span>
+        <span class="rx-loader-progress"></span>
+      </div>
+    </div>
+  </div>
+
   <div class="offline-banner" id="offlineBanner" hidden role="status">Нет сети · показываю доступный интерфейс</div>
 
   <div class="app-shell" id="appShell">
