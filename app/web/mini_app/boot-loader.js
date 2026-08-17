@@ -7,6 +7,8 @@
   const startedAt = performance.now();
   let finishing = false;
 
+  document.documentElement.classList.add("rx-booting");
+
   function getLoader() {
     return document.getElementById("rxBootLoader");
   }
@@ -16,6 +18,7 @@
     const loader = getLoader();
     if (!loader) {
       finishing = true;
+      document.documentElement.classList.remove("rx-booting");
       return;
     }
 
@@ -26,6 +29,7 @@
     }
 
     finishing = true;
+    document.documentElement.classList.remove("rx-booting");
     loader.classList.add("is-leaving");
     loader.setAttribute("aria-hidden", "true");
 
