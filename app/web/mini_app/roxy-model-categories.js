@@ -94,22 +94,37 @@
     }, 0);
   }
 
+  function buildTab(type) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "roxy-model-category-tab";
+    button.dataset.roxyModelMedia = type;
+    button.setAttribute("role", "tab");
+    button.addEventListener("click", () => pickMedia(type));
+    return button;
+  }
+
   function renderTabs() {
     const tabs = ensureTabs();
     if (!tabs) return;
     const media = availableMedia();
-    tabs.replaceChildren(...media.map((type) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `roxy-model-category-tab${type === state.activeMedia ? " is-active" : ""}`;
-      button.dataset.roxyModelMedia = type;
-      button.setAttribute("role", "tab");
-      button.setAttribute("aria-selected", String(type === state.activeMedia));
+    const existing = [...tabs.querySelectorAll("[data-roxy-model-media]")];
+    const sameShape = existing.length === media.length
+      && existing.every((button, index) => button.dataset.roxyModelMedia === media[index]);
+    const buttons = sameShape ? existing : media.map(buildTab);
+    if (!sameShape) tabs.replaceChildren(...buttons);
+
+    buttons.forEach((button, index) => {
+      const type = media[index];
+      const active = type === state.activeMedia;
       const count = state.models.filter((model) => model.media_type === type).length;
-      button.textContent = `${MEDIA_LABELS[type] || type} · ${count}`;
-      button.addEventListener("click", () => pickMedia(type));
-      return button;
-    }));
+      const text = `${MEDIA_LABELS[type] || type} · ${count}`;
+      button.classList.toggle("is-active", active);
+      if (button.getAttribute("aria-selected") !== String(active)) {
+        button.setAttribute("aria-selected", String(active));
+      }
+      if (button.textContent !== text) button.textContent = text;
+    });
   }
 
   function filterFamilies() {
@@ -120,10 +135,12 @@
       const visible = state.models.some(
         (model) => model.media_type === state.activeMedia && familyLabel(model.family) === label,
       );
-      button.hidden = !visible;
-      button.setAttribute("aria-hidden", String(!visible));
+      if (button.hidden === visible) button.hidden = !visible;
+      const ariaHidden = String(!visible);
+      if (button.getAttribute("aria-hidden") !== ariaHidden) button.setAttribute("aria-hidden", ariaHidden);
     }
-    familyTabs.setAttribute("aria-label", `Семейства моделей · ${MEDIA_LABELS[state.activeMedia] || state.activeMedia}`);
+    const ariaLabel = `Семейства моделей · ${MEDIA_LABELS[state.activeMedia] || state.activeMedia}`;
+    if (familyTabs.getAttribute("aria-label") !== ariaLabel) familyTabs.setAttribute("aria-label", ariaLabel);
   }
 
   function filterOptions() {
@@ -132,13 +149,14 @@
     for (const option of select.options) {
       const model = state.byId.get(option.value);
       const visible = !model || model.media_type === state.activeMedia;
-      option.hidden = !visible;
-      option.disabled = !visible;
+      if (option.hidden === visible) option.hidden = !visible;
+      if (option.disabled !== !visible) option.disabled = !visible;
     }
     const count = document.getElementById("modelCount");
     if (count) {
       const total = state.models.filter((model) => model.media_type === state.activeMedia).length;
-      count.textContent = `${total} моделей`;
+      const text = `${total} моделей`;
+      if (count.textContent !== text) count.textContent = text;
     }
   }
 
@@ -146,7 +164,8 @@
     for (const card of document.querySelectorAll("[data-roxy-media]")) {
       const mediaType = card.dataset.roxyMedia;
       const label = MEDIA_LABELS[mediaType] || mediaType;
-      if (label) card.setAttribute("aria-label", `Создать · ${label}`);
+      const ariaLabel = label ? `Создать · ${label}` : "Создать";
+      if (card.getAttribute("aria-label") !== ariaLabel) card.setAttribute("aria-label", ariaLabel);
       const iconNode = card.querySelector(".roxy-media-card-icon");
       if (!iconNode || iconNode.querySelector("svg")) continue;
       const icon = window.RoxyIcons?.create?.(MEDIA_ICONS[mediaType], { size: 22 });
@@ -179,11 +198,9 @@
     normalizeCreateIcons();
     void loadModels();
     const builder = document.getElementById("builderView");
-    const createCenter = document.getElementById("roxyCreateCenterView");
     if (builder && !state.observer) {
       state.observer = new MutationObserver(scheduleApply);
-      state.observer.observe(builder, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "aria-selected"] });
-      if (createCenter) state.observer.observe(createCenter, { childList: true, subtree: true });
+      state.observer.observe(builder, { childList: true, subtree: true });
     }
     document.getElementById("modelSelect")?.addEventListener("change", scheduleApply);
     window.addEventListener("roxy:route-changed", scheduleApply);
