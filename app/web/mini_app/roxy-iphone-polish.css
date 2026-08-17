@@ -1,5 +1,19 @@
 /* iPhone polish only: preserve ROXY structure/content, improve spacing, tap targets and readability. */
 
+html.roxy-approved-brand {
+  --roxy-bg: #0B0B10;
+  --roxy-bg-deep: #07070B;
+  --roxy-surface: #15141C;
+  --roxy-surface-2: #1B1823;
+  --roxy-violet: #9B5CFF;
+  --roxy-violet-soft: #B784FF;
+  --roxy-pink: #FF5FB7;
+  --roxy-pink-soft: #FF8FCC;
+  --roxy-text: #FFFFFF;
+  --roxy-muted: #A6A6B3;
+  --roxy-gradient: linear-gradient(110deg, #9B5CFF 0%, #FF5FB7 100%);
+}
+
 .roxy-model-category-tabs {
   display: flex;
   gap: 8px;
@@ -34,8 +48,14 @@
   body { min-width: 0; }
 
   .roxy-mobile-runtime .app-shell {
-    padding-left: max(12px, env(safe-area-inset-left, 0px));
-    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-left: max(
+      12px,
+      var(--tg-content-safe-area-inset-left, var(--roxy-content-safe-left, env(safe-area-inset-left, 0px)))
+    );
+    padding-right: max(
+      12px,
+      var(--tg-content-safe-area-inset-right, var(--roxy-content-safe-right, env(safe-area-inset-right, 0px)))
+    );
   }
 
   .roxy-approved-brand .product-header {
@@ -53,6 +73,7 @@
     width: 38px !important;
     height: 38px !important;
     border-radius: 12px !important;
+    background-color: rgba(155,92,255,.06) !important;
     background-size: 88% 88% !important;
   }
   .roxy-approved-brand .brand-copy {
@@ -280,11 +301,23 @@
   }
 
   .roxy-customer-navigation-ready .studio-bottom-nav {
-    left: max(8px, env(safe-area-inset-left, 0px)) !important;
-    right: max(8px, env(safe-area-inset-right, 0px)) !important;
-    bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+    left: max(
+      8px,
+      var(--tg-content-safe-area-inset-left, var(--roxy-content-safe-left, env(safe-area-inset-left, 0px)))
+    ) !important;
+    right: max(
+      8px,
+      var(--tg-content-safe-area-inset-right, var(--roxy-content-safe-right, env(safe-area-inset-right, 0px)))
+    ) !important;
+    bottom: max(
+      8px,
+      var(--tg-content-safe-area-inset-bottom, var(--roxy-content-safe-bottom, env(safe-area-inset-bottom, 0px)))
+    ) !important;
     min-height: 72px !important;
-    padding: 7px 4px max(7px, env(safe-area-inset-bottom, 0px)) !important;
+    padding: 7px 4px max(
+      7px,
+      var(--tg-content-safe-area-inset-bottom, var(--roxy-content-safe-bottom, env(safe-area-inset-bottom, 0px)))
+    ) !important;
     border-radius: 22px !important;
   }
   .roxy-customer-navigation-ready .studio-bottom-nav .roxy-customer-nav-item {
@@ -316,7 +349,9 @@
   .roxy-approved-brand .app-main,
   .roxy-approved-brand .studio-standalone-view,
   .roxy-approved-brand .roxy-catalog-view {
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(
+      96px + var(--tg-content-safe-area-inset-bottom, var(--roxy-content-safe-bottom, env(safe-area-inset-bottom, 0px)))
+    ) !important;
   }
 }
 
