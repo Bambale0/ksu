@@ -14,7 +14,7 @@
     if (document.querySelector('script[src="/mini-app/roxy-functional-runtime.js"]')) return;
     const script = document.createElement("script");
     script.src = "/mini-app/roxy-functional-runtime.js";
-    script.defer = true;
+    script.async = false;
     document.head.appendChild(script);
   }
 
@@ -146,7 +146,7 @@
     if (document.querySelector('script[src="/mini-app/roxy-brand.js"]')) return;
     const script = document.createElement("script");
     script.src = "/mini-app/roxy-brand.js";
-    script.defer = true;
+    script.async = false;
     document.head.appendChild(script);
   }
 
