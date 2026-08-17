@@ -162,9 +162,7 @@
     card.click();
   }
 
-  function init() {
-    installRandomUuidFallback();
-    protectCanonicalHistory();
+  function initDomRuntime() {
     observeNotificationSemantics();
     document.addEventListener("click", routeCatalogControl, true);
     document.addEventListener("click", (event) => { void interceptPromptToolCopy(event); }, true);
@@ -177,6 +175,14 @@
     patchReadNotifications,
   });
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-  else init();
+  // Critical compatibility patches must run during this defer script itself. Waiting for
+  // DOMContentLoaded would let app.js/shell.js mutate history or request UUIDs first.
+  installRandomUuidFallback();
+  protectCanonicalHistory();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDomRuntime, { once: true });
+  } else {
+    initDomRuntime();
+  }
 })();
