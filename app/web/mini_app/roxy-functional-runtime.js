@@ -87,16 +87,49 @@
     };
   }
 
-  function routeCatalogControl(event) {
+  function routeFromControl(control) {
+    const secondary = control.closest?.("[data-studio-secondary]")?.dataset.studioSecondary;
+    if (secondary) {
+      return {
+        wallet: "wallet",
+        trends: "trends",
+        references: "references",
+        presets: "presets",
+        batch: "batch",
+        "prompt-tools": "prompt-tools",
+        support: "support",
+        partner: "profile",
+      }[secondary] || null;
+    }
+
+    if (control.classList.contains("roxy-community-card")) return "feed";
+    const text = (control.textContent || "").trim().toLowerCase();
+    if (control.classList.contains("roxy-template-card") || text.includes("тренд")) return "trends";
+    if (text.includes("prompt")) return "prompt-tools";
+    if (text.includes("batch")) return "batch";
+    if (text.includes("референ")) return "references";
+    if (text.includes("пресет")) return "presets";
+    if (text.includes("событ") || text.includes("уведом")) return "notifications";
+    if (text.includes("поддерж")) return "support";
+    if (text.includes("лент")) return "feed";
+    if (text.includes("каталог")) return "catalog";
+    return null;
+  }
+
+  function routeCustomerControl(event) {
     const control = event.target.closest?.(
-      "#roxyCatalogView .roxy-template-card, #roxyCatalogView .roxy-catalog-quick-card, #roxyCatalogView .text-button",
+      [
+        "#roxyCatalogView .roxy-template-card",
+        "#roxyCatalogView .roxy-community-card",
+        "#roxyCatalogView .roxy-catalog-quick-card",
+        "#roxyCatalogView .text-button",
+        "#roxyHomeTools .roxy-home-tool",
+        ".studio-sidebar-secondary [data-studio-secondary]",
+      ].join(", "),
     );
-    if (!control) return;
-    const text = (control.textContent || "").toLowerCase();
-    let route = null;
-    if (control.classList.contains("roxy-template-card") || text.includes("тренд")) route = "trends";
-    else if (text.includes("prompt")) route = "prompt-tools";
-    if (!route || !window.RoxyCustomerNavigation?.open) return;
+    if (!control || !window.RoxyCustomerNavigation?.open) return;
+    const route = routeFromControl(control);
+    if (!route) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     window.RoxyCustomerNavigation.open(route);
@@ -164,7 +197,7 @@
 
   function initDomRuntime() {
     observeNotificationSemantics();
-    document.addEventListener("click", routeCatalogControl, true);
+    document.addEventListener("click", routeCustomerControl, true);
     document.addEventListener("click", (event) => { void interceptPromptToolCopy(event); }, true);
     document.addEventListener("keydown", addKeyboardParity);
   }
