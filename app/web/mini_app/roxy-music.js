@@ -91,7 +91,9 @@
     haptic();
     localStorage.setItem("ksu-selected-model", model.id);
     closeCreateCenter();
-    window.RoxyCustomerNavigation?.open?.("home") || window.KsuStudioShell?.open?.("home");
+    // Keep the canonical route as Create. The legacy shell only exposes the builder host;
+    // changing ROXY to Home here made Back skip the Create format chooser.
+    window.KsuStudioShell?.open?.("home");
 
     const enter = (attempt = 0) => {
       const card = [...document.querySelectorAll(".shell-family-card")]
