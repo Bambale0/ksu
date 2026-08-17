@@ -6,15 +6,21 @@
   let notificationObserver = null;
 
   function randomUuid() {
-    if (typeof globalThis.crypto?.randomUUID === "function") {
-      return globalThis.crypto.randomUUID();
-    }
     const cryptoApi = globalThis.crypto;
-    if (!cryptoApi?.getRandomValues) {
-      return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+    if (
+      typeof cryptoApi?.randomUUID === "function"
+      && cryptoApi.randomUUID !== randomUuid
+    ) {
+      return cryptoApi.randomUUID();
     }
     const bytes = new Uint8Array(16);
-    cryptoApi.getRandomValues(bytes);
+    if (cryptoApi?.getRandomValues) {
+      cryptoApi.getRandomValues(bytes);
+    } else {
+      for (let index = 0; index < bytes.length; index += 1) {
+        bytes[index] = Math.floor(Math.random() * 256);
+      }
+    }
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     const hex = [...bytes].map((item) => item.toString(16).padStart(2, "0"));
