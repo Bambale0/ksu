@@ -1,0 +1,66 @@
+/* Current RX mark inside the existing ROXY rounded brand arch. Loaded last on purpose. */
+.roxy-brand-ready .brand-mark,
+.roxy-brand-ready .studio-sidebar-mark {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 2px !important;
+  border: 1px solid rgba(190, 132, 255, .28) !important;
+  background:
+    radial-gradient(circle at 26% 22%, rgba(154, 92, 255, .16), transparent 54%),
+    linear-gradient(145deg, rgba(27, 23, 37, .94), rgba(12, 10, 18, .96)) !important;
+  background-clip: border-box !important;
+  -webkit-background-clip: border-box !important;
+  -webkit-text-fill-color: initial !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 16px rgba(142, 88, 255, .18),
+    0 0 24px rgba(255, 91, 190, .08) !important;
+}
+
+.roxy-brand-mark-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  object-fit: cover;
+  transform: scale(1.11);
+  transform-origin: center;
+  mix-blend-mode: screen;
+  opacity: .98;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.roxy-brand-ready .brand-mark::after,
+.roxy-brand-ready .studio-sidebar-mark::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.035),
+    inset 0 0 12px rgba(180, 101, 255, .06);
+}
+
+@media (max-width: 430px) {
+  .roxy-approved-brand .brand-mark {
+    padding: 2px !important;
+    background:
+      radial-gradient(circle at 24% 20%, rgba(155,92,255,.17), transparent 54%),
+      linear-gradient(145deg, rgba(26,22,35,.96), rgba(11,10,16,.98)) !important;
+    background-size: auto !important;
+  }
+
+  .roxy-approved-brand .brand-mark .roxy-brand-mark-logo {
+    border-radius: 10px;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roxy-brand-mark-logo { transform: scale(1.08); }
+}
