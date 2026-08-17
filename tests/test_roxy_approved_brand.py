@@ -72,8 +72,11 @@ def test_logo_asset_is_used_by_product_chrome() -> None:
     assert "#9B5CFF" in logo
     assert "#FF5FB7" in logo
     assert "#b768ff" not in logo.lower()
-    assert 'setText(".brand-mark", "RX"' in brand
-    assert 'setText(".studio-sidebar-mark", "RX"' in brand
+    assert 'const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo.webp"' in brand
+    assert 'ensureBrandLogo(".brand-mark", headerBrand)' in brand
+    assert 'ensureBrandLogo(".studio-sidebar-mark", sidebar)' in brand
+    assert 'setText(".brand-mark", "RX"' not in brand
+    assert 'setText(".studio-sidebar-mark", "RX"' not in brand
 
 
 def test_withdrawable_rox_uses_white_silver_indicator() -> None:
