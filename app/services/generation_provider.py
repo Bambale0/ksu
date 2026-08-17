@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
+from app.providers.heygen import HeyGenClient
 from app.providers.kie import KieClient, KieTask
+from app.providers.kie_veo import KieVeoClient
+from app.providers.kling_omni import KlingOmniClient
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
@@ -23,8 +26,28 @@ class GenerationProviderService:
     def _provider_api(generation: Generation) -> str:
         return str((generation.parameters or {}).get("_provider_api") or "jobs")
 
+    @staticmethod
+    def _model_id(generation: Generation) -> str:
+        return str((generation.parameters or {}).get("_model_id") or "")
+
+    @classmethod
+    def _provider_name(cls, generation: Generation) -> str:
+        model_id = cls._model_id(generation)
+        if model_id == "heygen-avatar":
+            return "heygen"
+        if model_id == "kling-3.0-omni":
+            return "kling"
+        return "kie"
+
     @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
+        """Submit a generation to its configured provider.
+
+        The method name is retained for worker/API compatibility. Dispatch is model-aware:
+        Kie Market, Kie's dedicated Veo API, direct HeyGen and direct Kling Omni all
+        share the same durable outbox, refund and media-ingest lifecycle.
+        """
+
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
         )
@@ -34,14 +57,14 @@ class GenerationProviderService:
             return generation
 
         provider_api = cls._provider_api(generation)
+        model_id = cls._model_id(generation)
         if provider_api == "suno_music":
-            kie_model = str(
+            provider_model = str(
                 (generation.parameters or {}).get("_kie_model")
                 or settings.music_generation_model
             )
         else:
-            model_id = str((generation.parameters or {}).get("_model_id") or "")
-            kie_model = ModelCatalog.get(model_id).kie_model
+            provider_model = ModelCatalog.get(model_id).kie_model
 
         generation.status = "submitting"
         generation.error = None
@@ -50,26 +73,57 @@ class GenerationProviderService:
         callback_url = settings.webhook_url("webhooks/kie")
         if callback_url:
             callback_url = f"{callback_url}?generation_id={generation.id}"
+        input_data = cls._input_for(generation)
 
-        client = KieClient(settings.kie_api_key, settings.kie_base_url)
         try:
             if provider_api == "suno_music":
-                task_id = await client.create_music_task(
-                    model=kie_model,
-                    input_data=cls._input_for(generation),
-                    callback_url=callback_url,
+                client = KieClient(settings.kie_api_key, settings.kie_base_url)
+                try:
+                    task_id = await client.create_music_task(
+                        model=provider_model,
+                        input_data=input_data,
+                        callback_url=callback_url,
+                    )
+                finally:
+                    await client.aclose()
+            elif model_id == "veo-3.1":
+                client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
+                try:
+                    # The dedicated Veo callback contract differs from Market callbacks;
+                    # worker reconciliation is the authoritative fallback for this model.
+                    task_id = await client.create_task(input_data=input_data)
+                finally:
+                    await client.aclose()
+            elif model_id == "heygen-avatar":
+                client = HeyGenClient(settings.heygen_api_key, settings.heygen_base_url)
+                try:
+                    task_id = await client.create_task(input_data=input_data)
+                finally:
+                    await client.aclose()
+            elif model_id == "kling-3.0-omni":
+                client = KlingOmniClient(
+                    api_key=settings.kling_omni_api_key,
+                    create_url=settings.kling_omni_create_url,
+                    status_url_template=settings.kling_omni_status_url_template,
+                    model_name=settings.kling_omni_model_name,
                 )
+                try:
+                    task_id = await client.create_task(input_data=input_data)
+                finally:
+                    await client.aclose()
             else:
-                task_id = await client.create_task(
-                    model=kie_model,
-                    input_data=cls._input_for(generation),
-                    callback_url=callback_url,
-                )
+                client = KieClient(settings.kie_api_key, settings.kie_base_url)
+                try:
+                    task_id = await client.create_task(
+                        model=provider_model,
+                        input_data=input_data,
+                        callback_url=callback_url,
+                    )
+                finally:
+                    await client.aclose()
         except Exception as exc:
             await cls.fail_and_refund(session, generation.id, str(exc))
             raise
-        finally:
-            await client.aclose()
 
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -81,7 +135,7 @@ class GenerationProviderService:
         if generation.external_id and generation.external_id != task_id:
             return generation
         generation.external_id = task_id
-        generation.provider = "kie"
+        generation.provider = cls._provider_name(generation)
         generation.status = "generating"
         generation.error = None
         generation.updated_at = datetime.now(timezone.utc)
@@ -96,6 +150,8 @@ class GenerationProviderService:
         task_id: str,
         generation_id: uuid.UUID | None = None,
     ) -> Generation | None:
+        """Synchronize a provider task using the model's actual status API."""
+
         generation = await session.scalar(
             select(Generation).where(Generation.external_id == task_id).with_for_update()
         )
@@ -110,7 +166,7 @@ class GenerationProviderService:
                 and candidate.status in {"queued", "retry", "submitting", "generating"}
             ):
                 candidate.external_id = task_id
-                candidate.provider = "kie"
+                candidate.provider = cls._provider_name(candidate)
                 candidate.status = "generating"
                 candidate.error = None
                 candidate.updated_at = datetime.now(timezone.utc)
@@ -120,14 +176,42 @@ class GenerationProviderService:
         if generation is None:
             return None
 
-        client = KieClient(settings.kie_api_key, settings.kie_base_url)
-        try:
-            if cls._provider_api(generation) == "suno_music":
+        model_id = cls._model_id(generation)
+        if cls._provider_api(generation) == "suno_music":
+            client = KieClient(settings.kie_api_key, settings.kie_base_url)
+            try:
                 task = await client.get_music_task(task_id)
-            else:
+            finally:
+                await client.aclose()
+        elif model_id == "veo-3.1":
+            client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
+            try:
                 task = await client.get_task(task_id)
-        finally:
-            await client.aclose()
+            finally:
+                await client.aclose()
+        elif model_id == "heygen-avatar":
+            client = HeyGenClient(settings.heygen_api_key, settings.heygen_base_url)
+            try:
+                task = await client.get_task(task_id)
+            finally:
+                await client.aclose()
+        elif model_id == "kling-3.0-omni":
+            client = KlingOmniClient(
+                api_key=settings.kling_omni_api_key,
+                create_url=settings.kling_omni_create_url,
+                status_url_template=settings.kling_omni_status_url_template,
+                model_name=settings.kling_omni_model_name,
+            )
+            try:
+                task = await client.get_task(task_id)
+            finally:
+                await client.aclose()
+        else:
+            client = KieClient(settings.kie_api_key, settings.kie_base_url)
+            try:
+                task = await client.get_task(task_id)
+            finally:
+                await client.aclose()
         await cls.apply_kie_task(session, generation, task)
         return generation
 
@@ -176,11 +260,7 @@ class GenerationProviderService:
             if task.tracks is not None:
                 parameters["_music_tracks"] = task.tracks
             generation.parameters = parameters
-            # Prompt-author rewards settle only after a successful paid repeat.
-            # This prevents failed/refunded provider attempts from minting bonus ROX.
             await cls._award_prompt_repeat_bonus(session, generation)
-            # Generation terminal state, author reward, and durable media ingest rows
-            # commit together so retries cannot duplicate any of them.
             if cls._provider_api(generation) == "suno_music":
                 await MusicMediaAssetService.enqueue_results(
                     session,
@@ -198,7 +278,7 @@ class GenerationProviderService:
             return
 
         if task.state == "fail":
-            message = task.fail_message or task.fail_code or "Kie generation failed"
+            message = task.fail_message or task.fail_code or "Generation provider failed"
             await cls.fail_and_refund(session, generation.id, message)
             return
 
