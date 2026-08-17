@@ -33,7 +33,9 @@ class ProfilePreferenceService:
         )
         await session.execute(statement)
         await session.flush()
-        session.expire_all()
+        # Do not expire the whole identity map here: /me still owns the authenticated
+        # User object in this session, and expire_all() makes simple scalar access
+        # trigger implicit async I/O (MissingGreenlet) in the response serializer.
         preference = await session.get(UserPreference, user_id)
         if preference is None:
             raise RuntimeError("Unable to initialize user preferences")
