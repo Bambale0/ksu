@@ -3,6 +3,7 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
+  const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo.webp";
 
   function mountLayer({ css, js }) {
     if (css && !document.querySelector(`link[href="${css}"]`)) {
@@ -43,6 +44,7 @@
     mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
     mountLayer({ css: "/mini-app/roxy-partner-promo.css", js: "/mini-app/roxy-partner-promo.js" });
     mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
+    mountLayer({ css: "/mini-app/roxy-header-logo.css" });
   }
 
   function setTelegramChrome() {
@@ -62,10 +64,28 @@
     return node;
   }
 
+  function ensureBrandLogo(selector, root = document) {
+    const mark = root.querySelector(selector);
+    if (!mark) return null;
+
+    let logo = mark.querySelector("img[data-roxy-brand-logo]");
+    if (!logo) {
+      logo = document.createElement("img");
+      logo.src = BRAND_LOGO_SRC;
+      logo.alt = "";
+      logo.className = "roxy-brand-mark-logo";
+      logo.dataset.roxyBrandLogo = "true";
+      logo.decoding = "async";
+      logo.setAttribute("aria-hidden", "true");
+      mark.replaceChildren(logo);
+    }
+    return mark;
+  }
+
   function styleMainBrand() {
     const headerBrand = document.getElementById("brandHomeButton");
     if (headerBrand) {
-      setText(".brand-mark", "RX", headerBrand);
+      ensureBrandLogo(".brand-mark", headerBrand);
       setText(".brand-copy strong", BRAND, headerBrand);
       setText(".brand-copy small", "AI CREATIVE STUDIO", headerBrand);
       headerBrand.setAttribute("aria-label", "На главную ROXY");
@@ -73,7 +93,7 @@
 
     const sidebar = document.getElementById("studioSidebar");
     if (sidebar) {
-      setText(".studio-sidebar-mark", "RX", sidebar);
+      ensureBrandLogo(".studio-sidebar-mark", sidebar);
       setText(".studio-sidebar-copy strong", BRAND, sidebar);
       setText(".studio-sidebar-copy small", "AI CREATIVE STUDIO", sidebar);
       sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
