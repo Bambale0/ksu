@@ -59,7 +59,8 @@ def test_read_notifications_are_not_dead_clickable_buttons() -> None:
     assert "button.disabled = !unread" in runtime
     assert 'button.setAttribute("aria-disabled", "true")' in runtime
     assert "attributeFilter: [\"class\"]" in runtime
-    assert 'item.addEventListener("click"' in profile
+    assert 'card.addEventListener("click", () => markOneRead(item.id, card));' in profile
+    assert '/api/v1/notifications/${encodeURIComponent(id)}/read' in profile
 
 
 def test_request_id_and_clipboard_have_telegram_webview_fallbacks() -> None:
@@ -90,7 +91,7 @@ def test_primary_navigation_and_home_controls_have_action_handlers() -> None:
     for route in ("home", "catalog", "create", "history", "profile"):
         assert f'["{route}"' in navigation
     assert 'button.addEventListener("click", () => open(route));' in navigation
-    assert 'roxyCreateCta' in brand
+    assert "roxyCreateCta" in brand
     assert "roxy-promo-cta" in discovery
     assert "roxy-promo-dot" in discovery
     for label in ("Каталог", "Лента", "Тренды", "Prompt", "Batch", "Референсы", "События", "Поддержка"):
@@ -110,16 +111,16 @@ def test_create_and_generation_controls_are_wired_end_to_end() -> None:
         "void chooseMedia(type)",
         'button("✨ Улучшить текущий"',
         'button("🖼 Промпт по фото"',
-        '/api/v1/uploads/kie',
-        '/api/v1/prompt-tools/prompt-builder',
+        "/api/v1/uploads/kie",
+        "/api/v1/prompt-tools/prompt-builder",
     ):
         assert token in center
     for token in (
         'dom.resetButton.addEventListener("click"',
         'dom.createButton.addEventListener("click"',
-        '/api/v1/generations/quote',
-        '/api/v1/generations',
-        '/recreate',
+        "/api/v1/generations/quote",
+        "/api/v1/generations",
+        "/recreate",
     ):
         assert token in app
     assert 'document.addEventListener("click", interceptMusicCard, true)' in music
@@ -134,7 +135,7 @@ def test_history_controls_cover_open_repeat_hide_restore_and_delete() -> None:
 
     for token in ("Открыть", "Повторить", "ksu-history-close", "historyLoadMore"):
         assert token in app
-    for token in ("Управлять", "Скрыть", "Вернуть", '/history/restore'):
+    for token in ("Управлять", "Скрыть", "Вернуть", "/history/restore"):
         assert token in management
     assert "confirmHistoryRemoval" in social
     assert '@router.delete("/{generation_id}/history")' in generations
@@ -167,8 +168,8 @@ def test_wallet_checkout_controls_have_server_contracts() -> None:
     assert 'lavaButton.addEventListener("click"' in surface
     assert 'cryptoButton.addEventListener("click"' in surface
     assert '@router.post("", status_code=201)' in payments
-    assert 'Idempotency-Key' in payments
-    assert '/checkout' in card_api
+    assert "Idempotency-Key" in payments
+    assert "/checkout" in card_api
 
 
 def test_profile_partner_support_and_social_controls_have_backends() -> None:
