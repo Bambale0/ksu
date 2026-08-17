@@ -75,8 +75,6 @@ def test_request_id_and_clipboard_have_telegram_webview_fallbacks() -> None:
     assert 'document.execCommand("copy")' in runtime
     assert "tg?.showPopup?." in runtime
     assert ".tool-copy-button" in runtime
-    # These customer flows require UUIDs after user interaction; the runtime is mounted
-    # before them and supplies randomUUID on Telegram WebViews that only expose getRandomValues.
     assert "crypto.randomUUID()" in prompt_tools
     assert "crypto.randomUUID()" in bulk
     assert "crypto.randomUUID()" in create_center
@@ -124,6 +122,8 @@ def test_create_and_generation_controls_are_wired_end_to_end() -> None:
     ):
         assert token in app
     assert 'document.addEventListener("click", interceptMusicCard, true)' in music
+    assert 'window.KsuStudioShell?.open?.("home")' in music
+    assert 'RoxyCustomerNavigation?.open?.("home")' not in music
     assert "models.append(MusicGenerationService.public_model())" in generations
 
 
@@ -133,7 +133,7 @@ def test_history_controls_cover_open_repeat_hide_restore_and_delete() -> None:
     social = _read(MINI, "social.js")
     generations = _read(API, "generations.py")
 
-    for token in ("Открыть", "Повторить", "ksu-history-close", "historyLoadMore"):
+    for token in ("Открыть", "Повторить", "ksu-history-close", "ksuHistoryMore", "loadHistoryPage(false)"):
         assert token in app
     for token in ("Управлять", "Скрыть", "Вернуть", "/history/restore"):
         assert token in management
