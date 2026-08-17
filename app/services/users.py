@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from aiogram.types import User as TelegramUser
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -35,34 +35,33 @@ class UserService:
             cls._sync_telegram_profile(user, telegram_user)
             return user
 
-        candidate = User(
-            telegram_id=telegram_user.id,
-            username=telegram_user.username,
-            first_name=telegram_user.first_name,
-            last_name=telegram_user.last_name,
-            language_code=telegram_user.language_code,
+        # A Mini App cold boot fan-outs several authenticated requests at once.
+        # Make creation atomic in PostgreSQL instead of relying on SELECT -> INSERT,
+        # which can race for users.telegram_id and surface intermittent HTTP 500s.
+        result = await session.execute(
+            insert(User)
+            .values(
+                telegram_id=telegram_user.id,
+                username=telegram_user.username,
+                first_name=telegram_user.first_name,
+                last_name=telegram_user.last_name,
+                language_code=telegram_user.language_code,
+                is_active=True,
+            )
+            .on_conflict_do_nothing(index_elements=[User.telegram_id])
+            .returning(User.id)
         )
-        created = False
-        try:
-            # Mini App startup issues several authenticated requests in parallel. Two
-            # fresh requests can both miss the initial SELECT, so isolate the INSERT
-            # behind a savepoint. A uniqueness race then rolls back only this insert,
-            # not the caller's whole transaction.
-            async with session.begin_nested():
-                session.add(candidate)
-                await session.flush()
-            user = candidate
-            created = True
-        except IntegrityError:
-            # PostgreSQL waits for the competing unique-key transaction before
-            # resolving the INSERT. Once it reports the conflict, READ COMMITTED can
-            # see the winner on this new statement.
-            user = await cls.get_by_telegram_id(session, telegram_user.id)
-            if user is None:
-                raise
-            cls._sync_telegram_profile(user, telegram_user)
+        created_user_id = result.scalar_one_or_none()
+        await session.flush()
 
-        if not created:
+        user = await cls.get_by_telegram_id(session, telegram_user.id)
+        if user is None:
+            raise RuntimeError("Unable to initialize Telegram user")
+        cls._sync_telegram_profile(user, telegram_user)
+
+        if created_user_id is None:
+            # The concurrent creator owns wallet/welcome/referral initialization.
+            # ON CONFLICT waits for that transaction to resolve before this branch.
             return user
 
         await WalletService.ensure_wallet(session, user.id)
