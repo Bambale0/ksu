@@ -181,7 +181,7 @@ def test_profile_partner_support_and_social_controls_have_backends() -> None:
     support = _read(API, "support.py")
     notifications = _read(API, "notifications.py")
 
-    for token in ("Мои ROX", "История", "Реферальная программа", "Настройки", "creator"):
+    for token in ("Мои ROX", "История", "Партнёры ROXY", "Настройки", "scrollPartner()", "creatorPartnershipEntry"):
         assert token in cabinet
     for token in ("Сохранить", "Прочитать все", "Создать обращение", "Ответить", "Закрыть", "Переоткрыть"):
         assert token in profile
