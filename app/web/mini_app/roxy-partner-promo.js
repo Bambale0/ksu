@@ -10,7 +10,7 @@
     },
     {
       id: "creator-rewards",
-      image: "/mini-app/roxy-creator-rewards-slide.jpg",
+      image: "/mini-app/roxy-creator-rewards-slide.webp",
       label: "ROXY · Создавай. Публикуй. Зарабатывай.",
       action: "feed",
     },
