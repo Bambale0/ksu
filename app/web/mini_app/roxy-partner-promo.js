@@ -4,13 +4,13 @@
   const SLIDES = [
     {
       id: "partner-referrals-35",
-      image: "/mini-app/roxy-partner-referrals-slide.jpg",
+      image: "/mini-app/roxy-partner-referrals-slide.jpg?v=3",
       label: "ROXY · До 35% с пополнений рефералов",
       action: "partner",
     },
     {
       id: "creator-rewards",
-      image: "/mini-app/roxy-creator-rewards-slide.webp",
+      image: "/mini-app/roxy-creator-rewards-slide.webp?v=3",
       label: "ROXY · Создавай. Публикуй. Зарабатывай.",
       action: "feed",
     },
