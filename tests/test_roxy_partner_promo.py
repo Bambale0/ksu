@@ -16,15 +16,22 @@ def _assert_jpeg(path: Path) -> None:
     assert payload.endswith(b"\xff\xd9")
 
 
+def _assert_webp(path: Path) -> None:
+    payload = path.read_bytes()
+    assert len(payload) > 8_000
+    assert payload.startswith(b"RIFF")
+    assert payload[8:12] == b"WEBP"
+
+
 def test_supplied_promo_artworks_are_bundled_and_mounted() -> None:
     partner = MINI / "roxy-partner-referrals-slide.jpg"
-    creator = MINI / "roxy-creator-rewards-slide.jpg"
+    creator = MINI / "roxy-creator-rewards-slide.webp"
     brand = _read("roxy-brand.js")
 
     assert partner.is_file()
     _assert_jpeg(partner)
     assert creator.is_file()
-    _assert_jpeg(creator)
+    _assert_webp(creator)
     assert '/mini-app/roxy-partner-promo.css' in brand
     assert '/mini-app/roxy-partner-promo.js' in brand
 
@@ -35,7 +42,7 @@ def test_home_promo_carousel_is_replaced_with_only_supplied_slides() -> None:
     assert 'id: "partner-referrals-35"' in script
     assert 'image: "/mini-app/roxy-partner-referrals-slide.jpg"' in script
     assert 'id: "creator-rewards"' in script
-    assert 'image: "/mini-app/roxy-creator-rewards-slide.jpg"' in script
+    assert 'image: "/mini-app/roxy-creator-rewards-slide.webp"' in script
     assert 'viewport.replaceChildren(...SLIDES.map(buildCard))' in script
     assert 'data-roxy-fixed-promo' in script
     assert 'observer.observe(viewport, { childList: true })' in script
