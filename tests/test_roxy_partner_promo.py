@@ -9,15 +9,22 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
+def _assert_jpeg(path: Path) -> None:
+    payload = path.read_bytes()
+    assert len(payload) > 3_000
+    assert payload.startswith(b"\xff\xd8")
+    assert payload.endswith(b"\xff\xd9")
+
+
 def test_supplied_promo_artworks_are_bundled_and_mounted() -> None:
     partner = MINI / "roxy-partner-referrals-slide.jpg"
     creator = MINI / "roxy-creator-rewards-slide.jpg"
     brand = _read("roxy-brand.js")
 
     assert partner.is_file()
-    assert partner.stat().st_size > 10_000
+    _assert_jpeg(partner)
     assert creator.is_file()
-    assert creator.stat().st_size > 10_000
+    _assert_jpeg(creator)
     assert '/mini-app/roxy-partner-promo.css' in brand
     assert '/mini-app/roxy-partner-promo.js' in brand
 
