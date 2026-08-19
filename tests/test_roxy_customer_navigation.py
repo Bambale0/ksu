@@ -71,21 +71,32 @@ def test_telegram_launcher_opens_only_roxy_mini_app(monkeypatch) -> None:
     assert payment_button.web_app.url == "https://roxy.example/mini-app/?route=wallet"
 
 
-def test_bot_launcher_keeps_single_safe_fallback_without_public_base_url(monkeypatch) -> None:
+def test_bot_launcher_fails_closed_without_public_base_url(monkeypatch) -> None:
     monkeypatch.setattr(settings, "public_base_url", "")
     menu = keyboards.main_menu()
     assert len(menu.inline_keyboard) == 1
     assert len(menu.inline_keyboard[0]) == 1
     button = menu.inline_keyboard[0][0]
     assert button.text == "🚀 Открыть ROXY"
-    assert button.callback_data == "nav:main"
+    assert button.callback_data == "app:unavailable"
     assert button.web_app is None
 
+    launcher = (ROOT / "app" / "bot" / "handlers" / "launcher.py").read_text(encoding="utf-8")
+    assert 'F.data == "app:unavailable"' in launcher
+    assert "show_alert=True" in launcher
+    assert 'dispatcher.include_router(feed.router)' not in (
+        ROOT / "app" / "bot" / "dispatcher.py"
+    ).read_text(encoding="utf-8")
 
-def test_persistent_quick_menu_has_exact_two_primary_buttons() -> None:
+
+def test_persistent_quick_menu_is_legacy_only_and_not_registered() -> None:
     menu = keyboards.quick_menu()
     assert menu.is_persistent is True
     assert menu.resize_keyboard is True
     assert [[button.text for button in row] for row in menu.keyboard] == [
         ["🏠 Меню", "🆘 Поддержка"]
     ]
+    dispatcher = (ROOT / "app" / "bot" / "dispatcher.py").read_text(encoding="utf-8")
+    assert "launcher.router" in dispatcher
+    assert "start.router" not in dispatcher
+    assert "support.router" not in dispatcher
