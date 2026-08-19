@@ -86,8 +86,9 @@ def _validate_generation_pricing(value: Any) -> None:
             )
 
         price_key = "per_second" if spec.price_mode == "per_second" else "flat"
-        if price_key in override:
-            _positive_price(override[price_key], path=f"{path}.{price_key}")
+        if price_key not in override:
+            raise TariffValidationError(f"{path} requires base {price_key} price")
+        _positive_price(override[price_key], path=f"{path}.{price_key}")
         wrong_key = "flat" if price_key == "per_second" else "per_second"
         if wrong_key in override:
             raise TariffValidationError(f"{path} uses {price_key}, not {wrong_key}")
