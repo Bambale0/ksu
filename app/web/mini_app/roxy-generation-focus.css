@@ -97,14 +97,20 @@ body.roxy-focused-model-flow #builderView .model-card > #modelMeta {
   font-size: 14px;
 }
 
-.roxy-smart-source-actions {
+.roxy-smart-source-actions,
+.roxy-smart-mode-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
+.roxy-smart-mode-actions {
+  padding-top: 2px;
+}
+
 .roxy-smart-source-button,
-.roxy-smart-source-remove {
+.roxy-smart-source-remove,
+.roxy-smart-mode-button {
   min-height: 38px;
   padding: 9px 12px;
   border: 1px solid rgba(155, 92, 255, .28);
@@ -115,6 +121,27 @@ body.roxy-focused-model-flow #builderView .model-card > #modelMeta {
   font-size: 11px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.roxy-smart-mode-button {
+  min-height: 34px;
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, .035);
+  color: #b9b9c7;
+}
+
+.roxy-smart-mode-button.is-active {
+  border-color: rgba(255, 95, 183, .48);
+  background: linear-gradient(110deg, rgba(155, 92, 255, .28), rgba(255, 95, 183, .18));
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(155, 92, 255, .08) inset;
+}
+
+.roxy-smart-source-button:focus-visible,
+.roxy-smart-mode-button:focus-visible,
+.roxy-smart-source-remove:focus-visible {
+  outline: 2px solid rgba(255, 95, 183, .9);
+  outline-offset: 2px;
 }
 
 .roxy-smart-source-button:disabled {
@@ -161,5 +188,10 @@ body.roxy-focused-model-flow .builder-layout {
     grid-column: 2;
     max-width: none;
     justify-content: flex-start;
+  }
+
+  .roxy-smart-source-status {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
