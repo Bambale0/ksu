@@ -168,6 +168,14 @@ Telegram / browser
     +--> /admin-app/  privileged operator UI
 ```
 
+## Observability
+
+- `GET /metrics` exposes Prometheus metrics (protect it with `METRICS_BEARER_TOKEN` when configured).
+- `GET /health/operational` reports operational readiness/worker health.
+- OpenTelemetry traces are exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when configured.
+- Production alert rules live in `ops/prometheus-alerts.yml`.
+- Detailed metrics, worker heartbeat and high-cardinality guidance are in `docs/OBSERVABILITY.md`.
+
 ## Local development
 
 ```bash
@@ -214,6 +222,9 @@ KIE_UPLOAD_BASE_URL=...
 KIE_WEBHOOK_HMAC_KEY=...
 GENERATION_PRICING_JSON={}
 
+METRICS_BEARER_TOKEN=...
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=...
+
 ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
 ADMIN_REQUIRE_MFA=true
 ```
@@ -243,6 +254,7 @@ Canonical documentation and operations references:
 - `docs/GENERATION_MINI_APP.md`
 - `docs/ADMIN_SECURITY.md`
 - `docs/ADMIN_RUNBOOK.md`
+- `docs/OBSERVABILITY.md`
 - `docs/ROXY_RELEASE_ACCEPTANCE.md`
 
 Historical `parity-*` files are implementation records, not current pricing/model/navigation authority.
