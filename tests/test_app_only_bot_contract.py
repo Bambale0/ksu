@@ -8,21 +8,27 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_production_dispatcher_exposes_only_mini_app_launcher() -> None:
+def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher() -> None:
     dispatcher = _read("app/bot/dispatcher.py")
-    assert "from app.bot.handlers import launcher" in dispatcher
+    assert "from app.bot.handlers import admin, admin_extensions, launcher" in dispatcher
+    assert "dispatcher.include_router(admin.router)" in dispatcher
+    assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
     assert "dispatcher.include_router(launcher.router)" in dispatcher
-    for retired in (
+    assert dispatcher.index("dispatcher.include_router(admin.router)") < dispatcher.index(
+        "dispatcher.include_router(launcher.router)"
+    )
+    assert dispatcher.index("dispatcher.include_router(admin_extensions.router)") < dispatcher.index(
+        "dispatcher.include_router(launcher.router)"
+    )
+    for retired_customer_router in (
         "start.router",
         "feed.router",
         "trends.router",
         "prompt_tools.router",
-        "admin.router",
-        "admin_extensions.router",
         "generation.router",
         "support.router",
     ):
-        assert retired not in dispatcher
+        assert retired_customer_router not in dispatcher
 
 
 def test_launcher_removes_legacy_reply_keyboard_and_routes_everything_to_app() -> None:
