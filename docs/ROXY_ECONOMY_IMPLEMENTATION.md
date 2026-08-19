@@ -1,5 +1,7 @@
 # ROXY economy implementation
 
+**Status:** synchronized with shipped runtime on 2026-08-20.
+
 This document is the deployment/runbook companion to `ROXY_BRAND.md`.
 
 ## Approved product rules
@@ -7,37 +9,101 @@ This document is the deployment/runbook companion to `ROXY_BRAND.md`.
 - 1 ROX = 1 RUB.
 - Welcome: 50 internal ROX.
 - Invited friend: +30 internal ROX to the inviter.
-- Prompt repeat/remix: +5 internal ROX to the original author; self-repeats do not pay.
+- Paid prompt repeat/remix: +5 internal ROX to the original author; self-repeats do not pay.
 - Level 1 real top-up: 30% withdrawable ROX.
 - Level 2 real top-up: 5% withdrawable ROX.
 - Minimum partner withdrawal: 3,000 ROX.
 
-Internal ROX live in `wallets.balance`. Withdrawable ROX are derived from referral reward accounting and are never merged into the spend wallet.
+Internal spend ROX live in the wallet/accounting domain. Withdrawable partner earnings are derived from referral reward accounting and are not merged into the spend wallet.
 
-## Denomination migration
+## Public denomination migration
 
-Migration `0023_roxy_one_ruble_denomination` converts persisted legacy 10-RUB credit values to 1-RUB ROX by multiplying credit-denominated amounts by 10. This preserves the real RUB value of existing balances, generation history, payment credits, promo rewards, prompt-tool costs and batch charges.
+Migration `0023_roxy_one_ruble_denomination` converted persisted legacy 10-RUB credit values to public 1-RUB ROX while preserving real monetary value.
 
-Built-in generation catalog defaults are likewise redenominated at runtime. Explicit `GENERATION_PRICING_JSON` overrides are interpreted as public ROX and must already use the new 1-RUB unit.
+Current production overrides must use public ROX units:
 
-Published prompt-tool tariff `prompt_costs` values are converted by migration 0023.
+```dotenv
+INTERNAL_CREDIT_RUB=1
+START_BALANCE_ROX=50
+INVITE_BONUS_ROX=30
+PROMPT_REPEAT_BONUS_ROX=5
+REFERRAL_FIRST_PERCENT=30
+REFERRAL_SECOND_PERCENT=5
+PARTNER_MIN_WITHDRAWAL_RUB=3000
+```
 
-## Production environment
+## Generation billing
 
-Before deployment, update any explicit production overrides to the values in `.env.example`. In particular, old `START_BALANCE_ROX=0`, `INTERNAL_CREDIT_RUB=10` or `PARTNER_MIN_WITHDRAWAL_RUB=0` values will override the new code defaults and must not remain.
+Flat generation:
 
-If `ROX_PACKAGES_JSON` or `CARD_PACKAGES_JSON` are explicitly configured, their credit/ROX amounts must be expressed in public ROX. For RUB packages the expected product relationship is 1 ROX per 1 RUB.
+```text
+cost_rox = flat_price_rox
+```
 
-If `GENERATION_DAILY_SPEND_LIMIT_CREDITS` is non-zero, convert the old value by multiplying it by 10.
+Per-second generation:
+
+```text
+cost_rox = resolved_unit_price_rox × billing_seconds
+```
+
+The server resolves model/parameter pricing and repeats that calculation on create before wallet debit.
+
+### Approved generation baseline
+
+```text
+Nano Banana PRO            25 ROX
+WAN 2.7 photo              20 ROX
+GPT Image 2                20 ROX
+Nano Banana 2              25 ROX
+Nano Banana 2 Lite         25 ROX
+Seedream 4.5               20 ROX
+Seedream 5 Pro             20 ROX
+Seedance 2.0               40 ROX/s
+Seedance 2.5               60 ROX/s
+Kling 3.0                  30 ROX/s
+Veo 3.1                    35 ROX/s
+Grok                        15 ROX/s
+Grok Imagine 1.5           30 ROX/s
+Gemini Omni                from 30 ROX/s
+Kling Motion 2.6 720p      20 ROX/s
+Kling Motion 2.6 1080p     30 ROX/s
+Kling Motion 3.0 720p      60 ROX/s
+Kling Motion 3.0 1080p     80 ROX/s
+```
+
+This is the approved default baseline. The live runtime tariff can differ after an authorized admin publish.
+
+## Admin Tariffs and runtime pricing
+
+Generation pricing is not a frontend constant.
+
+- the backend catalog contains default price definitions;
+- environment pricing overrides may exist;
+- the latest published Admin Tariffs `generation_pricing` version is applied as a runtime override;
+- publish requires the privileged pricing permission and high-impact confirmation/MFA policy;
+- invalid model IDs, price-mode mismatches and unsupported parameter tiers are rejected;
+- quote and actual debit share the same resolver;
+- the latest published tariff is restored from PostgreSQL after restart.
+
+Operationally, a price change is complete only after catalog/quote verification and a controlled debit check. See `ADMIN_RUNBOOK.md` and `ROXY_RELEASE_ACCEPTANCE.md`.
+
+## Package/payment units
+
+If `ROX_PACKAGES_JSON` or `CARD_PACKAGES_JSON` are explicitly configured, amounts are expressed in public ROX. For RUB packages the product relationship is 1 ROX per 1 RUB unless a separately documented promotion changes what the customer receives.
+
+A non-zero `GENERATION_DAILY_SPEND_LIMIT_CREDITS` is also interpreted in current public ROX units despite the legacy config field name.
 
 ## Release verification
 
-After migration:
+After deploy/migration/restart:
 
-1. `/api/v1/generations/models` reports `internal_credit_rub = 1.00` and public ROX prices.
-2. `/api/v1/referrals/stats` reports both `bonus_rox` and `withdrawable_rox`.
-3. New registration receives 50 ROX.
-4. A referred registration credits the inviter 30 ROX once.
-5. A paid prompt remix by another user credits the original author 5 ROX once.
-6. Referral rewards from real paid top-ups remain separate and withdrawable at 3,000 ROX.
-7. Telegram and Mini App primary menus show only: Create, Prompts, My ROX, Earn, Profile.
+1. `/api/v1/generations/models` reports the current public ROX denomination/prices.
+2. Generation quote values match the active tariff.
+3. A controlled generation debit equals its quote.
+4. Kling Motion 2.6/3.0 resolve different 720p and 1080p rates correctly.
+5. Restart preserves the latest published Admin Tariff.
+6. `/api/v1/referrals/stats` keeps bonus/internal and withdrawable balances separate.
+7. New registration receives 50 ROX.
+8. Referred registration credits the inviter 30 ROX once.
+9. Paid remix by another user credits the original author 5 ROX once.
+10. Partner rewards remain separately withdrawable subject to the 3,000 ROX threshold.

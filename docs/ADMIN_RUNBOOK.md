@@ -1,23 +1,33 @@
 # Admin contour runbook
 
-This runbook covers the shared KSU admin domain, signed internal API, Telegram admin UI, browser control UI, and durable operator workers.
+**Status:** synchronized with shipped runtime on 2026-08-20.
+
+This runbook covers the shared KSU/ROXY admin domain, `/admin-app/`, signed internal admin API, privileged workers and live tariff operations.
 
 ## Required environment
 
-### Browser / Telegram admin security
+Browser/Telegram admin security:
 
-- `ADMIN_SECURITY_KEY`: strong application secret used by the existing admin session/MFA security layer.
-- `ADMIN_BOOTSTRAP_TELEGRAM_IDS`: explicit Telegram IDs allowed to bootstrap the first owner.
-- `ADMIN_REQUIRE_MFA=true`: keep enabled in production.
-- `ADMIN_SESSION_TTL_MINUTES`, `ADMIN_IDLE_TIMEOUT_MINUTES`, `ADMIN_STEP_UP_MINUTES`: privileged session lifetime and fresh-MFA window.
+```text
+ADMIN_SECURITY_KEY=<strong dedicated secret>
+ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary bootstrap allow-list>
+ADMIN_REQUIRE_MFA=true
+ADMIN_SESSION_TTL_MINUTES=...
+ADMIN_IDLE_TIMEOUT_MINUTES=...
+ADMIN_STEP_UP_MINUTES=...
+```
 
-### Signed internal admin API
+Signed internal admin API:
 
-- `INTERNAL_ADMIN_HMAC_SECRET`: random secret at least 32 characters long.
-- `INTERNAL_ADMIN_NETWORK_ALLOWLIST`: comma-separated trusted IPv4/IPv6 CIDRs. Production must never use a public catch-all CIDR.
-- `INTERNAL_ADMIN_TIMESTAMP_SKEW_SECONDS`: accepted request clock skew; default `300`.
+```text
+INTERNAL_ADMIN_HMAC_SECRET=<32+ char random secret>
+INTERNAL_ADMIN_NETWORK_ALLOWLIST=<private trusted CIDRs>
+INTERNAL_ADMIN_TIMESTAMP_SKEW_SECONDS=300
+```
 
-The internal signature is lowercase hex HMAC-SHA256 with this exact byte payload:
+Do not expose `/internal/admin/*` on public Mini App ingress. CIDR validation is defense in depth, not a replacement for a private route/VPN/service mesh.
+
+The exact HMAC payload remains:
 
 ```text
 <unix_timestamp>\n
@@ -27,117 +37,125 @@ The internal signature is lowercase hex HMAC-SHA256 with this exact byte payload
 <exact raw body bytes>
 ```
 
-Required signed-request headers:
+Writes use idempotency and, where policy requires, explicit confirmation and fresh step-up evidence.
 
-- `X-Admin-Timestamp`
-- `X-Request-Id`
-- `X-Admin-Signature` (`<hex>` or `sha256=<hex>`)
-- `X-Admin-User-Id` for authenticated admin routes; accepts the admin account UUID or its user UUID.
+## Deployment order
 
-Every internal write also requires:
+1. Back up PostgreSQL and record the current deploy SHA.
+2. Deploy application images/code.
+3. Run `alembic upgrade head`.
+4. Verify admin secrets/private ingress and worker environment.
+5. Start/restart API, bot and required workers.
+6. Verify `/admin-app/` login, MFA and effective permissions.
+7. Run signed internal API smoke checks if that surface is enabled.
+8. Run pricing smoke checks below before allowing tariff changes.
+9. Run customer quote/create smoke checks after any price/config release.
 
-- `Idempotency-Key`
-- `X-Admin-Confirm: confirmed` for actions whose policy requires manual confirmation
-- `X-Admin-Step-Up: confirmed` only for trusted server-to-server callers after their own fresh-MFA/step-up control has been satisfied
+## Admin authentication smoke checks
 
-Do not expose `/internal/admin/*` through the public Telegram/Mini App ingress. Route it only through a private listener, private reverse-proxy location, VPN, service mesh, or equivalent network boundary. Application CIDR checking is defense in depth, not a substitute for ingress isolation.
+- regular user cannot enter the admin panel;
+- revoked admin cannot continue an existing privileged state;
+- admin bearer token is memory-only in the browser;
+- MFA enrollment/recovery code handling works;
+- high-impact actions require fresh step-up and a separate final execute/publish action;
+- permission-hidden buttons are not treated as authorization; backend rejection remains authoritative;
+- session mutation requires the mutation permission (for privileged session revocation: `sessions.manage`).
 
-### Durable operator workers
+## Generation pricing operations
 
-Support replies and broadcast campaigns require `BOT_TOKEN` plus:
+The current pricing contour is versioned and server-authoritative. The active customer price may come from catalog defaults plus an authorized published `generation_pricing` override.
 
-- `SUPPORT_OUTBOX_WORKER_POLL_SECONDS`
-- `SUPPORT_OUTBOX_LEASE_SECONDS`
-- `SUPPORT_OUTBOX_MAX_ATTEMPTS`
-- `SUPPORT_OUTBOX_BATCH_SIZE`
-- `CAMPAIGN_WORKER_POLL_SECONDS`
-- `CAMPAIGN_DELIVERY_LEASE_SECONDS`
-- `CAMPAIGN_DELIVERY_MAX_ATTEMPTS`
-- `CAMPAIGN_DELIVERY_BATCH_SIZE`
+### Before changing a price
 
-`docker-compose.notifications.yml` starts the existing notification worker plus `admin-support-worker` and `admin-campaign-worker`.
+1. Identify the concrete backend `model_id` from `/api/v1/generations/models`.
+2. Confirm its `price_mode` (`flat` or `per_second`).
+3. For tiered models, confirm the server-supported tier parameter/value set. Do not invent arbitrary tier dimensions in the admin payload.
+4. Record the currently published tariff/version and representative quotes for rollback evidence.
+5. Confirm the operator has `pricing.manage` and a fresh MFA step-up can be completed.
 
-## Rollout order
+### Publish procedure
 
-1. Back up PostgreSQL and verify the currently deployed application revision.
-2. Deploy code/images without routing operator traffic to the new internal API yet.
-3. Run `alembic upgrade head`. The admin contour migrations are additive and create command ledger, tariff/CMS/campaign/support-outbox, runtime/trend, and moderation tables.
-4. Configure `INTERNAL_ADMIN_HMAC_SECRET` and a narrow `INTERNAL_ADMIN_NETWORK_ALLOWLIST` on the API service and trusted internal caller.
-5. Start/restart the API and bot processes.
-6. Start `admin-support-worker` and `admin-campaign-worker` together with the existing notification worker.
-7. Enable the private reverse-proxy/service-mesh route for `/internal/admin/*`; keep the path absent from public ingress.
-8. Open `/admin-app/` from Telegram, verify MFA, then open `/admin-app/control.html` through the `Control` link.
-9. Run the smoke checks below before enabling real operator workflows.
+1. Create/edit the next tariff version in Admin Tariffs.
+2. Enter model overrides using public ROX units (`1 ROX = 1 RUB`).
+3. Preview/validate the change.
+4. Complete fresh MFA step-up.
+5. Explicitly confirm and publish.
+6. Confirm the version becomes the published tariff.
+7. Request a fresh generation quote for every changed model/tier.
+8. Run one controlled generation on a test wallet and confirm actual debit equals the quote.
+9. Inspect the audit record for actor, command/request ID and published version.
 
-## Smoke checks
+Published generation pricing becomes active in the current API runtime. The latest published tariff is persisted in PostgreSQL and restored when the application starts/restarts.
 
-### Database and process checks
+### Tiered pricing verification
 
-- `alembic current` reports the expected head.
-- API health remains healthy.
-- Support and campaign workers remain running and can acquire PostgreSQL leases.
-- No worker is crash-looping because `BOT_TOKEN` is absent.
+Current resolution-tier acceptance values:
 
-### Signed API
+```text
+Kling Motion 2.6: 720p 20 ROX/s, 1080p 30 ROX/s
+Kling Motion 3.0: 720p 60 ROX/s, 1080p 80 ROX/s
+```
 
-1. Sign an empty body for `GET /internal/admin/health` from an allowlisted address. Expect HTTP 200 and the same request ID.
-2. Change one byte of the body/signature payload. Expect HTTP 401.
-3. Use an expired timestamp. Expect HTTP 401.
-4. Send the same signed balance adjustment twice with the same `Idempotency-Key`. The second response must report replay and the wallet balance must change only once.
-5. Reuse the same idempotency key with a different payload/action. Expect a conflict, never another side effect.
+Quote both tiers explicitly. A base/default price alone is not sufficient evidence that parameter-aware pricing is working.
 
-### Telegram admin
+### Rollback a pricing mistake
 
-- A regular user sending `/admin` cannot enter the panel.
-- A user whose admin account is revoked while an FSM is active cannot continue the state or callback flow.
-- Admin user lookup works by Telegram ID and internal UUID.
-- Balance and destructive actions show preview/confirmation before execution.
-- `/admin_export` produces CSV/XLSX without provider secrets or withdrawal requisites.
-- Broadcast preview shows the recipient count; starting the broadcast creates durable deliveries instead of sending every message in the callback handler.
+Do not edit/delete historical tariff/audit rows. Publish a corrected version using the previous known-good values, then repeat quote/debit verification. If the runtime is unhealthy, disable operator pricing changes, restore the last known-good application revision and verify the persisted published tariff is loaded on startup.
 
-### Browser control
+### Current approved baseline
 
-- `/admin-app/control.html` requires Telegram initData and an active server-confirmed admin session/MFA.
-- Browser storage does not contain the admin bearer token; it is memory-only.
-- A forged request from a regular user is rejected by backend dependencies even if UI controls are manually exposed in devtools.
-- Sensitive balance/payment/operation/withdrawal/campaign actions require fresh MFA step-up.
-- CMS publishing creates a new version/published state rather than editing published content in place.
-- Feed moderation persists explicit `visible` / `blurred` / `removed` state and moderator metadata.
+```text
+Nano Banana PRO            25 ROX
+WAN 2.7 photo              20 ROX
+GPT Image 2                20 ROX
+Nano Banana 2              25 ROX
+Nano Banana 2 Lite         25 ROX
+Seedream 4.5               20 ROX
+Seedream 5 Pro             20 ROX
+Seedance 2.0               40 ROX/s
+Seedance 2.5               60 ROX/s
+Kling 3.0                  30 ROX/s
+Veo 3.1                    35 ROX/s
+Grok                        15 ROX/s
+Grok Imagine 1.5           30 ROX/s
+Gemini Omni                from 30 ROX/s
+Kling Motion 2.6 720p      20 ROX/s
+Kling Motion 2.6 1080p     30 ROX/s
+Kling Motion 3.0 720p      60 ROX/s
+Kling Motion 3.0 1080p     80 ROX/s
+```
 
-### Durable support and campaigns
+The published live tariff overrides this baseline when intentionally changed.
 
-1. Reply to a support ticket. The HTTP/Telegram transaction must create `support_messages` + `support_outbox`; delivery is performed by the worker.
-2. Temporarily stop the support worker, queue a reply, restart it, and verify eventual delivery.
-3. Start a campaign twice with the same idempotency key. Recipient rows must be materialized only once.
-4. Stop/restart the campaign worker mid-delivery and verify leased rows recover after lease expiration without duplicate `(campaign_id, user_id)` rows.
-5. Users with marketing notifications disabled are suppressed by the campaign worker.
+## Signed API smoke checks
 
-## Pricing rollout
+- valid allowlisted signed `GET /internal/admin/health` succeeds;
+- changed body/signature or stale timestamp fails;
+- same idempotency key + same mutation replays without a duplicate side effect;
+- same key + different mutation conflicts.
 
-Tariffs are immutable version records. Publishing supersedes the previous published version. `runtime/reload` reads the latest published tariff and applies generation price overrides to the current API process.
+## Durable support/campaign operations
 
-For multi-process or multi-host deployments, perform runtime reload/restart consistently on every API/bot process that calculates prices. Do not assume one process mutation changes another process's in-memory settings.
+Support and campaign workers own eventual Telegram delivery. Verify lease recovery by queueing work with a worker stopped, restarting it and confirming eventual delivery. Campaign recipient materialization must remain idempotent and users with marketing notifications disabled must be suppressed.
 
-## Audit and incident handling
+## Audit / incident response
 
-- Treat `admin_commands` as append-only application evidence. Do not delete rows during normal operations.
-- Use `request_id`, `idempotency_key`, admin account ID, action, and target ID to correlate a privileged command.
-- Stored command request/response representations recursively redact `token`, `secret`, `password`, `authorization`, `api_key`, `webhook`, `callback`, access/refresh tokens, and cookies.
-- Rotate `INTERNAL_ADMIN_HMAC_SECRET` immediately if it may have leaked, update trusted callers atomically, and keep the private route disabled until both sides agree on the new key.
-- Revoke an admin session/account through the existing security console if an operator identity is compromised.
+- treat admin command/audit data as append-only evidence;
+- correlate by request ID, idempotency key, actor, action and target;
+- sensitive request/response representations remain redacted;
+- rotate internal HMAC secrets and disable the private ingress immediately if compromised;
+- revoke compromised admin sessions/accounts through the security contour;
+- for pricing incidents, record affected model IDs, published tariff version, first/last affected generation and quote/debit evidence.
 
-## Rollback
+## Application rollback
 
-The safest application rollback is code-first, schema-last:
+1. Disable new privileged actions/private admin ingress as needed.
+2. Stop incompatible operator workers when rolling back across worker schema changes.
+3. Roll application image back to a known-good revision.
+4. Keep additive admin tables/migrations in place unless a tested DB rollback is required; preserving audit/idempotency/outbox evidence is safer.
+5. Never run Alembic downgrade while newer workers/code are still active.
+6. Verify wallet/payment invariants, admin auth and generation quote/debit before reopening operations.
 
-1. Disable new operator actions and remove the private `/internal/admin/*` ingress route.
-2. Stop `admin-support-worker` and `admin-campaign-worker` if rolling back to a revision that does not understand their tables.
-3. Roll the API/bot image back to the previous known-good revision.
-4. Leave additive admin tables/migrations in place unless a tested database rollback is explicitly required. Old code ignores the additional tables and keeping them preserves audit/idempotency/outbox evidence.
-5. Do not run Alembic downgrade while support/campaign workers or new application code are still active.
-6. If a downgrade is unavoidable, export `admin_commands`, pending `support_outbox`, campaign/delivery records, tariff versions, CMS versions, and moderation state first. A schema downgrade can destroy evidence or pending durable work.
-7. After rollback, run legacy API/bot smoke tests and verify wallet/payment invariants before reopening operator access.
+## Ownership rule
 
-## Operational ownership
-
-The authoritative write path is the shared admin service layer. Telegram, signed internal HTTP, and the shared browser control are transport adapters. New privileged mutations must be added to the domain service + policy + ledger/audit layer first; adding a write only to a handler or JavaScript control is not an acceptable production change.
+The shared backend admin service/policy/audit layer is the authoritative mutation path. Telegram handlers, signed internal HTTP and browser controls are adapters. New privileged writes — including pricing writes — must be implemented in the domain/policy layer first, never only in JavaScript or a transport handler.

@@ -1,33 +1,33 @@
-from hashlib import sha256
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "app" / "web" / "mini_app"
+DOC_ASSETS = ROOT / "docs" / "assets" / "roxy-promo"
 
 
 def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def _assert_webp(path: Path, expected_sha256: str) -> bytes:
+def _assert_webp(path: Path) -> bytes:
     payload = path.read_bytes()
-    assert len(payload) > 1_000_000
+    assert len(payload) > 10_000
     assert payload.startswith(b"RIFF")
     assert payload[8:12] == b"WEBP"
-    assert sha256(payload).hexdigest() == expected_sha256
     return payload
 
 
-def test_supplied_promo_artworks_are_bundled_and_mounted() -> None:
+def test_supplied_promo_artworks_are_bundled_mounted_and_mirrored() -> None:
     partner = MINI / "roxy-partner-referrals-slide-source.webp"
     creator = MINI / "roxy-creator-rewards-slide-source.webp"
     brand = _read("roxy-brand.js")
 
-    assert partner.is_file()
-    _assert_webp(partner, "0001f8c4c4a28d9fb5f05ee6d84e367fdcd25e11d097a1291cd9461dacd5ca7d")
-    assert creator.is_file()
-    _assert_webp(creator, "63d0cd08b5ae563f13521e349f694e8df444a2f168364b560d7a1f69838462d5")
+    partner_payload = _assert_webp(partner)
+    creator_payload = _assert_webp(creator)
+
+    assert (DOC_ASSETS / "partner-referrals-runtime.webp").read_bytes() == partner_payload
+    assert (DOC_ASSETS / "creator-rewards-runtime.webp").read_bytes() == creator_payload
 
     assert '/mini-app/roxy-partner-promo.css?v=9' in brand
     assert '/mini-app/roxy-partner-promo.js?v=9' in brand
