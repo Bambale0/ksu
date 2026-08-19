@@ -21,7 +21,8 @@
     modelById: new Map(),
     loaded: false,
     scheduled: false,
-    observer: null,
+    formObserver: null,
+    builderObserver: null,
   };
 
   function apiHeaders() {
@@ -219,6 +220,23 @@
     });
   }
 
+  function appendUploadAction(actions, target, field, model, usedLabels) {
+    const label = semanticLabel(field, model.media_type);
+    if (usedLabels.has(label)) return;
+    usedLabels.add(label);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "roxy-reference-upload-button";
+    const plus = document.createElement("span");
+    plus.setAttribute("aria-hidden", "true");
+    plus.textContent = "＋";
+    const copy = document.createElement("strong");
+    copy.textContent = label;
+    button.append(plus, copy);
+    button.addEventListener("click", () => void openPicker(target, field));
+    actions.appendChild(button);
+  }
+
   function render() {
     state.scheduled = false;
     const builder = document.getElementById("builderView");
@@ -269,17 +287,7 @@
     const actions = document.createElement("div");
     actions.className = "roxy-reference-upload-actions";
     const usedLabels = new Set();
-    for (const field of fields) {
-      const label = semanticLabel(field, model.media_type);
-      if (usedLabels.has(label)) continue;
-      usedLabels.add(label);
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "roxy-reference-upload-button";
-      button.innerHTML = `<span aria-hidden="true">＋</span><strong>${label}</strong>`;
-      button.addEventListener("click", () => void openPicker(target, field));
-      actions.appendChild(button);
-    }
+    for (const field of fields) appendUploadAction(actions, target, field, model, usedLabels);
     panel.appendChild(actions);
 
     const count = readReferenceCount(target);
@@ -298,10 +306,17 @@
     window.requestAnimationFrame(render);
   }
 
-  function installObserver() {
-    if (state.observer || !document.body) return;
-    state.observer = new MutationObserver(schedule);
-    state.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class"] });
+  function installObservers() {
+    const builder = document.getElementById("builderView");
+    const form = document.getElementById("dynamicForm");
+    if (form && !state.formObserver) {
+      state.formObserver = new MutationObserver(schedule);
+      state.formObserver.observe(form, { childList: true, subtree: true });
+    }
+    if (builder && !state.builderObserver) {
+      state.builderObserver = new MutationObserver(schedule);
+      state.builderObserver.observe(builder, { attributes: true, attributeFilter: ["hidden"] });
+    }
     document.getElementById("modelSelect")?.addEventListener("change", schedule);
     window.addEventListener("roxy:route-changed", schedule);
     window.addEventListener("roxy:shell-route-changed", schedule);
@@ -314,7 +329,7 @@
     } catch (_error) {
       return;
     }
-    installObserver();
+    installObservers();
     schedule();
   }
 
