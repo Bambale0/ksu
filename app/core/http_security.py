@@ -25,7 +25,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["X-Frame-Options"] = "DENY"
 
-        if request.url.path.startswith("/api/v1/admin"):
+        path = request.url.path
+        if path == "/mini-app" or path.startswith("/mini-app/"):
+            # Telegram WebView can retain HTML/JS/CSS aggressively between launches.
+            # Mini App assets are small and release-sensitive, so freshness wins over
+            # browser caching here. Provider/generated media is served elsewhere.
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+
+        if path.startswith("/api/v1/admin"):
             response.headers["Cache-Control"] = "no-store, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
