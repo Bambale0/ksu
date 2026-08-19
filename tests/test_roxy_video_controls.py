@@ -50,7 +50,7 @@ def test_video_controls_expose_documented_structured_modes() -> None:
         '"reference_video"',
         '"character_ids"',
         '"audio_ids"',
-        '"video_list"',
+        "data.video_list",
         'payload.parameters.mode = "normal"',
         'payload.parameters.audio_setting = "auto"',
         'payload.parameters.extend_at',
