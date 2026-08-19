@@ -34,6 +34,10 @@
   object-fit: cover;
   object-position: center;
   border-radius: inherit;
+  filter: none !important;
+  transform: none !important;
+  image-rendering: auto;
+  backface-visibility: hidden;
   user-select: none;
   -webkit-user-drag: none;
 }
