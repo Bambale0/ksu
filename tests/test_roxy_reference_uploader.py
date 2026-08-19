@@ -35,6 +35,7 @@ def test_reference_uploader_exposes_photo_and_video_reference_actions() -> None:
         'input[type="file"]',
         'input.click()',
         'select.dispatchEvent(new Event("change", { bubbles: true }))',
+        "copyCompatibleDraft",
     ):
         assert token in script
 
@@ -59,7 +60,9 @@ def test_reference_uploader_keeps_native_reference_controls_visible() -> None:
 def test_existing_uploader_still_owns_real_kie_upload_and_reference_drafts() -> None:
     app = _read("app.js")
     assert '/api/v1/uploads/kie' in app
-    assert 'input.type = "file"' in app
-    assert 'input.multiple = field.control === "files"' in app
-    assert 'field.accept' in app
+    assert 'fileInput.type = "file"' in app
+    assert 'fileInput.multiple = field.control === "files"' in app
+    assert 'fileInput.accept = field.accept' in app
+    assert 'fileInput.addEventListener("change", async () =>' in app
+    assert 'await uploadLocalFile(field, file)' in app
     assert 'draft.values[field.name]' in app
