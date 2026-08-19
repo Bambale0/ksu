@@ -1,6 +1,6 @@
 import logging
 import uuid
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from redis.asyncio import Redis
@@ -80,6 +80,40 @@ class GenerationService:
         elif "first_frame" in fields:
             parameters["first_frame"] = input_url
 
+    @staticmethod
+    def _effective_unit_price(
+        *,
+        model_id: str,
+        parameters: dict[str, Any],
+    ) -> Decimal:
+        """Resolve public ROX price, including quality-sensitive tariff tiers.
+
+        GENERATION_PRICING_JSON is operator-owned public ROX. Older catalog defaults
+        remain legacy 10-RUB credits for models that have no explicit ROXY tariff.
+        """
+
+        overrides = ModelCatalog._pricing_overrides()
+        override = overrides.get(model_id)
+        if isinstance(override, dict):
+            for tier_key, parameter_key in (
+                ("by_mode", "mode"),
+                ("by_resolution", "resolution"),
+            ):
+                tiers = override.get(tier_key)
+                selected = str(parameters.get(parameter_key) or "")
+                if isinstance(tiers, dict) and selected in tiers:
+                    value = Decimal(str(tiers[selected]))
+                    if value <= 0:
+                        raise ValueError(f"Model tariff {model_id}.{tier_key}.{selected} must be positive")
+                    return value
+
+        value = ModelCatalog.unit_price(model_id)
+        if model_id not in overrides:
+            value = InternalCreditService.legacy_credits_to_rox(value)
+        if value <= 0:
+            raise ValueError(f"Model tariff {model_id} must be positive")
+        return value
+
     @classmethod
     async def prepare_request(
         cls,
@@ -102,21 +136,16 @@ class GenerationService:
             parameters=merged,
             billing_seconds=billing_seconds,
         )
-        spec, clean, cost_rox, seconds, unit_price = ModelCatalog.prepare(
+        spec, clean, _catalog_cost, seconds, _catalog_unit_price = ModelCatalog.prepare(
             model_id,
             merged,
             billing_seconds=resolved_seconds,
         )
-
-        # Built-in catalog prices were authored when one internal credit represented
-        # 10 RUB. ROXY is 1 RUB, so redenominate only built-in defaults. Explicit
-        # GENERATION_PRICING_JSON overrides are already operator-owned public ROX.
-        if model_id not in ModelCatalog._pricing_overrides():
-            unit_price = InternalCreditService.legacy_credits_to_rox(unit_price)
-            multiplier = Decimal(seconds) if seconds is not None else Decimal("1")
-            cost_rox = (unit_price * multiplier).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+        unit_price = cls._effective_unit_price(model_id=model_id, parameters=clean)
+        multiplier = Decimal(seconds) if spec.price_mode == "per_second" and seconds is not None else Decimal("1")
+        cost_rox = (unit_price * multiplier).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
         return spec, clean, cost_rox, seconds, unit_price
 
     @classmethod
