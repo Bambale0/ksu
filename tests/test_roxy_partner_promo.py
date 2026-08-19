@@ -37,7 +37,7 @@ def test_home_promo_carousel_is_replaced_with_only_supplied_slides() -> None:
     assert 'id: "creator-rewards"' in script
     assert 'image: "/mini-app/roxy-creator-rewards-slide.webp?v=5"' in script
     assert 'viewport.replaceChildren(...SLIDES.map(buildCard))' in script
-    assert 'data-roxy-fixed-promo' in script
+    assert 'card.dataset.roxyFixedPromo = slide.id' in script
     assert 'observer.observe(viewport, { childList: true })' in script
     assert 'console.error("[ROXY] Promo artwork failed to load"' in script
     assert 'card.classList.add("is-broken")' in script
