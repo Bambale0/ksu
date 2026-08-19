@@ -45,7 +45,7 @@ def app_launcher_menu(
     if not settings.public_base_url:
         return InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="ROXY Mini App недоступна", callback_data="app:unavailable")]
+                [InlineKeyboardButton(text="🚀 Открыть ROXY", callback_data="app:unavailable")]
             ]
         )
     return InlineKeyboardMarkup(
