@@ -1,145 +1,129 @@
 # Visual admin operations console
 
+**Status:** synchronized with shipped runtime on 2026-08-20.
+
 The privileged operator UI is a separate Telegram Mini App mounted at:
 
 ```text
 /admin-app/
 ```
 
-It deliberately does not share the user Mini App navigation or authentication state.
+It does not share the customer Mini App navigation or authorization state.
 
-## Launch
+## Launch and authentication
 
-Active administrators may use the bot command:
+Active administrators may use `/admin`. The returned WebApp button is only a launcher; authorization still requires signed Telegram `initData`, a server-created admin session and the backend MFA policy.
 
-```text
-/admin
-```
-
-The bot only returns a WebApp button to `/admin-app/`. The button is **not** an authorization mechanism. The page still requires signed Telegram `initData`, a separate server-created admin session and the backend MFA policy.
-
-Deployment requirements remain the existing admin configuration:
+Production security settings include:
 
 ```text
-PUBLIC_BASE_URL=https://...
 ADMIN_SECURITY_KEY=<dedicated random secret>
-ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary comma separated bootstrap allow-list>
+ADMIN_BOOTSTRAP_TELEGRAM_IDS=<temporary bootstrap allow-list>
 ADMIN_REQUIRE_MFA=true
 ```
 
-The first allow-listed owner is bootstrapped by the existing `/api/v1/admin/auth/login` flow. There is no second bootstrap database path in the console.
+Admin auth surfaces include login, MFA setup/confirm, step-up, current-session inspection and logout. The browser admin token is held only in the JavaScript runtime state and is not persisted to localStorage, sessionStorage, IndexedDB or client-created cookies.
 
-## Authentication and browser secret boundary
+## Permission-driven operations
 
-The console uses the existing endpoints:
+The console renders capabilities from the server-confirmed admin identity. UI visibility never replaces backend RBAC. Current operational domains include:
+
+- Dashboard;
+- Users and wallet adjustments;
+- Generations and provider reconciliation;
+- Payments/refunds;
+- Support;
+- Partner withdrawals;
+- Promo codes;
+- Referral rewards;
+- Tariffs/pricing;
+- Security/audit;
+- Administrators and sessions.
+
+PII masking/elevation remains server-owned.
+
+## Sensitive-action step-up
+
+High-impact actions use the existing two-stage pattern:
+
+1. choose/preview the operation;
+2. perform fresh MFA step-up;
+3. UI marks the step-up satisfied but does not mutate yet;
+4. operator explicitly executes/confirm-publishes;
+5. backend rechecks permission, confirmation and step-up before mutation.
+
+This pattern applies to money/security-sensitive operations and generation tariff publishing.
+
+## Generation pricing / Admin Tariffs
+
+The Tariffs contour can publish `generation_pricing` overrides for the generation catalog.
+
+### Runtime contract
+
+- model IDs must exist in the backend generation catalog;
+- override shape must match the model price mode (`flat` or `per_second`);
+- parameter-tier overrides are accepted only for model parameters supported by the server pricing resolver;
+- currently used tiered pricing includes Kling Motion resolution tiers;
+- publish requires `pricing.manage` plus explicit confirmation and fresh MFA step-up;
+- after publish, the current API runtime uses the new generation prices immediately;
+- the latest published generation tariff is persisted and restored from PostgreSQL when the application starts/restarts;
+- `POST /api/v1/generations/quote` and the actual wallet debit use the same resolver, so an admin price cannot be display-only.
+
+### Current public baseline
 
 ```text
-POST /api/v1/admin/auth/login
-POST /api/v1/admin/auth/mfa/setup
-POST /api/v1/admin/auth/mfa/confirm
-POST /api/v1/admin/auth/step-up
-GET  /api/v1/admin/auth/me
-POST /api/v1/admin/auth/logout
+Nano Banana PRO            25 ROX
+WAN 2.7 photo              20 ROX
+GPT Image 2                20 ROX
+Nano Banana 2              25 ROX
+Nano Banana 2 Lite         25 ROX
+Seedream 4.5               20 ROX
+Seedream 5 Pro             20 ROX
+Seedance 2.0               40 ROX/s
+Seedance 2.5               60 ROX/s
+Kling 3.0                  30 ROX/s
+Veo 3.1                    35 ROX/s
+Grok                        15 ROX/s
+Grok Imagine 1.5           30 ROX/s
+Gemini Omni                from 30 ROX/s
+Kling Motion 2.6 720p      20 ROX/s
+Kling Motion 2.6 1080p     30 ROX/s
+Kling Motion 3.0 720p      60 ROX/s
+Kling Motion 3.0 1080p     80 ROX/s
 ```
 
-Telegram raw signed `Telegram.WebApp.initData` is sent only where the backend admin-auth contract requires it.
+The live published tariff and runtime `/generations/models`/quote output override this documentation if they differ.
 
-The returned admin bearer token exists only in the JavaScript runtime variable `state.token`. It is never written to:
+### Operator verification after a pricing publish
 
-- `localStorage`;
-- `sessionStorage`;
-- IndexedDB;
-- cookies created by the client.
+1. Reload/read the published tariff version in Admin Tariffs.
+2. Query `/api/v1/generations/models` and confirm the affected public price metadata.
+3. Request quotes for each changed model and, for tiered models, each changed tier (e.g. 720p and 1080p).
+4. Run a controlled generation on a test wallet and verify debit equals the quote.
+5. Restart a non-production/staging API process or perform the release restart procedure and verify the same published price is restored.
+6. Check the admin audit trail for actor, request/command ID and tariff version.
 
-Closing/reloading the page therefore requires a fresh admin login. Recovery codes returned after MFA enrollment are rendered once and removed from the DOM when the administrator confirms they have saved them.
+Rollback is performed by publishing a corrected/previous-value tariff version rather than editing historical audit records.
 
-All API-provided prompt/support/audit/user strings are rendered with DOM `textContent`/text nodes. The SPA does not use `innerHTML`, `eval`, or dynamic Function construction.
+## Separate static boundary
 
-## Step-up safety
-
-Sensitive backend operations continue to rely on backend RBAC and MFA step-up. The UI does not assume that a visible button grants permission.
-
-For operations such as wallet adjustment, refunds, partner-withdrawal processing and administrator access changes, the console uses a two-stage interaction:
-
-1. administrator explicitly chooses the business action;
-2. step-up dialog verifies fresh OTP/recovery code;
-3. the UI shows that MFA is confirmed but **does not execute the mutation yet**;
-4. administrator explicitly clicks `Выполнить действие`;
-5. only then is the original mutation sent.
-
-This prevents submitting a high-impact business operation merely by entering an MFA code.
-
-## Permission-driven navigation
-
-The console loads effective permissions from:
+FastAPI serves:
 
 ```text
-GET /api/v1/admin/auth/me
-```
-
-Navigation and action buttons are filtered from that server response. The backend remains authoritative and independently re-checks every endpoint.
-
-Current operational views map to existing backend domains:
-
-- Dashboard — users, jobs, support, withdrawals, payment metrics;
-- Users — search, safe/PII-aware detail, unified activity history, active status, internal notes, wallet adjustments;
-- Generations — filters and Kie reconciliation;
-- Payments — filters, provider reconciliation and refund requests;
-- Support — queue, thread, reply and status changes;
-- Partner withdrawals — queue and allowed transitions;
-- Promo codes — list/create/update activation state;
-- Referral rewards — partner/source/line/status inspection;
-- Security / Audit — security KPIs, admin sessions and tamper-evident audit records;
-- Administrators — roles, MFA state, activation/access changes;
-- My sessions — current administrator session inspection/revocation.
-
-PII elevation is never implemented client-side. If the backend masks a Telegram ID or other field because the current account lacks `users.pii`, the console displays that masked value unchanged.
-
-## Session revocation RBAC correction
-
-During the visual-console audit, the pre-existing endpoint:
-
-```text
-DELETE /api/v1/admin/security/sessions/{session_id}
-```
-
-was found to use the `security.read` dependency even though it mutates another administrator's session. That allowed read-only security roles such as auditors to revoke sessions.
-
-The endpoint now requires:
-
-```text
-sessions.manage
-```
-
-while security session listing remains protected by `security.read`. The existing audit record for session revocation remains authoritative.
-
-## Static application boundary
-
-FastAPI serves the privileged UI separately from the user product:
-
-```text
-/mini-app/   user Mini App
+/mini-app/   customer ROXY application
 /admin-app/  privileged operations console
 ```
 
-Files:
+Admin application files live under `app/web/admin_app/`.
 
-```text
-app/web/admin_app/index.html
-app/web/admin_app/admin.css
-app/web/admin_app/admin.js
-```
+## Security notes
 
-The UI is responsive down to mobile Telegram WebView size, but desktop/tablet remains the primary operations layout.
+- Do not persist bearer tokens in browser storage.
+- Do not render untrusted API data through HTML injection primitives.
+- Do not infer permission from a visible button.
+- Session revocation of privileged sessions requires `sessions.manage`; read-only security access must not imply mutation rights.
+- Pricing values are money-adjacent configuration and must go through the same audit/confirmation/step-up discipline as other high-impact operator changes.
 
 ## CI contract
 
-The normal repository CI still executes the full PostgreSQL/Alembic/Python regression suite, including `tests/test_admin_console.py`.
-
-A dedicated lightweight workflow additionally runs:
-
-```text
-node --check app/web/admin_app/admin.js
-```
-
-Static regression tests assert the most important privilege boundaries: in-memory token only, signed Telegram login, no HTML injection primitive, permission-driven navigation, separate explicit step-up execute action, correct session response shape and `sessions.manage` for privileged session revocation.
+CI syntax-checks the admin JavaScript and executes admin security/console regressions. Generation pricing regressions additionally verify default pricing, admin overrides, quality tiers, quote/debit parity and restart restoration of the latest published tariff.
