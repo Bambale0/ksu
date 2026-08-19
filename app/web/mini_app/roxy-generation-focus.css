@@ -1,0 +1,160 @@
+body.roxy-focused-model-pending #createHome,
+body.roxy-focused-model-flow #createHome {
+  display: none !important;
+}
+
+body.roxy-focused-model-flow #builderView {
+  display: block !important;
+}
+
+body.roxy-focused-model-flow #builderView > .view-heading {
+  display: none !important;
+}
+
+body.roxy-focused-model-flow #builderView .model-card > .section-heading,
+body.roxy-focused-model-flow #builderView .model-card > .family-tabs,
+body.roxy-focused-model-flow #builderView .model-card > .field-label,
+body.roxy-focused-model-flow #builderView .model-card > #modelSelect,
+body.roxy-focused-model-flow #builderView .model-card > #modelMeta {
+  display: none !important;
+}
+
+.roxy-focused-model-header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 2px 0 6px;
+}
+
+.roxy-focused-model-copy {
+  min-width: 0;
+}
+
+.roxy-focused-model-copy h2 {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: clamp(20px, 4vw, 28px);
+  line-height: 1.08;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roxy-focused-model-modes {
+  display: flex;
+  max-width: 280px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.roxy-focused-model-modes span {
+  padding: 5px 8px;
+  border: 1px solid rgba(155, 92, 255, .22);
+  border-radius: 999px;
+  background: rgba(155, 92, 255, .08);
+  color: #c7b6ff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.roxy-smart-source {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(155, 92, 255, .18);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 95% 0%, rgba(255, 95, 183, .08), transparent 34%),
+    rgba(255, 255, 255, .025);
+}
+
+.roxy-smart-source[hidden] {
+  display: none !important;
+}
+
+.roxy-smart-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roxy-smart-source-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.roxy-smart-source-head strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.roxy-smart-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.roxy-smart-source-button,
+.roxy-smart-source-remove {
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid rgba(155, 92, 255, .28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(155, 92, 255, .18), rgba(255, 95, 183, .08));
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.roxy-smart-source-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.roxy-smart-source-remove {
+  min-height: 30px;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, .035);
+  color: #c9c9d3;
+}
+
+.roxy-smart-source-status {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #a6a6b3;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.roxy-smart-source-status.is-error {
+  color: #ff9bbb;
+}
+
+body.roxy-focused-model-flow #dynamicForm .roxy-native-source-hidden {
+  display: none !important;
+}
+
+body.roxy-focused-model-flow .builder-layout {
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .roxy-focused-model-header {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .roxy-focused-model-modes {
+    grid-column: 2;
+    max-width: none;
+    justify-content: flex-start;
+  }
+}
