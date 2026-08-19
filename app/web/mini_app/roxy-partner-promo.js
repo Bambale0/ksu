@@ -4,7 +4,7 @@
   const SLIDES = [
     {
       id: "partner-referrals-35",
-      image: "/mini-app/roxy-partner-referrals-slide.jpg?v=7",
+      image: "/mini-app/roxy-partner-referrals-slide.webp?v=7",
       label: "ROXY · До 35% с пополнений рефералов",
       action: "partner",
     },
