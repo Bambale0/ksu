@@ -53,29 +53,31 @@ ROXY groups compatible backend variants into user-facing products where useful. 
 
 WAN 2.7 is exposed in both media families:
 
-- video: text/image/video-oriented WAN 2.7 variants;
+- video: text/image/video-oriented Wan 2.7 variants;
 - photo: `wan-2.7-image` / related image variants, backed by Kie `wan/2-7-image`.
 
 Model availability must be derived from the runtime catalog, not hardcoded as an entitlement in the UI.
 
-## `ui_schema`
+## `ui_schema` and schema state
 
-The backend schema can define:
+Each model contract carries a `schema_version`. The client stores non-secret convenience drafts in `localStorage`, keyed per model/schema context, and sanitizes stale fields against the latest schema before reusing them. A schema version change therefore invalidates assumptions from an older client draft instead of making stale fields provider input.
+
+The backend `ui_schema` can define:
 
 - groups and fields;
 - defaults;
 - summary fields;
 - model scenarios;
 - required/visible/clear fields for scenarios;
-- explicit billing seconds for models whose provider payload does not expose a normal duration field.
+- explicit `billing_seconds` for models whose provider payload does not expose a normal duration field.
 
-Supported generic controls include text, textarea, number, toggle, combobox, file, files and JSON controls. Critical provider constraints must also be validated server-side; hiding a field in the UI is not a security or billing boundary.
+Supported generic controls include text, textarea, number, toggle, combobox, file, files and JSON controls. Where a field contains suggestions, **suggestions are not strict enums** unless the backend validation contract explicitly says so. Critical provider constraints must also be validated server-side; hiding a field in the UI is not a security or billing boundary.
 
 Drafts are isolated per model and stored only as non-secret convenience state. Stale fields are sanitized against the latest model schema before use.
 
 ## Scenarios and media inputs
 
-Scenario-driven models clear incompatible state when switching modes. Current examples include Seedance frame/reference modes, WAN first/last frame or continuation modes, and Kling Motion image+motion-video input.
+Scenario-driven models clear incompatible state when switching modes. Current examples include Seedance frame/reference modes, Wan 2.7 first/last frame or continuation modes, and Kling Motion image+motion-video input.
 
 Uploads go through `/api/v1/uploads/kie`; the provider API key remains server-side. Generated result URLs are temporary provider ingest sources until product-owned media ingestion completes.
 
