@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -14,11 +16,16 @@ QUICK_MENU_TEXT = "🏠 Меню"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
-def _mini_app_url(route: str | None = None) -> str:
+def _mini_app_url(route: str | None = None, *, start_payload: str | None = None) -> str:
     base = f"{settings.public_base_url.rstrip('/')}/mini-app/"
-    if not route:
+    query: dict[str, str] = {}
+    if route:
+        query["route"] = route
+    if start_payload:
+        query["start_payload"] = start_payload
+    if not query:
         return base
-    return f"{base}?route={route}"
+    return f"{base}?{urlencode(query)}"
 
 
 def _batch_url() -> str:
@@ -27,6 +34,30 @@ def _batch_url() -> str:
 
 def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
+
+
+def app_launcher_menu(
+    *,
+    route: str = "home",
+    start_payload: str | None = None,
+) -> InlineKeyboardMarkup:
+    """The only customer-facing Telegram navigation: open the ROXY Mini App."""
+    if not settings.public_base_url:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="ROXY Mini App недоступна", callback_data="app:unavailable")]
+            ]
+        )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🚀 Открыть ROXY",
+                    web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
+                )
+            ]
+        ]
+    )
 
 
 def _route_button(
@@ -53,7 +84,11 @@ def _batch_button() -> InlineKeyboardButton:
 
 
 def quick_menu() -> ReplyKeyboardMarkup:
-    """Persistent two-button Telegram chrome requested for everyday navigation."""
+    """Legacy keyboard kept only for imports in retired text-bot handlers.
+
+    The production dispatcher no longer registers those handlers. New customer
+    navigation must use :func:`app_launcher_menu`.
+    """
     return ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -112,6 +147,7 @@ def prompt_tools_menu() -> InlineKeyboardMarkup:
 
 
 def onboarding_menu() -> InlineKeyboardMarkup:
+    """Legacy text-bot onboarding keyboard; app onboarding is authoritative."""
     rows: list[list[InlineKeyboardButton]] = []
     links: list[InlineKeyboardButton] = []
     if settings.onboarding_rules_url.startswith("https://"):
@@ -125,15 +161,5 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """Minimal Telegram launcher: all product navigation lives inside the Mini App."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                _route_button(
-                    text="🚀 Открыть ROXY",
-                    route="home",
-                    fallback_callback="nav:main",
-                )
-            ]
-        ]
-    )
+    """Compatibility alias for older imports; customer UX is Mini-App-only."""
+    return app_launcher_menu(route="home")
