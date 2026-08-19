@@ -152,10 +152,8 @@ jobs:
           [[ -n "${DEPLOY_KNOWN_HOSTS}" ]] || missing+=(DEPLOY_KNOWN_HOSTS)
 
           if (( ${#missing[@]} )); then
-            printf '::warning::Production deploy is not activated yet. Missing Actions secrets: %s\n' "${missing[*]}"
-            echo "configured=false" >> "${GITHUB_OUTPUT}"
-            echo "port=22" >> "${GITHUB_OUTPUT}"
-            exit 0
+            printf '::error::Production deploy is not configured. Missing Actions secrets: %s\n' "${missing[*]}"
+            exit 1
           fi
 
           port="${DEPLOY_PORT:-22}"
@@ -234,6 +232,8 @@ jobs:
           git reset --hard "${DEPLOY_SHA}"
           test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
+          printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
+
           docker compose config -q
           docker compose up -d postgres redis
 
@@ -281,7 +281,14 @@ jobs:
           curl -fsS http://127.0.0.1:8000/health/live >/dev/null
           curl -fsSI http://127.0.0.1:8000/mini-app/ >/dev/null
 
-          echo "Production is healthy on ${DEPLOY_SHA}."
+          expected_release="{\"sha\":\"${DEPLOY_SHA}\"}"
+          actual_release="$(curl -fsS http://127.0.0.1:8000/mini-app/release.json)"
+          if [[ "${actual_release}" != "${expected_release}" ]]; then
+            echo "Mini App release mismatch: expected ${expected_release}, got ${actual_release}" >&2
+            exit 1
+          fi
+
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}."
           docker compose ps
           trap - ERR
           REMOTE
@@ -300,5 +307,6 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
+            echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

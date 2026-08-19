@@ -58,11 +58,24 @@ def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> Non
         assert token in workflow
 
 
-def test_deploy_bootstrap_without_secrets_is_safe_and_documented() -> None:
+def test_deploy_without_secrets_fails_closed_and_is_documented() -> None:
     workflow = _workflow()
     documentation = DOC.read_text(encoding="utf-8")
-    assert "configured=false" in workflow
-    assert "Production deploy is not activated yet" in workflow
+
+    assert "configured=false" not in workflow
+    assert "Production deploy is not activated yet" not in workflow
+    assert "Production deploy is not configured. Missing Actions secrets" in workflow
+    assert "Missing required deployment secrets fails the workflow" in documentation
     assert "Required GitHub Actions secrets" in documentation
     assert "DEPLOY_KNOWN_HOSTS" in documentation
     assert "automatic database downgrade" in documentation
+
+
+def test_production_deploy_proves_the_exact_mini_app_release() -> None:
+    workflow = _workflow()
+
+    assert "app/web/mini_app/release.json" in workflow
+    assert "expected_release=" in workflow
+    assert "actual_release=" in workflow
+    assert "Mini App release mismatch" in workflow
+    assert "Production is healthy and Mini App serves" in workflow
