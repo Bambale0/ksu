@@ -246,24 +246,28 @@ def _normalize_kling_3(payload: dict[str, Any]) -> None:
             raise KieVideoContractError("Kling element accepts at most one audio reference")
         if not refs and not audio_refs:
             raise KieVideoContractError("Kling element requires image/video/audio references")
-        # The provider uses the same URL array for image and video references.
-        # Images require 2-4 URLs; videos accept exactly one URL. We cannot infer
-        # MIME type from an arbitrary URL, so the shape 1 or 2-4 is valid here.
-        if len(refs) not in {0, 1, 2, 3, 4}:
-            raise KieVideoContractError("Kling element accepts one video or 2-4 images")
-        if len(refs) == 1 and any(
-            key in element for key in ("start_time", "end_time")
-        ):
-            start = int(element.get("start_time") or 0)
-            end = int(element.get("end_time") or 0)
-            if start < 0 or end <= start or end - start > 8000:
+        if len(refs) > 4:
+            raise KieVideoContractError("Kling element accepts one timed video or 2-4 images")
+        if len(refs) == 1:
+            if not all(key in element for key in ("start_time", "end_time")):
+                raise KieVideoContractError(
+                    "Kling video element requires start_time and end_time"
+                )
+            try:
+                start = int(element.get("start_time") or 0)
+                end = int(element.get("end_time") or 0)
+            except (TypeError, ValueError) as exc:
+                raise KieVideoContractError(
+                    "Kling video element start/end must be milliseconds"
+                ) from exc
+            if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
                 raise KieVideoContractError(
                     "Kling video element effective segment must be within 3-8 seconds"
                 )
-            if end - start < 3000:
-                raise KieVideoContractError(
-                    "Kling video element effective segment must be within 3-8 seconds"
-                )
+            element["start_time"] = start
+            element["end_time"] = end
+        elif refs and not 2 <= len(refs) <= 4:
+            raise KieVideoContractError("Kling image element requires 2-4 reference images")
 
 
 def _normalize_motion(model: str, payload: dict[str, Any]) -> None:
