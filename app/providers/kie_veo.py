@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from app.providers.kie import KieProviderError, KieTask
+from app.services.kie_video_contracts import normalize_kie_veo_input
 
 
 class KieVeoClient:
@@ -33,16 +34,17 @@ class KieVeoClient:
         input_data: dict[str, Any],
         callback_url: str = "",
     ) -> str:
+        normalized = normalize_kie_veo_input(input_data)
         body: dict[str, Any] = {
-            "prompt": str(input_data.get("prompt") or ""),
-            "imageUrls": list(input_data.get("image_urls") or []),
-            "model": str(input_data.get("veo_model") or "veo3_fast"),
-            "aspect_ratio": str(input_data.get("aspect_ratio") or "16:9"),
-            "enableFallback": bool(input_data.get("enable_fallback", False)),
-            "enableTranslation": bool(input_data.get("enable_translation", True)),
-            "generationType": str(input_data.get("generation_type") or "TEXT_2_VIDEO"),
+            "prompt": str(normalized.get("prompt") or ""),
+            "imageUrls": list(normalized.get("image_urls") or []),
+            "model": str(normalized.get("veo_model") or "veo3_fast"),
+            "aspect_ratio": str(normalized.get("aspect_ratio") or "16:9"),
+            "enableFallback": bool(normalized.get("enable_fallback", False)),
+            "enableTranslation": bool(normalized.get("enable_translation", True)),
+            "generationType": str(normalized.get("generation_type") or "TEXT_2_VIDEO"),
         }
-        watermark = str(input_data.get("watermark_text") or "").strip()
+        watermark = str(normalized.get("watermark_text") or "").strip()
         if watermark:
             body["watermark"] = watermark
         if callback_url:

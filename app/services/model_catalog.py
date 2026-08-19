@@ -121,6 +121,11 @@ GEMINI_OMNI_FIELDS = (
 )
 
 
+def _looks_like_kling_video_url(value: Any) -> bool:
+    path = str(value or "").split("?", 1)[0].lower()
+    return path.endswith((".mp4", ".mov", ".qt", ".quicktime"))
+
+
 SPECS: tuple[ModelSpec, ...] = (
     # Nano Banana
     ModelSpec("nano-banana", "Nano Banana", "nanobanana", "google/nano-banana", "image", "text_to_image", ("prompt", "output_format", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("8")),
@@ -228,10 +233,17 @@ class ModelCatalog:
                 or clean.get("reference_video_urls")
                 or clean.get("reference_audio_urls")
             )
+            if clean.get("last_frame_url") and not clean.get("first_frame_url"):
+                raise InvalidModelParametersError("Seedance last frame requires a first frame")
             if frame_mode and reference_mode:
                 raise InvalidModelParametersError(
                     "Seedance frame mode and multimodal reference mode are mutually exclusive"
                 )
+
+        if spec.id == "seedance-1.5-pro":
+            images = clean.get("input_urls") or []
+            if not isinstance(images, list) or len(images) > 2:
+                raise InvalidModelParametersError("Seedance 1.5 Pro accepts at most two input images")
 
         if spec.operation == "motion_control":
             images = clean.get("input_urls") or []
@@ -241,27 +253,66 @@ class ModelCatalog:
             if not isinstance(videos, list) or len(videos) != 1:
                 raise InvalidModelParametersError("Kling Motion requires exactly one motion video")
 
-        if spec.id == "wan-2.7-i2v" and not (
-            clean.get("first_frame_url") or clean.get("first_clip_url")
-        ):
-            raise InvalidModelParametersError(
-                "Wan 2.7 image-to-video requires first_frame_url or first_clip_url"
-            )
+        if spec.id == "wan-2.7-i2v":
+            first = bool(clean.get("first_frame_url"))
+            last = bool(clean.get("last_frame_url"))
+            clip = bool(clean.get("first_clip_url"))
+            if not (first or clip):
+                raise InvalidModelParametersError(
+                    "Wan 2.7 image-to-video requires first_frame_url or first_clip_url"
+                )
+            if last and not first:
+                raise InvalidModelParametersError("Wan 2.7 last frame requires a first frame")
+            if clip and (first or last):
+                raise InvalidModelParametersError(
+                    "Wan 2.7 continuation cannot be combined with first/last frames"
+                )
 
         if spec.id == "kling-3.0":
             images = clean.get("image_urls") or []
             if not isinstance(images, list) or len(images) > 2:
                 raise InvalidModelParametersError("Kling 3.0 accepts at most two frame images")
+            if clean.get("multi_shots") and len(images) > 1:
+                raise InvalidModelParametersError(
+                    "Kling multi-shot supports only the first frame image"
+                )
             elements = clean.get("kling_elements") or []
             if not isinstance(elements, list) or len(elements) > 3:
                 raise InvalidModelParametersError("Kling 3.0 accepts at most three elements")
             for element in elements:
                 if not isinstance(element, dict):
                     raise InvalidModelParametersError("Kling elements must be objects")
+                if not str(element.get("name") or "").strip():
+                    raise InvalidModelParametersError("Every Kling element requires a name")
                 refs = element.get("element_input_urls") or []
-                if not isinstance(refs, list) or not 2 <= len(refs) <= 4:
+                audio_refs = element.get("element_input_audio_urls") or []
+                if not isinstance(refs, list) or not isinstance(audio_refs, list):
+                    raise InvalidModelParametersError("Kling element references must be arrays")
+                if len(refs) > 4 or len(audio_refs) > 1 or (not refs and not audio_refs):
                     raise InvalidModelParametersError(
-                        "Each Kling element requires two to four reference images"
+                        "Kling element requires one video, 2-4 images, or one audio reference"
+                    )
+                if len(refs) == 1:
+                    has_times = all(key in element for key in ("start_time", "end_time"))
+                    if not has_times and not _looks_like_kling_video_url(refs[0]):
+                        raise InvalidModelParametersError(
+                            "Kling single URL element must be an MP4/MOV video reference"
+                        )
+                    if has_times:
+                        try:
+                            start = int(element.get("start_time") or 0)
+                            end = int(element.get("end_time") or 0)
+                        except (TypeError, ValueError) as exc:
+                            raise InvalidModelParametersError(
+                                "Kling video element start/end must be milliseconds"
+                            ) from exc
+                        if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
+                            raise InvalidModelParametersError(
+                                "Kling video element segment must be 3-8 seconds"
+                            )
+                elif refs and not 2 <= len(refs) <= 4:
+                    raise InvalidModelParametersError(
+                        "Kling image element requires 2-4 reference images"
                     )
             if clean.get("multi_shots"):
                 shots = clean.get("multi_prompt") or []
@@ -291,9 +342,13 @@ class ModelCatalog:
             images = clean.get("image_urls") or []
             videos = clean.get("video_list") or []
             characters = clean.get("character_ids") or []
-            if not isinstance(images, list) or not isinstance(videos, list) or not isinstance(characters, list):
+            audio_ids = clean.get("audio_ids") or []
+            if not all(
+                isinstance(items, list)
+                for items in (images, videos, characters, audio_ids)
+            ):
                 raise InvalidModelParametersError(
-                    "Gemini Omni image_urls, video_list and character_ids must be arrays"
+                    "Gemini Omni media and ID collections must be arrays"
                 )
             if len(videos) > 1:
                 raise InvalidModelParametersError("Gemini Omni accepts at most one video")
@@ -301,6 +356,9 @@ class ModelCatalog:
                 raise InvalidModelParametersError("Gemini Omni accepts at most three character IDs")
             if len(images) + len(videos) * 2 + len(characters) > 7:
                 raise InvalidModelParametersError("Gemini Omni upload quota exceeds 7 units")
+            for video in videos:
+                if not isinstance(video, dict) or not str(video.get("url") or "").strip():
+                    raise InvalidModelParametersError("Gemini Omni video item requires a URL")
 
         if spec.id == "veo-3.1":
             images = clean.get("image_urls") or []
@@ -309,6 +367,9 @@ class ModelCatalog:
             veo_model = str(clean.get("veo_model") or "veo3_fast")
             if veo_model not in {"veo3", "veo3_fast", "veo3_lite", "veo3_fast_r2v", "veo3_r2v"}:
                 raise InvalidModelParametersError("Unsupported Veo 3.1 model variant")
+            aspect_ratio = str(clean.get("aspect_ratio") or "16:9")
+            if aspect_ratio not in {"auto", "16:9", "9:16"}:
+                raise InvalidModelParametersError("Unsupported Veo 3.1 aspect ratio")
             generation_type = str(clean.get("generation_type") or "TEXT_2_VIDEO")
             if generation_type not in {
                 "TEXT_2_VIDEO",
@@ -316,12 +377,17 @@ class ModelCatalog:
                 "REFERENCE_2_VIDEO",
             }:
                 raise InvalidModelParametersError("Unsupported Veo 3.1 generation type")
-            if generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and len(images) != 2:
+            if generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and not 1 <= len(images) <= 2:
                 raise InvalidModelParametersError(
-                    "Veo first/last-frame generation requires exactly two images"
+                    "Veo first/last-frame generation requires one or two images"
                 )
-            if generation_type == "REFERENCE_2_VIDEO" and not images:
-                raise InvalidModelParametersError("Veo reference generation requires image references")
+            if generation_type == "REFERENCE_2_VIDEO":
+                if not images:
+                    raise InvalidModelParametersError("Veo reference generation requires image references")
+                if veo_model not in {"veo3_fast", "veo3_lite", "veo3_fast_r2v", "veo3_r2v"}:
+                    raise InvalidModelParametersError(
+                        "Veo reference generation is available only on Fast/Lite variants"
+                    )
 
     @classmethod
     def prepare(
