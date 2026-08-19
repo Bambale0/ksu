@@ -63,7 +63,7 @@ def test_roxy_brand_runtime_keeps_telegram_chrome_and_dashboard_aligned() -> Non
         "hero.hidden = true",
         "arrangeHomeDashboard",
         "home.prepend(promo)",
-        "/mini-app/roxy-generation-flow.js?v=2",
+        "/mini-app/roxy-generation-flow-v3.js?v=1",
         "/mini-app/roxy-generation-focus.css?v=1",
         "/mini-app/roxy-home-density-v3.css",
         "/mini-app/roxy-icons.js",
