@@ -48,7 +48,7 @@
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
     mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
     mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
-    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=7", js: "/mini-app/roxy-partner-promo.js?v=7" });
+    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=8", js: "/mini-app/roxy-partner-promo.js?v=8" });
     mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
     mountLayer({ css: "/mini-app/roxy-header-logo.css?v=5" });
   }
