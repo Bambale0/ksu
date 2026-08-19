@@ -42,7 +42,7 @@ Public denomination:
 Generation billing is server-side:
 
 ```text
-flat image:      cost_rox = flat_price_rox
+flat image:       cost_rox = flat_price_rox
 per-second video: cost_rox = unit_price_rox × billing_seconds
 ```
 
@@ -98,7 +98,7 @@ Documentation mirrors are stored under `docs/assets/roxy-promo/`. The approved c
 
 - Kie Market unified task API + `recordInfo` reconciliation.
 - Kie callback HMAC verification.
-- PostgreSQL transactional generation outbox.
+- PostgreSQL **transactional outbox** for durable generation submission.
 - `generation-worker` uses leased rows and `FOR UPDATE SKIP LOCKED`.
 - Redis wake-up is latency optimization; PostgreSQL is durable work state.
 - Recovery for stale submission/generation states and idempotent refunds on unrecoverable provider failure.
@@ -210,12 +210,15 @@ TELEGRAM_WEBHOOK_SECRET=...
 
 INTERNAL_CREDIT_RUB=1
 KIE_API_KEY=...
+KIE_UPLOAD_BASE_URL=...
 KIE_WEBHOOK_HMAC_KEY=...
 GENERATION_PRICING_JSON={}
 
 ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
 ADMIN_REQUIRE_MFA=true
 ```
+
+`KIE_UPLOAD_BASE_URL` controls the configured Kie upload base used by the server-side upload integration; it is not exposed as a provider credential to the Mini App.
 
 A published admin tariff can override generation pricing at runtime; `GENERATION_PRICING_JSON` is therefore not the only production pricing source. See the admin runbook before changing pricing manually in environment configuration.
 
@@ -232,4 +235,14 @@ CI also syntax-checks Mini App/Admin JavaScript and executes focused ROXY/admin/
 
 ## Documentation
 
-The canonical map and precedence rules are in [`docs/README.md`](docs/README.md). Historical `parity-*` files are implementation records, not current pricing/model/navigation authority.
+Canonical documentation and operations references:
+
+- `docs/README.md`
+- `docs/API_REFERENCE.md`
+- `docs/OPERATIONS_RUNBOOK.md`
+- `docs/GENERATION_MINI_APP.md`
+- `docs/ADMIN_SECURITY.md`
+- `docs/ADMIN_RUNBOOK.md`
+- `docs/ROXY_RELEASE_ACCEPTANCE.md`
+
+Historical `parity-*` files are implementation records, not current pricing/model/navigation authority.
