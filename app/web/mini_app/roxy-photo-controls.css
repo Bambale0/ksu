@@ -1,0 +1,153 @@
+.roxy-photo-controls-active #dynamicForm .form-group:has(.roxy-photo-field) {
+  border-color: rgba(166, 97, 255, 0.18);
+}
+
+.roxy-photo-field {
+  position: relative;
+}
+
+.roxy-photo-field > .field-label {
+  margin-bottom: 9px;
+  color: rgba(245, 241, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.roxy-photo-native-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.roxy-photo-control {
+  width: 100%;
+}
+
+.roxy-photo-control.is-compact {
+  max-width: 240px;
+}
+
+.roxy-photo-select {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 44px 0 15px;
+  border: 1px solid rgba(171, 96, 255, 0.3);
+  border-radius: 15px;
+  outline: none;
+  color: #f8f5ff;
+  background:
+    linear-gradient(45deg, transparent 50%, #b66dff 50%) calc(100% - 20px) 22px / 6px 6px no-repeat,
+    linear-gradient(135deg, #b66dff 50%, transparent 50%) calc(100% - 14px) 22px / 6px 6px no-repeat,
+    rgba(13, 11, 18, 0.96);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 750;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.roxy-photo-select:focus {
+  border-color: rgba(205, 105, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(170, 76, 255, 0.12);
+}
+
+.roxy-photo-select option {
+  color: #f7f3ff;
+  background: #15131a;
+}
+
+.roxy-photo-segments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 6px;
+  width: 100%;
+  padding: 5px;
+  border: 1px solid rgba(171, 96, 255, 0.24);
+  border-radius: 16px;
+  background: rgba(9, 8, 13, 0.86);
+}
+
+.roxy-photo-segment {
+  min-height: 43px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  color: rgba(239, 234, 247, 0.7);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+}
+
+.roxy-photo-segment:active {
+  transform: scale(0.98);
+}
+
+.roxy-photo-segment.is-active {
+  color: #fff;
+  background: linear-gradient(110deg, #8f4dff 0%, #c95cff 54%, #f34da8 100%);
+  box-shadow: 0 6px 22px rgba(170, 68, 255, 0.26);
+}
+
+.roxy-photo-extra-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.roxy-photo-extra-controls[hidden] {
+  display: none !important;
+}
+
+.roxy-photo-extra-field {
+  margin: 0;
+}
+
+.roxy-photo-model-note {
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border: 1px solid rgba(170, 89, 255, 0.18);
+  border-radius: 13px;
+  color: rgba(231, 224, 242, 0.68);
+  background: rgba(112, 54, 180, 0.07);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .roxy-photo-extra-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .roxy-photo-control.is-compact {
+    max-width: none;
+  }
+
+  .roxy-photo-select {
+    min-height: 50px;
+    font-size: 15px;
+  }
+
+  .roxy-photo-segments {
+    grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
+  }
+
+  .roxy-photo-segment {
+    min-height: 42px;
+    padding-inline: 8px;
+  }
+}
