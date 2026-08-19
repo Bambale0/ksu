@@ -31,6 +31,7 @@
     mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
     mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=2", js: "/mini-app/roxy-generation-flow.js?v=2" });
     mountLayer({ css: "/mini-app/roxy-generation-focus.css?v=1" });
+    mountLayer({ js: "/mini-app/roxy-generation-mode-bridge.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
     mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
     mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });
