@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import app_launcher_menu
@@ -74,6 +74,15 @@ async def _send_launcher(message: Message, *, route: str, payload: str | None) -
         "<b>ROXY ✨</b>\nВсе функции — генерации, баланс, история, профиль и поддержка — внутри Mini App.",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "app:unavailable")
+async def app_unavailable(callback: CallbackQuery) -> None:
+    """Fail closed without falling back to the retired text-bot product UI."""
+    await callback.answer(
+        "ROXY Mini App временно недоступна. Попробуй открыть приложение чуть позже.",
+        show_alert=True,
     )
 
 
