@@ -131,13 +131,32 @@ def test_veo_modes_and_reference_rules_are_server_validated() -> None:
         },
         billing_seconds=8,
     )
-    with pytest.raises(InvalidModelParametersError, match="exactly two"):
+    # Current Kie Veo 3.1 docs explicitly allow one or two images in
+    # FIRST_AND_LAST_FRAMES_2_VIDEO. One image acts as a single reference
+    # frame; two images define the first and last frames.
+    for image_urls in (
+        ["https://example.com/only-one.png"],
+        [
+            "https://example.com/first.png",
+            "https://example.com/last.png",
+        ],
+    ):
         ModelCatalog.prepare(
             "veo-3.1",
             {
                 "prompt": "scene",
                 "generation_type": "FIRST_AND_LAST_FRAMES_2_VIDEO",
-                "image_urls": ["https://example.com/only-one.png"],
+                "image_urls": image_urls,
+            },
+            billing_seconds=8,
+        )
+    with pytest.raises(InvalidModelParametersError, match="one or two"):
+        ModelCatalog.prepare(
+            "veo-3.1",
+            {
+                "prompt": "scene",
+                "generation_type": "FIRST_AND_LAST_FRAMES_2_VIDEO",
+                "image_urls": [],
             },
             billing_seconds=8,
         )
