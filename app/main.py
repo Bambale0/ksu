@@ -21,8 +21,9 @@ from app.core.http_observability import RequestObservabilityMiddleware
 from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.core.observability import configure_telemetry, shutdown_telemetry
-from app.db.session import engine
+from app.db.session import SessionFactory, engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
+from app.services.admin_pricing import AdminPricingService
 from app.services.notification_events import register_notification_events
 
 configure_logging()
@@ -35,6 +36,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = redis
     app.state.bot = None
     app.state.dispatcher = None
+
+    # Admin tariff versions are durable DB state. Restore the latest published
+    # generation_pricing section before serving catalog/quote requests after restart.
+    if settings.app_env.lower() != "test":
+        async with SessionFactory() as session:
+            await AdminPricingService.hydrate_runtime(session)
 
     if settings.bot_token:
         bot = Bot(settings.bot_token)
