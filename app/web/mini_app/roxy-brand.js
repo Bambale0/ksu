@@ -29,7 +29,8 @@
     mountLayer({ css: "/mini-app/roxy-customer-navigation.css", js: "/mini-app/roxy-customer-navigation.js" });
     mountLayer({ css: "/mini-app/roxy-discovery.css", js: "/mini-app/roxy-discovery.js" });
     mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
-    mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=1", js: "/mini-app/roxy-generation-flow.js?v=1" });
+    mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=2", js: "/mini-app/roxy-generation-flow.js?v=2" });
+    mountLayer({ css: "/mini-app/roxy-generation-focus.css?v=1" });
     mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
     mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
     mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });
@@ -108,35 +109,10 @@
   function styleHomeHero() {
     const home = document.getElementById("createHome");
     const hero = home?.querySelector(".hero-card");
-    const copy = hero?.querySelector(".hero-copy");
-    if (!home || !hero || !copy) return;
-
-    setText(".eyebrow", "ROXY · AI CREATIVE STUDIO", hero);
-    setText(".hero-copy h1", "Привет! Это ROXY ✨", hero);
-    setText(".hero-copy p", "Твори. Генерируй. Зарабатывай.", hero);
+    if (!home || !hero) return;
+    hero.hidden = true;
     document.getElementById("roxyHomeBalance")?.remove();
-
-    let cta = document.getElementById("roxyCreateCta");
-    if (!cta) {
-      cta = document.createElement("button");
-      cta.type = "button";
-      cta.className = "roxy-create-cta";
-      cta.id = "roxyCreateCta";
-      cta.textContent = "✦ Создать";
-      cta.addEventListener("click", () => {
-        try { tg?.HapticFeedback?.impactOccurred?.("medium"); } catch (_error) { /* optional */ }
-        if (window.RoxyCustomerNavigation?.open) {
-          window.RoxyCustomerNavigation.open("create");
-          return;
-        }
-        if (window.KsuStudioShell?.open) {
-          window.KsuStudioShell.open("create");
-          return;
-        }
-        document.querySelector('[data-shell-nav="create"]')?.click();
-      });
-    }
-    if (cta.parentElement !== copy) copy.appendChild(cta);
+    document.getElementById("roxyCreateCta")?.remove();
   }
 
   function arrangeHomeDashboard() {
@@ -144,7 +120,7 @@
     const families = home?.querySelector('.home-section[aria-labelledby="familiesHeading"]');
     const promo = document.getElementById("roxyPromoSection");
     if (!home || !families || !promo) return;
-    if (families.nextElementSibling !== promo) families.insertAdjacentElement("afterend", promo);
+    if (home.firstElementChild !== promo) home.prepend(promo);
   }
 
   function styleWalletCopy() {
