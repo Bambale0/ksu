@@ -97,6 +97,11 @@ def _list(payload: dict[str, Any], field: str, *, maximum: int | None = None) ->
     return value
 
 
+def _looks_like_kling_video_url(value: Any) -> bool:
+    path = str(value or "").split("?", 1)[0].lower()
+    return path.endswith((".mp4", ".mov", ".qt", ".quicktime"))
+
+
 def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
     for field in ("prompt_extend", "watermark"):
         _bool(payload, field)
@@ -247,25 +252,27 @@ def _normalize_kling_3(payload: dict[str, Any]) -> None:
         if not refs and not audio_refs:
             raise KieVideoContractError("Kling element requires image/video/audio references")
         if len(refs) > 4:
-            raise KieVideoContractError("Kling element accepts one timed video or 2-4 images")
+            raise KieVideoContractError("Kling element accepts one video or 2-4 images")
         if len(refs) == 1:
-            if not all(key in element for key in ("start_time", "end_time")):
+            has_times = all(key in element for key in ("start_time", "end_time"))
+            if not has_times and not _looks_like_kling_video_url(refs[0]):
                 raise KieVideoContractError(
-                    "Kling video element requires start_time and end_time"
+                    "Kling single URL element must be an MP4/MOV video reference"
                 )
-            try:
-                start = int(element.get("start_time") or 0)
-                end = int(element.get("end_time") or 0)
-            except (TypeError, ValueError) as exc:
-                raise KieVideoContractError(
-                    "Kling video element start/end must be milliseconds"
-                ) from exc
-            if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
-                raise KieVideoContractError(
-                    "Kling video element effective segment must be within 3-8 seconds"
-                )
-            element["start_time"] = start
-            element["end_time"] = end
+            if has_times:
+                try:
+                    start = int(element.get("start_time") or 0)
+                    end = int(element.get("end_time") or 0)
+                except (TypeError, ValueError) as exc:
+                    raise KieVideoContractError(
+                        "Kling video element start/end must be milliseconds"
+                    ) from exc
+                if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
+                    raise KieVideoContractError(
+                        "Kling video element effective segment must be within 3-8 seconds"
+                    )
+                element["start_time"] = start
+                element["end_time"] = end
         elif refs and not 2 <= len(refs) <= 4:
             raise KieVideoContractError("Kling image element requires 2-4 reference images")
 
