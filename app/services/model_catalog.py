@@ -121,6 +121,11 @@ GEMINI_OMNI_FIELDS = (
 )
 
 
+def _looks_like_kling_video_url(value: Any) -> bool:
+    path = str(value or "").split("?", 1)[0].lower()
+    return path.endswith((".mp4", ".mov", ".qt", ".quicktime"))
+
+
 SPECS: tuple[ModelSpec, ...] = (
     # Nano Banana
     ModelSpec("nano-banana", "Nano Banana", "nanobanana", "google/nano-banana", "image", "text_to_image", ("prompt", "output_format", "aspect_ratio"), ("prompt",), default_price_rox=Decimal("8")),
@@ -285,24 +290,26 @@ class ModelCatalog:
                     raise InvalidModelParametersError("Kling element references must be arrays")
                 if len(refs) > 4 or len(audio_refs) > 1 or (not refs and not audio_refs):
                     raise InvalidModelParametersError(
-                        "Kling element requires one timed video, 2-4 images, or one audio reference"
+                        "Kling element requires one video, 2-4 images, or one audio reference"
                     )
                 if len(refs) == 1:
-                    if not all(key in element for key in ("start_time", "end_time")):
+                    has_times = all(key in element for key in ("start_time", "end_time"))
+                    if not has_times and not _looks_like_kling_video_url(refs[0]):
                         raise InvalidModelParametersError(
-                            "Kling video element requires start_time and end_time"
+                            "Kling single URL element must be an MP4/MOV video reference"
                         )
-                    try:
-                        start = int(element.get("start_time") or 0)
-                        end = int(element.get("end_time") or 0)
-                    except (TypeError, ValueError) as exc:
-                        raise InvalidModelParametersError(
-                            "Kling video element start/end must be milliseconds"
-                        ) from exc
-                    if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
-                        raise InvalidModelParametersError(
-                            "Kling video element segment must be 3-8 seconds"
-                        )
+                    if has_times:
+                        try:
+                            start = int(element.get("start_time") or 0)
+                            end = int(element.get("end_time") or 0)
+                        except (TypeError, ValueError) as exc:
+                            raise InvalidModelParametersError(
+                                "Kling video element start/end must be milliseconds"
+                            ) from exc
+                        if start < 0 or end <= start or end - start < 3000 or end - start > 8000:
+                            raise InvalidModelParametersError(
+                                "Kling video element segment must be 3-8 seconds"
+                            )
                 elif refs and not 2 <= len(refs) <= 4:
                     raise InvalidModelParametersError(
                         "Kling image element requires 2-4 reference images"
