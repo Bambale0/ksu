@@ -16,12 +16,15 @@ def test_generation_flow_is_mounted_after_create_center() -> None:
     flow_css = '/mini-app/roxy-generation-flow.css?v=2'
     flow_js = '/mini-app/roxy-generation-flow.js?v=2'
     focus_css = '/mini-app/roxy-generation-focus.css?v=1'
+    mode_bridge = '/mini-app/roxy-generation-mode-bridge.js?v=1'
 
     assert create_js in brand
     assert flow_css in brand
     assert flow_js in brand
     assert focus_css in brand
+    assert mode_bridge in brand
     assert brand.index(flow_js) > brand.index(create_js)
+    assert brand.index(mode_bridge) > brand.index(flow_js)
 
 
 def test_catalog_groups_same_product_modes_into_one_card() -> None:
@@ -78,6 +81,26 @@ def test_input_media_switches_underlying_variant_automatically() -> None:
         "Добавить видео",
     ):
         assert token in source
+
+
+def test_mode_bridge_persists_variant_before_builder_resumes() -> None:
+    bridge = _read("roxy-generation-mode-bridge.js")
+
+    for token in (
+        'const RESUME_KEY = "ksu-studio-open-builder"',
+        'event.target.closest?.("#roxySmartSourcePanel input[type=\'file\']")',
+        'event.stopImmediatePropagation()',
+        'fetch("/api/v1/uploads/kie"',
+        'writeDrafts(drafts)',
+        'localStorage.setItem("ksu-selected-model", modelId)',
+        'sessionStorage.setItem(RESUME_KEY, "1")',
+        'window.location.reload()',
+        'model.operation === "video_edit"',
+        '"image_to_video"',
+        '"image_edit"',
+        '"image_to_image"',
+    ):
+        assert token in bridge
 
 
 def test_builder_is_focused_on_only_selected_product() -> None:
