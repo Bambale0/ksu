@@ -1,32 +1,30 @@
-# ROXY product contract
+# ROXY product and brand contract
 
-ROXY is the user-facing brand for the KSU Telegram AI product.
+**Status:** synchronized with shipped runtime on 2026-08-20.
 
-## Product name
+ROXY is the user-facing brand for the KSU Telegram AI product. Repository/package/runtime identifiers may continue using `ksu` for compatibility.
 
-- Primary: **ROXY**
+## Product identity
+
+- Primary name: **ROXY**
 - Descriptor: **AI Creative Studio**
-- Russian home greeting: **Привет! Это ROXY ✨**
+- Greeting: **Привет! Это ROXY ✨**
 - Tagline: **Твори. Генерируй. Зарабатывай.**
-
-The repository/package/runtime identifiers may continue using `ksu` for compatibility. User-facing product surfaces should use ROXY.
-
-The default Telegram onboarding title is `Добро пожаловать в ROXY`. Production environments that explicitly set `ONBOARDING_TITLE` must update that environment value as part of the release; an environment override intentionally wins over the code default.
 
 ## Palette
 
 | Token | Value | Purpose |
 | --- | --- | --- |
 | `--roxy-bg` | `#09080F` | main almost-black background |
-| `--roxy-bg-deep` | `#06060B` | outer/deep background |
-| `--roxy-surface` | `#18171F` | controls and secondary surfaces |
+| `--roxy-bg-deep` | `#06060B` | deep background |
+| `--roxy-surface` | `#18171F` | secondary surfaces |
 | `--roxy-surface-strong` | `#23212A` | cards |
 | `--roxy-text` | `#FBF8FF` | primary text |
 | `--roxy-muted` | `#A8A4B2` | secondary text |
-| `--roxy-violet` | `#8F6BFF` | violet glow |
+| `--roxy-violet` | `#8F6BFF` | violet accent/glow |
 | `--roxy-purple` | `#B86CFF` | primary accent |
-| `--roxy-pink` | `#FF73CA` | pink glow/accent |
-| `--roxy-pink-soft` | `#FF9DDC` | light pink accent |
+| `--roxy-pink` | `#FF73CA` | pink accent/glow |
+| `--roxy-pink-soft` | `#FF9DDC` | light accent |
 
 Primary CTA gradient:
 
@@ -36,53 +34,73 @@ linear-gradient(105deg, #8c6cff 0%, #c58dff 42%, #ff9bdc 100%)
 
 ## Visual rules
 
-- dark-only branded product surface;
-- graphite glass cards with thin translucent white borders;
-- violet glow from the left/top and pink glow from the right;
-- large white headings with restrained supporting copy;
-- primary actions use the violet-to-pink luminous gradient;
-- secondary actions stay dark and low-contrast;
+- dark branded product surface;
+- graphite/glass cards with restrained borders;
+- violet/pink glow is decorative and must not reduce contrast;
+- large white headings with compact supporting copy;
+- primary actions use the approved luminous gradient;
 - active navigation uses a soft violet surface;
-- the central Create control receives the strongest glow;
-- glow is decorative only and must not reduce text contrast;
-- no animation is required for the visual identity; reduced-motion users keep a stable surface.
+- reduced-motion users keep a stable surface.
+
+## Approved promo slide artwork
+
+The home promo carousel contains approved user-supplied slide compositions. These assets are **artwork**, not templates for regeneration.
+
+Runtime assets:
+
+```text
+app/web/mini_app/roxy-partner-referrals-slide-source.webp
+app/web/mini_app/roxy-creator-rewards-slide-source.webp
+```
+
+Documentation mirrors:
+
+```text
+docs/assets/roxy-promo/partner-referrals-runtime.webp
+docs/assets/roxy-promo/creator-rewards-runtime.webp
+```
+
+Asset rules:
+
+- preserve the exact approved composition, typography, objects and copy;
+- do not replace the slides with AI-generated/reconstructed approximations;
+- do not re-typeset or restyle them as SVG recreations;
+- do not crop artwork to force a card aspect ratio;
+- render with `object-fit: contain`;
+- do not apply blur/sharpen/filter/transform effects in the browser;
+- cache-bust when replacing the approved binary;
+- asset integrity/regression tests must validate real packaged files, not impossible placeholder size/hash requirements.
+
+The first supplied master is approximately 1536×857 and the second 1536×864. When a higher-resolution master is supplied, replace the packaged runtime copy from that exact master rather than redrawing the scene.
+
+`docs/assets/roxy-promo/README.md` records the asset provenance/handling contract.
 
 ## ROX economy
 
-The approved reference is the product contract, not decorative copy:
+Approved public rules:
 
 - **1 ROX = 1 ₽**;
 - **50 ROX** welcome bonus;
-- **30 ROX** for an invited friend;
-- **5 ROX** to the original author for each paid repeat/remix of their prompt;
-- **30%** of real top-ups from referral level 1;
-- **5%** of real top-ups from referral level 2;
-- minimum withdrawal: **3,000 ROX**.
+- **30 ROX** inviter bonus;
+- **5 ROX** to the original author for a paid repeat/remix; no self-reward;
+- referral top-up rewards: **30%** level 1 and **5%** level 2;
+- minimum partner withdrawal: **3,000 ROX**.
 
-ROX are presented as two balances:
+Internal spend ROX and withdrawable partner earnings are separate accounting domains.
 
-- **bonus/internal ROX** — welcome, invite, prompt-repeat, purchased and other wallet credits. They can be spent inside ROXY and cannot be withdrawn;
-- **withdrawable ROX** — only partner rewards backed by real paid top-ups. They are accounted separately from the spend wallet and may be withdrawn subject to the 3,000 ROX minimum.
+## Generation pricing presentation
 
-The current database keeps this separation without duplicating money: `wallet.balance` is the internal spend balance, while `ReferralReward` + `PartnerWithdrawal` are the source of truth for withdrawable earnings. With the fixed 1:1 rate, one withdrawable ROX maps to one RUB of partner accounting.
+Generation cards may display current backend model prices, but brand/UI copy never overrides billing. Current public baseline is documented in `GENERATION_MINI_APP.md`. Live published Admin Tariffs and server quote/create logic remain authoritative.
 
-Prompt repeat rewards are idempotent and are not awarded for self-repeats.
+## Main customer navigation
 
-## Main menu
+The product keeps the compact customer navigation contract around Create, Prompts, My ROX, Earn and Profile while advanced capabilities live inside the corresponding product surfaces.
 
-The public primary menu is deliberately limited to five entries:
+Create is media-first and branches into separate Photo and Video flows. This is part of the ROXY product contract, not just a styling choice.
 
-1. ✨ Создать
-2. 🔁 Промпты
-3. 💎 Мои ROX
-4. 👥 Заработать
-5. 👤 Профиль
+## Production environment
 
-Advanced product capabilities remain available inside the corresponding Studio/profile surfaces and do not crowd the primary menu.
-
-## Production environment contract
-
-A production `.env` that still overrides the old economics must be updated during deployment:
+Production overrides must match the public ROX denomination:
 
 ```dotenv
 START_BALANCE_ROX=50
@@ -94,35 +112,27 @@ REFERRAL_SECOND_PERCENT=5
 PARTNER_MIN_WITHDRAWAL_RUB=3000
 ```
 
-Do not deploy the new UI with old environment overrides: the server remains authoritative for prices and withdrawals.
+Generation prices may additionally be controlled by the latest published Admin Tariffs configuration. Do not assume environment defaults are the only live pricing source.
 
 ## Telegram integration
 
-ROXY keeps the existing Telegram integration contracts:
-
-- content safe-area and safe-area CSS variables;
-- stable viewport handling;
-- Telegram BackButton behavior;
-- signed `initData` authentication owned by the existing product modules;
-- branded Telegram header/background/bottom-bar colors are set to `#09080F` when the client supports those methods.
+ROXY keeps signed `initData` authentication, safe-area/content-safe-area handling, stable viewport behavior, Telegram BackButton navigation, theme changes and dark Telegram chrome where supported.
 
 ## BotFather release checklist
 
-The web repository cannot change Telegram account-level branding or the Main Mini App loading screen. For a fully consistent release, configure the bot/Main Mini App in BotFather with:
+Repository code cannot change Telegram account-level branding. For a consistent production release configure BotFather/Main Mini App with:
 
-- visible bot name: **ROXY**;
+- visible name **ROXY**;
 - short/about text aligned with **ROXY · AI Creative Studio**;
-- dark Mini App loading background close to `#09080F`;
-- ROXY icon/placeholder artwork;
-- matching dark header/loading treatment for both supported appearance modes.
+- dark loading/background treatment close to `#09080F`;
+- approved ROXY icon/placeholder artwork.
 
-## Files
+## Main files
 
-- `app/web/mini_app/roxy-brand.css` — palette and visual overrides;
-- `app/web/mini_app/roxy-brand.js` — brand copy, Telegram chrome and home presentation;
-- `app/web/mini_app/roxy-economy.css` / `roxy-economy.js` — split balances, approved earning table and five-item navigation;
-- `app/api/v1/referrals.py` — server-authoritative ROX economy state;
-- `app/services/users.py` — welcome/invite bonuses;
-- `app/services/generations.py` — prompt-repeat bonus;
-- `app/core/config.py` — product economics defaults;
-- `tests/test_roxy_economy.py` / `tests/test_internal_credits.py` — regression contracts.
+- `app/web/mini_app/roxy-brand.css` / `roxy-brand.js` — brand layer;
+- `app/web/mini_app/roxy-partner-promo.css` / `roxy-partner-promo.js` — promo carousel;
+- `app/web/mini_app/roxy-create-center.*` — media-first Create entry;
+- `app/web/mini_app/roxy-generation-flow-v3.js` — current Photo/Video product flow;
+- `app/web/mini_app/roxy-economy.*` — customer ROX surfaces;
+- `app/core/config.py`, generation/referral/user services — server product/economy defaults;
+- `docs/assets/roxy-promo/` — documented slide asset mirrors.
