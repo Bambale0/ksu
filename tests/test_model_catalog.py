@@ -45,7 +45,7 @@ def test_kling_motion_requires_reference_video_billing_duration() -> None:
             },
         )
 
-    _spec, _params, cost, seconds, _unit = ModelCatalog.prepare(
+    _spec, _params, cost, seconds, unit_price = ModelCatalog.prepare(
         "kling-motion-3.0",
         {
             "prompt": "copy the motion",
@@ -55,7 +55,8 @@ def test_kling_motion_requires_reference_video_billing_duration() -> None:
         billing_seconds=12,
     )
     assert seconds == 12
-    assert cost == Decimal("180.00")
+    assert unit_price == Decimal("60")
+    assert cost == Decimal("720.00")
 
 
 def test_kling_motion_enforces_provider_duration_range() -> None:
