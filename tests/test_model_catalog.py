@@ -29,9 +29,9 @@ def test_image_price_is_flat() -> None:
         billing_seconds=99,
     )
     assert spec.price_mode == "flat"
-    assert unit_price == Decimal("18")
+    assert unit_price == Decimal("20")
     assert seconds is None
-    assert cost == Decimal("18.00")
+    assert cost == Decimal("20.00")
 
 
 def test_kling_motion_requires_reference_video_billing_duration() -> None:
