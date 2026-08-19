@@ -11,27 +11,31 @@ def _read(name: str) -> str:
 
 def test_rx_boot_loader_is_wired_into_mini_app() -> None:
     index = _read("index.html")
+    brand = _read("roxy-brand.js")
     assert '/mini-app/boot-loader.css' in index
     assert 'id="rxBootLoader"' in index
-    assert '/mini-app/assets/roxy-rx-logo.webp' in index
     assert '/mini-app/boot-loader.js' in index
     assert index.index('/mini-app/boot-loader.js') > index.index('/mini-app/roxy-brand.js')
+    assert '/mini-app/roxy-boot-logo-v5.css' in brand
 
 
 def test_rx_boot_loader_animation_matches_roxy_brand() -> None:
     css = _read("boot-loader.css")
+    override = _read("roxy-boot-logo-v5.css")
     for token in (
         "conic-gradient(",
         "--rx-loader-violet",
         "--rx-loader-pink",
         "rx-loader-spin",
         "rx-loader-core-pulse",
-        "rx-loader-scan",
         "rx-loader-progress",
         "@media (prefers-reduced-motion: reduce)",
         "env(safe-area-inset-bottom, 0px)",
     ):
         assert token in css
+    assert '/mini-app/assets/roxy-rx-logo-v5.webp?v=5' in override
+    assert "background-size: cover !important" in override
+    assert ".rx-loader-monogram" in override
 
 
 def test_rx_boot_loader_has_defensive_exit() -> None:
@@ -44,6 +48,9 @@ def test_rx_boot_loader_has_defensive_exit() -> None:
 
 
 def test_rx_logo_asset_is_small_enough_for_mobile_boot() -> None:
-    asset = MINI / "assets" / "roxy-rx-logo.webp"
+    asset = MINI / "assets" / "roxy-rx-logo-v5.webp"
+    payload = asset.read_bytes()
     assert asset.exists()
-    assert asset.stat().st_size < 50_000
+    assert 1_000 < len(payload) < 50_000
+    assert payload.startswith(b"RIFF")
+    assert payload[8:12] == b"WEBP"

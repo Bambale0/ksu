@@ -4,13 +4,13 @@
   const SLIDES = [
     {
       id: "partner-referrals-35",
-      image: "/mini-app/roxy-partner-referrals-slide.jpg?v=3",
+      image: "/mini-app/roxy-partner-referrals-slide.webp?v=5",
       label: "ROXY · До 35% с пополнений рефералов",
       action: "partner",
     },
     {
       id: "creator-rewards",
-      image: "/mini-app/roxy-creator-rewards-slide.webp?v=3",
+      image: "/mini-app/roxy-creator-rewards-slide.webp?v=5",
       label: "ROXY · Создавай. Публикуй. Зарабатывай.",
       action: "feed",
     },
@@ -56,8 +56,25 @@
     image.loading = index === 0 ? "eager" : "lazy";
     image.decoding = "async";
     image.draggable = false;
-    card.appendChild(image);
+    if (index === 0) image.fetchPriority = "high";
 
+    const fallback = document.createElement("span");
+    fallback.className = "roxy-promo-fallback";
+    fallback.hidden = true;
+    fallback.textContent = "ROXY";
+
+    image.addEventListener("load", () => {
+      card.classList.remove("is-broken");
+      fallback.hidden = true;
+    }, { once: true });
+    image.addEventListener("error", () => {
+      console.error("[ROXY] Promo artwork failed to load", slide.image);
+      card.classList.add("is-broken");
+      image.hidden = true;
+      fallback.hidden = false;
+    }, { once: true });
+
+    card.append(image, fallback);
     card.addEventListener("click", () => openSlideAction(slide.action));
     card.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;

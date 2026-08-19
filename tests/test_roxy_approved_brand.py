@@ -67,16 +67,20 @@ def test_logo_asset_is_used_by_product_chrome() -> None:
     logo = _read("roxy-logo.svg")
     surfaces = _read("roxy-approved-surfaces.css")
     brand = _read("roxy-brand.js")
+    header = _read("roxy-header-logo.css")
 
     assert 'url(\'/mini-app/roxy-logo.svg\')' in surfaces
     assert "#9B5CFF" in logo
     assert "#FF5FB7" in logo
     assert "#b768ff" not in logo.lower()
-    assert 'const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo.webp"' in brand
+    assert 'const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo-v5.webp?v=5"' in brand
     assert 'ensureBrandLogo(".brand-mark", headerBrand)' in brand
     assert 'ensureBrandLogo(".studio-sidebar-mark", sidebar)' in brand
     assert 'setText(".brand-mark", "RX"' not in brand
     assert 'setText(".studio-sidebar-mark", "RX"' not in brand
+    assert "mix-blend-mode: normal !important" in header
+    assert "filter: none !important" in header
+    assert "transform: none !important" in header
 
 
 def test_withdrawable_rox_uses_white_silver_indicator() -> None:
