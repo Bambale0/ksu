@@ -43,7 +43,7 @@ def test_mini_app_feed_uses_backend_visibility_contract() -> None:
     assert "new Function(" not in source
 
 
-def test_bot_feed_is_single_media_carousel_with_surface_context() -> None:
+def test_legacy_bot_feed_domain_is_kept_but_customer_navigation_is_app_only() -> None:
     source = _read("app/bot/handlers/feed.py")
     dispatcher = _read("app/bot/dispatcher.py")
     keyboard = _read("app/bot/keyboards.py")
@@ -56,11 +56,14 @@ def test_bot_feed_is_single_media_carousel_with_surface_context() -> None:
     assert "FeedService.remix(" in source
     assert "FeedService.get_profile_generation_card" in source
     assert "FeedService.get_feed_generation_card" in source
-    assert 'dispatcher.include_router(feed.router)' in dispatcher
-    # Feed callbacks/deep links remain supported, but the public Telegram launcher
-    # is intentionally Mini App only. Product navigation belongs inside ROXY.
+
+    # The legacy handler remains available as migration/reference code, but the
+    # production Telegram dispatcher must not expose a second customer UI.
+    assert "dispatcher.include_router(launcher.router)" in dispatcher
+    assert "dispatcher.include_router(feed.router)" not in dispatcher
+
     main_menu = keyboard.split("def main_menu()", 1)[1]
-    assert 'route="home"' in main_menu
+    assert 'return app_launcher_menu(route="home")' in main_menu
     assert 'route="catalog"' not in main_menu
     assert 'fallback_callback="feed:open"' not in main_menu
 
