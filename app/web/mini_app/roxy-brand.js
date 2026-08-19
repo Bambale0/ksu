@@ -3,6 +3,7 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
+  const BRAND_LOCKUP = "ROXY · AI CREATIVE STUDIO";
   const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo-v5.webp?v=5";
 
   function mountLayer({ css, js }) {
@@ -94,6 +95,7 @@
       ensureBrandLogo(".brand-mark", headerBrand);
       setText(".brand-copy strong", BRAND, headerBrand);
       setText(".brand-copy small", "AI CREATIVE STUDIO", headerBrand);
+      headerBrand.dataset.brandLockup = BRAND_LOCKUP;
       headerBrand.setAttribute("aria-label", "На главную ROXY");
     }
 
@@ -102,6 +104,7 @@
       ensureBrandLogo(".studio-sidebar-mark", sidebar);
       setText(".studio-sidebar-copy strong", BRAND, sidebar);
       setText(".studio-sidebar-copy small", "AI CREATIVE STUDIO", sidebar);
+      sidebar.dataset.brandLockup = BRAND_LOCKUP;
       sidebar.setAttribute("aria-label", "Навигация ROXY Studio");
     }
   }
