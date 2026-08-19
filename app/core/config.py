@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     media_ingest_connect_timeout_seconds: float = 10.0
     media_ingest_read_timeout_seconds: float = 180.0
     media_ingest_max_redirects: int = 5
+    media_presign_ttl_seconds: int = 900
     media_legacy_reconcile_seconds: int = 60
 
     s3_bucket: str = ""
