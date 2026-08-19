@@ -1,0 +1,388 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any
+
+
+class KieVideoContractError(ValueError):
+    pass
+
+
+VIDEO_MODELS = {
+    "wan/2-7-text-to-video",
+    "wan/2-7-image-to-video",
+    "wan/2-7-videoedit",
+    "wan/2-7-r2v",
+    "bytedance/seedance-1.5-pro",
+    "bytedance/seedance-2",
+    "bytedance/seedance-2-fast",
+    "bytedance/seedance-2-mini",
+    "bytedance/seedance-2-5",
+    "kling-3.0/video",
+    "kling-2.6/motion-control",
+    "kling-3.0/motion-control",
+    "gemini-omni-video",
+    "grok-imagine/text-to-video",
+    "grok-imagine/image-to-video",
+    "grok-imagine-video-1-5-preview",
+    "grok-imagine/upscale",
+    "grok-imagine/extend",
+}
+
+SEEDANCE_2_MODELS = {
+    "bytedance/seedance-2",
+    "bytedance/seedance-2-fast",
+    "bytedance/seedance-2-mini",
+    "bytedance/seedance-2-5",
+}
+MOTION_MODELS = {"kling-2.6/motion-control", "kling-3.0/motion-control"}
+GROK_GENERATORS = {
+    "grok-imagine/text-to-video",
+    "grok-imagine/image-to-video",
+    "grok-imagine-video-1-5-preview",
+}
+
+
+def _enum(payload: dict[str, Any], field: str, allowed: set[str]) -> None:
+    value = payload.get(field)
+    if value in (None, ""):
+        return
+    value = str(value)
+    if value not in allowed:
+        raise KieVideoContractError(
+            f"Unsupported {field}={value!r}; expected one of {sorted(allowed)!r}"
+        )
+    payload[field] = value
+
+
+def _bool(payload: dict[str, Any], field: str) -> None:
+    value = payload.get(field)
+    if value is None:
+        return
+    if not isinstance(value, bool):
+        raise KieVideoContractError(f"{field} must be boolean")
+
+
+def _int_range(
+    payload: dict[str, Any],
+    field: str,
+    *,
+    minimum: int,
+    maximum: int,
+    allow_zero: bool = False,
+) -> None:
+    value = payload.get(field)
+    if value in (None, ""):
+        return
+    try:
+        normalized = int(value)
+    except (TypeError, ValueError) as exc:
+        raise KieVideoContractError(f"{field} must be an integer") from exc
+    if allow_zero and normalized == 0:
+        payload[field] = 0
+        return
+    if not minimum <= normalized <= maximum:
+        raise KieVideoContractError(f"{field} must be between {minimum} and {maximum}")
+    payload[field] = normalized
+
+
+def _list(payload: dict[str, Any], field: str, *, maximum: int | None = None) -> list[Any]:
+    value = payload.get(field)
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise KieVideoContractError(f"{field} must be an array")
+    if maximum is not None and len(value) > maximum:
+        raise KieVideoContractError(f"{field} accepts at most {maximum} items")
+    return value
+
+
+def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
+    for field in ("prompt_extend", "watermark"):
+        _bool(payload, field)
+
+    if model == "wan/2-7-text-to-video":
+        # Kie's 2.7 T2V contract calls this field `ratio`, while several other
+        # Wan video endpoints call the same concept `aspect_ratio`.
+        if payload.get("aspect_ratio") and not payload.get("ratio"):
+            payload["ratio"] = payload["aspect_ratio"]
+        payload.pop("aspect_ratio", None)
+        return
+
+    if model == "wan/2-7-image-to-video":
+        first = bool(payload.get("first_frame_url"))
+        last = bool(payload.get("last_frame_url"))
+        clip = bool(payload.get("first_clip_url"))
+        if clip and (first or last):
+            raise KieVideoContractError(
+                "Wan 2.7 continuation cannot be combined with first/last frames"
+            )
+        if last and not first:
+            raise KieVideoContractError("Wan 2.7 last frame requires a first frame")
+        if not first and not clip:
+            raise KieVideoContractError(
+                "Wan 2.7 image-to-video requires first_frame_url or first_clip_url"
+            )
+        return
+
+    if model == "wan/2-7-videoedit":
+        # Kie documents `audio_setting` as a scalar value (for example `auto`),
+        # not the JSON object the legacy generic UI used to expose.
+        audio_setting = payload.get("audio_setting")
+        if isinstance(audio_setting, dict):
+            if set(audio_setting) == {"mode"}:
+                payload["audio_setting"] = str(audio_setting["mode"])
+            else:
+                raise KieVideoContractError("Wan video edit audio_setting must be a string")
+        elif audio_setting not in (None, ""):
+            payload["audio_setting"] = str(audio_setting)
+        _int_range(payload, "duration", minimum=1, maximum=60, allow_zero=True)
+        return
+
+    if model == "wan/2-7-r2v":
+        # R2V uses arrays for image/video references. Normalize legacy single
+        # URL drafts so old users are not broken after the UI upgrade.
+        for field in ("reference_image", "reference_video"):
+            value = payload.get(field)
+            if isinstance(value, str) and value:
+                payload[field] = [value]
+            elif value not in (None, "") and not isinstance(value, list):
+                raise KieVideoContractError(f"{field} must be an array of URLs")
+
+
+def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
+    for field in (
+        "fixed_lens",
+        "generate_audio",
+        "nsfw_checker",
+        "return_last_frame",
+        "web_search",
+    ):
+        _bool(payload, field)
+
+    if model == "bytedance/seedance-1.5-pro":
+        _list(payload, "input_urls", maximum=2)
+        return
+
+    if model in SEEDANCE_2_MODELS:
+        first = bool(payload.get("first_frame_url"))
+        last = bool(payload.get("last_frame_url"))
+        reference_mode = any(
+            payload.get(field)
+            for field in (
+                "reference_image_urls",
+                "reference_video_urls",
+                "reference_audio_urls",
+            )
+        )
+        if last and not first:
+            raise KieVideoContractError("Seedance last frame requires a first frame")
+        if (first or last) and reference_mode:
+            raise KieVideoContractError(
+                "Seedance frame mode and multimodal reference mode are mutually exclusive"
+            )
+        for field in (
+            "reference_image_urls",
+            "reference_video_urls",
+            "reference_audio_urls",
+        ):
+            _list(payload, field)
+
+
+def _normalize_kling_3(payload: dict[str, Any]) -> None:
+    _enum(payload, "mode", {"std", "pro", "4K"})
+    _enum(payload, "aspect_ratio", {"16:9", "9:16", "1:1"})
+    _int_range(payload, "duration", minimum=3, maximum=15)
+    _bool(payload, "sound")
+    _bool(payload, "multi_shots")
+
+    images = _list(payload, "image_urls", maximum=2)
+    multi_shots = bool(payload.get("multi_shots"))
+    if multi_shots and len(images) > 1:
+        raise KieVideoContractError("Kling multi-shot supports only the first frame image")
+
+    shots = payload.get("multi_prompt") or []
+    if multi_shots:
+        if not isinstance(shots, list) or not 1 <= len(shots) <= 6:
+            raise KieVideoContractError("Kling multi-shot requires 1-6 shots")
+        total = 0
+        for shot in shots:
+            if not isinstance(shot, dict):
+                raise KieVideoContractError("Every Kling shot must be an object")
+            prompt = str(shot.get("prompt") or "").strip()
+            if not prompt:
+                raise KieVideoContractError("Every Kling shot requires a prompt")
+            if len(prompt) > 500:
+                raise KieVideoContractError("Kling shot prompt must be at most 500 chars")
+            try:
+                duration = int(shot.get("duration"))
+            except (TypeError, ValueError) as exc:
+                raise KieVideoContractError("Every Kling shot requires duration") from exc
+            if not 1 <= duration <= 12:
+                raise KieVideoContractError("Kling shot duration must be 1-12 seconds")
+            shot["duration"] = duration
+            total += duration
+        if payload.get("duration") not in (None, "") and total != int(payload["duration"]):
+            raise KieVideoContractError(
+                "Kling multi-shot durations must add up to total duration"
+            )
+    elif shots:
+        payload.pop("multi_prompt", None)
+
+    elements = payload.get("kling_elements") or []
+    if not isinstance(elements, list) or len(elements) > 3:
+        raise KieVideoContractError("Kling accepts at most three elements")
+    for element in elements:
+        if not isinstance(element, dict):
+            raise KieVideoContractError("Kling elements must be objects")
+        name = str(element.get("name") or "").strip()
+        if not name:
+            raise KieVideoContractError("Every Kling element requires a name")
+        refs = element.get("element_input_urls") or []
+        audio_refs = element.get("element_input_audio_urls") or []
+        if not isinstance(refs, list) or not isinstance(audio_refs, list):
+            raise KieVideoContractError("Kling element references must be arrays")
+        if len(audio_refs) > 1:
+            raise KieVideoContractError("Kling element accepts at most one audio reference")
+        if not refs and not audio_refs:
+            raise KieVideoContractError("Kling element requires image/video/audio references")
+        # The provider uses the same URL array for image and video references.
+        # Images require 2-4 URLs; videos accept exactly one URL. We cannot infer
+        # MIME type from an arbitrary URL, so the shape 1 or 2-4 is valid here.
+        if len(refs) not in {0, 1, 2, 3, 4}:
+            raise KieVideoContractError("Kling element accepts one video or 2-4 images")
+        if len(refs) == 1 and any(
+            key in element for key in ("start_time", "end_time")
+        ):
+            start = int(element.get("start_time") or 0)
+            end = int(element.get("end_time") or 0)
+            if start < 0 or end <= start or end - start > 8000:
+                raise KieVideoContractError(
+                    "Kling video element effective segment must be within 3-8 seconds"
+                )
+            if end - start < 3000:
+                raise KieVideoContractError(
+                    "Kling video element effective segment must be within 3-8 seconds"
+                )
+
+
+def _normalize_motion(model: str, payload: dict[str, Any]) -> None:
+    images = _list(payload, "input_urls", maximum=1)
+    videos = _list(payload, "video_urls", maximum=1)
+    if len(images) != 1 or len(videos) != 1:
+        raise KieVideoContractError(
+            "Kling Motion requires exactly one reference image and one motion video"
+        )
+    _enum(payload, "mode", {"720p", "1080p"})
+    if payload.get("character_orientation") not in (None, ""):
+        _enum(payload, "character_orientation", {"image", "video"})
+    if model == "kling-3.0/motion-control" and payload.get("background_source") not in (None, ""):
+        _enum(payload, "background_source", {"input_video", "input_image"})
+
+
+def _normalize_gemini(payload: dict[str, Any]) -> None:
+    images = _list(payload, "image_urls")
+    videos = _list(payload, "video_list", maximum=1)
+    characters = _list(payload, "character_ids", maximum=3)
+    _list(payload, "audio_ids")
+    if len(images) + len(videos) * 2 + len(characters) > 7:
+        raise KieVideoContractError("Gemini Omni upload quota exceeds 7 units")
+    for video in videos:
+        if not isinstance(video, dict) or not str(video.get("url") or "").strip():
+            raise KieVideoContractError("Gemini Omni video_list item requires url")
+        start = video.get("start")
+        ends = video.get("ends")
+        if start is not None and ends is not None and float(ends) <= float(start):
+            raise KieVideoContractError("Gemini Omni video end must be after start")
+
+
+def _normalize_grok(model: str, payload: dict[str, Any]) -> None:
+    if model in GROK_GENERATORS:
+        if model != "grok-imagine-video-1-5-preview":
+            if payload.get("mode") in (None, ""):
+                payload["mode"] = "normal"
+            _enum(payload, "mode", {"normal"})
+        _int_range(payload, "duration", minimum=1, maximum=30)
+        if model == "grok-imagine/image-to-video":
+            _list(payload, "image_urls", maximum=1)
+        return
+
+    if model in {"grok-imagine/upscale", "grok-imagine/extend"}:
+        task_id = str(payload.get("task_id") or "").strip()
+        if not task_id:
+            raise KieVideoContractError("Grok operation requires Kie task_id")
+        payload["task_id"] = task_id
+    if model == "grok-imagine/extend":
+        # Current Kie docs use a numeric extension point and numeric repeat count.
+        if payload.get("extend_at") not in (None, ""):
+            _int_range(payload, "extend_at", minimum=0, maximum=600)
+        if payload.get("extend_times") not in (None, ""):
+            _int_range(payload, "extend_times", minimum=1, maximum=60)
+
+
+def normalize_kie_video_input(model: str, input_data: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalize current Kie Market video request contracts.
+
+    Unknown/future models are intentionally passed through unchanged. This
+    layer exists to prevent the Mini App from sending known invalid parameter
+    combinations while keeping provider evolution backwards compatible.
+    """
+
+    payload = deepcopy(input_data)
+    if model not in VIDEO_MODELS:
+        return payload
+
+    if model.startswith("wan/2-7-"):
+        _normalize_wan(model, payload)
+    elif model.startswith("bytedance/seedance-"):
+        _normalize_seedance(model, payload)
+    elif model == "kling-3.0/video":
+        _normalize_kling_3(payload)
+    elif model in MOTION_MODELS:
+        _normalize_motion(model, payload)
+    elif model == "gemini-omni-video":
+        _normalize_gemini(payload)
+    elif model.startswith("grok-imagine"):
+        _normalize_grok(model, payload)
+
+    return payload
+
+
+def normalize_kie_veo_input(input_data: dict[str, Any]) -> dict[str, Any]:
+    payload = deepcopy(input_data)
+    model = str(payload.get("veo_model") or "veo3_fast")
+    if model not in {"veo3", "veo3_fast", "veo3_lite", "veo3_fast_r2v", "veo3_r2v"}:
+        raise KieVideoContractError("Unsupported Veo 3.1 model variant")
+    payload["veo_model"] = model
+
+    aspect = str(payload.get("aspect_ratio") or "16:9")
+    if aspect not in {"auto", "16:9", "9:16"}:
+        raise KieVideoContractError("Veo 3.1 aspect_ratio must be auto, 16:9 or 9:16")
+    payload["aspect_ratio"] = aspect
+
+    generation_type = str(payload.get("generation_type") or "TEXT_2_VIDEO")
+    allowed_types = {
+        "TEXT_2_VIDEO",
+        "FIRST_AND_LAST_FRAMES_2_VIDEO",
+        "REFERENCE_2_VIDEO",
+    }
+    if generation_type not in allowed_types:
+        raise KieVideoContractError("Unsupported Veo 3.1 generation type")
+    payload["generation_type"] = generation_type
+
+    images = _list(payload, "image_urls", maximum=3)
+    if generation_type == "TEXT_2_VIDEO" and images:
+        # A single image is accepted by Kie's image-to-video flow under the
+        # normal generation endpoint; preserve it instead of silently dropping it.
+        pass
+    elif generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and not 1 <= len(images) <= 2:
+        raise KieVideoContractError("Veo first/last-frame mode requires one or two images")
+    elif generation_type == "REFERENCE_2_VIDEO":
+        if not images:
+            raise KieVideoContractError("Veo reference mode requires material images")
+        if model not in {"veo3_fast", "veo3_lite", "veo3_fast_r2v", "veo3_r2v"}:
+            raise KieVideoContractError("Veo reference mode is available only on Fast/Lite variants")
+
+    for field in ("enable_fallback", "enable_translation"):
+        _bool(payload, field)
+    return payload
