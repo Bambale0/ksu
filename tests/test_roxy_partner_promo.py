@@ -9,14 +9,6 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def _assert_jpeg(path: Path) -> bytes:
-    payload = path.read_bytes()
-    assert len(payload) > 10_000
-    assert payload.startswith(b"\xff\xd8")
-    assert payload.endswith(b"\xff\xd9")
-    return payload
-
-
 def _assert_webp(path: Path) -> bytes:
     payload = path.read_bytes()
     assert len(payload) > 8_000
@@ -26,12 +18,12 @@ def _assert_webp(path: Path) -> bytes:
 
 
 def test_supplied_promo_artworks_are_bundled_and_mounted() -> None:
-    partner = MINI / "roxy-partner-referrals-slide.jpg"
+    partner = MINI / "roxy-partner-referrals-slide.webp"
     creator = MINI / "roxy-creator-rewards-slide.webp"
     brand = _read("roxy-brand.js")
 
     assert partner.is_file()
-    _assert_jpeg(partner)
+    _assert_webp(partner)
     assert creator.is_file()
     _assert_webp(creator)
 
@@ -43,7 +35,7 @@ def test_home_promo_carousel_uses_only_supplied_raster_slides() -> None:
     script = _read("roxy-partner-promo.js")
 
     assert 'id: "partner-referrals-35"' in script
-    assert 'image: "/mini-app/roxy-partner-referrals-slide.jpg?v=7"' in script
+    assert 'image: "/mini-app/roxy-partner-referrals-slide.webp?v=7"' in script
     assert 'id: "creator-rewards"' in script
     assert 'image: "/mini-app/roxy-creator-rewards-slide.webp?v=7"' in script
     assert "-hq.svg" not in script
