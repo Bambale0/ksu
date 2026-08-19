@@ -31,6 +31,19 @@
     return headers;
   }
 
+  function readDrafts() {
+    try {
+      const value = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  function writeDrafts(drafts) {
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts)); } catch (_error) { /* best effort */ }
+  }
+
   async function loadModels() {
     if (state.loaded) return;
     const response = await fetch("/api/v1/generations/models", {
@@ -96,6 +109,33 @@
     return items.find((item) => (item.visible_fields || []).includes(field.name)) || null;
   }
 
+  function copyCompatibleDraft(sourceId, target, field) {
+    const drafts = readDrafts();
+    const source = drafts[sourceId] || { values: {}, touched: {}, files: {}, billing_seconds: null };
+    const existing = drafts[target.id] || { values: {}, touched: {}, files: {}, billing_seconds: null };
+    const allowed = new Set((target.ui_schema?.fields || []).map((item) => item.name));
+    const next = {
+      ...existing,
+      values: { ...(existing.values || {}) },
+      touched: { ...(existing.touched || {}) },
+      files: { ...(existing.files || {}) },
+      billing_seconds: source.billing_seconds ?? existing.billing_seconds ?? null,
+    };
+
+    for (const [name, value] of Object.entries(source.values || {})) {
+      if (!allowed.has(name)) continue;
+      if (value === undefined || value === null || value === "") continue;
+      next.values[name] = value;
+      if (source.touched?.[name] !== undefined) next.touched[name] = source.touched[name];
+      if (source.files?.[name] !== undefined) next.files[name] = source.files[name];
+    }
+    const scenario = matchingScenario(target, field);
+    if (scenario) next.scenario = scenario.id;
+    else if (!next.scenario && target.ui_schema?.scenario?.default) next.scenario = target.ui_schema.scenario.default;
+    drafts[target.id] = next;
+    writeDrafts(drafts);
+  }
+
   function waitFor(predicate, timeout = 2200) {
     return new Promise((resolve) => {
       const started = performance.now();
@@ -124,16 +164,19 @@
     }) || null;
   }
 
-  async function selectTarget(target) {
+  async function selectTarget(target, field) {
     const select = document.getElementById("modelSelect");
     if (!select || !target) return false;
     if (select.value === target.id) return true;
 
+    const sourceId = select.value;
     const prompt = [...document.querySelectorAll("#dynamicForm textarea")]
       .find((node) => !node.classList.contains("json-input"))?.value || "";
     const option = [...select.options].find((item) => item.value === target.id);
     if (!option) return false;
 
+    copyCompatibleDraft(sourceId, target, field);
+    localStorage.setItem("ksu-selected-model", target.id);
     select.value = target.id;
     select.dispatchEvent(new Event("change", { bubbles: true }));
     const switched = await waitFor(() => document.getElementById("modelSelect")?.value === target.id);
@@ -167,7 +210,7 @@
 
   async function openPicker(target, field) {
     setStatus("Открываю выбор фото…");
-    const selected = await selectTarget(target);
+    const selected = await selectTarget(target, field);
     if (!selected) {
       setStatus("Не удалось переключить модель в режим с фото-референсом.", true);
       return;
@@ -188,19 +231,15 @@
   }
 
   function readReferenceCount(target) {
-    try {
-      const drafts = JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}");
-      const values = drafts?.[target.id]?.values || {};
-      let count = 0;
-      for (const field of imageFields(target)) {
-        const value = values[field.name];
-        if (Array.isArray(value)) count += value.length;
-        else if (value) count += 1;
-      }
-      return count;
-    } catch (_error) {
-      return 0;
+    const drafts = readDrafts();
+    const values = drafts?.[target.id]?.values || {};
+    let count = 0;
+    for (const field of imageFields(target)) {
+      const value = values[field.name];
+      if (Array.isArray(value)) count += value.length;
+      else if (value) count += 1;
     }
+    return count;
   }
 
   function promoteNativeReferences() {
