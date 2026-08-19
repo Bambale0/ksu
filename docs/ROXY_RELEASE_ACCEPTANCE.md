@@ -1,71 +1,124 @@
 # ROXY Release Acceptance
 
-This document is the release checklist for the customer Mini App. The automated contract is implemented in `scripts/check_roxy_release.py` and `tests/test_roxy_release_acceptance.py`.
+**Status:** synchronized with shipped runtime on 2026-08-20.
+
+This is the release checklist for the customer Mini App plus the money-sensitive generation/admin contracts that can change customer behavior without a frontend deploy.
 
 ## Automated gate
 
-A release candidate must pass all of the following before production promotion:
+A release candidate must pass:
 
-- all Mini App JavaScript parses with Node;
-- canonical ROXY routes exist for Home, Catalog, Create, History, Profile and native child screens;
-- legacy `trends.html`, `prompt-tools.html` and `batch.html` URLs forward into the canonical shell;
-- no global `window.fetch` monkeypatching in Feed/Social;
-- no whole-document TreeWalker text rewriting in Brand/Economy;
-- Brand has no full-DOM MutationObserver;
-- Economy/Music do not observe the whole body subtree;
-- customer Mini App source contains no legacy `Ксю`, `КСЮ` or ` кр.` labels;
-- primary navigation uses the shared SVG line-icon runtime;
-- Telegram safe-area, VisualViewport keyboard handling, BackButton and browser history contracts remain present;
-- touch targets are at least 44px and mobile form controls keep 16px font size;
-- horizontal overflow protections remain enabled;
-- FHD density layer remains packaged;
-- mature UI tokens, focus-visible and reduced-motion handling remain packaged.
+- all Mini App/Admin JavaScript syntax checks;
+- focused ROXY shell/navigation/create/economy/payment contracts;
+- model catalog and pricing tests;
+- admin security/console tests;
+- Alembic migration on real PostgreSQL;
+- full Python regression suite;
+- packaged promo slide asset checks.
 
-## Viewport acceptance matrix
+Existing UI gate expectations remain: canonical routes, no unsafe global fetch monkeypatch, no whole-document text rewriting, safe-area/VisualViewport/BackButton support, 44px touch targets, 16px mobile form inputs, horizontal-overflow protection, focus-visible and reduced-motion support.
 
-The required visual matrix is:
+## Required viewport matrix
 
-- 360×800 — compact Android phone;
-- 390×844 — common iPhone viewport;
-- 430×932 — large phone;
-- 1366×768 — compact desktop/laptop;
-- 1920×1080 — FHD desktop.
+- 360×800
+- 390×844
+- 430×932
+- 1366×768
+- 1920×1080
 
-For every viewport verify Home, Catalog, Create, Result, History, Feed, Wallet, Profile and at least one child screen. There must be no horizontal scrolling, clipped primary controls, media escaping the viewport, or bottom navigation overlapping editable fields.
+Verify Home, Create, Photo flow, Video flow, Result, History, Feed, Wallet, Profile and one nested child surface. No horizontal scroll, clipped primary actions or bottom-nav overlap is acceptable.
+
+## Create / generation acceptance
+
+Run these flows against the release environment:
+
+1. `Создать → Фото` stays inside the Photo product flow.
+2. `Создать → Видео` stays inside the Video product flow and **does not bounce to Home**.
+3. Builder Back returns to the selected media product screen.
+4. WAN 2.7 photo is available and can quote/generate/edit through the image model contract.
+5. Image model quote → create debits exactly the quoted flat ROX cost.
+6. Video quote → create debits exactly `resolved ROX/s × billing seconds`.
+7. Upload/reference modes reject missing/incompatible required media before provider submission.
+8. Result polling/history/reuse continue to work and a reuse receives a fresh quote.
+
+## Public pricing baseline acceptance
+
+Verify representative catalog/quote responses against the approved baseline:
+
+```text
+Nano Banana PRO            25 ROX
+WAN 2.7 photo              20 ROX
+GPT Image 2                20 ROX
+Nano Banana 2              25 ROX
+Nano Banana 2 Lite         25 ROX
+Seedream 4.5               20 ROX
+Seedream 5 Pro             20 ROX
+Seedance 2.0               40 ROX/s
+Seedance 2.5               60 ROX/s
+Kling 3.0                  30 ROX/s
+Veo 3.1                    35 ROX/s
+Grok                        15 ROX/s
+Grok Imagine 1.5           30 ROX/s
+Gemini Omni                from 30 ROX/s
+Kling Motion 2.6 720p      20 ROX/s
+Kling Motion 2.6 1080p     30 ROX/s
+Kling Motion 3.0 720p      60 ROX/s
+Kling Motion 3.0 1080p     80 ROX/s
+```
+
+If an intentionally published Admin Tariff differs, verify against that published tariff instead and record the version in the release evidence.
+
+## Admin pricing acceptance
+
+In staging/pre-production:
+
+1. operator without `pricing.manage` cannot publish generation pricing;
+2. invalid/unknown model IDs are rejected;
+3. price-mode mismatch is rejected;
+4. unsupported tier parameters are rejected;
+5. publish requires explicit confirmation and fresh MFA step-up;
+6. after publish, a new quote reflects the new price immediately;
+7. controlled generation debit equals that quote;
+8. restart/reload restores the latest published pricing from PostgreSQL;
+9. publish/rollback is visible in the admin audit trail.
+
+## Promo slide acceptance
+
+The two approved user-supplied slides must be present as packaged WebP files and mirrored under `docs/assets/roxy-promo/`.
+
+Visual checks:
+
+- exact supplied composition/copy is preserved;
+- no AI-redrawn/reconstructed slide is substituted;
+- `object-fit: contain` keeps the full frame visible;
+- browser CSS applies no crop, filter or transform processing;
+- broken artwork produces an explicit fallback/error state rather than silently hiding the promo.
 
 ## Physical Telegram acceptance
 
-Before a production release, run one pass on a real Telegram iOS client and one on a real Telegram Android client:
+Run one real iOS and one real Android pass:
 
-- cold start from the bot launcher;
-- deep start to a child route;
-- Telegram BackButton through child → parent → home;
-- browser/history back-forward where available;
-- open keyboard in prompt, comment, support and payment-email fields;
-- rotate / resize where supported;
-- background and reactivate the Mini App;
-- disconnect/reconnect network while a server request is pending.
+- cold start from bot launcher;
+- nested deep route;
+- Telegram BackButton child → parent → Home;
+- keyboard in prompt/comment/support/payment fields;
+- background/reactivate;
+- disconnect/reconnect during a server request;
+- Photo and Video generation entry flows.
 
-## Critical product flows
+## Other critical product flows
 
-Run these end-to-end against the release environment:
-
-- image generation: model → settings → quote → upload/reference → run → result → history;
-- video generation with per-second billing;
-- music generation and audio playback;
-- Trend run with required references;
-- Prompt Tools task and polling;
-- Batch quote/run/retry;
-- publish to Profile/Feed, like, comment, share and allowed remix;
-- hidden History → reload → restore;
-- preset create → edit → apply → delete;
-- Notifications read-one/read-all and visible badge;
-- Support create → reply → close → reopen;
-- public Author profile → subscribe/unsubscribe;
-- promo redemption and insufficient-ROX recovery;
-- payment create → provider redirect → return → terminal status/balance refresh;
-- referral withdrawal create/cancel.
+Also verify music, Trends, Prompt Tools, Batch, feed/profile publish/remix, History hide/restore, presets, notifications, support, author subscribe/unsubscribe, promo/insufficient-ROX recovery, payment redirect/return/terminal balance refresh and referral withdrawal create/cancel.
 
 ## Failure policy
 
-Do not promote when the automated release gate fails, when a primary route cannot be recovered after cold start, when Telegram BackButton exits instead of stepping back inside the app, when money/ROX state is ambiguous after payment, or when a generation/result action is shown despite being unsupported by the backend capability contract.
+Do not promote if:
+
+- any automated release/CI gate fails;
+- Video/Create routing returns to the wrong surface;
+- quote and actual debit diverge;
+- live admin pricing disappears after restart;
+- a pricing publish can bypass permission/confirmation/MFA;
+- ROX/payment state is ambiguous;
+- a generation action is shown despite being unsupported by the backend catalog;
+- approved promo artwork is missing, cropped or replaced by reconstructed artwork.
