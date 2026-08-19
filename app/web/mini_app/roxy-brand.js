@@ -30,8 +30,8 @@
     mountLayer({ css: "/mini-app/roxy-customer-navigation.css", js: "/mini-app/roxy-customer-navigation.js" });
     mountLayer({ css: "/mini-app/roxy-discovery.css", js: "/mini-app/roxy-discovery.js" });
     mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
-    mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=2", js: "/mini-app/roxy-generation-flow-v3.js?v=1" });
-    mountLayer({ css: "/mini-app/roxy-generation-focus.css?v=1" });
+    mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=2", js: "/mini-app/roxy-generation-flow-v3.js?v=2" });
+    mountLayer({ css: "/mini-app/roxy-generation-focus.css?v=2" });
     mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
     mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
     mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });

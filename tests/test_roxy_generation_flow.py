@@ -14,8 +14,8 @@ def test_generation_flow_v3_is_mounted_after_create_center() -> None:
 
     create_js = '/mini-app/roxy-create-center.js'
     flow_css = '/mini-app/roxy-generation-flow.css?v=2'
-    flow_js = '/mini-app/roxy-generation-flow-v3.js?v=1'
-    focus_css = '/mini-app/roxy-generation-focus.css?v=1'
+    flow_js = '/mini-app/roxy-generation-flow-v3.js?v=2'
+    focus_css = '/mini-app/roxy-generation-focus.css?v=2'
 
     assert create_js in brand
     assert flow_css in brand
@@ -23,6 +23,7 @@ def test_generation_flow_v3_is_mounted_after_create_center() -> None:
     assert focus_css in brand
     assert '/mini-app/roxy-generation-flow.js?v=2' not in brand
     assert '/mini-app/roxy-generation-mode-bridge.js' not in brand
+    assert not (MINI / "roxy-generation-flow.js").exists()
     assert brand.index(flow_js) > brand.index(create_js)
 
 
@@ -32,18 +33,35 @@ def test_catalog_groups_same_logical_model_into_one_card() -> None:
     for token in (
         'title: "Nano Banana", ids: ["nano-banana", "nano-banana-edit"]',
         'title: "Seedream 4.0", ids: ["seedream-4-t2i", "seedream-4-edit"]',
-        'title: "Seedream 5 Pro", ids: ["seedream-5-pro-t2i", "seedream-5-pro-i2i"]',
+        'title: "Seedream 5 Pro", ids: ["seedream-5-pro-t2i", "seedream-5-pro-i2i", "seedream-5-pro-layers"]',
         'title: "GPT Image 2", ids: ["gpt-image-2-t2i", "gpt-image-2-i2i"]',
         'title: "Wan 2.7", ids: ["wan-2.7-t2v", "wan-2.7-i2v", "wan-2.7-video-edit"]',
         'title: "Grok Video", ids: ["grok-video-t2v", "grok-video-i2v"]',
+        "function displayModelTitle(model)",
         "function buildProducts(mediaType)",
-        "Одна карточка = одна модель",
-        "t2i / i2i / t2v / i2v",
+        "Выбирай модель один раз",
+        "ROXY сама переключит создание, редактирование и работу с фото",
     ):
         assert token in source
 
+    assert "t2i / i2i / t2v / i2v" not in source
     assert "laneDefinitions" not in source
     assert "operationLane" not in source
+
+
+def test_photo_catalog_normalizes_technical_model_titles() -> None:
+    source = _read("roxy-generation-flow-v3.js")
+
+    for token in (
+        '"nano-banana-pro": "Nano Banana Pro"',
+        '"nano-banana-2": "Nano Banana 2"',
+        '"nano-banana-2-lite": "Nano Banana 2 Lite"',
+        '"seedream-3-t2i": "Seedream 3.0"',
+        '"wan-2.7-image": "Wan 2.7"',
+        '"wan-2.7-image-pro": "Wan 2.7 Pro"',
+        'replace(/\\s*·\\s*(Text to Image|Image to Image|Edit|Layer Decomposition)$/i, "")',
+    ):
+        assert token in source
 
 
 def test_selected_model_is_forced_exactly_after_family_switch() -> None:
@@ -83,6 +101,29 @@ def test_input_media_switches_backend_variant_automatically() -> None:
         "Добавить видео",
     ):
         assert token in source
+
+
+def test_photo_special_modes_live_inside_the_same_model_flow() -> None:
+    source = _read("roxy-generation-flow-v3.js")
+    focus = _read("roxy-generation-focus.css")
+
+    for token in (
+        "const SPECIAL_OPERATION_LABELS",
+        'layer_decomposition: "Разложить на слои"',
+        "function specialVariants(product)",
+        "function selectedProductVariant(product)",
+        "function automaticTarget(product)",
+        "function switchProductVariant(product, target)",
+        'SPECIAL_OPERATION_LABELS[selected.operation] && fieldCandidates(selected, kind).length',
+        'button("Авто"',
+        '"roxy-smart-mode-button"',
+        "Обычный режим — автоматически · спецрежим внутри",
+    ):
+        assert token in source
+
+    assert ".roxy-smart-mode-actions" in focus
+    assert ".roxy-smart-mode-button.is-active" in focus
+    assert ".roxy-smart-mode-button:focus-visible" in focus
 
 
 def test_multimodal_scenarios_are_inferred_from_uploaded_field() -> None:

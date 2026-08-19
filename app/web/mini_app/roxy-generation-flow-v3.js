@@ -19,18 +19,31 @@
     gemini: "Gemini",
   };
 
+  const MODEL_TITLE_OVERRIDES = {
+    "nano-banana-pro": "Nano Banana Pro",
+    "nano-banana-2": "Nano Banana 2",
+    "nano-banana-2-lite": "Nano Banana 2 Lite",
+    "seedream-3-t2i": "Seedream 3.0",
+    "wan-2.7-image": "Wan 2.7",
+    "wan-2.7-image-pro": "Wan 2.7 Pro",
+  };
+
   const PRODUCT_GROUPS = [
     { key: "nano-banana", title: "Nano Banana", ids: ["nano-banana", "nano-banana-edit"] },
     { key: "seedream-4", title: "Seedream 4.0", ids: ["seedream-4-t2i", "seedream-4-edit"] },
     { key: "seedream-4.5", title: "Seedream 4.5", ids: ["seedream-4.5-t2i", "seedream-4.5-edit"] },
     { key: "seedream-5-lite", title: "Seedream 5.0 Lite", ids: ["seedream-5-lite-t2i", "seedream-5-lite-i2i"] },
-    { key: "seedream-5-pro", title: "Seedream 5 Pro", ids: ["seedream-5-pro-t2i", "seedream-5-pro-i2i"] },
+    { key: "seedream-5-pro", title: "Seedream 5 Pro", ids: ["seedream-5-pro-t2i", "seedream-5-pro-i2i", "seedream-5-pro-layers"] },
     { key: "gpt-image-1.5", title: "GPT Image 1.5", ids: ["gpt-image-1.5-t2i", "gpt-image-1.5-i2i"] },
     { key: "gpt-image-2", title: "GPT Image 2", ids: ["gpt-image-2-t2i", "gpt-image-2-i2i"] },
     { key: "wan-2.7-video", title: "Wan 2.7", ids: ["wan-2.7-t2v", "wan-2.7-i2v", "wan-2.7-video-edit"] },
     { key: "grok-image", title: "Grok Imagine", ids: ["grok-image-t2i", "grok-image-i2i"] },
     { key: "grok-video", title: "Grok Video", ids: ["grok-video-t2v", "grok-video-i2v"] },
   ];
+
+  const SPECIAL_OPERATION_LABELS = {
+    layer_decomposition: "Разложить на слои",
+  };
 
   const state = {
     models: [],
@@ -118,6 +131,14 @@
     }
   }
 
+  function displayModelTitle(model) {
+    const override = MODEL_TITLE_OVERRIDES[model?.id];
+    if (override) return override;
+    return String(model?.title || model?.id || "ROXY")
+      .replace(/\s*·\s*(Text to Image|Image to Image|Edit|Layer Decomposition)$/i, "")
+      .trim();
+  }
+
   function buildProducts(mediaType) {
     const models = state.models.filter((model) => model.media_type === mediaType);
     const consumed = new Set();
@@ -130,7 +151,7 @@
     }
     for (const model of models) {
       if (consumed.has(model.id)) continue;
-      products.push({ key: model.id, title: model.title || model.id, mediaType, variants: [model] });
+      products.push({ key: model.id, title: displayModelTitle(model), mediaType, variants: [model] });
     }
     return products;
   }
@@ -156,6 +177,15 @@
 
   function productModes(product) {
     return [...new Set(product.variants.map((model) => operationLabel(model.operation)))];
+  }
+
+  function specialVariants(product) {
+    return product.variants.filter((model) => Boolean(SPECIAL_OPERATION_LABELS[model.operation]));
+  }
+
+  function selectedProductVariant(product) {
+    const selectedId = document.getElementById("modelSelect")?.value || localStorage.getItem("ksu-selected-model");
+    return product.variants.find((model) => model.id === selectedId) || null;
   }
 
   function priceLabel(product) {
@@ -207,6 +237,8 @@
   }
 
   function sourceTarget(product, kind) {
+    const selected = selectedProductVariant(product);
+    if (selected && SPECIAL_OPERATION_LABELS[selected.operation] && fieldCandidates(selected, kind).length) return selected;
     if (kind === "video") {
       const edit = product.variants.find((model) => model.operation === "video_edit");
       if (edit) return edit;
@@ -222,7 +254,21 @@
     return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== "";
   }
 
+  function automaticTarget(product) {
+    const regularVariants = product.variants.filter((model) => !SPECIAL_OPERATION_LABELS[model.operation]);
+    const drafts = readDrafts();
+    for (const model of regularVariants) {
+      const draft = drafts[model.id];
+      if (!draft?.values) continue;
+      const fields = [...fieldCandidates(model, "image"), ...fieldCandidates(model, "video")];
+      if (fields.some((field) => hasValue(draft.values[field.name]))) return model;
+    }
+    return textTarget({ ...product, variants: regularVariants }) || regularVariants[0] || textTarget(product);
+  }
+
   function existingTarget(product) {
+    const selected = selectedProductVariant(product);
+    if (selected && SPECIAL_OPERATION_LABELS[selected.operation]) return selected;
     const drafts = readDrafts();
     for (const model of product.variants) {
       const draft = drafts[model.id];
@@ -328,7 +374,11 @@
     const modes = el("span", "roxy-flow-model-scenarios");
     productModes(product).forEach((mode) => modes.appendChild(el("em", "", mode)));
     const footer = el("span", "roxy-flow-model-footer");
-    footer.append(el("span", "", product.variants.length > 1 ? "Режим определится автоматически" : "Открыть"), el("span", "roxy-flow-model-arrow", "→"));
+    const hasSpecial = specialVariants(product).length > 0;
+    const footerLabel = hasSpecial
+      ? "Обычный режим — автоматически · спецрежим внутри"
+      : product.variants.length > 1 ? "Режим определится автоматически" : "Открыть";
+    footer.append(el("span", "", footerLabel), el("span", "roxy-flow-model-arrow", "→"));
     card.append(head, modes, footer);
     return card;
   }
@@ -343,8 +393,10 @@
     const copy = el("div", "roxy-flow-topbar-copy");
     copy.append(
       el("span", "section-kicker", mediaType === "video" ? "ROXY · Видео" : "ROXY · Фото"),
-      el("h1", "", mediaType === "video" ? "Выбери модель" : "Выбери модель"),
-      el("p", "", "Одна карточка = одна модель. Внутренние t2i / i2i / t2v / i2v больше не дублируются в каталоге."),
+      el("h1", "", "Выбери модель"),
+      el("p", "", mediaType === "video"
+        ? "Выбирай модель один раз. ROXY сама переключит текст, фото, видео и motion-сценарии."
+        : "Выбирай модель один раз. ROXY сама переключит создание, редактирование и работу с фото."),
     );
     top.append(back, copy);
     const grid = el("div", "roxy-flow-model-grid");
@@ -400,6 +452,39 @@
     }
     localStorage.setItem("ksu-selected-model", model.id);
     window.setTimeout(mountFocusedBuilder, 0);
+  }
+
+  function switchProductVariant(product, target) {
+    if (!product || !target) return;
+    haptic("light");
+    const drafts = readDrafts();
+    const currentId = localStorage.getItem("ksu-selected-model");
+    const sourceDraft = drafts[currentId] || null;
+    const targetDraft = drafts[target.id] || {
+      values: {},
+      touched: {},
+      files: {},
+      scenario: target.ui_schema?.scenario?.default || null,
+      billing_seconds: null,
+    };
+    if (sourceDraft && currentId !== target.id) {
+      const copied = compatibleValues(target, sourceDraft);
+      targetDraft.values = { ...(targetDraft.values || {}), ...copied };
+      targetDraft.touched = { ...(targetDraft.touched || {}) };
+      for (const name of Object.keys(copied)) {
+        if (sourceDraft.touched?.[name]) targetDraft.touched[name] = true;
+      }
+      if (targetDraft.billing_seconds == null && sourceDraft.billing_seconds != null) {
+        targetDraft.billing_seconds = sourceDraft.billing_seconds;
+      }
+      drafts[target.id] = targetDraft;
+      writeDrafts(drafts);
+    }
+    state.activeProduct = product;
+    saveProductContext(product);
+    localStorage.setItem("ksu-selected-model", target.id);
+    document.body?.classList.add("roxy-focused-model-pending");
+    selectExactModel(target.id);
   }
 
   function openProduct(product) {
@@ -516,7 +601,7 @@
       if (model.ui_schema?.scenario?.default) draft.scenario = model.ui_schema.scenario.default;
       applyAutomaticDiscriminators(model, draft, false);
     }
-    const target = textTarget(product);
+    const target = automaticTarget(product) || textTarget(product);
     if (!target) return;
     writeDrafts(drafts);
     localStorage.setItem("ksu-selected-model", target.id);
@@ -556,7 +641,8 @@
     panel.replaceChildren();
     const imageTarget = sourceTarget(product, "image");
     const videoTarget = sourceTarget(product, "video");
-    if (!imageTarget && !videoTarget) {
+    const specials = specialVariants(product);
+    if (!imageTarget && !videoTarget && !specials.length) {
       panel.hidden = true;
       return;
     }
@@ -568,15 +654,39 @@
     const actions = el("div", "roxy-smart-source-actions");
     if (imageTarget) actions.appendChild(smartInput("image", "Добавить фото"));
     if (videoTarget) actions.appendChild(smartInput("video", "Добавить видео"));
+
+    const selected = selectedProductVariant(product);
+    const modeActions = el("div", "roxy-smart-mode-actions");
+    if (specials.length) {
+      const autoButton = button("Авто", () => {
+        const target = automaticTarget(product);
+        if (target) switchProductVariant(product, target);
+      }, "roxy-smart-mode-button");
+      autoButton.classList.toggle("is-active", !selected || !SPECIAL_OPERATION_LABELS[selected.operation]);
+      autoButton.setAttribute("aria-pressed", String(!selected || !SPECIAL_OPERATION_LABELS[selected.operation]));
+      modeActions.appendChild(autoButton);
+      specials.forEach((variant) => {
+        const active = selected?.id === variant.id;
+        const specialButton = button(SPECIAL_OPERATION_LABELS[variant.operation], () => switchProductVariant(product, variant), "roxy-smart-mode-button");
+        specialButton.classList.toggle("is-active", active);
+        specialButton.setAttribute("aria-pressed", String(active));
+        modeActions.appendChild(specialButton);
+      });
+    }
+
     const status = el("div", "roxy-smart-source-status");
     status.id = "roxySmartSourceStatus";
     const summary = sourceSummary(product);
     if (summary.length) {
       status.append(el("span", "", `Вход: ${summary.join(" · ")}`), button("Убрать все", clearSources, "roxy-smart-source-remove"));
+    } else if (selected && SPECIAL_OPERATION_LABELS[selected.operation]) {
+      status.textContent = `${SPECIAL_OPERATION_LABELS[selected.operation]}: добавь фото — ROXY оставит этот режим и откроет только его параметры.`;
     } else {
       status.textContent = "Без файла — текстовый режим. Добавляешь фото или видео — ROXY переключает backend сама.";
     }
-    panel.append(head, actions, status);
+    panel.append(head, actions);
+    if (specials.length) panel.append(modeActions);
+    panel.append(status);
   }
 
   function focusedHeader() {
