@@ -16,6 +16,8 @@ A manual `workflow_dispatch` is also available. Manual runs always resolve the c
 
 A completed CI run for an older commit cannot overwrite a newer production release: before SSH starts, the workflow compares the target SHA with the current `main` HEAD and skips superseded runs.
 
+**CI success is not considered proof of production delivery.** The deploy workflow must actually reach the production host and verify the exact Mini App release SHA. Missing required deployment secrets fails the workflow instead of reporting a successful no-op.
+
 ## Required GitHub Actions secrets
 
 Create these in **Repository → Settings → Secrets and variables → Actions** (repository secrets or secrets available to the `production` environment):
@@ -61,6 +63,7 @@ For the exact tested SHA the remote script performs:
 ```text
 git fetch --prune origin main
 git reset --hard <tested-main-sha>
+write app/web/mini_app/release.json with <tested-main-sha>
 docker compose config -q
 docker compose up -d postgres redis
 pg_dump -> backups/predeploy-<timestamp>-<sha>.dump
@@ -88,7 +91,12 @@ GET http://127.0.0.1:8000/health/ready
 GET http://127.0.0.1:8000/health/operational
 GET http://127.0.0.1:8000/health/live
 HEAD http://127.0.0.1:8000/mini-app/
+GET http://127.0.0.1:8000/mini-app/release.json == {"sha":"<tested-main-sha>"}
 ```
+
+The last check makes deployment observable: a green `Deploy Production` run means the running Mini App container is serving the exact commit the workflow intended to deploy, not merely that the API process responds.
+
+Mini App responses are served with no-store/no-cache headers so Telegram WebView cannot keep an old HTML/JS/CSS release indefinitely after a successful deployment.
 
 If deployment fails after entering the repository, the workflow prints `docker compose ps` and the last 200 log lines from the application/workers into the GitHub Actions log.
 
@@ -102,6 +110,6 @@ After the workflow is merged into `main`:
 2. confirm the server clone can `git fetch origin main` as `DEPLOY_USER`;
 3. confirm `docker compose ps` works non-interactively for that user;
 4. run **Actions → Deploy Production → Run workflow** once;
-5. confirm the deployment summary and health checks are green.
+5. confirm the deployment summary, health checks, and Mini App SHA check are green.
 
 After that, every successful push/merge to `main` is deployed automatically after all required checks for that same commit succeed.
