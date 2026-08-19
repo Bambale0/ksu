@@ -19,17 +19,19 @@ def test_compact_home_density_layer_is_mounted_after_fhd_layer() -> None:
     assert source.index(fhd) < source.index(compact) < source.index(mobile)
 
 
-def test_create_cta_lives_inside_hero_and_duplicate_balance_is_removed() -> None:
+def test_duplicate_home_hero_cta_and_balance_are_removed() -> None:
     source = _read("roxy-brand.js")
+    assert "hero.hidden = true" in source
     assert 'document.getElementById("roxyHomeBalance")?.remove()' in source
-    assert 'if (cta.parentElement !== copy) copy.appendChild(cta)' in source
+    assert 'document.getElementById("roxyCreateCta")?.remove()' in source
     assert 'card.id = "roxyHomeBalance"' not in source
 
 
-def test_promos_are_moved_below_model_directions() -> None:
+def test_promos_are_promoted_to_top_of_home_dashboard() -> None:
     source = _read("roxy-brand.js")
     assert 'const promo = document.getElementById("roxyPromoSection")' in source
-    assert 'families.insertAdjacentElement("afterend", promo)' in source
+    assert "if (home.firstElementChild !== promo) home.prepend(promo)" in source
+    assert 'families.insertAdjacentElement("afterend", promo)' not in source
 
 
 def test_promos_cannot_become_billboard_cards() -> None:
