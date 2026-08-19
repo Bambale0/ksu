@@ -3,7 +3,7 @@
 
   const tg = window.Telegram?.WebApp ?? null;
   const BRAND = "ROXY";
-  const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo.webp";
+  const BRAND_LOGO_SRC = "/mini-app/assets/roxy-rx-logo-v5.webp?v=5";
 
   function mountLayer({ css, js }) {
     if (css && !document.querySelector(`link[href="${css}"]`)) {
@@ -21,6 +21,7 @@
   }
 
   function mountProductLayers() {
+    mountLayer({ css: "/mini-app/roxy-boot-logo-v5.css" });
     mountLayer({ js: "/mini-app/roxy-icons.js" });
     mountLayer({ js: "/mini-app/roxy-generation-context.js" });
     mountLayer({ js: "/mini-app/roxy-author-profile.js" });
@@ -42,9 +43,9 @@
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
     mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
     mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
-    mountLayer({ css: "/mini-app/roxy-partner-promo.css", js: "/mini-app/roxy-partner-promo.js" });
+    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=5", js: "/mini-app/roxy-partner-promo.js?v=5" });
     mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
-    mountLayer({ css: "/mini-app/roxy-header-logo.css" });
+    mountLayer({ css: "/mini-app/roxy-header-logo.css?v=5" });
   }
 
   function setTelegramChrome() {
@@ -71,14 +72,17 @@
     let logo = mark.querySelector("img[data-roxy-brand-logo]");
     if (!logo) {
       logo = document.createElement("img");
-      logo.src = BRAND_LOGO_SRC;
       logo.alt = "";
       logo.className = "roxy-brand-mark-logo";
       logo.dataset.roxyBrandLogo = "true";
-      logo.decoding = "async";
       logo.setAttribute("aria-hidden", "true");
       mark.replaceChildren(logo);
     }
+    if (logo.getAttribute("src") !== BRAND_LOGO_SRC) logo.src = BRAND_LOGO_SRC;
+    logo.width = 256;
+    logo.height = 256;
+    logo.decoding = "async";
+    logo.loading = "eager";
     return mark;
   }
 
