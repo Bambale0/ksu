@@ -5,6 +5,36 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_GENERATION_PRICING_JSON = (
+    '{'
+    '"nano-banana-pro":{"flat":25},'
+    '"wan-2.7-image":{"flat":20},'
+    '"wan-2.7-image-pro":{"flat":20},'
+    '"gpt-image-2-t2i":{"flat":20},'
+    '"gpt-image-2-i2i":{"flat":20},'
+    '"nano-banana-2":{"flat":25},'
+    '"nano-banana-2-lite":{"flat":25},'
+    '"seedream-4.5-t2i":{"flat":20},'
+    '"seedream-4.5-edit":{"flat":20},'
+    '"seedream-5-pro-t2i":{"flat":20},'
+    '"seedream-5-pro-i2i":{"flat":20},'
+    '"seedream-5-pro-layers":{"flat":20},'
+    '"seedance-2.0":{"per_second":40},'
+    '"seedance-2.0-fast":{"per_second":40},'
+    '"seedance-2.0-mini":{"per_second":40},'
+    '"seedance-2.5":{"per_second":60},'
+    '"kling-3.0":{"per_second":30},'
+    '"veo-3.1":{"per_second":35},'
+    '"grok-video-t2v":{"per_second":15},'
+    '"grok-video-i2v":{"per_second":15},'
+    '"grok-video-1.5":{"per_second":30},'
+    '"gemini-omni-video":{"per_second":30},'
+    '"kling-motion-2.6":{"per_second":20,"by_mode":{"720p":20,"1080p":30}},'
+    '"kling-motion-3.0":{"per_second":60,"by_mode":{"720p":60,"1080p":80}}'
+    '}'
+)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -40,7 +70,7 @@ class Settings(BaseSettings):
     referral_second_percent: Decimal = Decimal("5")
     partner_min_withdrawal_rub: Decimal = Decimal("3000")
     rox_packages_json: str = "{}"
-    generation_pricing_json: str = "{}"
+    generation_pricing_json: str = DEFAULT_GENERATION_PRICING_JSON
 
     # Music is a distinct Kie/Suno provider contract but uses the same ROXY wallet,
     # generation history and durable worker/recovery infrastructure.
@@ -62,7 +92,6 @@ class Settings(BaseSettings):
     media_ingest_connect_timeout_seconds: float = 10.0
     media_ingest_read_timeout_seconds: float = 180.0
     media_ingest_max_redirects: int = 5
-    media_presign_ttl_seconds: int = 900
     media_legacy_reconcile_seconds: int = 60
 
     s3_bucket: str = ""
