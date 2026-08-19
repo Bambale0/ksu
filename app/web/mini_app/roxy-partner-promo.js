@@ -4,13 +4,13 @@
   const SLIDES = [
     {
       id: "partner-referrals-35",
-      image: "/mini-app/roxy-partner-referrals-slide-source.webp?v=9",
+      image: "/mini-app/roxy-partner-referrals-slide-source.webp?v=11",
       label: "ROXY · До 35% с пополнений рефералов",
       action: "partner",
     },
     {
       id: "creator-rewards",
-      image: "/mini-app/roxy-creator-rewards-slide-source.webp?v=9",
+      image: "/mini-app/roxy-creator-rewards-slide-source.webp?v=11",
       label: "ROXY · Создавай. Публикуй. Зарабатывай.",
       action: "feed",
     },
@@ -64,6 +64,7 @@
     fallback.textContent = "ROXY";
 
     image.addEventListener("load", () => {
+      image.hidden = false;
       card.classList.remove("is-broken");
       fallback.hidden = true;
     }, { once: true });

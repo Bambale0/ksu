@@ -1,0 +1,137 @@
+.roxy-reference-upload-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(177, 132, 255, .28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 105, 201, .10), transparent 36%),
+    linear-gradient(145deg, rgba(29, 23, 40, .96), rgba(13, 11, 19, .98));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 12px 30px rgba(0,0,0,.18);
+}
+
+.roxy-reference-upload-head,
+.roxy-reference-upload-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.roxy-reference-upload-head strong {
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.roxy-reference-upload-hint {
+  margin: 0;
+  color: rgba(236, 232, 241, .62);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.roxy-reference-upload-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.roxy-reference-upload-button {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(196, 137, 255, .46);
+  border-radius: 15px;
+  background: rgba(155, 92, 255, .08);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roxy-reference-upload-button > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(155, 92, 255, .30), rgba(255, 95, 183, .18));
+  color: #f4dcff;
+  font-size: 23px;
+  line-height: 1;
+}
+
+.roxy-reference-upload-button strong {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.roxy-reference-upload-button:active {
+  transform: scale(.985);
+}
+
+.roxy-reference-upload-button:focus-visible {
+  outline: 2px solid #ff73ca;
+  outline-offset: 2px;
+}
+
+.roxy-reference-upload-status {
+  min-height: 18px;
+  color: rgba(236, 232, 241, .52);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.roxy-reference-upload-status.is-error {
+  color: #ff9bbb;
+}
+
+/* The focused generation flow used to hide the native source field after
+   creating a smart source panel. Keep the real uploader visible as a clear
+   fallback: users should always see where a reference can be attached. */
+body.roxy-focused-model-flow #dynamicForm .roxy-native-source-hidden,
+#dynamicForm .roxy-reference-native-group .roxy-native-source-hidden {
+  display: block !important;
+}
+
+#dynamicForm .roxy-reference-native-group {
+  order: -5;
+  padding: 12px;
+  border: 1px solid rgba(177, 132, 255, .18);
+  border-radius: 16px;
+  background: rgba(155, 92, 255, .035);
+}
+
+#dynamicForm .roxy-reference-native-group .group-title {
+  margin-bottom: 9px;
+  color: rgba(255,255,255,.88);
+  font-size: 12px;
+}
+
+#dynamicForm .roxy-reference-native-image-field .upload-box {
+  border-style: dashed;
+  border-color: rgba(196, 137, 255, .42);
+  background: rgba(155, 92, 255, .055);
+}
+
+#dynamicForm .roxy-reference-native-image-field .upload-button {
+  min-height: 42px;
+  font-weight: 850;
+}
+
+@media (max-width: 560px) {
+  .roxy-reference-upload-panel {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .roxy-reference-upload-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .roxy-reference-upload-button {
+    min-height: 50px;
+  }
+}

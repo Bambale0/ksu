@@ -32,6 +32,7 @@
     mountLayer({ css: "/mini-app/roxy-create-center.css", js: "/mini-app/roxy-create-center.js" });
     mountLayer({ css: "/mini-app/roxy-generation-flow.css?v=2", js: "/mini-app/roxy-generation-flow-v3.js?v=2" });
     mountLayer({ css: "/mini-app/roxy-generation-focus.css?v=2" });
+    mountLayer({ css: "/mini-app/roxy-reference-uploader.css?v=1", js: "/mini-app/roxy-reference-uploader.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-photo-controls.css?v=1", js: "/mini-app/roxy-photo-controls.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-video-controls.css?v=1", js: "/mini-app/roxy-video-controls.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
@@ -48,7 +49,7 @@
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
     mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
     mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
-    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=9", js: "/mini-app/roxy-partner-promo.js?v=9" });
+    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=11", js: "/mini-app/roxy-partner-promo.js?v=11" });
     mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
     mountLayer({ css: "/mini-app/roxy-header-logo.css?v=5" });
   }
