@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from app.services.kie_image_contracts import normalize_kie_image_input
+
 
 class KieProviderError(RuntimeError):
     pass
@@ -46,7 +48,8 @@ class KieClient:
         input_data: dict[str, Any],
         callback_url: str = "",
     ) -> str:
-        body: dict[str, Any] = {"model": model, "input": input_data}
+        normalized_input = normalize_kie_image_input(model, input_data)
+        body: dict[str, Any] = {"model": model, "input": normalized_input}
         if callback_url:
             body["callBackUrl"] = callback_url
 
