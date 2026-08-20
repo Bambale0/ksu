@@ -29,3 +29,14 @@ def test_prune_script_preserves_unmerged_reused_and_protected_branches() -> None
     assert '[[ "$current_sha" != "$merged_sha" ]]' in script
     assert 'git/refs/heads/${branch}' in script
     assert "-X DELETE" in script
+
+
+def test_superseded_branch_pruning_requires_version_controlled_allowlist_and_safety_checks() -> None:
+    script = _read("scripts/prune_merged_branches.sh")
+    superseded = _read("scripts/superseded_branches.txt")
+
+    assert 'superseded_file="scripts/superseded_branches.txt"' in script
+    assert 'is_protected_name "$branch" || has_open_pr "$branch"' in script
+    assert 'delete_branch "$branch" "superseded"' in script
+    assert "feat/seedance-25-parity" in superseded
+    assert "feat/seedance-25-current-kie" not in superseded
