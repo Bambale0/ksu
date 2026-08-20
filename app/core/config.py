@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     generation_outbox_lease_seconds: int = 90
     generation_submission_max_attempts: int = 5
     generation_submission_unknown_timeout_seconds: int = 900
+    generation_hard_timeout_seconds: int = 7200
     generation_reconcile_interval_seconds: int = 60
     generation_reconcile_stale_seconds: int = 60
     generation_recovery_batch_size: int = 50

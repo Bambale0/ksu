@@ -26,16 +26,20 @@ async def test_cryptopay_webhook_signature() -> None:
         await client.aclose()
 
 
-def test_kie_webhook_signature() -> None:
-    key = "kie-webhook-secret"
-    task_id = "task_123"
-    timestamp = str(int(time.time()))
+def _kie_signature(key: str, task_id: str, timestamp: str) -> str:
     digest = hmac.new(
         key.encode(),
         f"{task_id}.{timestamp}".encode(),
         hashlib.sha256,
     ).digest()
-    signature = base64.b64encode(digest).decode()
+    return base64.b64encode(digest).decode()
+
+
+def test_kie_webhook_signature() -> None:
+    key = "kie-webhook-secret"
+    task_id = "task_123"
+    timestamp = str(int(time.time()))
+    signature = _kie_signature(key, task_id, timestamp)
 
     assert verify_kie_webhook(
         task_id=task_id,
@@ -48,6 +52,21 @@ def test_kie_webhook_signature() -> None:
         timestamp=timestamp,
         signature=signature,
         hmac_key=key,
+    )
+
+
+def test_kie_webhook_rejects_stale_signed_callback() -> None:
+    key = "kie-webhook-secret"
+    task_id = "task_stale"
+    timestamp = str(int(time.time()) - 301)
+    signature = _kie_signature(key, task_id, timestamp)
+
+    assert not verify_kie_webhook(
+        task_id=task_id,
+        timestamp=timestamp,
+        signature=signature,
+        hmac_key=key,
+        max_age_seconds=300,
     )
 
 

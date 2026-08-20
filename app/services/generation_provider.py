@@ -1,22 +1,30 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
-from app.providers.kie import KieClient, KieTask
+from app.providers.kie import KieClient, KieProviderError, KieTask
 from app.providers.kie_veo import KieVeoClient
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.kie_image_contracts import KieImageContractError
+from app.services.kie_video_contracts import KieVideoContractError
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
 from app.services.music_media import MusicMediaAssetService
 from app.services.wallet import WalletService
+
+SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
+_TERMINAL_STATUSES = {"succeeded", "failed"}
+_UNCERTAIN_CLIENT_STATUSES = {408, 425}
 
 
 class GenerationProviderService:
@@ -27,6 +35,87 @@ class GenerationProviderService:
     @staticmethod
     def _model_id(generation: Generation) -> str:
         return str((generation.parameters or {}).get("_model_id") or "")
+
+    @staticmethod
+    def _submission_error_disposition(exc: Exception) -> SubmissionDisposition:
+        """Classify create-task failures by whether a provider task may exist.
+
+        Permanent validation/auth failures can be refunded immediately. A 429 is
+        safe to retry because the provider explicitly rejected admission. Network,
+        timeout, malformed-success and 5xx outcomes are treated as uncertain to
+        avoid creating a duplicate paid task when the original request actually
+        reached Kie.
+        """
+
+        if isinstance(exc, (KieImageContractError, KieVideoContractError)):
+            return "permanent"
+
+        if isinstance(exc, httpx.HTTPStatusError):
+            status_code = exc.response.status_code
+            if status_code == 429:
+                return "retryable"
+            if 400 <= status_code < 500 and status_code not in _UNCERTAIN_CLIENT_STATUSES:
+                return "permanent"
+            return "uncertain"
+
+        if isinstance(exc, httpx.TransportError):
+            return "uncertain"
+        if isinstance(exc, json.JSONDecodeError):
+            return "uncertain"
+
+        if isinstance(exc, KieProviderError):
+            message = str(exc).lower()
+            if "not configured" in message or " rejected:" in message:
+                return "permanent"
+            # A 2xx response without a task id is still ambiguous: Kie may have
+            # accepted the job even though our response was malformed/incomplete.
+            return "uncertain"
+
+        # Unknown local/programming errors are not evidence that Kie accepted a
+        # task, so preserve the existing fail-fast/refund behaviour.
+        return "permanent"
+
+    @classmethod
+    async def _record_submission_error(
+        cls,
+        session: AsyncSession,
+        generation_id: uuid.UUID,
+        exc: Exception,
+    ) -> SubmissionDisposition:
+        disposition = cls._submission_error_disposition(exc)
+        if disposition == "permanent":
+            await cls.fail_and_refund(session, generation_id, str(exc))
+            return disposition
+
+        generation = await session.scalar(
+            select(Generation).where(Generation.id == generation_id).with_for_update()
+        )
+        if generation is None or generation.status in _TERMINAL_STATUSES:
+            return disposition
+
+        now = datetime.now(timezone.utc)
+        generation.status = "retry" if disposition == "retryable" else "submitting"
+        generation.error = f"Kie submission {disposition}: {exc}"[:4000]
+        generation.updated_at = now
+
+        parameters = dict(generation.parameters or {})
+        if disposition == "uncertain":
+            parameters["_submission_uncertain"] = True
+            parameters["_submission_uncertain_at"] = now.isoformat()
+        else:
+            parameters.pop("_submission_uncertain", None)
+            parameters.pop("_submission_uncertain_at", None)
+        generation.parameters = parameters
+        await session.commit()
+        return disposition
+
+    @staticmethod
+    def _mark_provider_task_bound(generation: Generation, *, now: datetime) -> None:
+        parameters = dict(generation.parameters or {})
+        parameters["_provider_submitted_at"] = now.isoformat()
+        parameters.pop("_submission_uncertain", None)
+        parameters.pop("_submission_uncertain_at", None)
+        generation.parameters = parameters
 
     @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
@@ -94,7 +183,7 @@ class GenerationProviderService:
                 finally:
                     await client.aclose()
         except Exception as exc:
-            await cls.fail_and_refund(session, generation.id, str(exc))
+            await cls._record_submission_error(session, generation.id, exc)
             raise
 
         generation = await session.scalar(
@@ -102,15 +191,18 @@ class GenerationProviderService:
         )
         if generation is None:
             raise LookupError("Generation disappeared after provider submission")
-        if generation.status in {"succeeded", "failed"}:
+        if generation.status in _TERMINAL_STATUSES:
             return generation
         if generation.external_id and generation.external_id != task_id:
             return generation
+
+        now = datetime.now(timezone.utc)
         generation.external_id = task_id
         generation.provider = "kie"
         generation.status = "generating"
         generation.error = None
-        generation.updated_at = datetime.now(timezone.utc)
+        generation.updated_at = now
+        cls._mark_provider_task_bound(generation, now=now)
         await session.commit()
         return generation
 
@@ -127,6 +219,8 @@ class GenerationProviderService:
         generation = await session.scalar(
             select(Generation).where(Generation.external_id == task_id).with_for_update()
         )
+        if generation is not None and generation.status in _TERMINAL_STATUSES:
+            return generation
 
         if generation is None and generation_id is not None:
             candidate = await session.scalar(
@@ -137,16 +231,18 @@ class GenerationProviderService:
                 and candidate.external_id is None
                 and candidate.status in {"queued", "retry", "submitting", "generating"}
             ):
+                now = datetime.now(timezone.utc)
                 candidate.external_id = task_id
                 candidate.provider = "kie"
                 candidate.status = "generating"
                 candidate.error = None
-                candidate.updated_at = datetime.now(timezone.utc)
+                candidate.updated_at = now
+                cls._mark_provider_task_bound(candidate, now=now)
                 await session.commit()
                 generation = candidate
 
-        if generation is None:
-            return None
+        if generation is None or generation.status in _TERMINAL_STATUSES:
+            return generation
 
         model_id = cls._model_id(generation)
         if cls._provider_api(generation) == "suno_music":
@@ -202,12 +298,23 @@ class GenerationProviderService:
         generation: Generation,
         task: KieTask,
     ) -> None:
+        # Provider callbacks/polls may arrive more than once or out of order.
+        # Once accounting is terminal, never let a late provider state reverse it.
+        if generation.status in _TERMINAL_STATUSES:
+            return
+
         if task.state == "success":
+            if not task.result_urls:
+                generation.status = "generating"
+                generation.error = "Kie reported success without result URLs; awaiting reconciliation"
+                generation.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+                return
+
             generation.status = "succeeded"
             generation.error = None
             generation.updated_at = datetime.now(timezone.utc)
-            if task.result_urls:
-                generation.result_url = task.result_urls[0]
+            generation.result_url = task.result_urls[0]
             parameters: dict[str, Any] = {
                 **generation.parameters,
                 "_result_urls": task.result_urls,
@@ -238,6 +345,7 @@ class GenerationProviderService:
             return
 
         generation.status = "generating"
+        generation.error = None
         generation.updated_at = datetime.now(timezone.utc)
         await session.commit()
 
@@ -255,6 +363,15 @@ class GenerationProviderService:
             return
         if generation.status == "succeeded":
             return
+        if generation.status == "failed":
+            await GenerationOutboxService.mark_generation_terminal(
+                session,
+                generation.id,
+                failed=True,
+                error=generation.error or error,
+            )
+            return
+
         generation.status = "failed"
         generation.error = error[:4000]
         generation.updated_at = datetime.now(timezone.utc)

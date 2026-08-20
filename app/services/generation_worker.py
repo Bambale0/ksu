@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -85,12 +85,29 @@ class GenerationWorkerService:
             except Exception as exc:
                 if AbuseProtectionService.availability_failure(exc):
                     await AbuseProtectionService.record_provider_failure(redis, "kie")
-                # submit_kie currently refunds and makes explicit provider submission
-                # failures terminal. The circuit prevents a rapid cascade of new calls.
                 logger.exception("Generation submission failed: %s", generation.id)
                 refreshed = await session.get(Generation, generation.id)
-                if refreshed is not None and refreshed.status == "failed":
+                if refreshed is None:
+                    await GenerationOutboxService.fail(
+                        session,
+                        claim.outbox_id,
+                        "Generation disappeared after provider submission error",
+                    )
+                elif refreshed.status == "succeeded":
+                    # A callback may have completed the generation while the worker
+                    # observed an ambiguous provider response.
+                    await GenerationOutboxService.complete(session, claim.outbox_id)
+                elif refreshed.status == "failed":
                     await GenerationOutboxService.fail(session, claim.outbox_id, str(exc))
+                elif refreshed.status == "submitting" and refreshed.external_id is None:
+                    # Do not resubmit an ambiguous createTask outcome: the original
+                    # request may already have created a billable provider task.
+                    await GenerationOutboxService.release(
+                        session,
+                        claim.outbox_id,
+                        error="Waiting for callback to recover uncertain Kie submission",
+                        delay_seconds=min(30, settings.generation_worker_poll_seconds * 3),
+                    )
                 elif claim.attempts >= settings.generation_submission_max_attempts:
                     message = f"Generation submission retries exhausted: {exc}"
                     await GenerationProviderService.fail_and_refund(session, generation.id, message)
@@ -122,7 +139,7 @@ class GenerationWorkerService:
 
     @classmethod
     async def recovery_once(cls) -> None:
-        """Repair queue gaps and poll stale Kie tasks as callback fallback."""
+        """Repair queue gaps and reconcile stale/expired Kie tasks."""
 
         async with SessionFactory() as session:
             repaired = await GenerationOutboxService.ensure_missing(
@@ -133,6 +150,7 @@ class GenerationWorkerService:
                 logger.warning("Recovered %s queued generations without outbox rows", repaired)
 
         await cls._expire_unknown_submissions()
+        await cls._expire_stuck_generations()
         await cls._reconcile_stale_generating()
 
     @classmethod
@@ -165,6 +183,62 @@ class GenerationWorkerService:
                 ):
                     continue
                 message = "Kie submission outcome timed out before task id was persisted"
+                await GenerationProviderService.fail_and_refund(session, generation.id, message)
+
+    @staticmethod
+    def _provider_started_at(generation: Generation) -> datetime:
+        raw = (generation.parameters or {}).get("_provider_submitted_at")
+        if isinstance(raw, str) and raw.strip():
+            try:
+                value = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=timezone.utc)
+                return value.astimezone(timezone.utc)
+            except ValueError:
+                logger.warning(
+                    "Generation %s has invalid _provider_submitted_at=%r",
+                    generation.id,
+                    raw,
+                )
+
+        created_at = generation.created_at
+        if created_at.tzinfo is None:
+            return created_at.replace(tzinfo=timezone.utc)
+        return created_at.astimezone(timezone.utc)
+
+    @classmethod
+    async def _expire_stuck_generations(cls) -> None:
+        hard_timeout = max(0, int(settings.generation_hard_timeout_seconds))
+        if hard_timeout <= 0:
+            return
+
+        cutoff = utcnow() - timedelta(seconds=hard_timeout)
+        async with SessionFactory() as session:
+            ids = list(
+                (
+                    await session.scalars(
+                        select(Generation.id)
+                        .where(
+                            Generation.status.in_(("generating", "submitting")),
+                            Generation.created_at < cutoff,
+                        )
+                        .order_by(Generation.created_at.asc())
+                        .limit(settings.generation_recovery_batch_size)
+                    )
+                ).all()
+            )
+
+        for generation_id in ids:
+            async with SessionFactory() as session:
+                generation = await session.get(Generation, generation_id)
+                if generation is None or generation.status not in {"generating", "submitting"}:
+                    continue
+                if cls._provider_started_at(generation) >= cutoff:
+                    continue
+                message = (
+                    "Kie generation exceeded hard lifetime "
+                    f"of {settings.generation_hard_timeout_seconds} seconds"
+                )
                 await GenerationProviderService.fail_and_refund(session, generation.id, message)
 
     @classmethod
