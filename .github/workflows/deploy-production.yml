@@ -306,7 +306,7 @@ jobs:
             exit 1
           fi
 
-          echo "Production is healthy, backup-worker is running, and Mini App serves ${DEPLOY_SHA}."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
