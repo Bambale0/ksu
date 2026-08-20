@@ -23,6 +23,15 @@ Current backend families include Nano Banana, Seedream, GPT Image, WAN, Seedance
 
 WAN 2.7 includes both video generation/editing and a photo generation/editing product backed by Kie `wan/2-7-image`.
 
+Current Kling coverage includes:
+
+- Kling 2.5 Turbo Pro Text to Video (`kling/v2-5-turbo-text-to-video-pro`);
+- Kling 2.5 Turbo Pro Image to Video (`kling/v2-5-turbo-image-to-video-pro`), including the current optional tail frame;
+- Kling AI Avatar Standard (`kling/ai-avatar-standard`);
+- Kling AI Avatar Pro (`kling/ai-avatar-pro`).
+
+These are implemented from the current Kie callable contracts rather than copied from the historical Tanya payloads. Avatar billing uses ROXY `billing_seconds` for the source-audio duration and does not send a fake provider `duration` field. See `docs/KLING_25_AVATAR_CONTRACT.md`.
+
 The runtime model catalog is authoritative:
 
 ```text
@@ -59,6 +68,8 @@ Current public pricing baseline:
 | Seedream 5 Pro | 20 ROX |
 | Seedance 2.0 | 40 ROX/s |
 | Seedance 2.5 | 60 ROX/s |
+| Kling 2.5 Turbo Pro T2V / I2V | 30 / 30 ROX/s |
+| Kling AI Avatar Standard / Pro | 20 / 30 ROX/s |
 | Kling 3.0 | 30 ROX/s |
 | Veo 3.1 | 35 ROX/s |
 | Grok | 15 ROX/s |
@@ -277,6 +288,7 @@ Canonical documentation and operations references:
 - `docs/GITHUB_PRODUCTION_DEPLOY.md`
 - `docs/DATABASE_BACKUPS.md`
 - `docs/GENERATION_MINI_APP.md`
+- `docs/KLING_25_AVATAR_CONTRACT.md`
 - `docs/ADMIN_SECURITY.md`
 - `docs/ADMIN_RUNBOOK.md`
 - `docs/OBSERVABILITY.md`

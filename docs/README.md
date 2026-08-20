@@ -21,6 +21,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - Generation pricing is server-authoritative; published Admin Tariffs can override generation pricing and are restored from PostgreSQL after restart.
 - Generation execution uses a durable PostgreSQL outbox plus recovery/reconciliation. Terminal states are monotonic and ambiguous provider submissions are not blindly duplicated.
 - Product-owned result media is ingested to private S3-compatible storage.
+- Current Kling coverage includes Kie-native Kling 2.5 Turbo Pro T2V/I2V plus Kling AI Avatar Standard/Pro with provider-contract allowlists and dynamic UI schemas.
 - Registration-time referral admission is serialized/audited in PostgreSQL with hour/day/burst abuse controls.
 - Production deployment targets an exact tested `main` SHA, validates a pre-migration PostgreSQL archive and explicitly starts the periodic `backup-worker`.
 - Periodic PostgreSQL archives are custom-format, parsed with `pg_restore --list`, checksummed and retained in a private Docker volume; encrypted off-host durability remains an explicit operations responsibility.
@@ -35,6 +36,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - `STUDIO_SHELL.md` — generation workspace shell.
 - `ROXY_CREATE_CENTER.md` — current Photo/Video create entry flow.
 - `GENERATION_MINI_APP.md` — dynamic generation schema, quote/create, pricing and recovery behavior.
+- `KLING_25_AVATAR_CONTRACT.md` — current Kie Kling 2.5 Turbo Pro T2V/I2V and Kling AI Avatar Standard/Pro provider/UI/billing contract.
 - `RESULTS_HISTORY.md` — result/history/reuse semantics.
 - `ROXY_PROFILE_CABINET.md` — profile cabinet.
 - `WALLET_PAYMENTS.md` and `PRIMARY_CARD_CHECKOUT.md` — wallet and checkout.
@@ -46,6 +48,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 
 - `ROXY_ECONOMY_IMPLEMENTATION.md` — ROX denomination and current economy.
 - `ROXY_ECONOMY_REFERENCE.md` — compact economy reference.
+- `PRICING.md` — compact current generation tariff reference.
 - `GENERATION_MINI_APP.md` — generation price modes and public tariff matrix.
 - `ADMIN_CONSOLE.md` / `ADMIN_RUNBOOK.md` — changing and publishing runtime tariffs.
 

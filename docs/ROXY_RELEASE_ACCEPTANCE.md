@@ -14,7 +14,7 @@ A release candidate must pass:
 - referral anti-fraud tests covering hour/day limits, burst restriction and concurrent admission serialization;
 - PostgreSQL backup contract tests covering shell syntax, private archive creation, custom-format validation, checksum/retention, compose isolation and production deploy integration;
 - model catalog and pricing tests;
-- provider-contract tests for current callable model schemas, including Seedance 2.5;
+- provider-contract tests for current callable model schemas, including Seedance 2.5 and current Kling 2.5 Turbo Pro / Kling AI Avatar;
 - generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
 - admin security/console tests;
 - Alembic migration on real PostgreSQL;
@@ -56,6 +56,27 @@ Run these flows against the release environment:
 17. Seedance 2.5 frame mode cannot be combined with multimodal references, and last-frame input requires first-frame input.
 18. Seedance 2.5 enforces product/provider reference counts: at most 30 images, 10 videos and 10 audio references; UI video upload copy must reflect ROXY's current 100 MB shared upload ceiling.
 19. Seedance 2.5 `duration=-1`/auto is not exposed until billing can settle against an authoritative actual duration after completion.
+
+## Current Kling 2.5 Turbo Pro / Avatar acceptance
+
+Run catalog → quote → provider-payload tests for all four current Kie mappings:
+
+1. `kling-2.5-turbo-pro-t2v` maps exactly to `kling/v2-5-turbo-text-to-video-pro`.
+2. `kling-2.5-turbo-pro-i2v` maps exactly to `kling/v2-5-turbo-image-to-video-pro`.
+3. `kling-avatar-standard` maps exactly to `kling/ai-avatar-standard`; `kling-avatar-pro` maps exactly to `kling/ai-avatar-pro`.
+4. Kling 2.5 T2V accepts only `prompt`, `duration`, `aspect_ratio`, `negative_prompt`, `cfg_scale`, `nsfw_checker`; unknown/legacy fields fail before wallet debit.
+5. Kling 2.5 I2V accepts only `prompt`, `image_url`, optional `tail_image_url`, `duration`, `negative_prompt`, `cfg_scale`, `nsfw_checker`; `aspect_ratio` is rejected on this route.
+6. Both Kling 2.5 routes allow only 5 or 10 seconds; T2V aspect ratio is limited to 16:9 / 9:16 / 1:1.
+7. I2V requires an HTTPS first-frame URL and accepts the current optional HTTPS tail-frame URL.
+8. Dynamic UI exposes 5/10 as a selector, defaults CFG=0.5 and NSFW checking on, and advertises 10 MB JPEG/PNG image limits for I2V first/tail frames.
+9. Avatar provider input contains only `image_url`, `audio_url`, `prompt`; image/audio are required and prompt may be an empty string.
+10. Avatar UI advertises 10 MB JPEG/PNG image input, 100 MB supported audio input and 1–300 seconds audio duration billing.
+11. Avatar quote/debit uses top-level `billing_seconds`; no provider `duration` parameter is invented.
+12. `_billing_seconds` and every other `_...` internal generation field are stripped from provider input.
+13. Avatar `billing_seconds > 300` is rejected before wallet debit/provider submission.
+14. Default no-override ROXY tariffs are 30 ROX/s for Kling 2.5 T2V/I2V, 20 ROX/s for Avatar Standard and 30 ROX/s for Avatar Pro; published Admin Tariffs remain authoritative.
+15. Provider normalization repeats the same allowlist/enum/URL contract at submission time so historical/stale payloads cannot bypass the current adapter.
+16. Existing monotonic callback/recovery/refund and owned-media ingestion behavior remains unchanged for all four models.
 
 ## Hosted card checkout acceptance
 
@@ -122,6 +143,10 @@ Seedream 4.5               20 ROX
 Seedream 5 Pro             20 ROX
 Seedance 2.0               40 ROX/s
 Seedance 2.5               60 ROX/s
+Kling 2.5 Turbo Pro T2V    30 ROX/s
+Kling 2.5 Turbo Pro I2V    30 ROX/s
+Kling Avatar Standard      20 ROX/s
+Kling Avatar Pro           30 ROX/s
 Kling 3.0                  30 ROX/s
 Veo 3.1                    35 ROX/s
 Grok                        15 ROX/s
@@ -200,5 +225,9 @@ Do not promote if:
 - ROX/payment state is ambiguous;
 - Seedance 2.5 UI/catalog accepts a parameter outside the currently callable Kie schema without an explicit tested adapter;
 - Seedance 2.5 auto-duration is exposed before actual-duration billing settlement exists;
+- Kling 2.5 Turbo Pro accepts a duration other than 5/10 seconds or a public field outside the current callable route;
+- Kling 2.5 I2V sends a legacy/non-callable `aspect_ratio` or fails to preserve the optional current tail-frame field;
+- Kling Avatar sends internal `billing_seconds` or a fake provider `duration` to Kie;
+- Kling Avatar allows audio billing beyond 300 seconds or exposes upload limits wider than the current callable Kie contract;
 - a generation action is shown despite being unsupported by the backend catalog;
 - approved promo artwork is missing, cropped or replaced by reconstructed artwork.
