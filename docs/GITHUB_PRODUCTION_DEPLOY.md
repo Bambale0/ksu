@@ -16,7 +16,7 @@ A manual `workflow_dispatch` is also available. Manual runs resolve the current 
 
 Before SSH starts, the workflow compares the target SHA with current `main`. A completed workflow for an older commit cannot overwrite a newer production release.
 
-**CI success is not proof of production delivery.** The deploy workflow must reach the host, pass its database/deployment gates and verify the exact Mini App release SHA. Missing deployment secrets fail the workflow instead of producing a successful no-op.
+**CI success is not proof of production delivery.** The deploy workflow must reach the host, pass its database/deployment gates and verify the exact Mini App release SHA. Missing required deployment secrets fails the workflow; incomplete SSH configuration never produces a successful no-op.
 
 ## Required GitHub Actions secrets
 
