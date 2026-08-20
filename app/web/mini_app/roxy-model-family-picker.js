@@ -138,6 +138,21 @@
       picker.appendChild(chip);
     }
 
+    picker.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+      const controls = [...chips.values()];
+      if (!controls.length) return;
+      let index = controls.indexOf(document.activeElement);
+      if (index < 0) index = controls.indexOf(chips.get(selected.productId));
+      if (event.key === "Home") index = 0;
+      else if (event.key === "End") index = controls.length - 1;
+      else if (["ArrowRight", "ArrowDown"].includes(event.key)) index = (index + 1 + controls.length) % controls.length;
+      else index = (index - 1 + controls.length) % controls.length;
+      event.preventDefault();
+      controls[index].click();
+      controls[index].focus();
+    });
+
     renderSelected();
     card.append(open, pickerBlock);
     return card;
