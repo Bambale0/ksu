@@ -19,6 +19,7 @@ from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.billing_access import BillingAccessService
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -97,24 +98,39 @@ class PromptToolPricingService:
         return amount
 
     @classmethod
-    async def catalog(cls, session: AsyncSession) -> dict[str, Any]:
+    async def catalog(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID | None = None,
+    ) -> dict[str, Any]:
         prices = await cls.prices(session)
-        return {
-            "items": [
+        admin_free = bool(
+            user_id is not None
+            and await BillingAccessService.is_active_admin(session, user_id)
+        )
+        items: list[dict[str, Any]] = []
+        for tool in _TOOL_MODEL:
+            retail = prices.get(tool)
+            enabled = retail is not None
+            effective = Decimal("0") if enabled and admin_free else retail
+            items.append(
                 {
                     "id": tool,
                     "title": _TOOL_TITLE[tool],
-                    "enabled": tool in prices,
-                    "cost_credits": format(prices[tool], ".2f") if tool in prices else None,
+                    "model": _TOOL_MODEL[tool],
+                    "enabled": enabled,
+                    "admin_free": admin_free and enabled,
+                    "retail_cost_credits": format(retail, ".2f") if retail is not None else None,
+                    "cost_credits": format(effective, ".2f") if effective is not None else None,
                     "cost_rub": (
-                        format(prices[tool] * settings.internal_credit_rub, ".2f")
-                        if tool in prices
+                        format(effective * settings.internal_credit_rub, ".2f")
+                        if effective is not None
                         else None
                     ),
                 }
-                for tool in _TOOL_MODEL
-            ]
-        }
+            )
+        return {"admin_free": admin_free, "items": items}
 
 
 class PromptToolService:
@@ -190,7 +206,13 @@ class PromptToolService:
             window_seconds=60,
             message="Prompt tools rate limit exceeded",
         )
-        price = await PromptToolPricingService.price(session, tool)
+        retail_price = await PromptToolPricingService.price(session, tool)
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_price,
+        )
+        price = billing.effective_cost
         task = PromptToolTask(
             id=task_id,
             user_id=user_id,
@@ -198,22 +220,28 @@ class PromptToolService:
             status="queued",
             provider="kie",
             model=_TOOL_MODEL[tool],
-            input_payload={**clean, "_request_hash": request_hash},
+            input_payload={
+                **clean,
+                "_request_hash": request_hash,
+                "_retail_cost_credits": str(billing.retail_cost),
+                "_admin_free": billing.admin_free,
+            },
             result_payload={},
             cost_credits=price,
         )
         session.add(task)
         session.add(PromptToolOutbox(task_id=task.id))
         await session.flush()
-        await WalletService.debit(
-            session,
-            user_id=user_id,
-            amount=price,
-            kind="prompt_tool",
-            reference_type="prompt_tool_task",
-            reference_id=str(task.id),
-            idempotency_key=f"prompt-tool:{task.id}:charge",
-        )
+        if price > 0:
+            await WalletService.debit(
+                session,
+                user_id=user_id,
+                amount=price,
+                kind="prompt_tool",
+                reference_type="prompt_tool_task",
+                reference_id=str(task.id),
+                idempotency_key=f"prompt-tool:{task.id}:charge",
+            )
         await session.commit()
         try:
             await redis.rpush("wake:prompt-tools", str(task.id))
@@ -235,6 +263,9 @@ class PromptToolService:
 
     @staticmethod
     def public_view(task: PromptToolTask, *, replayed: bool = False) -> dict[str, Any]:
+        metadata = task.input_payload or {}
+        admin_free = bool(metadata.get("_admin_free"))
+        retail = Decimal(str(metadata.get("_retail_cost_credits") or task.cost_credits))
         return {
             "id": str(task.id),
             "tool": task.tool,
@@ -242,9 +273,11 @@ class PromptToolService:
             "model": task.model,
             "cost_credits": format(Decimal(task.cost_credits), ".2f"),
             "cost_rub": format(Decimal(task.cost_credits) * settings.internal_credit_rub, ".2f"),
+            "retail_cost_credits": format(retail, ".2f"),
+            "admin_free": admin_free,
             "result": task.result_payload if task.status == "succeeded" else None,
             "error": task.error if task.status == "failed" else None,
-            "has_image": bool((task.input_payload or {}).get("image_url")),
+            "has_image": bool(metadata.get("image_url")),
             "created_at": task.created_at.isoformat(),
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "idempotency_replayed": replayed,
@@ -343,15 +376,16 @@ class PromptToolOutboxService:
         row.lease_until = None
         row.completed_at = now
         row.last_error = error[:4000]
-        await WalletService.credit(
-            session,
-            user_id=task.user_id,
-            amount=Decimal(task.cost_credits),
-            kind="prompt_tool_refund",
-            reference_type="prompt_tool_task",
-            reference_id=str(task.id),
-            idempotency_key=f"prompt-tool:{task.id}:refund",
-        )
+        if Decimal(task.cost_credits) > 0:
+            await WalletService.credit(
+                session,
+                user_id=task.user_id,
+                amount=Decimal(task.cost_credits),
+                kind="prompt_tool_refund",
+                reference_type="prompt_tool_task",
+                reference_id=str(task.id),
+                idempotency_key=f"prompt-tool:{task.id}:refund",
+            )
         await session.commit()
 
 
