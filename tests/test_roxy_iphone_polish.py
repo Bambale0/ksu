@@ -9,16 +9,12 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_iphone_polish_is_loaded_last() -> None:
+def test_mobile_polish_is_part_of_the_canonical_design_system() -> None:
     brand = _read("roxy-brand.js")
-    assert '/mini-app/roxy-approved-surfaces.css' in brand
-    assert '/mini-app/roxy-iphone-polish.css' in brand
+    css = _read("roxy-design-system.css")
+    assert '/mini-app/roxy-design-system.css?v=1' in brand
+    assert '/mini-app/roxy-iphone-polish.css' not in brand
     assert '/mini-app/roxy-model-categories.js' in brand
-    assert brand.index('/mini-app/roxy-iphone-polish.css') > brand.index('/mini-app/roxy-approved-surfaces.css')
-
-
-def test_iphone_polish_keeps_existing_ui_but_fixes_mobile_density() -> None:
-    css = _read("roxy-iphone-polish.css")
     for token in (
         "@media (max-width: 430px)",
         ".product-header",
@@ -29,9 +25,9 @@ def test_iphone_polish_keeps_existing_ui_but_fixes_mobile_density() -> None:
         ".roxy-media-card",
         ".family-tabs",
         ".studio-bottom-nav",
-        "env(safe-area-inset-bottom, 0px)",
+        "--tg-content-safe-area-inset-bottom",
         "min-height: 44px",
-        "font-size: 9.5px !important",
+        "touch-action: manipulation",
     ):
         assert token in css
 
@@ -52,8 +48,6 @@ def test_model_categories_are_derived_from_backend_catalog() -> None:
 
 def test_no_hardcoded_model_ids_in_category_layer() -> None:
     script = _read("roxy-model-categories.js")
-    # The layer categorizes whatever the backend exposes; it must not silently
-    # maintain a second, stale model catalog in frontend code.
     for model_id in (
         "gpt-image-2-t2i",
         "nano-banana-2",
