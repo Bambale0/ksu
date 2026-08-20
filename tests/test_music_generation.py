@@ -9,7 +9,7 @@ import pytest
 
 from app.api.v1.generations import CreateGenerationRequest, generation_models, quote_generation
 from app.core.config import settings
-from app.db.models import User, Wallet
+from app.db.models import AdminAccount, User, Wallet
 from app.db.session import SessionFactory
 from app.providers.kie import _extract_music_tracks
 from app.services.music_generation import (
@@ -151,7 +151,7 @@ def test_custom_instrumental_music_can_omit_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_env_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_active_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
     async with SessionFactory() as session:
         user = User(
             telegram_id=random.randint(10_000_000_000_000, 10_999_999_999_999),
@@ -159,7 +159,8 @@ async def test_env_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatc
         )
         session.add(user)
         await session.flush()
-        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(user.telegram_id))
+        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
+        session.add(AdminAccount(user_id=user.id, role="admin", is_active=True))
         await WalletService.ensure_wallet(session, user.id)
         await session.commit()
 
@@ -183,7 +184,7 @@ async def test_env_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatc
 
 @pytest.mark.asyncio
 async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None:
-    catalog = await generation_models()
+    catalog = await generation_models(None, None)
     music = [item for item in catalog["models"] if item["id"] == MUSIC_MODEL_ID]
     assert len(music) == 1
     assert music[0]["media_type"] == "audio"
@@ -195,6 +196,7 @@ async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None
             parameters={"instrumental": True, "customMode": False},
         ),
         None,
+        None,  # public music quote is server-configured and does not need a DB read
     )
     assert quote["model_id"] == MUSIC_MODEL_ID
     assert quote["price_mode"] == "flat"
@@ -256,7 +258,8 @@ def test_provider_worker_and_react_ui_have_explicit_music_branches() -> None:
     assert "MusicMediaAssetService.enqueue_results" in provider
     assert "MusicMediaIngestService.process_one" in worker
     assert 'audio: models.filter((m) => m.media_type === "audio").length' in ui
-    assert 'model.media_type === "audio" ? "music" : "image"' in ui
+    assert "function modelIcon" in ui
+    assert 'mediaType === "audio" ? "music" : "image"' in ui
     assert 'if (type === "audio") return <span className="media-placeholder audio"' in ui
     assert 'url && type === "audio" ? <audio src={url} controls/>' in ui
     assert "music_generations" not in router

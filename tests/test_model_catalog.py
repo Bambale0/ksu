@@ -8,18 +8,28 @@ from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 
 def test_requested_model_families_are_exposed() -> None:
     families = {item["family"] for item in ModelCatalog.list()}
-    assert {"nanobanana", "seedream", "gpt-image", "wan", "seedance", "kling", "grok"} <= families
+    assert {
+        "nanobanana",
+        "seedream",
+        "gpt-image",
+        "wan",
+        "seedance",
+        "kling",
+        "grok",
+        "veo",
+        "gemini",
+    } <= families
 
 
 def test_video_price_is_calculated_per_second() -> None:
     spec, _params, cost, seconds, unit_price = ModelCatalog.prepare(
-        "wan-2.7-t2v",
+        "seedance-2.0",
         {"prompt": "city at night", "duration": 5},
     )
     assert spec.price_mode == "per_second"
-    assert unit_price == Decimal("10")
+    assert unit_price == Decimal("40")
     assert seconds == 5
-    assert cost == Decimal("50.00")
+    assert cost == Decimal("200.00")
 
 
 def test_image_price_is_flat() -> None:
@@ -82,10 +92,10 @@ def test_internal_parameters_are_not_forwarded() -> None:
 
 def test_pricing_can_be_overridden_server_side() -> None:
     previous = settings.generation_pricing_json
-    settings.generation_pricing_json = '{"wan-2.7-t2v":{"per_second":"7.25"}}'
+    settings.generation_pricing_json = '{"seedance-2.0":{"per_second":"7.25"}}'
     try:
         _spec, _params, cost, seconds, unit_price = ModelCatalog.prepare(
-            "wan-2.7-t2v",
+            "seedance-2.0",
             {"prompt": "test", "duration": 4},
         )
     finally:

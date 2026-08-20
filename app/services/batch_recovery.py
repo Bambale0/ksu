@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.batch_models import BatchGenerationCommand
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
-from app.services.billing_policy import BillingPolicyService
 from app.services.batch_generation_core import (
     ACTIVE_STATUSES,
     BatchGenerationError,
@@ -21,6 +20,7 @@ from app.services.batch_generation_core import (
     wake_generations,
 )
 from app.services.batch_repository import BatchRepository
+from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 
 
@@ -33,7 +33,13 @@ class BatchRecoveryService:
             raise BatchGenerationError("Batch is still running")
         urls = [item.input_url for item, generation in rows if generation.status == "failed"]
         if not urls:
-            return {"failed_count": 0, "total_cost_credits": "0.00", "total_cost_rub": "0.00"}
+            return {
+                "failed_count": 0,
+                "total_cost_credits": "0.00",
+                "total_cost_rub": "0.00",
+                "retail_total_cost_credits": "0.00",
+                "admin_free": False,
+            }
         prepared = await prepare_items(
             session,
             model_id=job.model_id,
@@ -42,11 +48,19 @@ class BatchRecoveryService:
             billing_seconds=job.billing_seconds,
             input_urls=urls,
         )
-        total = sum((item.cost for item in prepared), Decimal("0"))
+        retail_total = sum((item.cost for item in prepared), Decimal("0"))
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_total,
+        )
+        total = billing.effective_cost
         return {
             "failed_count": len(prepared),
             "total_cost_credits": amount(total),
             "total_cost_rub": amount(InternalCreditService.rubles_for(total)),
+            "retail_total_cost_credits": amount(retail_total),
+            "admin_free": billing.admin_free,
         }
 
     @staticmethod
@@ -128,9 +142,13 @@ class BatchRecoveryService:
             billing_seconds=job.billing_seconds,
             input_urls=[item.input_url for item, _generation in selected],
         )
-        total = sum((item.cost for item in prepared), Decimal("0"))
-        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
-        charged_total = Decimal("0.00") if admin_free else total
+        retail_total = sum((item.cost for item in prepared), Decimal("0"))
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_total,
+        )
+        charged_total = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
@@ -150,7 +168,7 @@ class BatchRecoveryService:
                 prompt=job.prompt,
                 parent_generation_id=previous.id,
                 retry_count=retry_count,
-                free_generation=admin_free,
+                admin_free=billing.admin_free,
             )
             batch_item.generation_id = generation.id
             batch_item.retry_count = retry_count

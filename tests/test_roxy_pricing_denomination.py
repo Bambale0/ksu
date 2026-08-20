@@ -16,7 +16,7 @@ async def test_builtin_generation_price_is_redenominated_without_changing_rub_pr
         async with SessionFactory() as session:
             _spec, _params, cost, seconds, unit_price = await GenerationService.prepare_request(
                 session,
-                model_id="wan-2.7-t2v",
+                model_id="kling-3.0",
                 prompt="city at night",
                 parameters={"duration": 5},
             )
@@ -24,19 +24,19 @@ async def test_builtin_generation_price_is_redenominated_without_changing_rub_pr
         settings.generation_pricing_json = previous
 
     assert seconds == 5
-    assert unit_price == Decimal("100.00")
-    assert cost == Decimal("500.00")
+    assert unit_price == Decimal("150.00")
+    assert cost == Decimal("750.00")
 
 
 @pytest.mark.asyncio
 async def test_explicit_generation_price_override_is_already_public_rox() -> None:
     previous = settings.generation_pricing_json
-    settings.generation_pricing_json = '{"wan-2.7-t2v":{"per_second":"72.50"}}'
+    settings.generation_pricing_json = '{"kling-3.0":{"per_second":"72.50"}}'
     try:
         async with SessionFactory() as session:
             _spec, _params, cost, seconds, unit_price = await GenerationService.prepare_request(
                 session,
-                model_id="wan-2.7-t2v",
+                model_id="kling-3.0",
                 prompt="city at night",
                 parameters={"duration": 4},
             )
@@ -53,7 +53,7 @@ async def test_public_model_catalog_uses_same_public_rox_unit() -> None:
     previous = settings.generation_pricing_json
     settings.generation_pricing_json = "{}"
     try:
-        payload = await generation_models()
+        payload = await generation_models(None, None)
     finally:
         settings.generation_pricing_json = previous
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
-from app.services.billing_policy import BillingPolicyService
+from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
@@ -116,6 +116,14 @@ class GenerationService:
             raise ValueError(f"Model tariff {model_id} must be positive")
         return value
 
+    @staticmethod
+    def _provider_model_snapshot(spec: ModelSpec, clean: dict[str, Any]) -> str:
+        # Veo uses a dedicated API where veo_model is the actual upstream variant.
+        # Every Market-backed model uses the catalog's exact callable model id.
+        if spec.id == "veo-3.1":
+            return str(clean.get("veo_model") or spec.kie_model)
+        return spec.kie_model
+
     @classmethod
     async def prepare_request(
         cls,
@@ -170,7 +178,7 @@ class GenerationService:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
     ) -> Generation:
-        spec, clean, cost_rox, seconds, unit_price = await cls.prepare_request(
+        spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
             session,
             model_id=model_id,
             prompt=prompt,
@@ -178,11 +186,15 @@ class GenerationService:
             parameters=parameters,
             billing_seconds=billing_seconds,
         )
-        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
-        charge_rox = Decimal("0.00") if admin_free else cost_rox
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_cost_rox,
+        )
+        charge_rox = billing.effective_cost
 
-        # Reject abusive/over-budget work before any wallet debit/provider side effect.
-        # The DB admission lock remains held until the same transaction commits.
+        # Admins are free, not unbounded: request/provider resource safety remains
+        # active. Passing zero only removes spend accounting from the admission gate.
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
@@ -190,6 +202,7 @@ class GenerationService:
             next_cost=charge_rox,
         )
 
+        provider_model = cls._provider_model_snapshot(spec, clean)
         generation = Generation(
             user_id=user_id,
             kind=spec.operation,
@@ -200,13 +213,20 @@ class GenerationService:
             parameters={
                 **clean,
                 "_model_id": spec.id,
+                "_model_title": spec.title,
+                "_model_family": spec.family,
+                "_operation": spec.operation,
+                "_media_type": spec.media_type,
                 "_kie_model": spec.kie_model,
+                "_provider_model": provider_model,
                 "_billing_mode": spec.price_mode,
                 "_billing_seconds": seconds,
                 "_unit_price_rox": str(unit_price),
+                "_retail_cost_rox": str(billing.retail_cost),
+                "_admin_free": billing.admin_free,
                 **(
-                    {"_admin_free_generation": True, "_quoted_cost_rox": str(cost_rox)}
-                    if admin_free
+                    {"_admin_free_generation": True, "_quoted_cost_rox": str(billing.retail_cost)}
+                    if billing.admin_free
                     else {}
                 ),
             },

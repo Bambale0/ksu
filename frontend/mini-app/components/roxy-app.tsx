@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
-import type { Draft, FeedCard, Generation, GenerationModel, Me, Quote, Route, UiField } from "@/lib/types";
+import type { Draft, FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote, Route, UiField } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 
 const ROUTES: Route[] = ["home", "catalog", "create", "history", "profile"];
@@ -43,6 +43,50 @@ function compact(value: unknown): string {
     notation: Math.abs(number) >= 1000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(number);
+}
+
+function modelIcon(mediaType?: string): IconName {
+  return mediaType === "video" ? "video" : mediaType === "audio" ? "music" : "image";
+}
+
+function priceLabel(value?: string | null): string {
+  if (value === "0.00" || value === "0") return "Бесплатно";
+  return value ? `${compact(value)} ROX` : "—";
+}
+
+function variantLabel(model: GenerationModel): string {
+  return model.presentation?.version_label || model.title;
+}
+
+function fallbackFamilies(models: GenerationModel[]): GenerationModelFamily[] {
+  const grouped = new Map<string, GenerationModel[]>();
+  for (const model of models) {
+    const key = model.presentation?.family_group || model.family || model.id;
+    grouped.set(key, [...(grouped.get(key) || []), model]);
+  }
+  return [...grouped.entries()].map(([id, variants]) => ({
+    family: id.replaceAll("-", "_"),
+    id: id.replaceAll("-", "_"),
+    title: variants[0]?.presentation?.family_title || variants[0]?.family || variants[0]?.title || id,
+    icon: modelIcon(variants[0]?.media_type),
+    media_types: [...new Set(variants.map((item) => item.media_type))],
+    variant_count: variants.length,
+    price_from_rox: variants.map((item) => item.price_rox).filter(Boolean).sort()[0] || null,
+    variants: variants.map((item) => ({
+      id: item.id,
+      title: item.title,
+      version: variantLabel(item),
+      operation: item.operation,
+      media_type: item.media_type,
+      price_rox: item.price_rox,
+      price_credits: item.price_credits,
+      price_rub: item.price_rub,
+      retail_price_rox: item.retail_price_rox,
+      recommended: false,
+      description: item.presentation?.product_title || item.title,
+      ui_schema: item.ui_schema,
+    })),
+  }));
 }
 
 function dateLabel(value?: string): string {
@@ -132,6 +176,7 @@ export function RoxyApp() {
   const [route, setRoute] = useState<Route>("home");
   const [me, setMe] = useState<Me | null>(null);
   const [models, setModels] = useState<GenerationModel[]>([]);
+  const [families, setFamilies] = useState<GenerationModelFamily[]>([]);
   const [recent, setRecent] = useState<Generation[]>([]);
   const [feed, setFeed] = useState<FeedCard[]>([]);
   const [history, setHistory] = useState<Generation[]>([]);
@@ -196,7 +241,11 @@ export function RoxyApp() {
           tg?.initData ? api.onboarding() : Promise.resolve(null),
         ]);
         if (!active) return;
-        if (modelResult.status === "fulfilled") setModels(modelResult.value.models || []);
+        if (modelResult.status === "fulfilled") {
+          const nextModels = modelResult.value.models || [];
+          setModels(nextModels);
+          setFamilies(modelResult.value.families?.length ? modelResult.value.families : fallbackFamilies(nextModels));
+        }
         if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
         if (recentResult.status === "fulfilled") setRecent(recentResult.value.items || []);
         if (feedResult.status === "fulfilled") setFeed(feedResult.value.items || []);
@@ -267,8 +316,8 @@ export function RoxyApp() {
 
       <main className="main-shell">
         {route === "home" && <HomeScreen models={models} recent={recent} onNavigate={navigate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "catalog" && <CatalogScreen models={models} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
-        {route === "create" && <CreateScreen models={models} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
+        {route === "catalog" && <CatalogScreen models={models} families={families} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
+        {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} />}
       </main>
@@ -330,9 +379,10 @@ function FormatCard({ icon, title, count, onClick }: { icon: IconName; title: st
   return <button className="format-card" type="button" onClick={onClick}><span className="format-icon"><Icon name={icon}/></span><strong>{title}</strong><small>{count ? `${count} моделей` : "Скоро"}</small><Icon name="chevron" className="format-chevron"/></button>;
 }
 
-function CatalogScreen({ models, feed, onCreate, onPreview }: { models: GenerationModel[]; feed: FeedCard[]; onCreate: (model: GenerationModel) => void; onPreview: (item: FeedCard) => void }) {
+function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models: GenerationModel[]; families: GenerationModelFamily[]; feed: FeedCard[]; onCreate: (model: GenerationModel) => void; onPreview: (item: FeedCard) => void }) {
   const [media, setMedia] = useState<"all" | "image" | "video" | "audio">("all");
-  const filtered = media === "all" ? models : models.filter((model) => model.media_type === media);
+  const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
+  const filtered = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   return (
     <section className="screen">
       <ScreenHead kicker="Каталог" title="Модели и идеи" copy="Каталог строится из backend-возможностей. Никаких хардкодных настроек модели на клиенте." />
@@ -340,7 +390,10 @@ function CatalogScreen({ models, feed, onCreate, onPreview }: { models: Generati
         {(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}
       </div>
       <div className="model-grid">
-        {filtered.map((model) => <button key={model.id} className="model-card" type="button" onClick={() => onCreate(model)}><span className="model-icon"><Icon name={model.media_type === "video" ? "video" : model.media_type === "audio" ? "music" : "image"}/></span><div><strong>{model.title}</strong><small>{model.family} · {model.operation.replaceAll("_", " ")}</small></div><span className="price-pill">{model.price_rox || model.price_credits || "—"} ROX</span></button>)}
+        {filtered.map((family) => {
+          const first = byId.get(family.variants[0]?.id || "");
+          return <button key={family.id} className="model-card" type="button" onClick={() => first && onCreate(first)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>;
+        })}
       </div>
       <SectionTitle kicker="Сообщество" title="Свежие работы" />
       <MediaGrid items={feed} empty="Публикаций пока нет." onClick={onPreview} reactions />
@@ -348,7 +401,7 @@ function CatalogScreen({ models, feed, onCreate, onPreview }: { models: Generati
   );
 }
 
-function CreateScreen({ models, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
+function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
   const initialModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
   const [selectedId, setSelectedId] = useState(initialModelId || models[0]?.id || "");
   const selected = models.find((model) => model.id === selectedId) || models[0] || null;
@@ -357,7 +410,9 @@ function CreateScreen({ models, me, onBalance, onCreated, showToast }: { models:
   const [quoteError, setQuoteError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const quoteSeq = useRef(0);
+  const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
 
   useEffect(() => {
     try { setDrafts(JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}")); } catch { setDrafts({}); }
@@ -453,8 +508,13 @@ function CreateScreen({ models, me, onBalance, onCreated, showToast }: { models:
         <div className="create-controls">
           <div className="panel">
             <label className="label">Модель</label>
-            <select className="control" value={selected.id} onChange={(event) => chooseModel(event.target.value)}>{models.map((model) => <option value={model.id} key={model.id}>{model.title}</option>)}</select>
-            <div className="chips"><span>{selected.media_type}</span><span>{selected.family}</span><span>{selected.operation.replaceAll("_", " ")}</span></div>
+            <div className="family-grid">
+              {families.map((family) => {
+                const active = family.variants.some((variant) => variant.id === selected.id);
+                return <button className={`family-card${active ? " active" : ""}`} type="button" key={family.id} onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>;
+              })}
+            </div>
+            <div className="chips"><span>{selected.media_type}</span><span>{selected.family}</span><span>{variantLabel(selected)}</span><span>{selected.operation.replaceAll("_", " ")}</span></div>
           </div>
 
           {selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}
@@ -489,7 +549,25 @@ function CreateScreen({ models, me, onBalance, onCreated, showToast }: { models:
           <button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button>
         </aside>
       </div>
+      {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
     </section>
+  );
+}
+
+function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: { family: GenerationModelFamily; models: Map<string, GenerationModel>; selectedId: string; onClose: () => void; onChoose: (id: string) => void }) {
+  return (
+    <div className="sheet-backdrop" role="presentation" onClick={onClose}>
+      <section className="bottom-sheet" role="dialog" aria-modal="true" aria-label={family.title} onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-head"><div><span className="kicker">Модель</span><h2>{family.title}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button></div>
+        <div className="variant-list">
+          {family.variants.map((variant) => {
+            const model = models.get(variant.id);
+            const active = variant.id === selectedId;
+            return <button key={variant.id} className={`variant-row${active ? " active" : ""}`} type="button" onClick={() => model && onChoose(model.id)} disabled={!model}><span className="variant-badge">{variant.badge || (variant.recommended ? "TOP" : variant.version || "AI")}</span><span><strong>{variant.version || variant.title}</strong><small>{variant.description || variant.title}</small></span><span className="price-pill">{priceLabel(variant.price_rox)}</span></button>;
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 

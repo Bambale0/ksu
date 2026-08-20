@@ -40,13 +40,7 @@ def test_scenarios_only_reference_fields_from_the_same_model() -> None:
 def test_mode_specific_inputs_are_required_by_the_contract() -> None:
     models = {model["id"]: model for model in ModelCatalog.list()}
 
-    wan = build_public_model_ui_schema(models["wan-2.7-i2v"])
-    wan_modes = {item["id"]: item for item in wan["scenario"]["items"]}
-    assert wan_modes["first_frame"]["required_fields"] == ["first_frame_url"]
-    assert wan_modes["first_last"]["required_fields"] == ["first_frame_url", "last_frame_url"]
-    assert wan_modes["continuation"]["required_fields"] == ["first_clip_url"]
-
-    seedance = build_public_model_ui_schema(models["seedance-2.0-fast"])
+    seedance = build_public_model_ui_schema(models["seedance-2.0"])
     seedance_modes = {item["id"]: item for item in seedance["scenario"]["items"]}
     assert seedance_modes["first_frame"]["required_fields"] == ["first_frame_url"]
     assert seedance_modes["first_last"]["required_fields"] == [

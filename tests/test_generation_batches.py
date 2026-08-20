@@ -47,9 +47,9 @@ async def test_batch_create_is_atomic_and_idempotent(monkeypatch: pytest.MonkeyP
         key = f"batch-{uuid.uuid4()}"
         payload = {
             "user_id": user.id,
-            "model_id": "nano-banana-edit",
+            "model_id": "gpt-image-2-i2i",
             "prompt": "Keep the subject, change the background",
-            "parameters": {"aspect_ratio": "1:1", "output_format": "png"},
+            "parameters": {"aspect_ratio": "1:1"},
             "billing_seconds": None,
             "input_urls": [
                 "https://cdn.example.invalid/a.png",
@@ -98,9 +98,9 @@ async def test_batch_insufficient_balance_rolls_back_everything(monkeypatch: pyt
                 session,
                 AsyncMock(),
                 user_id=user_id,
-                model_id="nano-banana-edit",
+                model_id="gpt-image-2-i2i",
                 prompt="Edit both",
-                parameters={"aspect_ratio": "1:1", "output_format": "png"},
+                parameters={"aspect_ratio": "1:1"},
                 billing_seconds=None,
                 input_urls=[
                     "https://cdn.example.invalid/c.png",
@@ -140,9 +140,9 @@ async def test_batch_progress_becomes_partial(monkeypatch: pytest.MonkeyPatch) -
             session,
             AsyncMock(),
             user_id=user.id,
-            model_id="nano-banana-edit",
+            model_id="gpt-image-2-i2i",
             prompt="Edit both",
-            parameters={"aspect_ratio": "1:1", "output_format": "png"},
+            parameters={"aspect_ratio": "1:1"},
             billing_seconds=None,
             input_urls=[
                 "https://cdn.example.invalid/e.png",

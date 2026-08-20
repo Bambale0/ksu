@@ -70,6 +70,34 @@ export type GenerationModel = {
   price_credits?: string;
   price_rub?: string;
   ui_schema?: UiSchema;
+  presentation?: {
+    title?: string;
+    product_key?: string;
+    product_title?: string;
+    family_group?: string | null;
+    family_title?: string;
+    version_label?: string;
+  };
+  admin_free?: boolean;
+  retail_price_rox?: string;
+};
+
+export type GenerationModelVariant = Pick<GenerationModel, "id" | "title" | "operation" | "media_type" | "price_rox" | "price_credits" | "price_rub" | "retail_price_rox" | "ui_schema"> & {
+  version?: string;
+  badge?: string | null;
+  recommended?: boolean;
+  description?: string;
+};
+
+export type GenerationModelFamily = {
+  family: string;
+  id: string;
+  title: string;
+  icon?: string;
+  media_types?: string[];
+  variant_count: number;
+  price_from_rox?: string | null;
+  variants: GenerationModelVariant[];
 };
 
 export type Generation = {

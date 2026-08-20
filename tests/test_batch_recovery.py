@@ -47,9 +47,9 @@ async def test_failed_item_recovery_charges_once_and_keeps_parent(
             session,
             AsyncMock(),
             user_id=user.id,
-            model_id="nano-banana-edit",
+            model_id="gpt-image-2-i2i",
             prompt="Edit both",
-            parameters={"aspect_ratio": "1:1", "output_format": "png"},
+            parameters={"aspect_ratio": "1:1"},
             billing_seconds=None,
             input_urls=[
                 "https://cdn.example.invalid/recovery-a.png",

@@ -1,5 +1,5 @@
 import { telegramHeaders } from "./telegram";
-import type { FeedCard, Generation, GenerationModel, Me, Quote } from "./types";
+import type { FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote } from "./types";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -26,7 +26,7 @@ export const api = {
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
   onboarding: () => request<Record<string, any>>("/api/v1/onboarding"),
   completeOnboarding: () => request<Record<string, any>>("/api/v1/onboarding/complete", { method: "POST" }),
-  models: () => request<{ models: GenerationModel[] }>("/api/v1/generations/models"),
+  models: () => request<{ models: GenerationModel[]; families?: GenerationModelFamily[] }>("/api/v1/generations/models"),
   generations: (params = "limit=24") => request<{ items: Generation[]; has_more: boolean; next_before?: string | null }>(`/api/v1/generations?${params}`),
   generation: (id: string) => request<Generation>(`/api/v1/generations/${encodeURIComponent(id)}`),
   quote: (body: Record<string, unknown>) => request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) }),

@@ -102,6 +102,18 @@ def test_generation_ui_is_backend_schema_driven() -> None:
     assert "localStorage.setItem(DRAFTS_KEY" in app
 
 
+def test_generation_ui_uses_family_variant_picker() -> None:
+    app = _read(FRONTEND / "components" / "roxy-app.tsx")
+    css = _read(FRONTEND / "app" / "globals.css")
+    types = _read(FRONTEND / "lib" / "types.ts")
+    assert "GenerationModelFamily" in types
+    assert "families?: GenerationModelFamily[]" in _read(FRONTEND / "lib" / "api.ts")
+    assert "<FamilyVariantSheet" in app
+    assert "family-grid" in app
+    assert "variant-list" in css
+    assert "<select className=\"control\" value={selected.id}" not in app
+
+
 def test_public_profile_never_exposes_prompt() -> None:
     app = _read(FRONTEND / "components" / "roxy-app.tsx")
     api = _read(FRONTEND / "lib" / "api.ts")

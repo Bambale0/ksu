@@ -76,8 +76,7 @@ async def prompt_tool_catalog(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    _ = user
-    return await PromptToolPricingService.catalog(session)
+    return await PromptToolPricingService.catalog(session, user_id=user.id)
 
 
 @router.post("/image-analysis", status_code=status.HTTP_202_ACCEPTED)
