@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services import model_catalog as catalog
+from app.services.model_routing import AUTO_ROUTE_TARGET_IDS
 
 # Product-selection baseline imported from Bambale0/banano_kling:tanyapi on
 # 2026-08-20. KSU keeps its stricter provider adapters and current callable Kie
@@ -53,7 +54,12 @@ CURRENT_UTILITY_MODEL_IDS = frozenset(
     }
 )
 
-ACTIVE_NEW_WORK_MODEL_IDS = TRENDING_PUBLIC_MODEL_IDS | CURRENT_UTILITY_MODEL_IDS
+# Auto-routed products need their hidden counterpart executable at quote/create
+# time. Example: public GPT Image 2 can be submitted with or without references;
+# the router may call either gpt-image-2-t2i or gpt-image-2-i2i.
+ACTIVE_NEW_WORK_MODEL_IDS = (
+    TRENDING_PUBLIC_MODEL_IDS | CURRENT_UTILITY_MODEL_IDS | AUTO_ROUTE_TARGET_IDS
+)
 
 
 def is_trending_public_model(model_id: str) -> bool:
