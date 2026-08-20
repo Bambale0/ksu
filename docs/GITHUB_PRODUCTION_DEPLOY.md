@@ -104,11 +104,12 @@ The workflow verifies on the production host:
 
 ```text
 backup-worker is running
-GET http://127.0.0.1:8000/health/ready
-GET http://127.0.0.1:8000/health/operational
-GET http://127.0.0.1:8000/health/live
-HEAD http://127.0.0.1:8000/mini-app/
-GET http://127.0.0.1:8000/mini-app/release.json == {"sha":"<tested-main-sha>"}
+APP_BASE=http://127.0.0.1:$(docker compose port app 8000 | awk -F: 'END {print $NF}')
+GET $APP_BASE/health/ready
+GET $APP_BASE/health/operational
+GET $APP_BASE/health/live
+HEAD $APP_BASE/mini-app/
+GET $APP_BASE/mini-app/release.json == {"sha":"<tested-main-sha>"}
 ```
 
 The SHA check makes delivery observable: a green deployment means the running Mini App is serving the commit the workflow intended to deploy, not merely that an API process answers.
