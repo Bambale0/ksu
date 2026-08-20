@@ -9,6 +9,7 @@ import { Icon, type IconName } from "./icons";
 const ROUTES: Route[] = ["home", "catalog", "create", "history", "profile"];
 const DRAFTS_KEY = "roxy.next.generation-drafts.v1";
 const MODEL_KEY = "ksu-selected-model";
+const MEDIA_FILTER_KEY = "ksu-selected-media";
 const ACTIVE_STATUSES = new Set(["queued", "retry", "submitting", "generating"]);
 const PROMO_SLIDES = [
   { src: "promo/roxy-promo-1.png", alt: "ROXY Creator Rewards" },
@@ -47,6 +48,10 @@ function compact(value: unknown): string {
 
 function modelIcon(mediaType?: string): IconName {
   return mediaType === "video" ? "video" : mediaType === "audio" ? "music" : "image";
+}
+
+function normalizeMediaFilter(value: string | null): "all" | "image" | "video" | "audio" {
+  return value === "image" || value === "video" || value === "audio" ? value : "all";
 }
 
 function priceLabel(value?: string | null): string {
@@ -282,6 +287,11 @@ export function RoxyApp() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
+  const openCreate = useCallback((media?: "image" | "video" | "audio") => {
+    if (media) localStorage.setItem(MEDIA_FILTER_KEY, media);
+    navigate("create");
+  }, [navigate]);
+
   useEffect(() => {
     const tg = telegram();
     if (!tg?.BackButton) return;
@@ -315,7 +325,7 @@ export function RoxyApp() {
       </header>
 
       <main className="main-shell">
-        {route === "home" && <HomeScreen models={models} recent={recent} onNavigate={navigate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "home" && <HomeScreen models={models} recent={recent} onNavigate={navigate} onCreate={openCreate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "catalog" && <CatalogScreen models={models} families={families} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
         {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
@@ -346,7 +356,7 @@ function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
 }
 
-function HomeScreen({ models, recent, onNavigate, onPreview }: { models: GenerationModel[]; recent: Generation[]; onNavigate: (route: Route) => void; onPreview: (item: Generation) => void }) {
+function HomeScreen({ models, recent, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; onNavigate: (route: Route) => void; onCreate: (media: "image" | "video" | "audio") => void; onPreview: (item: Generation) => void }) {
   const counts = useMemo(() => ({
     image: models.filter((m) => m.media_type === "image").length,
     video: models.filter((m) => m.media_type === "video").length,
@@ -356,7 +366,7 @@ function HomeScreen({ models, recent, onNavigate, onPreview }: { models: Generat
     <section className="screen home-screen">
       <div className="promo-slider" aria-label="Промо ROXY">
         {PROMO_SLIDES.map((slide) => (
-          <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("create")}>
+          <button className="promo-slide" type="button" key={slide.src} onClick={() => onCreate("image")}>
             <img src={slide.src} alt={slide.alt} />
           </button>
         ))}
@@ -364,9 +374,9 @@ function HomeScreen({ models, recent, onNavigate, onPreview }: { models: Generat
 
       <SectionTitle kicker="Создание" title="Что создаём?" />
       <div className="format-grid">
-        <FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onNavigate("create")} />
-        <FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onNavigate("create")} />
-        <FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onNavigate("create")} />
+        <FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onCreate("image")} />
+        <FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onCreate("video")} />
+        <FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onCreate("audio")} />
       </div>
 
       <SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} />
@@ -381,6 +391,7 @@ function FormatCard({ icon, title, count, onClick }: { icon: IconName; title: st
 
 function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models: GenerationModel[]; families: GenerationModelFamily[]; feed: FeedCard[]; onCreate: (model: GenerationModel) => void; onPreview: (item: FeedCard) => void }) {
   const [media, setMedia] = useState<"all" | "image" | "video" | "audio">("all");
+  const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const filtered = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   return (
@@ -391,19 +402,21 @@ function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models
       </div>
       <div className="model-grid">
         {filtered.map((family) => {
-          const first = byId.get(family.variants[0]?.id || "");
-          return <button key={family.id} className="model-card" type="button" onClick={() => first && onCreate(first)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>;
+          return <button key={family.id} className="model-card" type="button" onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>;
         })}
       </div>
       <SectionTitle kicker="Сообщество" title="Свежие работы" />
       <MediaGrid items={feed} empty="Публикаций пока нет." onClick={onPreview} reactions />
+      {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId="" onClose={() => setFamilySheet(null)} onChoose={(id) => { const model = byId.get(id); if (model) onCreate(model); setFamilySheet(null); }} />}
     </section>
   );
 }
 
 function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
   const initialModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
+  const initialMedia = typeof window !== "undefined" ? normalizeMediaFilter(localStorage.getItem(MEDIA_FILTER_KEY)) : "all";
   const [selectedId, setSelectedId] = useState(initialModelId || models[0]?.id || "");
+  const [media, setMedia] = useState<"all" | "image" | "video" | "audio">(initialMedia);
   const selected = models.find((model) => model.id === selectedId) || models[0] || null;
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -413,6 +426,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const quoteSeq = useRef(0);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
+  const visibleFamilies = useMemo(() => media === "all" ? families : families.filter((family) => family.media_types?.includes(media)), [families, media]);
 
   useEffect(() => {
     try { setDrafts(JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}")); } catch { setDrafts({}); }
@@ -421,6 +435,14 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   useEffect(() => {
     if (!selectedId && models[0]) setSelectedId(models[0].id);
   }, [models, selectedId]);
+
+  useEffect(() => {
+    if (!visibleFamilies.length || !models.length) return;
+    const selectedIsVisible = visibleFamilies.some((family) => family.variants.some((variant) => variant.id === selectedId));
+    if (selectedIsVisible) return;
+    const next = visibleFamilies.flatMap((family) => family.variants).map((variant) => byId.get(variant.id)).find(Boolean);
+    if (next) chooseModel(next.id);
+  }, [byId, models.length, selectedId, visibleFamilies]);
 
   const draft = useMemo(() => {
     if (!selected) return null;
@@ -462,6 +484,11 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
     localStorage.setItem(MODEL_KEY, id);
     setQuote(null);
     haptic("light");
+  };
+
+  const chooseMedia = (next: "all" | "image" | "video" | "audio") => {
+    setMedia(next);
+    localStorage.setItem(MEDIA_FILTER_KEY, next);
   };
 
   const setScenario = (id: string) => {
@@ -508,8 +535,11 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
         <div className="create-controls">
           <div className="panel">
             <label className="label">Модель</label>
+            <div className="segmented scrollable family-tabs">
+              {(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => chooseMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}
+            </div>
             <div className="family-grid">
-              {families.map((family) => {
+              {visibleFamilies.map((family) => {
                 const active = family.variants.some((variant) => variant.id === selected.id);
                 return <button className={`family-card${active ? " active" : ""}`} type="button" key={family.id} onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>;
               })}
