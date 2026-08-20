@@ -29,9 +29,10 @@ def test_mobile_runtime_filters_and_coalesces_global_mutation_work() -> None:
     assert "scheduleBackSync();" in source
 
 
-def test_telegram_mobile_disables_large_live_backdrop_blurs() -> None:
-    css = _read("roxy-mobile-runtime.css")
-    for platform in ("ios", "android"):
-        assert f'html[data-roxy-platform="{platform}"] .product-header' in css
-        assert f'html[data-roxy-platform="{platform}"] .studio-bottom-nav' in css
-    assert "-webkit-backdrop-filter: none !important" in css
+def test_canonical_design_has_reduced_motion_and_bounded_glass_surfaces() -> None:
+    css = _read("roxy-design-system.css")
+    assert "prefers-reduced-motion: reduce" in css
+    assert "backdrop-filter: blur(20px)" in css
+    assert "backdrop-filter: blur(22px)" in css
+    assert "position: fixed" in css
+    assert ".studio-bottom-nav" in css
