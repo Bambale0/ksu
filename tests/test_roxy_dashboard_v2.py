@@ -45,7 +45,7 @@ def test_backend_tools_remain_available_without_owning_primary_navigation() -> N
         'window.RoxyIcons?.create?.(name, { size: 22 })',
     ):
         assert token in source
-    assert 'catalog: "Каталог"' in navigation
+    assert '["catalog", "catalog", "Каталог"]' in navigation
     assert 'PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"]' in navigation
 
 
