@@ -73,8 +73,12 @@ def test_deploy_without_secrets_fails_closed_and_is_documented() -> None:
 
 def test_production_deploy_proves_the_exact_mini_app_release() -> None:
     workflow = _workflow()
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert "app/web/mini_app/release.json" in workflow
+    assert 'MINI_APP_RELEASE_SHA="${DEPLOY_SHA}"' in workflow
+    assert "ARG MINI_APP_RELEASE_SHA=unknown" in dockerfile
+    assert "MINI_APP_RELEASE_SHA" in dockerfile
     assert "expected_release=" in workflow
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow

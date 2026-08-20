@@ -23,8 +23,11 @@ def test_production_deploy_fails_closed_when_ssh_secrets_are_missing() -> None:
 
 def test_production_deploy_verifies_exact_mini_app_sha() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert "app/web/mini_app/release.json" in workflow
+    assert 'MINI_APP_RELEASE_SHA="${DEPLOY_SHA}"' in workflow
+    assert "ARG MINI_APP_RELEASE_SHA=unknown" in dockerfile
     assert "expected_release=" in workflow
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow

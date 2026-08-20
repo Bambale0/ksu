@@ -64,7 +64,7 @@ def test_production_deploy_validates_predeploy_dump_and_starts_worker() -> None:
     assert "build_services=(" in workflow
     assert "runtime_services=(" in workflow
     assert "backup-worker" in workflow
-    assert 'docker compose build "${build_services[@]}"' in workflow
+    assert 'docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}"' in workflow
     assert 'docker compose up -d --remove-orphans "${runtime_services[@]}"' in workflow
     assert 'pg_restore --list < "${backup}"' in workflow
     assert 'sha256sum "${backup}" > "${backup}.sha256"' in workflow
