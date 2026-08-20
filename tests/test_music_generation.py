@@ -146,7 +146,7 @@ def test_custom_instrumental_music_can_omit_prompt() -> None:
 
 @pytest.mark.asyncio
 async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None:
-    catalog = await generation_models()
+    catalog = await generation_models(None, None)
     music = [item for item in catalog["models"] if item["id"] == MUSIC_MODEL_ID]
     assert len(music) == 1
     assert music[0]["media_type"] == "audio"
@@ -157,7 +157,8 @@ async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None
             prompt="lo-fi instrumental for deep work",
             parameters={"instrumental": True, "customMode": False},
         ),
-        None,  # music quote is server-configured and does not need a DB read
+        None,
+        None,  # public music quote is server-configured and does not need a DB read
     )
     assert quote["model_id"] == MUSIC_MODEL_ID
     assert quote["price_mode"] == "flat"
