@@ -26,6 +26,6 @@ def test_prune_script_preserves_unmerged_reused_and_protected_branches() -> None
     assert ".merged_at != null" in script
     assert 'main|master|develop|development|staging|production|prod|release|release/*' in script
     assert 'grep -Fxq "$branch" "$open_heads"' in script
-    assert 'current_sha != "$merged_sha"' in script
+    assert '[[ "$current_sha" != "$merged_sha" ]]' in script
     assert 'git/refs/heads/${branch}' in script
     assert "-X DELETE" in script
