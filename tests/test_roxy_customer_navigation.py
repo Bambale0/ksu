@@ -42,16 +42,25 @@ def test_customer_navigation_has_approved_five_primary_routes() -> None:
 def test_roxy_brand_mounts_product_layers() -> None:
     brand = _read("roxy-brand.js")
     assert "function mountProductLayers()" in brand
-    assert '/mini-app/roxy-icons.js' in brand
-    assert '/mini-app/roxy-customer-navigation.css' in brand
-    assert '/mini-app/roxy-customer-navigation.js' in brand
-    assert '/mini-app/roxy-discovery.css' in brand
-    assert '/mini-app/roxy-discovery.js' in brand
-    assert '/mini-app/roxy-approved-theme.css' in brand
-    assert '/mini-app/roxy-approved-home.js' in brand
-    assert '/mini-app/roxy-approved-surfaces.css' in brand
-    assert '/mini-app/roxy-client-feedback.css' in brand
-    assert brand.index('/mini-app/roxy-client-feedback.css') > brand.index('/mini-app/roxy-approved-surfaces.css')
+    for token in (
+        '/mini-app/roxy-icons.js',
+        '/mini-app/roxy-customer-navigation.css',
+        '/mini-app/roxy-customer-navigation.js',
+        '/mini-app/roxy-discovery.css',
+        '/mini-app/roxy-discovery.js',
+        '/mini-app/roxy-user-profile.css?v=1',
+        '/mini-app/roxy-user-profile.js?v=1',
+        '/mini-app/roxy-approved-home.js',
+        '/mini-app/roxy-design-system.css?v=1',
+    ):
+        assert token in brand
+    for retired in (
+        '/mini-app/roxy-approved-theme.css',
+        '/mini-app/roxy-approved-surfaces.css',
+        '/mini-app/roxy-client-feedback.css',
+    ):
+        assert retired not in brand
+    assert brand.rindex('/mini-app/roxy-design-system.css?v=1') > brand.index('/mini-app/roxy-approved-home.js')
     assert "mountProductLayers();" in brand
 
 
