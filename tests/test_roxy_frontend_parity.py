@@ -192,56 +192,45 @@ def test_frontend_parity_navigation_surfaces_existing_tools_without_duplicate_ap
         '.social-profile-section',
     ):
         assert token in source
-    # This layer is navigation-only: it must not duplicate backend fetch logic.
     assert "fetch(" not in source
     assert "MutationObserver" not in source
 
 
-def test_parity_and_fhd_layers_are_mounted_before_mobile_acceptance_overrides() -> None:
+def test_parity_features_are_mounted_before_the_canonical_design_system() -> None:
     brand = _read("roxy-brand.js")
     assert '/mini-app/roxy-parity-navigation.css' in brand
     assert '/mini-app/roxy-parity-navigation.js' in brand
     assert '/mini-app/roxy-history-management.css' in brand
     assert '/mini-app/roxy-history-management.js' in brand
-    assert '/mini-app/roxy-fhd-density.css' in brand
+    assert '/mini-app/roxy-design-system.css?v=1' in brand
+    assert '/mini-app/roxy-fhd-density.css' not in brand
+    assert '/mini-app/roxy-mobile-runtime.css' not in brand
     assert brand.index('/mini-app/roxy-profile-cabinet.js') < brand.index('/mini-app/roxy-parity-navigation.js')
-    assert brand.index('/mini-app/roxy-fhd-density.css') < brand.index('/mini-app/roxy-mobile-runtime.css')
+    assert brand.index('/mini-app/roxy-parity-navigation.js') < brand.index('/mini-app/roxy-design-system.css?v=1')
 
 
-def test_full_hd_density_uses_wide_canvas_without_giant_media() -> None:
-    css = _read("roxy-fhd-density.css")
+def test_wide_and_mobile_density_are_owned_by_one_design_system() -> None:
+    css = _read("roxy-design-system.css")
     for token in (
-        "--roxy-fhd-max: 1880px",
-        "@media (min-width: 1440px)",
-        "@media (min-width: 1800px)",
-        "grid-template-columns: repeat(7",
-        "grid-template-columns: repeat(8",
-        "--roxy-media-thumb-h: 142px",
-        "max-height: var(--roxy-media-thumb-h)",
-        "max-height: var(--roxy-media-detail-h)",
+        "--roxy-content: 840px",
+        "@media (min-width: 720px)",
+        "@media (max-width: 430px)",
+        "grid-template-columns: minmax(0, 1.03fr) minmax(300px, .97fr)",
+        "grid-template-columns: repeat(5",
+        "--tg-content-safe-area-inset-bottom",
+        "min-height: 44px",
         "object-fit: cover",
         "object-fit: contain",
-        ".feed-list { grid-template-columns: repeat(2",
-        ".feed-media-wrap.is-video",
-        "aspect-ratio: 16 / 10",
     ):
         assert token in css
 
 
-def test_mobile_media_stays_compact_and_responsive() -> None:
-    css = _read("roxy-fhd-density.css")
-    assert "@media (max-width: 720px)" in css
-    assert "--roxy-media-thumb-h: 132px" in css
-    assert "grid-template-columns: repeat(2" in css
-    assert ".feed-list { grid-template-columns: 1fr; }" in css
-    assert "aspect-ratio: 4 / 3" in css
-    assert "@media (max-width: 380px)" in css
-    assert "--roxy-media-thumb-h: 116px" in css
-
-
-def test_fhd_layer_does_not_replace_telegram_safe_area_runtime() -> None:
-    density = _read("roxy-fhd-density.css")
-    mobile = _read("roxy-mobile-runtime.css")
-    assert "1920px" not in density  # responsive master canvas, not a fixed viewport lock
-    assert "--roxy-content-safe-bottom" in mobile
-    assert "env(safe-area-inset-bottom, 0px)" in mobile
+def test_telegram_safe_area_and_viewport_logic_stay_in_runtime_not_visual_overrides() -> None:
+    css = _read("roxy-design-system.css")
+    runtime = _read("roxy-mobile-runtime.js")
+    assert "--tg-content-safe-area-inset-bottom" in css
+    assert "env(safe-area-inset-bottom" not in css
+    assert "tg?.safeAreaInset" in runtime
+    assert "tg?.contentSafeAreaInset" in runtime
+    assert "tg?.viewportStableHeight" in runtime
+    assert "window.visualViewport" in runtime
