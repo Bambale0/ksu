@@ -2,14 +2,36 @@ from decimal import Decimal
 
 import pytest
 
-from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
+from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, UnknownModelError
+from app.services.trending_model_catalog import TRENDING_PUBLIC_MODEL_ORDER
 
 
-def test_catalog_contains_all_requested_families_and_variants() -> None:
+def test_catalog_contains_exact_trending_public_model_set() -> None:
     models = ModelCatalog.list()
+    ids = [item["id"] for item in models]
     families = {item["family"] for item in models}
-    assert {"nanobanana", "seedream", "gpt-image", "wan", "seedance", "kling", "grok"} <= families
-    assert len(models) >= 35
+
+    assert ids == list(TRENDING_PUBLIC_MODEL_ORDER)
+    assert len(ids) == 23
+    assert {
+        "nanobanana",
+        "seedream",
+        "gpt-image",
+        "wan",
+        "seedance",
+        "kling",
+        "grok",
+        "veo",
+        "gemini",
+    } <= families
+
+
+def test_removed_legacy_model_cannot_start_new_work() -> None:
+    with pytest.raises(UnknownModelError, match="Inactive generation model"):
+        ModelCatalog.prepare(
+            "wan-2.7-t2v",
+            {"prompt": "legacy route", "duration": 5},
+        )
 
 
 def test_seedance_reference_and_frame_modes_are_mutually_exclusive() -> None:
@@ -25,18 +47,21 @@ def test_seedance_reference_and_frame_modes_are_mutually_exclusive() -> None:
         )
 
 
-def test_wan_i2v_supports_video_continuation() -> None:
-    _spec, params, cost, seconds, _unit = ModelCatalog.prepare(
-        "wan-2.7-i2v",
+def test_current_wan_photo_model_accepts_edit_references() -> None:
+    spec, params, cost, seconds, _unit = ModelCatalog.prepare(
+        "wan-2.7-image-pro",
         {
-            "prompt": "continue naturally",
-            "first_clip_url": "https://example.com/source.mp4",
-            "duration": 6,
+            "prompt": "keep composition and change the product color",
+            "input_urls": ["https://example.com/source.png"],
+            "n": 1,
+            "resolution": "2K",
         },
     )
-    assert params["first_clip_url"].endswith("source.mp4")
-    assert seconds == 6
-    assert cost == Decimal("72.00")
+    assert spec.media_type == "image"
+    assert spec.operation == "generate_or_edit"
+    assert params["input_urls"] == ["https://example.com/source.png"]
+    assert seconds is None
+    assert cost > Decimal("0")
 
 
 def test_grok_extend_requires_explicit_billed_seconds() -> None:
