@@ -93,6 +93,21 @@ async def get_current_user(
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
+async def get_optional_current_user(
+    request: Request,
+    session: SessionDep,
+    x_telegram_init_data: Annotated[str | None, Header()] = None,
+) -> User | None:
+    """Authenticate signed Mini App requests while preserving public read previews."""
+
+    if not x_telegram_init_data:
+        return None
+    return await get_current_user(request, session, x_telegram_init_data)
+
+
+OptionalCurrentUserDep = Annotated[User | None, Depends(get_optional_current_user)]
+
+
 async def get_onboarded_user(
     user: CurrentUserDep,
     session: SessionDep,
