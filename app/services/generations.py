@@ -14,6 +14,7 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.model_routing import resolve_model_request
 from app.services.seedance25_contract import normalize_seedance25_input
 from app.services.wallet import WalletService
 
@@ -135,27 +136,30 @@ class GenerationService:
         parameters: dict[str, Any] | None = None,
         billing_seconds: int | None = None,
     ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
-        spec = ModelCatalog.get(model_id)
         merged = dict(parameters or {})
         if prompt and not merged.get("prompt"):
             merged["prompt"] = prompt
-        cls._apply_input_url(spec, merged, input_url)
-        if model_id == "seedance-2.5":
+
+        routed = resolve_model_request(model_id, merged, input_url=input_url)
+        merged = routed.parameters
+
+        if routed.model_id == "seedance-2.5":
             # Validate the current provider contract before wallet debit. This also
             # normalizes old saved drafts (for example obsolete fixed_lens).
             merged = normalize_seedance25_input(merged)
+
         resolved_seconds = await cls._resolve_billing_seconds(
             session,
-            model_id=model_id,
+            model_id=routed.model_id,
             parameters=merged,
             billing_seconds=billing_seconds,
         )
         spec, clean, _catalog_cost, seconds, _catalog_unit_price = ModelCatalog.prepare(
-            model_id,
+            routed.model_id,
             merged,
             billing_seconds=resolved_seconds,
         )
-        unit_price = cls._effective_unit_price(model_id=model_id, parameters=clean)
+        unit_price = cls._effective_unit_price(model_id=spec.id, parameters=clean)
         multiplier = Decimal(seconds) if spec.price_mode == "per_second" and seconds is not None else Decimal("1")
         cost_rox = (unit_price * multiplier).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -212,6 +216,9 @@ class GenerationService:
             provider="kie",
             parameters={
                 **clean,
+                "_requested_model_id": model_id,
+                "_auto_routed": spec.id != model_id,
+                "_auto_mode": "reference" if spec.id != model_id and any(clean.get(key) for key in ("image_urls", "input_urls", "image_input", "image_url", "first_frame_url", "reference_image_urls", "video_urls", "video_url", "first_clip_url", "reference_video_urls")) else "text",
                 "_model_id": spec.id,
                 "_model_title": spec.title,
                 "_model_family": spec.family,
