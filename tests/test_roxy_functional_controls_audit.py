@@ -228,4 +228,6 @@ def test_embedded_child_routes_and_back_controls_are_wired() -> None:
     assert "roxy-child-screen-back" in children
     assert 'close.addEventListener("click", closeFromUser)' in batch
     assert 'tg?.BackButton?.onClick?.(onBackButton)' in batch
-    assert 'action.addEventListener("click", () => toggleSubscription' in author
+    assert '/api/v1/social/profiles/${encodeURIComponent(state.authorId)}/subscribe' in author
+    assert 'profile.subscribed_by_me ? "Отписаться" : "Подписаться"' in author
+    assert '() => toggleSubscription(container, subscribe)' in author
