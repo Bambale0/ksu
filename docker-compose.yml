@@ -80,6 +80,34 @@ services:
         condition: service_healthy
     command: python -m app.workers.payments
 
+  notification-worker:
+    build: .
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.notifications
+
+  admin-campaign-worker:
+    build: .
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.admin_campaigns
+
   creator-partnership-worker:
     build: .
     env_file: .env
