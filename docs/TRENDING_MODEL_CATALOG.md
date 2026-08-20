@@ -31,7 +31,7 @@ The Video picker exposes the current Tanya-style families through KSU's current 
 
 | Customer product | KSU runtime IDs / selector |
 | --- | --- |
-| Kling 3.0 | `kling-3.0`; server-driven `mode` covers the supported variant choice |
+| Kling 3.0 | `kling-3.0`; server-driven `mode` covers Tanya's `v3_std` / `v3_pro` style choices instead of duplicating one upstream endpoint |
 | Kling 2.5 Turbo Pro | `kling-2.5-turbo-pro-t2v`, `kling-2.5-turbo-pro-i2v` |
 | Grok Imagine | `grok-video-i2v` |
 | Grok Imagine 1.5 | `grok-video-1.5` |
@@ -43,6 +43,10 @@ The Video picker exposes the current Tanya-style families through KSU's current 
 | Kling AI Avatar | `kling-avatar-standard`, `kling-avatar-pro` |
 
 Seedance 2.5 is retained publicly in ROXY because KSU already has a provider-verified current callable contract. In Tanya it is present in the capability registry and exposed as an admin preview in the bot rather than the ordinary Mini App list.
+
+Tanya also renders a `Kling Glow` customer row, but its current `tanyapi` implementation is not a distinct Kie model: it aliases to the Kling 2.6 Motion Control route and injects a default glow-style prompt. Current Kie documentation does not publish a standalone Kling Glow endpoint. ROXY therefore does **not** create a fake `glow` provider model; the real Motion Control product remains available instead. If Kie publishes a concrete Glow model later, add it only after the exact upstream model ID and callable schema are verified.
+
+Likewise, Tanya's separate `Kling v3`/`Kling 3.0` rows and Veo Quality/Fast/Lite rows are presentation variants. ROXY keeps one provider-backed family where the same current callable contract exposes the variant through server-driven settings. This removes duplicated cards without losing the actual capability.
 
 Not offered for new customer work: Seedance 1.5 Pro, Seedance 2.0 Fast/Mini, Wan 2.7 video routes as top-level products, Grok text-to-video as a separate picker product, and historical duplicated variants that are already represented by a current KSU model plus its server-driven settings.
 
@@ -71,5 +75,6 @@ Before release:
 5. Grok upscale/extend remain callable only as current follow-up operations and do not become model-picker cards.
 6. Current Kling 2.5/Avatar, Seedance 2.5, Veo 3.1 and other retained provider-contract tests remain green.
 7. Family grouping still exposes every retained concrete T2I/I2I/T2V/I2V route without duplicating obsolete versions.
-8. Admin-free customer billing behavior remains unchanged for every retained model.
-9. Production is not considered updated until the merged SHA is deployed and `/mini-app/release.json` plus physical Mini App smoke evidence match that SHA.
+8. Tanya-only aliases without a real current provider contract (currently `Kling Glow`) are not introduced as fake ROXY models.
+9. Admin-free customer billing behavior remains unchanged for every retained model.
+10. Production is not considered updated until the merged SHA is deployed and `/mini-app/release.json` plus physical Mini App smoke evidence match that SHA.
