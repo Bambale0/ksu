@@ -31,12 +31,14 @@ REQUIRED_ASSETS = (
 )
 
 # These modules are retained as low-level compatibility implementations for existing
-# shell/payment flows. They may still contain historical source literals, but their
-# rendered text is normalized by roxy-approved-home.js before it remains visible.
-# New/canonical customer surfaces are never exempt from the release copy gate.
+# shell/payment/copy flows. They may still contain historical source literals, but
+# visible UI is normalized at runtime. New/canonical customer surfaces are never
+# exempt from the release copy gate.
 LEGACY_COMPAT_SOURCES = {
     "app.js",
     "primary-card-checkout.js",
+    "roxy-approved-home.js",
+    "roxy-notification-badge-bridge.js",
     "shell.js",
     "studio-shell.js",
     "wallet.js",
@@ -53,6 +55,9 @@ RETIRED_VISUAL_LAYERS = (
     "roxy-mature-ui.css",
     "roxy-mobile-runtime.css",
     "roxy-header-logo.css",
+    "roxy-reference-home.css",
+    "roxy-reference-home.js",
+    "roxy-reference-order.css",
 )
 
 
@@ -89,6 +94,7 @@ def validate() -> list[str]:
     economy = _read("roxy-economy.js")
     music = _read("roxy-music.js")
     approved_home = _read("roxy-approved-home.js")
+    notification_bridge = _read("roxy-notification-badge-bridge.js")
 
     if "viewport-fit=cover" not in index:
         errors.append("viewport-fit-cover")
@@ -100,7 +106,7 @@ def validate() -> list[str]:
     if '/mini-app/roxy-design-system.css?v=1' not in brand:
         errors.append("canonical-design-runtime")
     for retired in RETIRED_VISUAL_LAYERS:
-        if f"/mini-app/{retired}" in brand:
+        if f"/mini-app/{retired}" in brand or retired in notification_bridge:
             errors.append(f"retired-visual-runtime:{retired}")
 
     for token in ("#0b0b10", "#9b5cff", "#ff5fb7", "#ffffff", "#a6a6b3"):
@@ -208,8 +214,7 @@ def validate() -> list[str]:
         if token not in functional_js:
             errors.append(f"functional-runtime:{token}")
 
-    # Compatibility source exemptions are only safe while the approved runtime owns
-    # both old brand-name fallbacks and historical credit labels in rendered DOM text.
+    # Compatibility literals remain permitted only in the two scoped normalizers.
     for token in (
         "LEGACY_BRAND_RE",
         "normalizeCopyString",
@@ -220,6 +225,10 @@ def validate() -> list[str]:
     ):
         if token not in approved_home:
             errors.append(f"compat-copy-normalizer:{token}")
+    if 'current.replace(/\\s*кр\\.?$/iu, " ROX")' not in notification_bridge:
+        errors.append("compat-balance-normalizer")
+    if "mountReferenceHomeLayer" in notification_bridge or "roxy-reference-home" in notification_bridge:
+        errors.append("legacy-reference-home-bridge")
 
     legacy_offenders: list[str] = []
     for path in MINI.iterdir():
