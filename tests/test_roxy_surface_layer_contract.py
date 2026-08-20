@@ -5,15 +5,25 @@ ROOT = Path(__file__).resolve().parents[1]
 MINI = ROOT / "app" / "web" / "mini_app"
 
 
-def test_final_surface_layer_is_last_roxy_brand_css_layer() -> None:
+def test_canonical_design_system_is_last_roxy_brand_css_layer() -> None:
     brand = (MINI / "roxy-brand.js").read_text(encoding="utf-8")
-    approved = brand.index('/mini-app/roxy-approved-theme.css')
-    final = brand.index('/mini-app/roxy-approved-surfaces.css')
-    assert final > approved
+    canonical = '/mini-app/roxy-design-system.css?v=1'
+    assert canonical in brand
+    assert brand.rindex(canonical) > brand.index('/mini-app/roxy-app-onboarding.css?v=1')
+    assert brand.rindex(canonical) > brand.index('/mini-app/roxy-partner-promo.css?v=12')
 
 
-def test_final_surface_layer_uses_approved_logo_asset() -> None:
-    css = (MINI / "roxy-approved-surfaces.css").read_text(encoding="utf-8")
-    assert "url('/mini-app/roxy-logo.svg')" in css
-    assert ".brand-mark" in css
-    assert ".studio-sidebar-mark" in css
+def test_canonical_surface_layer_owns_brand_marks_and_product_surfaces() -> None:
+    css = (MINI / "roxy-design-system.css").read_text(encoding="utf-8")
+    for selector in (
+        ".brand-mark",
+        ".studio-sidebar-mark",
+        ".card",
+        ".shell-panel",
+        ".roxy-media-card",
+        ".studio-result-pane",
+        ".feed-card",
+        ".payment-package",
+        ".studio-bottom-nav",
+    ):
+        assert selector in css
