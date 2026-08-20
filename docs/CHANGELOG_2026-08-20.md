@@ -140,3 +140,17 @@ The Mini App model-selection menu now removes repeated top-level cards for versi
 - single-product families keep their existing card without an unnecessary selector;
 - version controls keep 44 px mobile touch targets, focus-visible state and reduced-motion support; families above five versions use a horizontal chip row to avoid widening the Mini App;
 - `ROXY_CREATE_CENTER.md` and focused regression coverage are synchronized with the shipped behavior.
+
+## Full app model identity and admin-free audit
+
+PR #191 hardens the customer model/accounting contract across the whole ROXY app:
+
+- every new generation snapshots the exact upstream provider model into `_provider_model`; the worker submits the frozen snapshot instead of re-reading a mutable customer label;
+- customer presentation/grouping is keyed separately from provider routing, and Kling Video, Kling Motion and Kling AI Avatar are explicitly distinct customer families;
+- generation history exposes the stored provider identity for audit while internal routing/accounting fields remain stripped from provider input;
+- active `AdminAccount` users have `0.00 ROX` customer-wallet cost for normal generation, Suno/music, Prompt Tools, Batch + failed-item retry, Trends and Feed remix;
+- retail price metadata is preserved and provider/operator billing still occurs; rate limits, concurrency, circuit-breaker, schema validation and durable recovery remain enabled for admins;
+- zero-cost admin work creates no fake debit/refund pair and zero-cost remix cannot mint the paid prompt-repeat author bonus;
+- Mini App zero-price model badges render as `Бесплатно` and wallet-facing legacy `кр.` terminology is normalized to ROX;
+- Telegram auth remains local to API clients that need it; no global `window.fetch` replacement is introduced;
+- the focused contract and release checklist live in `MODEL_IDENTITY_AND_ADMIN_FREE.md`, with regression tests locking exact current Kling mappings, provider snapshot precedence, internal-field stripping, presentation completeness and admin-free decisions.
