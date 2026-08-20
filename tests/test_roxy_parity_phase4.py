@@ -78,12 +78,14 @@ def test_brand_and_economy_do_not_rewrite_arbitrary_dom_text() -> None:
     assert "rewriteWalletCreditCopy" not in economy
 
 
-def test_mature_visual_layer_is_last_and_texture_is_restrained() -> None:
+def test_concept_one_visual_layer_is_last_and_motion_is_restrained() -> None:
     brand = _read("roxy-brand.js")
-    css = _read("roxy-mature-ui.css")
-    assert brand.index('/mini-app/roxy-mobile-runtime.css') < brand.index('/mini-app/roxy-mature-ui.css')
-    assert "opacity: .18" in css
-    assert "--roxy-radius: 12px" in css
-    assert "--roxy-radius-small: 9px" in css
-    assert ".social-danger-button" in css
+    css = _read("roxy-design-system.css")
+    assert '/mini-app/roxy-mature-ui.css' not in brand
+    assert '/mini-app/roxy-mobile-runtime.css' not in brand
+    assert brand.rindex('/mini-app/roxy-design-system.css?v=1') > brand.index('/mini-app/roxy-app-onboarding.css?v=1')
+    assert "--roxy-radius-sm: 13px" in css
+    assert "--roxy-radius-md: 18px" in css
     assert ":focus-visible" in css
+    assert "prefers-reduced-motion: reduce" in css
+    assert "body::before" in css
