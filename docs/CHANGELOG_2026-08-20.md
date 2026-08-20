@@ -127,3 +127,18 @@ The current Kie callable contracts are implemented directly rather than copied f
 - default ROXY tariffs are 30 ROX/s for Kling 2.5 T2V/I2V, 20 ROX/s for Avatar Standard and 30 ROX/s for Avatar Pro; published Admin Tariffs remain authoritative;
 - model-specific public allowlists reject unknown/legacy fields before wallet debit and provider normalization repeats the same contract at submission;
 - `KLING_25_AVATAR_CONTRACT.md`, compact pricing, dynamic UI and regression tests are synchronized with the same current-provider contract.
+
+## Mini App P0 release-blocker cleanup
+
+Issue #145 was re-audited against current `main` before adding new code. Three of five P0 items were already shipped but the epic was stale:
+
+- hidden History is PostgreSQL-backed, has a persisted `Скрытые` list and server-side `Вернуть` restore, so it survives reload;
+- reference presets already support persisted create/edit/apply/delete, including PUT edit;
+- Feed already omits `Повторить` when backend returns `prompt_actions_allowed=false`.
+
+The two real remaining P0 gaps were fixed rather than duplicated:
+
+- `roxy-customer-navigation.js` is now the sole customer router/state owner. It adopts existing Studio nav buttons in place instead of racing Studio with `replaceChildren`, intercepts their clicks before legacy handlers, owns history/deep-link state, and no longer watches body classes through `MutationObserver`;
+- `roxy-music.js` no longer observes builder/result/history subtrees. It refreshes from explicit model/navigation/generation/history/user/media lifecycle events and coalesces work through `requestAnimationFrame`.
+
+Regression coverage in `tests/test_roxy_p0_release_blockers.py` locks all five P0 contracts and verifies that `roxy-economy.js` has no whole-body subtree observer. `HISTORY_SOCIAL.md`, `STUDIO_SHELL.md` and `ROXY_MUSIC_GENERATION.md` are synchronized with the same current behavior.
