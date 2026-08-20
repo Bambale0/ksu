@@ -8,7 +8,7 @@ The production source of truth is `main`. Short-lived feature/fix/docs/chore bra
 
 `.github/workflows/prune-merged-branches.yml` runs from trusted `main` after pushes to `main` and may also be invoked manually. It executes `scripts/prune_merged_branches.sh` with the repository-scoped GitHub token.
 
-A branch is deleted only when **all** of these conditions hold:
+A branch is deleted automatically as a normal merged branch only when **all** of these conditions hold:
 
 1. GitHub records a merged pull request whose head repository is this repository.
 2. The branch is not a protected environment/release name (`main`, `master`, `develop`, `development`, `staging`, `production`, `prod`, `release`, `release/*`).
@@ -16,7 +16,26 @@ A branch is deleted only when **all** of these conditions hold:
 4. The branch still exists.
 5. The branch's current tip SHA is exactly the merged pull request's recorded head SHA.
 
-The exact-tip condition is the safety boundary. If a branch was reused or received any commit after its PR merged, cleanup preserves it for manual inspection instead of deleting potentially unique work.
+The exact-tip condition is the default safety boundary. If a branch was reused or received any commit after its PR merged, automatic merged-tip cleanup preserves it for inspection.
+
+## Superseded clean-port branches
+
+Some historical branches are intentionally **not** merged directly. Their useful changes are reviewed, corrected and clean-ported onto current `main`; the old implementation then becomes misleading repository debris.
+
+Those branches are listed explicitly in `scripts/superseded_branches.txt` by a reviewed commit. The cleanup workflow may delete such an allowlisted branch only when:
+
+- it is not a protected environment/release name;
+- it has no open pull request;
+- it still exists at cleanup time.
+
+Adding a branch to this file is therefore the explicit reviewed declaration that its unique useful work has already been merged, replaced or intentionally discarded. Do not add a divergent branch until its replacement PR is green and its useful diff has been accounted for.
+
+Clean-port lifecycle:
+
+```text
+legacy branch → compare/audit → clean port on current main → tests + docs → merge replacement
+              → add legacy name to superseded_branches.txt → trusted-main prune
+```
 
 ## Legacy code cleanup
 
@@ -45,8 +64,9 @@ Runtime-affecting PRs must include their documentation/configuration changes bef
 If a branch expected to be deleted remains:
 
 1. check whether it has an open PR;
-2. compare its current tip SHA with the merged PR head SHA;
-3. inspect whether additional commits contain unique work;
-4. never force-delete a divergent branch until those commits have been intentionally merged, superseded or declared disposable.
+2. for normal merged-tip cleanup, compare its current tip SHA with the merged PR head SHA;
+3. for a superseded clean-port branch, confirm it is explicitly listed in `scripts/superseded_branches.txt`;
+4. inspect whether additional commits contain unique work before adding a new superseded entry;
+5. never force-delete an unreviewed divergent branch.
 
 If the cleanup workflow fails, repository operation continues normally; branch pruning is hygiene and must never block production runtime or mutate `main` contents.
