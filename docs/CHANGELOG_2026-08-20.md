@@ -1,6 +1,6 @@
 # Documentation sync — 2026-08-20
 
-This synchronization aligns the documentation set with the merged ROXY runtime after the WAN 2.7 photo / generation pricing / live admin tariff work and the generation recovery hardening merged in PR #180.
+This synchronization aligns the maintained documentation set with the current ROXY runtime after the WAN 2.7 photo / generation pricing / live admin tariff work and the reliability/operations hardening merged throughout the 2026-08-20 release chain.
 
 Updated or added in the earlier sync:
 
@@ -22,7 +22,7 @@ Updated or added in the earlier sync:
 
 Runtime baseline after PR #180: `fa787db146f713b8f6568f037dd2d1ca17c2c68c`.
 
-Documentation now records the shipped recovery/accounting contract:
+Documentation records the shipped recovery/accounting contract:
 
 - generation terminal states are monotonic;
 - late/duplicate callbacks cannot turn a refunded failure into success;
@@ -32,13 +32,13 @@ Documentation now records the shipped recovery/accounting contract:
 - active provider tasks use `GENERATION_HARD_TIMEOUT_SECONDS` (default 7200 seconds) as a hard safety ceiling;
 - provider success without usable result media is not finalized as a charged empty result;
 - release acceptance includes recovery/refund regression gates;
-- documentation policy now requires relevant maintained docs/config examples to be updated in the same runtime-affecting PR before merge.
+- documentation policy requires relevant maintained docs/config examples to be updated in the same runtime-affecting PR before merge.
 
-The configuration template is also synchronized with the hard-timeout setting and must contain placeholders only for secrets.
+The configuration template is synchronized with the hard-timeout setting and must contain placeholders only for secrets.
 
 ## Repository hygiene automation
 
-Repository operations now define a safe lifecycle for short-lived branches and superseded code:
+Repository operations define a safe lifecycle for short-lived branches and superseded code:
 
 - merged feature/fix/docs/chore branches are pruned automatically from trusted `main`;
 - a branch is eligible only when its current tip exactly equals a recorded merged-PR head SHA;
@@ -60,7 +60,7 @@ Seedance 2.5 is synchronized with the callable Kie input schema checked on 2026-
 - first/last-frame and multimodal-reference modes remain mutually exclusive;
 - explicit duration is 4–30 seconds in ROXY; provider auto-duration remains disabled until actual-duration billing settlement exists;
 - provider-specific validation happens before wallet debit;
-- release acceptance now locks the same callable schema so marketing/UI drift cannot silently widen provider inputs.
+- release acceptance locks the same callable schema so marketing/UI drift cannot silently widen provider inputs.
 
 ## Hosted card lost-response recovery
 
@@ -78,7 +78,7 @@ The primary hosted-card adapter is synchronized with the current provider contra
 
 ## Referral registration anti-fraud
 
-Referral attachment is now guarded at the new-user registration boundary rather than relying on client behavior:
+Referral attachment is guarded at the new-user registration boundary rather than relying on client behavior:
 
 - migration `0026_referral_antifraud` adds durable `referral_events` audit records;
 - self-referral, missing inviter and inactive inviter attempts are rejected and recorded;
@@ -91,3 +91,22 @@ Referral attachment is now guarded at the new-user registration boundary rather 
 - existing users are not rebound to another inviter;
 - `.env.example`, partner/economy docs, release acceptance and the operations runbook are synchronized with the same contract;
 - the documented partner withdrawal floor is corrected to the runtime value of 3000 RUB.
+
+## Verified PostgreSQL backup operations
+
+The old operations backup staging branch was clean-ported onto current `main` and hardened before release:
+
+- a dedicated `backup-worker` uses `postgres:17-alpine` and a private `db_backups` volume;
+- default periodic cadence is 3 hours, newest 16 archives retained, with backup-on-start enabled;
+- periodic archives use `pg_dump --format=custom --no-owner --no-privileges`;
+- an archive is not published as current until it is non-empty and parseable by `pg_restore --list`;
+- published archives receive SHA-256 sidecars and `latest.dump` / `latest.dump.sha256` symlinks;
+- archive creation uses `umask 077`, and unpublished crash leftovers are removed on worker restart;
+- the old shared-volume lock-directory mechanism was intentionally not ported because an abrupt process kill could leave a stale lock that permanently suppresses future backups;
+- the customer app startup is not coupled to completion of a potentially long backup;
+- production deploy now separates application build services from runtime services and explicitly starts/verifies `backup-worker`;
+- the existing pre-migration deployment dump is additionally checked with `pg_restore --list` and receives a SHA-256 sidecar before Alembic may proceed;
+- local host/volume retention is explicitly documented as **not** equivalent to off-host disaster recovery;
+- `DATABASE_BACKUPS.md` defines verification, restore-drill, incident and encrypted off-host durability requirements;
+- database dumps are never routed through Telegram/chat by this implementation;
+- release acceptance and operations/deploy docs are synchronized with the same backup contract.
