@@ -127,3 +127,16 @@ The current Kie callable contracts are implemented directly rather than copied f
 - default ROXY tariffs are 30 ROX/s for Kling 2.5 T2V/I2V, 20 ROX/s for Avatar Standard and 30 ROX/s for Avatar Pro; published Admin Tariffs remain authoritative;
 - model-specific public allowlists reject unknown/legacy fields before wallet debit and provider normalization repeats the same contract at submission;
 - `KLING_25_AVATAR_CONTRACT.md`, compact pricing, dynamic UI and regression tests are synchronized with the same current-provider contract.
+
+## Grouped model-family picker
+
+The Mini App model-selection menu now removes repeated top-level cards for versions that belong to the same public family:
+
+- repeated `Nano Banana`, `Seedream`, `Seedance`, `WAN`, `GPT Image` and other backend families are collapsed generically by the public family label rather than by a second hardcoded catalog;
+- each grouped family card contains an inline version selector, using compact chips such as `Base`, `Pro`, `2`, `2 Lite`, `3.0`, `4.5`, etc.;
+- price, available mode badges and the card subtitle update from the currently selected concrete product;
+- the version choice is remembered separately per media type and model family;
+- selecting/opening a version delegates to the original generation product card, so schema rendering, validation, quote, wallet debit and provider submission remain unchanged and server-authoritative;
+- single-product families keep their existing card without an unnecessary selector;
+- version controls keep 44 px mobile touch targets, focus-visible state and reduced-motion support; families above five versions use a horizontal chip row to avoid widening the Mini App;
+- `ROXY_CREATE_CENTER.md` and focused regression coverage are synchronized with the shipped behavior.

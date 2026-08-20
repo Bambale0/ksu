@@ -17,6 +17,10 @@ Photo and Video are separate flows. Selecting Video must stay in the Video flow 
 
 The media flow loads `/api/v1/generations/models`, filters by `media_type`, groups related backend variants into user-facing products where appropriate, and then opens the existing schema-driven builder for the selected concrete model.
 
+The model-selection surface also collapses repeated public model families into one top-level card. A user first sees `Nano Banana`, `Seedream`, `Seedance`, `WAN`, `GPT Image`, etc., and chooses the concrete public version directly inside that card with compact version chips. For example, Nano Banana can expose `Base`, `Pro`, `2`, `2 Lite`; Seedream can expose `3.0`, `4.0`, `4.5`, `5.0 Lite`, `5 Pro`; Seedance versions are handled by the same generic family rule rather than by a separate hardcoded screen.
+
+The family picker is presentation-only: it groups already-rendered product cards by the backend-provided/public family label, remembers the selected version per media type and family, and delegates opening to the original product card. It does not duplicate schema, quote, debit, provider or generation logic. Families with only one product stay visually unchanged. Current short version sets use segmented/chip selection; if a family grows beyond five versions, the chip row becomes horizontally scrollable instead of widening the screen.
+
 WAN 2.7 is present in both media categories: video variants and a dedicated photo generation/edit product (`wan-2.7-image` / Kie `wan/2-7-image`).
 
 ## Builder ownership
@@ -64,6 +68,10 @@ Tests must protect at least these customer contracts:
 - independent Photo/Video routing;
 - no `home` hop in `chooseMedia` for Video;
 - model list filtered by backend media type;
+- repeated public families collapse into one top-level card while preserving every concrete product as an inline version choice;
+- a family-version change updates the displayed selected product and is remembered independently for Photo/Video;
+- version chips remain keyboard/focus accessible and keep at least a 44 px mobile touch target;
+- the family-presentation layer delegates to the original product and never owns quote/debit/provider submission;
 - server schema builder reuse rather than a second generation implementation;
 - builder Back returns to the active media flow;
 - WAN 2.7 photo appears only when its backend image model is available.

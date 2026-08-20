@@ -57,6 +57,19 @@ Run these flows against the release environment:
 18. Seedance 2.5 enforces product/provider reference counts: at most 30 images, 10 videos and 10 audio references; UI video upload copy must reflect ROXY's current 100 MB shared upload ceiling.
 19. Seedance 2.5 `duration=-1`/auto is not exposed until billing can settle against an authoritative actual duration after completion.
 
+### Grouped model-family picker acceptance
+
+1. Repeated public families in the Photo/Video model menu render as one top-level family card rather than one full card per version.
+2. Every underlying concrete product remains reachable through the inline version selector; no product may disappear merely because its family is grouped.
+3. Nano Banana, Seedream and Seedance demonstrate the generic grouping path; grouping is derived from the existing public family label rather than a second hardcoded provider catalog.
+4. Changing the version updates the selected-version subtitle, price badge and mode badges from that concrete original product before opening it.
+5. Opening a grouped card delegates to the original product path and therefore preserves the existing schema builder, validation, fresh quote, debit, provider submission and recovery behavior.
+6. The remembered version is scoped by media type plus family so a Photo choice cannot silently overwrite an unrelated Video choice.
+7. Single-product families keep the original card behavior without an unnecessary version control.
+8. Version chips expose radio semantics, focus-visible state, keyboard arrow/Home/End navigation and at least 44 px mobile touch targets.
+9. A family above five public versions must not widen the Mini App; its version row is horizontally scrollable.
+10. Returning from the concrete builder re-renders the grouped model menu without duplicating the presentation grid or losing the remembered family version.
+
 ## Current Kling 2.5 Turbo Pro / Avatar acceptance
 
 Run catalog → quote → provider-payload tests for all four current Kie mappings:
@@ -211,6 +224,8 @@ Do not promote if:
 - `backup-worker` is absent from the production runtime or cannot stay running;
 - the repository/docs imply that local Docker-volume retention is off-host disaster recovery;
 - Video/Create routing returns to the wrong surface;
+- repeated public model families are rendered as duplicated top-level version cards or a grouped version becomes unreachable;
+- a family-version picker can bypass the original schema/quote/debit/provider generation path;
 - quote and actual debit diverge;
 - a late/duplicate provider callback can reverse a terminal generation state;
 - an ambiguous provider submission can trigger a blind duplicate paid provider task;
