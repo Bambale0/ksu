@@ -1,0 +1,3 @@
+# Explicitly reviewed legacy branches whose useful work was clean-ported to current main.
+# Entries are deleted only when they have no open PR and are not protected environment names.
+feat/seedance-25-parity  # replaced by merged PR #183
