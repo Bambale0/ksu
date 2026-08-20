@@ -115,10 +115,11 @@ def test_public_payment_surface_is_vendor_neutral() -> None:
 def test_provider_adapter_uses_documented_invoice_contract() -> None:
     source = (ROOT / "app" / "providers" / "card_checkout.py").read_text(encoding="utf-8")
     assert '"/api/v3/invoice"' in source
-    assert 'f"/api/v2/invoices/{invoice_id}"' in source
+    assert 'f"/api/v1/invoices/{invoice_id}"' in source
     assert '"X-Api-Key"' in source
     for field in ("email", "offerId", "currency", "amount", "paymentProvider"):
         assert field in source
+    assert "clientUtm" not in source
 
 
 def test_primary_checkout_requires_second_direct_click_to_open_url() -> None:

@@ -10,6 +10,7 @@ from app.db.models import Payment
 from app.db.session import SessionFactory
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError
+from app.services.card_payment_recovery import CardPaymentRecoveryService
 from app.services.card_payments import CardPaymentService
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -45,7 +46,20 @@ async def card_payment_webhook(
             )
         )
         if payment is None:
-            raise HTTPException(status_code=404, detail="Payment not found")
+            try:
+                payment = await CardPaymentRecoveryService.recover_missing_external_id(
+                    session,
+                    external_id=contract_id,
+                )
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail="Payment not found") from exc
+            except PaymentProviderError as exc:
+                # Keep the webhook retryable when provider lookup is unavailable or
+                # more than one local unknown intent could match this contract.
+                raise HTTPException(
+                    status_code=502,
+                    detail="Payment recovery failed",
+                ) from exc
         try:
             await CardPaymentService.reconcile(
                 session,
