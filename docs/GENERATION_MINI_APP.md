@@ -155,6 +155,25 @@ See `ADMIN_CONSOLE.md` and `ADMIN_RUNBOOK.md` for operator procedure.
 
 The Mini App invalidates its cached quote whenever relevant model/scenario/parameter state changes. Create remains disabled while upload/submit is active, validation fails, or no fresh successful quote exists. The server still recalculates on create.
 
+## Generation recovery and accounting safety
+
+PostgreSQL is the durable source of truth for generation dispatch. Redis is a wake-up/coordination layer only.
+
+The current generation lifecycle protects the user balance and provider billing against duplicate or late events:
+
+- terminal states are monotonic: once a generation is `succeeded` or `failed`, later provider callbacks cannot flip it to the opposite terminal state;
+- provider failure/refund is idempotent, so repeated failure paths do not credit the same generation more than once;
+- an explicit permanent provider validation/auth rejection fails and refunds immediately;
+- an explicit `429` admission rejection is retryable;
+- transport errors, timeouts, 5xx responses, malformed successful responses and other outcomes where Kie may already have accepted the paid task are treated as **uncertain**;
+- uncertain submissions remain `submitting` without a blind second `createTask`; callback/reconciliation may bind the provider task ID later;
+- an unresolved uncertain submission times out after `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS` (default `900`) and then fails/refunds once;
+- active `submitting`/`generating` work has a hard provider lifetime controlled by `GENERATION_HARD_TIMEOUT_SECONDS` (default `7200`). The lifetime is based on provider-submission time when available, falling back to generation creation time, so normal polling cannot keep an abandoned task alive forever;
+- a provider success without usable result URLs is not finalized as a charged empty success; it remains recoverable until a valid result or terminal recovery decision is available;
+- Kie callback handling uses the provider status API as the authoritative task state rather than trusting callback payload fields as final state.
+
+Changing either timeout is an operational/billing change and must update `.env.example`, this document and release acceptance in the same PR.
+
 ## Results and history
 
 Generation work is durably queued in PostgreSQL. The frontend polls generation detail and displays results; successful provider media is ingested into product-owned storage. Reuse/recreate creates a new draft and receives a new server quote before any new debit.
@@ -173,4 +192,4 @@ Generation work is durably queued in PostgreSQL. The frontend polls generation d
 
 ## CI contract
 
-CI syntax-checks every Mini App JavaScript file and executes focused generation/ROXY contracts before the full Python regression suite. Pricing tests must verify both default prices and server-side overrides, including parameter tiers where applicable.
+CI syntax-checks every Mini App JavaScript file and executes focused generation/ROXY contracts before the full Python regression suite. Pricing tests must verify both default prices and server-side overrides, including parameter tiers where applicable. Generation recovery tests must also preserve terminal-state monotonicity, ambiguous-submission handling, stale callback rejection and refund exactly-once behavior.
