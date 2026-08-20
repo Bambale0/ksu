@@ -67,8 +67,23 @@ def test_picker_observes_only_create_center_direct_replacements() -> None:
     assert 'window.addEventListener("roxy:route-changed", attachCenterObserver)' in source
 
 
-def test_version_chips_are_mobile_accessible() -> None:
+def test_version_chips_are_keyboard_and_mobile_accessible() -> None:
+    source = _read("roxy-model-family-picker.js")
     css = _read("roxy-model-family-picker.css")
+
+    for token in (
+        'picker.addEventListener("keydown"',
+        '"ArrowLeft"',
+        '"ArrowRight"',
+        '"ArrowUp"',
+        '"ArrowDown"',
+        '"Home"',
+        '"End"',
+        "event.preventDefault()",
+        "controls[index].click()",
+        "controls[index].focus()",
+    ):
+        assert token in source
 
     for token in (
         ".roxy-family-picker-original",
