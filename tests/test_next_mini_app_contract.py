@@ -110,7 +110,12 @@ def test_generation_ui_uses_family_variant_picker() -> None:
     assert "families?: GenerationModelFamily[]" in _read(FRONTEND / "lib" / "api.ts")
     assert "<FamilyVariantSheet" in app
     assert "family-grid" in app
+    assert 'const MEDIA_FILTER_KEY = "ksu-selected-media"' in app
+    assert "onCreate(\"image\")" in app
+    assert "visibleFamilies.map((family)" in app
+    assert "setFamilySheet(family)" in app
     assert "variant-list" in css
+    assert "family-tabs" in css
     assert "<select className=\"control\" value={selected.id}" not in app
 
 
