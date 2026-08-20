@@ -76,7 +76,7 @@ The feature changes customer-wallet accounting only.
 
 ## API/UI behavior
 
-Signed Mini App requests attach Telegram `initData` to same-origin `/api/v1/*` calls. This lets catalog/quote endpoints resolve whether the current user is an active administrator without making those endpoints inaccessible to unsigned public previews.
+Mini App API clients that need user-specific behavior attach Telegram `initData` explicitly. Generation catalog/quote requests therefore resolve active-admin pricing when opened inside Telegram, while unsigned catalog previews remain available. ROXY intentionally does not install a whole-page/global `fetch` monkeypatch; each customer API client owns its authentication headers.
 
 For active administrators:
 
@@ -102,5 +102,6 @@ Before merge/release verify:
 8. Resource/rate/provider safety gates remain enabled for administrators.
 9. Kling Video, Kling Motion and Kling AI Avatar are not collapsed into one customer family.
 10. Mini App shows `Бесплатно` rather than `0 ROX` for active-admin model pricing and shows wallet denomination as ROX.
-11. All existing current-provider contract tests, generation reliability tests, Batch Generation tests and Admin Console tests pass.
-12. Production is not declared complete until the merged SHA is actually deployed and the Mini App release SHA/health/E2E evidence matches it.
+11. Customer API modules keep Telegram auth local; no global `window.fetch` replacement is introduced.
+12. All existing current-provider contract tests, generation reliability tests, Batch Generation tests and Admin Console tests pass.
+13. Production is not declared complete until the merged SHA is actually deployed and the Mini App release SHA/health/E2E evidence matches it.
