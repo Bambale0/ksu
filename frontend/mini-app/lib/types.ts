@@ -129,7 +129,8 @@ export type FeedAuthor = {
   referral_code?: string;
 };
 
-export type FeedCard = Generation & {
+export type FeedCard = Omit<Generation, "model"> & {
+  model?: string;
   task_id?: string;
   preview_url?: string | null;
   gen_type?: string;
