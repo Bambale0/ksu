@@ -19,7 +19,7 @@ def test_customer_app_has_one_next_react_source() -> None:
     assert package["dependencies"]["react"] == "19.2.8"
     assert package["dependencies"]["react-dom"] == "19.2.8"
     assert package["scripts"]["build"] == "next build"
-    assert package["scripts"]["typecheck"] == "tsc --noEmit"
+    assert package["scripts"]["typecheck"] == "next typegen && tsc --noEmit"
 
     config = _read(FRONTEND / "next.config.mjs")
     assert 'output: "export"' in config
@@ -39,8 +39,8 @@ def test_docker_build_replaces_generated_directory_with_next_export() -> None:
     dockerfile = _read(ROOT / "Dockerfile")
     for token in (
         "FROM node:22-alpine AS miniapp",
-        "COPY frontend/mini-app/package.json ./",
-        "RUN npm install --no-audit --no-fund",
+        "COPY frontend/mini-app/package.json frontend/mini-app/package-lock.json ./",
+        "RUN npm ci --no-audit --no-fund",
         "RUN npm run build",
         "rm -rf ./app/web/mini_app",
         "COPY --from=miniapp /src/frontend/mini-app/out ./app/web/mini_app",

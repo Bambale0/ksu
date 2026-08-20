@@ -4,6 +4,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+*.egg-info/
 .env
 .idea/
 .vscode/
@@ -12,3 +13,10 @@ coverage.xml
 htmlcov/
 logs/*.log
 logs/*.log.*
+
+# Next.js mini app local build artifacts
+frontend/mini-app/.next/
+frontend/mini-app/node_modules/
+frontend/mini-app/out/
+frontend/mini-app/tsconfig.tsbuildinfo
+app/web/mini_app/release.json

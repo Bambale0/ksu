@@ -1,7 +1,7 @@
 FROM node:22-alpine AS miniapp
 WORKDIR /src/frontend/mini-app
-COPY frontend/mini-app/package.json ./
-RUN npm install --no-audit --no-fund
+COPY frontend/mini-app/package.json frontend/mini-app/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY frontend/mini-app ./
 RUN npm run build
 
