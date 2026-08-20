@@ -32,6 +32,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 ### Product / Mini App
 
 - `ROXY_BRAND.md` — brand, ROX rules and promo artwork contract.
+- `ROXY_DESIGN_SYSTEM.md` — customer Mini App design tokens, components and visual rules.
 - `MINI_APP_SHELL.md` — shell/navigation/Telegram WebApp behavior.
 - `STUDIO_SHELL.md` — generation workspace shell.
 - `ROXY_CREATE_CENTER.md` — current Photo/Video create entry flow.
