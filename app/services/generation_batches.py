@@ -20,7 +20,9 @@ from app.services.batch_generation_core import (
     resolve_inputs,
     wake_generations,
 )
+from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
+from app.services.model_presentation import public_model_title
 
 
 class GenerationBatchService:
@@ -72,15 +74,29 @@ class GenerationBatchService:
             billing_seconds=billing_seconds,
             input_urls=resolved,
         )
-        total = sum((item.cost for item in prepared), Decimal("0"))
-        costs = sorted({amount(item.cost) for item in prepared})
+        retail_total = sum((item.cost for item in prepared), Decimal("0"))
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_total,
+        )
+        total = billing.effective_cost
+        retail_costs = sorted({amount(item.cost) for item in prepared})
+        effective_costs = ["0.00"] if billing.admin_free else retail_costs
         spec = prepared[0].spec
         return {
-            "model": {"id": spec.id, "title": spec.title, "family": spec.family},
+            "model": {
+                "id": spec.id,
+                "title": public_model_title(spec.id, spec.title),
+                "family": spec.family,
+                "provider_model": prepared[0].spec.kie_model,
+            },
             "input_count": len(prepared),
-            "per_item_cost_credits": costs[0] if len(costs) == 1 else None,
+            "per_item_cost_credits": effective_costs[0] if len(effective_costs) == 1 else None,
             "total_cost_credits": amount(total),
             "total_cost_rub": amount(InternalCreditService.rubles_for(total)),
+            "retail_total_cost_credits": amount(retail_total),
+            "admin_free": billing.admin_free,
             "billing_seconds": prepared[0].billing_seconds,
         }
 
@@ -138,7 +154,13 @@ class GenerationBatchService:
             billing_seconds=billing_seconds,
             input_urls=resolved,
         )
-        total = sum((item.cost for item in prepared), Decimal("0"))
+        retail_total = sum((item.cost for item in prepared), Decimal("0"))
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_total,
+        )
+        total = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
@@ -146,12 +168,15 @@ class GenerationBatchService:
             next_cost=total,
         )
 
+        job_parameters = dict(parameters)
+        job_parameters["_retail_total_cost_rox"] = str(billing.retail_cost)
+        job_parameters["_admin_free"] = billing.admin_free
         job = BatchGenerationJob(
             user_id=user_id,
             status="running",
             model_id=model_id,
             prompt=prompt,
-            parameters=dict(parameters),
+            parameters=job_parameters,
             billing_seconds=billing_seconds,
             input_count=len(prepared),
             initial_cost_rox=total,
@@ -173,6 +198,7 @@ class GenerationBatchService:
                 ordinal=ordinal,
                 prepared=prepared_item,
                 prompt=prompt,
+                admin_free=billing.admin_free,
             )
             session.add(
                 BatchGenerationItem(
