@@ -114,7 +114,7 @@ Supported file extensions at ingest are currently `.mp3`, `.wav`, `.ogg`, `.m4a`
 
 ## Mini App UX
 
-The existing `Создать -> Фото / Видео / Музыка` selector now enables Music when an audio model is present in the server catalog.
+The existing `Создать -> Фото / Видео / Музыка` selector enables Music when an audio model is present in the server catalog.
 
 The `roxy-music` product layer:
 
@@ -122,9 +122,24 @@ The `roxy-music` product layer:
 - labels the family as Music;
 - hides the image/video prompt helper for audio jobs;
 - converts generated audio result elements into native `<audio controls>` players;
-- keeps the same polling, History and `Повторить / изменить` flows used by other generation media.
+- keeps the same polling, History and recreate flows used by other generation media.
 
-This keeps one Create and History experience without forcing the Suno provider contract into the image/video ModelCatalog.
+### UI lifecycle / performance contract
+
+Music no longer keeps `MutationObserver` instances over builder/result/history subtrees. Repeated whole-subtree patching was a release-blocking hot path because generation/history DOM can change frequently.
+
+The product layer now refreshes from explicit lifecycle signals:
+
+- model-select `change`;
+- canonical `roxy:route-changed` and Studio route events;
+- generation/history update events when emitted by product modules;
+- user actions that explicitly change generation/history surfaces;
+- media `load` / `error` capture events for asynchronously rendered result media;
+- Telegram `activated`.
+
+A `requestAnimationFrame` coalescer prevents duplicate work inside one frame. There is no `MutationObserver` or `{subtree: true}` observer in `roxy-music.js`.
+
+This keeps Music progressive enhancement without turning arbitrary DOM mutations into application state.
 
 ## Failure and recovery semantics
 
@@ -147,4 +162,5 @@ Before production release:
 6. verify `media-worker` heartbeat and audio ingest events;
 7. perform one vocal and one instrumental generation from Telegram Mini App;
 8. verify provider URL changes to owned storage in History;
-9. verify a forced provider failure refunds ROX exactly once.
+9. verify a forced provider failure refunds ROX exactly once;
+10. verify builder/result/history Music UI updates without broad mutation-observer activity in performance tooling.
