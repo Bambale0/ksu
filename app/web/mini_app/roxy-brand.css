@@ -1,7 +1,0 @@
-/*
- * Compatibility entrypoint for standalone Mini App pages.
- * The product design now lives in roxy-design-system.css; do not add visual
- * overrides here. This file stays temporarily because batch/trends/prompt-tools
- * load the historical ROXY stylesheet path directly.
- */
-@import url("/mini-app/roxy-design-system.css?v=1");

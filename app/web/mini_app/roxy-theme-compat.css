@@ -1,6 +1,0 @@
-/*
- * Historical compatibility entrypoint for shell-integration.js.
- * Payment and Telegram-theme surfaces are styled by the canonical Concept One
- * design system. Keep this URL only until the shell loader is retired.
- */
-@import url("/mini-app/roxy-design-system.css?v=1");
