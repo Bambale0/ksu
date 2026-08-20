@@ -1,5 +1,15 @@
 import { telegramHeaders } from "./telegram";
-import type { FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote } from "./types";
+import type {
+  FeedCard,
+  FeedComment,
+  FeedSurface,
+  Generation,
+  GenerationModel,
+  GenerationModelFamily,
+  Me,
+  PublicationScope,
+  Quote,
+} from "./types";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -37,10 +47,44 @@ export const api = {
     return request<{ url: string; name?: string; mime_type?: string; size?: number }>("/api/v1/uploads/kie", { method: "POST", body: form });
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
+  feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
   profileFeed: (referralCode: string, offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/profiles/${encodeURIComponent(referralCode)}/feed?limit=24&offset=${offset}`),
-  publish: (id: string, scope: "profile" | "feed") => request(`/api/v1/feed/${encodeURIComponent(id)}/publish`, {
+  publish: (
+    id: string,
+    options: {
+      scope: Exclude<PublicationScope, "private">;
+      promptVisible?: boolean;
+      referencesVisible?: boolean;
+    },
+  ) => request<{ publication_scope: PublicationScope; downgraded_to_profile: boolean; item: FeedCard }>(`/api/v1/feed/${encodeURIComponent(id)}/publish`, {
     method: "POST",
-    body: JSON.stringify({ publication_scope: scope, prompt_visible: false, references_visible: false }),
+    body: JSON.stringify({
+      publication_scope: options.scope,
+      prompt_visible: Boolean(options.promptVisible),
+      references_visible: Boolean(options.referencesVisible),
+    }),
+  }),
+  removePublication: (id: string, targetScope: "private" | "profile" = "private") => request<{ id: string; publication_scope: PublicationScope; is_public_feed: boolean; is_profile_visible: boolean }>(`/api/v1/feed/${encodeURIComponent(id)}/remove`, {
+    method: "POST",
+    body: JSON.stringify({ target_scope: targetScope }),
+  }),
+  like: (id: string, surface: FeedSurface = "feed") => request<{ id: string; surface: FeedSurface; liked_by_me: boolean; likes_count: number }>(`/api/v1/feed/${encodeURIComponent(id)}/like`, {
+    method: "POST",
+    body: JSON.stringify({ surface }),
+  }),
+  unlike: (id: string, surface: FeedSurface = "feed") => request<{ id: string; surface: FeedSurface; liked_by_me: boolean; likes_count: number }>(`/api/v1/feed/${encodeURIComponent(id)}/like?surface=${encodeURIComponent(surface)}`, { method: "DELETE" }),
+  share: (id: string, surface: FeedSurface = "feed") => request<{ id: string; shares_count: number; link: string | null }>(`/api/v1/feed/${encodeURIComponent(id)}/share`, {
+    method: "POST",
+    body: JSON.stringify({ surface }),
+  }),
+  comments: (id: string, surface: FeedSurface = "feed") => request<{ items: FeedComment[] }>(`/api/v1/feed/${encodeURIComponent(id)}/comments?surface=${encodeURIComponent(surface)}&limit=50`),
+  addComment: (id: string, surface: FeedSurface, text: string) => request<FeedComment>(`/api/v1/feed/${encodeURIComponent(id)}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ surface, text }),
+  }),
+  remix: (id: string, surface: FeedSurface = "feed") => request<{ id: string; status: string; source_feed_gen_id?: string; action_type?: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix`, {
+    method: "POST",
+    body: JSON.stringify({ surface }),
   }),
   transactions: () => request<Array<{ id: string; kind: string; amount: string; balance_after: string; status: string; created_at: string }>>("/api/v1/me/transactions"),
   paymentPackages: () => request<{
