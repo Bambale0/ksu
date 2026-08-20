@@ -118,8 +118,9 @@ class CardCheckoutClient:
         if not invoice_id:
             raise PaymentProviderError("Card checkout invoice id is missing")
         try:
+            # Current public Swagger exposes the single-contract lookup here.
             response = await self._client.get(
-                f"/api/v2/invoices/{invoice_id}",
+                f"/api/v1/invoices/{invoice_id}",
                 headers=self._headers(),
             )
             response.raise_for_status()
@@ -199,6 +200,19 @@ class CardCheckoutClient:
         if raw in (None, ""):
             return None
         return str(raw).upper()
+
+    @staticmethod
+    def extract_buyer_email(payload: dict[str, Any]) -> str | None:
+        buyer: Any = payload.get("buyer")
+        if isinstance(buyer, dict):
+            raw = buyer.get("email")
+            if raw not in (None, ""):
+                return str(raw).strip().lower()
+        for key in ("buyerEmail", "buyer_email", "email"):
+            raw = payload.get(key)
+            if raw not in (None, ""):
+                return str(raw).strip().lower()
+        return None
 
     @staticmethod
     def extract_refunded_amount(payload: dict[str, Any]) -> Decimal | None:
