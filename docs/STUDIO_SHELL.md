@@ -7,37 +7,39 @@ The Studio shell is the product-composition layer for the existing KSU Mini App.
 The implementation is intentionally additive:
 
 - `app.js` remains the schema-driven generation renderer;
-- `shell.js` remains the compatibility shell for the original `create/history/wallet/profile` views;
+- `shell.js` remains the compatibility shell for the original create/history/wallet/profile views;
 - `shell-integration.js` mounts the Studio shell and workspace enhancement layers after the existing product modules;
-- `studio-shell.js` composes those modules into the product-level Studio information architecture;
-- `studio-workspace.js` closes the reusable-reference and post-generation product loops without duplicating model validation.
+- `studio-shell.js` provides the Studio composition and compatibility nav markup;
+- `roxy-customer-navigation.js` is the **single customer navigation/router state owner**;
+- `studio-workspace.js` closes reusable-reference and post-generation product loops without duplicating model validation.
 
-## Primary product routes
+## Customer navigation ownership
 
-The canonical user navigation is:
+The canonical customer navigation is:
 
-1. **Главная** — orchestration screen and quick starts;
-2. **Лента** — the existing Feed mounted as first-class Studio content instead of a floating-only entry point;
-3. **Создать** — the existing schema-driven builder;
-4. **История** — existing generation history;
-5. **Профиль** — existing profile/social/support tooling.
+1. **Главная**;
+2. **Каталог** — opens the catalog/discovery product surface backed by the Feed route;
+3. **Создать**;
+4. **История**;
+5. **Профиль**.
 
-On mobile and inside Telegram these routes are exposed through a five-item bottom navigation. On desktop (>=1024px) they are exposed through a persistent sidebar.
+On mobile and inside Telegram these routes are exposed through a five-item bottom navigation. On desktop they use the matching primary sidebar entries.
 
-Secondary sidebar routes reuse existing product surfaces:
+`studio-shell.js` still creates compatibility button markup with `data-studio-route` because older shell integrations depend on those DOM hosts. It no longer acts as a competing customer router once ROXY navigation is mounted. `roxy-customer-navigation.js` **adopts** the existing buttons in place, labels/maps them to the ROXY route set and intercepts their clicks in capture phase before legacy Studio click handlers can mutate route state.
 
-- Пополнение -> existing Wallet view;
-- Тренды -> `/mini-app/trends.html`;
-- Референсы -> Studio library backed by `/api/v1/references`;
-- Пресеты -> Studio library backed by `/api/v1/presets`;
-- Batch -> `/mini-app/batch.html`;
-- Prompt Tools -> `/mini-app/prompt-tools.html`;
-- Партнёрка -> existing profile/partner module;
-- Поддержка -> existing profile/support module.
+Important invariants:
+
+- customer navigation does not rebuild/replace the main menus with `replaceChildren`;
+- `roxy-economy.js` never owns or rewrites customer navigation;
+- `roxy-customer-navigation.js` owns browser-history state, active-route state, deep-link startup and Back behavior;
+- customer navigation synchronizes from explicit route/product events; it does not watch the whole `body` with a mutation observer;
+- legacy `feed` maps to the customer `catalog` surface rather than becoming a second visible primary route.
+
+Secondary routes reuse existing product surfaces: Wallet/top-up, Trends, References, Presets, Batch, Prompt Tools, Partner and Support.
 
 ## Create workspace
 
-The Studio layer turns the current builder into a result-centric workspace without changing the generation business logic.
+The Studio layer turns the current builder into a result-centric workspace without changing generation business logic.
 
 Desktop composition:
 
@@ -54,7 +56,7 @@ Generate
 
 The existing `#resultCard` is moved at runtime into the result pane. DOM IDs and generation handlers remain unchanged, so `app.js` continues to own generation state and rendering.
 
-On narrow screens the same DOM becomes a single-column controls -> result flow.
+On narrow screens the same DOM becomes a single-column controls → result flow.
 
 ## Schema-driven model contract
 
@@ -72,8 +74,6 @@ When Studio needs to reopen a persisted model, it resolves `model_id -> family` 
 
 ## References and presets
 
-The Studio library exposes the owner-scoped backend that already exists in KSU.
-
 References support:
 
 - list;
@@ -82,72 +82,75 @@ References support:
 - delete;
 - choose a saved reference directly from every dynamic media upload field.
 
-The Create reference picker does not hardcode model fields. It progressively enhances the `ui_schema`-rendered `.upload-row`, reads the field's native `accept` contract, filters reusable references by media kind, and feeds the selected URL through the existing upload URL path. That means normal `app.js` limits and validation still apply.
+The Create reference picker does not hardcode model fields. It progressively enhances the `ui_schema`-rendered `.upload-row`, reads the field's native `accept` contract, filters reusable references by media kind, and feeds the selected URL through the existing upload URL path. Normal `app.js` limits and validation still apply.
 
-Presets support:
+Presets support the full persisted lifecycle:
 
 - list;
-- save the current local generation draft as a server preset;
-- restore a preset into the schema-driven builder;
+- create from the current generation draft;
+- edit an existing preset through `PUT /api/v1/reference-presets/presets/{preset_id}`;
+- restore/apply into the schema-driven builder;
 - delete.
 
-Video preset duration is preserved through `billing_seconds`. The API write schema must keep that field aligned with `UserPresetService`.
+The edit surface can update name, prompt, billing seconds, params JSON and references JSON while keeping the preset's model identity explicit. After save it reloads the server list; preset truth is not confined to browser memory.
 
-Applying a preset stores the draft using the same local keys already used by `app.js`, remembers the selected model, and reloads once so the normal app initialization sanitizes the draft against the current server `ui_schema`. This avoids a second client-side model validator.
+Video preset duration is preserved through `billing_seconds`. Applying a preset stores the draft using the same local keys used by `app.js`, remembers the selected model and lets normal initialization sanitize the draft against current server `ui_schema`, avoiding a second client-side model validator.
 
 ## Result product loop
 
-The core renderer already provides repeat/change, native share and open/download actions. Studio adds the missing continuation actions after a successful generation:
+The core renderer provides repeat/change, native share and open/download actions. Studio adds continuation actions after a successful generation:
 
 - **В профиль** -> `POST /api/v1/feed/{generation_id}/publish` with `publication_scope=profile`;
-- **В ленту** -> the same server-owned publication endpoint with `publication_scope=feed`;
+- **В ленту** -> the same endpoint with `publication_scope=feed`;
 - **В референсы** -> registers the first generated media URL through `/api/v1/references`.
 
-Studio never decides derivative/trend publication policy in the browser. Publication requests default to `prompt_visible=false` and `references_visible=false`; Feed service authorization and downgrade rules remain authoritative. If the backend downgrades a feed publication to profile, the UI reports the actual result returned by the server.
+Studio never decides derivative/trend publication policy in the browser. Feed service authorization and downgrade rules remain authoritative.
 
 ## Feed compatibility
 
-`feed.js` remains the Feed transport/rendering implementation. The Studio layer remounts its overlay into `#studioFeedView`, hides the legacy floating launcher, and opens the existing Feed through its own launcher event. Feed visibility, remix authorization, hidden-prompt policy, comments, likes, shares and publication rules remain backend-owned.
+`feed.js` remains the Feed transport/rendering implementation. Prompt actions are backend-driven: if a feed/trend item returns `prompt_actions_allowed=false`, the UI does **not** render `Повторить` for that card. The browser does not infer permission from card type alone.
 
 ## Telegram integration
 
-The Studio layer keeps the existing Telegram shell contracts:
+The Studio layer keeps existing Telegram shell contracts:
 
 - signed `Telegram.WebApp.initData` via `X-Telegram-Init-Data`;
-- no use of `initDataUnsafe` for API authentication;
-- existing BackButton handling remains in the compatibility shell/product modules;
-- CSS continues using Telegram content-safe-area variables and `env(safe-area-inset-*)` fallbacks;
-- reduced-motion users get animations/transitions disabled in the Studio layer.
+- no `initDataUnsafe` for API authentication;
+- existing BackButton handling in compatibility/product modules;
+- Telegram content-safe-area variables and `env(safe-area-inset-*)` fallbacks;
+- reduced-motion support.
 
 ## CI contract
 
 CI validates:
 
-- JavaScript syntax for `studio-shell.js` and `studio-workspace.js` using `node --check`;
+- JavaScript syntax for Studio/product scripts;
+- ROXY customer navigation is the single router state owner and performs no menu `replaceChildren` rewrite;
+- customer navigation has no body MutationObserver hot path;
+- Music has no subtree MutationObserver patch loop;
+- persisted hidden History and restore contracts;
+- preset create/edit/apply/delete server/UI contract;
+- feed `prompt_actions_allowed` guard;
 - primary Studio routes;
-- absence of hardcoded model families in Studio composition/workspace enhancement;
-- References/Presets product integration;
-- reference picker integration with the existing upload URL path;
-- result publication/reference actions and privacy-safe publication defaults;
+- schema-driven model behavior;
+- References/Presets integration;
+- result publication/reference actions;
 - signed Telegram auth usage;
-- safe-area and reduced-motion CSS;
-- `billing_seconds` in the preset write contract;
-- the full existing regression suite.
+- safe-area/reduced-motion CSS;
+- the full regression suite.
 
 ## Manual acceptance checklist
 
-Before merging a Studio UI change, verify at minimum:
+Before merging a Studio/navigation UI change, verify at minimum:
 
-- Desktop >= 1024px: sidebar and two-column Create workspace;
-- Mobile browser: five-item bottom navigation and single-column Create;
-- Telegram Android/iOS: safe areas and BackButton behavior;
-- Home -> trend, scratch, Prompt Tools, References quick starts;
-- Feed: list, likes/comments/share/remix via existing module;
-- Create: model switching, scenario switching, quote, submit, progress, result;
-- Create references: saved image/video/audio items are filtered by the current media field and inserted through the existing URL control;
-- Result: repeat/share/download plus publish-to-profile, publish-to-feed and save-as-reference;
-- References: list/register/delete;
-- Presets: save/apply/delete, including per-second video duration;
-- History -> open/repeat -> builder bridge;
-- Wallet and checkout remain explicit user actions;
-- Profile, Partner and Support remain reachable.
+- Desktop >=1024px: one visible primary sidebar navigation owner;
+- Mobile/Telegram: one five-item bottom navigation, no transient duplicate/rewrite flicker;
+- Home → Catalog → Create → History → Profile and browser/Telegram Back;
+- deep-link startup to supported child routes;
+- Create model switching, quote, submit, progress and result;
+- References list/register/delete/use;
+- Presets create/edit/apply/delete, including per-second billing duration;
+- History hide → reload → `Скрытые` → `Вернуть` → reload;
+- trend/feed card with `prompt_actions_allowed=false` has no `Повторить`;
+- Music model/result/history behavior remains correct without subtree mutation observers;
+- Wallet/payment/Profile/Partner/Support remain reachable.
