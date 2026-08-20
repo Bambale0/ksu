@@ -13,8 +13,6 @@ def test_customer_surfaces_resolve_to_concept_one_palette() -> None:
         assert token in css
 
 
-def test_reference_feature_uses_shared_roxy_tokens_for_primary_accents() -> None:
-    css = (MINI / "roxy-reference-home.css").read_text(encoding="utf-8")
-    assert "var(--roxy-violet" in css
-    assert "var(--roxy-pink" in css
-    assert "var(--roxy-text" in css
+def test_reference_home_does_not_reintroduce_a_second_palette() -> None:
+    for name in ("roxy-reference-home.css", "roxy-reference-home.js", "roxy-reference-order.css"):
+        assert not (MINI / name).exists()
