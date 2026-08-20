@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     referral_first_percent: Decimal = Decimal("30")
     referral_second_percent: Decimal = Decimal("5")
     partner_min_withdrawal_rub: Decimal = Decimal("3000")
+    referral_antifraud_max_per_hour: int = 30
+    referral_antifraud_max_per_day: int = 120
+    referral_antifraud_burst_window_seconds: int = 10
+    referral_antifraud_burst_max: int = 6
+    referral_antifraud_burst_autoban: bool = True
     rox_packages_json: str = "{}"
     generation_pricing_json: str = DEFAULT_GENERATION_PRICING_JSON
 

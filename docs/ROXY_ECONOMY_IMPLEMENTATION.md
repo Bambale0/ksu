@@ -8,7 +8,7 @@ This document is the deployment/runbook companion to `ROXY_BRAND.md`.
 
 - 1 ROX = 1 RUB.
 - Welcome: 50 internal ROX.
-- Invited friend: +30 internal ROX to the inviter.
+- Invited friend: +30 internal ROX to the inviter after successful anti-fraud admission.
 - Paid prompt repeat/remix: +5 internal ROX to the original author; self-repeats do not pay.
 - Level 1 real top-up: 30% withdrawable ROX.
 - Level 2 real top-up: 5% withdrawable ROX.
@@ -31,6 +31,32 @@ REFERRAL_FIRST_PERCENT=30
 REFERRAL_SECOND_PERCENT=5
 PARTNER_MIN_WITHDRAWAL_RUB=3000
 ```
+
+## Referral admission anti-fraud
+
+The invitation bonus is not issued directly from `/start` parsing. A new user first passes the server-side referral admission gate under a row lock on the inviter.
+
+Current defaults:
+
+```dotenv
+REFERRAL_ANTIFRAUD_MAX_PER_HOUR=30
+REFERRAL_ANTIFRAUD_MAX_PER_DAY=120
+REFERRAL_ANTIFRAUD_BURST_WINDOW_SECONDS=10
+REFERRAL_ANTIFRAUD_BURST_MAX=6
+REFERRAL_ANTIFRAUD_BURST_AUTOBAN=true
+```
+
+Rules:
+
+- accepted relations are counted from durable `referral_relations`;
+- the +30 invite bonus is credited only after the relation is accepted;
+- the wallet credit remains idempotent by referred user;
+- hour/day limits reject the attempted attachment but do not deactivate the inviter;
+- with the default burst settings, the sixth registration within 10 seconds is rejected and the referrer account is restricted when autoban is enabled;
+- all evaluated attempts are persisted to `referral_events` with a reason and context;
+- existing users cannot change inviter by presenting another referral payload later.
+
+This protects the spend-wallet bonus from registration floods without mixing it with withdrawable 30%/5% referral rewards.
 
 ## Generation billing
 
@@ -104,6 +130,9 @@ After deploy/migration/restart:
 5. Restart preserves the latest published Admin Tariff.
 6. `/api/v1/referrals/stats` keeps bonus/internal and withdrawable balances separate.
 7. New registration receives 50 ROX.
-8. Referred registration credits the inviter 30 ROX once.
-9. Paid remix by another user credits the original author 5 ROX once.
-10. Partner rewards remain separately withdrawable subject to the 3,000 ROX threshold.
+8. An admitted referred registration credits the inviter 30 ROX once.
+9. Hour/day rejected referrals create no relation/bonus and leave the inviter active.
+10. Burst threshold blocks the triggering registration and, when configured, restricts the referrer account.
+11. Concurrent registration attempts for one inviter cannot exceed the configured limit through a race.
+12. Paid remix by another user credits the original author 5 ROX once.
+13. Partner rewards remain separately withdrawable subject to the 3,000 ROX threshold.

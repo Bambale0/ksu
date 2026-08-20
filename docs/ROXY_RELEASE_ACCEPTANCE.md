@@ -11,6 +11,7 @@ A release candidate must pass:
 - all Mini App/Admin JavaScript syntax checks;
 - focused ROXY shell/navigation/create/economy/payment contracts;
 - card payment recovery tests covering current provider lookup route, unique recovery and ambiguity refusal;
+- referral anti-fraud tests covering hour/day limits, burst restriction and concurrent admission serialization;
 - model catalog and pricing tests;
 - provider-contract tests for current callable model schemas, including Seedance 2.5;
 - generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
@@ -71,6 +72,23 @@ Run card recovery against the staging provider/mock contract:
 10. Duplicate success remains wallet-credit idempotent.
 11. The provider adapter does not depend on arbitrary custom `clientUtm` keys for merchant correlation.
 12. Opening the hosted payment URL still requires a second direct user action in Telegram.
+
+## Referral / partner acceptance
+
+Run registration-time referral admission against real PostgreSQL:
+
+1. A new user with a valid inviter creates exactly one `ReferralRelation` and credits the configured invitation bonus once.
+2. Existing users cannot change inviter by presenting a different referral payload later.
+3. Self-referral, missing inviter and already-restricted inviter create no relation and no invitation bonus.
+4. With hourly limit `1`, the second admitted attempt is rejected with `hourly_limit`, creates no bonus and leaves the inviter active.
+5. With daily limit `1`, the second admitted attempt is rejected with `daily_limit`, creates no bonus and leaves the inviter active.
+6. With burst max `2` and autoban enabled, the second attempt inside the burst window is rejected and the inviter becomes `is_active=false`.
+7. With burst autoban disabled, the triggering attempt is rejected with `burst_limit` but the inviter remains active.
+8. Two concurrent registrations for the same inviter cannot both pass a configured limit of one; row-lock serialization leaves one accepted relation and one rejected audit event.
+9. Every evaluated referral attempt that reaches the admission service is durably represented in `referral_events` with a reason/context.
+10. Alembic metadata imports `referral_models`, and migration `0026_referral_antifraud` upgrades successfully on PostgreSQL.
+11. Partner cabinet reports the configured minimum withdrawal consistently; current default is 3,000 RUB/ROX.
+12. Withdrawable 30%/5% referral rewards remain separate from spend-wallet invitation bonuses.
 
 ## Public pricing baseline acceptance
 
@@ -155,6 +173,9 @@ Do not promote if:
 - a pricing publish can bypass permission/confirmation/MFA;
 - card create uncertainty can trigger a blind second remote invoice;
 - an unknown card webhook contract can bind to an ambiguous/mismatched local intent or credit ROX without authoritative provider verification;
+- concurrent referral registrations can bypass the configured admission limit or create more than one invite bonus per referred user;
+- hour/day referral limits can deactivate a normal inviter account;
+- burst autoban can attach/bonus the triggering blocked referral;
 - ROX/payment state is ambiguous;
 - Seedance 2.5 UI/catalog accepts a parameter outside the currently callable Kie schema without an explicit tested adapter;
 - Seedance 2.5 auto-duration is exposed before actual-duration billing settlement exists;

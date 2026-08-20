@@ -2,3 +2,4 @@
 # Entries are deleted only when they have no open PR and are not protected environment names.
 feat/seedance-25-parity  # replaced by merged PR #183
 fix/card-payment-correlation  # replaced by current conservative card recovery clean-port
+fix/referral-antifraud  # replaced by current referral anti-fraud clean-port
