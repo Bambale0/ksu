@@ -31,6 +31,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+type PublishOptions = {
+  scope: Exclude<PublicationScope, "private">;
+  promptVisible?: boolean;
+  referencesVisible?: boolean;
+};
+
+function normalizePublishOptions(options: Exclude<PublicationScope, "private"> | PublishOptions): PublishOptions {
+  return typeof options === "string" ? { scope: options } : options;
+}
+
 export const api = {
   me: () => request<Me>("/api/v1/me"),
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
@@ -51,19 +61,18 @@ export const api = {
   profileFeed: (referralCode: string, offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/profiles/${encodeURIComponent(referralCode)}/feed?limit=24&offset=${offset}`),
   publish: (
     id: string,
-    options: {
-      scope: Exclude<PublicationScope, "private">;
-      promptVisible?: boolean;
-      referencesVisible?: boolean;
-    },
-  ) => request<{ publication_scope: PublicationScope; downgraded_to_profile: boolean; item: FeedCard }>(`/api/v1/feed/${encodeURIComponent(id)}/publish`, {
-    method: "POST",
-    body: JSON.stringify({
-      publication_scope: options.scope,
-      prompt_visible: Boolean(options.promptVisible),
-      references_visible: Boolean(options.referencesVisible),
-    }),
-  }),
+    options: Exclude<PublicationScope, "private"> | PublishOptions,
+  ) => {
+    const normalized = normalizePublishOptions(options);
+    return request<{ publication_scope: PublicationScope; downgraded_to_profile: boolean; item: FeedCard }>(`/api/v1/feed/${encodeURIComponent(id)}/publish`, {
+      method: "POST",
+      body: JSON.stringify({
+        publication_scope: normalized.scope,
+        prompt_visible: Boolean(normalized.promptVisible),
+        references_visible: Boolean(normalized.referencesVisible),
+      }),
+    });
+  },
   removePublication: (id: string, targetScope: "private" | "profile" = "private") => request<{ id: string; publication_scope: PublicationScope; is_public_feed: boolean; is_profile_visible: boolean }>(`/api/v1/feed/${encodeURIComponent(id)}/remove`, {
     method: "POST",
     body: JSON.stringify({ target_scope: targetScope }),
