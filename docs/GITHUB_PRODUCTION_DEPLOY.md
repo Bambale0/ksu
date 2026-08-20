@@ -117,7 +117,7 @@ Mini App responses use no-store/no-cache behavior so Telegram WebView cannot kee
 
 If deployment fails after entering the repository, diagnostics include `docker compose ps` and recent logs for the current runtime services, including `backup-worker`.
 
-There is intentionally no automatic Alembic downgrade or blind code rollback after a failed migration. Prefer a reviewed forward fix or a controlled database restore/recovery plan.
+There is intentionally no automatic database downgrade or blind code rollback after a failed migration. Alembic downgrade is never performed implicitly; prefer a reviewed forward fix or a controlled database restore/recovery plan.
 
 ## Backup-specific release evidence
 
