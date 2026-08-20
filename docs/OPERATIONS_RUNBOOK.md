@@ -1,11 +1,10 @@
 # KSU / ROXY production operations runbook
 
-**Status:** synchronized with shipped runtime on 2026-08-20.  
-**Runtime baseline:** `main` after generation recovery hardening `fa787db146f713b8f6568f037dd2d1ca17c2c68c`.
+**Status:** synchronized with the current ROXY runtime and migration chain as of 2026-08-20.
 
-This runbook covers the FastAPI app, Telegram Mini App, PostgreSQL/Redis, durable generation delivery, product-owned media ingestion, payment reconciliation, creator partnership worker, abuse protection, observability and privileged admin surfaces.
+This is the maintained operational source of truth for deployment, health checks, generation recovery, media durability, payment reconciliation, referral admission controls and incident response. Historical epic notes must not override this file.
 
-## 1. Topology
+## 1. Runtime topology
 
 ```text
 Internet / Telegram
@@ -15,13 +14,13 @@ Internet / Telegram
         |
         v
  app :8000 --------------------------> PostgreSQL
-   |                                  |-- business state / wallets
+   |                                  |-- users / wallets / payments
    |                                  |-- generation_outbox
    |                                  |-- media_assets / media_ingest_jobs
-   |                                  |-- payment lifecycle
-   |                                  |-- admin / feed / partner state
+   |                                  |-- feed / partner / admin state
+   |                                  |-- referral_events
    |
-   +--> Redis -----------------------> rate limits / FSM / wake signals / worker telemetry
+   +--> Redis -----------------------> rate limits / FSM / wake signals / telemetry
    |       |
    |       +--> generation-worker ------> Kie.ai
    |       +--> media-worker -----------> private S3-compatible bucket
@@ -42,42 +41,47 @@ payment-worker
 creator-partnership-worker
 ```
 
-Only the HTTPS proxy should be internet-facing. PostgreSQL and Redis remain private. Product media storage must remain private; user access uses short-lived presigned capabilities after ownership checks.
+Only the HTTPS proxy should be public. PostgreSQL, Redis and product media storage remain private.
 
-## 2. External endpoints
+## 2. Production deployment
 
-Telegram:
+Preferred release path is the production GitHub workflow. It resolves an exact `main` SHA, requires the release checks to be green, takes a pre-deploy PostgreSQL dump, runs Alembic, recreates runtime services and verifies health/release metadata.
 
-```text
-POST /webhooks/telegram
+Manual recovery deployment:
+
+```bash
+git fetch origin main
+git checkout main
+git reset --hard origin/main
+cp .env.example .env   # only for first-time setup; fill secrets separately
+chmod 600 .env
+
+docker compose up -d postgres redis
+docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
+docker compose run --rm app alembic upgrade head
+docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
 ```
 
-Kie:
+Never deploy from a feature branch. Never hard-code a historical Alembic revision as the deployment target.
+
+Current migration chain reaches:
 
 ```text
-POST /webhooks/kie
+0001_initial
+...
+0023_roxy_one_ruble_denomination
+0024_creator_partnership
+0025_partner_wallet_transfers
+0026_referral_antifraud
 ```
 
-Payments:
+Always use:
 
-```text
-POST /webhooks/payments/cryptobot
-POST /webhooks/payments/tbank
-POST /webhooks/payments/yookassa
+```bash
+alembic upgrade head
 ```
 
-Primary hosted card checkout uses its configured provider callback route documented in `PRIMARY_CARD_CHECKOUT.md` / `WALLET_PAYMENTS.md`.
-
-Product surfaces:
-
-```text
-GET /mini-app/
-GET /admin-app/
-```
-
-Kie callback URLs may include the local `generation_id` for recovery correlation. HMAC validation remains required when configured, and authoritative provider status lookup is the final task-state source rather than callback payload fields alone.
-
-## 3. Core production environment
+## 3. Core environment
 
 ```dotenv
 APP_ENV=production
@@ -93,15 +97,81 @@ INTERNAL_CREDIT_RUB=1
 START_BALANCE_ROX=50
 INVITE_BONUS_ROX=30
 PROMPT_REPEAT_BONUS_ROX=5
-ROX_PACKAGES_JSON={}
+REFERRAL_FIRST_PERCENT=30
+REFERRAL_SECOND_PERCENT=5
+PARTNER_MIN_WITHDRAWAL_RUB=3000
 
 ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
 ADMIN_REQUIRE_MFA=true
 ```
 
-Provider/storage credentials are listed in `.env.example`. The example file must contain placeholders only; never commit a live provider/payment credential. Do not reuse provider secrets as `ADMIN_SECURITY_KEY`.
+`.env.example` must contain placeholders only for secrets. Never commit live provider/payment credentials.
 
-## 4. Generation reliability configuration
+## 4. Referral admission anti-fraud
+
+New-user referral attachment is a server-side admission boundary, not a client-side trust decision.
+
+```dotenv
+REFERRAL_ANTIFRAUD_MAX_PER_HOUR=30
+REFERRAL_ANTIFRAUD_MAX_PER_DAY=120
+REFERRAL_ANTIFRAUD_BURST_WINDOW_SECONDS=10
+REFERRAL_ANTIFRAUD_BURST_MAX=6
+REFERRAL_ANTIFRAUD_BURST_AUTOBAN=true
+```
+
+Rules:
+
+- existing users are never rebound to a new inviter;
+- self-referral is rejected and recorded;
+- missing or inactive inviters are rejected and recorded;
+- inviter admission is serialized under a PostgreSQL row lock;
+- hourly/day limits reject only the new attachment and do **not** deactivate the inviter;
+- the burst threshold blocks the attempt that would reach the configured threshold;
+- with autoban enabled, a burst violation also sets the inviter inactive;
+- the referral relation and invite bonus are created only after admission passes;
+- invite bonus remains idempotent through `invite-bonus:<visitor-id>`;
+- every admission outcome is auditable in `referral_events`.
+
+Default burst semantics therefore block the sixth qualifying attempt inside 10 seconds when `REFERRAL_ANTIFRAUD_BURST_MAX=6`.
+
+### Referral incident checks
+
+Recent anti-fraud decisions:
+
+```sql
+SELECT
+  created_at,
+  visitor_telegram_id,
+  inviter_telegram_id,
+  reason,
+  attached,
+  metadata
+FROM referral_events
+ORDER BY created_at DESC
+LIMIT 200;
+```
+
+Current inviter state:
+
+```sql
+SELECT id, telegram_id, is_active, created_at
+FROM users
+WHERE telegram_id = <inviter_telegram_id>;
+```
+
+Recent accepted relations:
+
+```sql
+SELECT inviter_id, invitee_id, created_at
+FROM referral_relations
+WHERE inviter_id = <inviter_user_uuid>
+ORDER BY created_at DESC
+LIMIT 200;
+```
+
+Do not reactivate an autobanned inviter or delete audit rows until traffic is reviewed. Hour/day-limit rejections are not bans and should not be treated as account-disable incidents.
+
+## 5. Generation reliability
 
 ```dotenv
 KIE_API_KEY=...
@@ -121,25 +191,43 @@ GENERATION_RECONCILE_STALE_SECONDS=60
 GENERATION_RECOVERY_BATCH_SIZE=50
 ```
 
-Generation + wallet debit + PostgreSQL transactional outbox commit together. Redis `wake:generations` is a latency optimization only.
+Generation + wallet debit + PostgreSQL outbox commit together. Redis wake-up is latency optimization only.
 
-Recovery rules:
+Recovery contract:
 
 - terminal `succeeded` / `failed` states are monotonic;
 - permanent validation/auth rejection fails/refunds immediately;
 - explicit provider `429` is retryable;
-- timeout, transport, 5xx and malformed-success outcomes are treated as uncertain because a billable task may already exist;
-- uncertain submissions remain `submitting` and are **not** blindly resubmitted;
-- callback/reconciliation may bind the provider task ID later;
-- unresolved uncertain submissions fail/refund once after `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`;
+- timeout, transport, 5xx, malformed success or missing provider task id are uncertain;
+- uncertain submission remains `submitting` and is not blindly resubmitted;
+- callback/reconciliation may bind the provider task later;
+- unresolved uncertain submission fails/refunds once after the unknown-submission timeout;
 - active provider work exceeding `GENERATION_HARD_TIMEOUT_SECONDS` fails/refunds once;
-- a provider success without usable result media is not finalized as a charged empty success.
+- provider success without usable result media is not finalized as a charged empty success.
 
-Do not manually retry `createTask` for an uncertain generation. Doing so can create two paid provider tasks for one local debit.
+Do not manually call provider `createTask` for an uncertain generation.
 
-## 5. Durable media storage configuration
+Generation state overview:
 
-Kie result URLs are temporary ingestion sources. Successful generation state + `media_assets` + `media_ingest_jobs` commit together in PostgreSQL, and `media-worker` performs the external copy later.
+```sql
+SELECT id, status, provider, external_id, created_at, updated_at, error
+FROM generations
+WHERE status IN ('queued','retry','submitting','generating')
+ORDER BY created_at ASC
+LIMIT 100;
+```
+
+Outbox overview:
+
+```sql
+SELECT status, count(*)
+FROM generation_outbox
+GROUP BY status;
+```
+
+## 6. Durable media storage
+
+Successful generation state, `media_assets` and `media_ingest_jobs` commit durably in PostgreSQL. Provider result URLs are temporary ingestion sources.
 
 ```dotenv
 S3_BUCKET=ksu-production-media
@@ -164,19 +252,19 @@ MEDIA_PRESIGN_TTL_SECONDS=900
 MEDIA_LEGACY_RECONCILE_SECONDS=60
 ```
 
-For AWS S3, prefer workload/IAM credentials and leave `S3_ENDPOINT_URL` empty. For S3-compatible services, use the provider HTTPS endpoint and required addressing style.
+Keep the bucket private and expose owned media through short-lived presigned capabilities after ownership checks. See `MEDIA_STORAGE.md`.
 
-Required deployment controls:
+Queue check:
 
-- keep the bucket private;
-- scope runtime IAM to the product bucket/prefix;
-- configure browser CORS for exact Telegram/web origins that need downloads;
-- configure lifecycle cleanup for incomplete multipart uploads;
-- monitor media-worker heartbeat and oldest ingest age.
+```sql
+SELECT status, count(*)
+FROM media_ingest_jobs
+GROUP BY status;
+```
 
-Detailed storage guidance is in `docs/MEDIA_STORAGE.md`.
+A media-copy failure alone is not a reason to manually fail/refund a successfully generated provider result.
 
-## 6. Payment lifecycle configuration
+## 7. Payments
 
 ```dotenv
 PAYMENT_RECONCILE_INTERVAL_SECONDS=60
@@ -198,17 +286,38 @@ YOOKASSA_SECRET_KEY=...
 PAYMENT_RETURN_URL=https://app.example.com/payment-result
 ```
 
-`payment-worker` reconciles unknown/pending provider state. Never manually mark payment success/refund as an incident shortcut. Amount, currency and provider identity must be bound to the original durable local payment intent.
+Primary hosted-card recovery contract:
 
-## 7. Creator partnership worker
+- invoice creation uses the current hosted-checkout create route;
+- authoritative single-contract lookup is `GET /api/v1/invoices/{id}`;
+- do not depend on arbitrary ROXY metadata being returned by the provider webhook;
+- when a verified webhook references an unknown local contract, authoritative invoice data is fetched first;
+- recovery requires authoritative contract id, amount, currency and buyer email;
+- local binding is allowed only when exactly one unresolved card intent matches amount + currency + normalized email;
+- zero/multiple candidates or identity mismatch fail closed with no ROX credit;
+- successful binding completes the durable payment request and then uses ordinary authoritative reconciliation;
+- `creation_unknown` must not trigger a blind second remote invoice.
+
+Creation-intent check:
+
+```sql
+SELECT user_id, request_key, provider, package_id, payment_id, status, last_error, created_at
+FROM payment_requests
+ORDER BY created_at DESC
+LIMIT 100;
+```
+
+Never manually mark a payment successful or credit the wallet as an incident shortcut.
+
+## 8. Creator partnership
 
 ```dotenv
 CREATOR_PARTNERSHIP_GRANT_INTERVAL_SECONDS=3600
 ```
 
-Creator/influencer grants are spend-only ROX and are separate from withdrawable referral earnings. The worker is idempotent per agreement/period; do not manually duplicate a grant when troubleshooting delayed worker execution.
+Creator/influencer grants are spend-only ROX and remain separate from withdrawable referral earnings. The worker is idempotent per agreement/period.
 
-## 8. Anti-abuse / OWASP API4 controls
+## 9. API/resource abuse protection
 
 ```dotenv
 ABUSE_PROTECTION_ENABLED=true
@@ -225,60 +334,11 @@ KIE_CIRCUIT_FAILURE_WINDOW_SECONDS=60
 KIE_CIRCUIT_OPEN_SECONDS=60
 ```
 
-Operational meaning:
+With fail-closed enabled, inability to verify an expensive mutation through Redis blocks/delays it rather than allowing unmetered spend. Durable PostgreSQL business state remains authoritative.
 
-- generation request rate is per authenticated user;
-- active-generation cap covers `queued`, `retry`, `submitting`, `generating`;
-- daily generation spend ceiling is expressed in public ROX after migration `0023`; `0` disables it;
-- upload request rate and bytes/day are per authenticated user;
-- Kie upload keeps MIME and `KIE_UPLOAD_MAX_BYTES` checks;
-- payment creation has a per-user rate in addition to UUID idempotency;
-- Kie has a global submission rate and availability circuit breaker;
-- `429` responses carry `Retry-After`;
-- with `ABUSE_FAIL_CLOSED=true`, inability to verify an expensive operation through Redis returns/delays rather than allowing unmetered spend.
+Do not routinely delete anti-abuse Redis keys to bypass throttling.
 
-### Redis-outage distinction
-
-PostgreSQL remains durable business state. If Redis fails **after** a paid generation is committed, the generation is not lost. With fail-closed protection, `generation-worker` can deliberately postpone a new Kie submission until the protection store recovers. This is expected safety behavior.
-
-Media ingestion also remains durable in PostgreSQL. Redis heartbeat loss can make `/health/operational` degraded but does not delete media jobs.
-
-### Reverse-proxy body limit
-
-Application upload checks happen after multipart reaches FastAPI. Configure an edge/proxy request-body limit consistent with the largest allowed upload so oversized bodies are rejected before application parsing.
-
-## 9. Deployment
-
-```bash
-git clone <repository-url> ksu
-cd ksu
-cp .env.example .env
-chmod 600 .env
-
-docker compose up -d postgres redis
-docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
-docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
-```
-
-The production workflow under `.github/workflows/` is preferred for real releases because it resolves an exact `main` SHA, requires green release workflows and performs health/release verification. See `docs/GITHUB_PRODUCTION_DEPLOY.md`.
-
-Current Alembic chain reaches:
-
-```text
-0001_initial
-...
-0020_batch_generation
-0021_batch_generation_items
-0022_batch_generation_commands
-0023_roxy_one_ruble_denomination
-0024_creator_partnership
-0025_partner_wallet_transfers
-```
-
-Always run `alembic upgrade head`; do not hard-code `0025` as a deployment target because later migrations may be added.
-
-## 10. Smoke checks
+## 10. Health and smoke checks
 
 ```bash
 BASE=https://api.example.com
@@ -290,142 +350,23 @@ curl -fsS "$BASE/api/v1/generations/models"
 curl -fsS "$BASE/api/v1/payments/packages"
 ```
 
-Then use Telegram to verify one model quote, one small upload, one budgeted generation and one low-value test payment. For a successful generation, wait for product-owned media state and verify the owned media opens/downloads before declaring storage healthy.
+Then verify through Telegram/Mini App:
 
-### Limit smoke test
+1. authentication and onboarding;
+2. one model quote;
+3. one small upload;
+4. one budgeted generation;
+5. product-owned media delivery;
+6. one low-value test payment;
+7. referral link registration in staging with an isolated test inviter.
 
-In staging only, temporarily lower one limit, exceed it and verify:
+For referral staging smoke, temporarily lower limits and verify rejected attempts do not create `referral_relations` or invite bonuses. Restore production values immediately after the test.
 
-```text
-HTTP 429
-Retry-After: <seconds>
-{"code":"resource_limit_exceeded", ...}
-```
+## 11. Backup and restore
 
-Temporarily point staging at an unavailable limiter Redis and verify expensive mutation returns the expected protection-backend failure when fail-closed is enabled.
+PostgreSQL contains wallets, payments, generation/outbox state, media metadata/jobs, partner/admin/feed state and referral audit state.
 
-## 11. Generation incident checks
-
-Outbox summary:
-
-```sql
-SELECT status, count(*)
-FROM generation_outbox
-GROUP BY status;
-```
-
-Old work:
-
-```sql
-SELECT generation_id, status, attempts, available_at, lease_until, last_error
-FROM generation_outbox
-WHERE status IN ('pending','processing')
-ORDER BY created_at ASC
-LIMIT 100;
-```
-
-Generation state overview:
-
-```sql
-SELECT id, status, provider, external_id, created_at, updated_at, error
-FROM generations
-WHERE status IN ('queued','retry','submitting','generating')
-ORDER BY created_at ASC
-LIMIT 100;
-```
-
-If a generation is delayed:
-
-1. check Redis and generation-worker heartbeat;
-2. check Kie 429/5xx/provider health;
-3. inspect whether the local state is `submitting` with no `external_id` before doing anything;
-4. for uncertain submission, **do not create another provider task manually**;
-5. allow callback/reconciliation and the configured unknown-submission timeout to decide the outcome;
-6. for old `generating` work, compare provider status and `GENERATION_HARD_TIMEOUT_SECONDS`;
-7. never manually credit a refund when the idempotent generation refund path can perform it.
-
-## 12. Media incident checks
-
-Queue summary:
-
-```sql
-SELECT status, count(*)
-FROM media_ingest_jobs
-GROUP BY status;
-```
-
-Old/problem work:
-
-```sql
-SELECT
-  j.asset_id,
-  a.generation_id,
-  a.user_id,
-  a.status AS asset_status,
-  j.status AS job_status,
-  j.attempts,
-  j.available_at,
-  j.lease_until,
-  j.last_error
-FROM media_ingest_jobs j
-JOIN media_assets a ON a.id = j.asset_id
-WHERE j.status IN ('pending','processing','failed')
-ORDER BY j.created_at ASC
-LIMIT 100;
-```
-
-If storage is intentionally not configured, durable jobs can remain pending until configuration is restored.
-
-For repeated media failures:
-
-1. verify media-worker heartbeat;
-2. verify bucket/region/custom endpoint and credentials;
-3. check provider URL HTTP state and whether it expired;
-4. inspect SSRF/MIME/size rejection messages before widening any limits;
-5. never mark a generation failed/refund it solely because durable copying failed;
-6. do not manually rewrite object keys without a reviewed repair plan.
-
-## 13. Redis anti-abuse keys
-
-Current key families include:
-
-```text
-abuse:generation:user:<user_uuid>
-abuse:upload:req:<user_uuid>
-abuse:upload:bytes:<user_uuid>:<utc-date>
-abuse:payment:user:<user_uuid>
-abuse:provider-submit:kie
-abuse:circuit:kie:failures
-abuse:circuit:kie:open
-```
-
-Do not routinely delete these in production to bypass throttling. Confirm the underlying traffic/provider incident first.
-
-## 14. Payment incident checks
-
-Creation-intent state:
-
-```sql
-SELECT user_id, request_key, provider, package_id, payment_id, status, last_error, created_at
-FROM payment_requests
-ORDER BY created_at DESC
-LIMIT 100;
-```
-
-Reversal state:
-
-```sql
-SELECT payment_id, provider, amount, credits, reason, provider_event_id, created_at
-FROM payment_reversals
-ORDER BY created_at DESC
-LIMIT 100;
-```
-
-`creation_unknown` must be reconciled through the original local intent; never mint a new idempotency key automatically just because the provider create response was lost.
-
-## 15. Backup and restore
-
-PostgreSQL contains wallets, payments, durable generation work, media metadata/queue state, partner/admin/feed state:
+Manual pre-release backup:
 
 ```bash
 mkdir -p backups
@@ -433,64 +374,51 @@ docker compose exec -T postgres \
   pg_dump -U ksu -d ksu -Fc > "backups/ksu-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-Validate backups and keep off-host copies. Regularly restore into a separate test database.
+Validate backups with `pg_restore --list` and regularly restore into an isolated test database. Keep off-host copies according to retention policy.
 
-The media bucket is a separate durability domain. Configure versioning/replication/backup according to the storage provider and product retention requirements. A PostgreSQL restore does not restore deleted object bytes.
+The media bucket is a separate durability domain; a PostgreSQL restore does not restore deleted object bytes.
 
-Redis loss affects FSM, protection state and latency, not committed PostgreSQL wallet/payment/outbox/media rows.
+Automated periodic PostgreSQL backup service is tracked separately and must not be documented as shipped until its implementation is merged and deployed.
 
-## 16. Release procedure
+## 12. Release procedure
 
-1. require green CI / required workflows for the exact release SHA;
-2. inspect migrations and configuration changes;
-3. confirm maintained docs and `.env.example` match the runtime change;
-4. back up PostgreSQL;
-5. verify storage policy/CORS/lifecycle when media behavior changed;
+1. release only an exact `main` SHA;
+2. require green CI, Batch Generation and Admin Console checks for that SHA/PR;
+3. inspect migrations and config changes;
+4. confirm maintained docs and `.env.example` changed with runtime behavior;
+5. take/verify PostgreSQL backup;
 6. build images;
-7. run migration explicitly;
-8. recreate app and current workers;
-9. run health/product/media/payment/recovery smoke checks;
-10. watch logs, metrics and provider dashboards.
+7. run `alembic upgrade head`;
+8. recreate current services;
+9. run health/product/payment/generation/media/referral smoke checks;
+10. verify Mini App release metadata resolves the expected SHA;
+11. monitor logs, worker heartbeats and provider dashboards.
 
-```bash
-docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
-docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
-docker compose logs --tail=200 app generation-worker media-worker payment-worker creator-partnership-worker
-```
+Do not automatically downgrade Alembic after a failed production release. Prefer a reviewed forward fix or controlled restore.
 
-Do not automatically run `alembic downgrade` after a failed production release; use a reviewed forward fix or controlled restore when necessary.
+## 13. Monitoring priorities
 
-## 17. Monitoring priorities
+Prioritize:
 
-Use `/metrics`, `/health/operational` and `ops/prometheus-alerts.yml` as the baseline. Prioritize:
-
-- API readiness and 5xx ratio;
-- generation/media/payment/creator worker heartbeats where published;
+- API readiness / 5xx ratio;
+- generation/media/payment/creator worker health;
 - generation outbox oldest pending age;
 - generations stuck in `submitting` / `generating`;
-- media ingest oldest pending age and failed asset count;
+- media ingest oldest pending age and failures;
 - generation refund/failure spikes;
+- payment reconciliation failures and `creation_unknown` age;
+- referral rejection/burst spikes and newly inactive inviters;
 - Redis availability;
-- repeated resource/protection errors;
-- Kie 429/5xx and open circuit events;
-- payment reconciliation errors and webhook 4xx/5xx;
-- admin auth failures;
-- PostgreSQL connections/storage;
-- S3 capacity/quota/provider errors and incomplete multipart cleanup.
+- PostgreSQL capacity/locks;
+- provider 429/5xx/circuit state.
 
-Never log bearer tokens, Telegram `initData`, provider/S3/payment secrets, MFA secrets, recovery codes or full presigned query strings.
+## 14. Operational invariants
 
-## 18. CI gate
-
-GitHub Actions validates the repository with Ruff, Python compile checks, Mini App/Admin JavaScript syntax checks, Alembic migration on PostgreSQL and the full regression suite. Focused generation tests protect outbox recovery, terminal monotonicity, uncertain submissions, stale Kie HMAC callbacks and refund exactly-once behavior.
-
-Release-specific workflow requirements are documented in `docs/GITHUB_PRODUCTION_DEPLOY.md` and `docs/ROXY_RELEASE_ACCEPTANCE.md`.
-
-## 19. Known intentionally constrained behavior
-
-- T-Bank partial merchant refund remains guarded/review-oriented until receipt/fiscal semantics are safely modelled.
-- `mypy` is not currently an enforced CI gate unless the workflow is explicitly changed.
-- Provider/API capabilities are exposed only when they have a real mapped and tested backend contract; historical parity documents do not authorize a model or operation by themselves.
-
-For current product/runtime truth, follow `docs/README.md`, `docs/CURRENT_STATE.md`, this runbook and the tested server contracts. Historical `parity-*` files are implementation records only.
+- PostgreSQL is the durable business source of truth.
+- Redis is never the only copy of wallet/payment/generation/media/referral business state.
+- Wallet credit/debit/refund paths remain idempotent.
+- Provider callbacks are authenticated where configured and reconciled against authoritative state.
+- No blind duplicate provider generation or payment create is permitted after an uncertain response.
+- Referral attachment is immutable after user creation and admitted under server-side controls.
+- Secrets never belong in `.env.example`, docs, logs or issue/PR bodies.
+- Runtime-affecting PRs update maintained docs/config examples in the same PR.
