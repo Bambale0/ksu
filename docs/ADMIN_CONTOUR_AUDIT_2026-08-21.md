@@ -31,9 +31,17 @@ Fix: reference fields are optional on auto-routed public model cards. Backend ro
 - image/video reference payload → I2I/I2V target;
 - input URL is promoted to the correct provider field automatically.
 
-### 4. Feed publication backend exists, but Mini App flow is incomplete
+### 4. Feed/profile publication UI now exposes both surfaces
 
-The backend endpoint supports both `profile` and `feed` publication scopes. The Mini App currently exposes only the profile action in preview. The backend path was audited; the UI action still needs a small Preview-sheet control change to expose `feed` as a distinct publish button without changing privacy semantics.
+Foxgen's Mini App pattern separates profile publications from public feed posts and includes social actions on published cards.
+
+Fix: the KSU Mini App now routes to a social-ready shell with:
+
+- explicit `В профиль` publication;
+- explicit `В ленту + профиль` publication;
+- prompt/reference visibility toggles before publishing;
+- feed/profile likes, shares, comments, repeat/remix, and owner removal actions;
+- automatic feed refresh while the catalog is open.
 
 ## Admin contour notes
 
@@ -66,13 +74,12 @@ The worker respects inactive users and `UserPreference.notifications_enabled` / 
 
 ## Remaining follow-up
 
-1. Add Mini App preview buttons: `В профиль` and `В ленту` as separate actions.
-2. Add an admin console smoke/E2E test that creates a campaign, starts it, and verifies delivery rows leave `pending` when the worker runs.
-3. Add production deploy/runbook check that verifies these processes are alive after deployment:
+1. Add an admin console smoke/E2E test that creates a campaign, starts it, and verifies delivery rows leave `pending` when the worker runs.
+2. Add production deploy/runbook check that verifies these processes are alive after deployment:
    - `app`
    - `generation-worker`
    - `media-worker`
    - `payment-worker`
    - `notification-worker`
    - `admin-campaign-worker`
-4. Confirm live provider docs before changing individual model parameter ranges beyond the already encoded KSU contracts.
+3. Confirm live provider docs before changing individual model parameter ranges beyond the already encoded KSU contracts.
