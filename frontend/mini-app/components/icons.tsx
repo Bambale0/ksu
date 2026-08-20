@@ -1,8 +1,8 @@
-import type { SVGProps } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 export type IconName = "home" | "catalog" | "create" | "history" | "profile" | "image" | "video" | "music" | "wallet" | "close" | "chevron" | "heart" | "comment" | "share" | "upload" | "spark" | "settings";
 
-const paths: Record<IconName, React.ReactNode> = {
+const paths: Record<IconName, ReactNode> = {
   home: <><path d="M3.5 10.6 12 3.7l8.5 6.9"/><path d="M5.5 9.2V20h13V9.2"/><path d="M9.3 20v-6h5.4v6"/></>,
   catalog: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
   create: <><path d="M12 4v16M4 12h16"/><path d="m18 3 .5 1.5L20 5l-1.5.5L18 7l-.5-1.5L16 5l1.5-.5L18 3Z"/></>,
