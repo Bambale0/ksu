@@ -43,6 +43,20 @@ creator-partnership-worker
 
 Only the HTTPS proxy should be public. PostgreSQL, Redis and product media storage remain private.
 
+### Public callback routes
+
+Telegram and provider callbacks currently include:
+
+```text
+POST /webhooks/telegram
+POST /webhooks/kie
+POST /webhooks/payments/cryptobot
+POST /webhooks/payments/tbank
+POST /webhooks/payments/yookassa
+```
+
+The primary hosted-card checkout callback uses the dedicated route documented in `PRIMARY_CARD_CHECKOUT.md` and `WALLET_PAYMENTS.md`. Callback authentication/signature validation remains mandatory where configured, and provider callback payloads are reconciled against authoritative provider/local state rather than trusted as the sole source of truth.
+
 ## 2. Production deployment
 
 Preferred release path is the production GitHub workflow. It resolves an exact `main` SHA, requires the release checks to be green, takes a pre-deploy PostgreSQL dump, runs Alembic, recreates runtime services and verifies health/release metadata.
