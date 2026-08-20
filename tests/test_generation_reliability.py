@@ -65,7 +65,7 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
             session,
             BrokenWakeRedis(),  # type: ignore[arg-type]
             user_id=user.id,
-            model_id="nano-banana",
+            model_id="nano-banana-pro",
             prompt="durable task",
         )
 
@@ -76,8 +76,8 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert outbox is not None
         assert outbox.status == "pending"
         assert wallet is not None
-        assert generation.cost_rox == Decimal("80.00")
-        assert wallet.balance == Decimal("20.00")
+        assert generation.cost_rox == Decimal("25.00")
+        assert wallet.balance == Decimal("75.00")
 
         await GenerationOutboxService.mark_generation_terminal(
             session,
