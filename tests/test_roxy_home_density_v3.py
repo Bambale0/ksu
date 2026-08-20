@@ -8,48 +8,43 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_compact_home_density_layer_is_mounted_after_fhd_layer() -> None:
+def test_home_density_is_part_of_the_canonical_design_system() -> None:
     source = _read("roxy-brand.js")
-    fhd = 'mountLayer({ css: "/mini-app/roxy-fhd-density.css" });'
-    compact = 'mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });'
-    mobile = 'mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });'
-    assert fhd in source
-    assert compact in source
-    assert mobile in source
-    assert source.index(fhd) < source.index(compact) < source.index(mobile)
+    css = _read("roxy-design-system.css")
+    assert '/mini-app/roxy-design-system.css?v=1' in source
+    assert '/mini-app/roxy-fhd-density.css' not in source
+    assert '/mini-app/roxy-home-density-v3.css' not in source
+    assert ".studio-home-actions" in css
+    assert ".roxy-media-grid" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+    assert "@media (min-width: 720px)" in css
+    assert "@media (max-width: 430px)" in css
 
 
-def test_duplicate_home_hero_cta_and_balance_are_removed() -> None:
+def test_duplicate_home_cta_and_balance_are_removed_without_hiding_concept_hero() -> None:
     source = _read("roxy-brand.js")
-    assert "hero.hidden = true" in source
     assert 'document.getElementById("roxyHomeBalance")?.remove()' in source
     assert 'document.getElementById("roxyCreateCta")?.remove()' in source
     assert 'card.id = "roxyHomeBalance"' not in source
+    assert "hero.hidden = true" not in source
 
 
-def test_promos_are_promoted_to_top_of_home_dashboard() -> None:
+def test_partner_promo_follows_the_primary_hero() -> None:
     source = _read("roxy-brand.js")
     assert 'const promo = document.getElementById("roxyPromoSection")' in source
-    assert "if (home.firstElementChild !== promo) home.prepend(promo)" in source
-    assert 'families.insertAdjacentElement("afterend", promo)' not in source
+    assert 'const hero = document.getElementById("roxyApprovedHero")' in source
+    assert 'hero.insertAdjacentElement("afterend", promo)' in source
+    assert "home.prepend(promo)" not in source
 
 
-def test_promos_cannot_become_billboard_cards() -> None:
-    css = _read("roxy-home-density-v3.css")
+def test_home_cards_remain_compact_touch_friendly_and_mobile_first() -> None:
+    css = _read("roxy-design-system.css")
     for token in (
-        "min-height: 108px !important",
-        "max-height: 108px",
-        "font-size: 17px",
-        "-webkit-line-clamp: 2",
-        "grid-auto-columns: minmax(300px, 42%)",
-        "min-height: 92px !important",
-        "grid-auto-columns: 82%",
+        ".studio-home-action",
+        ".roxy-media-card",
+        "min-height: 102px",
+        "min-height: 44px",
+        "--roxy-control-h: 46px",
+        "grid-template-columns: repeat(2, minmax(0, 1fr))",
     ):
         assert token in css
-
-
-def test_first_screen_tool_grid_remains_four_columns_on_mobile() -> None:
-    css = _read("roxy-home-density-v3.css")
-    assert ".roxy-home-tools-grid" in css
-    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in css
-    assert "min-height: 52px" in css
