@@ -2,7 +2,7 @@
 
 **Status:** synchronized with shipped runtime on 2026-08-20.
 
-This is the release checklist for the customer Mini App plus the money-sensitive generation/admin contracts that can change customer behavior without a frontend deploy.
+This is the release checklist for the customer Mini App plus the money-sensitive generation/admin/operations contracts that can change customer behavior or recovery safety without a frontend deploy.
 
 ## Automated gate
 
@@ -12,6 +12,7 @@ A release candidate must pass:
 - focused ROXY shell/navigation/create/economy/payment contracts;
 - card payment recovery tests covering current provider lookup route, unique recovery and ambiguity refusal;
 - referral anti-fraud tests covering hour/day limits, burst restriction and concurrent admission serialization;
+- PostgreSQL backup contract tests covering shell syntax, private archive creation, custom-format validation, checksum/retention, compose isolation and production deploy integration;
 - model catalog and pricing tests;
 - provider-contract tests for current callable model schemas, including Seedance 2.5;
 - generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
@@ -90,6 +91,23 @@ Run registration-time referral admission against real PostgreSQL:
 11. Partner cabinet reports the configured minimum withdrawal consistently; current default is 3,000 RUB/ROX.
 12. Withdrawable 30%/5% referral rewards remain separate from spend-wallet invitation bonuses.
 
+## PostgreSQL backup / restore acceptance
+
+Run the operations contract against the compose/deploy configuration:
+
+1. `scripts/backup_postgres.sh` passes `sh -n` and runs with `umask 077`.
+2. Periodic dumps use PostgreSQL custom format and are not published as `latest.dump` unless non-empty and parseable through `pg_restore --list`.
+3. A SHA-256 sidecar is written for every published periodic archive and retention removes the matching sidecar with an expired dump.
+4. `backup-worker` uses `postgres:17-alpine`, a private `db_backups` volume and a read-only script mount; it is not coupled into the customer `app` startup dependency chain.
+5. The production deploy explicitly includes `backup-worker` in runtime services but not in the application build list.
+6. Before Alembic, the production deploy creates a pre-migration `-Fc` archive, verifies non-empty bytes, parses it through `pg_restore --list` and writes a SHA-256 sidecar.
+7. Deployment fails if `backup-worker` cannot reach a running state after runtime recreation.
+8. After release, `/backups/latest.dump` and `/backups/latest.dump.sha256` validate successfully and the archive catalog is readable.
+9. A restore drill into an isolated/disposable database succeeds and application-level integrity checks pass; production is never overwritten for a drill.
+10. Local `db_backups` retention is not reported as off-host disaster recovery. Operations must verify an encrypted off-host copy/snapshot separately.
+11. Database dumps are never uploaded through Telegram/chat or exposed from the public web root.
+12. Media bucket durability is tested separately because a PostgreSQL archive contains media metadata/object keys, not object bytes.
+
 ## Public pricing baseline acceptance
 
 Verify representative catalog/quote responses against the approved baseline:
@@ -164,6 +182,9 @@ Also verify music, Trends, Prompt Tools, Batch, feed/profile publish/remix, Hist
 Do not promote if:
 
 - any automated release/CI gate fails;
+- the pre-migration PostgreSQL archive is empty, unreadable by `pg_restore --list` or missing its checksum;
+- `backup-worker` is absent from the production runtime or cannot stay running;
+- the repository/docs imply that local Docker-volume retention is off-host disaster recovery;
 - Video/Create routing returns to the wrong surface;
 - quote and actual debit diverge;
 - a late/duplicate provider callback can reverse a terminal generation state;
