@@ -218,7 +218,7 @@ class GenerationService:
                 **clean,
                 "_requested_model_id": model_id,
                 "_auto_routed": spec.id != model_id,
-                "_auto_mode": "reference" if spec.id != model_id and any(clean.get(key) for key in ("image_urls", "input_urls", "image_input", "image_url", "first_frame_url", "reference_image_urls", "video_urls", "video_url", "first_clip_url", "reference_video_urls")) else "text",
+                "_auto_mode": "reference" if any(clean.get(key) for key in ("image_urls", "input_urls", "image_input", "image_url", "first_frame_url", "reference_image_urls", "video_urls", "video_url", "first_clip_url", "reference_video_urls")) else "text",
                 "_model_id": spec.id,
                 "_model_title": spec.title,
                 "_model_family": spec.family,
