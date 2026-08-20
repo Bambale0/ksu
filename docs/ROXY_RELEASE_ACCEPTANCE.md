@@ -11,6 +11,7 @@ A release candidate must pass:
 - all Mini App/Admin JavaScript syntax checks;
 - focused ROXY shell/navigation/create/economy/payment contracts;
 - model catalog and pricing tests;
+- provider-contract tests for current callable model schemas, including Seedance 2.5;
 - generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
 - admin security/console tests;
 - Alembic migration on real PostgreSQL;
@@ -47,6 +48,11 @@ Run these flows against the release environment:
 12. An unresolved uncertain submission eventually fails/refunds exactly once after the configured unknown-submission timeout.
 13. A provider task that exceeds `GENERATION_HARD_TIMEOUT_SECONDS` eventually reaches a terminal failed/refunded state rather than being kept alive indefinitely by polling.
 14. A provider success without usable result media is not exposed as a completed charged empty result.
+15. Seedance 2.5 catalog exposes `output_format` and `nsfw_checker`, does not expose legacy `fixed_lens`, and reports a 4–30 second explicit billing range.
+16. Seedance 2.5 accepts only the currently callable Kie resolution enum (`480p`, `720p`); `1080p` and `4K` are rejected server-side even if broader marketing material mentions higher model capabilities.
+17. Seedance 2.5 frame mode cannot be combined with multimodal references, and last-frame input requires first-frame input.
+18. Seedance 2.5 enforces product/provider reference counts: at most 30 images, 10 videos and 10 audio references; UI video upload copy must reflect ROXY's current 100 MB shared upload ceiling.
+19. Seedance 2.5 `duration=-1`/auto is not exposed until billing can settle against an authoritative actual duration after completion.
 
 ## Public pricing baseline acceptance
 
@@ -130,5 +136,7 @@ Do not promote if:
 - live admin pricing disappears after restart;
 - a pricing publish can bypass permission/confirmation/MFA;
 - ROX/payment state is ambiguous;
+- Seedance 2.5 UI/catalog accepts a parameter outside the currently callable Kie schema without an explicit tested adapter;
+- Seedance 2.5 auto-duration is exposed before actual-duration billing settlement exists;
 - a generation action is shown despite being unsupported by the backend catalog;
 - approved promo artwork is missing, cropped or replaced by reconstructed artwork.

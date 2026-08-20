@@ -13,6 +13,7 @@ from app.services.abuse_protection import AbuseProtectionService, GenerationAdmi
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.seedance25_contract import normalize_seedance25_input
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,10 @@ class GenerationService:
         if prompt and not merged.get("prompt"):
             merged["prompt"] = prompt
         cls._apply_input_url(spec, merged, input_url)
+        if model_id == "seedance-2.5":
+            # Validate the current provider contract before wallet debit. This also
+            # normalizes old saved drafts (for example obsolete fixed_lens).
+            merged = normalize_seedance25_input(merged)
         resolved_seconds = await cls._resolve_billing_seconds(
             session,
             model_id=model_id,

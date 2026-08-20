@@ -81,6 +81,28 @@ Scenario-driven models clear incompatible state when switching modes. Current ex
 
 Uploads go through `/api/v1/uploads/kie`; the provider API key remains server-side. Generated result URLs are temporary provider ingest sources until product-owned media ingestion completes.
 
+### Seedance 2.5 callable contract
+
+ROXY maps `seedance-2.5` to Kie `bytedance/seedance-2-5` and validates its provider-specific inputs **before quote/debit/provider submission**.
+
+The callable Kie input form checked on 2026-08-20 exposes:
+
+- resolution: `480p`, `720p`;
+- aspect ratio: `16:9`, `4:3`, `1:1`, `3:4`, `9:16`, `21:9`, `adaptive`;
+- output format: `mp4`, `mov`;
+- first frame / optional last frame;
+- up to 30 image references, 10 video references and 10 audio references;
+- `generate_audio`, `return_last_frame`, `web_search`, `nsfw_checker` booleans;
+- duration up to 30 seconds.
+
+ROXY currently accepts explicit **4–30 second** duration only. Provider auto-duration (`-1`) is deliberately not exposed because ROXY debits video per second before submission; an unknown final duration would break quote/debit determinism until actual-duration settlement exists.
+
+Frame mode and multimodal reference mode are mutually exclusive. A last frame requires a first frame. The older `fixed_lens` field is removed from the Seedance 2.5 catalog and silently discarded from old saved drafts instead of being forwarded to Kie.
+
+Kie's marketing copy may describe broader model capabilities such as higher-resolution output, but ROXY follows the **currently callable input schema**. As of this synchronization, `1080p`/`4K` are not accepted for this Kie route and are rejected server-side rather than merely hidden in the UI.
+
+Kie currently allows video reference files larger than ROXY's shared upload endpoint. ROXY therefore advertises/enforces its actual product upload ceiling (100 MB) until the common upload contract is intentionally raised and tested.
+
 ## ROX denomination
 
 Public accounting is:
