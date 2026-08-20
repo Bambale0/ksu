@@ -39,7 +39,7 @@
     mountLayer({ css: "/mini-app/roxy-photo-controls.css?v=1", js: "/mini-app/roxy-photo-controls.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-video-controls.css?v=1", js: "/mini-app/roxy-video-controls.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-music.css", js: "/mini-app/roxy-music.js" });
-    mountLayer({ js: "/mini-app/roxy-user-profile.js?v=1" });
+    mountLayer({ css: "/mini-app/roxy-user-profile.css?v=1", js: "/mini-app/roxy-user-profile.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-profile-cabinet.css", js: "/mini-app/roxy-profile-cabinet.js" });
     mountLayer({ css: "/mini-app/roxy-parity-navigation.css", js: "/mini-app/roxy-parity-navigation.js" });
     mountLayer({ css: "/mini-app/roxy-history-management.css", js: "/mini-app/roxy-history-management.js" });
