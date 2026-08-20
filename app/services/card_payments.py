@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -27,6 +28,7 @@ class CardPackage:
     credits: Decimal
     prices: dict[str, Decimal]
     offer_id: str | None = None
+    dynamic_amount: bool = True
 
 
 class CardPackageCatalog:
@@ -85,6 +87,7 @@ class CardPackageCatalog:
                 credits=credits,
                 prices=prices,
                 offer_id=offer_id,
+                dynamic_amount=True,
             )
         return result
 
@@ -95,10 +98,101 @@ class CardPackageCatalog:
             raise UnknownPaymentPackageError(package_id)
         return package
 
+    @classmethod
+    async def provider_packages(cls) -> dict[str, CardPackage]:
+        configured = cls.packages()
+        if configured:
+            return configured
+
+        client = CardCheckoutClient(
+            settings.card_api_key,
+            settings.card_api_base_url,
+            settings.card_webhook_key,
+        )
+        try:
+            payload = await client.get_products()
+        finally:
+            await client.aclose()
+        return cls._parse_lava_products(payload, settings.card_offer_id)
+
+    @classmethod
+    async def provider_package(cls, package_id: str) -> CardPackage:
+        package = (await cls.provider_packages()).get(package_id)
+        if package is None:
+            raise UnknownPaymentPackageError(package_id)
+        return package
+
+    @classmethod
+    def _parse_lava_products(cls, payload: dict[str, Any], configured_id: str) -> dict[str, CardPackage]:
+        products = payload.get("items")
+        if not isinstance(products, list):
+            data = payload.get("data")
+            products = data.get("items") if isinstance(data, dict) else data
+        if not isinstance(products, list):
+            return {}
+
+        configured_id = configured_id.strip()
+        result: dict[str, CardPackage] = {}
+        for product in products:
+            if not isinstance(product, dict):
+                continue
+            product_id = str(product.get("id") or product.get("productId") or "")
+            product_matches = bool(configured_id and product_id == configured_id)
+            offers = product.get("offers")
+            if not isinstance(offers, list):
+                continue
+            for offer in offers:
+                if not isinstance(offer, dict):
+                    continue
+                offer_id = str(offer.get("id") or offer.get("offerId") or "")
+                if configured_id and not product_matches and offer_id != configured_id:
+                    continue
+                credits = cls._credits_from_offer(offer)
+                prices = cls._prices_from_offer(offer)
+                if not offer_id or credits is None or not prices:
+                    continue
+                result[offer_id] = CardPackage(
+                    package_id=offer_id,
+                    credits=credits,
+                    prices=prices,
+                    offer_id=offer_id,
+                    dynamic_amount=False,
+                )
+        return result
+
+    @staticmethod
+    def _credits_from_offer(offer: dict[str, Any]) -> Decimal | None:
+        for key in ("name", "title", "description"):
+            match = re.search(r"(\d+(?:[.,]\d+)?)\s*ROX\b", str(offer.get(key) or ""), re.IGNORECASE)
+            if match:
+                value = Decimal(match.group(1).replace(",", "."))
+                return value if value > 0 else None
+        return None
+
+    @classmethod
+    def _prices_from_offer(cls, offer: dict[str, Any]) -> dict[str, Decimal]:
+        result: dict[str, Decimal] = {}
+        raw_prices = offer.get("prices")
+        if not isinstance(raw_prices, list):
+            return result
+        for item in raw_prices:
+            if not isinstance(item, dict):
+                continue
+            currency = str(item.get("currency") or "").upper()
+            if currency not in cls.CURRENCIES:
+                continue
+            amount_raw = item.get("amount")
+            if amount_raw in (None, ""):
+                continue
+            amount = Decimal(str(amount_raw))
+            if amount > 0:
+                result[currency] = amount
+        return result
+
 
 class CardPaymentService:
     PROVIDER = "card"
-    PUBLIC_LABEL = "Оплата картой · USD / EUR / RUB / СБП"
+    PUBLIC_LABEL = "Оплата картой"
     SUCCESS_STATUSES = frozenset({"success", "succeeded", "paid", "completed"})
     FAILED_STATUSES = frozenset({"failed", "cancelled", "canceled", "expired"})
     REFUNDED_STATUSES = frozenset({"refunded", "refund", "reversed"})
@@ -146,7 +240,7 @@ class CardPaymentService:
         if not request_key or len(request_key) > 64:
             raise ValueError("Idempotency key must contain 1-64 characters")
         email = cls._email(billing_email)
-        package = CardPackageCatalog.package(package_id)
+        package = await CardPackageCatalog.provider_package(package_id)
         amount = package.prices.get(currency)
         if amount is None:
             raise UnknownPaymentPackageError(f"{package_id}:{currency}")
@@ -234,7 +328,7 @@ class CardPaymentService:
                 email=email,
                 offer_id=offer_id,
                 currency=currency,
-                amount=amount,
+                amount=amount if package.dynamic_amount else None,
                 payment_provider=route,
             )
         except Exception as exc:

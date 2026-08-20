@@ -39,10 +39,18 @@ def _view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]
 
 @router.get("/packages")
 async def packages() -> dict[str, object]:
+    packages = await CardPackageCatalog.provider_packages()
+    currencies = sorted(
+        {
+            currency
+            for package in packages.values()
+            for currency in package.prices
+        }
+    )
     return {
         "provider": CardPaymentService.PROVIDER,
         "label": CardPaymentService.PUBLIC_LABEL,
-        "currencies": ["RUB", "USD", "EUR"],
+        "currencies": currencies,
         "packages": {
             package_id: {
                 "credits": str(package.credits),
@@ -51,7 +59,7 @@ async def packages() -> dict[str, object]:
                     for currency, amount in sorted(package.prices.items())
                 },
             }
-            for package_id, package in CardPackageCatalog.packages().items()
+            for package_id, package in packages.items()
         },
     }
 

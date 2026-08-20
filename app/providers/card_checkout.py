@@ -71,20 +71,22 @@ class CardCheckoutClient:
         email: str,
         offer_id: str,
         currency: str,
-        amount: Decimal,
+        amount: Decimal | None,
         payment_provider: str | None = None,
     ) -> CreatedPayment:
         currency = currency.upper()
         self.validate_route(currency, payment_provider)
-        self.validate_amount(currency, amount)
+        if amount is not None:
+            self.validate_amount(currency, amount)
         if not offer_id:
             raise PaymentProviderError("Card checkout offer id is not configured")
         payload: dict[str, Any] = {
             "email": email,
             "offerId": offer_id,
             "currency": currency,
-            "amount": float(amount),
         }
+        if amount is not None:
+            payload["amount"] = float(amount)
         if payment_provider:
             payload["paymentProvider"] = payment_provider.upper()
         try:
@@ -96,8 +98,9 @@ class CardCheckoutClient:
             response.raise_for_status()
             raw = response.json()
         except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:1000].replace("\n", " ")
             raise PaymentProviderError(
-                f"Card checkout invoice creation failed: HTTP {exc.response.status_code}"
+                f"Card checkout invoice creation failed: HTTP {exc.response.status_code}: {body}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Card checkout transport failed") from exc
@@ -134,6 +137,26 @@ class CardCheckoutClient:
         except ValueError as exc:
             raise PaymentProviderError("Card checkout returned invalid JSON") from exc
         return self._unwrap(raw)
+
+    async def get_products(self) -> dict[str, Any]:
+        try:
+            response = await self._client.get(
+                "/api/v2/products",
+                headers=self._headers(),
+            )
+            response.raise_for_status()
+            raw = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise PaymentProviderError(
+                f"Card checkout products lookup failed: HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("Card checkout transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("Card checkout returned invalid JSON") from exc
+        if not isinstance(raw, dict):
+            raise PaymentProviderError("Card checkout returned invalid products JSON")
+        return raw
 
     def verify_webhook_key(self, supplied: str | None) -> bool:
         if not self.webhook_key or not supplied:

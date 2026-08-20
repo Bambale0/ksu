@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import urlencode
 
 import httpx
 from sqlalchemy import select
@@ -150,7 +151,10 @@ class GenerationProviderService:
 
         callback_url = settings.webhook_url("webhooks/kie")
         if callback_url:
-            callback_url = f"{callback_url}?generation_id={generation.id}"
+            params = {"generation_id": str(generation.id)}
+            if settings.kie_webhook_hmac_key:
+                params["token"] = settings.kie_webhook_hmac_key
+            callback_url = f"{callback_url}?{urlencode(params)}"
         input_data = cls._input_for(generation)
 
         try:
