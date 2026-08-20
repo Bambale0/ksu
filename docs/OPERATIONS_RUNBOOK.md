@@ -2,7 +2,7 @@
 
 **Status:** synchronized with the current ROXY runtime and migration chain as of 2026-08-20.
 
-This is the maintained operational source of truth for deployment, health checks, generation recovery, media durability, payment reconciliation, referral admission controls and incident response. Historical epic notes must not override this file.
+This is the maintained operational source of truth for deployment, health checks, generation recovery, media durability, PostgreSQL backups, payment reconciliation, referral admission controls and incident response. Historical epic notes must not override this file.
 
 ## 1. Runtime topology
 
@@ -27,6 +27,10 @@ Internet / Telegram
    |
    +----------> payment-worker ---------> payment providers
    +----------> creator-partnership-worker
+
+ backup-worker ----------------------> PostgreSQL
+       |
+       +-----------------------------> private db_backups volume
 ```
 
 Current compose services:
@@ -39,9 +43,10 @@ generation-worker
 media-worker
 payment-worker
 creator-partnership-worker
+backup-worker
 ```
 
-Only the HTTPS proxy should be public. PostgreSQL, Redis and product media storage remain private.
+Only the HTTPS proxy should be public. PostgreSQL, Redis, the backup volume and product media storage remain private.
 
 ### Public callback routes
 
@@ -59,7 +64,9 @@ The primary hosted-card checkout callback uses the dedicated route documented in
 
 ## 2. Production deployment
 
-Preferred release path is the production GitHub workflow. It resolves an exact `main` SHA, requires the release checks to be green, takes a pre-deploy PostgreSQL dump, runs Alembic, recreates runtime services and verifies health/release metadata.
+Preferred release path is the production GitHub workflow. It resolves an exact `main` SHA, requires the release checks to be green, creates and validates a pre-migration PostgreSQL custom-format dump, runs Alembic, recreates runtime services including `backup-worker`, and verifies health/release metadata.
+
+The pre-deploy archive must be non-empty, parse through `pg_restore --list`, and receive a SHA-256 sidecar before migration proceeds.
 
 Manual recovery deployment:
 
@@ -73,7 +80,7 @@ chmod 600 .env
 docker compose up -d postgres redis
 docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
 docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
+docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker backup-worker
 ```
 
 Never deploy from a feature branch. Never hard-code a historical Alembic revision as the deployment target.
@@ -105,6 +112,10 @@ REDIS_URL=redis://redis:6379/0
 BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
+
+DB_BACKUP_INTERVAL_SECONDS=10800
+DB_BACKUP_RETENTION_COUNT=16
+DB_BACKUP_ON_START=true
 
 # Public economy: 1 ROX = 1 RUB.
 INTERNAL_CREDIT_RUB=1
@@ -362,6 +373,7 @@ curl -fsS "$BASE/health/operational"
 curl -fsSI "$BASE/mini-app/"
 curl -fsS "$BASE/api/v1/generations/models"
 curl -fsS "$BASE/api/v1/payments/packages"
+docker compose ps backup-worker
 ```
 
 Then verify through Telegram/Mini App:
@@ -380,19 +392,25 @@ For referral staging smoke, temporarily lower limits and verify rejected attempt
 
 PostgreSQL contains wallets, payments, generation/outbox state, media metadata/jobs, partner/admin/feed state and referral audit state.
 
-Manual pre-release backup:
+ROXY has two database-backup layers on the application host:
+
+1. the production deploy creates a pre-migration custom-format archive, requires it to be non-empty, validates it with `pg_restore --list`, and writes a SHA-256 sidecar before Alembic runs;
+2. the long-running `backup-worker` creates verified/checksummed periodic archives in the private `db_backups` volume (default every 3 hours, newest 16 retained, backup on worker start enabled).
+
+Verify the periodic latest archive:
 
 ```bash
-mkdir -p backups
-docker compose exec -T postgres \
-  pg_dump -U ksu -d ksu -Fc > "backups/ksu-$(date +%Y%m%d-%H%M%S).dump"
+docker compose exec -T backup-worker sh -c 'cd /backups && sha256sum -c latest.dump.sha256'
+docker compose exec -T backup-worker pg_restore --list /backups/latest.dump >/dev/null
 ```
 
-Validate backups with `pg_restore --list` and regularly restore into an isolated test database. Keep off-host copies according to retention policy.
+Local Docker-volume retention is **not** off-host disaster recovery. Production operations must copy/snapshot verified database backups to dedicated encrypted off-host storage. Never transmit dumps through Telegram/chat.
+
+Regularly restore a verified archive into an isolated disposable database and run application-level integrity checks. A successful checksum/catalog listing is not a restore drill.
 
 The media bucket is a separate durability domain; a PostgreSQL restore does not restore deleted object bytes.
 
-Automated periodic PostgreSQL backup service is tracked separately and must not be documented as shipped until its implementation is merged and deployed.
+Full procedures and incident handling: `DATABASE_BACKUPS.md`.
 
 ## 12. Release procedure
 
@@ -400,13 +418,14 @@ Automated periodic PostgreSQL backup service is tracked separately and must not 
 2. require green CI, Batch Generation and Admin Console checks for that SHA/PR;
 3. inspect migrations and config changes;
 4. confirm maintained docs and `.env.example` changed with runtime behavior;
-5. take/verify PostgreSQL backup;
-6. build images;
+5. require the production workflow's pre-migration PostgreSQL archive to pass non-empty + `pg_restore --list` + checksum publication;
+6. build application/worker images;
 7. run `alembic upgrade head`;
-8. recreate current services;
-9. run health/product/payment/generation/media/referral smoke checks;
+8. recreate current runtime services including `backup-worker`;
+9. verify `backup-worker` is running plus API/product/payment/generation/media/referral smoke checks;
 10. verify Mini App release metadata resolves the expected SHA;
-11. monitor logs, worker heartbeats and provider dashboards.
+11. confirm periodic backup freshness/off-host durability operationally;
+12. monitor logs, worker heartbeats and provider dashboards.
 
 Do not automatically downgrade Alembic after a failed production release. Prefer a reviewed forward fix or controlled restore.
 
@@ -416,6 +435,8 @@ Prioritize:
 
 - API readiness / 5xx ratio;
 - generation/media/payment/creator worker health;
+- `backup-worker` running state, last verified backup age and repeated backup failures;
+- off-host backup freshness and restore-drill evidence;
 - generation outbox oldest pending age;
 - generations stuck in `submitting` / `generating`;
 - media ingest oldest pending age and failures;
@@ -430,6 +451,7 @@ Prioritize:
 
 - PostgreSQL is the durable business source of truth.
 - Redis is never the only copy of wallet/payment/generation/media/referral business state.
+- Local database backups are verified before publication; off-host copies remain a separate required durability layer.
 - Wallet credit/debit/refund paths remain idempotent.
 - Provider callbacks are authenticated where configured and reconciled against authoritative state.
 - No blind duplicate provider generation or payment create is permitted after an uncertain response.

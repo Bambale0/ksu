@@ -1,29 +1,30 @@
 # KSU / ROXY documentation index
 
 **Documentation baseline:** 2026-08-20  
-**Runtime baseline:** `main` after generation recovery hardening `fa787db146f713b8f6568f037dd2d1ca17c2c68c`.
+**Runtime baseline:** current `main`; use Git history/release SHA rather than a hard-coded historical commit in this index.
 
 This directory documents the production ROXY Telegram AI platform. When prose and runtime disagree, the order of authority is:
 
-1. backend validation and database state;
+1. backend validation and durable database state;
 2. published admin tariff/configuration;
-3. `GET /api/v1/generations/models` and quote responses;
+3. live server catalog/quote responses;
 4. this documentation.
 
 Runtime-affecting changes must update the relevant maintained documentation and configuration examples in the same PR before merge. Follow-up documentation-only PRs are reserved for repairing already-existing drift.
 
-## Current product snapshot
+## Current product / runtime snapshot
 
 - User product: `/mini-app/`.
 - Privileged operations console: `/admin-app/`.
 - Public denomination: **1 ROX = 1 RUB**.
 - Create is split into independent **Photo** and **Video** flows; both end in the same server-driven schema builder and server quote/create pipeline.
-- WAN 2.7 is available for both video and photo generation/editing (`wan/2-7-image` for the image product).
-- Generation pricing is server-authoritative. Flat image prices and per-second video prices are resolved on the server. Parameter-aware tiers are supported where a model requires them (currently Kling Motion resolution tiers).
-- Published Admin Tariffs `generation_pricing` overrides become live immediately and the latest published tariff is restored from PostgreSQL after restart.
-- Pricing publish is privileged (`pricing.manage`) and keeps explicit confirmation + fresh MFA step-up requirements.
-- Generation execution uses a durable PostgreSQL outbox plus recovery/reconciliation. Terminal success/failure states are monotonic, ambiguous Kie submissions are not blindly duplicated, and a configurable hard lifetime prevents indefinitely stuck paid work.
-- Home promo artwork uses repository-owned slide assets; artwork must be rendered without crop, filters or generative redraw.
+- Generation pricing is server-authoritative; published Admin Tariffs can override generation pricing and are restored from PostgreSQL after restart.
+- Generation execution uses a durable PostgreSQL outbox plus recovery/reconciliation. Terminal states are monotonic and ambiguous provider submissions are not blindly duplicated.
+- Product-owned result media is ingested to private S3-compatible storage.
+- Registration-time referral admission is serialized/audited in PostgreSQL with hour/day/burst abuse controls.
+- Production deployment targets an exact tested `main` SHA, validates a pre-migration PostgreSQL archive and explicitly starts the periodic `backup-worker`.
+- Periodic PostgreSQL archives are custom-format, parsed with `pg_restore --list`, checksummed and retained in a private Docker volume; encrypted off-host durability remains an explicit operations responsibility.
+- Home promo artwork uses repository-owned supplied assets; artwork must render without crop, filters or generative redraw.
 
 ## Documentation map
 
@@ -43,9 +44,9 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 
 ### Economy / pricing
 
-- `ROXY_ECONOMY_IMPLEMENTATION.md` — ROX denomination and current product economy.
+- `ROXY_ECONOMY_IMPLEMENTATION.md` — ROX denomination and current economy.
 - `ROXY_ECONOMY_REFERENCE.md` — compact economy reference.
-- `GENERATION_MINI_APP.md` — generation price modes and current public tariff matrix.
+- `GENERATION_MINI_APP.md` — generation price modes and public tariff matrix.
 - `ADMIN_CONSOLE.md` / `ADMIN_RUNBOOK.md` — changing and publishing runtime tariffs.
 
 ### Admin / security
@@ -59,8 +60,9 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 ### API / operations
 
 - `API_REFERENCE.md` — HTTP route/auth boundaries.
-- `OPERATIONS_RUNBOOK.md` — production deployment, workers, incidents, release checks and rollback.
-- `GITHUB_PRODUCTION_DEPLOY.md` — GitHub production deployment flow.
+- `OPERATIONS_RUNBOOK.md` — production deployment, workers, incidents and release operations.
+- `GITHUB_PRODUCTION_DEPLOY.md` — exact-SHA GitHub production deployment flow.
+- `DATABASE_BACKUPS.md` — periodic PostgreSQL backups, verification, restore drills and off-host durability boundary.
 - `REPOSITORY_HYGIENE.md` — merged-branch pruning, legacy-code cleanup and safe branch lifecycle.
 - `OBSERVABILITY.md` — metrics/logging/tracing/alerts.
 - `MEDIA_STORAGE.md` — durable product-owned media.
@@ -74,7 +76,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 
 ### Historical parity material
 
-`parity-*.md` files are implementation history/checklists. They are not a source of truth for current pricing, model availability, recovery semantics or current Mini App navigation. For current behavior use this index and the domain documents above.
+`parity-*.md` files are implementation history/checklists. They are not a source of truth for current pricing, model availability, recovery semantics, backup policy or current Mini App navigation. Use the maintained domain documents above for current behavior.
 
 ## Promo slide assets
 

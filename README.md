@@ -1,6 +1,6 @@
 # KSU / ROXY
 
-Production Telegram AI content platform: Telegram bot + ROXY Mini App + FastAPI backend + PostgreSQL/Redis workers + Kie generation pipeline + payments + privileged admin console.
+Production Telegram AI content platform: Telegram bot + ROXY Mini App + FastAPI backend + PostgreSQL/Redis workers + Kie generation pipeline + payments + privileged admin console + verified PostgreSQL backup operations.
 
 **Documentation status:** synchronized with the production code baseline on **2026-08-20**. Start with [`docs/README.md`](docs/README.md).
 
@@ -105,6 +105,20 @@ Documentation mirrors are stored under `docs/assets/roxy-promo/`. The approved c
 - Successful results create durable media ingest work; `media-worker` copies bounded HTTPS sources into private product-owned S3-compatible storage.
 - Deterministic storage keys make retries converge safely.
 
+## PostgreSQL backup operations
+
+- Production deploy creates a **pre-migration** PostgreSQL custom-format archive before Alembic.
+- The pre-deploy archive must be non-empty, parse successfully through `pg_restore --list` and receive a SHA-256 sidecar before migration continues.
+- `backup-worker` runs from `postgres:17-alpine` with a private `db_backups` volume.
+- Periodic archives default to every 3 hours, newest 16 retained, with backup-on-start enabled.
+- A periodic archive is published only after custom-format validation and checksum generation; failed attempts retry after 60 seconds until success.
+- Dump files are created with private permissions (`umask 077`).
+- Production deploy explicitly starts/verifies `backup-worker`; customer app startup does not wait for a long backup to complete.
+- Local Docker-volume retention is **not** off-host disaster recovery. Encrypted off-host copies/snapshots and restore drills remain mandatory operations work.
+- Database dumps are not sent through Telegram/chat by this implementation.
+
+See `docs/DATABASE_BACKUPS.md` and `docs/GITHUB_PRODUCTION_DEPLOY.md`.
+
 ## Payments and economy
 
 - **1 ROX = 1 RUB**.
@@ -156,7 +170,7 @@ Telegram / browser
     |                                      |-- business state
     |                                      |-- generation outbox
     |                                      |-- published tariffs/admin audit
-    |                                      |-- media/payment/history state
+    |                                      |-- media/payment/history/referral state
     |
     +--> Redis --------------------------> limits / FSM / wake / telemetry
     |          |
@@ -166,6 +180,10 @@ Telegram / browser
     |
     +--> /mini-app/   ROXY customer UI
     +--> /admin-app/  privileged operator UI
+
+ backup-worker --------------------------> PostgreSQL
+       |
+       +---------------------------------> private db_backups volume
 ```
 
 ## Observability
@@ -175,6 +193,7 @@ Telegram / browser
 - OpenTelemetry traces are exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when configured.
 - Production alert rules live in `ops/prometheus-alerts.yml`.
 - Detailed metrics, worker heartbeat and high-cardinality guidance are in `docs/OBSERVABILITY.md`.
+- Database backup freshness/restore drills are operational checks documented in `docs/DATABASE_BACKUPS.md`.
 
 ## Local development
 
@@ -216,6 +235,10 @@ REDIS_URL=redis://...
 BOT_TOKEN=...
 TELEGRAM_WEBHOOK_SECRET=...
 
+DB_BACKUP_INTERVAL_SECONDS=10800
+DB_BACKUP_RETENTION_COUNT=16
+DB_BACKUP_ON_START=true
+
 INTERNAL_CREDIT_RUB=1
 KIE_API_KEY=...
 KIE_UPLOAD_BASE_URL=...
@@ -242,7 +265,7 @@ python -m compileall -q app tests
 pytest -q
 ```
 
-CI also syntax-checks Mini App/Admin JavaScript and executes focused ROXY/admin/generation contracts before full regression.
+CI also syntax-checks Mini App/Admin JavaScript and executes focused ROXY/admin/generation/operations contracts before full regression.
 
 ## Documentation
 
@@ -251,10 +274,12 @@ Canonical documentation and operations references:
 - `docs/README.md`
 - `docs/API_REFERENCE.md`
 - `docs/OPERATIONS_RUNBOOK.md`
+- `docs/GITHUB_PRODUCTION_DEPLOY.md`
+- `docs/DATABASE_BACKUPS.md`
 - `docs/GENERATION_MINI_APP.md`
 - `docs/ADMIN_SECURITY.md`
 - `docs/ADMIN_RUNBOOK.md`
 - `docs/OBSERVABILITY.md`
 - `docs/ROXY_RELEASE_ACCEPTANCE.md`
 
-Historical `parity-*` files are implementation records, not current pricing/model/navigation authority.
+Historical `parity-*` files are implementation records, not current pricing/model/navigation/operations authority.

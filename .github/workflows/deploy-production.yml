@@ -206,19 +206,23 @@ jobs:
           test -f docker-compose.yml
           test -f .env
 
-          services=(
+          build_services=(
             app
             generation-worker
             media-worker
             payment-worker
             creator-partnership-worker
           )
+          runtime_services=(
+            "${build_services[@]}"
+            backup-worker
+          )
 
           diagnostics() {
             code=$?
             echo "Deployment failed with exit code ${code}." >&2
             docker compose ps || true
-            docker compose logs --tail=200 "${services[@]}" || true
+            docker compose logs --tail=200 "${runtime_services[@]}" || true
             exit "${code}"
           }
           trap diagnostics ERR
@@ -251,12 +255,26 @@ jobs:
           backup="backups/predeploy-$(date -u +%Y%m%dT%H%M%SZ)-${DEPLOY_SHA:0:12}.dump"
           docker compose exec -T postgres pg_dump -U ksu -d ksu -Fc > "${backup}"
           test -s "${backup}"
-          echo "Created pre-deploy database backup: ${backup}"
-          find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -delete
+          docker compose exec -T postgres pg_restore --list < "${backup}" >/dev/null
+          sha256sum "${backup}" > "${backup}.sha256"
+          echo "Created and verified pre-deploy database backup: ${backup}"
+          while IFS= read -r old_backup; do
+            rm -f "${old_backup}" "${old_backup}.sha256"
+          done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
 
-          docker compose build "${services[@]}"
+          docker compose build "${build_services[@]}"
           docker compose run --rm app alembic upgrade head
-          docker compose up -d --remove-orphans "${services[@]}"
+          docker compose up -d --remove-orphans "${runtime_services[@]}"
+
+          backup_worker_running=0
+          for _ in $(seq 1 30); do
+            if docker compose ps --status running --services | grep -Fxq backup-worker; then
+              backup_worker_running=1
+              break
+            fi
+            sleep 2
+          done
+          test "${backup_worker_running}" -eq 1
 
           ready=0
           for _ in $(seq 1 60); do
@@ -288,7 +306,7 @@ jobs:
             exit 1
           fi
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -307,6 +325,8 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
+            echo "- pre-deploy PostgreSQL archive validation: required"
+            echo "- backup-worker running check: required"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
