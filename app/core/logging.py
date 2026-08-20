@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -45,9 +46,19 @@ def configure_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 
-    handler = logging.StreamHandler()
-    handler.addFilter(ObservabilityFilter())
-    handler.setFormatter(JsonFormatter())
+    formatter = JsonFormatter()
+    observability_filter = ObservabilityFilter()
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.addFilter(observability_filter)
+    stream_handler.setFormatter(formatter)
+
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_dir / "bot.log", encoding="utf-8")
+    file_handler.addFilter(observability_filter)
+    file_handler.setFormatter(formatter)
 
     root.handlers.clear()
-    root.addHandler(handler)
+    root.addHandler(stream_handler)
+    root.addHandler(file_handler)

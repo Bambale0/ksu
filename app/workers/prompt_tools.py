@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.core.observability import WORKER_LOOP_ERRORS, record_worker_heartbeat
 from app.db.session import SessionFactory, engine
 from app.services.prompt_tools import PromptToolOutboxService, PromptToolProcessor
@@ -46,6 +47,7 @@ async def run() -> None:
 
 
 def main() -> None:
+    configure_logging()
     asyncio.run(run())
 
 

@@ -43,11 +43,16 @@ export const api = {
     body: JSON.stringify({ publication_scope: scope, prompt_visible: false, references_visible: false }),
   }),
   transactions: () => request<Array<{ id: string; kind: string; amount: string; balance_after: string; status: string; created_at: string }>>("/api/v1/me/transactions"),
-  paymentPackages: () => request<{ packages: Record<string, { amount: string; currency: string; rox: string }> }>("/api/v1/payments/packages"),
+  paymentPackages: () => request<{
+    provider: string;
+    label: string;
+    currencies: string[];
+    packages: Record<string, { credits: string; prices: Record<string, string> }>;
+  }>("/api/v1/payments/card/packages"),
   payments: () => request<{ items: Array<{ id: string; status: string; provider: string; amount: string; currency: string; rox: string; payment_url: string; created_at: string }> }>("/api/v1/payments?limit=20"),
-  createPayment: (provider: "cryptobot" | "tbank" | "yookassa", packageId: string) => request<{ id: string; status: string; payment_url: string }>("/api/v1/payments", {
+  createPayment: (packageId: string, currency: "RUB" | "USD" | "EUR", billingEmail: string) => request<{ id: string; status: string; payment_url: string }>("/api/v1/payments/card/checkout", {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ provider, package_id: packageId }),
+    body: JSON.stringify({ package_id: packageId, currency, billing_email: billingEmail }),
   }),
 };

@@ -27,6 +27,8 @@ services:
   app:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     ports:
       - "8000:8000"
     depends_on:
@@ -41,6 +43,8 @@ services:
   generation-worker:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       app:
         condition: service_started
@@ -53,6 +57,8 @@ services:
   media-worker:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       app:
         condition: service_started
@@ -65,6 +71,8 @@ services:
   payment-worker:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       app:
         condition: service_started
@@ -75,6 +83,8 @@ services:
   creator-partnership-worker:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       app:
         condition: service_started

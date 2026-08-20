@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.db.models import Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
@@ -135,6 +136,7 @@ async def run() -> None:
 
 
 def main() -> None:
+    configure_logging()
     asyncio.run(run())
 
 
