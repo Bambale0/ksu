@@ -37,6 +37,33 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
             elif model_id == "wan-2.7-i2v":
                 item["required_fields"] = visible
 
+    if model_id == "seedance-2.5":
+        # Kie's executable Seedance 2.5 form currently exposes 480p/720p even
+        # though marketing copy on the same page discusses higher-resolution
+        # model capabilities. ROXY follows the callable schema, not marketing.
+        _patch_field(schema, "reference_image_urls", max_items=30, max_size_mb=30)
+        # Kie accepts larger video refs, but the shared ROXY upload endpoint is
+        # intentionally capped at 100 MB; the UI advertises the actual product limit.
+        _patch_field(schema, "reference_video_urls", max_items=10, max_size_mb=100)
+        _patch_field(schema, "reference_audio_urls", max_items=10, max_size_mb=15)
+        _patch_field(schema, "resolution", suggestions=["480p", "720p"])
+        _patch_field(
+            schema,
+            "aspect_ratio",
+            suggestions=["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"],
+        )
+        _patch_field(schema, "output_format", suggestions=["mp4", "mov"])
+        schema["defaults"] = {
+            **schema.get("defaults", {}),
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+            "output_format": "mp4",
+            "generate_audio": False,
+            "return_last_frame": False,
+            "web_search": False,
+            "nsfw_checker": True,
+        }
+
     if model_id in {"kling-motion-2.6", "kling-motion-3.0"}:
         _patch_field(schema, "input_urls", max_size_mb=10, max_items=1)
         _patch_field(schema, "video_urls", max_size_mb=100, max_items=1)
