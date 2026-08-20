@@ -9,24 +9,27 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_reference_home_has_clear_start_hierarchy_and_trend_preview() -> None:
-    script = _read("roxy-reference-home.js")
-    css = _read("roxy-reference-home.css")
-
-    for label in ("С чего начать", "По шаблону", "С нуля", "Тренды", "Шаблоны", "Инструменты"):
-        assert label in script
-    for tool in ("Prompt", "Batch", "Референсы", "Поддержка"):
-        assert tool in script
-    assert 'fetch("/api/v1/trends?limit=100"' in script
-    assert "/mini-app/trends.html?trend=" in script
-    assert "grid-template-columns: repeat(2" in css
-    assert "aspect-ratio: 4 / 5" in css
-    assert "opacity: .09" in css  # restrained texture, far below the 30% ceiling
-    assert "#createHome > .hero-card" in css
+def test_legacy_reference_home_layers_are_retired() -> None:
+    for name in ("roxy-reference-home.js", "roxy-reference-home.css", "roxy-reference-order.css"):
+        assert not (MINI / name).exists()
 
 
-def test_reference_home_layer_is_mounted_by_existing_product_runtime() -> None:
+def test_notification_bridge_only_bridges_notifications_and_balance() -> None:
     bridge = _read("roxy-notification-badge-bridge.js")
-    assert "/mini-app/roxy-reference-home.css" in bridge
-    assert "/mini-app/roxy-reference-home.js" in bridge
-    assert "mountReferenceHomeLayer();" in bridge
+    assert "mountReferenceHomeLayer" not in bridge
+    assert "roxy-reference-home" not in bridge
+    assert "roxy-reference-order" not in bridge
+    assert 'document.getElementById("profileUnreadBadge")' in bridge
+    assert 'current.replace(/\\s*кр\\.?$/iu, " ROX")' in bridge
+
+
+def test_concept_one_home_owns_start_hierarchy() -> None:
+    approved_home = _read("roxy-approved-home.js")
+    design = _read("roxy-design-system.css")
+    assert "Создавай. Публикуй." in approved_home
+    assert "Зарабатывай." in approved_home
+    assert 'button("✦ Создать"' in approved_home
+    assert 'button("Каталог"' in approved_home
+    assert ".roxy-approved-hero" in design
+    assert ".studio-home-actions" in design
+    assert ".roxy-media-grid" in design
