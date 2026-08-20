@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
@@ -45,12 +46,17 @@ def _domain_error(exc: Exception) -> HTTPException:
 async def _view(session: SessionDep, job: BatchGenerationJob, *, replayed: bool | None = None) -> dict[str, Any]:
     batch_status, succeeded, failed, active = await BatchRepository.refresh(session, job)
     rows = await BatchRepository.rows(session, job.id)
+    metadata = job.parameters or {}
+    admin_free = bool(metadata.get("_admin_free"))
+    retail_total = Decimal(str(metadata.get("_retail_total_cost_rox") or job.initial_cost_rox))
     payload: dict[str, Any] = {
         "id": str(job.id), "status": batch_status, "model_id": job.model_id, "prompt": job.prompt,
-        "parameters": job.parameters, "billing_seconds": job.billing_seconds, "input_count": job.input_count,
+        "parameters": {key: value for key, value in metadata.items() if not str(key).startswith("_")},
+        "billing_seconds": job.billing_seconds, "input_count": job.input_count,
         "succeeded_count": succeeded, "failed_count": failed, "active_count": active,
         "progress_percent": int(((succeeded + failed) / max(1, job.input_count)) * 100),
         "initial_cost_credits": amount(job.initial_cost_rox), "total_charged_credits": amount(job.total_charged_rox),
+        "retail_initial_cost_credits": amount(retail_total), "admin_free": admin_free,
         "items": [{
             "id": str(item.id), "ordinal": item.ordinal, "input_url": item.input_url, "retry_count": item.retry_count,
             "generation": {"id": str(generation.id), "status": generation.status, "result_url": generation.result_url, "error": generation.error, "cost_credits": amount(generation.cost_rox)},
