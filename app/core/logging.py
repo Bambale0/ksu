@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Any
+
+
+DEFAULT_LOG_FILE = Path("logs/bot.log")
+DEFAULT_MAX_BYTES = 10 * 1024 * 1024
+DEFAULT_BACKUP_COUNT = 5
 
 
 class ObservabilityFilter(logging.Filter):
@@ -41,13 +48,49 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
-def configure_logging() -> None:
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-
+def _stream_handler(formatter: logging.Formatter) -> logging.Handler:
     handler = logging.StreamHandler()
     handler.addFilter(ObservabilityFilter())
-    handler.setFormatter(JsonFormatter())
+    handler.setFormatter(formatter)
+    return handler
 
+
+def configure_logging(
+    log_file: str | Path = DEFAULT_LOG_FILE,
+    *,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    backup_count: int = DEFAULT_BACKUP_COUNT,
+) -> None:
+    """Configure structured stdout logs plus a rotating ``logs/bot.log`` file."""
+
+    from app.core.config import settings
+
+    root = logging.getLogger()
+    level = getattr(logging, str(settings.log_level).upper(), logging.INFO)
+    root.setLevel(level)
+
+    formatter = JsonFormatter()
+    stream_handler = _stream_handler(formatter)
+
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        log_path,
+        maxBytes=max(1, int(max_bytes)),
+        backupCount=max(1, int(backup_count)),
+        encoding="utf-8",
+        delay=True,
+    )
+    file_handler.addFilter(ObservabilityFilter())
+    file_handler.setFormatter(formatter)
+
+    previous_handlers = list(root.handlers)
     root.handlers.clear()
-    root.addHandler(handler)
+    for handler in previous_handlers:
+        try:
+            handler.close()
+        except Exception:
+            pass
+
+    root.addHandler(stream_handler)
+    root.addHandler(file_handler)
