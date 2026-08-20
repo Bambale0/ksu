@@ -46,3 +46,17 @@ Repository operations now define a safe lifecycle for short-lived branches and s
 - the deletion contract is regression-tested;
 - `REPOSITORY_HYGIENE.md` documents branch pruning and the rule for removing obsolete runtime code/config/docs/tests after replacements are merged;
 - Alembic history is explicitly preserved even when the runtime feature that introduced an old migration is later retired.
+
+## Seedance 2.5 callable Kie parity
+
+Seedance 2.5 is synchronized with the callable Kie input schema checked on 2026-08-20 rather than broader marketing capability claims:
+
+- provider model remains `bytedance/seedance-2-5`;
+- callable resolution is `480p` / `720p`; `1080p` and `4K` are rejected by ROXY for this route;
+- `output_format` (`mp4` / `mov`) and `nsfw_checker` are first-class catalog fields;
+- legacy `fixed_lens` is removed for Seedance 2.5 and discarded from old drafts;
+- reference limits are 30 images / 10 videos / 10 audio files;
+- first/last-frame and multimodal-reference modes remain mutually exclusive;
+- explicit duration is 4–30 seconds in ROXY; provider auto-duration remains disabled until actual-duration billing settlement exists;
+- provider-specific validation happens before wallet debit;
+- release acceptance now locks the same callable schema so marketing/UI drift cannot silently widen provider inputs.
