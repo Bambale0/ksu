@@ -1,0 +1,633 @@
+/* ROXY user profile / portfolio — feature layout for Concept One. */
+
+.roxy-user-profile {
+  display: grid;
+  gap: 16px;
+  margin: 2px 0 20px;
+}
+
+.roxy-user-profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid var(--roxy-border);
+  border-radius: var(--roxy-radius-lg);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(155, 92, 255, .18), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(255, 95, 183, .08), transparent 36%),
+    linear-gradient(145deg, rgba(24, 21, 34, .96), rgba(10, 9, 15, .98));
+  box-shadow: var(--roxy-shadow);
+}
+
+.roxy-user-profile-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.roxy-user-profile-avatar {
+  width: 72px;
+  height: 72px;
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--roxy-gradient);
+  box-shadow: 0 10px 30px rgba(155, 92, 255, .22);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 950;
+  letter-spacing: -.04em;
+}
+
+.roxy-user-profile-avatar::before {
+  content: "";
+  position: absolute;
+}
+
+.roxy-user-profile-avatar img,
+.roxy-user-profile-avatar > span {
+  width: 100%;
+  height: 100%;
+  border-radius: 22px;
+}
+
+.roxy-user-profile-avatar img {
+  display: block;
+  object-fit: cover;
+  background: var(--roxy-bg-deep);
+}
+
+.roxy-user-profile-avatar > span {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(155, 92, 255, .35), rgba(11, 11, 16, .95));
+}
+
+.roxy-user-profile-copy {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.roxy-user-profile-copy h2 {
+  margin: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: clamp(20px, 6vw, 27px);
+  font-weight: 900;
+  line-height: 1.06;
+  letter-spacing: -.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roxy-user-profile-handle {
+  overflow: hidden;
+  color: var(--roxy-muted);
+  font-size: 12px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roxy-user-profile-visibility {
+  width: fit-content;
+  margin-top: 2px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .035);
+  color: var(--roxy-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+
+.roxy-user-profile-visibility.is-public {
+  border-color: rgba(114, 219, 162, .23);
+  background: rgba(114, 219, 162, .07);
+  color: var(--roxy-success);
+}
+
+.roxy-user-profile-share,
+.roxy-user-work-preview-close {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(155, 92, 255, .22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .025);
+  color: var(--roxy-violet-soft);
+}
+
+.roxy-user-profile-stats {
+  margin-top: 17px;
+  padding-top: 15px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  border-top: 1px solid var(--roxy-hairline);
+}
+
+.roxy-user-profile-stat {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.roxy-user-profile-stat strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -.025em;
+  text-overflow: ellipsis;
+}
+
+.roxy-user-profile-stat span {
+  color: var(--roxy-muted);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.roxy-user-profile-tabs {
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid rgba(155, 92, 255, .16);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.roxy-user-profile-tab {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--roxy-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.roxy-user-profile-tab svg {
+  width: 18px;
+  height: 18px;
+}
+
+.roxy-user-profile-tab.is-active {
+  color: #fff;
+  background: linear-gradient(120deg, rgba(155, 92, 255, .28), rgba(255, 95, 183, .10));
+  box-shadow: inset 0 0 0 1px rgba(183, 132, 255, .20);
+}
+
+.roxy-user-profile-works {
+  display: grid;
+  gap: 11px;
+}
+
+.roxy-user-profile-section-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roxy-user-profile-section-head h2,
+.roxy-user-profile-account-heading h2 {
+  margin: 3px 0 0;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 870;
+  letter-spacing: -.02em;
+}
+
+.roxy-user-profile-grid {
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.roxy-user-profile-tile {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .055);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(155, 92, 255, .10), transparent 50%),
+    var(--roxy-bg-deep);
+  color: #fff;
+  isolation: isolate;
+}
+
+.roxy-user-profile-tile img,
+.roxy-user-profile-tile video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: transform .24s ease, opacity .2s ease;
+}
+
+.roxy-user-profile-tile:hover img,
+.roxy-user-profile-tile:hover video,
+.roxy-user-profile-tile:focus-visible img,
+.roxy-user-profile-tile:focus-visible video {
+  transform: scale(1.035);
+}
+
+.roxy-user-profile-tile.is-media-error img {
+  opacity: .14;
+}
+
+.roxy-user-profile-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  color: var(--roxy-violet-soft);
+}
+
+.roxy-user-profile-placeholder small {
+  color: var(--roxy-muted);
+  font-size: 10px;
+}
+
+.roxy-user-profile-play {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 9px;
+  background: rgba(7, 7, 11, .68);
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+
+.roxy-user-profile-tile-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  min-height: 37px;
+  padding: 12px 7px 6px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 5px;
+  background: linear-gradient(to top, rgba(5, 4, 9, .88), transparent);
+  pointer-events: none;
+}
+
+.roxy-user-profile-tile-overlay > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, .92);
+  font-size: 8px;
+  font-weight: 780;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roxy-user-profile-reactions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.roxy-user-profile-skeleton {
+  border-color: transparent;
+  background: linear-gradient(100deg, rgba(255,255,255,.025), rgba(155,92,255,.10), rgba(255,255,255,.025));
+  background-size: 220% 100%;
+  animation: roxy-shimmer 1.35s ease-in-out infinite;
+}
+
+.roxy-user-profile-empty {
+  grid-column: 1 / -1;
+  min-height: 170px;
+  padding: 22px 16px;
+  border: 1px dashed rgba(155, 92, 255, .22);
+  border-radius: var(--roxy-radius-md);
+  background: rgba(255, 255, 255, .018);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--roxy-muted);
+}
+
+.roxy-user-profile-empty-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--roxy-gradient-soft);
+  color: var(--roxy-violet-soft);
+}
+
+.roxy-user-profile-empty strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.roxy-user-profile-empty p {
+  max-width: 330px;
+  margin: 0;
+  color: var(--roxy-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.roxy-user-profile-empty .primary-button {
+  margin-top: 5px;
+}
+
+.roxy-user-profile-more {
+  width: min(100%, 320px);
+  justify-self: center;
+}
+
+.roxy-user-profile-account-heading {
+  margin: 8px 0 -4px;
+}
+
+/* Full-screen work preview */
+.roxy-profile-preview-open {
+  overflow: hidden;
+}
+
+.roxy-user-work-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: grid;
+  place-items: end center;
+}
+
+.roxy-user-work-preview[hidden] {
+  display: none !important;
+}
+
+.roxy-user-work-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(2, 2, 5, .76);
+  backdrop-filter: blur(12px);
+}
+
+.roxy-user-work-preview-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 760px);
+  max-height: min(92dvh, 900px);
+  overflow: auto;
+  border: 1px solid rgba(155, 92, 255, .24);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  background: var(--roxy-bg);
+  box-shadow: 0 -24px 70px rgba(0, 0, 0, .55);
+  overscroll-behavior: contain;
+}
+
+.roxy-user-work-preview-close {
+  position: sticky;
+  top: 10px;
+  z-index: 5;
+  margin: 10px 10px -52px auto;
+  background: rgba(11, 11, 16, .78);
+  backdrop-filter: blur(10px);
+}
+
+.roxy-user-work-preview-content {
+  display: grid;
+}
+
+.roxy-user-work-preview-media {
+  min-height: 260px;
+  max-height: 62dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(155, 92, 255, .09), transparent 55%),
+    #050509;
+}
+
+.roxy-user-work-preview-media img,
+.roxy-user-work-preview-media video {
+  display: block;
+  width: 100%;
+  max-height: 62dvh;
+  object-fit: contain;
+}
+
+.roxy-user-work-audio {
+  width: min(100% - 36px, 520px);
+  min-height: 250px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 24px;
+  color: var(--roxy-pink-soft);
+}
+
+.roxy-user-work-audio audio {
+  width: 100%;
+  accent-color: var(--roxy-violet);
+}
+
+.roxy-user-work-preview-body {
+  padding: 17px 16px calc(20px + max(0px, var(--tg-content-safe-area-inset-bottom, 0px)));
+}
+
+.roxy-user-work-preview-body h2 {
+  margin: 5px 0 9px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -.025em;
+}
+
+.roxy-user-work-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--roxy-muted);
+  font-size: 10px;
+}
+
+.roxy-user-work-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.roxy-user-work-preview-prompt {
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid rgba(155, 92, 255, .16);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .025);
+  color: #d7d2df;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.roxy-user-work-preview-actions {
+  margin-top: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.roxy-user-profile-toast {
+  z-index: 300;
+}
+
+@media (min-width: 720px) {
+  .roxy-user-profile-avatar {
+    width: 82px;
+    height: 82px;
+    border-radius: 27px;
+  }
+
+  .roxy-user-profile-avatar img,
+  .roxy-user-profile-avatar > span {
+    border-radius: 25px;
+  }
+
+  .roxy-user-profile-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .roxy-user-work-preview {
+    place-items: center;
+    padding: 24px;
+  }
+
+  .roxy-user-work-preview-panel {
+    border-bottom: 1px solid rgba(155, 92, 255, .24);
+    border-radius: 24px;
+  }
+
+  .roxy-user-work-preview-content {
+    grid-template-columns: minmax(0, 1.2fr) minmax(270px, .8fr);
+  }
+
+  .roxy-user-work-preview-media {
+    min-height: 520px;
+  }
+
+  .roxy-user-work-preview-body {
+    align-self: center;
+    padding: 30px 24px;
+  }
+}
+
+@media (max-width: 430px) {
+  .roxy-user-profile {
+    gap: 13px;
+  }
+
+  .roxy-user-profile-hero {
+    padding: 15px 13px;
+    border-radius: 19px;
+  }
+
+  .roxy-user-profile-top {
+    gap: 11px;
+  }
+
+  .roxy-user-profile-avatar {
+    width: 62px;
+    height: 62px;
+    border-radius: 20px;
+  }
+
+  .roxy-user-profile-avatar img,
+  .roxy-user-profile-avatar > span {
+    border-radius: 18px;
+  }
+
+  .roxy-user-profile-copy h2 {
+    font-size: 21px;
+  }
+
+  .roxy-user-profile-share {
+    width: 40px;
+    height: 40px;
+  }
+
+  .roxy-user-profile-stat strong {
+    font-size: 15px;
+  }
+
+  .roxy-user-profile-stat span {
+    font-size: 8px;
+  }
+
+  .roxy-user-profile-grid {
+    gap: 3px;
+  }
+
+  .roxy-user-profile-tile {
+    border-radius: 8px;
+  }
+
+  .roxy-user-profile-tile-overlay > span:first-child {
+    display: none;
+  }
+
+  .roxy-user-profile-tile-overlay {
+    justify-content: flex-end;
+  }
+
+  .roxy-user-work-preview-panel {
+    max-height: 94dvh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roxy-user-profile-tile img,
+  .roxy-user-profile-tile video {
+    transition: none;
+  }
+}
