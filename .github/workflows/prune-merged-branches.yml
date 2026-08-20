@@ -1,0 +1,30 @@
+name: Prune Merged Branches
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: prune-merged-branches
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Prune branches whose exact merged head is still current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/prune_merged_branches.sh

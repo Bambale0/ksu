@@ -35,3 +35,14 @@ Documentation now records the shipped recovery/accounting contract:
 - documentation policy now requires relevant maintained docs/config examples to be updated in the same runtime-affecting PR before merge.
 
 The configuration template is also synchronized with the hard-timeout setting and must contain placeholders only for secrets.
+
+## Repository hygiene automation
+
+Repository operations now define a safe lifecycle for short-lived branches and superseded code:
+
+- merged feature/fix/docs/chore branches are pruned automatically from trusted `main`;
+- a branch is eligible only when its current tip exactly equals a recorded merged-PR head SHA;
+- branches with open PRs, protected environment/release names or post-merge commits are preserved;
+- the deletion contract is regression-tested;
+- `REPOSITORY_HYGIENE.md` documents branch pruning and the rule for removing obsolete runtime code/config/docs/tests after replacements are merged;
+- Alembic history is explicitly preserved even when the runtime feature that introduced an old migration is later retired.

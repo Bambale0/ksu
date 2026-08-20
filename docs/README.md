@@ -61,6 +61,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - `API_REFERENCE.md` — HTTP route/auth boundaries.
 - `OPERATIONS_RUNBOOK.md` — production deployment, workers, incidents, release checks and rollback.
 - `GITHUB_PRODUCTION_DEPLOY.md` — GitHub production deployment flow.
+- `REPOSITORY_HYGIENE.md` — merged-branch pruning, legacy-code cleanup and safe branch lifecycle.
 - `OBSERVABILITY.md` — metrics/logging/tracing/alerts.
 - `MEDIA_STORAGE.md` — durable product-owned media.
 - `NOTIFICATION_DELIVERY.md` — durable notification delivery.
