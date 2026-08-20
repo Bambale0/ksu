@@ -17,17 +17,17 @@ TARGET_VIEWPORTS = (
 REQUIRED_ASSETS = (
     "index.html",
     "roxy-brand.js",
+    "roxy-brand.css",
+    "roxy-design-system.css",
     "roxy-icons.js",
-    "roxy-mature-ui.css",
     "roxy-customer-navigation.js",
     "roxy-child-screens.js",
     "roxy-mobile-runtime.js",
     "roxy-functional-runtime.js",
-    "roxy-mobile-runtime.css",
-    "roxy-fhd-density.css",
     "feed.js",
     "trends.js",
     "prompt-tools.js",
+    "roxy-music.js",
 )
 
 # These modules are retained as low-level compatibility implementations for existing
@@ -42,6 +42,19 @@ LEGACY_COMPAT_SOURCES = {
     "wallet.js",
 }
 
+RETIRED_VISUAL_LAYERS = (
+    "roxy-approved-theme.css",
+    "roxy-approved-surfaces.css",
+    "roxy-client-feedback.css",
+    "roxy-unified-controls.css",
+    "roxy-iphone-polish.css",
+    "roxy-fhd-density.css",
+    "roxy-home-density-v3.css",
+    "roxy-mature-ui.css",
+    "roxy-mobile-runtime.css",
+    "roxy-header-logo.css",
+)
+
 
 def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
@@ -55,19 +68,22 @@ def validate() -> list[str]:
         if not path.is_file() or path.stat().st_size < 80:
             errors.append(f"missing-or-empty:{name}")
 
+    for name in RETIRED_VISUAL_LAYERS:
+        if (MINI / name).exists():
+            errors.append(f"retired-visual-layer-present:{name}")
+
     if errors:
         return errors
 
     index = _read("index.html")
     brand = _read("roxy-brand.js")
+    brand_entry = _read("roxy-brand.css")
+    design = _read("roxy-design-system.css")
     icons = _read("roxy-icons.js")
-    mature = _read("roxy-mature-ui.css")
     nav = _read("roxy-customer-navigation.js")
     children = _read("roxy-child-screens.js")
     mobile_js = _read("roxy-mobile-runtime.js")
     functional_js = _read("roxy-functional-runtime.js")
-    mobile_css = _read("roxy-mobile-runtime.css")
-    fhd = _read("roxy-fhd-density.css")
     feed = _read("feed.js")
     social = _read("social.js")
     economy = _read("roxy-economy.js")
@@ -78,6 +94,42 @@ def validate() -> list[str]:
         errors.append("viewport-fit-cover")
     if "https://telegram.org/js/telegram-web-app.js" not in index:
         errors.append("telegram-webapp-sdk")
+
+    if '@import url("/mini-app/roxy-design-system.css?v=1")' not in brand_entry:
+        errors.append("brand-entrypoint-canonical-design")
+    if '/mini-app/roxy-design-system.css?v=1' not in brand:
+        errors.append("canonical-design-runtime")
+    for retired in RETIRED_VISUAL_LAYERS:
+        if f"/mini-app/{retired}" in brand:
+            errors.append(f"retired-visual-runtime:{retired}")
+
+    for token in ("#0b0b10", "#9b5cff", "#ff5fb7", "#ffffff", "#a6a6b3"):
+        if token not in design.lower():
+            errors.append(f"palette:{token}")
+    for token in (
+        ":focus-visible",
+        "prefers-reduced-motion: reduce",
+        "min-height: 44px",
+        "touch-action: manipulation",
+        "grid-template-columns: repeat(5",
+        "--tg-content-safe-area-inset-bottom",
+        "@media (max-width: 430px)",
+        ".roxy-approved-hero",
+        ".roxy-media-card",
+        ".studio-result-pane",
+        ".roxy-audio-player",
+        ".studio-library-grid",
+        ".roxy-cabinet-action",
+        ".studio-bottom-nav",
+        ".payment-package",
+        ".feed-card",
+    ):
+        if token not in design:
+            errors.append(f"design-system:{token}")
+
+    for legacy_gold in ("#f0c77d", "#f4c57a", "#f6cf8e"):
+        if legacy_gold in design.lower():
+            errors.append(f"legacy-palette:{legacy_gold}")
 
     for name, source in (("brand", brand), ("economy", economy)):
         if "createTreeWalker" in source or "TreeWalker" in source:
@@ -110,7 +162,17 @@ def validate() -> list[str]:
         if token not in nav:
             errors.append(f"child-route:{route}")
 
-    for route in ("notifications", "support", "creator", "subscriptions", "author", "references", "presets", "batch", "trends"):
+    for route in (
+        "notifications",
+        "support",
+        "creator",
+        "subscriptions",
+        "author",
+        "references",
+        "presets",
+        "batch",
+        "trends",
+    ):
         if f"{route}:" not in children:
             errors.append(f"child-screen:{route}")
     if '"prompt-tools":' not in children:
@@ -123,25 +185,6 @@ def validate() -> list[str]:
     if "document.createElementNS" not in icons:
         errors.append("icon-svg-runtime")
 
-    for token in (
-        "--roxy-radius: 12px",
-        "--roxy-radius-small: 9px",
-        "opacity: .18",
-        ":focus-visible",
-        "prefers-reduced-motion: reduce",
-    ):
-        if token not in mature:
-            errors.append(f"mature-ui:{token}")
-
-    for token in (
-        "env(safe-area-inset-bottom, 0px)",
-        "font-size: 16px",
-        "min-height: 44px",
-        "overflow-x: hidden",
-        "overflow-x: clip",
-    ):
-        if token not in mobile_css:
-            errors.append(f"mobile-css:{token}")
     for token in (
         "window.visualViewport",
         "tg?.safeAreaInset",
@@ -164,9 +207,6 @@ def validate() -> list[str]:
     ):
         if token not in functional_js:
             errors.append(f"functional-runtime:{token}")
-
-    if "1920" not in fhd and "min-width" not in fhd:
-        errors.append("fhd-density-contract")
 
     # Compatibility source exemptions are only safe while the approved runtime owns
     # both old brand-name fallbacks and historical credit labels in rendered DOM text.
