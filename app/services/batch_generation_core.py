@@ -16,6 +16,7 @@ from app.db.models import Generation
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.model_presentation import public_model_title
 from app.services.references import ReferenceService
 from app.services.wallet import WalletService
 
@@ -157,21 +158,31 @@ async def enqueue_generation(
     prompt: str,
     parent_generation_id: uuid.UUID | None = None,
     retry_count: int = 0,
+    admin_free: bool = False,
 ) -> Generation:
+    effective_cost = Decimal("0.00") if admin_free else Decimal(prepared.cost)
+    provider_model = GenerationService._provider_model_snapshot(prepared.spec, prepared.clean)
     generation = Generation(
         user_id=user_id,
         kind=prepared.spec.operation,
         prompt=str(prepared.clean.get("prompt") or prompt or ""),
         input_url=prepared.input_url,
-        cost_rox=prepared.cost,
+        cost_rox=effective_cost,
         provider="kie",
         parameters={
             **prepared.clean,
             "_model_id": prepared.spec.id,
+            "_model_title": public_model_title(prepared.spec.id, prepared.spec.title),
+            "_model_family": prepared.spec.family,
+            "_operation": prepared.spec.operation,
+            "_media_type": prepared.spec.media_type,
             "_kie_model": prepared.spec.kie_model,
+            "_provider_model": provider_model,
             "_billing_mode": prepared.spec.price_mode,
             "_billing_seconds": prepared.billing_seconds,
             "_unit_price_rox": str(prepared.unit_price),
+            "_retail_cost_rox": str(prepared.cost),
+            "_admin_free": admin_free,
             "_batch_id": str(batch_id),
             "_batch_item_id": str(item_id),
             "_batch_ordinal": ordinal,
@@ -189,15 +200,16 @@ async def enqueue_generation(
     session.add(generation)
     await session.flush()
     GenerationOutboxService.add(session, generation.id)
-    await WalletService.debit(
-        session,
-        user_id=user_id,
-        amount=prepared.cost,
-        kind="generation",
-        reference_type="generation",
-        reference_id=str(generation.id),
-        idempotency_key=f"generation:{generation.id}:charge",
-    )
+    if effective_cost > 0:
+        await WalletService.debit(
+            session,
+            user_id=user_id,
+            amount=effective_cost,
+            kind="generation",
+            reference_type="generation",
+            reference_id=str(generation.id),
+            idempotency_key=f"generation:{generation.id}:charge",
+        )
     return generation
 
 
