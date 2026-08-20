@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+import random
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.api.v1.generations import CreateGenerationRequest, generation_models, quote_generation
+from app.core.config import settings
+from app.db.models import User, Wallet
+from app.db.session import SessionFactory
 from app.providers.kie import _extract_music_tracks
 from app.services.music_generation import (
     MUSIC_MODEL_ID,
@@ -13,6 +18,7 @@ from app.services.music_generation import (
     MusicGenerationService,
 )
 from app.services.music_media import MusicMediaIngestService
+from app.services.wallet import WalletService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -142,6 +148,37 @@ def test_custom_instrumental_music_can_omit_prompt() -> None:
     assert clean["style"] == "minimal ambient piano"
     assert clean["title"] == "Focus Room"
     assert clean["duration"] == 180
+
+
+@pytest.mark.asyncio
+async def test_env_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(10_000_000_000_000, 10_999_999_999_999),
+            first_name="Music admin",
+        )
+        session.add(user)
+        await session.flush()
+        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(user.telegram_id))
+        await WalletService.ensure_wallet(session, user.id)
+        await session.commit()
+
+        redis = AsyncMock()
+        redis.eval.return_value = [1, 60]
+        generation = await MusicGenerationService.create(
+            session,
+            redis,
+            user_id=user.id,
+            prompt="lo-fi instrumental",
+            parameters={"instrumental": True, "customMode": False},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.cost_rox == Decimal("0.00")
+        assert generation.parameters["_admin_free_generation"] is True
+        assert Decimal(generation.parameters["_quoted_cost_rox"]) > Decimal("0")
+        assert wallet is not None
+        assert wallet.balance == Decimal("0.00")
 
 
 @pytest.mark.asyncio

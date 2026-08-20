@@ -375,15 +375,16 @@ class GenerationProviderService:
         generation.status = "failed"
         generation.error = error[:4000]
         generation.updated_at = datetime.now(timezone.utc)
-        await WalletService.credit(
-            session,
-            user_id=generation.user_id,
-            amount=generation.cost_rox,
-            kind="generation_refund",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"generation:{generation.id}:refund",
-        )
+        if generation.cost_rox > 0:
+            await WalletService.credit(
+                session,
+                user_id=generation.user_id,
+                amount=generation.cost_rox,
+                kind="generation_refund",
+                reference_type="generation",
+                reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:refund",
+            )
         await session.commit()
         await GenerationOutboxService.mark_generation_terminal(
             session,

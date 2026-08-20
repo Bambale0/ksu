@@ -19,6 +19,7 @@ from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.billing_policy import BillingPolicyService
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -191,6 +192,8 @@ class PromptToolService:
             message="Prompt tools rate limit exceeded",
         )
         price = await PromptToolPricingService.price(session, tool)
+        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
+        charge = Decimal("0.00") if admin_free else price
         task = PromptToolTask(
             id=task_id,
             user_id=user_id,
@@ -198,22 +201,31 @@ class PromptToolService:
             status="queued",
             provider="kie",
             model=_TOOL_MODEL[tool],
-            input_payload={**clean, "_request_hash": request_hash},
+            input_payload={
+                **clean,
+                "_request_hash": request_hash,
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_credits": str(price)}
+                    if admin_free
+                    else {}
+                ),
+            },
             result_payload={},
-            cost_credits=price,
+            cost_credits=charge,
         )
         session.add(task)
         session.add(PromptToolOutbox(task_id=task.id))
         await session.flush()
-        await WalletService.debit(
-            session,
-            user_id=user_id,
-            amount=price,
-            kind="prompt_tool",
-            reference_type="prompt_tool_task",
-            reference_id=str(task.id),
-            idempotency_key=f"prompt-tool:{task.id}:charge",
-        )
+        if charge > 0:
+            await WalletService.debit(
+                session,
+                user_id=user_id,
+                amount=charge,
+                kind="prompt_tool",
+                reference_type="prompt_tool_task",
+                reference_id=str(task.id),
+                idempotency_key=f"prompt-tool:{task.id}:charge",
+            )
         await session.commit()
         try:
             await redis.rpush("wake:prompt-tools", str(task.id))
@@ -343,15 +355,16 @@ class PromptToolOutboxService:
         row.lease_until = None
         row.completed_at = now
         row.last_error = error[:4000]
-        await WalletService.credit(
-            session,
-            user_id=task.user_id,
-            amount=Decimal(task.cost_credits),
-            kind="prompt_tool_refund",
-            reference_type="prompt_tool_task",
-            reference_id=str(task.id),
-            idempotency_key=f"prompt-tool:{task.id}:refund",
-        )
+        if task.cost_credits > 0:
+            await WalletService.credit(
+                session,
+                user_id=task.user_id,
+                amount=Decimal(task.cost_credits),
+                kind="prompt_tool_refund",
+                reference_type="prompt_tool_task",
+                reference_id=str(task.id),
+                idempotency_key=f"prompt-tool:{task.id}:refund",
+            )
         await session.commit()
 
 

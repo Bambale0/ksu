@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.billing_policy import BillingPolicyService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
@@ -177,6 +178,8 @@ class GenerationService:
             parameters=parameters,
             billing_seconds=billing_seconds,
         )
+        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
+        charge_rox = Decimal("0.00") if admin_free else cost_rox
 
         # Reject abusive/over-budget work before any wallet debit/provider side effect.
         # The DB admission lock remains held until the same transaction commits.
@@ -184,7 +187,7 @@ class GenerationService:
         await GenerationAdmissionService.enforce(
             session,
             user_id=user_id,
-            next_cost=cost_rox,
+            next_cost=charge_rox,
         )
 
         generation = Generation(
@@ -192,7 +195,7 @@ class GenerationService:
             kind=spec.operation,
             prompt=str(clean.get("prompt") or prompt or ""),
             input_url=input_url,
-            cost_rox=cost_rox,
+            cost_rox=charge_rox,
             provider="kie",
             parameters={
                 **clean,
@@ -201,6 +204,11 @@ class GenerationService:
                 "_billing_mode": spec.price_mode,
                 "_billing_seconds": seconds,
                 "_unit_price_rox": str(unit_price),
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_rox": str(cost_rox)}
+                    if admin_free
+                    else {}
+                ),
             },
             status="queued",
             source_feed_gen_id=source_feed_gen_id,
@@ -216,15 +224,16 @@ class GenerationService:
         await session.flush()
 
         GenerationOutboxService.add(session, generation.id)
-        await WalletService.debit(
-            session,
-            user_id=user_id,
-            amount=cost_rox,
-            kind="generation",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"generation:{generation.id}:charge",
-        )
+        if charge_rox > 0:
+            await WalletService.debit(
+                session,
+                user_id=user_id,
+                amount=charge_rox,
+                kind="generation",
+                reference_type="generation",
+                reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:charge",
+            )
         await session.commit()
 
         try:

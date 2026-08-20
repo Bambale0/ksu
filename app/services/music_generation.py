@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.billing_policy import BillingPolicyService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.wallet import WalletService
 
@@ -338,14 +339,16 @@ class MusicGenerationService:
         parameters: dict[str, Any],
     ) -> Generation:
         clean, cost_rox = cls.prepare(parameters, prompt)
+        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
+        charge_rox = Decimal("0.00") if admin_free else cost_rox
         await AbuseProtectionService.generation_rate(redis, user_id)
-        await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=cost_rox)
+        await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=charge_rox)
 
         generation = Generation(
             user_id=user_id,
             kind="music",
             prompt=str(clean.get("prompt") or ""),
-            cost_rox=cost_rox,
+            cost_rox=charge_rox,
             provider="kie",
             status="queued",
             parameters={
@@ -360,6 +363,11 @@ class MusicGenerationService:
                 "_billing_mode": "flat",
                 "_billing_seconds": None,
                 "_unit_price_rox": str(cost_rox),
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_rox": str(cost_rox)}
+                    if admin_free
+                    else {}
+                ),
             },
             publication_scope="private",
             is_public_feed=False,
@@ -370,15 +378,16 @@ class MusicGenerationService:
         session.add(generation)
         await session.flush()
         GenerationOutboxService.add(session, generation.id)
-        await WalletService.debit(
-            session,
-            user_id=user_id,
-            amount=cost_rox,
-            kind="generation",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"generation:{generation.id}:charge",
-        )
+        if charge_rox > 0:
+            await WalletService.debit(
+                session,
+                user_id=user_id,
+                amount=charge_rox,
+                kind="generation",
+                reference_type="generation",
+                reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:charge",
+            )
         await session.commit()
 
         try:

@@ -87,6 +87,35 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_env_admin_generates_without_wallet_charge(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(9_000_000_000_000, 9_999_999_999_999),
+            first_name="Free admin",
+        )
+        session.add(user)
+        await session.flush()
+        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(user.telegram_id))
+        await WalletService.ensure_wallet(session, user.id)
+        await session.commit()
+
+        generation = await GenerationService.create(
+            session,
+            BrokenWakeRedis(),  # type: ignore[arg-type]
+            user_id=user.id,
+            model_id="nano-banana",
+            prompt="admin free task",
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.cost_rox == Decimal("0.00")
+        assert generation.parameters["_admin_free_generation"] is True
+        assert generation.parameters["_quoted_cost_rox"] == "80.00"
+        assert wallet is not None
+        assert wallet.balance == Decimal("0.00")
+
+
+@pytest.mark.asyncio
 async def test_outbox_claim_is_leased_and_reclaimable() -> None:
     async with SessionFactory() as session:
         user = User(

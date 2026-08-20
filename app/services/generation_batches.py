@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.batch_models import BatchGenerationItem, BatchGenerationJob
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.billing_policy import BillingPolicyService
 from app.services.batch_generation_core import (
     BatchGenerationError,
     BatchIdempotencyConflict,
@@ -139,11 +140,13 @@ class GenerationBatchService:
             input_urls=resolved,
         )
         total = sum((item.cost for item in prepared), Decimal("0"))
+        admin_free = await BillingPolicyService.user_has_free_bot_access(session, user_id)
+        charged_total = Decimal("0.00") if admin_free else total
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
             user_id=user_id,
-            next_cost=total,
+            next_cost=charged_total,
         )
 
         job = BatchGenerationJob(
@@ -154,8 +157,8 @@ class GenerationBatchService:
             parameters=dict(parameters),
             billing_seconds=billing_seconds,
             input_count=len(prepared),
-            initial_cost_rox=total,
-            total_charged_rox=total,
+            initial_cost_rox=charged_total,
+            total_charged_rox=charged_total,
             idempotency_key=key,
             request_hash=fingerprint,
         )
@@ -173,6 +176,7 @@ class GenerationBatchService:
                 ordinal=ordinal,
                 prepared=prepared_item,
                 prompt=prompt,
+                free_generation=admin_free,
             )
             session.add(
                 BatchGenerationItem(

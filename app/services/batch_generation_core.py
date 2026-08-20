@@ -157,13 +157,15 @@ async def enqueue_generation(
     prompt: str,
     parent_generation_id: uuid.UUID | None = None,
     retry_count: int = 0,
+    free_generation: bool = False,
 ) -> Generation:
+    generation_cost = Decimal("0.00") if free_generation else prepared.cost
     generation = Generation(
         user_id=user_id,
         kind=prepared.spec.operation,
         prompt=str(prepared.clean.get("prompt") or prompt or ""),
         input_url=prepared.input_url,
-        cost_rox=prepared.cost,
+        cost_rox=generation_cost,
         provider="kie",
         parameters={
             **prepared.clean,
@@ -176,6 +178,11 @@ async def enqueue_generation(
             "_batch_item_id": str(item_id),
             "_batch_ordinal": ordinal,
             "_batch_retry": retry_count,
+            **(
+                {"_admin_free_generation": True, "_quoted_cost_rox": str(prepared.cost)}
+                if free_generation
+                else {}
+            ),
         },
         status="queued",
         parent_generation_id=parent_generation_id,
@@ -189,15 +196,16 @@ async def enqueue_generation(
     session.add(generation)
     await session.flush()
     GenerationOutboxService.add(session, generation.id)
-    await WalletService.debit(
-        session,
-        user_id=user_id,
-        amount=prepared.cost,
-        kind="generation",
-        reference_type="generation",
-        reference_id=str(generation.id),
-        idempotency_key=f"generation:{generation.id}:charge",
-    )
+    if generation_cost > 0:
+        await WalletService.debit(
+            session,
+            user_id=user_id,
+            amount=generation_cost,
+            kind="generation",
+            reference_type="generation",
+            reference_id=str(generation.id),
+            idempotency_key=f"generation:{generation.id}:charge",
+        )
     return generation
 
 
