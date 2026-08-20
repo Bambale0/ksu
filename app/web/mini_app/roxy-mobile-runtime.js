@@ -14,7 +14,7 @@
   };
 
   const FOCUSABLE_INPUTS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
-  const NAV_MUTATION_SELECTOR = "#builderView, #generationDetailView, #feedOverlay, dialog";
+  const NAV_MUTATION_SELECTOR = "#builderView, #generationDetailView, #feedOverlay, #roxyUserWorkPreview, dialog";
 
   function px(value) {
     const number = Number(value || 0);
@@ -81,11 +81,13 @@
     const builder = document.getElementById("builderView");
     const detail = document.getElementById("generationDetailView");
     const feed = document.getElementById("feedOverlay");
+    const profilePreview = document.getElementById("roxyUserWorkPreview");
     const dialog = document.querySelector("dialog[open]");
     return Boolean(
       (builder && !builder.hidden)
       || (detail && !detail.hidden)
       || (feed && !feed.hidden)
+      || (profilePreview && !profilePreview.hidden)
       || dialog,
     );
   }
@@ -141,9 +143,8 @@
   }
 
   function onBackButton() {
-    // shell.js and Feed own their nested views. At top level, ROXY deliberately follows
-    // browser history instead of guessing a parent route. This preserves the exact place
-    // the user came from even when legacy shell code has replaced history.state metadata.
+    // shell.js, Feed and profile preview own their nested views. At top level, ROXY
+    // follows browser history instead of guessing a parent route.
     if (state.nestedVisible || nestedVisible()) return;
     const route = activeRoute();
     if (route === "home") return;
@@ -231,6 +232,7 @@
       document.getElementById("builderView"),
       document.getElementById("generationDetailView"),
       document.getElementById("feedOverlay"),
+      document.getElementById("roxyUserWorkPreview"),
       ...document.querySelectorAll("dialog"),
     ].filter(Boolean);
   }
