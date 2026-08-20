@@ -11,6 +11,7 @@ A release candidate must pass:
 - all Mini App/Admin JavaScript syntax checks;
 - focused ROXY shell/navigation/create/economy/payment contracts;
 - model catalog and pricing tests;
+- generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
 - admin security/console tests;
 - Alembic migration on real PostgreSQL;
 - full Python regression suite;
@@ -40,6 +41,12 @@ Run these flows against the release environment:
 6. Video quote → create debits exactly `resolved ROX/s × billing seconds`.
 7. Upload/reference modes reject missing/incompatible required media before provider submission.
 8. Result polling/history/reuse continue to work and a reuse receives a fresh quote.
+9. Duplicate/late provider callbacks do not change an already-terminal generation state.
+10. A failed/refunded generation cannot later become a successful charged result after a late callback.
+11. A provider timeout/ambiguous `createTask` response leaves the generation recoverable without immediately creating a second provider task.
+12. An unresolved uncertain submission eventually fails/refunds exactly once after the configured unknown-submission timeout.
+13. A provider task that exceeds `GENERATION_HARD_TIMEOUT_SECONDS` eventually reaches a terminal failed/refunded state rather than being kept alive indefinitely by polling.
+14. A provider success without usable result media is not exposed as a completed charged empty result.
 
 ## Public pricing baseline acceptance
 
@@ -117,6 +124,9 @@ Do not promote if:
 - any automated release/CI gate fails;
 - Video/Create routing returns to the wrong surface;
 - quote and actual debit diverge;
+- a late/duplicate provider callback can reverse a terminal generation state;
+- an ambiguous provider submission can trigger a blind duplicate paid provider task;
+- refund is not exactly-once for a failed generation;
 - live admin pricing disappears after restart;
 - a pricing publish can bypass permission/confirmation/MFA;
 - ROX/payment state is ambiguous;
