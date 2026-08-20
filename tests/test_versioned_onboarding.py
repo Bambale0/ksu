@@ -14,7 +14,7 @@ from app.db.session import SessionFactory
 from app.services.onboarding import OnboardingService
 
 ROOT = Path(__file__).resolve().parents[1]
-MINI = ROOT / "app" / "web" / "mini_app"
+FRONTEND = ROOT / "frontend" / "mini-app"
 
 
 def _request(method: str, path: str) -> Request:
@@ -53,7 +53,6 @@ async def test_onboarding_completion_is_idempotent_and_versioned(
         completed = await complete_onboarding(user, session)
         assert completed["completed"] is True
         assert completed["completed_version"] == "v1"
-
         repeated = await complete_onboarding(user, session)
         assert repeated["completed"] is True
         count = await session.scalar(select(func.count()).select_from(UserOnboarding))
@@ -63,7 +62,6 @@ async def test_onboarding_completion_is_idempotent_and_versioned(
         bumped = await onboarding_status(user, session)
         assert bumped["completed"] is False
         assert bumped["completed_version"] == "v1"
-
         completed_v2 = await complete_onboarding(user, session)
         assert completed_v2["completed"] is True
         assert completed_v2["completed_version"] == "v2"
@@ -129,40 +127,37 @@ def test_onboarding_bot_keyboard_uses_only_configured_https_links(
     assert keyboard.inline_keyboard[-1][0].callback_data == "onboarding_complete"
 
 
-def test_onboarding_client_is_server_versioned_and_blocks_shell() -> None:
-    script = (MINI / "onboarding.js").read_text(encoding="utf-8")
-    for token in (
-        'api("/api/v1/onboarding")',
-        'api("/api/v1/onboarding/complete", { method: "POST" })',
-        "appShell.inert",
-        'appShell.setAttribute("aria-hidden"',
-        "response.status === 428",
-        'payload?.detail?.code === "onboarding_required"',
-        'url.protocol === "https:"',
-        "tg.openLink(safe)",
-        'new CustomEvent("ksu:onboarding-complete"',
-    ):
-        assert token in script, token
-    assert "localStorage" not in script
-    assert "sessionStorage" not in script
-    assert "initDataUnsafe" not in script
-    assert "accept_terms" not in script
-    assert "legal_accepted" not in script
+def test_react_onboarding_is_server_versioned_and_blocks_customer_app() -> None:
+    app = (FRONTEND / "components" / "roxy-app.tsx").read_text(encoding="utf-8")
+    api = (FRONTEND / "lib" / "api.ts").read_text(encoding="utf-8")
+    telegram = (FRONTEND / "lib" / "telegram.ts").read_text(encoding="utf-8")
+
+    assert 'onboarding: () => request<Record<string, any>>("/api/v1/onboarding")' in api
+    assert 'completeOnboarding: () => request<Record<string, any>>("/api/v1/onboarding/complete"' in api
+    assert "onboarding?.enabled && !onboarding?.completed" in app
+    assert "<Onboarding" in app
+    assert "await api.completeOnboarding()" in app
+    assert "data.rules_url" in app
+    assert "data.privacy_url" in app
+    assert "localStorage" not in api
+    assert "sessionStorage" not in api
+    assert "initDataUnsafe" not in api
+    assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
 
 
-def test_onboarding_module_is_mounted_and_checked_by_ci() -> None:
-    integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
+def test_onboarding_is_owned_by_next_source_and_checked_by_ci() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
-    assert 'stylesheet.href = "/mini-app/onboarding.css"' in integration
-    assert 'script.src = "/mini-app/onboarding.js"' in integration
-    assert "mountOnboarding();" in integration
-    assert integration.index("mountOnboarding();") < integration.index("mountPartnerCabinet();")
-    assert "node --check app/web/mini_app/onboarding.js" in workflow
+
+    assert (FRONTEND / "components" / "roxy-app.tsx").is_file()
+    assert (FRONTEND / "lib" / "api.ts").is_file()
+    assert "Typecheck Next Mini App" in workflow
+    assert "Build Next Mini App" in workflow
+    assert "Next Mini App architecture contract" in workflow
     assert 'ONBOARDING_ENABLED: "false"' in workflow
     assert "ONBOARDING_ENABLED=true" in env_example
     assert "ONBOARDING_VERSION=1" in env_example
-    assert (MINI / "onboarding.css").is_file()
+    assert not (ROOT / "app" / "web" / "mini_app" / "onboarding.js").exists()
 
 
 def test_legacy_bot_generation_flow_rechecks_onboarding() -> None:

@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.db.admin_models import SupportOutbox
 from app.db.models import SupportMessage, SupportTicket, User
 from app.db.session import SessionFactory
@@ -90,6 +91,7 @@ async def run() -> None:
 
 
 def main() -> None:
+    configure_logging()
     asyncio.run(run())
 
 

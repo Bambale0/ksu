@@ -52,7 +52,13 @@ async def kie_webhook(
     task_id = extract_kie_task_id(payload)
     if not task_id:
         raise HTTPException(status_code=400, detail="Missing Kie task id")
-    if not verify_kie_webhook(
+    query_token = request.query_params.get("token")
+    token_valid = bool(
+        settings.kie_webhook_hmac_key
+        and query_token
+        and hmac.compare_digest(query_token, settings.kie_webhook_hmac_key)
+    )
+    if not token_valid and not verify_kie_webhook(
         task_id=task_id,
         timestamp=x_webhook_timestamp,
         signature=x_webhook_signature,

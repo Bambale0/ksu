@@ -4,6 +4,8 @@ services:
     command: python -m app.workers.notifications
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     restart: unless-stopped
     depends_on:
       postgres:
@@ -16,6 +18,8 @@ services:
     command: python -m app.workers.admin_support
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     restart: unless-stopped
     depends_on:
       postgres:
@@ -28,6 +32,8 @@ services:
     command: python -m app.workers.admin_campaigns
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     restart: unless-stopped
     depends_on:
       postgres:
@@ -40,6 +46,8 @@ services:
     command: python -m app.workers.prompt_tools
     env_file:
       - .env
+    volumes:
+      - ./logs:/app/logs
     restart: unless-stopped
     depends_on:
       postgres:

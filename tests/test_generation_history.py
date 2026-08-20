@@ -1,5 +1,6 @@
 import random
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -13,6 +14,9 @@ from app.api.v1.generations import (
 )
 from app.db.models import Generation, User
 from app.db.session import SessionFactory
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _telegram_id(prefix: int) -> int:
@@ -234,18 +238,25 @@ async def test_recreate_payload_strips_provider_private_and_unknown_fields() -> 
         assert all(not key.startswith("_") for key in payload["parameters"])
 
 
-def test_mini_app_contains_live_result_history_flow() -> None:
-    from pathlib import Path
+def test_react_mini_app_contains_live_result_history_flow() -> None:
+    app = (ROOT / "frontend" / "mini-app" / "components" / "roxy-app.tsx").read_text(
+        encoding="utf-8"
+    )
+    api = (ROOT / "frontend" / "mini-app" / "lib" / "api.ts").read_text(encoding="utf-8")
+    types = (ROOT / "frontend" / "mini-app" / "lib" / "types.ts").read_text(
+        encoding="utf-8"
+    )
 
-    app_js = (
-        Path(__file__).resolve().parents[1] / "app" / "web" / "mini_app" / "app.js"
-    ).read_text(encoding="utf-8")
     for token in (
-        "startGenerationPolling",
-        "/api/v1/generations?",
-        "/recreate",
-        "История генераций",
-        "navigator.share",
-        "result_urls",
+        "const loadHistory",
+        "setHistory",
+        "HistoryScreen",
+        "historyHasMore",
+        "historyBefore",
+        "Preview",
+        "ACTIVE_STATUSES",
     ):
-        assert token in app_js, token
+        assert token in app, token
+    assert 'generations: (params = "limit=24")' in api
+    assert 'generation: (id: string)' in api
+    assert "result_urls?: string[]" in types

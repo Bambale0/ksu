@@ -11,7 +11,7 @@ from aiogram.types import (
 from app.core.config import settings
 
 BACK_TEXT = "⬅️ Назад"
-PRIMARY_PAYMENT_TEXT = "💳 Оплата картой · USD / EUR / RUB / СБП"
+PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
 QUICK_MENU_TEXT = "🏠 Меню"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 

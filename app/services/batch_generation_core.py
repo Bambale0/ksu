@@ -187,6 +187,11 @@ async def enqueue_generation(
             "_batch_item_id": str(item_id),
             "_batch_ordinal": ordinal,
             "_batch_retry": retry_count,
+            **(
+                {"_admin_free_generation": True, "_quoted_cost_rox": str(prepared.cost)}
+                if admin_free
+                else {}
+            ),
         },
         status="queued",
         parent_generation_id=parent_generation_id,

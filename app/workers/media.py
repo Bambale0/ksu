@@ -8,6 +8,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.core.observability import (
     WORKER_LOOP_ERRORS,
     record_distributed_event,
@@ -80,6 +81,7 @@ async def run() -> None:
 
 
 def main() -> None:
+    configure_logging()
     asyncio.run(run())
 
 

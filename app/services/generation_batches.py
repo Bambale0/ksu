@@ -160,12 +160,12 @@ class GenerationBatchService:
             user_id=user_id,
             retail_cost=retail_total,
         )
-        total = billing.effective_cost
+        charged_total = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
             user_id=user_id,
-            next_cost=total,
+            next_cost=charged_total,
         )
 
         job_parameters = dict(parameters)
@@ -179,8 +179,8 @@ class GenerationBatchService:
             parameters=job_parameters,
             billing_seconds=billing_seconds,
             input_count=len(prepared),
-            initial_cost_rox=total,
-            total_charged_rox=total,
+            initial_cost_rox=charged_total,
+            total_charged_rox=charged_total,
             idempotency_key=key,
             request_hash=fingerprint,
         )

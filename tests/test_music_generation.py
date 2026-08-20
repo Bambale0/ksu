@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+import random
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.api.v1.generations import CreateGenerationRequest, generation_models, quote_generation
+from app.core.config import settings
+from app.db.models import AdminAccount, User, Wallet
+from app.db.session import SessionFactory
 from app.providers.kie import _extract_music_tracks
 from app.services.music_generation import (
     MUSIC_MODEL_ID,
@@ -13,6 +18,7 @@ from app.services.music_generation import (
     MusicGenerationService,
 )
 from app.services.music_media import MusicMediaIngestService
+from app.services.wallet import WalletService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -145,6 +151,38 @@ def test_custom_instrumental_music_can_omit_prompt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_active_admin_music_generation_is_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(10_000_000_000_000, 10_999_999_999_999),
+            first_name="Music admin",
+        )
+        session.add(user)
+        await session.flush()
+        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
+        session.add(AdminAccount(user_id=user.id, role="admin", is_active=True))
+        await WalletService.ensure_wallet(session, user.id)
+        await session.commit()
+
+        redis = AsyncMock()
+        redis.eval.return_value = [1, 60]
+        generation = await MusicGenerationService.create(
+            session,
+            redis,
+            user_id=user.id,
+            prompt="lo-fi instrumental",
+            parameters={"instrumental": True, "customMode": False},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.cost_rox == Decimal("0.00")
+        assert generation.parameters["_admin_free_generation"] is True
+        assert Decimal(generation.parameters["_quoted_cost_rox"]) > Decimal("0")
+        assert wallet is not None
+        assert wallet.balance == Decimal("0.00")
+
+
+@pytest.mark.asyncio
 async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None:
     catalog = await generation_models(None, None)
     music = [item for item in catalog["models"] if item["id"] == MUSIC_MODEL_ID]
@@ -208,11 +246,10 @@ def test_audio_ingest_accepts_audio_and_rejects_image_contract() -> None:
     assert MusicMediaIngestService._allowed_content_type("application/octet-stream", ".mp3") is True
 
 
-def test_provider_worker_and_ui_have_explicit_music_branches() -> None:
+def test_provider_worker_and_react_ui_have_explicit_music_branches() -> None:
     provider = (ROOT / "app/services/generation_provider.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/workers/media.py").read_text(encoding="utf-8")
-    ui = (ROOT / "app/web/mini_app/roxy-music.js").read_text(encoding="utf-8")
-    brand = (ROOT / "app/web/mini_app/roxy-brand.js").read_text(encoding="utf-8")
+    ui = (ROOT / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")
     router = (ROOT / "app/api/router.py").read_text(encoding="utf-8")
 
     assert 'provider_api == "suno_music"' in provider
@@ -220,9 +257,11 @@ def test_provider_worker_and_ui_have_explicit_music_branches() -> None:
     assert "get_music_task" in provider
     assert "MusicMediaAssetService.enqueue_results" in provider
     assert "MusicMediaIngestService.process_one" in worker
-    assert 'audio.className = "roxy-audio-player"' in ui
-    assert 'data-roxy-media="audio"' in ui
-    assert '/mini-app/roxy-music.js' in brand
+    assert 'audio: models.filter((m) => m.media_type === "audio").length' in ui
+    assert "function modelIcon" in ui
+    assert 'mediaType === "audio" ? "music" : "image"' in ui
+    assert 'if (type === "audio") return <span className="media-placeholder audio"' in ui
+    assert 'url && type === "audio" ? <audio src={url} controls/>' in ui
     assert "music_generations" not in router
 
 

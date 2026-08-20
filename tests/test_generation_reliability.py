@@ -8,7 +8,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models import Generation, User, Wallet
+from app.db.models import AdminAccount, Generation, User, Wallet
 from app.db.reliability_models import GenerationOutbox
 from app.db.session import SessionFactory
 from app.providers.kie import KieTask
@@ -84,6 +84,36 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
             generation.id,
             failed=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_active_admin_generates_without_wallet_charge(monkeypatch: pytest.MonkeyPatch) -> None:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(9_000_000_000_000, 9_999_999_999_999),
+            first_name="Free admin",
+        )
+        session.add(user)
+        await session.flush()
+        monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
+        session.add(AdminAccount(user_id=user.id, role="admin", is_active=True))
+        await WalletService.ensure_wallet(session, user.id)
+        await session.commit()
+
+        generation = await GenerationService.create(
+            session,
+            BrokenWakeRedis(),  # type: ignore[arg-type]
+            user_id=user.id,
+            model_id="nano-banana-pro",
+            prompt="admin free task",
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.cost_rox == Decimal("0.00")
+        assert generation.parameters["_admin_free_generation"] is True
+        assert generation.parameters["_quoted_cost_rox"] == "25.00"
+        assert wallet is not None
+        assert wallet.balance == Decimal("0.00")
 
 
 @pytest.mark.asyncio

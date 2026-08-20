@@ -16,7 +16,7 @@ from app.services.users import UserService
 from app.services.wallet import WalletService
 
 ROOT = Path(__file__).resolve().parents[1]
-MINI = ROOT / "app" / "web" / "mini_app"
+FRONTEND = ROOT / "frontend" / "mini-app"
 
 
 def _telegram_id() -> int:
@@ -207,32 +207,22 @@ def test_public_roxy_menu_is_mini_app_only() -> None:
     assert 'callback_data="referrals"' not in main_menu
 
 
-def test_mini_app_economy_keeps_rox_wallet_separate_from_partner_rubles() -> None:
-    script = (MINI / "roxy-economy.js").read_text(encoding="utf-8")
-    profile = (MINI / "roxy-profile-cabinet.js").read_text(encoding="utf-8")
-    partner = (MINI / "partner.js").read_text(encoding="utf-8")
-    style = (MINI / "roxy-economy.css").read_text(encoding="utf-8")
-    integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
+def test_react_wallet_keeps_rox_separate_from_partner_rubles() -> None:
+    app = (FRONTEND / "components" / "roxy-app.tsx").read_text(encoding="utf-8")
+    api = (FRONTEND / "lib" / "api.ts").read_text(encoding="utf-8")
+    types = (FRONTEND / "lib" / "types.ts").read_text(encoding="utf-8")
 
-    for token in (
-        "1 ROX = 1 ₽",
-        "Баланс ROX",
-        "Заработок партнёра",
-        "Бонусы и пополнения сразу зачисляются сюда",
-        "Пополнение 1-й линии",
-        "Пополнение 2-й линии",
-        '"/api/v1/referrals/stats"',
-    ):
-        assert token in script
-    assert "Бонусные ROX" not in script
-    assert "Выводимые ROX" not in script
-    assert "Бонусные ROX" not in profile
-    assert "Выводимые ROX" not in profile
-    assert "Перевести в ROX" in partner
-    assert "Вывести деньгами" in partner
-    assert "Партнёры ROXY" in partner
-    assert '"/api/v1/referrals/wallet-transfers"' in partner
-    assert "roxy-balance-grid" in style
-    assert "roxy-rule-row" in style
-    assert '/mini-app/roxy-economy.js' in integration
-    assert '/mini-app/roxy-economy.css' in integration
+    assert "balance_rox" in types
+    assert '`${compact(me.balance_rox)} ROX`' in app
+    assert 'api.paymentPackages()' in app
+    assert 'api.transactions()' in app
+    assert '"/api/v1/me/transactions"' in api
+    assert '"/api/v1/payments/card/packages"' in api
+    assert '"/api/v1/payments/card/checkout"' in api
+
+    # Partner cash accounting is a separate backend domain and must never be
+    # presented as spendable ROX in the customer wallet.
+    assert "partner_balance_rub" not in app
+    assert "transferred_to_rox" not in app
+    assert "Бонусные ROX" not in app
+    assert "Выводимые ROX" not in app

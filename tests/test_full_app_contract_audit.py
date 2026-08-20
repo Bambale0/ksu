@@ -117,20 +117,19 @@ def test_provider_payload_strips_all_internal_identity_and_billing_fields() -> N
 
 def test_mini_app_loads_contract_guard_without_global_fetch_monkeypatch() -> None:
     root = Path(__file__).resolve().parents[1]
-    brand = (root / "app/web/mini_app/roxy-brand.js").read_text(encoding="utf-8")
-    guard = (root / "app/web/mini_app/roxy-contract-guard.js").read_text(encoding="utf-8")
-    runtime = (root / "app/web/mini_app/roxy-functional-runtime.js").read_text(encoding="utf-8")
-    generation_flow = (root / "app/web/mini_app/roxy-generation-flow-v3.js").read_text(encoding="utf-8")
+    app = (root / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")
+    api = (root / "frontend/mini-app/lib/api.ts").read_text(encoding="utf-8")
+    telegram = (root / "frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
 
-    assert "/mini-app/roxy-contract-guard.js?v=1" in brand
-    assert 'node.textContent = "Бесплатно"' in guard
-    assert "window.fetch =" not in runtime
-    assert 'headers["X-Telegram-Init-Data"] = tg.initData' in generation_flow
+    assert '"Бесплатно"' in app
+    assert "window.fetch =" not in app
+    assert "window.fetch =" not in api
+    assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
 
 
 def test_wallet_customer_copy_is_normalized_to_rox() -> None:
     root = Path(__file__).resolve().parents[1]
-    guard = (root / "app/web/mini_app/roxy-contract-guard.js").read_text(encoding="utf-8")
-    assert '"1 ROX = "' in guard
-    assert '"ROX"' in guard
-    assert "#walletView" in guard
+    app = (root / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")
+    assert "balance_rox" in app
+    assert " ROX" in app
+    assert "кр." not in app

@@ -348,16 +348,16 @@ class MusicGenerationService:
             user_id=user_id,
             retail_cost=retail_cost_rox,
         )
-        cost_rox = billing.effective_cost
+        charge_rox = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
-        await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=cost_rox)
+        await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=charge_rox)
 
         provider_model = str(settings.music_generation_model)
         generation = Generation(
             user_id=user_id,
             kind="music",
             prompt=str(clean.get("prompt") or ""),
-            cost_rox=cost_rox,
+            cost_rox=charge_rox,
             provider="kie",
             status="queued",
             parameters={
@@ -375,6 +375,11 @@ class MusicGenerationService:
                 "_unit_price_rox": str(retail_cost_rox),
                 "_retail_cost_rox": str(billing.retail_cost),
                 "_admin_free": billing.admin_free,
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_rox": str(billing.retail_cost)}
+                    if billing.admin_free
+                    else {}
+                ),
             },
             publication_scope="private",
             is_public_feed=False,
@@ -385,11 +390,11 @@ class MusicGenerationService:
         session.add(generation)
         await session.flush()
         GenerationOutboxService.add(session, generation.id)
-        if cost_rox > 0:
+        if charge_rox > 0:
             await WalletService.debit(
                 session,
                 user_id=user_id,
-                amount=cost_rox,
+                amount=charge_rox,
                 kind="generation",
                 reference_type="generation",
                 reference_id=str(generation.id),

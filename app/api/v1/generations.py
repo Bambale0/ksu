@@ -16,6 +16,7 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
+from app.services.model_family_catalog import build_model_families
 from app.services.model_catalog import (
     InvalidModelParametersError,
     ModelCatalog,
@@ -239,6 +240,7 @@ async def generation_models(
         "schema_version": 2,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
         "admin_free": admin_free,
+        "families": build_model_families(models),
         "models": models,
     }
 

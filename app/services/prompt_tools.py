@@ -212,7 +212,7 @@ class PromptToolService:
             user_id=user_id,
             retail_cost=retail_price,
         )
-        price = billing.effective_cost
+        charge = billing.effective_cost
         task = PromptToolTask(
             id=task_id,
             user_id=user_id,
@@ -225,18 +225,23 @@ class PromptToolService:
                 "_request_hash": request_hash,
                 "_retail_cost_credits": str(billing.retail_cost),
                 "_admin_free": billing.admin_free,
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_credits": str(billing.retail_cost)}
+                    if billing.admin_free
+                    else {}
+                ),
             },
             result_payload={},
-            cost_credits=price,
+            cost_credits=charge,
         )
         session.add(task)
         session.add(PromptToolOutbox(task_id=task.id))
         await session.flush()
-        if price > 0:
+        if charge > 0:
             await WalletService.debit(
                 session,
                 user_id=user_id,
-                amount=price,
+                amount=charge,
                 kind="prompt_tool",
                 reference_type="prompt_tool_task",
                 reference_id=str(task.id),

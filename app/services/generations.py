@@ -191,7 +191,7 @@ class GenerationService:
             user_id=user_id,
             retail_cost=retail_cost_rox,
         )
-        cost_rox = billing.effective_cost
+        charge_rox = billing.effective_cost
 
         # Admins are free, not unbounded: request/provider resource safety remains
         # active. Passing zero only removes spend accounting from the admission gate.
@@ -199,7 +199,7 @@ class GenerationService:
         await GenerationAdmissionService.enforce(
             session,
             user_id=user_id,
-            next_cost=cost_rox,
+            next_cost=charge_rox,
         )
 
         provider_model = cls._provider_model_snapshot(spec, clean)
@@ -208,7 +208,7 @@ class GenerationService:
             kind=spec.operation,
             prompt=str(clean.get("prompt") or prompt or ""),
             input_url=input_url,
-            cost_rox=cost_rox,
+            cost_rox=charge_rox,
             provider="kie",
             parameters={
                 **clean,
@@ -224,6 +224,11 @@ class GenerationService:
                 "_unit_price_rox": str(unit_price),
                 "_retail_cost_rox": str(billing.retail_cost),
                 "_admin_free": billing.admin_free,
+                **(
+                    {"_admin_free_generation": True, "_quoted_cost_rox": str(billing.retail_cost)}
+                    if billing.admin_free
+                    else {}
+                ),
             },
             status="queued",
             source_feed_gen_id=source_feed_gen_id,
@@ -239,11 +244,11 @@ class GenerationService:
         await session.flush()
 
         GenerationOutboxService.add(session, generation.id)
-        if cost_rox > 0:
+        if charge_rox > 0:
             await WalletService.debit(
                 session,
                 user_id=user_id,
-                amount=cost_rox,
+                amount=charge_rox,
                 kind="generation",
                 reference_type="generation",
                 reference_id=str(generation.id),

@@ -148,12 +148,12 @@ class BatchRecoveryService:
             user_id=user_id,
             retail_cost=retail_total,
         )
-        total = billing.effective_cost
+        charged_total = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(
             session,
             user_id=user_id,
-            next_cost=total,
+            next_cost=charged_total,
         )
         generation_ids: list[uuid.UUID] = []
         for (batch_item, previous), prepared_item in zip(selected, prepared, strict=True):
@@ -176,7 +176,7 @@ class BatchRecoveryService:
 
         job.status = "running"
         job.completed_at = None
-        job.total_charged_rox = Decimal(job.total_charged_rox) + total
+        job.total_charged_rox = Decimal(job.total_charged_rox) + charged_total
         session.add(
             BatchGenerationCommand(
                 batch_id=batch_id,

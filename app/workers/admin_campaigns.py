@@ -9,6 +9,7 @@ from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, Telegra
 from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.db.admin_models import NotificationCampaign, NotificationCampaignDelivery
 from app.db.models import User
 from app.db.profile_models import UserPreference
@@ -125,6 +126,7 @@ async def run() -> None:
 
 
 def main() -> None:
+    configure_logging()
     asyncio.run(run())
 
 

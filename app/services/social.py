@@ -147,6 +147,7 @@ class SocialService:
             "id": str(author.id),
             "display_name": cls._display_name(author),
             "username": author.username,
+            "referral_code": str(author.telegram_id),
             "profile_discoverable": discoverable,
             "is_self": is_self,
             "subscribed_by_me": subscribed_by_me,
@@ -219,6 +220,7 @@ class SocialService:
             "id": str(author_user_id),
             "display_name": "Скрытый профиль",
             "username": None,
+            "referral_code": None,
             "profile_discoverable": False,
             "is_self": False,
             "subscribed_by_me": False,
@@ -259,6 +261,7 @@ class SocialService:
                         cls._display_name(author) if discoverable else "Скрытый профиль"
                     ),
                     "username": author.username if discoverable else None,
+                    "referral_code": str(author.telegram_id) if discoverable else None,
                     "profile_discoverable": discoverable,
                     "subscribed_by_me": True,
                     "subscribed_at": subscription.created_at.isoformat(),
