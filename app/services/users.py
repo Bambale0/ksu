@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, User
+from app.db.models import User
+from app.services.referral_antifraud import ReferralAntifraudService
 from app.services.wallet import WalletService
 
 
@@ -50,21 +51,9 @@ class UserService:
                 idempotency_key=f"welcome:{user.id}",
             )
 
-        if inviter_telegram_id and inviter_telegram_id != telegram_user.id:
-            inviter = await cls.get_by_telegram_id(session, inviter_telegram_id)
-            if inviter is not None:
-                session.add(
-                    ReferralRelation(referred_user_id=user.id, inviter_user_id=inviter.id)
-                )
-                if settings.invite_bonus_rox > Decimal("0"):
-                    await WalletService.credit(
-                        session,
-                        user_id=inviter.id,
-                        amount=settings.invite_bonus_rox,
-                        kind="referral_invite_bonus",
-                        reference_type="referral_user",
-                        reference_id=str(user.id),
-                        idempotency_key=f"invite-bonus:{user.id}",
-                    )
-
+        await ReferralAntifraudService.attach_new_user(
+            session,
+            visitor=user,
+            inviter_telegram_id=inviter_telegram_id,
+        )
         return user
