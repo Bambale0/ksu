@@ -239,7 +239,7 @@ jobs:
           printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
 
           docker compose config -q
-          docker compose up -d postgres redis
+          docker compose up -d postgres redis </dev/null
 
           postgres_ready=0
           for _ in $(seq 1 30); do
@@ -262,9 +262,9 @@ jobs:
             rm -f "${old_backup}" "${old_backup}.sha256"
           done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
 
-          docker compose build "${build_services[@]}"
-          docker compose run --rm app alembic upgrade head
-          docker compose up -d --remove-orphans "${runtime_services[@]}"
+          docker compose build "${build_services[@]}" </dev/null
+          docker compose run --rm app alembic upgrade head </dev/null
+          docker compose up -d --remove-orphans "${runtime_services[@]}" </dev/null
 
           backup_worker_running=0
           for _ in $(seq 1 30); do
