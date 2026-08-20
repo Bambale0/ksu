@@ -84,6 +84,19 @@ services:
         condition: service_healthy
     command: python -m app.workers.creator_partnership
 
+  backup-worker:
+    image: postgres:17-alpine
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./scripts/backup_postgres.sh:/opt/ksu/backup_postgres.sh:ro
+      - db_backups:/backups
+    command: ["/bin/sh", "/opt/ksu/backup_postgres.sh"]
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  db_backups:
