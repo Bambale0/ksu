@@ -115,16 +115,17 @@ def test_provider_payload_strips_all_internal_identity_and_billing_fields() -> N
     }
 
 
-def test_mini_app_loads_contract_guard_and_uses_admin_free_copy() -> None:
+def test_mini_app_loads_contract_guard_without_global_fetch_monkeypatch() -> None:
     root = Path(__file__).resolve().parents[1]
     brand = (root / "app/web/mini_app/roxy-brand.js").read_text(encoding="utf-8")
     guard = (root / "app/web/mini_app/roxy-contract-guard.js").read_text(encoding="utf-8")
     runtime = (root / "app/web/mini_app/roxy-functional-runtime.js").read_text(encoding="utf-8")
+    generation_flow = (root / "app/web/mini_app/roxy-generation-flow-v3.js").read_text(encoding="utf-8")
 
     assert "/mini-app/roxy-contract-guard.js?v=1" in brand
     assert 'node.textContent = "Бесплатно"' in guard
-    assert '"X-Telegram-Init-Data"' in runtime
-    assert "same-origin" in runtime
+    assert "window.fetch =" not in runtime
+    assert 'headers["X-Telegram-Init-Data"] = tg.initData' in generation_flow
 
 
 def test_wallet_customer_copy_is_normalized_to_rox() -> None:
