@@ -22,26 +22,18 @@ def test_current_rx_asset_is_used_inside_brand_marks() -> None:
     assert 'setText(".brand-mark", "RX", headerBrand)' not in script
 
 
-def test_header_logo_polish_loads_after_other_brand_layers() -> None:
+def test_brand_marks_are_owned_by_canonical_design_system() -> None:
     script = _read("roxy-brand.js")
-    assert '/mini-app/roxy-header-logo.css?v=5' in script
-    assert script.index('/mini-app/roxy-header-logo.css?v=5') > script.index('/mini-app/roxy-iphone-polish.css')
-    assert script.index('/mini-app/roxy-header-logo.css?v=5') > script.index('/mini-app/roxy-approved-surfaces.css')
-
-
-def test_rx_logo_keeps_existing_rounded_arch_without_webview_blending() -> None:
-    css = _read("roxy-header-logo.css")
+    css = _read("roxy-design-system.css")
+    assert '/mini-app/roxy-design-system.css?v=1' in script
+    assert '/mini-app/roxy-header-logo.css' not in script
     for token in (
-        ".roxy-brand-ready .brand-mark",
+        ".brand-mark",
+        ".studio-sidebar-mark",
         ".roxy-brand-mark-logo",
         "overflow: hidden",
-        "border-radius: 10px",
-        "object-fit: cover",
-        "mix-blend-mode: normal !important",
-        "filter: none !important",
-        "transform: none !important",
+        "object-fit: contain",
         "@media (max-width: 430px)",
-        ".roxy-approved-brand .brand-mark",
     ):
         assert token in css
 
