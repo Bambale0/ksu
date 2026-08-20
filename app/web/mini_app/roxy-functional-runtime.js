@@ -40,6 +40,33 @@
     }
   }
 
+  function protectSignedApiRequests() {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function roxySignedFetch(input, init = {}) {
+      const initData = tg?.initData;
+      if (!initData) return nativeFetch(input, init);
+
+      let url;
+      try {
+        const raw = input instanceof Request ? input.url : String(input);
+        url = new URL(raw, window.location.href);
+      } catch (_error) {
+        return nativeFetch(input, init);
+      }
+      if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/v1/")) {
+        return nativeFetch(input, init);
+      }
+
+      const inherited = input instanceof Request ? input.headers : undefined;
+      const headers = new Headers(inherited);
+      new Headers(init.headers || {}).forEach((value, key) => headers.set(key, value));
+      if (!headers.has("X-Telegram-Init-Data")) {
+        headers.set("X-Telegram-Init-Data", initData);
+      }
+      return nativeFetch(input, { ...init, headers });
+    };
+  }
+
   async function copyText(value) {
     const text = String(value ?? "");
     if (!text) return false;
@@ -242,8 +269,10 @@
   });
 
   // These critical compatibility patches run during this defer script itself. Waiting for
-  // DOMContentLoaded would let app.js/shell.js mutate history or register popstate first.
+  // DOMContentLoaded would let app.js/shell.js mutate history, fetch unsigned pricing or
+  // register popstate first.
   installRandomUuidFallback();
+  protectSignedApiRequests();
   protectCanonicalHistory();
   protectCanonicalPopState();
 
