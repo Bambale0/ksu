@@ -80,9 +80,22 @@ def test_kling_motion_upload_limits_match_provider_contract() -> None:
     assert fields["video_urls"]["max_size_mb"] == 100
 
 
-def test_mini_app_assets_are_packaged() -> None:
-    root = Path(__file__).resolve().parents[1] / "app" / "web" / "mini_app"
-    for name in ("index.html", "styles.css", "app.js"):
-        path = root / name
-        assert path.exists(), name
-        assert path.stat().st_size > 100, name
+def test_next_mini_app_source_is_packaged_for_static_export() -> None:
+    root = Path(__file__).resolve().parents[1]
+    frontend = root / "frontend" / "mini-app"
+    for relative in (
+        "package.json",
+        "next.config.mjs",
+        "app/page.tsx",
+        "app/globals.css",
+        "components/roxy-app.tsx",
+        "lib/api.ts",
+    ):
+        path = frontend / relative
+        assert path.exists(), relative
+        assert path.stat().st_size > 100, relative
+
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert "RUN npm run build" in dockerfile
+    assert "rm -rf ./app/web/mini_app" in dockerfile
+    assert "COPY --from=miniapp /src/frontend/mini-app/out ./app/web/mini_app" in dockerfile

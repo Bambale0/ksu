@@ -44,13 +44,14 @@ def test_launcher_removes_legacy_reply_keyboard_and_routes_everything_to_app() -
     assert 'query["start_payload"] = start_payload' in keyboards
 
 
-def test_onboarding_is_owned_by_mini_app_not_text_bot() -> None:
-    brand = _read("app/web/mini_app/roxy-brand.js")
-    onboarding = _read("app/web/mini_app/roxy-app-onboarding.js")
-    css = _read("app/web/mini_app/roxy-app-onboarding.css")
-    assert "roxy-app-onboarding.js?v=1" in brand
-    assert "roxy-app-onboarding.css?v=1" in brand
-    assert 'api("/api/v1/onboarding")' in onboarding
-    assert 'api("/api/v1/onboarding/complete"' in onboarding
-    assert "innerHTML" not in onboarding
-    assert "roxy-app-onboarding-open" in css
+def test_onboarding_is_owned_by_next_mini_app_not_text_bot() -> None:
+    app = _read("frontend/mini-app/components/roxy-app.tsx")
+    api = _read("frontend/mini-app/lib/api.ts")
+    assert "<Onboarding" in app
+    assert "function Onboarding" in app
+    assert "api.onboarding()" in app
+    assert "api.completeOnboarding()" in app
+    assert 'onboarding: () => request<Record<string, any>>("/api/v1/onboarding")' in api
+    assert 'completeOnboarding: () => request<Record<string, any>>("/api/v1/onboarding/complete"' in api
+    assert "innerHTML" not in app
+    assert "app/web/mini_app" not in app

@@ -21,7 +21,7 @@ from app.db.session import SessionFactory
 from app.db.social_models import GenerationLike, UserSubscription
 
 ROOT = Path(__file__).resolve().parents[1]
-MINI = ROOT / "app" / "web" / "mini_app"
+FRONTEND = ROOT / "frontend" / "mini-app"
 
 
 @pytest.mark.asyncio
@@ -166,38 +166,40 @@ async def test_owner_can_view_own_safe_profile_even_when_not_discoverable() -> N
         assert profile["username"] == "SelfProfile"
 
 
-def test_social_mini_app_uses_server_truth_confirmation_and_explicit_context() -> None:
-    script = (MINI / "social.js").read_text(encoding="utf-8")
-    context = (MINI / "roxy-generation-context.js").read_text(encoding="utf-8")
+def test_react_profile_and_feed_use_explicit_server_api_without_prompt_leaks() -> None:
+    app = (FRONTEND / "components" / "roxy-app.tsx").read_text(encoding="utf-8")
+    api = (FRONTEND / "lib" / "api.ts").read_text(encoding="utf-8")
+    telegram = (FRONTEND / "lib" / "telegram.ts").read_text(encoding="utf-8")
+
     for token in (
-        '"X-Telegram-Init-Data"',
-        "/api/v1/social/generations/",
-        "/api/v1/social/profiles?username=",
-        "/api/v1/social/subscriptions?limit=50",
-        '/history`, {\n        method: "DELETE"',
-        "askRemovalConfirmation",
-        "socialHistoryConfirm",
-        "roxy:history-context",
-        "roxy:generation-context",
-        "RoxyGenerationContext",
-        "profile.profile_discoverable",
-        "Профиль скрыт",
-        "Создать контент",
+        "profileWorks",
+        "profilePublications",
+        "ProfileScreen",
+        "MediaGrid",
+        'surface === "private" && item.prompt',
     ):
-        assert token in script, token
-    assert "window.fetch =" not in script
-    assert "originalFetch" not in script
-    assert "localStorage" not in script
-    assert "sessionStorage" not in script
-    assert "initDataUnsafe" not in script
-    assert 'emit("roxy:history-context"' in context
-    assert 'emit("roxy:generation-context"' in context
+        assert token in app, token
+    for token in (
+        'feed: (sort = "recent", offset = 0)',
+        "profileFeed:",
+        "prompt_visible: false",
+        "references_visible: false",
+    ):
+        assert token in api, token
+    assert '"X-Telegram-Init-Data"' in telegram
+    assert "window.fetch =" not in app
+    assert "originalFetch" not in app
 
 
-def test_social_module_is_mounted_and_checked_by_ci() -> None:
-    integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
+def test_social_ui_is_part_of_next_source_and_checked_by_ci() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert 'stylesheet.href = "/mini-app/social.css"' in integration
-    assert 'script.src = "/mini-app/social.js"' in integration
-    assert "node --check app/web/mini_app/social.js" in workflow
-    assert (MINI / "social.css").is_file()
+    package = (FRONTEND / "package.json").read_text(encoding="utf-8")
+    app = FRONTEND / "components" / "roxy-app.tsx"
+    api = FRONTEND / "lib" / "api.ts"
+
+    assert app.is_file()
+    assert api.is_file()
+    assert '"build": "next build"' in package
+    assert "Typecheck Next Mini App" in workflow
+    assert "Build Next Mini App" in workflow
+    assert "Next Mini App architecture contract" in workflow

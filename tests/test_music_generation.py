@@ -194,7 +194,7 @@ async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None
             prompt="lo-fi instrumental for deep work",
             parameters={"instrumental": True, "customMode": False},
         ),
-        None,  # music quote is server-configured and does not need a DB read
+        None,
     )
     assert quote["model_id"] == MUSIC_MODEL_ID
     assert quote["price_mode"] == "flat"
@@ -244,11 +244,10 @@ def test_audio_ingest_accepts_audio_and_rejects_image_contract() -> None:
     assert MusicMediaIngestService._allowed_content_type("application/octet-stream", ".mp3") is True
 
 
-def test_provider_worker_and_ui_have_explicit_music_branches() -> None:
+def test_provider_worker_and_react_ui_have_explicit_music_branches() -> None:
     provider = (ROOT / "app/services/generation_provider.py").read_text(encoding="utf-8")
     worker = (ROOT / "app/workers/media.py").read_text(encoding="utf-8")
-    ui = (ROOT / "app/web/mini_app/roxy-music.js").read_text(encoding="utf-8")
-    brand = (ROOT / "app/web/mini_app/roxy-brand.js").read_text(encoding="utf-8")
+    ui = (ROOT / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")
     router = (ROOT / "app/api/router.py").read_text(encoding="utf-8")
 
     assert 'provider_api == "suno_music"' in provider
@@ -256,9 +255,10 @@ def test_provider_worker_and_ui_have_explicit_music_branches() -> None:
     assert "get_music_task" in provider
     assert "MusicMediaAssetService.enqueue_results" in provider
     assert "MusicMediaIngestService.process_one" in worker
-    assert 'audio.className = "roxy-audio-player"' in ui
-    assert 'data-roxy-media="audio"' in ui
-    assert '/mini-app/roxy-music.js' in brand
+    assert 'audio: models.filter((m) => m.media_type === "audio").length' in ui
+    assert 'model.media_type === "audio" ? "music" : "image"' in ui
+    assert 'if (type === "audio") return <span className="media-placeholder audio"' in ui
+    assert 'url && type === "audio" ? <audio src={url} controls/>' in ui
     assert "music_generations" not in router
 
 

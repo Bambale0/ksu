@@ -77,19 +77,23 @@ def test_creator_worker_is_deployed_and_periodic() -> None:
     assert "CREATOR_PARTNERSHIP_GRANT_INTERVAL_SECONDS=3600" in env
 
 
-def test_profile_uses_real_creator_partnership_application_lifecycle() -> None:
-    ui = _read("app/web/mini_app/roxy-profile-cabinet.js")
-    assert 'api("/api/v1/creator-partnership")' in ui
-    assert 'api("/api/v1/creator-partnership/applications"' in ui
-    assert 'headers: { "Idempotency-Key": crypto.randomUUID() }' in ui
-    assert "channel_name" in ui
-    assert "audience_size" in ui
-    assert "average_views" in ui
-    assert "cooperation_format" in ui
-    assert "Ежемесячно" in ui
-    assert "total_granted_rox" in ui
-    assert "не реферальные 30% / 5%" in ui
-    assert "supportComposeForm" not in ui
+def test_creator_partnership_is_backend_owned_not_bound_to_deleted_legacy_ui() -> None:
+    public = _read("app/api/v1/creator_partnership.py")
+    service = _read("app/services/creator_partnership.py")
+    next_app = _read("frontend/mini-app/components/roxy-app.tsx")
+
+    assert '@router.get("")' in public
+    assert '@router.post("/applications"' in public
+    assert "channel_name" in public
+    assert "audience_size" in public
+    assert "average_views" in public
+    assert "cooperation_format" in public
+    assert "total_granted_rox" in service
+
+    # The old profile cabinet was intentionally deleted during the Next.js cutover.
+    # Creator partnership stays a backend domain until a React surface is explicitly added.
+    assert "roxy-profile-cabinet" not in next_app
+    assert "app/web/mini_app" not in next_app
 
 
 def test_creator_admin_console_is_real_privileged_surface() -> None:

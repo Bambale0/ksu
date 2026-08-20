@@ -24,7 +24,7 @@ from app.db.models import Notification, SupportMessage, SupportTicket, User
 from app.db.session import SessionFactory
 
 ROOT = Path(__file__).resolve().parents[1]
-MINI = ROOT / "app" / "web" / "mini_app"
+FRONTEND = ROOT / "frontend" / "mini-app"
 
 
 @pytest.mark.asyncio
@@ -225,31 +225,32 @@ async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress()
         assert len(messages) == 3
 
 
-def test_profile_tools_use_signed_telegram_auth_and_no_browser_business_state() -> None:
-    script = (MINI / "profile-tools.js").read_text(encoding="utf-8")
-    for token in (
-        '"/api/v1/me/preferences"',
-        '"/api/v1/notifications?limit=50"',
-        '"/api/v1/notifications/read-all"',
-        '"/api/v1/support/tickets?limit=50"',
-        'headers["X-Telegram-Init-Data"] = tg.initData',
-        'method: "PUT"',
-        'method: "POST"',
-        "state.unreadCount",
-        "ticket.can_reopen",
-        "ticket.can_reply",
-    ):
-        assert token in script, token
-    assert "localStorage" not in script
-    assert "sessionStorage" not in script
-    assert "initDataUnsafe" not in script
+def test_react_profile_uses_signed_telegram_auth_and_no_browser_business_state() -> None:
+    api = (FRONTEND / "lib" / "api.ts").read_text(encoding="utf-8")
+    telegram = (FRONTEND / "lib" / "telegram.ts").read_text(encoding="utf-8")
+    app = (FRONTEND / "components" / "roxy-app.tsx").read_text(encoding="utf-8")
+
+    assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
+    assert "telegramHeaders" in api
+    assert 'me: () => request<Me>("/api/v1/me")' in api
+    assert "ProfileScreen" in app
+    assert "profileWorks" in app
+    assert "profilePublications" in app
+    assert "localStorage" not in api
+    assert "sessionStorage" not in api
+    assert "initDataUnsafe" not in api
 
 
-def test_profile_tools_mount_inside_existing_profile_and_ci_checks_js() -> None:
-    integration = (MINI / "shell-integration.js").read_text(encoding="utf-8")
+def test_profile_is_owned_by_next_source_and_ci_checks_react_build() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert 'document.getElementById("profileView")' in integration
-    assert 'stylesheet.href = "/mini-app/profile-tools.css"' in integration
-    assert 'script.src = "/mini-app/profile-tools.js"' in integration
-    assert "node --check app/web/mini_app/profile-tools.js" in workflow
-    assert (MINI / "profile-tools.css").is_file()
+    app = FRONTEND / "components" / "roxy-app.tsx"
+    api = FRONTEND / "lib" / "api.ts"
+    telegram = FRONTEND / "lib" / "telegram.ts"
+
+    assert app.is_file()
+    assert api.is_file()
+    assert telegram.is_file()
+    assert "Typecheck Next Mini App" in workflow
+    assert "Build Next Mini App" in workflow
+    assert "Next Mini App architecture contract" in workflow
+    assert not (ROOT / "app" / "web" / "mini_app" / "profile-tools.js").exists()
