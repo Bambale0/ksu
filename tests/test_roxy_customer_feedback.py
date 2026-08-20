@@ -28,27 +28,21 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_customer_palette_is_exact_and_unified_controls_load_last() -> None:
-    feedback = _read("roxy-client-feedback.css")
-    unified = _read("roxy-unified-controls.css")
+def test_customer_palette_is_exact_and_canonical_design_loads_last() -> None:
+    design = _read("roxy-design-system.css")
     brand = _read("roxy-brand.js")
     logo = _read("roxy-logo.svg")
 
+    upper = design.upper()
     for token in ("#0B0B10", "#9B5CFF", "#FF5FB7", "#FFFFFF", "#A6A6B3"):
-        assert token in feedback
-        assert token in unified
-    assert "linear-gradient(110deg, #9B5CFF 0%, #FF5FB7 100%)" in feedback
-    assert "rgba(155, 92, 255, .24)" in unified
-    assert "rgba(11, 11, 16, .98)" in unified
-    assert "--roxy-control-bg" in unified
-    assert "--roxy-control-bg-strong" in unified
-    assert "button:disabled" in unified
-    assert ".roxy-customer-nav-item.is-active" in unified
-    assert "#b768ff" not in unified.lower()
-    assert "#8f63ff" not in unified.lower()
-    assert "#ff69c9" not in unified.lower()
-    assert '/mini-app/roxy-unified-controls.css' in brand
-    assert brand.index('/mini-app/roxy-unified-controls.css') > brand.index('/mini-app/roxy-client-feedback.css')
+        assert token in upper
+    assert "--ROXY-GRADIENT" in upper
+    assert "BUTTON:DISABLED" in upper
+    assert ".ROXY-CUSTOMER-NAV-ITEM.IS-ACTIVE" in upper
+    assert "#8F63FF" not in upper
+    assert "#FF69C9" not in upper
+    assert '/mini-app/roxy-design-system.css?v=1' in brand
+    assert brand.rindex('/mini-app/roxy-design-system.css?v=1') > brand.index('/mini-app/roxy-app-onboarding.css?v=1')
     assert 'setHeaderColor?.("#0B0B10")' in brand
     assert 'setBackgroundColor?.("#0B0B10")' in brand
     assert 'setBottomBarColor?.("#0B0B10")' in brand
@@ -56,14 +50,20 @@ def test_customer_palette_is_exact_and_unified_controls_load_last() -> None:
     assert "#b768ff" not in logo.lower()
 
 
-def test_partner_earnings_indicator_is_white_silver_not_green() -> None:
-    unified = _read("roxy-unified-controls.css")
-    selector = ".roxy-approved-brand .roxy-balance-card.earnings .roxy-balance-type::before"
-    assert selector in unified
-    block = unified.split(selector, 1)[1].split("}", 1)[0]
-    assert "background: #FFFFFF" in block
-    assert "border: 1px solid #A6A6B3" in block
-    assert "green" not in block.lower()
+def test_legacy_visual_override_files_are_gone() -> None:
+    for name in (
+        "roxy-approved-theme.css",
+        "roxy-approved-surfaces.css",
+        "roxy-client-feedback.css",
+        "roxy-unified-controls.css",
+        "roxy-iphone-polish.css",
+        "roxy-fhd-density.css",
+        "roxy-home-density-v3.css",
+        "roxy-mature-ui.css",
+        "roxy-mobile-runtime.css",
+        "roxy-header-logo.css",
+    ):
+        assert not (MINI / name).exists()
 
 
 def test_telegram_back_uses_previous_history_entry_instead_of_forcing_home() -> None:
