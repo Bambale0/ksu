@@ -212,6 +212,18 @@
     return wrap;
   }
 
+  function relabelButton(button, label) {
+    const textNode = [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+    if (textNode) {
+      textNode.textContent = label;
+      return;
+    }
+    const labelNode = document.createElement("span");
+    labelNode.className = "roxy-nav-label";
+    labelNode.textContent = label;
+    button.appendChild(labelNode);
+  }
+
   function adoptMenu(root) {
     if (!root) return false;
     const buttons = [...root.querySelectorAll(":scope > .studio-nav-item[data-studio-route]")];
@@ -227,8 +239,7 @@
 
       const currentIcon = button.querySelector(":scope > .studio-nav-icon");
       if (currentIcon) currentIcon.replaceWith(navIcon(iconName));
-      const text = [...button.children].find((node) => !node.classList.contains("studio-nav-icon"));
-      if (text) text.textContent = label;
+      relabelButton(button, label);
     }
 
     if (!root.dataset.roxyNavigationBound) {
