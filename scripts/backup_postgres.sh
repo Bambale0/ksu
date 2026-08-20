@@ -9,6 +9,7 @@ BACKUP_DIR="${DB_BACKUP_DIR:-/backups}"
 INTERVAL_SECONDS="${DB_BACKUP_INTERVAL_SECONDS:-10800}"
 RETENTION_COUNT="${DB_BACKUP_RETENTION_COUNT:-16}"
 BACKUP_ON_START="${DB_BACKUP_ON_START:-true}"
+FAILURE_RETRY_SECONDS=60
 CURRENT_DUMP_TMP=""
 CURRENT_CHECKSUM_TMP=""
 
@@ -144,11 +145,18 @@ run_backup() {
     return 0
 }
 
+run_until_success() {
+    while ! run_backup; do
+        log "backup retry scheduled in ${FAILURE_RETRY_SECONDS}s"
+        sleep "$FAILURE_RETRY_SECONDS"
+    done
+}
+
 if [ "$BACKUP_ON_START" = "true" ] || [ "$BACKUP_ON_START" = "1" ]; then
-    run_backup || true
+    run_until_success
 fi
 
 while :; do
     sleep "$INTERVAL_SECONDS"
-    run_backup || true
+    run_until_success
 done
