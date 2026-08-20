@@ -43,6 +43,7 @@ Repository operations now define a safe lifecycle for short-lived branches and s
 - merged feature/fix/docs/chore branches are pruned automatically from trusted `main`;
 - a branch is eligible only when its current tip exactly equals a recorded merged-PR head SHA;
 - branches with open PRs, protected environment/release names or post-merge commits are preserved;
+- divergent clean-port source branches may be deleted only through the reviewed `scripts/superseded_branches.txt` allowlist;
 - the deletion contract is regression-tested;
 - `REPOSITORY_HYGIENE.md` documents branch pruning and the rule for removing obsolete runtime code/config/docs/tests after replacements are merged;
 - Alembic history is explicitly preserved even when the runtime feature that introduced an old migration is later retired.
@@ -60,3 +61,17 @@ Seedance 2.5 is synchronized with the callable Kie input schema checked on 2026-
 - explicit duration is 4–30 seconds in ROXY; provider auto-duration remains disabled until actual-duration billing settlement exists;
 - provider-specific validation happens before wallet debit;
 - release acceptance now locks the same callable schema so marketing/UI drift cannot silently widen provider inputs.
+
+## Hosted card lost-response recovery
+
+The primary hosted-card adapter is synchronized with the current provider contract and no longer relies on an unverified metadata-correlation assumption:
+
+- invoice creation remains `POST /api/v3/invoice`;
+- authoritative single-contract lookup is `GET /api/v1/invoices/{id}`;
+- arbitrary ROXY `payment_id` values are not placed in `clientUtm`, because the current public schema defines it as UTM attribution and webhooks do not guarantee returning it;
+- if a verified webhook references a contract whose local `external_id` was lost, ROXY fetches the authoritative contract first;
+- recovery requires authoritative id, amount, currency and buyer email;
+- a local bind is allowed only when exactly one unresolved card intent matches exact amount/currency/email;
+- zero or multiple candidates, missing identity data or provider mismatch fail closed with no bind and no wallet credit;
+- a successful recovered bind also completes the durable `PaymentRequest` and then reuses the ordinary authoritative reconcile path;
+- new regression tests cover the current lookup route, unique recovery, buyer mismatch, ambiguous candidates and missing authoritative identity fields.
