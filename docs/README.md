@@ -18,6 +18,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - Privileged operations console: `/admin-app/`.
 - Public denomination: **1 ROX = 1 RUB**.
 - Create is split into independent **Photo** and **Video** flows; both end in the same server-driven schema builder and server quote/create pipeline.
+- The public Photo/Video model picker is intentionally limited to the maintained Tanya-style trending catalog; historical provider versions stay internal for history/recovery only and cannot be quoted/created as new work.
 - Generation pricing is server-authoritative; published Admin Tariffs can override generation pricing and are restored from PostgreSQL after restart.
 - Generation tasks snapshot the exact upstream provider model at creation. Customer titles/grouping never decide provider routing.
 - Active `AdminAccount` users have zero customer-wallet ROX cost for AI generation/tool actions; retail price metadata and all resource/provider safety gates remain intact.
@@ -38,6 +39,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - `STUDIO_SHELL.md` — generation workspace shell.
 - `ROXY_CREATE_CENTER.md` — current Photo/Video create entry flow.
 - `GENERATION_MINI_APP.md` — dynamic generation schema, quote/create, pricing and recovery behavior.
+- `TRENDING_MODEL_CATALOG.md` — current Tanya-derived Photo/Video product set, hidden legacy compatibility and release acceptance.
 - `MODEL_IDENTITY_AND_ADMIN_FREE.md` — exact provider-model snapshotting, customer model presentation/grouping and zero-wallet-cost admin contract.
 - `KLING_25_AVATAR_CONTRACT.md` — current Kie Kling 2.5 Turbo Pro T2V/I2V and Kling AI Avatar Standard/Pro provider/UI/billing contract.
 - `RESULTS_HISTORY.md` — result/history/reuse semantics.
@@ -78,6 +80,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 ### Release / acceptance
 
 - `ROXY_RELEASE_ACCEPTANCE.md` — production acceptance gate.
+- `TRENDING_MODEL_CATALOG.md` — focused current-model allowlist and legacy-removal acceptance requirements.
 - `MODEL_IDENTITY_AND_ADMIN_FREE.md` — focused model-identity/admin-free release acceptance requirements.
 - `ROXY_TELEGRAM_ACCEPTANCE.md` — Telegram/mobile acceptance.
 - `ONBOARDING.md` and `ROXY_BOT_LAUNCHER.md` — launch/onboarding contracts.
