@@ -110,3 +110,20 @@ The old operations backup staging branch was clean-ported onto current `main` an
 - `DATABASE_BACKUPS.md` defines verification, restore-drill, incident and encrypted off-host durability requirements;
 - database dumps are never routed through Telegram/chat by this implementation;
 - release acceptance and operations/deploy docs are synchronized with the same backup contract.
+
+## Current Kling 2.5 Turbo Pro and AI Avatar parity
+
+The current Kie callable contracts are implemented directly rather than copied from the historical Tanya payloads:
+
+- `kling/v2-5-turbo-text-to-video-pro` is exposed as `kling-2.5-turbo-pro-t2v`;
+- `kling/v2-5-turbo-image-to-video-pro` is exposed as `kling-2.5-turbo-pro-i2v`;
+- `kling/ai-avatar-standard` and `kling/ai-avatar-pro` are separate current avatar products;
+- Kling 2.5 Turbo Pro accepts only 5/10-second clips; T2V exposes the current 16:9 / 9:16 / 1:1 aspect-ratio set;
+- I2V requires a first-frame HTTPS URL and supports the current optional `tail_image_url`; both image controls advertise the current 10 MB Kie callable limit;
+- CFG, negative prompt and `nsfw_checker` are part of the current Kling 2.5 callable contract;
+- Avatar accepts image + audio + prompt only; current UI limits are 10 MB image, 100 MB audio and 300 seconds maximum audio duration;
+- Avatar prompt guidance may be empty, matching Kie's own long-form guidance while still emitting the provider `prompt` field;
+- Avatar has no provider `duration` input: ROXY bills against top-level `billing_seconds` and strips that accounting metadata before provider submission;
+- default ROXY tariffs are 30 ROX/s for Kling 2.5 T2V/I2V, 20 ROX/s for Avatar Standard and 30 ROX/s for Avatar Pro; published Admin Tariffs remain authoritative;
+- model-specific public allowlists reject unknown/legacy fields before wallet debit and provider normalization repeats the same contract at submission;
+- `KLING_25_AVATAR_CONTRACT.md`, compact pricing, dynamic UI and regression tests are synchronized with the same current-provider contract.
