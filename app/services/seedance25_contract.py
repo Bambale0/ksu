@@ -17,6 +17,22 @@ SEEDANCE25_MAX_DURATION = 30
 SEEDANCE25_MAX_IMAGE_REFS = 30
 SEEDANCE25_MAX_VIDEO_REFS = 10
 SEEDANCE25_MAX_AUDIO_REFS = 10
+SEEDANCE25_FIELDS = {
+    "prompt",
+    "first_frame_url",
+    "last_frame_url",
+    "reference_image_urls",
+    "reference_video_urls",
+    "reference_audio_urls",
+    "generate_audio",
+    "return_last_frame",
+    "resolution",
+    "aspect_ratio",
+    "duration",
+    "output_format",
+    "web_search",
+    "nsfw_checker",
+}
 
 
 def _bool(payload: dict[str, Any], field: str) -> None:
@@ -64,6 +80,18 @@ def normalize_seedance25_input(parameters: dict[str, Any]) -> dict[str, Any]:
     # `fixed_lens` belongs to older Seedance contracts. Drop it from saved
     # drafts instead of forwarding an obsolete field to Seedance 2.5.
     payload.pop("fixed_lens", None)
+
+    unsupported = sorted(
+        key for key in payload if not key.startswith("_") and key not in SEEDANCE25_FIELDS
+    )
+    if unsupported:
+        raise InvalidModelParametersError(
+            f"Unsupported Seedance 2.5 field: {unsupported[0]}"
+        )
+
+    # Internal metadata is never part of a provider request. ModelCatalog also
+    # strips it later, but removing it here keeps this provider boundary strict.
+    payload = {key: value for key, value in payload.items() if not key.startswith("_")}
 
     for field in ("generate_audio", "return_last_frame", "web_search", "nsfw_checker"):
         _bool(payload, field)
