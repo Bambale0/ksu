@@ -75,3 +75,19 @@ The primary hosted-card adapter is synchronized with the current provider contra
 - zero or multiple candidates, missing identity data or provider mismatch fail closed with no bind and no wallet credit;
 - a successful recovered bind also completes the durable `PaymentRequest` and then reuses the ordinary authoritative reconcile path;
 - new regression tests cover the current lookup route, unique recovery, buyer mismatch, ambiguous candidates and missing authoritative identity fields.
+
+## Referral registration anti-fraud
+
+Referral attachment is now guarded at the new-user registration boundary rather than relying on client behavior:
+
+- migration `0026_referral_antifraud` adds durable `referral_events` audit records;
+- self-referral, missing inviter and inactive inviter attempts are rejected and recorded;
+- inviter admission is serialized with a PostgreSQL row lock so concurrent registrations cannot bypass counters;
+- configurable hourly and daily thresholds reject the new attachment without disabling the inviter;
+- a short burst threshold rejects the threshold-crossing attempt and can mark the inviter inactive when autoban is enabled;
+- default controls are 30/hour, 120/day and a sixth attempt within 10 seconds blocked with burst autoban enabled;
+- accepted referral relation and invite bonus are created only after admission passes;
+- invite bonus remains idempotent through the existing `invite-bonus:<visitor-id>` wallet key;
+- existing users are not rebound to another inviter;
+- `.env.example`, partner/economy docs, release acceptance and the operations runbook are synchronized with the same contract;
+- the documented partner withdrawal floor is corrected to the runtime value of 3000 RUB.
