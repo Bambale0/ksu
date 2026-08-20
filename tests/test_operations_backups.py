@@ -31,6 +31,8 @@ def test_backup_script_is_valid_private_shell_and_verifies_archive() -> None:
         "DB_BACKUP_INTERVAL_SECONDS:-10800",
         "DB_BACKUP_RETENTION_COUNT:-16",
         "DB_BACKUP_ON_START:-true",
+        "FAILURE_RETRY_SECONDS=60",
+        "run_until_success",
         "postgresql+asyncpg://",
         "mktemp",
         "latest.dump",
@@ -85,3 +87,4 @@ def test_backup_runbook_requires_off_host_copy_and_restore_drill() -> None:
     assert "restore drill" in document.lower()
     assert "Do not send database dumps through Telegram" in document
     assert "does not automatically" in document
+    assert "60 seconds" in document
