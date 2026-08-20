@@ -1,20 +1,29 @@
 # History, likes and subscriptions
 
-This module implements section 2.6 of the supplied product FSM while preserving the current privacy boundary: generation history is private and owner-scoped.
+This module implements the current owner-scoped History/social contract while preserving the privacy boundary: generation history is private and owner-scoped.
 
-## History removal
+## History hide / restore
 
-Existing generation rows are financial/provider records and are never physically deleted by the user-facing History flow.
+Generation rows are financial/provider records and are never physically deleted by the user-facing History flow.
 
-The existing endpoint remains authoritative:
+Visible History hide remains authoritative through:
 
 ```text
 DELETE /api/v1/generations/{generation_id}/history
 ```
 
-It writes `GenerationHistoryState.hidden_at`. The Mini App now asks for explicit confirmation before calling it, then removes the card from the visible History only after a successful server response.
+It persists `GenerationHistoryState.hidden_at` in PostgreSQL. The Mini App asks for explicit confirmation before calling it and removes the card from visible History only after a successful server response.
 
-The empty History state includes the product-spec CTA `Создать контент`.
+Hidden History is also a server-backed product surface rather than browser-only state:
+
+```text
+GET /api/v1/generation-history/hidden?limit=<n>
+PUT /api/v1/generations/{generation_id}/history
+```
+
+`roxy-history-management.js` exposes `История / Скрытые`; `Скрытые` is loaded from the backend every time the management surface opens, so hidden items survive page reload, Telegram WebView restart and another device session. `Вернуть` calls the owner-scoped PUT restore endpoint and clears `hidden_at` instead of recreating the generation.
+
+The empty visible History state includes the product CTA `Создать контент`.
 
 ## Generation likes
 
@@ -74,24 +83,22 @@ Rules:
 - if an already-followed author later becomes private, the subscriptions list returns a safe `Скрытый профиль` tombstone with no name/username disclosure;
 - unsubscribe remains possible for that tombstone, preventing a privacy change from trapping the follower relationship.
 
-Because the product currently has no public content feed, Profile offers an exact `@username` lookup rather than inventing a discoverable global feed. This gives the specified `Профиль автора → Подписаться/Отписаться` flow without publishing private generation history.
+Because the product currently has no public content feed generated from private History, Profile offers an exact `@username` lookup rather than weakening the owner-only generation endpoint.
 
 ## Mini App integration
 
-`app/web/mini_app/social.js` is loaded after the existing generation/history engine.
+`app/web/mini_app/social.js` and `roxy-history-management.js` extend the existing generation/history renderer.
 
-The legacy `app.js` stays authoritative for generation creation, polling, detail and History rendering. The social module wraps `window.fetch` only to inspect successful generation responses via `Response.clone()` and associate the already-rendered cards/result with their server IDs. The original response object is returned untouched to the legacy caller.
-
-The module then adds:
+The product adds:
 
 - Like / Unlike on succeeded result detail;
-- explicit History removal confirmation;
-- removal buttons on History cards;
+- explicit History hide confirmation;
+- persisted `Скрытые` list and `Вернуть` restore;
 - empty History create CTA;
 - Profile subscriptions section;
 - exact public-author lookup and subscribe/unsubscribe actions.
 
-All social mutations use signed `Telegram.WebApp.initData` in `X-Telegram-Init-Data`. Social truth is not written to `localStorage` or `sessionStorage`.
+All social/history mutations use signed `Telegram.WebApp.initData` in `X-Telegram-Init-Data`. Hidden/social truth is not stored as the authoritative copy in `localStorage` or `sessionStorage`.
 
 ## Schema
 
@@ -102,6 +109,11 @@ Migration `0008_history_social` adds:
 - indexes for user/author history;
 - `subscriber_user_id <> author_user_id` check constraint.
 
-## Follow-up boundary
+`GenerationHistoryState` is the current durable hide/restore state for owner History.
 
-This epic does not create a public content feed. If a future discovery/feed feature is added, it must define an explicit generation-publication state and a separate safe read endpoint instead of weakening the existing owner-only generation endpoint.
+## Release acceptance
+
+- Hide one succeeded generation and reload the Mini App: it must stay absent from visible History.
+- Open `Управление → Скрытые`: the same generation must be returned by the backend and displayed.
+- Press `Вернуть`, reload again: it must reappear in normal History and disappear from `Скрытые`.
+- Another user must not be able to hide/list/restore the owner's generation.
