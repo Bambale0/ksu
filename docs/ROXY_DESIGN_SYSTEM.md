@@ -17,7 +17,7 @@ Do not add another `approved`, `feedback`, `polish`, `density`, `final`, or `ove
 
 ## 2. Retired visual layers
 
-The following global override layers were removed during the Concept One migration and must not be reintroduced:
+The following global override and duplicate-home layers were removed during the Concept One migration and must not be reintroduced:
 
 - `roxy-approved-theme.css`
 - `roxy-approved-surfaces.css`
@@ -29,8 +29,11 @@ The following global override layers were removed during the Concept One migrati
 - `roxy-mature-ui.css`
 - `roxy-mobile-runtime.css`
 - `roxy-header-logo.css`
+- `roxy-reference-home.css`
+- `roxy-reference-home.js`
+- `roxy-reference-order.css`
 
-The release gate fails if these files return or are mounted again.
+The reference-home bundle was especially problematic because it was mounted indirectly from the notification badge bridge and could hide/reorder the canonical home. The bridge now owns notifications/balance only. The release gate fails if these retired layers return or are mounted again.
 
 ## 3. Concept One palette
 
@@ -157,4 +160,4 @@ Before adding customer UI:
 
 ## 12. Migration note
 
-Concept One intentionally replaces the previous cascade of late-mounted visual correction files. Functional modules such as generation, catalog, history, profile, payments, partner flows and Telegram runtime remain intact; only the global visual ownership model changed.
+Concept One intentionally replaces the previous cascade of late-mounted visual correction files and the duplicate reference-home dashboard. Functional modules such as generation, catalog, history, profile, payments, partner flows and Telegram runtime remain intact; only the global visual ownership model changed.
