@@ -6,7 +6,7 @@ ROXY runs a dedicated `backup-worker` alongside PostgreSQL. The worker uses `pos
 
 Production deploy explicitly starts `backup-worker` as a runtime service. The worker depends on healthy PostgreSQL but the customer-facing `app` does not depend on backup completion, so a large dump cannot hold the application startup path open.
 
-The worker reads `DATABASE_URL`, normalizes only the SQLAlchemy `postgresql+asyncpg://` scheme for libpq tools, and creates a custom-format dump every three hours by default.
+The worker reads `DATABASE_URL`, normalizes only the SQLAlchemy `postgresql+asyncpg://` scheme for libpq tools, and creates a custom-format dump every three hours by default. If a dump/validation attempt fails, the worker retries after **60 seconds** until it produces a verified archive; the normal three-hour interval resumes only after success.
 
 A periodic archive is published only after all of these conditions succeed:
 
@@ -107,8 +107,9 @@ If `backup-worker` restarts or reports repeated `backup failed` messages:
 3. verify PostgreSQL readiness and free disk space;
 4. verify `DATABASE_URL` is a PostgreSQL URL reachable from the compose network;
 5. run checksum/catalog validation on the last known-good archive;
-6. restore service before allowing the backup age to exceed the operational recovery objective;
-7. escalate immediately if both local and off-host copies are stale/unavailable.
+6. expect failed attempts to retry every 60 seconds rather than waiting a full scheduled interval;
+7. restore service before allowing the backup age to exceed the operational recovery objective;
+8. escalate immediately if both local and off-host copies are stale/unavailable.
 
 Do not work around backup failures by weakening archive validation or publishing an unverified temporary file as `latest.dump`.
 
