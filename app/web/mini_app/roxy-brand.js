@@ -22,6 +22,8 @@
   }
 
   function mountProductLayers() {
+    // Functional modules keep their local layout hooks. The final customer look is
+    // owned by one canonical stylesheet mounted last instead of a stack of theme fixes.
     mountLayer({ css: "/mini-app/roxy-boot-logo-v5.css" });
     mountLayer({ js: "/mini-app/roxy-icons.js" });
     mountLayer({ js: "/mini-app/roxy-generation-context.js" });
@@ -42,18 +44,14 @@
     mountLayer({ css: "/mini-app/roxy-history-management.css", js: "/mini-app/roxy-history-management.js" });
     mountLayer({ js: "/mini-app/roxy-preset-editor.js" });
     mountLayer({ js: "/mini-app/roxy-notification-badge-bridge.js" });
-    mountLayer({ css: "/mini-app/roxy-fhd-density.css" });
-    mountLayer({ css: "/mini-app/roxy-home-density-v3.css" });
-    mountLayer({ css: "/mini-app/roxy-mobile-runtime.css", js: "/mini-app/roxy-mobile-runtime.js" });
-    mountLayer({ css: "/mini-app/roxy-mature-ui.css" });
-    mountLayer({ css: "/mini-app/roxy-approved-theme.css", js: "/mini-app/roxy-approved-home.js" });
-    mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
-    mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
-    mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
+    mountLayer({ js: "/mini-app/roxy-mobile-runtime.js" });
+    mountLayer({ js: "/mini-app/roxy-approved-home.js" });
     mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=12", js: "/mini-app/roxy-partner-promo.js?v=12" });
     mountLayer({ css: "/mini-app/roxy-app-onboarding.css?v=1", js: "/mini-app/roxy-app-onboarding.js?v=1" });
-    mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
-    mountLayer({ css: "/mini-app/roxy-header-logo.css?v=5" });
+    mountLayer({ js: "/mini-app/roxy-model-categories.js" });
+
+    // Concept One is the single final visual authority.
+    mountLayer({ css: "/mini-app/roxy-design-system.css?v=1" });
   }
 
   function setTelegramChrome() {
@@ -115,20 +113,18 @@
   }
 
   function styleHomeHero() {
-    const home = document.getElementById("createHome");
-    const hero = home?.querySelector(".hero-card");
-    if (!home || !hero) return;
-    hero.hidden = true;
+    // The approved-home module owns the Concept One hero. Do not hide it with a
+    // late branding patch; the old hero remains only as a functional fallback.
     document.getElementById("roxyHomeBalance")?.remove();
     document.getElementById("roxyCreateCta")?.remove();
   }
 
   function arrangeHomeDashboard() {
     const home = document.getElementById("createHome");
-    const families = home?.querySelector('.home-section[aria-labelledby="familiesHeading"]');
     const promo = document.getElementById("roxyPromoSection");
-    if (!home || !families || !promo) return;
-    if (home.firstElementChild !== promo) home.prepend(promo);
+    if (!home || !promo) return;
+    const hero = document.getElementById("roxyApprovedHero") || home.querySelector(":scope > .hero-card");
+    if (hero && hero.nextElementSibling !== promo) hero.insertAdjacentElement("afterend", promo);
   }
 
   function styleWalletCopy() {
