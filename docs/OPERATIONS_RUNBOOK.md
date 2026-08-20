@@ -1,8 +1,9 @@
-# KSU production operations runbook
+# KSU / ROXY production operations runbook
 
-**Status:** matches runtime as of 2026-08-12.
+**Status:** synchronized with shipped runtime on 2026-08-20.  
+**Runtime baseline:** `main` after generation recovery hardening `fa787db146f713b8f6568f037dd2d1ca17c2c68c`.
 
-This runbook covers the FastAPI app, Telegram Mini App, PostgreSQL/Redis, durable generation delivery, product-owned media ingestion, payment reconciliation, OWASP API4 resource controls, observability and privileged admin API.
+This runbook covers the FastAPI app, Telegram Mini App, PostgreSQL/Redis, durable generation delivery, product-owned media ingestion, payment reconciliation, creator partnership worker, abuse protection, observability and privileged admin surfaces.
 
 ## 1. Topology
 
@@ -13,21 +14,23 @@ Internet / Telegram
  HTTPS reverse proxy
         |
         v
- app :8000 --------------------> PostgreSQL
-   |                              |-- business state
-   |                              |-- generation_outbox
-   |                              |-- media_assets / media_ingest_jobs
-   |                              |-- payment lifecycle
+ app :8000 --------------------------> PostgreSQL
+   |                                  |-- business state / wallets
+   |                                  |-- generation_outbox
+   |                                  |-- media_assets / media_ingest_jobs
+   |                                  |-- payment lifecycle
+   |                                  |-- admin / feed / partner state
    |
-   +--> Redis ------------------> limits / FSM / wake signals / worker telemetry
+   +--> Redis -----------------------> rate limits / FSM / wake signals / worker telemetry
    |       |
-   |       +--> generation-worker --> Kie.ai
-   |       +--> media-worker -------> private S3-compatible bucket
+   |       +--> generation-worker ------> Kie.ai
+   |       +--> media-worker -----------> private S3-compatible bucket
    |
-   +----------> payment-worker ----> payment providers
+   +----------> payment-worker ---------> payment providers
+   +----------> creator-partnership-worker
 ```
 
-Compose services:
+Current compose services:
 
 ```text
 postgres
@@ -36,9 +39,10 @@ app
 generation-worker
 media-worker
 payment-worker
+creator-partnership-worker
 ```
 
-Only the HTTPS proxy should be internet-facing. PostgreSQL and Redis must remain private. The media bucket must also remain private; users receive short-lived presigned read capabilities only after ownership checks.
+Only the HTTPS proxy should be internet-facing. PostgreSQL and Redis remain private. Product media storage must remain private; user access uses short-lived presigned capabilities after ownership checks.
 
 ## 2. External endpoints
 
@@ -62,13 +66,16 @@ POST /webhooks/payments/tbank
 POST /webhooks/payments/yookassa
 ```
 
-Mini App:
+Primary hosted card checkout uses its configured provider callback route documented in `PRIMARY_CARD_CHECKOUT.md` / `WALLET_PAYMENTS.md`.
+
+Product surfaces:
 
 ```text
 GET /mini-app/
+GET /admin-app/
 ```
 
-Kie callback URLs include the local `generation_id`; callback HMAC and authoritative `recordInfo` remain required.
+Kie callback URLs may include the local `generation_id` for recovery correlation. HMAC validation remains required when configured, and authoritative provider status lookup is the final task-state source rather than callback payload fields alone.
 
 ## 3. Core production environment
 
@@ -81,14 +88,18 @@ BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
 
-INTERNAL_CREDIT_RUB=10
-ROX_PACKAGES_JSON={"starter":{"credits":"30","currency":"RUB"}}
+# Public economy: 1 ROX = 1 RUB.
+INTERNAL_CREDIT_RUB=1
+START_BALANCE_ROX=50
+INVITE_BONUS_ROX=30
+PROMPT_REPEAT_BONUS_ROX=5
+ROX_PACKAGES_JSON={}
 
 ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
 ADMIN_REQUIRE_MFA=true
 ```
 
-Provider and storage credentials are listed in `.env.example`; never reuse them for `ADMIN_SECURITY_KEY`.
+Provider/storage credentials are listed in `.env.example`. The example file must contain placeholders only; never commit a live provider/payment credential. Do not reuse provider secrets as `ADMIN_SECURITY_KEY`.
 
 ## 4. Generation reliability configuration
 
@@ -104,12 +115,27 @@ GENERATION_WORKER_POLL_SECONDS=5
 GENERATION_OUTBOX_LEASE_SECONDS=90
 GENERATION_SUBMISSION_MAX_ATTEMPTS=5
 GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS=900
+GENERATION_HARD_TIMEOUT_SECONDS=7200
 GENERATION_RECONCILE_INTERVAL_SECONDS=60
 GENERATION_RECONCILE_STALE_SECONDS=60
 GENERATION_RECOVERY_BATCH_SIZE=50
 ```
 
-Generation + wallet debit + PostgreSQL transactional outbox commit together. Redis `wake:generations` is latency optimization only.
+Generation + wallet debit + PostgreSQL transactional outbox commit together. Redis `wake:generations` is a latency optimization only.
+
+Recovery rules:
+
+- terminal `succeeded` / `failed` states are monotonic;
+- permanent validation/auth rejection fails/refunds immediately;
+- explicit provider `429` is retryable;
+- timeout, transport, 5xx and malformed-success outcomes are treated as uncertain because a billable task may already exist;
+- uncertain submissions remain `submitting` and are **not** blindly resubmitted;
+- callback/reconciliation may bind the provider task ID later;
+- unresolved uncertain submissions fail/refund once after `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`;
+- active provider work exceeding `GENERATION_HARD_TIMEOUT_SECONDS` fails/refunds once;
+- a provider success without usable result media is not finalized as a charged empty success.
+
+Do not manually retry `createTask` for an uncertain generation. Doing so can create two paid provider tasks for one local debit.
 
 ## 5. Durable media storage configuration
 
@@ -138,17 +164,17 @@ MEDIA_PRESIGN_TTL_SECONDS=900
 MEDIA_LEGACY_RECONCILE_SECONDS=60
 ```
 
-For AWS S3, prefer workload/IAM credentials and leave `S3_ENDPOINT_URL` empty. For S3-compatible services, use the provider's HTTPS endpoint and required addressing style.
+For AWS S3, prefer workload/IAM credentials and leave `S3_ENDPOINT_URL` empty. For S3-compatible services, use the provider HTTPS endpoint and required addressing style.
 
 Required deployment controls:
 
 - keep the bucket private;
 - scope runtime IAM to the product bucket/prefix;
 - configure browser CORS for exact Telegram/web origins that need downloads;
-- configure lifecycle `AbortIncompleteMultipartUpload` cleanup for `generations/`;
+- configure lifecycle cleanup for incomplete multipart uploads;
 - monitor media-worker heartbeat and oldest ingest age.
 
-Detailed bucket/CORS/lifecycle examples are in `docs/MEDIA_STORAGE.md`.
+Detailed storage guidance is in `docs/MEDIA_STORAGE.md`.
 
 ## 6. Payment lifecycle configuration
 
@@ -156,6 +182,13 @@ Detailed bucket/CORS/lifecycle examples are in `docs/MEDIA_STORAGE.md`.
 PAYMENT_RECONCILE_INTERVAL_SECONDS=60
 PAYMENT_RECONCILE_STALE_SECONDS=30
 PAYMENT_RECONCILE_BATCH_SIZE=100
+
+CARD_API_KEY=...
+CARD_API_BASE_URL=https://gate.lava.top
+CARD_WEBHOOK_KEY=...
+CARD_OFFER_ID=...
+CARD_PACKAGES_JSON={}
+CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={}
 
 CRYPTOPAY_API_TOKEN=...
 TBANK_TERMINAL_KEY=...
@@ -165,11 +198,17 @@ YOOKASSA_SECRET_KEY=...
 PAYMENT_RETURN_URL=https://app.example.com/payment-result
 ```
 
-`payment-worker` reconciles unknown/pending provider state. Do not manually set payment success/refund state as an incident shortcut.
+`payment-worker` reconciles unknown/pending provider state. Never manually mark payment success/refund as an incident shortcut. Amount, currency and provider identity must be bound to the original durable local payment intent.
 
-## 7. Anti-abuse / OWASP API4 controls
+## 7. Creator partnership worker
 
-Production defaults are explicit and configurable:
+```dotenv
+CREATOR_PARTNERSHIP_GRANT_INTERVAL_SECONDS=3600
+```
+
+Creator/influencer grants are spend-only ROX and are separate from withdrawable referral earnings. The worker is idempotent per agreement/period; do not manually duplicate a grant when troubleshooting delayed worker execution.
+
+## 8. Anti-abuse / OWASP API4 controls
 
 ```dotenv
 ABUSE_PROTECTION_ENABLED=true
@@ -190,25 +229,25 @@ Operational meaning:
 
 - generation request rate is per authenticated user;
 - active-generation cap covers `queued`, `retry`, `submitting`, `generating`;
-- daily generation-credit ceiling is optional (`0` disables it);
+- daily generation spend ceiling is expressed in public ROX after migration `0023`; `0` disables it;
 - upload request rate and bytes/day are per authenticated user;
-- Kie upload also keeps global MIME and `KIE_UPLOAD_MAX_BYTES` checks;
+- Kie upload keeps MIME and `KIE_UPLOAD_MAX_BYTES` checks;
 - payment creation has a per-user rate in addition to UUID idempotency;
 - Kie has a global submission rate and availability circuit breaker;
 - `429` responses carry `Retry-After`;
-- if `ABUSE_FAIL_CLOSED=true`, inability to verify an expensive user/provider operation through Redis returns/delays with `503`/retry instead of allowing unmetered spend.
+- with `ABUSE_FAIL_CLOSED=true`, inability to verify an expensive operation through Redis returns/delays rather than allowing unmetered spend.
 
-### Important Redis-outage distinction
+### Redis-outage distinction
 
-PostgreSQL remains durable business state. If Redis goes down **after** a paid generation has been committed, the generation is not lost. However, with fail-closed protection, `generation-worker` can deliberately postpone a new Kie submission until the protection store recovers. This is expected safety behavior, not an outbox failure.
+PostgreSQL remains durable business state. If Redis fails **after** a paid generation is committed, the generation is not lost. With fail-closed protection, `generation-worker` can deliberately postpone a new Kie submission until the protection store recovers. This is expected safety behavior.
 
-Media ingestion also remains durable in PostgreSQL. Redis heartbeat loss can make `/health/operational` degraded, but it does not delete `media_ingest_jobs`.
+Media ingestion also remains durable in PostgreSQL. Redis heartbeat loss can make `/health/operational` degraded but does not delete media jobs.
 
 ### Reverse-proxy body limit
 
-Application upload checks happen after multipart reaches FastAPI. Configure an edge/proxy request-body limit consistent with the largest allowed upload so oversized bodies are rejected before application parsing. Application quotas do not replace this edge control.
+Application upload checks happen after multipart reaches FastAPI. Configure an edge/proxy request-body limit consistent with the largest allowed upload so oversized bodies are rejected before application parsing.
 
-## 8. Deployment
+## 9. Deployment
 
 ```bash
 git clone <repository-url> ksu
@@ -217,25 +256,29 @@ cp .env.example .env
 chmod 600 .env
 
 docker compose up -d postgres redis
-docker compose build app generation-worker media-worker payment-worker
+docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
 docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker
+docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
 ```
 
-Current migration chain:
+The production workflow under `.github/workflows/` is preferred for real releases because it resolves an exact `main` SHA, requires green release workflows and performs health/release verification. See `docs/GITHUB_PRODUCTION_DEPLOY.md`.
+
+Current Alembic chain reaches:
 
 ```text
 0001_initial
-0002_admin_security
-0003_generation_outbox
-0004_payment_lifecycle
-0005_generation_history_state
-0006_durable_media_storage
+...
+0020_batch_generation
+0021_batch_generation_items
+0022_batch_generation_commands
+0023_roxy_one_ruble_denomination
+0024_creator_partnership
+0025_partner_wallet_transfers
 ```
 
-Anti-abuse and observability use current PostgreSQL/Redis infrastructure and add no separate migration.
+Always run `alembic upgrade head`; do not hard-code `0025` as a deployment target because later migrations may be added.
 
-## 9. Smoke checks
+## 10. Smoke checks
 
 ```bash
 BASE=https://api.example.com
@@ -247,7 +290,7 @@ curl -fsS "$BASE/api/v1/generations/models"
 curl -fsS "$BASE/api/v1/payments/packages"
 ```
 
-Then use Telegram to verify one model quote, one small upload, one budgeted generation and one low-value test payment. For a successful generation, wait for `result_storage=owned` and verify the owned media opens/downloads before declaring the storage deployment healthy.
+Then use Telegram to verify one model quote, one small upload, one budgeted generation and one low-value test payment. For a successful generation, wait for product-owned media state and verify the owned media opens/downloads before declaring storage healthy.
 
 ### Limit smoke test
 
@@ -259,9 +302,9 @@ Retry-After: <seconds>
 {"code":"resource_limit_exceeded", ...}
 ```
 
-Temporarily point staging at an unavailable limiter Redis and verify expensive mutation returns `503 protection_backend_unavailable` when fail-closed is enabled.
+Temporarily point staging at an unavailable limiter Redis and verify expensive mutation returns the expected protection-backend failure when fail-closed is enabled.
 
-## 10. Generation incident checks
+## 11. Generation incident checks
 
 Outbox summary:
 
@@ -281,15 +324,27 @@ ORDER BY created_at ASC
 LIMIT 100;
 ```
 
-If a generation is delayed with an error mentioning resource/circuit protection:
+Generation state overview:
 
-1. check Redis health;
-2. check Kie provider health/429/5xx rate;
-3. inspect circuit TTL before forcing anything;
-4. do not manually mark the generation failed or create another paid task;
-5. let the durable outbox retry after the protection delay.
+```sql
+SELECT id, status, provider, external_id, created_at, updated_at, error
+FROM generations
+WHERE status IN ('queued','retry','submitting','generating')
+ORDER BY created_at ASC
+LIMIT 100;
+```
 
-## 11. Media incident checks
+If a generation is delayed:
+
+1. check Redis and generation-worker heartbeat;
+2. check Kie 429/5xx/provider health;
+3. inspect whether the local state is `submitting` with no `external_id` before doing anything;
+4. for uncertain submission, **do not create another provider task manually**;
+5. allow callback/reconciliation and the configured unknown-submission timeout to decide the outcome;
+6. for old `generating` work, compare provider status and `GENERATION_HARD_TIMEOUT_SECONDS`;
+7. never manually credit a refund when the idempotent generation refund path can perform it.
+
+## 12. Media incident checks
 
 Queue summary:
 
@@ -319,20 +374,20 @@ ORDER BY j.created_at ASC
 LIMIT 100;
 ```
 
-If storage is intentionally not configured, jobs stay pending without consuming the permanent retry budget. Once `S3_BUCKET` and credentials are configured, the same durable rows resume.
+If storage is intentionally not configured, durable jobs can remain pending until configuration is restored.
 
 For repeated media failures:
 
-1. verify `media-worker` heartbeat;
+1. verify media-worker heartbeat;
 2. verify bucket/region/custom endpoint and credentials;
 3. check provider URL HTTP state and whether it expired;
 4. inspect SSRF/MIME/size rejection messages before widening any limits;
 5. never mark a generation failed/refund it solely because durable copying failed;
-6. do not manually rewrite object keys unless performing a reviewed data repair.
+6. do not manually rewrite object keys without a reviewed repair plan.
 
-## 12. Redis anti-abuse keys
+## 13. Redis anti-abuse keys
 
-Current key families:
+Current key families include:
 
 ```text
 abuse:generation:user:<user_uuid>
@@ -344,9 +399,9 @@ abuse:circuit:kie:failures
 abuse:circuit:kie:open
 ```
 
-Do not routinely delete these in production to “fix” throttling. Confirm the underlying traffic/provider incident first.
+Do not routinely delete these in production to bypass throttling. Confirm the underlying traffic/provider incident first.
 
-## 13. Payment incident checks
+## 14. Payment incident checks
 
 Creation-intent state:
 
@@ -366,11 +421,11 @@ ORDER BY created_at DESC
 LIMIT 100;
 ```
 
-Payment `creation_unknown` should be reconciled through the original local intent; never mint a new idempotency key automatically.
+`creation_unknown` must be reconciled through the original local intent; never mint a new idempotency key automatically just because the provider create response was lost.
 
-## 14. Backup and restore
+## 15. Backup and restore
 
-PostgreSQL contains wallets, payments, durable generation work and durable media metadata/queue state:
+PostgreSQL contains wallets, payments, durable generation work, media metadata/queue state, partner/admin/feed state:
 
 ```bash
 mkdir -p backups
@@ -378,73 +433,64 @@ docker compose exec -T postgres \
   pg_dump -U ksu -d ksu -Fc > "backups/ksu-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-Keep off-host copies and regularly restore into a separate test database.
+Validate backups and keep off-host copies. Regularly restore into a separate test database.
 
-The S3 bucket is a separate durability domain. Configure versioning/replication/backup according to the chosen provider and product retention requirements. A PostgreSQL restore does not restore deleted object bytes by itself.
+The media bucket is a separate durability domain. Configure versioning/replication/backup according to the storage provider and product retention requirements. A PostgreSQL restore does not restore deleted object bytes.
 
-Redis loss affects FSM, protection state and latency, but not committed PostgreSQL wallet/payment/outbox/media rows.
+Redis loss affects FSM, protection state and latency, not committed PostgreSQL wallet/payment/outbox/media rows.
 
-## 15. Release procedure
+## 16. Release procedure
 
-1. require green CI;
-2. inspect migrations/config changes;
-3. back up PostgreSQL;
-4. verify bucket policy/CORS/lifecycle before enabling media-worker in production;
-5. build images;
-6. run migration explicitly;
-7. recreate app and all three workers;
-8. run health/product/media/limit smoke checks;
-9. watch logs, Prometheus and provider dashboards.
+1. require green CI / required workflows for the exact release SHA;
+2. inspect migrations and configuration changes;
+3. confirm maintained docs and `.env.example` match the runtime change;
+4. back up PostgreSQL;
+5. verify storage policy/CORS/lifecycle when media behavior changed;
+6. build images;
+7. run migration explicitly;
+8. recreate app and current workers;
+9. run health/product/media/payment/recovery smoke checks;
+10. watch logs, metrics and provider dashboards.
 
 ```bash
-docker compose build app generation-worker media-worker payment-worker
+docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
 docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker
-docker compose logs --tail=200 app generation-worker media-worker payment-worker
+docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker
+docker compose logs --tail=200 app generation-worker media-worker payment-worker creator-partnership-worker
 ```
 
 Do not automatically run `alembic downgrade` after a failed production release; use a reviewed forward fix or controlled restore when necessary.
 
-## 16. Monitoring priorities
+## 17. Monitoring priorities
 
 Use `/metrics`, `/health/operational` and `ops/prometheus-alerts.yml` as the baseline. Prioritize:
 
 - API readiness and 5xx ratio;
-- generation/media/payment worker heartbeats;
+- generation/media/payment/creator worker heartbeats where published;
 - generation outbox oldest pending age;
+- generations stuck in `submitting` / `generating`;
 - media ingest oldest pending age and failed asset count;
 - generation refund/failure spikes;
 - Redis availability;
-- repeated `resource_limit_exceeded` / `protection_backend_unavailable` events;
+- repeated resource/protection errors;
 - Kie 429/5xx and open circuit events;
 - payment reconciliation errors and webhook 4xx/5xx;
 - admin auth failures;
 - PostgreSQL connections/storage;
 - S3 capacity/quota/provider errors and incomplete multipart cleanup.
 
-Never log bearer tokens, Telegram `initData`, provider/S3 secrets, MFA secrets, recovery codes or full presigned query strings.
+Never log bearer tokens, Telegram `initData`, provider/S3/payment secrets, MFA secrets, recovery codes or full presigned query strings.
 
-## 17. CI gate
+## 18. CI gate
 
-GitHub Actions validates:
+GitHub Actions validates the repository with Ruff, Python compile checks, Mini App/Admin JavaScript syntax checks, Alembic migration on PostgreSQL and the full regression suite. Focused generation tests protect outbox recovery, terminal monotonicity, uncertain submissions, stale Kie HMAC callbacks and refund exactly-once behavior.
 
-```text
-install dependencies
-ruff check .
-python compileall
-node --check app/web/mini_app/app.js
-alembic upgrade head on PostgreSQL
-pytest on PostgreSQL + Redis
-```
+Release-specific workflow requirements are documented in `docs/GITHUB_PRODUCTION_DEPLOY.md` and `docs/ROXY_RELEASE_ACCEPTANCE.md`.
 
-Anti-abuse tests use real Redis for Lua counters/TTL/circuit behavior and PostgreSQL for generation admission. Durable-media tests exercise PostgreSQL idempotency/ownership and S3 signing without requiring production object-storage credentials.
+## 19. Known intentionally constrained behavior
 
-## 18. Current gaps / next epic
+- T-Bank partial merchant refund remains guarded/review-oriented until receipt/fiscal semantics are safely modelled.
+- `mypy` is not currently an enforced CI gate unless the workflow is explicitly changed.
+- Provider/API capabilities are exposed only when they have a real mapped and tested backend contract; historical parity documents do not authorize a model or operation by themselves.
 
-- full Mini App product shell/navigation is the next P1 epic;
-- no visual admin client is bundled yet;
-- acquiring settlement/chargeback register ingestion is not automated;
-- T-Bank partial merchant refund remains intentionally disabled until receipt/fiscal data is modelled;
-- `mypy` is not yet a CI gate.
-
-Official external guidance used by this runbook includes OWASP API Security API4 Unrestricted Resource Consumption, Redis distributed rate limiting, PostgreSQL queue-style `SKIP LOCKED`, Kie task/webhook/upload documentation, AWS S3/Boto3 presigned URL/managed transfer/lifecycle guidance, Telegram Mini Apps, Crypto Pay, T-Bank and YooKassa provider documentation.
+For current product/runtime truth, follow `docs/README.md`, `docs/CURRENT_STATE.md`, this runbook and the tested server contracts. Historical `parity-*` files are implementation records only.
