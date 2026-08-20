@@ -8,32 +8,34 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def test_home_no_longer_uses_duplicated_balance_billboard() -> None:
-    css = _read("roxy-fhd-density.css")
-    assert ".roxy-brand-ready #roxyHomeBalance" in css
-    assert "display: none !important" in css
-    assert ".roxy-brand-ready #createHome > .hero-card" in css
-    assert "min-height: 96px" in css
-    assert "font-size: 22px" in css
+def test_home_uses_concept_one_hero_without_legacy_density_layer() -> None:
+    brand = _read("roxy-brand.js")
+    css = _read("roxy-design-system.css")
+    assert not (MINI / "roxy-fhd-density.css").exists()
+    assert 'document.getElementById("roxyHomeBalance")?.remove()' in brand
+    assert 'document.getElementById("roxyCreateCta")?.remove()' in brand
+    assert "hero.hidden = true" not in brand
+    assert ".roxy-approved-hero" in css
+    assert "min-height: 178px" in css
 
 
-def test_fhd_home_uses_parallel_workspace_layout() -> None:
-    css = _read("roxy-fhd-density.css")
+def test_wide_layout_is_owned_by_canonical_design_system() -> None:
+    css = _read("roxy-design-system.css")
     for token in (
-        "--roxy-fhd-max: 1880px",
-        "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr)",
-        '.home-section[aria-labelledby="familiesHeading"]',
-        "grid-template-columns: repeat(6, minmax(0, 1fr))",
+        "--roxy-content: 840px",
+        "@media (min-width: 720px)",
+        "grid-template-columns: minmax(0, 1.03fr) minmax(300px, .97fr)",
+        ".family-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }",
     ):
         assert token in css
 
 
-def test_backend_tools_are_visible_on_home_not_profile_only() -> None:
+def test_backend_tools_remain_available_without_owning_primary_navigation() -> None:
     source = _read("roxy-parity-navigation.js")
+    navigation = _read("roxy-customer-navigation.js")
     for token in (
         'section.id = "roxyHomeTools"',
         'homeTool("catalog", "Каталог", openCatalog)',
-        'homeTool("feed", "Лента", openFeed)',
         'homeTool("trend", "Тренды"',
         'homeTool("prompt", "Prompt"',
         'homeTool("batch", "Batch"',
@@ -41,12 +43,13 @@ def test_backend_tools_are_visible_on_home_not_profile_only() -> None:
         'homeTool("bell", "События"',
         'homeTool("support", "Поддержка"',
         'window.RoxyIcons?.create?.(name, { size: 22 })',
-        'families.insertAdjacentElement("beforebegin", section)',
     ):
         assert token in source
+    assert 'catalog: "Каталог"' in navigation
+    assert 'PRIMARY_ROUTES = ["home", "catalog", "create", "history", "profile"]' in navigation
 
 
-def test_home_tool_grid_is_compact_on_telegram_mobile() -> None:
+def test_home_tool_grid_remains_compact_on_telegram_mobile() -> None:
     css = _read("roxy-parity-navigation.css")
     for token in (
         ".roxy-home-tools-grid",
