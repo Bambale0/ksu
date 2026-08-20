@@ -49,15 +49,15 @@ The home promo carousel contains approved user-supplied slide compositions. Thes
 Runtime assets:
 
 ```text
-app/web/mini_app/roxy-partner-referrals-slide-source.webp
-app/web/mini_app/roxy-creator-rewards-slide-source.webp
+app/web/mini_app/roxy-partner-referrals-slide-source.png
+app/web/mini_app/roxy-creator-rewards-slide-source.png
 ```
 
 Documentation mirrors:
 
 ```text
-docs/assets/roxy-promo/partner-referrals-runtime.webp
-docs/assets/roxy-promo/creator-rewards-runtime.webp
+docs/assets/roxy-promo/partner-referrals-runtime.png
+docs/assets/roxy-promo/creator-rewards-runtime.png
 ```
 
 Asset rules:
@@ -71,7 +71,7 @@ Asset rules:
 - cache-bust when replacing the approved binary;
 - asset integrity/regression tests must validate real packaged files, not impossible placeholder size/hash requirements.
 
-The first supplied master is approximately 1536×857 and the second 1536×864. When a higher-resolution master is supplied, replace the packaged runtime copy from that exact master rather than redrawing the scene.
+The current supplied masters are 1672×941 PNG images. When a higher-resolution master is supplied, replace the packaged runtime copy from that exact master rather than redrawing the scene.
 
 `docs/assets/roxy-promo/README.md` records the asset provenance/handling contract.
 

@@ -10,36 +10,37 @@ def _read(name: str) -> str:
     return (MINI / name).read_text(encoding="utf-8")
 
 
-def _assert_webp(path: Path) -> bytes:
+def _assert_png(path: Path) -> bytes:
     payload = path.read_bytes()
-    assert len(payload) > 10_000
-    assert payload.startswith(b"RIFF")
-    assert payload[8:12] == b"WEBP"
+    assert len(payload) > 1_000_000
+    assert payload.startswith(b"\x89PNG\r\n\x1a\n")
     return payload
 
 
 def test_supplied_promo_artworks_are_bundled_mounted_and_mirrored() -> None:
-    partner = MINI / "roxy-partner-referrals-slide-source.webp"
-    creator = MINI / "roxy-creator-rewards-slide-source.webp"
+    partner = MINI / "roxy-partner-referrals-slide-source.png"
+    creator = MINI / "roxy-creator-rewards-slide-source.png"
     brand = _read("roxy-brand.js")
 
-    partner_payload = _assert_webp(partner)
-    creator_payload = _assert_webp(creator)
+    partner_payload = _assert_png(partner)
+    creator_payload = _assert_png(creator)
 
-    assert (DOC_ASSETS / "partner-referrals-runtime.webp").read_bytes() == partner_payload
-    assert (DOC_ASSETS / "creator-rewards-runtime.webp").read_bytes() == creator_payload
+    assert (DOC_ASSETS / "partner-referrals-runtime.png").read_bytes() == partner_payload
+    assert (DOC_ASSETS / "creator-rewards-runtime.png").read_bytes() == creator_payload
 
-    assert '/mini-app/roxy-partner-promo.css?v=11' in brand
-    assert '/mini-app/roxy-partner-promo.js?v=11' in brand
+    assert '/mini-app/roxy-partner-promo.css?v=12' in brand
+    assert '/mini-app/roxy-partner-promo.js?v=12' in brand
 
 
 def test_home_promo_carousel_uses_only_current_supplied_slides() -> None:
     script = _read("roxy-partner-promo.js")
 
     assert 'id: "partner-referrals-35"' in script
-    assert 'image: "/mini-app/roxy-partner-referrals-slide-source.webp?v=11"' in script
+    assert 'image: "/mini-app/roxy-partner-referrals-slide-source.png?v=12"' in script
     assert 'id: "creator-rewards"' in script
-    assert 'image: "/mini-app/roxy-creator-rewards-slide-source.webp?v=11"' in script
+    assert 'image: "/mini-app/roxy-creator-rewards-slide-source.png?v=12"' in script
+    assert 'roxy-partner-referrals-slide-source.webp?v=11' not in script
+    assert 'roxy-creator-rewards-slide-source.webp?v=11' not in script
     assert 'roxy-partner-referrals-slide.webp?v=7' not in script
     assert 'roxy-creator-rewards-slide.webp?v=7' not in script
     assert "-hq.svg" not in script

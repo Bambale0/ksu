@@ -87,15 +87,15 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 Documentation mirrors of the current runtime slide binaries live in:
 
 ```text
-docs/assets/roxy-promo/partner-referrals-runtime.webp
-docs/assets/roxy-promo/creator-rewards-runtime.webp
+docs/assets/roxy-promo/partner-referrals-runtime.png
+docs/assets/roxy-promo/creator-rewards-runtime.png
 ```
 
 The runtime files remain:
 
 ```text
-app/web/mini_app/roxy-partner-referrals-slide-source.webp
-app/web/mini_app/roxy-creator-rewards-slide-source.webp
+app/web/mini_app/roxy-partner-referrals-slide-source.png
+app/web/mini_app/roxy-creator-rewards-slide-source.png
 ```
 
 The originals are user-supplied artwork. Do not recreate, restyle, re-typeset, crop or replace them with generated approximations. Asset replacement must preserve the exact approved composition and copy.

@@ -50,7 +50,7 @@
     mountLayer({ css: "/mini-app/roxy-approved-surfaces.css" });
     mountLayer({ css: "/mini-app/roxy-client-feedback.css" });
     mountLayer({ css: "/mini-app/roxy-unified-controls.css" });
-    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=11", js: "/mini-app/roxy-partner-promo.js?v=11" });
+    mountLayer({ css: "/mini-app/roxy-partner-promo.css?v=12", js: "/mini-app/roxy-partner-promo.js?v=12" });
     mountLayer({ css: "/mini-app/roxy-app-onboarding.css?v=1", js: "/mini-app/roxy-app-onboarding.js?v=1" });
     mountLayer({ css: "/mini-app/roxy-iphone-polish.css", js: "/mini-app/roxy-model-categories.js" });
     mountLayer({ css: "/mini-app/roxy-header-logo.css?v=5" });

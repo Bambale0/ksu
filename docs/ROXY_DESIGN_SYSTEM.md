@@ -346,8 +346,8 @@ Profile is an operational cabinet: account, notifications, support, preferences.
 Approved promo slide artwork is product-owned and must be preserved exactly:
 
 ```text
-app/web/mini_app/roxy-partner-referrals-slide-source.webp
-app/web/mini_app/roxy-creator-rewards-slide-source.webp
+app/web/mini_app/roxy-partner-referrals-slide-source.png
+app/web/mini_app/roxy-creator-rewards-slide-source.png
 ```
 
 Rules:

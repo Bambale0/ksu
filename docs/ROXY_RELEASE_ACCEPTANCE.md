@@ -189,7 +189,7 @@ In staging/pre-production:
 
 ## Promo slide acceptance
 
-The two approved user-supplied slides must be present as packaged WebP files and mirrored under `docs/assets/roxy-promo/`.
+The two approved user-supplied slides must be present as packaged runtime PNG files and mirrored under `docs/assets/roxy-promo/`.
 
 Visual checks:
 
