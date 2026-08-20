@@ -101,7 +101,10 @@ jobs:
       - name: Generation and model contracts
         run: >-
           pytest -q
-          tests/test_model_ui_schema.py
+          tests/test_model_ui.py
+          tests/test_model_capabilities.py
+          tests/test_model_catalog.py
+          tests/test_requested_generation_models.py
           tests/test_generation_batches.py
           tests/test_batch_recovery.py
           tests/test_music_generation.py
