@@ -1,5 +1,7 @@
 # Primary hosted card checkout
 
+**Status:** synchronized with current runtime/provider contract on 2026-08-20.
+
 The user-facing payment method is always named:
 
 ```text
@@ -33,7 +35,7 @@ Checkout requires a UUID `Idempotency-Key`, package id, explicit currency and bi
 Foreign exchange is never invented by KSU. Each package can have explicit RUB, USD and EUR prices:
 
 ```text
-CARD_PACKAGES_JSON={"starter":{"credits":"30","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}
+CARD_PACKAGES_JSON={"starter":{"credits":"300","prices":{"RUB":"300","USD":"6.00","EUR":"5.70"}}}
 ```
 
 The current official custom-price limits are validated by KSU before a local payment intent is committed:
@@ -46,52 +48,89 @@ EUR   5 ..    10_000
 
 When `CARD_PACKAGES_JSON` is empty, legacy `ROX_PACKAGES_JSON` is exposed to this checkout only as RUB pricing. USD/EUR are unavailable until explicitly configured.
 
-Internal credits keep their configured RUB accounting value. Referral rewards on USD/EUR purchases therefore use `credits × INTERNAL_CREDIT_RUB` as the RUB reward basis rather than pretending that the foreign-currency numeric payment amount is RUB.
+Referral rewards on USD/EUR purchases use the purchased ROX accounting value as the RUB reward basis (`1 ROX = 1 RUB`) rather than pretending that the foreign-currency numeric payment amount is RUB.
 
 ## Payment methods and provider routing
 
-The public product does not ask users to choose an upstream technical provider. By default `paymentProvider` is omitted and the hosted checkout may expose every payment method that is enabled for the merchant and selected currency.
+The public product does not ask users to choose an upstream technical provider. By default the provider route is omitted and the hosted checkout may expose every payment method enabled for the merchant and selected currency.
 
-For RUB this includes supported Russian bank cards and SBP when enabled. For USD/EUR the hosted page may expose the merchant-enabled foreign-card and alternative methods, including Apple Pay, PayPal and PIX where available to that account/region.
-
-The adapter also implements every explicit technical route documented by the official SDK:
-
-```text
-RUB     BANK131
-USD     UNLIMINT | PAYPAL | STRIPE
-EUR     UNLIMINT | PAYPAL | STRIPE
-```
-
-`STRIPE` is documented for products only.
-
-Routes are internal implementation details and must not become customer-facing provider names. Optional pinning is configured with:
+Optional route pinning is configured with:
 
 ```text
 CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={"RUB":"BANK131","USD":"UNLIMINT","EUR":"PAYPAL"}
 ```
 
-Leave `CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={}` in the normal production setup unless there is a deliberate reason to restrict a currency to one route. This keeps all merchant-enabled hosted payment methods available instead of hiding them behind a forced provider.
+Leave `CARD_PAYMENT_ROUTE_BY_CURRENCY_JSON={}` in the normal production setup unless there is a deliberate reason to restrict a currency to one route. Routes remain internal implementation details and must not become customer-facing provider names.
+
+## Current provider API routes
+
+ROXY follows the current callable provider API contract, not historical SDK examples:
+
+```text
+POST /api/v3/invoice          create invoice
+GET  /api/v1/invoices/{id}    authoritative single-contract lookup
+```
+
+The authoritative lookup route is used for webhook reconciliation, refund inspection and recovery of a lost create response.
+
+`clientUtm` is **not** used as a ROXY merchant correlation channel. The current public schema defines it as ordinary UTM attribution data and webhook examples do not promise it will be returned. Do not add arbitrary `payment_id`/`order_id` keys there unless the provider publishes and tests a dedicated merchant-correlation contract.
 
 ## Invoice lifecycle
 
-The adapter creates a custom-price invoice with the provider's v3 invoice endpoint using:
+The local `Payment` and `PaymentRequest` are committed before the remote create call, after currency, email, package and provider amount limits pass validation.
+
+Normal lifecycle:
 
 ```text
-email
-offerId
-currency
-amount
-paymentProvider  # optional
+local creating intent committed
+  ↓
+POST /api/v3/invoice
+  ↓
+provider contract id + HTTPS payment URL
+  ↓
+local external_id stored, status=pending
 ```
 
-The local `Payment` and `PaymentRequest` intent is committed before the remote create call only after currency, email, package and official amount limits pass validation. A network ambiguity after create becomes `creation_unknown`; reconciliation deliberately does not create another invoice because the create API has no merchant idempotency key in our verified contract.
+A transport/response ambiguity after the provider may have created the contract becomes:
+
+```text
+Payment.status = creation_unknown
+PaymentRequest.status = unknown
+```
+
+ROXY deliberately does **not** issue a second invoice during reconciliation because a second remote create could produce a duplicate payable contract.
 
 Successful create stores the external invoice id and HTTPS payment URL. Mini App requires two direct user actions:
 
 1. `Создать оплату` creates the server-side intent;
 2. `Открыть оплату` opens the returned HTTPS URL.
 
-This preserves the existing direct-user-activation payment link guard.
+This preserves the direct-user-activation payment link guard.
+
+## Lost create-response recovery
+
+If a verified provider webhook arrives with a `contractId` that is not yet known locally, ROXY may recover the missing `external_id` without creating a second invoice.
+
+Recovery is fail-closed:
+
+1. fetch `GET /api/v1/invoices/{contractId}`;
+2. require authoritative contract id, amount, currency and buyer email;
+3. find local `card` intents with no `external_id`, recoverable status, exact amount and exact currency;
+4. normalize and compare the stored checkout billing email with the authoritative buyer email;
+5. bind only when **exactly one** unresolved local intent matches;
+6. acquire a row lock and re-check the same identity before writing;
+7. set `external_id`, move the payment to `pending`, and mark its `PaymentRequest` completed;
+8. continue through the ordinary authoritative reconciliation path.
+
+Recovery never guesses:
+
+- zero candidates → no bind;
+- two or more candidates → ambiguous, no bind;
+- missing provider identity fields → no bind;
+- mismatched amount/currency/email → no bind;
+- provider lookup failure → no bind.
+
+Ambiguous/provider-error webhook recovery returns non-success so provider delivery can be retried after state changes. ROX are never credited from webhook body data alone.
 
 ## Webhook security and reconciliation
 
@@ -101,7 +140,7 @@ The public webhook URL is neutral:
 /webhooks/payments/card
 ```
 
-Configure the same inbound secret in the provider webhook settings and `CARD_WEBHOOK_KEY`. Current webhook authentication uses `X-Api-Key` and is constant-time compared.
+Configure the same inbound secret in the provider webhook settings and `CARD_WEBHOOK_KEY`. Webhook authentication uses `X-Api-Key` and constant-time comparison.
 
 One-time payment events handled:
 
@@ -110,16 +149,29 @@ payment.success
 payment.failed
 ```
 
-The webhook is only a signal. Before wallet mutation KSU fetches the authoritative invoice and validates invoice id, amount and currency. Wallet credit is idempotent.
+The webhook is a signal, not settlement truth. Before wallet mutation ROXY fetches the authoritative invoice and validates provider contract identity, amount and currency. Wallet credit is idempotent.
 
-The provider can retry a failed webhook many times, so duplicate deliveries are expected and safe. Background payment reconciliation also routes local `provider=card` payments through the same authoritative invoice lookup so a lost webhook does not strand a paid invoice.
+Duplicate webhook deliveries are expected and safe. Background payment reconciliation routes known `provider=card` payments through the same authoritative invoice lookup so a lost webhook does not strand a paid invoice.
 
 ## Refunds
 
-The provider documentation states that refund webhooks are not sent. KSU therefore detects refund state during authoritative invoice reconciliation.
+Provider refund state is detected through authoritative invoice reconciliation.
 
-If the invoice exposes cumulative refunded amount, KSU computes only the unseen delta and reuses the existing payment reversal ledger, including proportional credit and referral-reward reversal.
+If the invoice exposes cumulative refunded amount, ROXY computes only the unseen delta and reuses the existing payment reversal ledger, including proportional ROX and referral-reward reversal.
 
-If the remote invoice says refunded but no authoritative refund amount is available, KSU uses `refund_review` instead of guessing how many credits to debit.
+If the remote invoice says refunded but no authoritative refund amount is available, ROXY uses `refund_review` instead of guessing how many ROX to debit.
 
-Merchant-initiated refunds for this provider are intentionally not exposed until an exact official refund endpoint/contract is verified. Existing T-Bank and YooKassa refund implementations remain unchanged.
+Merchant-initiated refunds for this provider remain intentionally unexposed until an exact current refund endpoint/contract is verified. Existing T-Bank and YooKassa refund implementations remain unchanged.
+
+## Release invariants
+
+A card checkout release must preserve all of these:
+
+- local intent exists before remote create side effect;
+- create response ambiguity never triggers blind duplicate create;
+- authoritative lookup uses the current single-contract route;
+- webhook body alone never credits ROX;
+- unknown-contract recovery binds only one exact amount/currency/email match;
+- ambiguous recovery performs no bind and no wallet mutation;
+- duplicate success credits the wallet exactly once;
+- direct user activation remains required before opening the hosted payment URL.
