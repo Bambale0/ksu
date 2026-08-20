@@ -276,9 +276,14 @@ jobs:
           done
           test "${backup_worker_running}" -eq 1
 
+          app_port="$(docker compose port app 8000 | awk -F: 'END {print $NF}')"
+          test -n "${app_port}"
+          app_base="http://127.0.0.1:${app_port}"
+          echo "Checking app health at ${app_base}"
+
           ready=0
           for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/health/ready >/dev/null 2>&1; then
+            if curl -fsS "${app_base}/health/ready" >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -288,7 +293,7 @@ jobs:
 
           operational=0
           for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/health/operational >/dev/null 2>&1; then
+            if curl -fsS "${app_base}/health/operational" >/dev/null 2>&1; then
               operational=1
               break
             fi
@@ -296,11 +301,11 @@ jobs:
           done
           test "${operational}" -eq 1
 
-          curl -fsS http://127.0.0.1:8000/health/live >/dev/null
-          curl -fsSI http://127.0.0.1:8000/mini-app/ >/dev/null
+          curl -fsS "${app_base}/health/live" >/dev/null
+          curl -fsSI "${app_base}/mini-app/" >/dev/null
 
           expected_release="{\"sha\":\"${DEPLOY_SHA}\"}"
-          actual_release="$(curl -fsS http://127.0.0.1:8000/mini-app/release.json)"
+          actual_release="$(curl -fsS "${app_base}/mini-app/release.json")"
           if [[ "${actual_release}" != "${expected_release}" ]]; then
             echo "Mini App release mismatch: expected ${expected_release}, got ${actual_release}" >&2
             exit 1
