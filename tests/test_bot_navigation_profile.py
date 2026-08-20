@@ -47,8 +47,6 @@ def test_text_bot_non_root_handlers_use_shared_back_navigation() -> None:
     assert "back_menu()" in admin
     assert "⬅️ Админ" in admin_extensions
 
-    # These routes were added after the original Back-navigation tranche. Keep them
-    # on the same shared navigation contract, including empty/error text states.
     assert "from app.bot.keyboards import BACK_TEXT, back_menu" in feed
     assert "text=BACK_TEXT" in feed
     assert "reply_markup=back_menu()" in feed
@@ -63,21 +61,24 @@ def test_text_bot_non_root_handlers_use_shared_back_navigation() -> None:
     assert "rows.append([InlineKeyboardButton(text=BACK_TEXT" in keyboards
 
 
-def test_detailed_profile_is_shared_by_bot_and_mini_app() -> None:
+def test_profile_domains_are_owned_by_backend_and_react_mini_app() -> None:
     start = (ROOT / "app" / "bot" / "handlers" / "start.py").read_text(encoding="utf-8")
     me = (ROOT / "app" / "api" / "v1" / "me.py").read_text(encoding="utf-8")
-    mini = (ROOT / "app" / "web" / "mini_app" / "account-overview.js").read_text(
+    app = (ROOT / "frontend" / "mini-app" / "components" / "roxy-app.tsx").read_text(
         encoding="utf-8"
     )
+    api = (ROOT / "frontend" / "mini-app" / "lib" / "api.ts").read_text(encoding="utf-8")
+
     assert "AccountProfileService.overview" in start
     assert '@router.get("/overview")' in me
-    assert 'api("/api/v1/me/overview")' in mini
-    assert "Telegram ID" in mini
-    assert "Регистрация" in mini
-    assert "Платежи" in mini
-    assert "localStorage" not in mini
-    assert "sessionStorage" not in mini
-    assert "innerHTML" not in mini
+    assert 'me: () => request<Me>("/api/v1/me")' in api
+    assert "profileWorks" in app
+    assert "profilePublications" in app
+    assert "Работы" in app
+    assert "Публикации" in app
+    assert '`${compact(me.balance_rox)} ROX`' in app
+    assert "app/web/mini_app" not in app
+    assert "innerHTML" not in app
 
 
 @pytest.mark.asyncio
