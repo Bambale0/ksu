@@ -26,6 +26,7 @@ def test_seedance25_contract_accepts_current_kie_surface() -> None:
             "web_search": True,
             "nsfw_checker": False,
             "fixed_lens": True,
+            "_model_id": "seedance-2.5",
         }
     )
 
@@ -37,6 +38,18 @@ def test_seedance25_contract_accepts_current_kie_surface() -> None:
     assert len(payload["reference_video_urls"]) == 10
     assert len(payload["reference_audio_urls"]) == 10
     assert "fixed_lens" not in payload
+    assert "_model_id" not in payload
+
+
+def test_seedance25_contract_rejects_unknown_provider_fields() -> None:
+    with pytest.raises(InvalidModelParametersError, match="Unsupported Seedance 2.5 field"):
+        normalize_seedance25_input(
+            {
+                "prompt": "x",
+                "duration": 4,
+                "made_up_future_flag": True,
+            }
+        )
 
 
 @pytest.mark.parametrize(
@@ -160,4 +173,12 @@ async def test_seedance25_generation_prevalidation_runs_before_billing() -> None
             model_id="seedance-2.5",
             prompt="too short",
             parameters={"duration": 3},
+        )
+
+    with pytest.raises(InvalidModelParametersError, match="Unsupported Seedance 2.5 field"):
+        await GenerationService.prepare_request(
+            object(),
+            model_id="seedance-2.5",
+            prompt="invalid provider field",
+            parameters={"duration": 4, "unexpected_provider_field": "x"},
         )
