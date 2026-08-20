@@ -1,32 +1,25 @@
 # Wallet and payment checkout
 
-**Status:** Mini App payment UX contract introduced on 2026-08-12.
+**Status:** synchronized with current runtime on 2026-08-20.
 
-Wallet is a presentation layer over the existing durable payment lifecycle. It does not calculate package prices, create arbitrary amounts, verify settlement itself or persist payment success locally.
+Wallet is a presentation layer over the durable payment lifecycle. It does not calculate package prices, create arbitrary amounts, verify settlement itself or persist payment success locally.
 
 ## User flow
 
 ```text
 Wallet
   |
-  +--> GET /api/v1/payments/packages
-  |       |
-  |       +--> choose server package
+  +--> GET /api/v1/payments/packages / card packages
   |
-  +--> choose provider
-  |       cryptobot | tbank | yookassa
+  +--> choose configured payment method/package
   |
-  +--> POST /api/v1/payments
-  |       Idempotency-Key: UUID
-  |       {provider, package_id}
+  +--> POST checkout with Idempotency-Key
   |
   +--> render current-payment card
   |       |
   |       +--> explicit user click: Open payment
-  |               |
-  |               +--> Telegram openLink/openTelegramLink
   |
-  +--> GET /api/v1/payments/{id} polling
+  +--> payment status polling / provider reconciliation
   |
   +--> succeeded
           |
@@ -34,19 +27,13 @@ Wallet
           +--> refresh /api/v1/me/transactions
 ```
 
-The client never sends RUB amount or credit amount when creating a payment.
+The client never invents settlement state or credits the balance optimistically.
 
 ## Server recovery after reload
 
-Wallet does not write current payment state to `localStorage` or `sessionStorage`.
+Wallet does not write current financial state to `localStorage` or `sessionStorage`.
 
-On every Wallet activation/reopen it requests:
-
-```text
-GET /api/v1/payments?limit=12
-```
-
-and selects the newest payment whose status is one of:
+On activation/reopen it requests recent server payments and resumes the newest recoverable non-terminal payment. Typical states include:
 
 ```text
 creating
@@ -54,68 +41,62 @@ creation_unknown
 pending
 ```
 
-That server record becomes the current payment card and polling resumes. This makes a full Mini App reload/reopen recoverable without trusting stale browser state.
+That server record becomes the current payment card and polling resumes. A full Mini App reload therefore recovers from durable server state rather than stale browser state.
 
 ## Idempotency
 
-One checkout intent is one tuple:
+One checkout intent is bound to the requested provider/package/currency plus its UUID `Idempotency-Key` where that payment surface requires one.
 
-```text
-package_id + provider + UUID Idempotency-Key
-```
+Client protections include:
 
-The UUID is generated when the user starts that checkout and reused for transient retries of the same tuple.
+- no concurrent double-tap checkout POSTs;
+- transient retries of the same local intent reuse the same idempotency key;
+- changing the requested purchase invalidates the old client intent;
+- terminal state clears the in-memory checkout intent;
+- `409` is treated as an idempotency conflict, not proof of payment.
 
-Client protections:
-
-- `checkoutBusy` prevents double-tap concurrent POSTs;
-- changing package/provider invalidates the in-memory intent and creates a new UUID only on the next deliberate checkout;
-- network errors keep the same UUID;
-- `409` means the key conflicts with a different intent and is discarded before the next user retry;
-- terminal payment states clear the intent.
-
-Server `PaymentRequest` remains the authoritative idempotency boundary.
+Server `PaymentRequest` remains the durable idempotency boundary.
 
 ## Provider uncertainty
 
-If `POST /api/v1/payments` returns upstream `502`, external creation may be uncertain. Wallet does **not** create another invoice.
+An upstream create error can be ambiguous: the provider may have accepted the request even though ROXY did not receive a usable response.
 
-It immediately reloads:
+The safe rule is:
 
 ```text
-GET /api/v1/payments?limit=12
+unknown external side effect != retry create blindly
 ```
 
-and lets `payment-worker` reconciliation resolve `creation_unknown` / provider state.
+ROXY persists `creation_unknown` / `PaymentRequest=unknown` and lets provider-specific reconciliation recover or review the original intent.
+
+For the hosted `card` checkout, a later verified webhook carrying an unknown `contractId` triggers an authoritative `GET /api/v1/invoices/{id}` lookup. ROXY binds that contract only when provider id + amount + currency + buyer email identify **exactly one** unresolved local intent. Zero or multiple candidates remain unbound. Arbitrary custom `clientUtm` fields are not treated as a guaranteed merchant-correlation channel.
+
+See `PRIMARY_CARD_CHECKOUT.md` for the full contract.
 
 ## Rate limiting
 
-Payment creation is protected by the existing Redis payment-creation limit. On `429`, Wallet reads `Retry-After`, disables checkout for that interval and shows a retry message.
+Payment creation is protected by Redis payment-creation limits. On `429`, the Mini App reads `Retry-After`, disables checkout for that interval and shows an explicit retry state.
 
-The client must not implement rapid automatic POST retries. Polling GETs are separate presentation refreshes.
+The client must not implement rapid automatic POST retries. Polling GETs are presentation refreshes, not payment creation.
 
 ## Provider navigation
 
-Current Telegram Mini Apps APIs are used when available:
+Telegram Mini App link APIs are used when available:
 
 ```text
 openTelegramLink(url)   t.me / telegram.me links
 openLink(url)           normal provider HTTPS links
 ```
 
-Telegram documents that `openLink` is available only in response to direct Mini App user interaction. A network `await` between the original checkout tap and navigation is therefore not treated as a reliable navigation gesture.
-
-KSU enforces this at runtime with `payment-link-guard.js`:
+KSU/ROXY enforces payment navigation through `payment-link-guard.js`:
 
 - only HTTPS payment URLs are accepted;
-- `openLink` / `openTelegramLink` are allowed only during a direct click or keyboard activation;
-- an automatic open attempted after asynchronous payment creation is blocked;
-- the server-created current-payment card exposes **Open payment**, and that explicit button click opens the provider synchronously;
-- returning to or reopening KSU keeps the same server payment and the same Open payment action while it is non-terminal.
+- `openLink` / `openTelegramLink` are allowed only during direct click/keyboard activation;
+- automatic opening after an asynchronous checkout request is blocked;
+- the server current-payment card exposes an explicit **Open payment** action;
+- returning to or reopening ROXY keeps the server payment state rather than browser financial state.
 
 Outside Telegram the fallback remains a secure new browser tab/window with `noopener,noreferrer`.
-
-A payment URL is retained on the server Payment payload and exposed only to the owning user.
 
 ## Payment states
 
@@ -145,49 +126,54 @@ When polling first observes `succeeded`, Wallet:
 3. fetches `/api/v1/me/transactions`;
 4. updates the persistent header balance and Wallet balance/ledger.
 
-The UI does not add purchased credits optimistically.
+Purchased ROX are never added optimistically.
 
 ## Recent payments
 
-`GET /api/v1/payments` is owner-scoped and newest-first. Wallet shows recent provider/package/amount/status rows beneath the active payment.
+The recent-payment API is owner-scoped and newest-first. Wallet shows recent provider/package/amount/status rows beneath the active payment.
 
-This endpoint is intentionally a simple bounded recent-history API rather than a second accounting ledger. Wallet transactions remain the authoritative credit movement history.
+This bounded history is not a second accounting ledger. Wallet transactions remain authoritative for ROX movement.
 
 ## Empty/error states
 
 Wallet distinguishes:
 
-- package catalog empty: payment packages are not configured;
-- no Telegram signed init data: checkout unavailable in ordinary browser preview;
-- payment provider upstream uncertainty: existing intent is being reconciled;
-- rate-limited checkout: explicit retry interval;
-- ordinary network refresh failure: keep last rendered server state rather than fabricate a new state.
-
-## Files
-
-```text
-app/api/v1/payments.py                    user recent-payment API + existing checkout/status routes
-app/web/mini_app/index.html               Wallet checkout/status/history surfaces
-app/web/mini_app/payment-link-guard.js    HTTPS + direct-activation navigation guard
-app/web/mini_app/wallet.js                server-driven checkout/recovery/polling controller
-app/web/mini_app/wallet.css               Telegram-first Wallet payment presentation
-tests/test_wallet_checkout.py             backend ownership + client contract tests
-tests/test_payment_link_guard.py          navigation-activation contract tests
-```
+- payment packages not configured;
+- no signed Telegram init data;
+- provider create uncertainty under reconciliation;
+- ambiguous hosted-card recovery requiring another webhook/reconciliation/operator review rather than an unsafe bind;
+- rate-limited checkout with explicit retry interval;
+- ordinary refresh failure, where last rendered server state is retained rather than fabricated.
 
 ## Security boundaries
 
 - raw signed `Telegram.WebApp.initData` is the user authentication material;
 - provider secrets never reach the Mini App;
-- package amount/credits are server-owned;
-- payment ownership is checked on history/detail routes;
-- `Idempotency-Key` is not proof of payment and never causes local crediting;
-- provider webhooks/status APIs and the payment worker remain settlement truth;
-- wallet/payment records are not persisted as browser financial truth;
-- payment navigation accepts HTTPS only and requires direct user activation in Telegram.
+- package amount/ROX are server-owned;
+- payment ownership is checked on user routes;
+- `Idempotency-Key` is not proof of settlement;
+- webhook payload is not trusted as wallet-credit authority;
+- provider status APIs + reconciliation are settlement truth;
+- ambiguous payment correlation fails closed;
+- browser storage is not financial truth;
+- payment navigation accepts HTTPS only and requires direct activation in Telegram.
 
-## Follow-up
+## Maintained implementation surfaces
 
-The next user-product epic after Wallet checkout is the full partner cabinet/withdrawal workflow inside Profile. Wallet should remain the single user entrypoint for balance, top-up, payment state and ledger rather than spawning separate floating payment screens.
+```text
+app/api/v1/payments.py
+app/api/v1/card_payments.py
+app/api/card_webhooks.py
+app/services/card_payments.py
+app/services/card_payment_recovery.py
+app/providers/card_checkout.py
+app/web/mini_app/payment-link-guard.js
+app/web/mini_app/wallet.js
+app/web/mini_app/primary-card-checkout.js
+tests/test_wallet_checkout.py
+tests/test_payment_link_guard.py
+tests/test_primary_card_checkout.py
+tests/test_card_payment_recovery.py
+```
 
-Official Telegram Mini Apps reference used for link-opening behavior: `https://core.telegram.org/bots/webapps`.
+The partner cabinet/withdrawal product is already shipped and documented separately; it is not a future Wallet epic. Wallet remains the user entrypoint for balance, top-up, payment state and ledger.
