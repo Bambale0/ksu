@@ -44,6 +44,8 @@ def test_docker_build_replaces_generated_directory_with_next_export() -> None:
         "RUN npm run build",
         "rm -rf ./app/web/mini_app",
         "COPY --from=miniapp /src/frontend/mini-app/out ./app/web/mini_app",
+        "ARG MINI_APP_RELEASE_SHA=unknown",
+        'RUN printf \'{"sha":"%s"}\\n\' "${MINI_APP_RELEASE_SHA}" > ./app/web/mini_app/release.json',
     ):
         assert token in dockerfile
 

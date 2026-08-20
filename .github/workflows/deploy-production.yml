@@ -262,7 +262,7 @@ jobs:
             rm -f "${old_backup}" "${old_backup}.sha256"
           done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
 
-          docker compose build "${build_services[@]}" </dev/null
+          docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}" </dev/null
           docker compose run --rm app alembic upgrade head </dev/null
           docker compose up -d --remove-orphans "${runtime_services[@]}" </dev/null
 
