@@ -1,7 +1,7 @@
 # KSU / ROXY documentation index
 
 **Documentation baseline:** 2026-08-20  
-**Runtime baseline:** `main` after pricing/WAN/admin merge `6bd77a201246c5f7cb4d092b3da55e87a4263afb`.
+**Runtime baseline:** `main` after generation recovery hardening `fa787db146f713b8f6568f037dd2d1ca17c2c68c`.
 
 This directory documents the production ROXY Telegram AI platform. When prose and runtime disagree, the order of authority is:
 
@@ -9,6 +9,8 @@ This directory documents the production ROXY Telegram AI platform. When prose an
 2. published admin tariff/configuration;
 3. `GET /api/v1/generations/models` and quote responses;
 4. this documentation.
+
+Runtime-affecting changes must update the relevant maintained documentation and configuration examples in the same PR before merge. Follow-up documentation-only PRs are reserved for repairing already-existing drift.
 
 ## Current product snapshot
 
@@ -20,6 +22,7 @@ This directory documents the production ROXY Telegram AI platform. When prose an
 - Generation pricing is server-authoritative. Flat image prices and per-second video prices are resolved on the server. Parameter-aware tiers are supported where a model requires them (currently Kling Motion resolution tiers).
 - Published Admin Tariffs `generation_pricing` overrides become live immediately and the latest published tariff is restored from PostgreSQL after restart.
 - Pricing publish is privileged (`pricing.manage`) and keeps explicit confirmation + fresh MFA step-up requirements.
+- Generation execution uses a durable PostgreSQL outbox plus recovery/reconciliation. Terminal success/failure states are monotonic, ambiguous Kie submissions are not blindly duplicated, and a configurable hard lifetime prevents indefinitely stuck paid work.
 - Home promo artwork uses repository-owned slide assets; artwork must be rendered without crop, filters or generative redraw.
 
 ## Documentation map
@@ -30,7 +33,7 @@ This directory documents the production ROXY Telegram AI platform. When prose an
 - `MINI_APP_SHELL.md` — shell/navigation/Telegram WebApp behavior.
 - `STUDIO_SHELL.md` — generation workspace shell.
 - `ROXY_CREATE_CENTER.md` — current Photo/Video create entry flow.
-- `GENERATION_MINI_APP.md` — dynamic generation schema, quote/create and pricing behavior.
+- `GENERATION_MINI_APP.md` — dynamic generation schema, quote/create, pricing and recovery behavior.
 - `RESULTS_HISTORY.md` — result/history/reuse semantics.
 - `ROXY_PROFILE_CABINET.md` — profile cabinet.
 - `WALLET_PAYMENTS.md` and `PRIMARY_CARD_CHECKOUT.md` — wallet and checkout.
@@ -70,7 +73,7 @@ This directory documents the production ROXY Telegram AI platform. When prose an
 
 ### Historical parity material
 
-`parity-*.md` files are implementation history/checklists. They are not a source of truth for current pricing, model availability or current Mini App navigation. For current behavior use this index and the domain documents above.
+`parity-*.md` files are implementation history/checklists. They are not a source of truth for current pricing, model availability, recovery semantics or current Mini App navigation. For current behavior use this index and the domain documents above.
 
 ## Promo slide assets
 
