@@ -37,7 +37,24 @@ def test_family_catalog_groups_current_tanya_product_layer() -> None:
         for family in families
         for variant in family["variants"]
     }
-    assert public_ids == set(TRENDING_PUBLIC_MODEL_ORDER)
+    assert public_ids < set(TRENDING_PUBLIC_MODEL_ORDER)
+    assert "gpt-image-2-i2i" in public_ids
+    assert "gpt-image-2-t2i" not in public_ids
+    assert "seedream-5-pro-i2i" in public_ids
+    assert "seedream-5-pro-t2i" not in public_ids
+
+
+def test_auto_routed_variants_are_single_customer_products() -> None:
+    families = {item["family"]: item for item in build_model_families(_public_models())}
+
+    gpt = next(variant for variant in families["gpt_image"]["variants"] if variant["id"] == "gpt-image-2-i2i")
+    assert gpt["operation"] == "auto"
+    assert gpt["auto_mode"] is True
+    assert "автоматически" in gpt["description"].lower()
+
+    seedream_ids = {variant["id"] for variant in families["seedream"]["variants"]}
+    assert "seedream-5-pro-i2i" in seedream_ids
+    assert "seedream-5-pro-t2i" not in seedream_ids
 
 
 def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
