@@ -10,6 +10,7 @@ A release candidate must pass:
 
 - all Mini App/Admin JavaScript syntax checks;
 - focused ROXY shell/navigation/create/economy/payment contracts;
+- card payment recovery tests covering current provider lookup route, unique recovery and ambiguity refusal;
 - model catalog and pricing tests;
 - provider-contract tests for current callable model schemas, including Seedance 2.5;
 - generation reliability tests covering durable outbox recovery, terminal-state monotonicity, uncertain provider submission handling, hard lifetime, stale callback rejection and refund exactly-once behavior;
@@ -53,6 +54,23 @@ Run these flows against the release environment:
 17. Seedance 2.5 frame mode cannot be combined with multimodal references, and last-frame input requires first-frame input.
 18. Seedance 2.5 enforces product/provider reference counts: at most 30 images, 10 videos and 10 audio references; UI video upload copy must reflect ROXY's current 100 MB shared upload ceiling.
 19. Seedance 2.5 `duration=-1`/auto is not exposed until billing can settle against an authoritative actual duration after completion.
+
+## Hosted card checkout acceptance
+
+Run card recovery against the staging provider/mock contract:
+
+1. Invoice creation uses the current create route and stores local `Payment`/`PaymentRequest` before the remote side effect.
+2. Authoritative contract lookup uses `GET /api/v1/invoices/{id}`.
+3. A normal create stores the provider contract id and payment URL without changing the public neutral `card` surface.
+4. A lost create response leaves the local intent `creation_unknown`; reconciliation does not blindly issue a second invoice.
+5. A verified webhook for an unknown provider contract performs authoritative lookup before any local bind or wallet mutation.
+6. Recovery binds only when contract id + exact amount + exact currency + normalized buyer email identify exactly one unresolved local `card` intent.
+7. Zero candidates, two or more candidates, missing provider identity fields, amount/currency/email mismatch or provider lookup failure perform no bind and no ROX credit.
+8. A recovered `PaymentRequest` transitions from `unknown`/`creating` to `completed` only after the row-locked bind succeeds.
+9. The webhook body alone never credits ROX; ordinary authoritative reconcile runs after recovery.
+10. Duplicate success remains wallet-credit idempotent.
+11. The provider adapter does not depend on arbitrary custom `clientUtm` keys for merchant correlation.
+12. Opening the hosted payment URL still requires a second direct user action in Telegram.
 
 ## Public pricing baseline acceptance
 
@@ -135,6 +153,8 @@ Do not promote if:
 - refund is not exactly-once for a failed generation;
 - live admin pricing disappears after restart;
 - a pricing publish can bypass permission/confirmation/MFA;
+- card create uncertainty can trigger a blind second remote invoice;
+- an unknown card webhook contract can bind to an ambiguous/mismatched local intent or credit ROX without authoritative provider verification;
 - ROX/payment state is ambiguous;
 - Seedance 2.5 UI/catalog accepts a parameter outside the currently callable Kie schema without an explicit tested adapter;
 - Seedance 2.5 auto-duration is exposed before actual-duration billing settlement exists;
