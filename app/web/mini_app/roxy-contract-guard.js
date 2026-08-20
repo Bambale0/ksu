@@ -2,7 +2,7 @@
   "use strict";
 
   const ZERO_PRICE = /^(?:от\s+)?0(?:[.,]0+)?\s*ROX(?:\/с)?$/i;
-  const LEGACY_CREDIT = /\b(?:кр\.|кредит(?:ы|ов|а)?)\b/gi;
+  const LEGACY_CREDIT = /(?:кр\.|кредит(?:ы|ов|а)?)/gi;
   let observer = null;
   let scheduled = false;
 
