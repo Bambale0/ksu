@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MINI = ROOT / "app" / "web" / "mini_app"
+FRONTEND = ROOT / "frontend" / "mini-app"
+GENERATED = ROOT / "app" / "web" / "mini_app"
 
 TARGET_VIEWPORTS = (
     (360, 800),
@@ -14,252 +16,143 @@ TARGET_VIEWPORTS = (
     (1920, 1080),
 )
 
-REQUIRED_ASSETS = (
-    "index.html",
-    "roxy-brand.js",
-    "roxy-brand.css",
-    "roxy-design-system.css",
-    "roxy-icons.js",
-    "roxy-customer-navigation.js",
-    "roxy-child-screens.js",
-    "roxy-mobile-runtime.js",
-    "roxy-functional-runtime.js",
-    "feed.js",
-    "trends.js",
-    "prompt-tools.js",
-    "roxy-music.js",
+REQUIRED_SOURCE = (
+    "package.json",
+    "next.config.mjs",
+    "tsconfig.json",
+    "app/layout.tsx",
+    "app/page.tsx",
+    "app/globals.css",
+    "components/roxy-app.tsx",
+    "components/icons.tsx",
+    "lib/api.ts",
+    "lib/telegram.ts",
+    "lib/types.ts",
 )
 
-# These modules are retained as low-level compatibility implementations for existing
-# shell/payment/copy flows. They may still contain historical source literals, but
-# visible UI is normalized at runtime. New/canonical customer surfaces are never
-# exempt from the release copy gate.
-LEGACY_COMPAT_SOURCES = {
-    "app.js",
-    "primary-card-checkout.js",
-    "roxy-approved-home.js",
-    "roxy-notification-badge-bridge.js",
-    "shell.js",
-    "studio-shell.js",
-    "wallet.js",
-}
-
-RETIRED_VISUAL_LAYERS = (
-    "roxy-approved-theme.css",
-    "roxy-approved-surfaces.css",
-    "roxy-client-feedback.css",
-    "roxy-unified-controls.css",
-    "roxy-iphone-polish.css",
-    "roxy-fhd-density.css",
-    "roxy-home-density-v3.css",
-    "roxy-mature-ui.css",
-    "roxy-mobile-runtime.css",
-    "roxy-header-logo.css",
-    "roxy-reference-home.css",
-    "roxy-reference-home.js",
-    "roxy-reference-order.css",
+FORBIDDEN_LEGACY = (
+    "CREATOR ECONOMY",
+    "Creator economy",
+    "Как заработать ROX",
+    "Создал → опубликовал → заработал",
+    "roxyEarnSection",
+    "roxyApprovedHero",
+    "studio-shell",
+    "shell-integration",
+    "roxy-approved-home",
+    "roxy-theme-compat",
 )
 
 
-def _read(name: str) -> str:
-    return (MINI / name).read_text(encoding="utf-8")
+def read(relative: str) -> str:
+    return (FRONTEND / relative).read_text(encoding="utf-8")
 
 
 def validate() -> list[str]:
     errors: list[str] = []
+    for relative in REQUIRED_SOURCE:
+        path = FRONTEND / relative
+        if not path.is_file() or path.stat().st_size < 40:
+            errors.append(f"missing-source:{relative}")
 
-    for name in REQUIRED_ASSETS:
-        path = MINI / name
-        if not path.is_file() or path.stat().st_size < 80:
-            errors.append(f"missing-or-empty:{name}")
-
-    for name in RETIRED_VISUAL_LAYERS:
-        if (MINI / name).exists():
-            errors.append(f"retired-visual-layer-present:{name}")
+    generated_files = sorted(path.name for path in GENERATED.iterdir() if path.is_file())
+    if generated_files != ["README.md"]:
+        errors.append("generated-directory-must-not-contain-source:" + ",".join(generated_files))
 
     if errors:
         return errors
 
-    index = _read("index.html")
-    brand = _read("roxy-brand.js")
-    brand_entry = _read("roxy-brand.css")
-    design = _read("roxy-design-system.css")
-    icons = _read("roxy-icons.js")
-    nav = _read("roxy-customer-navigation.js")
-    children = _read("roxy-child-screens.js")
-    mobile_js = _read("roxy-mobile-runtime.js")
-    functional_js = _read("roxy-functional-runtime.js")
-    feed = _read("feed.js")
-    social = _read("social.js")
-    economy = _read("roxy-economy.js")
-    music = _read("roxy-music.js")
-    approved_home = _read("roxy-approved-home.js")
-    notification_bridge = _read("roxy-notification-badge-bridge.js")
+    package = json.loads(read("package.json"))
+    if package.get("dependencies", {}).get("next") != "16.3.1":
+        errors.append("next-version")
+    if package.get("dependencies", {}).get("react") != "19.2.8":
+        errors.append("react-version")
+    if package.get("dependencies", {}).get("react-dom") != "19.2.8":
+        errors.append("react-dom-version")
 
-    if "viewport-fit=cover" not in index:
-        errors.append("viewport-fit-cover")
-    if "https://telegram.org/js/telegram-web-app.js" not in index:
-        errors.append("telegram-webapp-sdk")
+    config = read("next.config.mjs")
+    for token in ('output: "export"', 'basePath: "/mini-app"', "trailingSlash: true"):
+        if token not in config:
+            errors.append(f"next-config:{token}")
 
-    if '@import url("/mini-app/roxy-design-system.css?v=1")' not in brand_entry:
-        errors.append("brand-entrypoint-canonical-design")
-    if '/mini-app/roxy-design-system.css?v=1' not in brand:
-        errors.append("canonical-design-runtime")
-    for retired in RETIRED_VISUAL_LAYERS:
-        if f"/mini-app/{retired}" in brand or retired in notification_bridge:
-            errors.append(f"retired-visual-runtime:{retired}")
+    app = read("components/roxy-app.tsx")
+    css = read("app/globals.css")
+    api = read("lib/api.ts")
+    telegram = read("lib/telegram.ts")
+
+    for legacy in FORBIDDEN_LEGACY:
+        if legacy in app:
+            errors.append(f"legacy-copy:{legacy}")
+
+    for token in (
+        '"home"',
+        '"catalog"',
+        '"create"',
+        '"history"',
+        '"profile"',
+        "Главная",
+        "Каталог",
+        "Создать",
+        "История",
+        "Профиль",
+        "Работы",
+        "Публикации",
+        "if (booting) return <Splash />",
+        "visibleFields(selected, draft)",
+        "model.ui_schema?.fields",
+    ):
+        if token not in app:
+            errors.append(f"react-app:{token}")
+    if "Лента" in app:
+        errors.append("legacy-primary-nav-label")
+
+    for endpoint in (
+        "/api/v1/me",
+        "/api/v1/generations/models",
+        "/api/v1/generations/quote",
+        "/api/v1/generations",
+        "/api/v1/uploads/kie",
+        "/api/v1/feed",
+        "/api/v1/payments",
+    ):
+        if endpoint not in api:
+            errors.append(f"api:{endpoint}")
+    if "prompt_visible: false" not in api or "references_visible: false" not in api:
+        errors.append("public-prompt-privacy")
 
     for token in ("#0b0b10", "#9b5cff", "#ff5fb7", "#ffffff", "#a6a6b3"):
-        if token not in design.lower():
+        if token not in css.lower():
             errors.append(f"palette:{token}")
-    for token in (
-        ":focus-visible",
-        "prefers-reduced-motion: reduce",
-        "min-height: 44px",
-        "touch-action: manipulation",
-        "grid-template-columns: repeat(5",
-        "--tg-content-safe-area-inset-bottom",
-        "@media (max-width: 430px)",
-        ".roxy-approved-hero",
-        ".roxy-media-card",
-        ".studio-result-pane",
-        ".roxy-audio-player",
-        ".studio-library-grid",
-        ".roxy-cabinet-action",
-        ".studio-bottom-nav",
-        ".payment-package",
-        ".feed-card",
-    ):
-        if token not in design:
-            errors.append(f"design-system:{token}")
-
-    for legacy_gold in ("#f0c77d", "#f4c57a", "#f6cf8e"):
-        if legacy_gold in design.lower():
-            errors.append(f"legacy-palette:{legacy_gold}")
-
-    for name, source in (("brand", brand), ("economy", economy)):
-        if "createTreeWalker" in source or "TreeWalker" in source:
-            errors.append(f"global-text-scan:{name}")
-    if "MutationObserver" in brand:
-        errors.append("brand-global-observer")
-    for name, source in (("feed", feed), ("social", social)):
-        if "window.fetch =" in source or "originalFetch" in source:
-            errors.append(f"fetch-monkeypatch:{name}")
-
-    if "observe(document.body" in economy:
-        errors.append("economy-body-observer")
-    if "observe(document.body" in music:
-        errors.append("music-body-observer")
-
-    expected_children = {
-        "notifications": "profile",
-        "support": "profile",
-        "creator": "profile",
-        "subscriptions": "profile",
-        "author": "profile",
-        "references": "create",
-        "presets": "create",
-        "batch": "create",
-        "trends": "catalog",
-        '"prompt-tools"': "catalog",
-    }
-    for route, parent in expected_children.items():
-        token = f"{route}: \"{parent}\""
-        if token not in nav:
-            errors.append(f"child-route:{route}")
-
-    for route in (
-        "notifications",
-        "support",
-        "creator",
-        "subscriptions",
-        "author",
-        "references",
-        "presets",
-        "batch",
-        "trends",
-    ):
-        if f"{route}:" not in children:
-            errors.append(f"child-screen:{route}")
-    if '"prompt-tools":' not in children:
-        errors.append("child-screen:prompt-tools")
-
-    if "window.RoxyIcons?.create?." not in nav:
-        errors.append("nav-svg-icons")
-    if "innerHTML" in icons or "insertAdjacentHTML" in icons:
-        errors.append("icon-html-injection")
-    if "document.createElementNS" not in icons:
-        errors.append("icon-svg-runtime")
+    for token in ("--tg-safe-bottom", "min-height: 44px", "prefers-reduced-motion: reduce", ".splash"):
+        if token not in css:
+            errors.append(f"design:{token}")
 
     for token in (
-        "window.visualViewport",
-        "tg?.safeAreaInset",
-        "tg?.contentSafeAreaInset",
-        "tg?.BackButton?.onClick?.(onBackButton)",
-        "window.history.back()",
+        'setHeaderColor?.("#0B0B10")',
+        'setBackgroundColor?.("#0B0B10")',
+        'setBottomBarColor?.("#0B0B10")',
+        "contentSafeAreaInset",
+        "BackButton",
     ):
-        if token not in mobile_js:
-            errors.append(f"mobile-runtime:{token}")
+        if token not in telegram:
+            errors.append(f"telegram:{token}")
 
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     for token in (
-        "installRandomUuidFallback()",
-        "protectCanonicalHistory()",
-        "observeNotificationSemantics()",
-        "nativeReplaceState(data, title, url)",
-        "current?.roxyNavigation",
-        "button.disabled = !unread",
-        "navigator.clipboard?.writeText",
-        'document.execCommand("copy")',
+        "FROM node:22-alpine AS miniapp",
+        "RUN npm run build",
+        "rm -rf ./app/web/mini_app",
+        "COPY --from=miniapp /src/frontend/mini-app/out ./app/web/mini_app",
     ):
-        if token not in functional_js:
-            errors.append(f"functional-runtime:{token}")
-
-    # Compatibility literals remain permitted only in the two scoped normalizers.
-    for token in (
-        "LEGACY_BRAND_RE",
-        "normalizeCopyString",
-        "normalizeVisibleCopy(document.body)",
-        "MutationObserver",
-        '"ROXY"',
-        '"$1 ROX"',
-    ):
-        if token not in approved_home:
-            errors.append(f"compat-copy-normalizer:{token}")
-    if 'current.replace(/\\s*кр\\.?$/iu, " ROX")' not in notification_bridge:
-        errors.append("compat-balance-normalizer")
-    if "mountReferenceHomeLayer" in notification_bridge or "roxy-reference-home" in notification_bridge:
-        errors.append("legacy-reference-home-bridge")
-
-    legacy_offenders: list[str] = []
-    for path in MINI.iterdir():
-        if path.suffix not in {".js", ".html", ".css"}:
-            continue
-        if path.name in LEGACY_COMPAT_SOURCES:
-            continue
-        source = path.read_text(encoding="utf-8")
-        if "Ксю" in source or "КСЮ" in source or " кр." in source:
-            legacy_offenders.append(path.name)
-    if legacy_offenders:
-        errors.append("legacy-copy:" + ",".join(sorted(legacy_offenders)))
-
-    for legacy_page, route in (
-        ("trends.html", "trends"),
-        ("prompt-tools.html", "prompt-tools"),
-        ("batch.html", "batch"),
-    ):
-        source = _read(legacy_page)
-        if "/mini-app/roxy-legacy-route-redirect.js" not in source or f'data-roxy-route="{route}"' not in source:
-            errors.append(f"legacy-forward:{legacy_page}")
-
-    if len(TARGET_VIEWPORTS) != 5 or TARGET_VIEWPORTS[-1] != (1920, 1080):
-        errors.append("viewport-matrix")
+        if token not in dockerfile:
+            errors.append(f"docker:{token}")
 
     return errors
 
 
 def main() -> int:
     errors = validate()
-    print("ROXY release target viewports:")
+    print("ROXY Next.js release target viewports:")
     for width, height in TARGET_VIEWPORTS:
         print(f"  - {width}x{height}")
     if errors:
