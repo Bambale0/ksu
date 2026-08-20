@@ -6,31 +6,20 @@ from app.services.model_catalog import (
     UnknownModelError,
 )
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.services.trending_model_catalog import TRENDING_PUBLIC_MODEL_ORDER
 
 
 def test_requested_reference_models_are_kie_only() -> None:
     models = {item["id"]: item for item in ModelCatalog.list()}
-    expected = {
-        "nano-banana-pro",
-        "wan-2.7-image",
-        "gpt-image-2-t2i",
-        "nano-banana-2",
-        "nano-banana-2-lite",
-        "seedream-4.5-t2i",
-        "seedream-5-pro-t2i",
-        "seedance-2.0",
-        "seedance-2.5",
-        "kling-3.0",
-        "veo-3.1",
-        "grok-video-t2v",
-        "grok-video-1.5",
-        "gemini-omni-video",
-        "kling-motion-3.0",
-        "kling-motion-2.6",
-    }
-    assert expected.issubset(models)
+
+    assert set(models) == set(TRENDING_PUBLIC_MODEL_ORDER)
+    assert all(str(item.get("kie_model") or "").strip() for item in models.values())
     assert "heygen-avatar" not in models
     assert "kling-3.0-omni" not in models
+    assert "wan-2.7-image" not in models
+    assert "seedream-4.5-t2i" not in models
+    assert "grok-video-t2v" not in models
+    assert models["wan-2.7-image-pro"]["kie_model"] == "wan/2-7-image-pro"
     assert models["kling-3.0"]["kie_model"] == "kling-3.0/video"
     assert models["gemini-omni-video"]["kie_model"] == "gemini-omni-video"
     assert models["veo-3.1"]["media_type"] == "video"
