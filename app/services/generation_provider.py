@@ -37,6 +37,23 @@ class GenerationProviderService:
         return str((generation.parameters or {}).get("_model_id") or "")
 
     @staticmethod
+    def _provider_model_snapshot(generation: Generation) -> str:
+        """Return the provider identity frozen when the generation was created.
+
+        Falling back to the live catalog is only for legacy rows created before
+        provider snapshots existed. New queued jobs must never silently switch to
+        a different upstream model because a catalog mapping changed meanwhile.
+        """
+
+        params = generation.parameters or {}
+        stored = str(params.get("_provider_model") or params.get("_kie_model") or "").strip()
+        if stored:
+            return stored
+        if GenerationProviderService._provider_api(generation) == "suno_music":
+            return str(settings.music_generation_model)
+        return ModelCatalog.get(GenerationProviderService._model_id(generation)).kie_model
+
+    @staticmethod
     def _submission_error_disposition(exc: Exception) -> SubmissionDisposition:
         """Classify create-task failures by whether a provider task may exist.
 
@@ -119,12 +136,7 @@ class GenerationProviderService:
 
     @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
-        """Submit a generation to Kie.
-
-        Kie Market models use the generic jobs API while Veo 3.1 uses Kie's
-        dedicated Veo API. Both share the same durable outbox, refund and
-        media-ingest lifecycle.
-        """
+        """Submit a generation to the exact provider model frozen on creation."""
 
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -136,13 +148,7 @@ class GenerationProviderService:
 
         provider_api = cls._provider_api(generation)
         model_id = cls._model_id(generation)
-        if provider_api == "suno_music":
-            provider_model = str(
-                (generation.parameters or {}).get("_kie_model")
-                or settings.music_generation_model
-            )
-        else:
-            provider_model = ModelCatalog.get(model_id).kie_model
+        provider_model = cls._provider_model_snapshot(generation)
 
         generation.status = "submitting"
         generation.error = None
@@ -272,10 +278,13 @@ class GenerationProviderService:
         session: AsyncSession,
         generation: Generation,
     ) -> None:
+        params = generation.parameters or {}
         if (
             generation.action_type != "remix"
             or generation.source_feed_gen_id is None
             or settings.prompt_repeat_bonus_rox <= Decimal("0")
+            or Decimal(generation.cost_rox) <= 0
+            or bool(params.get("_admin_free"))
         ):
             return
         source = await session.get(Generation, generation.source_feed_gen_id)
@@ -375,15 +384,16 @@ class GenerationProviderService:
         generation.status = "failed"
         generation.error = error[:4000]
         generation.updated_at = datetime.now(timezone.utc)
-        await WalletService.credit(
-            session,
-            user_id=generation.user_id,
-            amount=generation.cost_rox,
-            kind="generation_refund",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"generation:{generation.id}:refund",
-        )
+        if Decimal(generation.cost_rox) > 0:
+            await WalletService.credit(
+                session,
+                user_id=generation.user_id,
+                amount=generation.cost_rox,
+                kind="generation_refund",
+                reference_type="generation",
+                reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:refund",
+            )
         await session.commit()
         await GenerationOutboxService.mark_generation_terminal(
             session,
