@@ -12,11 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.billing_access import BillingAccessService
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.model_presentation import music_model_title
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
+# Stable ROXY product id kept for stored drafts/history. The displayed title and
+# immutable provider snapshot are derived from MUSIC_GENERATION_MODEL.
 MUSIC_MODEL_ID = "suno-v5.5"
 MUSIC_FAMILY = "suno"
 MUSIC_OPERATION = "text_to_music"
@@ -90,6 +94,7 @@ class MusicGenerationService:
     @classmethod
     def public_model(cls) -> dict[str, Any]:
         price = Decimal(settings.music_generation_price_rox)
+        provider_model = str(settings.music_generation_model)
         fields = [
             _field(
                 "prompt",
@@ -171,7 +176,7 @@ class MusicGenerationService:
             ),
             _field(
                 "duration",
-                "Длительность V5.5, сек.",
+                "Длительность (только V5.5), сек.",
                 "number",
                 "advanced",
                 minimum=1,
@@ -180,9 +185,9 @@ class MusicGenerationService:
         ]
         return {
             "id": MUSIC_MODEL_ID,
-            "title": "Suno V5.5 · Music",
+            "title": music_model_title(provider_model),
             "family": MUSIC_FAMILY,
-            "kie_model": settings.music_generation_model,
+            "kie_model": provider_model,
             "media_type": MUSIC_MEDIA_TYPE,
             "operation": MUSIC_OPERATION,
             "known_fields": list(_MUSIC_FIELDS),
@@ -337,10 +342,17 @@ class MusicGenerationService:
         prompt: str,
         parameters: dict[str, Any],
     ) -> Generation:
-        clean, cost_rox = cls.prepare(parameters, prompt)
+        clean, retail_cost_rox = cls.prepare(parameters, prompt)
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_cost_rox,
+        )
+        cost_rox = billing.effective_cost
         await AbuseProtectionService.generation_rate(redis, user_id)
         await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=cost_rox)
 
+        provider_model = str(settings.music_generation_model)
         generation = Generation(
             user_id=user_id,
             kind="music",
@@ -351,15 +363,18 @@ class MusicGenerationService:
             parameters={
                 **clean,
                 "_model_id": MUSIC_MODEL_ID,
-                "_model_title": "Suno V5.5 · Music",
-                "_family": MUSIC_FAMILY,
+                "_model_title": music_model_title(provider_model),
+                "_model_family": MUSIC_FAMILY,
                 "_media_type": MUSIC_MEDIA_TYPE,
                 "_operation": MUSIC_OPERATION,
                 "_provider_api": "suno_music",
-                "_kie_model": settings.music_generation_model,
+                "_kie_model": provider_model,
+                "_provider_model": provider_model,
                 "_billing_mode": "flat",
                 "_billing_seconds": None,
-                "_unit_price_rox": str(cost_rox),
+                "_unit_price_rox": str(retail_cost_rox),
+                "_retail_cost_rox": str(billing.retail_cost),
+                "_admin_free": billing.admin_free,
             },
             publication_scope="private",
             is_public_feed=False,
@@ -370,15 +385,16 @@ class MusicGenerationService:
         session.add(generation)
         await session.flush()
         GenerationOutboxService.add(session, generation.id)
-        await WalletService.debit(
-            session,
-            user_id=user_id,
-            amount=cost_rox,
-            kind="generation",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"generation:{generation.id}:charge",
-        )
+        if cost_rox > 0:
+            await WalletService.debit(
+                session,
+                user_id=user_id,
+                amount=cost_rox,
+                kind="generation",
+                reference_type="generation",
+                reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:charge",
+            )
         await session.commit()
 
         try:
