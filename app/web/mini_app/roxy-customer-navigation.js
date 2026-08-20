@@ -31,11 +31,11 @@
     wallet: "wallet",
   });
   const MENU = Object.freeze([
-    ["home", "home", "Главная"],
-    ["catalog", "catalog", "Каталог"],
-    ["create", "create", "Создать"],
-    ["history", "history", "История"],
-    ["profile", "profile", "Профиль"],
+    ["home", "home", "Главная", "home"],
+    ["catalog", "catalog", "Каталог", "feed"],
+    ["create", "create", "Создать", "create"],
+    ["history", "history", "История", "history"],
+    ["profile", "profile", "Профиль", "profile"],
   ]);
 
   const state = {
@@ -43,7 +43,6 @@
     currentRoute: "home",
     startupApplied: false,
     historySeeded: false,
-    bodyClassObserver: null,
     startupTimer: null,
     catalogAttempt: 0,
     createAttempt: 0,
@@ -213,24 +212,36 @@
     return wrap;
   }
 
-  function menuButton([route, iconName, label]) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `studio-nav-item roxy-customer-nav-item${route === "create" ? " roxy-central-create" : ""}`;
-    button.dataset.roxyCustomerRoute = route;
-    button.setAttribute("aria-label", label);
-    const text = document.createElement("span");
-    text.textContent = label;
-    button.append(navIcon(iconName), text);
-    button.addEventListener("click", () => open(route));
-    return button;
-  }
-
-  function replaceMenu(root) {
+  function adoptMenu(root) {
     if (!root) return false;
-    const current = [...root.querySelectorAll(":scope > [data-roxy-customer-route]")];
-    const complete = current.length === MENU.length && current.every((node, index) => node.dataset.roxyCustomerRoute === MENU[index][0]);
-    if (!complete) root.replaceChildren(...MENU.map(menuButton));
+    const buttons = [...root.querySelectorAll(":scope > .studio-nav-item[data-studio-route]")];
+    if (!buttons.length) return false;
+
+    for (const [route, iconName, label, studioRoute] of MENU) {
+      const button = buttons.find((item) => item.dataset.studioRoute === studioRoute);
+      if (!button) return false;
+      button.dataset.roxyCustomerRoute = route;
+      button.dataset.roxyNavigationOwner = "true";
+      button.setAttribute("aria-label", label);
+      button.classList.toggle("roxy-central-create", route === "create");
+
+      const currentIcon = button.querySelector(":scope > .studio-nav-icon");
+      if (currentIcon) currentIcon.replaceWith(navIcon(iconName));
+      const text = [...button.children].find((node) => !node.classList.contains("studio-nav-icon"));
+      if (text) text.textContent = label;
+    }
+
+    if (!root.dataset.roxyNavigationBound) {
+      root.dataset.roxyNavigationBound = "true";
+      root.addEventListener("click", (event) => {
+        const button = event.target.closest?.("[data-roxy-customer-route]");
+        if (!button || !root.contains(button)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        open(button.dataset.roxyCustomerRoute);
+      }, true);
+    }
+
     root.dataset.roxyCustomerNavigation = "true";
     return true;
   }
@@ -238,10 +249,10 @@
   function mountMenus() {
     const bottom = document.getElementById("studioBottomNav");
     const sidebar = document.querySelector("#studioSidebar .studio-sidebar-nav:not(.studio-sidebar-secondary)");
-    replaceMenu(bottom);
-    replaceMenu(sidebar);
+    const bottomReady = adoptMenu(bottom);
+    const sidebarReady = adoptMenu(sidebar);
     syncActive();
-    return Boolean(bottom && sidebar);
+    return Boolean(bottomReady && sidebarReady);
   }
 
   function mountMenusUntilReady() {
@@ -293,10 +304,9 @@
     open(route, { feedback: false, historyMode: "none" });
   }
 
-  function attachBodyClassObserver() {
-    if (state.bodyClassObserver || !document.body) return;
-    state.bodyClassObserver = new MutationObserver(() => window.requestAnimationFrame(syncActive));
-    state.bodyClassObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  function refreshFromExplicitState() {
+    mountMenusUntilReady();
+    window.requestAnimationFrame(syncActive);
   }
 
   function init() {
@@ -304,14 +314,15 @@
     mountMenusUntilReady();
     applyStartupRoute();
     syncActive();
-    attachBodyClassObserver();
 
     document.addEventListener("click", (event) => {
       if (!event.target.closest?.("[data-shell-nav]")) return;
       window.requestAnimationFrame(syncActive);
     }, true);
     window.addEventListener("popstate", handlePopState);
-    window.addEventListener("roxy:shell-route-changed", () => window.requestAnimationFrame(syncActive));
+    window.addEventListener("roxy:shell-route-changed", refreshFromExplicitState);
+    window.addEventListener("roxy:create-center-changed", refreshFromExplicitState);
+    window.addEventListener("roxy:discovery-changed", refreshFromExplicitState);
     window.setTimeout(() => {
       mountMenusUntilReady();
       applyStartupRoute();
