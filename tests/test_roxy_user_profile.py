@@ -90,7 +90,7 @@ def test_author_profile_loads_portfolio_subscriptions_and_share_link() -> None:
         '/subscribe`, {',
         'profile.subscribed_by_me ? "Отписаться" : "Подписаться"',
         'el("h2", "", "Работы автора")',
-        'className = "roxy-user-profile-tile"',
+        'el("button", "roxy-user-profile-tile")',
     ):
         assert token in source
     assert "item.prompt" not in source
