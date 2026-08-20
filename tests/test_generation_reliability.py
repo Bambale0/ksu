@@ -1,17 +1,20 @@
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import httpx
 import pytest
 from redis.exceptions import RedisError
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.models import Generation, User, Wallet
 from app.db.reliability_models import GenerationOutbox
 from app.db.session import SessionFactory
 from app.providers.kie import KieTask
 from app.services.generation_provider import GenerationProviderService
 from app.services.generation_reliability import GenerationOutboxService, retry_delay_seconds
+from app.services.generation_worker import GenerationWorkerService
 from app.services.generations import GenerationService
 from app.services.wallet import WalletService
 
@@ -24,6 +27,19 @@ class BrokenWakeRedis:
 
     async def rpush(self, *_args: object, **_kwargs: object) -> int:
         raise RedisError("redis unavailable after admission")
+
+
+async def _create_user_with_wallet(first_name: str) -> tuple[User, Wallet]:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(5_000_000_000_000, 8_999_999_999_999),
+            first_name=first_name,
+        )
+        session.add(user)
+        await session.flush()
+        wallet = await WalletService.ensure_wallet(session, user.id)
+        await session.commit()
+        return user, wallet
 
 
 @pytest.mark.asyncio
@@ -173,12 +189,232 @@ async def test_kie_callback_can_bind_task_after_worker_crash(monkeypatch: pytest
         assert recovered.external_id == "task_recovered"
         assert recovered.status == "succeeded"
         assert recovered.result_url == "https://example.invalid/result.png"
+        assert recovered.parameters.get("_provider_submitted_at")
 
         outbox = await session.scalar(
             select(GenerationOutbox).where(GenerationOutbox.generation_id == generation.id)
         )
         assert outbox is not None
         assert outbox.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_failed_generation_stays_terminal_after_late_success_and_refunds_once() -> None:
+    user, _ = await _create_user_with_wallet("Terminal")
+
+    async with SessionFactory() as session:
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_image",
+            status="generating",
+            prompt="late callback",
+            cost_rox=Decimal("7"),
+            provider="kie",
+            external_id="task_late_success",
+            parameters={"_model_id": "nano-banana"},
+        )
+        session.add(generation)
+        await session.flush()
+        GenerationOutboxService.add(session, generation.id)
+        await session.commit()
+
+        await GenerationProviderService.fail_and_refund(session, generation.id, "provider failed")
+        await GenerationProviderService.fail_and_refund(session, generation.id, "duplicate failure")
+        await GenerationProviderService.apply_kie_task(
+            session,
+            generation,
+            KieTask(
+                task_id="task_late_success",
+                state="success",
+                result_urls=["https://example.invalid/late.png"],
+            ),
+        )
+        await session.refresh(generation)
+
+        wallet = await session.get(Wallet, user.id)
+        outbox = await session.scalar(
+            select(GenerationOutbox).where(GenerationOutbox.generation_id == generation.id)
+        )
+        assert generation.status == "failed"
+        assert generation.result_url is None
+        assert wallet is not None
+        assert wallet.balance == Decimal("7")
+        assert outbox is not None
+        assert outbox.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_kie_success_without_results_remains_recoverable() -> None:
+    user, _ = await _create_user_with_wallet("EmptyResult")
+
+    async with SessionFactory() as session:
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_image",
+            status="generating",
+            prompt="empty result",
+            cost_rox=Decimal("2"),
+            provider="kie",
+            external_id="task_empty_result",
+            parameters={"_model_id": "nano-banana"},
+        )
+        session.add(generation)
+        await session.commit()
+
+        await GenerationProviderService.apply_kie_task(
+            session,
+            generation,
+            KieTask(
+                task_id="task_empty_result",
+                state="success",
+                result_urls=[],
+            ),
+        )
+        await session.refresh(generation)
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.status == "generating"
+        assert generation.result_url is None
+        assert generation.error is not None
+        assert "without result URLs" in generation.error
+        assert wallet is not None
+        assert wallet.balance == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_uncertain_create_task_timeout_does_not_refund_or_resubmit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimeoutKieClient:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def aclose(self) -> None:
+            pass
+
+        async def create_task(self, **_kwargs: object) -> str:
+            request = httpx.Request("POST", "https://api.kie.ai/api/v1/jobs/createTask")
+            raise httpx.ReadTimeout("provider response timed out", request=request)
+
+    monkeypatch.setattr("app.services.generation_provider.KieClient", TimeoutKieClient)
+    user, _ = await _create_user_with_wallet("Uncertain")
+
+    async with SessionFactory() as session:
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_image",
+            status="queued",
+            prompt="uncertain submit",
+            cost_rox=Decimal("5"),
+            provider="kie",
+            parameters={"_model_id": "nano-banana"},
+        )
+        session.add(generation)
+        await session.commit()
+
+        with pytest.raises(httpx.ReadTimeout):
+            await GenerationProviderService.submit_kie(session, generation.id)
+        await session.refresh(generation)
+
+        wallet = await session.get(Wallet, user.id)
+        assert generation.status == "submitting"
+        assert generation.external_id is None
+        assert generation.parameters.get("_submission_uncertain") is True
+        assert generation.parameters.get("_submission_uncertain_at")
+        assert wallet is not None
+        assert wallet.balance == Decimal("0")
+
+
+def test_submission_error_disposition_distinguishes_retryable_and_ambiguous_http() -> None:
+    request = httpx.Request("POST", "https://api.kie.ai/api/v1/jobs/createTask")
+
+    rate_limited = httpx.HTTPStatusError(
+        "rate limited",
+        request=request,
+        response=httpx.Response(429, request=request),
+    )
+    validation = httpx.HTTPStatusError(
+        "validation failed",
+        request=request,
+        response=httpx.Response(422, request=request),
+    )
+    provider_error = httpx.HTTPStatusError(
+        "provider error",
+        request=request,
+        response=httpx.Response(500, request=request),
+    )
+
+    assert GenerationProviderService._submission_error_disposition(rate_limited) == "retryable"
+    assert GenerationProviderService._submission_error_disposition(validation) == "permanent"
+    assert GenerationProviderService._submission_error_disposition(provider_error) == "uncertain"
+
+
+@pytest.mark.asyncio
+async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "generation_hard_timeout_seconds", 60)
+    old_user, _ = await _create_user_with_wallet("HardTimeoutOld")
+    recent_user, _ = await _create_user_with_wallet("HardTimeoutRecent")
+
+    old_started = datetime.now(timezone.utc) - timedelta(minutes=5)
+    recent_started = datetime.now(timezone.utc)
+    old_created = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    async with SessionFactory() as session:
+        expired = Generation(
+            user_id=old_user.id,
+            kind="text_to_image",
+            status="generating",
+            prompt="expired",
+            cost_rox=Decimal("3"),
+            provider="kie",
+            external_id="task_hard_expired",
+            parameters={
+                "_model_id": "nano-banana",
+                "_provider_submitted_at": old_started.isoformat(),
+            },
+        )
+        recent = Generation(
+            user_id=recent_user.id,
+            kind="text_to_image",
+            status="generating",
+            prompt="recent provider submit",
+            cost_rox=Decimal("4"),
+            provider="kie",
+            external_id="task_hard_recent",
+            parameters={
+                "_model_id": "nano-banana",
+                "_provider_submitted_at": recent_started.isoformat(),
+            },
+        )
+        session.add_all([expired, recent])
+        await session.flush()
+        expired.created_at = old_created
+        recent.created_at = old_created
+        await session.commit()
+        expired_id = expired.id
+        recent_id = recent.id
+
+    await GenerationWorkerService._expire_stuck_generations()
+
+    async with SessionFactory() as session:
+        expired = await session.get(Generation, expired_id)
+        recent = await session.get(Generation, recent_id)
+        expired_wallet = await session.get(Wallet, old_user.id)
+        recent_wallet = await session.get(Wallet, recent_user.id)
+
+        assert expired is not None
+        assert expired.status == "failed"
+        assert expired.error is not None
+        assert "hard lifetime" in expired.error
+        assert expired_wallet is not None
+        assert expired_wallet.balance == Decimal("3")
+
+        assert recent is not None
+        assert recent.status == "generating"
+        assert recent_wallet is not None
+        assert recent_wallet.balance == Decimal("0")
 
 
 def test_retry_backoff_is_capped() -> None:
