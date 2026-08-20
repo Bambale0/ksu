@@ -198,7 +198,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=15 \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "DEPLOY_SHA='${DEPLOY_SHA}' DEPLOY_PATH='${DEPLOY_PATH}' bash -se" <<'REMOTE'
+            "remote_script=\"/tmp/ksu-deploy-${DEPLOY_SHA}.sh\"; cat > \"\${remote_script}\"; DEPLOY_SHA='${DEPLOY_SHA}' DEPLOY_PATH='${DEPLOY_PATH}' bash \"\${remote_script}\"; status=\$?; rm -f \"\${remote_script}\"; exit \"\${status}\"" <<'REMOTE'
           set -Eeuo pipefail
 
           cd "${DEPLOY_PATH}"
