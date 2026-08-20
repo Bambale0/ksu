@@ -9,9 +9,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_, select
 
-from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.api.deps import CurrentUserDep, OptionalCurrentUserDep, RedisDep, SessionDep
 from app.db.history_models import GenerationHistoryState
 from app.db.models import Generation
+from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
@@ -20,6 +21,7 @@ from app.services.model_catalog import (
     ModelCatalog,
     UnknownModelError,
 )
+from app.services.model_presentation import music_model_title, presentation_for, public_model_title
 from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.music_generation import (
     MUSIC_MODEL_ID,
@@ -54,30 +56,34 @@ def _public_catalog_unit_price(model_id: str, value: Decimal | str | int | float
 def _model_view(generation: Generation) -> dict[str, str | None]:
     params = generation.parameters or {}
     model_id = str(params.get("_model_id") or "")
+    provider_model = str(params.get("_provider_model") or params.get("_kie_model") or "") or None
     if MusicGenerationService.is_music_model(model_id):
         return {
             "id": MUSIC_MODEL_ID,
-            "title": str(params.get("_model_title") or "Suno V5.5 · Music"),
-            "family": "suno",
-            "operation": "text_to_music",
-            "media_type": "audio",
+            "title": str(params.get("_model_title") or music_model_title(provider_model or "")),
+            "family": str(params.get("_model_family") or "suno"),
+            "operation": str(params.get("_operation") or "text_to_music"),
+            "media_type": str(params.get("_media_type") or "audio"),
+            "provider_model": provider_model,
         }
     try:
         spec = ModelCatalog.get(model_id)
     except UnknownModelError:
         return {
             "id": model_id or None,
-            "title": model_id or "Unknown model",
-            "family": None,
-            "operation": generation.kind,
-            "media_type": None,
+            "title": str(params.get("_model_title") or model_id or "Unknown model"),
+            "family": str(params.get("_model_family") or "") or None,
+            "operation": str(params.get("_operation") or generation.kind),
+            "media_type": str(params.get("_media_type") or "") or None,
+            "provider_model": provider_model,
         }
     return {
         "id": spec.id,
-        "title": spec.title,
-        "family": spec.family,
-        "operation": spec.operation,
-        "media_type": spec.media_type,
+        "title": public_model_title(spec.id, str(params.get("_model_title") or spec.title)),
+        "family": str(params.get("_model_family") or spec.family),
+        "operation": str(params.get("_operation") or spec.operation),
+        "media_type": str(params.get("_media_type") or spec.media_type),
+        "provider_model": provider_model or spec.kie_model,
     }
 
 
@@ -116,6 +122,8 @@ def _generation_view(
 ) -> dict[str, object]:
     cost = Decimal(generation.cost_rox)
     params = generation.parameters or {}
+    retail_cost = Decimal(str(params.get("_retail_cost_rox") or cost))
+    admin_free = bool(params.get("_admin_free"))
     owned_media = owned_media or []
     owned_urls = [str(item["url"]) for item in owned_media if item.get("url")]
     result_urls = owned_urls or _provider_result_urls(generation)
@@ -132,6 +140,8 @@ def _generation_view(
         "cost_credits": _amount(cost),
         "cost_rox": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+        "retail_cost_rox": _amount(retail_cost),
+        "admin_free": admin_free,
         "billing_seconds": params.get("_billing_seconds"),
         "result_url": result_urls[0] if result_urls else None,
         "result_urls": result_urls,
@@ -183,22 +193,52 @@ async def _owned_generation(
 
 
 @router.get("/models")
-async def generation_models() -> dict[str, object]:
+async def generation_models(
+    user: OptionalCurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    admin_free = bool(user and await BillingAccessService.is_active_admin(session, user.id))
     models: list[dict[str, Any]] = []
     for item in ModelCatalog.list():
         enriched = dict(item)
+        model_id = str(enriched["id"])
+        presentation = presentation_for(enriched)
+        enriched["title"] = str(presentation["title"] or enriched.get("title") or model_id)
+        enriched["presentation"] = presentation
         unit_credits = enriched.get("price_rox")
         if unit_credits is not None:
-            unit_credits = _public_catalog_unit_price(str(enriched["id"]), unit_credits)
-            enriched["price_rox"] = _amount(unit_credits)
-            enriched["price_credits"] = _amount(unit_credits)
-            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(unit_credits))
+            retail_unit = _public_catalog_unit_price(model_id, unit_credits)
+            effective_unit = Decimal("0") if admin_free else retail_unit
+            enriched["retail_price_rox"] = _amount(retail_unit)
+            enriched["price_rox"] = _amount(effective_unit)
+            enriched["price_credits"] = _amount(effective_unit)
+            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(effective_unit))
+        enriched["admin_free"] = admin_free
         enriched["ui_schema"] = build_public_model_ui_schema(enriched)
         models.append(enriched)
-    models.append(MusicGenerationService.public_model())
+
+    music = MusicGenerationService.public_model()
+    music["title"] = music_model_title(str(music.get("kie_model") or ""))
+    music_retail = Decimal(str(music.get("price_rox") or 0))
+    music["retail_price_rox"] = _amount(music_retail)
+    music["admin_free"] = admin_free
+    if admin_free:
+        music["price_rox"] = "0.00"
+        music["price_credits"] = "0.00"
+        music["price_rub"] = "0.00"
+    music["presentation"] = {
+        "title": music["title"],
+        "product_key": MUSIC_MODEL_ID,
+        "product_title": music["title"],
+        "family_group": None,
+        "family_title": "Suno",
+        "version_label": str(music.get("kie_model") or ""),
+    }
+    models.append(music)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
+        "admin_free": admin_free,
         "models": models,
     }
 
@@ -206,13 +246,23 @@ async def generation_models() -> dict[str, object]:
 @router.post("/quote")
 async def quote_generation(
     payload: CreateGenerationRequest,
+    user: OptionalCurrentUserDep,
     session: SessionDep,
 ) -> dict[str, Any]:
     if MusicGenerationService.is_music_model(payload.model_id):
         try:
-            _clean, cost = MusicGenerationService.prepare(payload.parameters, payload.prompt)
+            _clean, retail_cost = MusicGenerationService.prepare(payload.parameters, payload.prompt)
         except MusicGenerationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        billing = None
+        if user is not None:
+            billing = await BillingAccessService.decision(
+                session,
+                user_id=user.id,
+                retail_cost=retail_cost,
+            )
+        cost = billing.effective_cost if billing else retail_cost
+        admin_free = bool(billing and billing.admin_free)
         return {
             "model_id": MUSIC_MODEL_ID,
             "price_mode": "flat",
@@ -223,11 +273,13 @@ async def quote_generation(
             "cost_credits": _amount(cost),
             "cost_rox": _amount(cost),
             "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+            "retail_cost_rox": _amount(retail_cost),
+            "admin_free": admin_free,
             "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
         }
 
     try:
-        spec, _clean, cost, seconds, unit_price = await GenerationService.prepare_request(
+        spec, _clean, retail_cost, seconds, retail_unit_price = await GenerationService.prepare_request(
             session,
             model_id=payload.model_id,
             prompt=payload.prompt,
@@ -237,6 +289,17 @@ async def quote_generation(
         )
     except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    billing = None
+    if user is not None:
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user.id,
+            retail_cost=retail_cost,
+        )
+    cost = billing.effective_cost if billing else retail_cost
+    admin_free = bool(billing and billing.admin_free)
+    unit_price = Decimal("0") if admin_free else retail_unit_price
     return {
         "model_id": spec.id,
         "price_mode": spec.price_mode,
@@ -247,6 +310,8 @@ async def quote_generation(
         "cost_credits": _amount(cost),
         "cost_rox": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+        "retail_cost_rox": _amount(retail_cost),
+        "admin_free": admin_free,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
     }
 
@@ -409,7 +474,7 @@ async def create_generation(
     user: CurrentUserDep,
     session: SessionDep,
     redis: RedisDep,
-) -> dict[str, str | None]:
+) -> dict[str, str | bool | None]:
     try:
         if MusicGenerationService.is_music_model(payload.model_id):
             generation = await MusicGenerationService.create(
@@ -435,11 +500,13 @@ async def create_generation(
     except InsufficientBalanceError as exc:
         raise HTTPException(status_code=409, detail="Insufficient credits") from exc
 
+    admin_free = bool((generation.parameters or {}).get("_admin_free"))
     return {
         "id": str(generation.id),
         "status": generation.status,
         "cost_credits": _amount(generation.cost_rox),
         "cost_rox": _amount(generation.cost_rox),
         "cost_rub": _amount(InternalCreditService.rubles_for(generation.cost_rox)),
+        "admin_free": admin_free,
         "result_url": generation.result_url,
     }
