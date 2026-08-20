@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -52,122 +52,71 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install backend dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'
+
+      - name: Install Mini App dependencies
+        working-directory: frontend/mini-app
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck Next Mini App
+        working-directory: frontend/mini-app
+        run: npm run typecheck
+
+      - name: Build Next Mini App
+        working-directory: frontend/mini-app
+        run: npm run build
+
+      - name: Verify static export
+        run: |
+          test -f frontend/mini-app/out/index.html
+          test -d frontend/mini-app/out/_next
+          grep -q '/mini-app/_next/' frontend/mini-app/out/index.html
 
       - name: Ruff
         run: ruff check . --output-format=github
 
-      - name: Compile
+      - name: Compile backend
         run: python -m compileall -q app tests
-
-      - name: Validate Mini App JavaScript
-        run: |
-          # Explicit entrypoints keep compatibility with historical regression contracts.
-          node --check app/web/mini_app/app.js
-          node --check app/web/mini_app/shell.js
-          node --check app/web/mini_app/shell-integration.js
-          node --check app/web/mini_app/studio-shell.js
-          node --check app/web/mini_app/studio-workspace.js
-          node --check app/web/mini_app/roxy-brand.js
-          node --check app/web/mini_app/roxy-economy.js
-          node --check app/web/mini_app/roxy-customer-navigation.js
-          node --check app/web/mini_app/roxy-discovery.js
-          node --check app/web/mini_app/roxy-create-center.js
-          node --check app/web/mini_app/roxy-music.js
-          node --check app/web/mini_app/roxy-mobile-runtime.js
-          node --check app/web/mini_app/roxy-profile-cabinet.js
-          node --check app/web/mini_app/roxy-parity-navigation.js
-          node --check app/web/mini_app/roxy-batch-embedded.js
-          node --check app/web/mini_app/roxy-history-management.js
-          node --check app/web/mini_app/payment-link-guard.js
-          node --check app/web/mini_app/payment-surface.js
-          node --check app/web/mini_app/wallet.js
-          node --check app/web/mini_app/primary-card-checkout.js
-          node --check app/web/mini_app/account-overview.js
-          node --check app/web/mini_app/partner.js
-          node --check app/web/mini_app/profile-tools.js
-          node --check app/web/mini_app/social.js
-          node --check app/web/mini_app/feed.js
-          node --check app/web/mini_app/trends.js
-          node --check app/web/mini_app/prompt-tools.js
-          node --check app/web/mini_app/bulk.js
-          node --check app/web/mini_app/promo-recovery.js
-          node --check app/web/mini_app/onboarding.js
-          # Universal gate covers all current and future Mini App scripts.
-          find app/web/mini_app -maxdepth 1 -type f -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
 
       - name: Apply migrations
         run: alembic upgrade head
 
-      - name: Feed domain tests
-        run: pytest -q tests/test_feed_domain.py
+      - name: Next Mini App architecture contract
+        run: pytest -q tests/test_next_mini_app_contract.py
 
-      - name: Feed remix tests
-        run: pytest -q tests/test_feed_remix.py
+      - name: Feed domain
+        run: pytest -q tests/test_feed_domain.py tests/test_feed_remix.py tests/test_feed_deep_links.py tests/test_feed_bot_callbacks.py
 
-      - name: Feed deep-link and UI contracts
+      - name: Generation and model contracts
         run: >-
           pytest -q
-          tests/test_feed_deep_links.py
-          tests/test_feed_bot_callbacks.py
-          tests/test_feed_ui_contract.py
+          tests/test_model_ui_schema.py
+          tests/test_generation_batches.py
+          tests/test_batch_recovery.py
+          tests/test_music_generation.py
 
-      - name: Trends contracts
-        run: pytest -q tests/test_trends_contract.py tests/test_trends_service.py
+      - name: Prompt and trend services
+        run: pytest -q tests/test_prompt_tools.py tests/test_trends_service.py
 
-      - name: Prompt Tools contracts
-        run: pytest -q tests/test_prompt_tools_contract.py tests/test_prompt_tools.py
-
-      - name: Batch generation contracts
-        run: pytest -q tests/test_generation_batches.py tests/test_batch_recovery.py
-
-      - name: Embedded Batch contracts
-        run: pytest -q tests/test_roxy_embedded_batch.py
-
-      - name: Studio shell contracts
-        run: pytest -q tests/test_studio_shell_contract.py
-
-      - name: ROXY brand contracts
-        run: pytest -q tests/test_roxy_brand_contract.py
-
-      - name: ROXY customer navigation contracts
-        run: pytest -q tests/test_roxy_customer_navigation.py
-
-      - name: ROXY discovery contracts
-        run: pytest -q tests/test_roxy_discovery.py
-
-      - name: ROXY Create center contracts
-        run: pytest -q tests/test_roxy_create_center.py
-
-      - name: ROXY Music generation contracts
-        run: pytest -q tests/test_music_generation.py
-
-      - name: ROXY Telegram mobile acceptance contracts
-        run: pytest -q tests/test_roxy_mobile_acceptance.py
-
-      - name: ROXY Profile cabinet contracts
-        run: pytest -q tests/test_roxy_profile_cabinet.py
-
-      - name: ROXY frontend parity and FHD contracts
-        run: pytest -q tests/test_roxy_frontend_parity.py
-
-      - name: ROXY economy contracts
+      - name: ROXY economy and pricing
         run: >-
           pytest -q
           tests/test_roxy_economy.py
           tests/test_internal_credits.py
           tests/test_roxy_pricing_denomination.py
 
-      - name: Payment surface contracts
-        run: pytest -q tests/test_payment_surface_contract.py
-
-      - name: Full regression suite
+      - name: Full backend and product regression
         id: regression
         shell: bash
         run: |
@@ -177,7 +126,7 @@ jobs:
           if [ "$code" -ne 0 ]; then
             echo "--- regression tail ---"
             tail -n 120 /tmp/pytest-regression.log
-            grep -E "FAILED|ERROR|AssertionError|TypeError|AttributeError|KeyError|IntegrityError" /tmp/pytest-regression.log | tail -n 30 | while IFS= read -r line; do
+            grep -E "FAILED|ERROR|AssertionError|TypeError|AttributeError|KeyError|IntegrityError|FileNotFoundError" /tmp/pytest-regression.log | tail -n 30 | while IFS= read -r line; do
               echo "::error title=Pytest regression::$line"
             done
             exit "$code"
