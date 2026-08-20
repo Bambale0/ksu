@@ -6,8 +6,6 @@
     models: [],
     musicModel: null,
     loading: false,
-    contentObserver: null,
-    contentRoots: new Set(),
     frame: 0,
   };
 
@@ -192,36 +190,6 @@
     if (summary?.textContent === "Ваш трек") setText(summary, "Вы выбрали");
   }
 
-  function observedRoots() {
-    return [
-      document.getElementById("roxyCreateCenterView"),
-      document.getElementById("createHome"),
-      document.getElementById("builderView"),
-      document.getElementById("resultCard"),
-      document.getElementById("generationDetailView"),
-      document.getElementById("ksuHistoryOverlay"),
-    ].filter(Boolean);
-  }
-
-  function ensureObserver() {
-    if (!state.contentObserver) {
-      state.contentObserver = new MutationObserver(scheduleApply);
-    }
-  }
-
-  function attachScopedObservers() {
-    ensureObserver();
-    for (const root of observedRoots()) {
-      if (state.contentRoots.has(root)) continue;
-      state.contentRoots.add(root);
-      state.contentObserver.observe(root, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-    }
-  }
-
   function apply() {
     state.frame = 0;
     enableCreateCard();
@@ -232,7 +200,6 @@
     patchResultContainer(document.getElementById("generationDetailView"));
     patchResultContainer(document.getElementById("ksuHistoryOverlay"));
     patchRecentCards();
-    attachScopedObservers();
   }
 
   function scheduleApply() {
@@ -248,19 +215,44 @@
     openMusicBuilder();
   }
 
+  function handleExplicitUiAction(event) {
+    const control = event.target.closest?.(
+      [
+        "#modelSelect",
+        "[data-roxy-customer-route]",
+        "[data-shell-nav]",
+        ".ksu-history-action",
+        ".shell-generation-card",
+        ".active-generation-card",
+        "#createButton",
+      ].join(", "),
+    );
+    if (!control) return;
+    scheduleApply();
+  }
+
+  function handleRenderedMedia(event) {
+    const media = event.target;
+    if (!(media instanceof HTMLImageElement || media instanceof HTMLVideoElement || media instanceof HTMLAudioElement)) return;
+    const container = media.closest?.("#resultCard, #generationDetailView, #ksuHistoryOverlay");
+    if (!container) return;
+    scheduleApply();
+  }
+
   function init() {
     document.addEventListener("click", interceptMusicCard, true);
-    document.getElementById("modelSelect")?.addEventListener("change", scheduleApply);
+    document.addEventListener("click", handleExplicitUiAction, true);
+    document.addEventListener("change", handleExplicitUiAction, true);
+    document.addEventListener("load", handleRenderedMedia, true);
+    document.addEventListener("error", handleRenderedMedia, true);
     void loadCatalog();
     scheduleApply();
-    for (const delay of [80, 240, 700]) {
-      window.setTimeout(() => {
-        attachScopedObservers();
-        scheduleApply();
-      }, delay);
-    }
+    for (const delay of [80, 240, 700]) window.setTimeout(scheduleApply, delay);
     tg?.onEvent?.("activated", scheduleApply);
     window.addEventListener("roxy:route-changed", scheduleApply);
+    window.addEventListener("roxy:shell-route-changed", scheduleApply);
+    window.addEventListener("roxy:generation-updated", scheduleApply);
+    window.addEventListener("roxy:history-updated", scheduleApply);
   }
 
   window.RoxyMusic = Object.freeze({ open: openMusicBuilder, refresh: loadCatalog });
