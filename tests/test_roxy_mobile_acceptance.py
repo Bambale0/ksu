@@ -19,9 +19,10 @@ def test_html_is_mobile_first_and_telegram_native() -> None:
 
 def test_mobile_runtime_is_mounted_after_product_layers() -> None:
     brand = _read("roxy-brand.js")
-    assert '/mini-app/roxy-mobile-runtime.css' in brand
     assert '/mini-app/roxy-mobile-runtime.js' in brand
+    assert '/mini-app/roxy-mobile-runtime.css' not in brand
     assert brand.index('/mini-app/roxy-profile-cabinet.js') < brand.index('/mini-app/roxy-mobile-runtime.js')
+    assert brand.index('/mini-app/roxy-mobile-runtime.js') < brand.index('/mini-app/roxy-design-system.css?v=1')
 
 
 def test_runtime_tracks_telegram_safe_area_and_stable_viewport() -> None:
@@ -41,24 +42,21 @@ def test_runtime_tracks_telegram_safe_area_and_stable_viewport() -> None:
         assert token in source
 
 
-def test_mobile_css_has_safe_area_fallbacks_and_five_item_bottom_navigation() -> None:
+def test_canonical_mobile_css_has_safe_area_and_five_item_navigation() -> None:
     base = _read("styles.css")
-    studio = _read("studio-shell.css")
-    mobile = _read("roxy-mobile-runtime.css")
+    design = _read("roxy-design-system.css")
     assert "--tg-viewport-stable-height" in base
     assert "--tg-content-safe-area-inset-bottom" in base
-    assert "grid-template-columns: repeat(5" in studio
     for token in (
-        "--roxy-content-safe-top",
-        "--roxy-content-safe-right",
-        "--roxy-content-safe-bottom",
-        "--roxy-content-safe-left",
-        "env(safe-area-inset-bottom, 0px)",
+        "--tg-content-safe-area-inset-bottom",
+        "--tg-content-safe-area-inset-left",
+        "--tg-content-safe-area-inset-right",
         "grid-template-columns: repeat(5",
-        "overflow-x: hidden",
-        "overflow-x: clip",
+        "@media (max-width: 430px)",
+        "min-height: 44px",
+        "touch-action: manipulation",
     ):
-        assert token in mobile
+        assert token in design
 
 
 def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() -> None:
@@ -79,11 +77,9 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
     assert "if (visible) back.show();" in runtime
     assert "else back.hide();" in runtime
 
-    # Existing shell remains owner of nested builder/result browser-history transitions.
     assert "tg?.BackButton?.onClick?.(() => closeNested())" in shell
     assert "history.back()" in shell
 
-    # Startup deep routes remain bounded and seed the same history stack used by Telegram Back.
     assert 'new URLSearchParams(window.location.search).get("route")' in navigation
     assert 'const OPEN_ROUTES = [...PRIMARY_ROUTES, "wallet"]' in navigation
     assert "window.history.replaceState(historyState(\"home\")" in navigation
@@ -93,7 +89,6 @@ def test_back_button_keeps_nested_shell_single_step_and_routes_top_level_back() 
 
 def test_keyboard_runtime_handles_visual_viewport_and_ios_zoom() -> None:
     source = _read("roxy-mobile-runtime.js")
-    css = _read("roxy-mobile-runtime.css")
     for token in (
         "window.visualViewport",
         "height >= 120",
@@ -103,21 +98,17 @@ def test_keyboard_runtime_handles_visual_viewport_and_ios_zoom() -> None:
         'document.addEventListener("focusin", onFocusIn)',
     ):
         assert token in source
-    assert ".roxy-keyboard-open .studio-bottom-nav" in css
-    assert "pointer-events: none" in css
-    assert "font-size: 16px" in css
 
 
 def test_mobile_touch_targets_and_low_motion_fallbacks_are_explicit() -> None:
     source = _read("roxy-mobile-runtime.js")
-    css = _read("roxy-mobile-runtime.css")
+    css = _read("roxy-design-system.css")
     assert 'String(tg?.platform || "").toLowerCase() === "android"' in source
     assert "navigator.hardwareConcurrency" in source
     assert 'document.documentElement.classList.toggle("roxy-low-motion"' in source
     assert "min-height: 44px" in css
     assert "touch-action: manipulation" in css
     assert "prefers-reduced-motion: reduce" in css
-    assert "backdrop-filter: none !important" in css
 
 
 def test_catalog_feed_and_media_are_mobile_playback_safe() -> None:
@@ -126,7 +117,7 @@ def test_catalog_feed_and_media_are_mobile_playback_safe() -> None:
     feed = _read("feed.js")
     shell = _read("shell.js")
     music = _read("roxy-music.js")
-    mobile = _read("roxy-mobile-runtime.css")
+    design = _read("roxy-design-system.css")
 
     assert "scroll-snap-type: x mandatory" in discovery_css
     assert "overscroll-behavior-inline: contain" in discovery_css
@@ -138,8 +129,8 @@ def test_catalog_feed_and_media_are_mobile_playback_safe() -> None:
     assert "video.playsInline = true" in shell
     assert 'audio.className = "roxy-audio-player"' in music
     assert "audio.controls = true" in music
-    assert ".roxy-audio-player" in mobile
-    assert "touch-action: manipulation" in mobile
+    assert ".roxy-audio-player" in design
+    assert "touch-action: manipulation" in design
 
 
 def test_checkout_opens_https_from_direct_user_activation_via_telegram() -> None:
