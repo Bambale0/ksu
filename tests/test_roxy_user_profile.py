@@ -78,3 +78,34 @@ def test_old_shell_identity_card_is_hidden_but_account_modules_remain() -> None:
     assert 'profileCard.setAttribute("aria-hidden", "true")' in source
     assert 'el("h2", "", "Настройки и возможности")' in source
     assert 'profileView.replaceChildren' not in source
+
+
+def test_author_profile_loads_portfolio_subscriptions_and_share_link() -> None:
+    source = _read("roxy-author-profile.js")
+    for token in (
+        "const PAGE_SIZE = 24",
+        '/api/v1/social/profiles/${encodeURIComponent(state.authorId)}',
+        '/api/v1/profiles/${encodeURIComponent(profile.referral_code)}/feed',
+        '/api/v1/profiles/${encodeURIComponent(profile.referral_code)}/link',
+        '/subscribe`, {',
+        'profile.subscribed_by_me ? "Отписаться" : "Подписаться"',
+        'el("h2", "", "Работы автора")',
+        'className = "roxy-user-profile-tile"',
+    ):
+        assert token in source
+    assert "item.prompt" not in source
+
+
+def test_social_profile_exposes_feed_referral_code_without_new_identity_store() -> None:
+    source = (ROOT / "app" / "services" / "social.py").read_text(encoding="utf-8")
+    assert '"referral_code": str(author.telegram_id)' in source
+    assert '"referral_code": str(author.telegram_id) if discoverable else None' in source
+    assert '"referral_code": None' in source
+
+
+def test_work_preview_is_registered_as_nested_telegram_surface() -> None:
+    runtime = _read("roxy-mobile-runtime.js")
+    assert "#roxyUserWorkPreview" in runtime
+    assert 'const profilePreview = document.getElementById("roxyUserWorkPreview")' in runtime
+    assert "|| (profilePreview && !profilePreview.hidden)" in runtime
+    assert 'document.getElementById("roxyUserWorkPreview")' in runtime
