@@ -31,13 +31,12 @@ async def _user(session, name: str = "Feed") -> User:  # type: ignore[no-untyped
     return user
 
 
-async def _ready_generation(
+async def _pending_generation(
     session,
     user: User,
     *,
     kind: str = "text_to_image",
     suffix: str = ".png",
-    content_type: str = "image/png",
     source_feed_gen_id=None,
     adult: bool = False,
     prompt: str = "secret source prompt",
@@ -61,7 +60,30 @@ async def _ready_generation(
         is_adult_content=adult,
     )
     session.add(generation)
-    await session.flush()
+    await session.commit()
+    return generation
+
+
+async def _ready_generation(
+    session,
+    user: User,
+    *,
+    kind: str = "text_to_image",
+    suffix: str = ".png",
+    content_type: str = "image/png",
+    source_feed_gen_id=None,
+    adult: bool = False,
+    prompt: str = "secret source prompt",
+) -> Generation:  # type: ignore[no-untyped-def]
+    generation = await _pending_generation(
+        session,
+        user,
+        kind=kind,
+        suffix=suffix,
+        source_feed_gen_id=source_feed_gen_id,
+        adult=adult,
+        prompt=prompt,
+    )
     session.add(
         MediaAsset(
             generation_id=generation.id,
@@ -105,6 +127,34 @@ async def test_completed_image_generation_publishes_to_feed() -> None:
         assert card["is_public_feed"] is True
         assert card["is_profile_visible"] is True
         assert card["prompt"] == "secret source prompt"
+
+
+@pytest.mark.asyncio
+async def test_publish_sets_scope_while_media_ingest_is_pending() -> None:
+    async with SessionFactory() as session:
+        author = await _user(session, "Pending")
+        generation = await _pending_generation(session, author)
+        published = await FeedService.share_to_feed(
+            session,
+            generation_id=generation.id,
+            owner_user_id=author.id,
+            publication_scope="feed",
+        )
+        await session.commit()
+
+        assert published.publication_scope == "feed"
+        assert published.is_public_feed is True
+        assert published.is_profile_visible is True
+        assert published.feed_published_at is not None
+
+        rows = await FeedService.get_feed_generations(session, sort="recent")
+        assert generation.id not in {row.id for row in rows}
+        with pytest.raises(FeedNotFoundError):
+            await FeedService.get_feed_generation_card(
+                session,
+                generation_id=generation.id,
+                viewer_user_id=author.id,
+            )
 
 
 @pytest.mark.asyncio
