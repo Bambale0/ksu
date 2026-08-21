@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-label="ROXY RX">
+  <defs>
+    <linearGradient id="rxg" x1="20" y1="20" x2="300" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8C55FF" offset="0"/>
+      <stop stop-color="#B95DFF" offset="0.48"/>
+      <stop stop-color="#FF5FB7" offset="1"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-55%" width="170%" height="210%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feColorMatrix in="b1" type="matrix" values="1 0 0 0 0.73  0 1 0 0 0.32  0 0 1 0 1  0 0 0 .95 0" result="c1"/>
+      <feGaussianBlur stdDeviation="11" in="SourceGraphic" result="b2"/>
+      <feColorMatrix in="b2" type="matrix" values="1 0 0 0 1  0 1 0 0 0.22  0 0 1 0 .75  0 0 0 .55 0" result="c2"/>
+      <feMerge>
+        <feMergeNode in="c2"/>
+        <feMergeNode in="c1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <g fill="none" stroke="url(#rxg)" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter" filter="url(#glow)">
+    <path d="M22 178V22h96c43 0 72 27 72 66 0 31-17 54-45 63l50 27h-48l-54-36H67v36H22Z"/>
+    <path d="M67 104V64h49c18 0 29 7 29 20s-11 20-29 20H67Z"/>
+    <path d="M176 22l56 74-58 82h41l38-55 37 55h42l-58-82 56-74h-42l-35 50-35-50h-42Z"/>
+  </g>
+</svg>
