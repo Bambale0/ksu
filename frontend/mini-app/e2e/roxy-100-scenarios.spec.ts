@@ -154,7 +154,7 @@ test.describe("ROXY Mini App 100 пользовательских сценари
       }
       if (scenario.route === "catalog") {
         await expect(body).toContainText("Готовые сценарии");
-        await expect(page.locator(".catalog-model-section")).toHaveCount(0);
+        await expect(body).not.toContainText("Полный каталог");
       }
       if (scenario.route === "create") {
         await expect(body).toContainText("Настрой генерацию");
