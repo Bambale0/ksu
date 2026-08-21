@@ -57,6 +57,48 @@ def test_mode_specific_inputs_are_required_by_the_contract() -> None:
     ]
 
 
+def test_video_duration_fields_use_model_specific_kie_options() -> None:
+    models = {model["id"]: model for model in ModelCatalog.list()}
+    expected_options = {
+        "wan-2.7-t2v": [5],
+        "wan-2.7-i2v": [5],
+        "wan-2.7-video-edit": [0],
+        "wan-2.7-r2v": [5],
+        "seedance-1.5-pro": [8],
+        "seedance-2.0": [5, 10, 15],
+        "seedance-2.0-fast": [5, 10, 15],
+        "seedance-2.0-mini": [5, 10, 15],
+        "seedance-2.5": [5, 10, 15],
+        "kling-3.0": list(range(3, 16)),
+        "gemini-omni-video": [4],
+        "grok-video-t2v": [6],
+        "grok-video-i2v": [6],
+        "grok-video-1.5": [8],
+    }
+
+    for model_id, options in expected_options.items():
+        model = models.get(model_id)
+        if not model:
+            continue
+        schema = build_public_model_ui_schema(model)
+        fields = {field["name"]: field for field in schema["fields"]}
+        duration = fields["duration"]
+        assert duration["control"] == "combobox", model_id
+        assert duration["suggestions"] == options, model_id
+        assert duration["suffix"] == "с", model_id
+
+    checked = 0
+    for model in models.values():
+        if model["media_type"] != "video" or "duration" not in model["known_fields"]:
+            continue
+        schema = build_public_model_ui_schema(model)
+        duration = {field["name"]: field for field in schema["fields"]}["duration"]
+        assert duration["control"] == "combobox", model["id"]
+        assert duration.get("suggestions"), model["id"]
+        checked += 1
+    assert checked >= 1
+
+
 def test_every_per_second_model_can_supply_billing_seconds() -> None:
     for model in ModelCatalog.list():
         if model["price_mode"] != "per_second":
