@@ -58,8 +58,9 @@ async def _fixture_user_and_tariff(session) -> tuple[User, AdminAccount]:  # typ
             "video_models": {},
             "partner_rates": {},
             "prompt_costs": {
-                "image_analysis": "2.00",
-                "prompt_builder": "3.00",
+                "image_analysis": "1.00",
+                "prompt_builder": "1.00",
+                "video_prompt": "30.00",
             },
         },
         created_by_admin_id=admin.id,
@@ -69,7 +70,7 @@ async def _fixture_user_and_tariff(session) -> tuple[User, AdminAccount]:  # typ
     await WalletService.credit(
         session,
         user_id=user.id,
-        amount=Decimal("20.00"),
+        amount=Decimal("40.00"),
         kind="test_seed",
         reference_type="test",
         reference_id=str(user.id),
@@ -110,7 +111,7 @@ async def test_prompt_tool_create_is_idempotent_and_charges_once(monkeypatch: py
         assert replayed_second is True
         assert first.id == second.id
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("17.00")
+        assert Decimal(wallet.balance) == Decimal("39.00")
         outboxes = list(
             (
                 await session.scalars(
@@ -180,6 +181,65 @@ async def test_prompt_tool_worker_persists_structured_success(
 
 
 @pytest.mark.asyncio
+async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "abuse_protection_enabled", False)
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        async def aclose(self) -> None:
+            return None
+
+        async def build_video_prompt(self, **kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
+            assert kwargs["duration_seconds"] == 10
+            return PromptToolProviderResult(
+                model="gemini-2.5-pro",
+                payload={
+                    "prompt_ru": "Русский видео prompt",
+                    "prompt_en": "English video prompt",
+                    "camera": "slow dolly in",
+                    "motion": "smooth character movement",
+                    "negative_prompt": "blur, jitter, artifacts",
+                },
+                credits_consumed=Decimal("0.5000"),
+            )
+
+    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FakeClient)
+
+    async with SessionFactory() as session:
+        user, _admin = await _fixture_user_and_tariff(session)
+        task, _ = await PromptToolService.create_task(
+            session,
+            AsyncMock(),
+            user_id=user.id,
+            tool="video_prompt",
+            payload={
+                "video_url": "https://cdn.example.invalid/ref.mp4",
+                "instruction": "make it brighter",
+                "duration_seconds": 10,
+            },
+            idempotency_key=f"video-prompt-{uuid.uuid4()}",
+        )
+        wallet_after_charge = await session.get(Wallet, user.id)
+        assert wallet_after_charge is not None
+        assert Decimal(wallet_after_charge.balance) == Decimal("10.00")
+
+        claimed = await PromptToolOutboxService.claim(session)
+        assert claimed is not None
+        assert claimed.task_id == task.id
+        await PromptToolProcessor.process(session, AsyncMock(), claimed)
+
+        refreshed = await session.get(PromptToolTask, task.id)
+        assert refreshed is not None
+        assert refreshed.status == "succeeded"
+        assert refreshed.result_payload["camera"] == "slow dolly in"
+        assert refreshed.result_payload["negative_prompt"] == "blur, jitter, artifacts"
+
+
+@pytest.mark.asyncio
 async def test_terminal_provider_failure_refunds_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -211,7 +271,7 @@ async def test_terminal_provider_failure_refunds_user(
         task_id = task.id
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
-        assert Decimal(wallet_after_charge.balance) == Decimal("18.00")
+        assert Decimal(wallet_after_charge.balance) == Decimal("39.00")
 
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None
@@ -223,4 +283,4 @@ async def test_terminal_provider_failure_refunds_user(
         assert refreshed is not None
         assert refreshed.status == "failed"
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("20.00")
+        assert Decimal(wallet.balance) == Decimal("40.00")
