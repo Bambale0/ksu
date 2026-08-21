@@ -17,6 +17,15 @@ class UserReference(TimestampMixin, Base):
         CheckConstraint("status IN ('ready', 'deleted')", name="ck_user_references_status"),
         UniqueConstraint("user_id", "source_url", name="uq_user_references_user_source"),
         Index("ix_user_references_user_kind_created", "user_id", "kind", "created_at"),
+        Index(
+            "uq_user_references_user_kind_hash",
+            "user_id",
+            "kind",
+            "file_hash",
+            unique=True,
+            postgresql_where="file_hash IS NOT NULL",
+        ),
+        Index("ix_user_references_user_kind_last_used", "user_id", "kind", "last_used_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -27,8 +36,10 @@ class UserReference(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
     label: Mapped[str | None] = mapped_column(String(120))
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    file_hash: Mapped[str | None] = mapped_column(String(64))
     original_filename: Mapped[str | None] = mapped_column(String(255))
     content_type: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(64), default="manual", server_default="manual", nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
