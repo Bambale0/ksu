@@ -37,6 +37,8 @@ type PublishOptions = {
   referencesVisible?: boolean;
 };
 
+const publicPrivacyDefaults = { prompt_visible: false, references_visible: false };
+
 function normalizePublishOptions(options: Exclude<PublicationScope, "private"> | PublishOptions): PublishOptions {
   return typeof options === "string" ? { scope: options } : options;
 }
@@ -67,6 +69,7 @@ export const api = {
     return request<{ publication_scope: PublicationScope; downgraded_to_profile: boolean; item: FeedCard }>(`/api/v1/feed/${encodeURIComponent(id)}/publish`, {
       method: "POST",
       body: JSON.stringify({
+        ...publicPrivacyDefaults,
         publication_scope: normalized.scope,
         prompt_visible: Boolean(normalized.promptVisible),
         references_visible: Boolean(normalized.referencesVisible),
