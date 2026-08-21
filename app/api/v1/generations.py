@@ -211,9 +211,12 @@ async def generation_models(
             retail_unit = _public_catalog_unit_price(model_id, unit_credits)
             effective_unit = Decimal("0") if admin_free else retail_unit
             enriched["retail_price_rox"] = _amount(retail_unit)
-            enriched["price_rox"] = _amount(effective_unit)
-            enriched["price_credits"] = _amount(effective_unit)
-            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(effective_unit))
+            enriched["effective_price_rox"] = _amount(effective_unit)
+            enriched["effective_price_credits"] = _amount(effective_unit)
+            enriched["effective_price_rub"] = _amount(InternalCreditService.rubles_for(effective_unit))
+            enriched["price_rox"] = _amount(retail_unit)
+            enriched["price_credits"] = _amount(retail_unit)
+            enriched["price_rub"] = _amount(InternalCreditService.rubles_for(retail_unit))
         enriched["admin_free"] = admin_free
         enriched["ui_schema"] = build_public_model_ui_schema(enriched)
         models.append(enriched)
@@ -221,12 +224,15 @@ async def generation_models(
     music = MusicGenerationService.public_model()
     music["title"] = music_model_title(str(music.get("kie_model") or ""))
     music_retail = Decimal(str(music.get("price_rox") or 0))
+    music_effective = Decimal("0") if admin_free else music_retail
     music["retail_price_rox"] = _amount(music_retail)
+    music["effective_price_rox"] = _amount(music_effective)
+    music["effective_price_credits"] = _amount(music_effective)
+    music["effective_price_rub"] = _amount(InternalCreditService.rubles_for(music_effective))
+    music["price_rox"] = _amount(music_retail)
+    music["price_credits"] = _amount(music_retail)
+    music["price_rub"] = _amount(InternalCreditService.rubles_for(music_retail))
     music["admin_free"] = admin_free
-    if admin_free:
-        music["price_rox"] = "0.00"
-        music["price_credits"] = "0.00"
-        music["price_rub"] = "0.00"
     music["presentation"] = {
         "title": music["title"],
         "product_key": MUSIC_MODEL_ID,
@@ -263,18 +269,21 @@ async def quote_generation(
                 user_id=user.id,
                 retail_cost=retail_cost,
             )
-        cost = billing.effective_cost if billing else retail_cost
+        effective_cost = billing.effective_cost if billing else retail_cost
         admin_free = bool(billing and billing.admin_free)
         return {
             "model_id": MUSIC_MODEL_ID,
             "price_mode": "flat",
-            "unit_price_credits": _amount(cost),
-            "unit_price_rox": _amount(cost),
-            "unit_price_rub": _amount(InternalCreditService.rubles_for(cost)),
+            "unit_price_credits": _amount(retail_cost),
+            "unit_price_rox": _amount(retail_cost),
+            "unit_price_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
             "billing_seconds": None,
-            "cost_credits": _amount(cost),
-            "cost_rox": _amount(cost),
-            "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+            "cost_credits": _amount(retail_cost),
+            "cost_rox": _amount(retail_cost),
+            "cost_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
+            "effective_cost_credits": _amount(effective_cost),
+            "effective_cost_rox": _amount(effective_cost),
+            "effective_cost_rub": _amount(InternalCreditService.rubles_for(effective_cost)),
             "retail_cost_rox": _amount(retail_cost),
             "admin_free": admin_free,
             "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
@@ -299,19 +308,21 @@ async def quote_generation(
             user_id=user.id,
             retail_cost=retail_cost,
         )
-    cost = billing.effective_cost if billing else retail_cost
+    effective_cost = billing.effective_cost if billing else retail_cost
     admin_free = bool(billing and billing.admin_free)
-    unit_price = Decimal("0") if admin_free else retail_unit_price
     return {
         "model_id": spec.id,
         "price_mode": spec.price_mode,
-        "unit_price_credits": _amount(unit_price),
-        "unit_price_rox": _amount(unit_price),
-        "unit_price_rub": _amount(InternalCreditService.rubles_for(unit_price)),
+        "unit_price_credits": _amount(retail_unit_price),
+        "unit_price_rox": _amount(retail_unit_price),
+        "unit_price_rub": _amount(InternalCreditService.rubles_for(retail_unit_price)),
         "billing_seconds": seconds,
-        "cost_credits": _amount(cost),
-        "cost_rox": _amount(cost),
-        "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
+        "cost_credits": _amount(retail_cost),
+        "cost_rox": _amount(retail_cost),
+        "cost_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
+        "effective_cost_credits": _amount(effective_cost),
+        "effective_cost_rox": _amount(effective_cost),
+        "effective_cost_rub": _amount(InternalCreditService.rubles_for(effective_cost)),
         "retail_cost_rox": _amount(retail_cost),
         "admin_free": admin_free,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
