@@ -1,6 +1,6 @@
 """persist Telegram generation delivery state
 
-Revision ID: 0028_generation_telegram_delivery
+Revision ID: 0028_generation_tg_delivery
 Revises: 0027_prompt_tool_video
 """
 
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0028_generation_telegram_delivery"
+revision: str = "0028_generation_tg_delivery"
 down_revision: str | None = "0027_prompt_tool_video"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
