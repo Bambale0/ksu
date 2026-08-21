@@ -11,6 +11,7 @@ from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import PaymentIdempotencyConflict, UnknownPaymentPackageError
 
 router = APIRouter(prefix="/payments/card", tags=["payments"])
@@ -23,17 +24,22 @@ class CardCheckoutRequest(BaseModel):
 
 
 def _view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
+    payload = payment.payload or {}
+    bonus_credits = str(payload.get("bonus_credits") or "0")
+    base_credits = str(payload.get("base_credits") or payment.rox_amount)
     return {
         "id": str(payment.id),
         "status": payment.status,
         "provider": CardPaymentService.PROVIDER,
         "label": CardPaymentService.PUBLIC_LABEL,
-        "package_id": str((payment.payload or {}).get("package_id") or ""),
+        "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
         "credits": str(payment.rox_amount),
-        "payment_url": str((payment.payload or {}).get("payment_url") or ""),
-        "idempotency_key": request_key or str((payment.payload or {}).get("request_key") or ""),
+        "base_credits": base_credits,
+        "bonus_credits": bonus_credits,
+        "payment_url": str(payload.get("payment_url") or ""),
+        "idempotency_key": request_key or str(payload.get("request_key") or ""),
     }
 
 
@@ -54,6 +60,8 @@ async def packages() -> dict[str, object]:
         "packages": {
             package_id: {
                 "credits": str(package.credits),
+                "bonus_credits": str(TopUpBonusService.bonus_for(package.credits)),
+                "total_credits": str(TopUpBonusService.total_for(package.credits)),
                 "prices": {
                     currency: str(amount)
                     for currency, amount in sorted(package.prices.items())
