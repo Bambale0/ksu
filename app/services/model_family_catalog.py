@@ -216,7 +216,7 @@ def _variant(model: dict[str, Any]) -> dict[str, Any]:
         "price_credits": display_price,
         "price_rub": display_price,
         "retail_price_rox": model.get("retail_price_rox"),
-        "effective_price_rox": model.get("price_rox"),
+        "effective_price_rox": model.get("effective_price_rox") or model.get("price_rox"),
         "admin_free": bool(model.get("admin_free")),
         "badge": badge,
         "recommended": bool(meta.get("recommended", False)),
