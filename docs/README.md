@@ -1,6 +1,6 @@
 # KSU / ROXY documentation index
 
-**Documentation baseline:** 2026-08-20  
+**Documentation baseline:** 2026-08-21  
 **Runtime baseline:** current `main`; use Git history/release SHA rather than a hard-coded historical commit in this index.
 
 This directory documents the production ROXY Telegram AI platform. When prose and runtime disagree, the order of authority is:
@@ -15,7 +15,7 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 ## Current product / runtime snapshot
 
 - User product: `/mini-app/`.
-- Privileged operations console: `/admin-app/`.
+- Privileged operations are Telegram-admin/API-only. The retired static `/admin-app/` web surface is not mounted or shipped.
 - Public denomination: **1 ROX = 1 RUB**.
 - Create is split into independent **Photo** and **Video** flows; both end in the same server-driven schema builder and server quote/create pipeline.
 - The public Photo/Video model picker is intentionally limited to the maintained Tanya-style trending catalog; historical provider versions stay internal for history/recovery only and cannot be quoted/created as new work.
@@ -57,15 +57,15 @@ Runtime-affecting changes must update the relevant maintained documentation and 
 - `PRICING.md` — compact current generation tariff reference.
 - `GENERATION_MINI_APP.md` — generation price modes and public tariff matrix.
 - `MODEL_IDENTITY_AND_ADMIN_FREE.md` — active-admin zero customer cost while preserving retail/operator accounting.
-- `ADMIN_CONSOLE.md` / `ADMIN_RUNBOOK.md` — changing and publishing runtime tariffs.
+- `ADMIN_CONTOUR.md` / `ADMIN_RUNBOOK.md` — changing and publishing runtime tariffs.
 
 ### Admin / security
 
-- `ADMIN_CONSOLE.md` — visual admin application.
-- `ADMIN_CONTOUR.md` — admin domain and privilege boundaries.
+- `ADMIN_CONTOUR.md` — Telegram-admin/API-only admin domain and privilege boundaries.
 - `ADMIN_CAPABILITY_MATRIX.md` — permissions/capabilities.
 - `ADMIN_SECURITY.md` — sessions, MFA, step-up, audit and bootstrap.
 - `ADMIN_RUNBOOK.md` — operator procedures, including pricing publish/rollback.
+- `ADMIN_WEB_REMOVAL_AUDIT_2026-08-21.md` — audit and retirement record for the removed static web admin.
 
 ### API / operations
 
@@ -97,13 +97,6 @@ Documentation mirrors of the current runtime slide binaries live in:
 ```text
 docs/assets/roxy-promo/partner-referrals-runtime.png
 docs/assets/roxy-promo/creator-rewards-runtime.png
-```
-
-The runtime files remain:
-
-```text
-app/web/mini_app/roxy-partner-referrals-slide-source.png
-app/web/mini_app/roxy-creator-rewards-slide-source.png
 ```
 
 The originals are user-supplied artwork. Do not recreate, restyle, re-typeset, crop or replace them with generated approximations. Asset replacement must preserve the exact approved composition and copy.
