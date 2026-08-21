@@ -34,8 +34,14 @@ def _add_notification(
     kind: str,
     title: str,
     body: str,
+    notification_id: uuid.UUID | None = None,
 ) -> None:
-    notification_id = uuid.uuid4()
+    # Generation notifications intentionally reuse the generation UUID. This gives
+    # the durable notification outbox a stable domain reference without adding a
+    # second nullable metadata column or doing an unsafe "latest generation" lookup
+    # when several jobs finish at the same time. Other notification kinds keep a
+    # normal independent UUID.
+    notification_id = notification_id or uuid.uuid4()
     session.add(
         Notification(
             id=notification_id,
@@ -109,6 +115,7 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
             if obj.status == "succeeded":
                 _add_notification(
                     session,
+                    notification_id=obj.id,
                     user_id=obj.user_id,
                     kind="generation_succeeded",
                     title="Контент готов",
@@ -117,6 +124,7 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
             elif obj.status == "failed":
                 _add_notification(
                     session,
+                    notification_id=obj.id,
                     user_id=obj.user_id,
                     kind="generation_failed",
                     title="Генерация не завершилась",
