@@ -166,14 +166,26 @@ class MediaAssetService:
         return grouped
 
     @staticmethod
-    def public_view(asset: MediaAsset, storage: ObjectStorage | None = None) -> dict[str, object]:
-        storage = storage or ObjectStorage()
+    def public_view(
+        asset: MediaAsset,
+        storage: ObjectStorage | None = None,
+        *,
+        server_route: bool = False,
+    ) -> dict[str, object]:
         if not asset.object_key or not asset.bucket:
             raise MediaIngestError("Media asset is not ready")
+        route_url = f"/api/v1/media/{asset.id}/public"
+        download_url = f"/api/v1/media/{asset.id}/download"
+        if server_route:
+            url = route_url
+        else:
+            storage = storage or ObjectStorage()
+            url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
         return {
             "id": str(asset.id),
-            "url": storage.presign_get(key=asset.object_key, bucket=asset.bucket),
-            "download_url": f"/api/v1/media/{asset.id}/download",
+            "url": url,
+            "download_url": download_url,
+            "public_url": route_url,
             "content_type": asset.content_type,
             "size_bytes": asset.size_bytes,
             "ordinal": asset.ordinal,
