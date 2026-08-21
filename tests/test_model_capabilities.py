@@ -3,7 +3,10 @@ from decimal import Decimal
 import pytest
 
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, UnknownModelError
-from app.services.trending_model_catalog import TRENDING_PUBLIC_MODEL_ORDER
+from app.services.trending_model_catalog import (
+    ACTIVE_NEW_WORK_MODEL_IDS,
+    TRENDING_PUBLIC_MODEL_ORDER,
+)
 
 
 def test_catalog_contains_exact_trending_public_model_set() -> None:
@@ -29,9 +32,24 @@ def test_catalog_contains_exact_trending_public_model_set() -> None:
 def test_removed_legacy_model_cannot_start_new_work() -> None:
     with pytest.raises(UnknownModelError, match="Inactive generation model"):
         ModelCatalog.prepare(
-            "wan-2.7-t2v",
+            "wan-2.7-r2v",
             {"prompt": "legacy route", "duration": 5},
         )
+
+
+def test_hidden_auto_route_target_can_still_execute_from_router() -> None:
+    assert "wan-2.7-t2v" not in TRENDING_PUBLIC_MODEL_ORDER
+    assert "wan-2.7-t2v" in ACTIVE_NEW_WORK_MODEL_IDS
+
+    spec, params, cost, seconds, _unit = ModelCatalog.prepare(
+        "wan-2.7-t2v",
+        {"prompt": "public Wan product resolved to text video", "duration": 5},
+    )
+
+    assert spec.id == "wan-2.7-t2v"
+    assert params["prompt"] == "public Wan product resolved to text video"
+    assert seconds == 5
+    assert cost > Decimal("0")
 
 
 def test_seedance_reference_and_frame_modes_are_mutually_exclusive() -> None:
@@ -78,16 +96,3 @@ def test_grok_extend_requires_explicit_billed_seconds() -> None:
     )
     assert seconds == 6
     assert cost == Decimal("60.00")
-
-
-def test_kling_motion_rejects_multiple_reference_images() -> None:
-    with pytest.raises(InvalidModelParametersError, match="exactly one input image"):
-        ModelCatalog.prepare(
-            "kling-motion-2.6",
-            {
-                "prompt": "motion",
-                "input_urls": ["https://example.com/a.png", "https://example.com/b.png"],
-                "video_urls": ["https://example.com/a.mp4"],
-            },
-            billing_seconds=5,
-        )

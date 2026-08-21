@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.services.model_routing import PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
 from app.services.model_ui import build_model_ui_schema
 
 SEEDANCE_MODELS = {
@@ -10,6 +11,23 @@ SEEDANCE_MODELS = {
     "seedance-2.0-fast",
     "seedance-2.0-mini",
     "seedance-2.5",
+}
+
+REFERENCE_FIELD_NAMES = {
+    "image_urls",
+    "input_urls",
+    "image_input",
+    "image_url",
+    "first_frame_url",
+    "last_frame_url",
+    "first_frame",
+    "reference_image",
+    "reference_image_urls",
+    "video_urls",
+    "video_url",
+    "first_clip_url",
+    "reference_video",
+    "reference_video_urls",
 }
 
 
@@ -20,9 +38,25 @@ def _patch_field(schema: dict[str, Any], name: str, **values: Any) -> None:
             return
 
 
+def _make_reference_fields_optional(schema: dict[str, Any]) -> None:
+    for name in REFERENCE_FIELD_NAMES:
+        _patch_field(schema, name, required=False)
+
+
 def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
     schema = deepcopy(build_model_ui_schema(model))
     model_id = str(model["id"])
+
+    if model_id in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS:
+        # These public cards are automatic product entries: without refs the
+        # backend routes to T2I/T2V, with refs it routes to I2I/I2V. Therefore
+        # reference fields must be available but not mandatory in the form.
+        _make_reference_fields_optional(schema)
+        schema["auto_mode"] = {
+            "enabled": True,
+            "text_without_reference": True,
+            "reference_when_uploaded": True,
+        }
 
     scenario = schema.get("scenario")
     if isinstance(scenario, dict):

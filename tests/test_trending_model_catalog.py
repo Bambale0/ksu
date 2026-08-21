@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.model_routing import AUTO_ROUTE_TARGET_IDS
 from app.services.trending_model_catalog import (
     ACTIVE_NEW_WORK_MODEL_IDS,
     CURRENT_UTILITY_MODEL_IDS,
@@ -51,7 +52,7 @@ def test_current_tanyapi_families_remain_available() -> None:
         assert ModelCatalog.get(model_id).id == model_id
 
 
-def test_old_catalog_versions_are_not_offered_for_new_work() -> None:
+def test_old_catalog_versions_are_not_offered_as_picker_cards() -> None:
     stale_ids = {
         "nano-banana",
         "nano-banana-edit",
@@ -77,10 +78,18 @@ def test_old_catalog_versions_are_not_offered_for_new_work() -> None:
     }
     public_ids = {str(item["id"]) for item in ModelCatalog.list()}
     assert stale_ids.isdisjoint(public_ids)
-    assert stale_ids.isdisjoint(ACTIVE_NEW_WORK_MODEL_IDS)
 
-    # Legacy specs stay readable for existing history/recovery rows, but cannot be
-    # quoted/created again through the normal generation preparation boundary.
+    hidden_route_targets = stale_ids & AUTO_ROUTE_TARGET_IDS
+    inactive_stale_ids = stale_ids - AUTO_ROUTE_TARGET_IDS
+
+    # Auto-route targets are intentionally hidden from the picker but still
+    # executable because a public product can resolve to them from the payload.
+    assert hidden_route_targets
+    assert hidden_route_targets <= ACTIVE_NEW_WORK_MODEL_IDS
+    assert inactive_stale_ids.isdisjoint(ACTIVE_NEW_WORK_MODEL_IDS)
+
+    # Legacy specs stay readable for existing history/recovery rows, but non-route
+    # legacy IDs cannot be quoted/created again through the normal boundary.
     assert ModelCatalog.get("seedream-3-t2i").id == "seedream-3-t2i"
     with pytest.raises(UnknownModelError, match="Inactive generation model"):
         ModelCatalog.prepare(

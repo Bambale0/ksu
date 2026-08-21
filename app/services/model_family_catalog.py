@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from app.services.model_routing import PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
 
 FAMILY_ORDER: tuple[str, ...] = (
     "nano_banana",
@@ -92,6 +93,11 @@ def _family_id(model: dict[str, Any]) -> str:
     return model_id.replace("-", "_")
 
 
+def _product_key(model: dict[str, Any]) -> str:
+    presentation = model.get("presentation") if isinstance(model.get("presentation"), dict) else {}
+    return str(presentation.get("product_key") or model.get("id") or "")
+
+
 def _price_value(model: dict[str, Any]) -> Decimal:
     raw = model.get("price_rox") or model.get("price_credits") or "0"
     return Decimal(str(raw))
@@ -119,13 +125,56 @@ def _variant(model: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_model_families(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[str, list[dict[str, Any]]] = {}
+def _preferred_public_model(models: list[dict[str, Any]]) -> dict[str, Any]:
+    reference_capable = [
+        item for item in models if str(item.get("id") or "") in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
+    ]
+    if reference_capable:
+        return sorted(reference_capable, key=lambda item: str(item.get("id") or ""))[0]
+    return sorted(
+        models,
+        key=lambda item: (
+            not bool(VARIANT_META.get(str(item.get("id") or ""), {}).get("recommended", False)),
+            int(VARIANT_META.get(str(item.get("id") or ""), {}).get("order", 1000)),
+            _price_value(item),
+            str(item.get("title") or ""),
+        ),
+    )[0]
+
+
+def _coalesced_variants(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets: dict[str, list[dict[str, Any]]] = {}
     for model in models:
-        grouped.setdefault(_family_id(model), []).append(_variant(model))
+        buckets.setdefault(_product_key(model), []).append(model)
+
+    variants: list[dict[str, Any]] = []
+    for product_models in buckets.values():
+        chosen = _preferred_public_model(product_models)
+        variant = _variant(chosen)
+        presentation = chosen.get("presentation") if isinstance(chosen.get("presentation"), dict) else {}
+        product_prices = [_price_value(item) for item in product_models if item.get("price_rox") is not None]
+        if product_prices:
+            variant["price_rox"] = format(min(product_prices), ".2f")
+        is_auto = len(product_models) > 1 or str(chosen.get("id") or "") in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
+        if is_auto:
+            product_title = str(presentation.get("product_title") or presentation.get("title") or variant["title"])
+            variant["title"] = product_title
+            variant["version"] = str(presentation.get("version_label") or product_title)
+            variant["operation"] = "auto"
+            variant["auto_mode"] = True
+            variant["description"] = "Текст или референс — режим выберется автоматически"
+        variants.append(variant)
+    return variants
+
+
+def build_model_families(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped_models: dict[str, list[dict[str, Any]]] = {}
+    for model in models:
+        grouped_models.setdefault(_family_id(model), []).append(model)
 
     families: list[dict[str, Any]] = []
-    for family_id, variants in grouped.items():
+    for family_id, family_models in grouped_models.items():
+        variants = _coalesced_variants(family_models)
         variants.sort(
             key=lambda item: (
                 not item["recommended"],

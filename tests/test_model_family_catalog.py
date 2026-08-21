@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.services.model_family_catalog import build_model_families
 from app.services.model_presentation import presentation_for
 from app.services.model_ui_contract import build_public_model_ui_schema
@@ -37,7 +39,24 @@ def test_family_catalog_groups_current_tanya_product_layer() -> None:
         for family in families
         for variant in family["variants"]
     }
-    assert public_ids == set(TRENDING_PUBLIC_MODEL_ORDER)
+    assert public_ids < set(TRENDING_PUBLIC_MODEL_ORDER)
+    assert "gpt-image-2-i2i" in public_ids
+    assert "gpt-image-2-t2i" not in public_ids
+    assert "seedream-5-pro-i2i" in public_ids
+    assert "seedream-5-pro-t2i" not in public_ids
+
+
+def test_auto_routed_variants_are_single_customer_products() -> None:
+    families = {item["family"]: item for item in build_model_families(_public_models())}
+
+    gpt = next(variant for variant in families["gpt_image"]["variants"] if variant["id"] == "gpt-image-2-i2i")
+    assert gpt["operation"] == "auto"
+    assert gpt["auto_mode"] is True
+    assert "автоматически" in gpt["description"].lower()
+
+    seedream_ids = {variant["id"] for variant in families["seedream"]["variants"]}
+    assert "seedream-5-pro-i2i" in seedream_ids
+    assert "seedream-5-pro-t2i" not in seedream_ids
 
 
 def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
@@ -50,9 +69,9 @@ def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
     ]
     assert variants[0]["badge"] == "TOP"
     assert variants[0]["recommended"] is True
-    assert [variant["price_rox"] for variant in variants] == [
-        ModelCatalog.get("nano-banana-pro").public_dict()["price_rox"],
-        ModelCatalog.get("nano-banana-2").public_dict()["price_rox"],
-        ModelCatalog.get("nano-banana-2-lite").public_dict()["price_rox"],
+    assert [Decimal(str(variant["price_rox"])) for variant in variants] == [
+        Decimal(str(ModelCatalog.get("nano-banana-pro").public_dict()["price_rox"])),
+        Decimal(str(ModelCatalog.get("nano-banana-2").public_dict()["price_rox"])),
+        Decimal(str(ModelCatalog.get("nano-banana-2-lite").public_dict()["price_rox"])),
     ]
     assert all(variant.get("ui_schema") for variant in variants)

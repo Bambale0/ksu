@@ -1,5 +1,5 @@
-import { RoxyApp } from "@/components/roxy-app";
+import { RoxySocialApp } from "@/components/roxy-social-app";
 
 export default function Page() {
-  return <RoxyApp />;
+  return <RoxySocialApp />;
 }

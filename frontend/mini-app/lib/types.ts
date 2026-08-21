@@ -1,4 +1,6 @@
 export type MediaType = "image" | "video" | "audio" | string;
+export type FeedSurface = "feed" | "profile";
+export type PublicationScope = "private" | "profile" | "feed";
 
 export type TelegramUser = {
   id: number;
@@ -105,6 +107,7 @@ export type Generation = {
   status: string;
   prompt?: string;
   prompt_hidden?: boolean;
+  prompt_actions_allowed?: boolean;
   model?: GenerationModel | string;
   settings?: Record<string, unknown>;
   cost_rox?: string;
@@ -112,25 +115,55 @@ export type Generation = {
   billing_seconds?: number | null;
   result_url?: string | null;
   result_urls?: string[];
-  media?: Array<{ url?: string; kind?: string }>;
+  media?: Array<{ url?: string; kind?: string; content_type?: string | null; ordinal?: number }>;
   error?: string | null;
   created_at?: string;
   updated_at?: string;
 };
 
-export type FeedCard = Generation & {
+export type FeedAuthor = {
+  id?: string;
+  telegram_id?: number;
+  username?: string | null;
+  display_name?: string;
+  referral_code?: string;
+};
+
+export type FeedCard = Omit<Generation, "model"> & {
+  model?: string;
+  task_id?: string;
   preview_url?: string | null;
+  gen_type?: string;
+  reference_images?: string[];
+  reference_videos?: string[];
+  references_hidden?: boolean;
   likes_count?: number;
   comments_count?: number;
   shares_count?: number;
+  remixes?: number;
   liked_by_me?: boolean;
-  author?: {
-    id?: string;
-    telegram_id?: number;
-    username?: string | null;
-    display_name?: string;
-    referral_code?: string;
-  };
+  author?: FeedAuthor;
+  author_referral_code?: string;
+  is_mine?: boolean;
+  feed_blurred?: boolean;
+  feed_prompt_visible?: boolean;
+  feed_references_visible?: boolean;
+  publication_scope?: PublicationScope;
+  is_profile_visible?: boolean;
+  is_public_feed?: boolean;
+  feed_interactions_enabled?: boolean;
+  surface?: FeedSurface;
+  source_feed_gen_id?: string | null;
+  feed_published_at?: string | null;
+};
+
+export type FeedComment = {
+  id: string;
+  generation_id: string;
+  surface: FeedSurface;
+  text: string;
+  created_at: string;
+  author?: FeedAuthor;
 };
 
 export type Quote = {
