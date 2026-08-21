@@ -17,6 +17,12 @@ import type {
   TrendItem,
 } from "./types";
 
+declare global {
+  interface Window {
+    __roxyPublishPrivacy?: { hidePrompt?: boolean };
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(path, {
@@ -62,6 +68,13 @@ function normalizePublishOptions(options: Exclude<PublicationScope, "private"> |
   return typeof options === "string" ? { scope: options } : options;
 }
 
+function promptVisibleForPublish(normalized: PublishOptions): boolean {
+  if (typeof window !== "undefined" && window.__roxyPublishPrivacy) {
+    return !Boolean(window.__roxyPublishPrivacy.hidePrompt);
+  }
+  return Boolean(normalized.promptVisible);
+}
+
 function idempotencyKey(prefix: string): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}:${crypto.randomUUID()}`;
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -95,8 +108,8 @@ export const api = {
       body: JSON.stringify({
         ...publicPrivacyDefaults,
         publication_scope: normalized.scope,
-        prompt_visible: Boolean(normalized.promptVisible),
-        references_visible: Boolean(normalized.referencesVisible),
+        prompt_visible: promptVisibleForPublish(normalized),
+        references_visible: false,
       }),
     });
   },

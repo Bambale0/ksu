@@ -25,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="ru">
       <body>
         <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" />
+        <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         {children}
       </body>
     </html>
