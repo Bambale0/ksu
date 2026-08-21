@@ -21,12 +21,15 @@ jobs:
       - name: Install Mini App dependencies
         working-directory: frontend/mini-app
         run: npm ci
+      - name: Install Playwright test runtime
+        working-directory: frontend/mini-app
+        run: npm install --no-save @playwright/test@1.56.1
       - name: Install Playwright browsers
         working-directory: frontend/mini-app
-        run: npx -y --package=@playwright/test@1.56.1 playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
       - name: Run 100-scenario Mini App audit
         working-directory: frontend/mini-app
-        run: npx -y --package=@playwright/test@1.56.1 playwright test --project=chromium
+        run: npx playwright test --project=chromium
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
