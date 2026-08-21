@@ -74,7 +74,7 @@ test.describe('ROXY Mini App 100 user scenarios', () => {
       test.setTimeout(20_000);
       await mockRoxy(page);
       await page.setViewportSize(scenario.viewport);
-      await page.goto(`/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`/mini-app/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
       await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 5_000 });
       await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
       await expect(page.getByRole('button', { name: /Создать/ })).toBeVisible();
