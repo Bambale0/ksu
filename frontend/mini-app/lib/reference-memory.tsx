@@ -38,6 +38,7 @@ type ReferenceMemoryContextValue = {
   references: SavedReference[];
   upload: (file: File) => Promise<UploadResult>;
   refresh: () => Promise<void>;
+  touchUrls: (urls: string[]) => Promise<void>;
   touchDraft: (draft: Draft) => Promise<void>;
   remove: (id: string) => Promise<void>;
 };
@@ -107,6 +108,8 @@ export function ReferenceMemoryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    const retry = window.setTimeout(() => void refresh(), 800);
+    return () => window.clearTimeout(retry);
   }, [refresh]);
 
   const upload = useCallback(async (file: File): Promise<UploadResult> => {
@@ -122,25 +125,30 @@ export function ReferenceMemoryProvider({ children }: { children: ReactNode }) {
     return result;
   }, []);
 
-  const touchDraft = useCallback(async (draft: Draft) => {
-    const urls = new Set<string>();
-    collectUrls(draft.input_url, urls);
-    collectUrls(draft.values, urls);
-    if (!urls.size) return;
+  const touchUrls = useCallback(async (rawUrls: string[]) => {
+    const urls = [...new Set(rawUrls.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, 64);
+    if (!urls.length) return;
     try {
       await referenceRequest<{ touched: number }>("/api/v1/references/touch", {
         method: "POST",
-        body: JSON.stringify({ urls: [...urls].slice(0, 64) }),
+        body: JSON.stringify({ urls }),
       });
-      const used = urls;
+      const used = new Set(urls);
       setReferences((current) => [
         ...current.filter((item) => used.has(item.url)),
         ...current.filter((item) => !used.has(item.url)),
       ]);
     } catch {
-      // A failed LRU touch must never fail an already accepted generation.
+      // A failed LRU touch must never block choosing a saved reference.
     }
   }, []);
+
+  const touchDraft = useCallback(async (draft: Draft) => {
+    const urls = new Set<string>();
+    collectUrls(draft.input_url, urls);
+    collectUrls(draft.values, urls);
+    await touchUrls([...urls]);
+  }, [touchUrls]);
 
   const remove = useCallback(async (id: string) => {
     await referenceRequest<void>(`/api/v1/references/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -148,8 +156,8 @@ export function ReferenceMemoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<ReferenceMemoryContextValue>(
-    () => ({ references, upload, refresh, touchDraft, remove }),
-    [references, upload, refresh, touchDraft, remove],
+    () => ({ references, upload, refresh, touchUrls, touchDraft, remove }),
+    [references, upload, refresh, touchUrls, touchDraft, remove],
   );
 
   return <ReferenceMemoryContext.Provider value={value}>{children}</ReferenceMemoryContext.Provider>;
@@ -174,6 +182,12 @@ export function SavedReferencePicker({
   const selected = field.control === "files"
     ? (Array.isArray(value) ? value.map(String) : [])
     : value ? [String(value)] : [];
+  const selectedKey = selected.join("\n");
+
+  useEffect(() => {
+    void memory.refresh();
+  }, [memory.refresh, selectedKey]);
+
   const selectedSet = new Set(selected);
   const kinds = acceptedKinds(field);
   const available = memory.references
@@ -183,6 +197,7 @@ export function SavedReferencePicker({
   if (!available.length) return null;
 
   const choose = (reference: SavedReference) => {
+    void memory.touchUrls([reference.url]);
     if (field.control === "file") {
       onChange(reference.url);
       return;
