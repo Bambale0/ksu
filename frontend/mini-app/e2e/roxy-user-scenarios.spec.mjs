@@ -50,7 +50,7 @@ async function mockRoxy(page) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } });
+    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
     return json({ items: [] });
   });
 }
