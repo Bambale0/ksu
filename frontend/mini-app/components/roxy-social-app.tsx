@@ -27,8 +27,8 @@ const DRAFTS_KEY = "roxy.next.generation-drafts.v3";
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const PROMO_SLIDES = [
-  { src: "/promo/roxy-promo-1.png", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
-  { src: "/promo/roxy-promo-2.png", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
+  { src: "/promo/roxy-promo-1.webp", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
+  { src: "/promo/roxy-promo-2.webp", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
 ];
 
 type PreviewSurface = "private" | FeedSurface;
