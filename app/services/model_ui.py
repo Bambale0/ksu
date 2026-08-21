@@ -344,7 +344,7 @@ SEEDANCE_SCENARIOS = [
     ),
     _scenario(
         "first_frame",
-        "Первый кадр",
+        "Референс",
         ["first_frame_url"],
         [
             "last_frame_url",
@@ -366,6 +366,8 @@ SEEDANCE_SCENARIOS = [
         ["first_frame_url", "last_frame_url"],
     ),
 ]
+
+SEEDANCE_FIELD_OVERRIDES = {"first_frame_url": {"label": "Референс"}}
 
 WAN_I2V_SCENARIOS = [
     _scenario(
@@ -403,15 +405,19 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "seedance-2.0": {
         "scenario": {"default": "text", "items": SEEDANCE_SCENARIOS},
+        "field_overrides": SEEDANCE_FIELD_OVERRIDES,
     },
     "seedance-2.0-fast": {
         "scenario": {"default": "text", "items": SEEDANCE_SCENARIOS},
+        "field_overrides": SEEDANCE_FIELD_OVERRIDES,
     },
     "seedance-2.0-mini": {
         "scenario": {"default": "text", "items": SEEDANCE_SCENARIOS},
+        "field_overrides": SEEDANCE_FIELD_OVERRIDES,
     },
     "seedance-2.5": {
         "scenario": {"default": "text", "items": SEEDANCE_SCENARIOS},
+        "field_overrides": SEEDANCE_FIELD_OVERRIDES,
     },
     "kling-motion-2.6": {
         "field_overrides": {
