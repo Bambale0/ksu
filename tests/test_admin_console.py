@@ -1,96 +1,87 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ADMIN = ROOT / "app" / "web" / "admin_app"
+ADMIN_WEB = ROOT / "app" / "web" / "admin_app"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_admin_console_is_separate_static_app_and_bot_launcher_is_not_auth() -> None:
+def test_web_admin_static_surface_is_removed() -> None:
     main = _read(ROOT / "app" / "main.py")
+    dispatcher = _read(ROOT / "app" / "bot" / "dispatcher.py")
+    retired = _read(ROOT / "app" / "bot" / "handlers" / "admin_web_removed.py")
+
+    assert 'app.mount("/mini-app"' in main
+    assert 'app.mount("/admin-app"' not in main
+    assert "admin_app_dir" not in main
+    assert not ADMIN_WEB.exists()
+
+    assert "admin_web_removed.disable_web_admin_button(admin)" in dispatcher
+    assert "dispatcher.include_router(admin_web_removed.router)" in dispatcher
+    assert 'F.data == "admin:web"' in retired
+    assert "Web-админка удалена" in retired
+
+
+def test_telegram_admin_remains_operator_surface() -> None:
     bot = _read(ROOT / "app" / "bot" / "handlers" / "admin.py")
     dispatcher = _read(ROOT / "app" / "bot" / "dispatcher.py")
 
-    assert 'app.mount("/admin-app"' in main
-    assert 'app.mount("/mini-app"' in main
     assert 'Command("admin")' in bot
     assert 'AdminAccount.is_active.is_(True)' in bot
-    assert 'WebAppInfo(url=url)' in bot
-    assert '"/admin-app/"' in bot or '/admin-app/' in bot
-    assert "admin-сесси" in bot and "MFA" in bot
+    assert "📊 Сводка" in bot
+    assert "📣 Рассылка" in bot
+    assert "🏷 Тарифы" in bot
     assert "dispatcher.include_router(admin.router)" in dispatcher
+    assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
 
 
-def test_admin_console_never_persists_privileged_credentials_or_uses_html_injection() -> None:
-    js = _read(ADMIN / "admin.js")
-    assert "state.token" in js
-    assert 'headers.Authorization = `Bearer ${state.token}`' in js
-    assert '"X-Telegram-Init-Data"' in js
-    assert "tg?.initData" in js
-    assert "localStorage" not in js
-    assert "sessionStorage" not in js
-    assert "indexedDB" not in js
-    assert "innerHTML" not in js
-    assert "document.write" not in js
-    assert "eval(" not in js
-    assert "new Function(" not in js
+def test_admin_api_contour_stays_mounted_after_web_removal() -> None:
+    main = _read(ROOT / "app" / "main.py")
+    router = _read(ROOT / "app" / "api" / "router.py")
+    internal = _read(ROOT / "app" / "api" / "internal_admin.py")
 
-
-def test_admin_console_covers_existing_operational_domains() -> None:
-    js = _read(ADMIN / "admin.js")
-    for token in (
-        "/api/v1/admin/auth/login",
-        "/api/v1/admin/auth/mfa/setup",
-        "/api/v1/admin/auth/mfa/confirm",
-        "/api/v1/admin/auth/step-up",
-        "/api/v1/admin/auth/me",
-        "/api/v1/admin/dashboard",
-        "/api/v1/admin/users?",
-        "/api/v1/admin/generations?",
-        "/api/v1/admin/payments?",
-        "/api/v1/admin/support/tickets?",
-        "/api/v1/admin/withdrawals?",
-        "/api/v1/admin/promocodes?",
-        "/api/v1/admin/referrals/rewards?",
-        "/api/v1/admin/security/overview",
-        "/api/v1/admin/security/sessions?",
-        "/api/v1/admin/audit?",
-        "/api/v1/admin/admins",
-        "/api/v1/admin/roles",
-        "/api/v1/admin/auth/sessions",
+    assert "app.include_router(internal_admin_router)" in main
+    for module in (
+        "admin_auth",
+        "admin_users",
+        "admin_operations",
+        "admin_payments",
+        "admin_accounts",
+        "admin_audit",
+        "admin_capabilities",
+        "admin_control",
+        "admin_creator_partnership",
     ):
-        assert token in js, token
+        assert f"api_router.include_router({module}.router)" in router
 
-    assert "state.permissions = new Set(state.me.permissions || [])" in js
-    assert "hasPermission(" in js
-
-
-def test_sensitive_actions_require_separate_step_up_and_execute_click() -> None:
-    html = _read(ADMIN / "index.html")
-    js = _read(ADMIN / "admin.js")
-
-    assert 'id="stepUpVerify"' in html
-    assert 'id="stepUpExecute"' in html
-    assert "Подтвердить MFA" in html
-    assert "Выполнить действие" in html
-    assert "state.pendingSensitive" in js
-    assert "verifyStepUp" in js
-    assert "executePendingSensitive" in js
-    assert 'dom.stepUpExecute.hidden = false' in js
-    assert 'dom.stepUpExecute.addEventListener("click", executePendingSensitive)' in js
+    assert 'APIRouter(prefix="/internal/admin"' in internal
+    assert 'Header(alias="Idempotency-Key")' in internal
+    assert 'Header(alias="X-Admin-Confirm")' in internal
+    assert 'Header(alias="X-Admin-Step-Up")' in internal
 
 
-def test_admin_self_sessions_match_backend_sessions_shape() -> None:
-    js = _read(ADMIN / "admin.js")
-    auth = _read(ROOT / "app" / "api" / "v1" / "admin_auth.py")
-    marker = 'const data = await api("/api/v1/admin/auth/sessions")'
-    assert marker in js
-    after = js.split(marker, 1)[1]
-    render_block = after.split("async function", 1)[0]
-    assert "data.sessions || []" in render_block
-    assert 'return {"sessions": [_session_view(row, context.session.id) for row in rows]}' in auth
+def test_sensitive_admin_writes_keep_policy_idempotency_and_step_up() -> None:
+    internal = _read(ROOT / "app" / "api" / "internal_admin.py")
+    users = _read(ROOT / "app" / "services" / "admin_users.py")
+    policy = _read(ROOT / "app" / "services" / "admin_policy.py")
+
+    for route in (
+        "/users/{user_id}/block",
+        "/users/{user_id}/unblock",
+        "/users/{user_id}/balance-adjustments",
+        "/payments/{payment_id}/reprocess",
+        "/tariffs/publish",
+        "/notifications/campaigns/{campaign_id}/start",
+    ):
+        assert route in internal
+
+    assert "write.idempotency_key" in internal
+    assert "confirmed=write.confirmed" in internal
+    assert "step_up_valid=write.step_up_valid" in internal
+    assert "AdminPolicy.require_permission" in users
+    assert "AdminPolicyError" in policy
 
 
 def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
@@ -101,9 +92,9 @@ def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
     assert "context: AdminSecurityReadDep" not in signature
 
 
-def test_admin_console_files_are_present_and_node_checked() -> None:
+def test_admin_contour_workflow_targets_backend_contracts_not_web_js() -> None:
     workflow = _read(ROOT / ".github" / "workflows" / "admin-console.yml")
-    assert (ADMIN / "index.html").is_file()
-    assert (ADMIN / "admin.css").is_file()
-    assert (ADMIN / "admin.js").is_file()
-    assert "node --check app/web/admin_app/admin.js" in workflow
+    assert "name: Admin Contour" in workflow
+    assert "pytest -q" in workflow
+    assert "tests/test_admin_console.py" in workflow
+    assert "node --check app/web/admin_app" not in workflow
