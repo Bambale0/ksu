@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from app.services.model_catalog import ModelCatalog
 from app.services.model_family_catalog import build_model_families
 from app.services.model_presentation import presentation_for
 from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.trending_model_catalog import TRENDING_PUBLIC_MODEL_ORDER
-from app.services.model_catalog import ModelCatalog
 
 
 def _public_models() -> list[dict[str, object]]:
@@ -46,13 +46,20 @@ def test_family_catalog_groups_current_tanya_product_layer() -> None:
     assert "seedream-5-pro-t2i" not in public_ids
 
 
-def test_auto_routed_variants_are_single_customer_products() -> None:
+def test_auto_routed_variants_keep_customer_friendly_copy() -> None:
     families = {item["family"]: item for item in build_model_families(_public_models())}
 
-    gpt = next(variant for variant in families["gpt_image"]["variants"] if variant["id"] == "gpt-image-2-i2i")
+    gpt = next(
+        variant
+        for variant in families["gpt_image"]["variants"]
+        if variant["id"] == "gpt-image-2-i2i"
+    )
     assert gpt["operation"] == "auto"
     assert gpt["auto_mode"] is True
-    assert "автоматически" in gpt["description"].lower()
+    assert gpt["version"] == "GPT Image 2"
+    assert gpt["description"] == "Сильное качество и точное следование промпту"
+    assert "референс" not in gpt["description"].lower()
+    assert "автоматически" not in gpt["description"].lower()
 
     seedream_ids = {variant["id"] for variant in families["seedream"]["variants"]}
     assert "seedream-5-pro-i2i" in seedream_ids
@@ -66,6 +73,16 @@ def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
         "nano-banana-pro",
         "nano-banana-2",
         "nano-banana-2-lite",
+    ]
+    assert [variant["version"] for variant in variants] == [
+        "Nano Banana Pro",
+        "Nano Banana 2",
+        "Nano Banana 2 Lite",
+    ]
+    assert [variant["description"] for variant in variants] == [
+        "Максимальное качество, лучше для финального результата",
+        "Оптимальный баланс качества и скорости",
+        "Быстрее и дешевле для черновиков",
     ]
     assert variants[0]["badge"] == "TOP"
     assert variants[0]["recommended"] is True
