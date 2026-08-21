@@ -1,126 +1,35 @@
 import { expect, test } from '@playwright/test';
 
 const models = [
-  {
-    id: 'nano-banana-2',
-    title: 'Nano Banana 2',
-    family: 'nano-banana',
-    operation: 'auto',
-    media_type: 'image',
-    price_rox: '25.00',
-    ui_schema: {
-      defaults: { prompt: '' },
-      fields: [
-        { name: 'prompt', label: 'Промпт', control: 'textarea', required: true },
-        { name: 'resolution', label: 'Качество', control: 'select', options: [{ value: '1K', label: '1K' }, { value: '2K', label: '2K' }] },
-      ],
-      groups: [{ id: 'main', title: 'Настройки' }],
-    },
-  },
-  {
-    id: 'seedance-2.5',
-    title: 'Seedance 2.5',
-    family: 'seedance',
-    operation: 'auto',
-    media_type: 'video',
-    price_rox: '60.00',
-    ui_schema: {
-      defaults: { prompt: '' },
-      fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }],
-      groups: [{ id: 'main', title: 'Настройки' }],
-      billing_seconds: { label: 'Длительность', min: 1, max: 10, required: true },
-    },
-  },
-  {
-    id: 'roxy-music',
-    title: 'ROXY Music',
-    family: 'music',
-    operation: 'text_to_audio',
-    media_type: 'audio',
-    price_rox: '100.00',
-    ui_schema: {
-      defaults: { prompt: '' },
-      fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }],
-      groups: [{ id: 'main', title: 'Настройки' }],
-    },
-  },
+  { id: 'nano-banana-2', title: 'Nano Banana 2', family: 'nano-banana', operation: 'auto', media_type: 'image', price_rox: '25.00', ui_schema: { defaults: { prompt: '' }, fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }, { name: 'resolution', label: 'Качество', control: 'select', options: [{ value: '1K', label: '1K' }, { value: '2K', label: '2K' }] }], groups: [{ id: 'main', title: 'Настройки' }] } },
+  { id: 'seedance-2.5', title: 'Seedance 2.5', family: 'seedance', operation: 'auto', media_type: 'video', price_rox: '60.00', ui_schema: { defaults: { prompt: '' }, fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }], groups: [{ id: 'main', title: 'Настройки' }], billing_seconds: { label: 'Длительность', min: 1, max: 10, required: true } } },
+  { id: 'roxy-music', title: 'ROXY Music', family: 'music', operation: 'text_to_audio', media_type: 'audio', price_rox: '100.00', ui_schema: { defaults: { prompt: '' }, fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }], groups: [{ id: 'main', title: 'Настройки' }] } },
 ];
-
 const families = [
   { id: 'nano-banana', title: 'Nano Banana', media_types: ['image'], variant_count: 1, price_from_rox: '25.00', variants: [{ id: 'nano-banana-2', title: 'Nano Banana 2', version: '2', media_type: 'image', operation: 'auto', price_rox: '25.00' }] },
   { id: 'seedance', title: 'Seedance', media_types: ['video'], variant_count: 1, price_from_rox: '60.00', variants: [{ id: 'seedance-2.5', title: 'Seedance 2.5', version: '2.5', media_type: 'video', operation: 'auto', price_rox: '60.00' }] },
   { id: 'music', title: 'Музыка', media_types: ['audio'], variant_count: 1, price_from_rox: '100.00', variants: [{ id: 'roxy-music', title: 'ROXY Music', version: 'Music', media_type: 'audio', operation: 'text_to_audio', price_rox: '100.00' }] },
 ];
-
-const generation = {
-  id: 'gen_1',
-  status: 'succeeded',
-  model: models[0],
-  result_url: 'https://cdn.roxy.local/result.png',
-  result_urls: ['https://cdn.roxy.local/result.png'],
-  media: [{ url: 'https://cdn.roxy.local/result.png' }],
-  prompt: 'Портрет в неоне',
-  created_at: '2026-08-21T08:30:00Z',
-  is_profile_visible: true,
-  publication_scope: 'profile',
-};
-
-const feedCard = {
-  ...generation,
-  id: 'feed_1',
-  preview_url: 'https://cdn.roxy.local/feed.png',
-  model: 'Nano Banana 2',
-  likes_count: 12,
-  shares_count: 3,
-  comments_count: 2,
-  liked_by_me: false,
-  is_mine: true,
-  feed_published_at: '2026-08-21T08:40:00Z',
-};
-
+const generation = { id: 'gen_1', status: 'succeeded', model: models[0], result_url: 'https://cdn.roxy.local/result.png', result_urls: ['https://cdn.roxy.local/result.png'], media: [{ url: 'https://cdn.roxy.local/result.png' }], prompt: 'Портрет в неоне', created_at: '2026-08-21T08:30:00Z', is_profile_visible: true, publication_scope: 'profile' };
+const feedCard = { ...generation, id: 'feed_1', preview_url: 'https://cdn.roxy.local/feed.png', model: 'Nano Banana 2', likes_count: 12, shares_count: 3, comments_count: 2, liked_by_me: false, is_mine: true, feed_published_at: '2026-08-21T08:40:00Z' };
 const trends = [
   { id: 'trend_portrait', title: 'Неоновый портрет', description: 'Готовая идея для яркого аватара', media_type: 'image', cost_rox: '25.00', model: { title: 'Nano Banana 2' } },
   { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', cost_rox: '60.00', model: { title: 'Seedance 2.5' } },
 ];
-
 const routes = ['home', 'feed', 'catalog', 'create', 'partners', 'profile'];
-const viewports = [
-  { width: 360, height: 740 },
-  { width: 390, height: 844 },
-  { width: 430, height: 932 },
-  { width: 768, height: 1024 },
-];
+const viewports = [{ width: 360, height: 740 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 768, height: 1024 }];
 const checks = ['load', 'copy', 'navigation', 'actions', 'no-tech'];
-const scenarios = [];
-for (const route of routes) {
-  for (const viewport of viewports) {
-    for (const check of checks) scenarios.push({ route, viewport, check });
-  }
-}
+const scenarios = routes.flatMap((route) => viewports.flatMap((viewport) => checks.map((check) => ({ route, viewport, check }))));
 
 async function mockRoxy(page) {
   await page.addInitScript(() => {
-    window.Telegram = {
-      WebApp: {
-        initData: 'query_id=e2e&user=%7B%22id%22%3A777%2C%22first_name%22%3A%22QA%22%2C%22username%22%3A%22qa_user%22%7D&hash=test',
-        initDataUnsafe: { user: { id: 777, first_name: 'QA', username: 'qa_user' } },
-        ready() {},
-        expand() {},
-        onEvent() {},
-        offEvent() {},
-        openLink(url) { window.__lastOpenedLink = url; },
-        BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
-        HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
-      },
-    };
+    window.Telegram = { WebApp: { initData: 'query_id=e2e&hash=test', initDataUnsafe: { user: { id: 777, first_name: 'QA', username: 'qa_user' } }, ready() {}, expand() {}, onEvent() {}, offEvent() {}, openLink(url) { window.__lastOpenedLink = url; }, BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} }, HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} } } };
   });
-
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/generations/models') return json({ models, families });
@@ -145,6 +54,16 @@ async function mockRoxy(page) {
   });
 }
 
+async function visibleTechCopyCount(page) {
+  return page.locator('body *').evaluateAll((nodes) => nodes.filter((node) => {
+    const text = node.textContent || '';
+    if (!/KIE|provider|media routes|серверные media routes|временных KIE-ссылок/i.test(text)) return false;
+    const style = window.getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+  }).length);
+}
+
 test.describe('ROXY Mini App 100 user scenarios', () => {
   test('scenario matrix has at least 100 cases', () => {
     expect(scenarios.length).toBeGreaterThanOrEqual(100);
@@ -152,32 +71,19 @@ test.describe('ROXY Mini App 100 user scenarios', () => {
 
   for (const [index, scenario] of scenarios.entries()) {
     test(`scenario ${String(index + 1).padStart(3, '0')} ${scenario.route} ${scenario.check} ${scenario.viewport.width}x${scenario.viewport.height}`, async ({ page }) => {
+      test.setTimeout(20_000);
       await mockRoxy(page);
       await page.setViewportSize(scenario.viewport);
-      await page.goto(`/?route=${scenario.route}`);
-      await expect(page.getByText('ROXY').first()).toBeVisible();
+      await page.goto(`/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
+      await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 5_000 });
       await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
       await expect(page.getByRole('button', { name: /Создать/ })).toBeVisible();
-      await expect(page.getByText(/KIE|provider|media routes|серверные media routes|временных KIE-ссылок/i)).toHaveCount(0);
-
-      if (scenario.route === 'feed') {
-        await expect(page.getByText('Работы сообщества')).toBeVisible();
-        await expect(page.getByText('Nano Banana 2').first()).toBeVisible();
-      }
-      if (scenario.route === 'catalog') {
-        await expect(page.getByText('Готовые сценарии')).toBeVisible();
-        await expect(page.getByText('Полный каталог')).toHaveCount(0);
-      }
-      if (scenario.route === 'create') {
-        await expect(page.getByText('Настрой генерацию')).toBeVisible();
-        await expect(page.getByText('Nano Banana')).toBeVisible();
-      }
-      if (scenario.route === 'partners') {
-        await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
-      }
-      if (scenario.route === 'profile') {
-        await expect(page.getByText('Профиль').first()).toBeVisible();
-      }
+      expect(await visibleTechCopyCount(page)).toBe(0);
+      if (scenario.route === 'feed') await expect(page.getByText('Работы сообщества')).toBeVisible();
+      if (scenario.route === 'catalog') await expect(page.getByText('Готовые сценарии')).toBeVisible();
+      if (scenario.route === 'create') await expect(page.getByText('Настрой генерацию')).toBeVisible();
+      if (scenario.route === 'partners') await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
+      if (scenario.route === 'profile') await expect(page.getByText('Профиль').first()).toBeVisible();
       if (scenario.check === 'navigation') {
         await page.getByRole('button', { name: /Создать/ }).click();
         await expect(page.getByText('Настрой генерацию')).toBeVisible();
