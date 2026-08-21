@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.services.model_family_catalog import build_model_families
 from app.services.model_presentation import presentation_for
 from app.services.model_ui_contract import build_public_model_ui_schema
@@ -67,9 +69,9 @@ def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
     ]
     assert variants[0]["badge"] == "TOP"
     assert variants[0]["recommended"] is True
-    assert [variant["price_rox"] for variant in variants] == [
-        ModelCatalog.get("nano-banana-pro").public_dict()["price_rox"],
-        ModelCatalog.get("nano-banana-2").public_dict()["price_rox"],
-        ModelCatalog.get("nano-banana-2-lite").public_dict()["price_rox"],
+    assert [Decimal(str(variant["price_rox"])) for variant in variants] == [
+        Decimal(str(ModelCatalog.get("nano-banana-pro").public_dict()["price_rox"])),
+        Decimal(str(ModelCatalog.get("nano-banana-2").public_dict()["price_rox"])),
+        Decimal(str(ModelCatalog.get("nano-banana-2-lite").public_dict()["price_rox"])),
     ]
     assert all(variant.get("ui_schema") for variant in variants)
