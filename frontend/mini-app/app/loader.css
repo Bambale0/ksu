@@ -3,17 +3,17 @@
   min-height: var(--tg-stable-height);
   isolation: isolate;
   overflow: hidden;
-  padding: calc(42px + var(--tg-safe-top)) max(18px, var(--tg-safe-right)) calc(32px + var(--tg-safe-bottom)) max(18px, var(--tg-safe-left));
+  padding: calc(38px + var(--tg-safe-top)) max(18px, var(--tg-safe-right)) calc(28px + var(--tg-safe-bottom)) max(18px, var(--tg-safe-left));
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto auto minmax(48px, .35fr);
+  grid-template-rows: minmax(70px, 1fr) auto auto auto minmax(72px, .55fr);
   align-items: center;
   justify-items: center;
-  gap: 14px;
+  gap: 15px;
   color: #fff;
   background:
-    radial-gradient(circle at 50% 30%, rgba(155, 92, 255, .22), transparent 22rem),
-    radial-gradient(circle at 50% 42%, rgba(255, 95, 183, .12), transparent 24rem),
-    linear-gradient(180deg, #07050d 0%, #130922 46%, #06040a 100%);
+    radial-gradient(circle at 50% 30%, rgba(155, 92, 255, .30), transparent 21rem),
+    radial-gradient(circle at 58% 38%, rgba(255, 95, 183, .16), transparent 18rem),
+    linear-gradient(180deg, #07040d 0%, #170d25 42%, #07050d 100%);
 }
 
 .splash::before,
@@ -26,139 +26,125 @@
 
 .splash::before {
   z-index: -2;
-  background:
-    radial-gradient(circle at 50% 30%, rgba(155, 92, 255, .18), transparent 20rem),
-    radial-gradient(circle at 50% 42%, rgba(255, 95, 183, .08), transparent 18rem);
+  background: radial-gradient(circle at 50% 42%, rgba(155, 92, 255, .22), transparent 25rem);
+  filter: blur(10px);
 }
 
 .splash::after {
   z-index: -1;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, .08), transparent 42%, rgba(0, 0, 0, .62) 100%);
+  background:
+    radial-gradient(ellipse at 50% 38%, transparent 0 44%, rgba(7, 5, 13, .54) 72%, rgba(5, 3, 8, .92) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, .08), transparent 42%, rgba(0, 0, 0, .72) 100%);
 }
 
 .splash-orbit {
   position: relative;
-  width: min(66vw, 280px);
-  min-width: 210px;
+  width: min(72vw, 330px);
+  max-width: calc(100dvh - 360px);
+  min-width: 236px;
   aspect-ratio: 1;
   margin-top: auto;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(8, 5, 14, .98) 0 58%, rgba(19, 11, 30, .92) 59% 67%, transparent 68%);
+  background:
+    radial-gradient(circle, rgba(7, 5, 13, .98) 0 47%, rgba(16, 10, 24, .96) 48% 55%, transparent 56%),
+    radial-gradient(circle, rgba(155, 92, 255, .22), transparent 68%);
   box-shadow:
-    inset 0 0 0 1px rgba(183, 132, 255, .12),
-    0 0 28px rgba(155, 92, 255, .22),
-    0 0 70px rgba(255, 95, 183, .10);
+    inset 0 0 0 1px rgba(183, 132, 255, .10),
+    0 0 34px rgba(155, 92, 255, .28),
+    0 0 86px rgba(255, 95, 183, .18);
 }
 
+.splash-orbit > span:first-child,
 .splash-orbit::before,
-.splash-orbit::after,
-.splash-orbit > span:first-child {
+.splash-orbit::after {
   content: "";
   position: absolute;
-  inset: 0;
   border-radius: 50%;
   pointer-events: none;
 }
 
 .splash-orbit::before {
-  z-index: 1;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg 42deg,
-    #ff5fb7 52deg 98deg,
-    transparent 110deg 178deg,
-    #9b5cff 190deg 250deg,
-    transparent 262deg 360deg
-  );
-  -webkit-mask: radial-gradient(circle, transparent 0 68%, #000 70% 76%, transparent 78%);
-  mask: radial-gradient(circle, transparent 0 68%, #000 70% 76%, transparent 78%);
-  filter: drop-shadow(0 0 14px rgba(255, 95, 183, .72)) drop-shadow(0 0 18px rgba(155, 92, 255, .58));
-  animation: roxy-loader-ring 1.65s linear infinite;
+  inset: -3%;
+  background: conic-gradient(from 20deg, transparent 0deg 38deg, #ff5fb7 54deg 92deg, transparent 114deg 197deg, #9b5cff 218deg 265deg, transparent 284deg 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 56%, #000 58% 64%, transparent 66%);
+  mask: radial-gradient(circle, transparent 0 56%, #000 58% 64%, transparent 66%);
+  filter: drop-shadow(0 0 16px rgba(255, 95, 183, .62));
+  animation: roxy-ring-spin 2.8s linear infinite;
 }
 
 .splash-orbit::after {
-  z-index: 2;
-  inset: 8%;
-  background: conic-gradient(
-    from 180deg,
-    transparent 0deg 96deg,
-    rgba(155, 92, 255, .95) 112deg 164deg,
-    transparent 178deg 266deg,
-    rgba(255, 95, 183, .88) 282deg 328deg,
-    transparent 342deg 360deg
-  );
-  -webkit-mask: radial-gradient(circle, transparent 0 69%, #000 72% 76%, transparent 79%);
-  mask: radial-gradient(circle, transparent 0 69%, #000 72% 76%, transparent 79%);
-  filter: drop-shadow(0 0 12px rgba(155, 92, 255, .64));
-  animation: roxy-loader-ring-reverse 2.6s linear infinite;
+  inset: 9%;
+  border: 1px solid rgba(183, 132, 255, .18);
+  box-shadow:
+    inset 0 0 28px rgba(155, 92, 255, .18),
+    0 0 18px rgba(155, 92, 255, .22);
 }
 
 .splash-orbit > span:first-child {
-  z-index: 3;
-  inset: 23%;
-  border: 1px solid rgba(183, 132, 255, .24);
-  background: radial-gradient(circle, rgba(7, 4, 12, .96) 0 68%, rgba(155, 92, 255, .12) 100%);
-  box-shadow: inset 0 0 22px rgba(155, 92, 255, .12), 0 0 20px rgba(155, 92, 255, .22);
+  inset: -10%;
+  background: conic-gradient(from 180deg, transparent 0deg 128deg, rgba(155, 92, 255, .88) 150deg 202deg, transparent 225deg 286deg, rgba(255, 95, 183, .88) 306deg 336deg, transparent 350deg 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 62%, #000 64% 69%, transparent 71%);
+  mask: radial-gradient(circle, transparent 0 62%, #000 64% 69%, transparent 71%);
+  filter: drop-shadow(0 0 18px rgba(155, 92, 255, .48));
+  animation: roxy-ring-counter 4.6s linear infinite;
 }
 
 .splash .roxy-mark.large {
   position: relative;
-  z-index: 4;
+  z-index: 2;
   width: 42%;
   height: 42%;
-  min-width: 92px;
-  min-height: 92px;
-  display: grid;
-  place-items: center;
+  min-width: 116px;
+  min-height: 116px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   overflow: visible;
+  animation: roxy-logo-pulse 2.8s ease-in-out infinite;
 }
 
 .splash .roxy-mark.large::before {
   content: "";
   position: absolute;
-  inset: -20%;
+  inset: -34%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 95, 183, .18), rgba(155, 92, 255, .12) 46%, transparent 70%);
-  filter: blur(10px);
+  background: radial-gradient(circle, rgba(255, 95, 183, .20), rgba(155, 92, 255, .16) 40%, transparent 68%);
+  filter: blur(9px);
+}
+
+.splash .roxy-mark.large::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url('/brand/roxy-rx.svg') center / contain no-repeat;
+  filter: drop-shadow(0 0 16px rgba(183, 132, 255, .72)) drop-shadow(0 0 26px rgba(255, 95, 183, .40));
 }
 
 .splash .roxy-mark.large span {
-  position: relative;
-  padding-right: .13em;
-  color: transparent;
-  background: linear-gradient(110deg, #8e54ff 0%, #b45cff 43%, #ff5fb7 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  font-size: clamp(54px, 13vw, 78px);
-  line-height: .82;
-  font-weight: 1000;
-  letter-spacing: -.19em;
-  transform: scaleX(1.08);
-  filter: drop-shadow(0 0 11px rgba(183, 132, 255, .68));
+  font-size: 0;
+  opacity: 0;
 }
 
 .splash > strong {
-  margin-top: 16px;
+  margin-top: 12px;
   color: transparent;
   background: linear-gradient(110deg, #9255ff 0%, #b95cff 45%, #ff5fb7 100%);
   background-clip: text;
   -webkit-background-clip: text;
-  font-size: clamp(38px, 11vw, 58px);
+  font-size: clamp(42px, 12vw, 64px);
   line-height: .95;
   font-weight: 950;
   letter-spacing: .36em;
   text-indent: .36em;
+  text-shadow: 0 0 28px rgba(155, 92, 255, .28);
 }
 
 .splash > small {
   color: rgba(236, 231, 255, .78);
-  font-size: clamp(11px, 3.1vw, 16px);
+  font-size: clamp(12px, 3.2vw, 17px);
   line-height: 1;
   font-weight: 720;
   letter-spacing: .34em;
@@ -167,13 +153,13 @@
 
 .splash-progress {
   position: relative;
-  width: min(64vw, 340px);
-  height: 6px;
+  width: min(66vw, 370px);
+  height: 7px;
   margin-top: 18px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, .09);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04), 0 0 18px rgba(155, 92, 255, .13);
 }
 
 .splash-progress i {
@@ -181,29 +167,22 @@
   top: 0;
   bottom: 0;
   left: -44%;
-  width: 48%;
+  width: 52%;
   border-radius: inherit;
-  background: linear-gradient(90deg, transparent, #9b5cff 18%, #ff5fb7 72%, transparent);
-  box-shadow: 0 0 18px rgba(255, 95, 183, .72);
-  animation: roxy-progress 2.1s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, #8f56ff 18%, #bd5dff 48%, #ff5fb7 79%, transparent);
+  box-shadow: 0 0 22px rgba(255, 95, 183, .72);
+  animation: roxy-progress 2.2s ease-in-out infinite;
 }
 
-@keyframes roxy-loader-ring {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes roxy-loader-ring-reverse {
-  to { transform: rotate(-360deg); }
-}
-
-@keyframes roxy-progress {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(305%); }
-}
+@keyframes roxy-ring-spin { to { transform: rotate(360deg); } }
+@keyframes roxy-ring-counter { to { transform: rotate(-360deg); } }
+@keyframes roxy-logo-pulse { 0%, 100% { transform: scale(.98); } 50% { transform: scale(1.025); } }
+@keyframes roxy-progress { 0% { transform: translateX(0); } 50% { transform: translateX(150%); } 100% { transform: translateX(296%); } }
 
 @media (prefers-reduced-motion: reduce) {
   .splash-orbit::before,
-  .splash-orbit::after,
+  .splash-orbit > span:first-child,
+  .splash .roxy-mark.large,
   .splash-progress i {
     animation-duration: 1ms;
     animation-iteration-count: 1;

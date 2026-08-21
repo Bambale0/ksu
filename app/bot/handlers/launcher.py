@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import app_launcher_menu
+from app.bot.keyboards import QUICK_SUPPORT_TEXT, SUPPORT_USERNAME, app_launcher_menu
 from app.db.models import User
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
@@ -67,11 +67,12 @@ async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -
 
 
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
-    # Remove the persistent reply keyboard shipped by the previous text-bot UX.
-    # A second message contains the only supported customer navigation control.
-    await message.answer("ROXY теперь работает через приложение.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Открываю ROXY ✨", reply_markup=ReplyKeyboardRemove())
     await message.answer(
-        "<b>ROXY ✨</b>\nВсе функции — генерации, баланс, история, профиль и поддержка — внутри Mini App.",
+        "<b>Привет! Это ROXY — твоя AI-студия.</b>\n\n"
+        "Создавай фото, видео и музыку, сохраняй работы в профиль, публикуй в ленту "
+        "и приглашай друзей через партнёрский кабинет.\n\n"
+        "Нажми кнопку ниже, чтобы открыть приложение. Если нужна помощь — напиши в поддержку.",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
     )
@@ -81,7 +82,7 @@ async def _send_launcher(message: Message, *, route: str, payload: str | None) -
 async def app_unavailable(callback: CallbackQuery) -> None:
     """Fail closed without falling back to the retired text-bot product UI."""
     await callback.answer(
-        "ROXY Mini App временно недоступна. Попробуй открыть приложение чуть позже.",
+        "ROXY временно недоступна. Попробуй открыть приложение чуть позже.",
         show_alert=True,
     )
 
@@ -106,6 +107,21 @@ async def start_app_only(
         message,
         route=_launcher_route(link),
         payload=start_payload(message.text),
+    )
+
+
+@router.message(F.text == QUICK_SUPPORT_TEXT)
+async def support_message(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    """Give users a direct human support contact without opening a text-menu clone."""
+    if message.from_user is None:
+        return
+    await state.clear()
+    await UserService.get_or_create(session, message.from_user)
+    await session.commit()
+    await message.answer(
+        f"Поддержка ROXY: {SUPPORT_USERNAME}\n\n"
+        "Напишите туда, если нужна помощь с генерацией, оплатой или публикацией.",
+        reply_markup=app_launcher_menu(route="home"),
     )
 
 
