@@ -15,6 +15,26 @@
   line-height: 1.55;
 }
 
+.format-grid {
+  display: flex;
+  grid-template-columns: none;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 2px 2px 10px;
+  margin-inline: -2px;
+  scrollbar-width: none;
+}
+
+.format-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.format-card {
+  flex: 0 0 min(72vw, 240px);
+  scroll-snap-align: start;
+}
+
 .bottom-nav {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   min-height: 76px;
