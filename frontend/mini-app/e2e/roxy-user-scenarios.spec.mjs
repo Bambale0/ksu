@@ -56,7 +56,7 @@ async function mockRoxy(page) {
 
 async function visibleTechCopyCount(page) {
   return page.locator('body *').evaluateAll((nodes) => nodes.filter((node) => {
-    const text = node.textContent || '';
+    const text = node.innerText || '';
     if (!/KIE|provider|media routes|серверные media routes|временных KIE-ссылок/i.test(text)) return false;
     const style = window.getComputedStyle(node);
     const rect = node.getBoundingClientRect();
