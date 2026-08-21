@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import random
+import uuid
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from app.api.v1.card_payments import packages as package_view
+from app.core.config import settings
+from app.db.models import User, Wallet
+from app.db.session import SessionFactory
+from app.providers.card_checkout import CardCheckoutClient
+from app.providers.payments import CreatedPayment
+from app.services.card_payments import CardPaymentService
+from app.services.payment_bonuses import TopUpBonusService
+from app.services.referrals import ReferralService
+
+ROOT = Path(__file__).resolve().parents[1]
+FRONTEND = ROOT / "frontend" / "mini-app"
+
+PACKAGES_JSON = """
+{
+  "p100": {"credits": "100", "prices": {"RUB": "108.7"}},
+  "p300": {"credits": "300", "prices": {"RUB": "326.1"}},
+  "p500": {"credits": "500", "prices": {"RUB": "543.5"}},
+  "p1000": {"credits": "1000", "prices": {"RUB": "1087"}},
+  "p2000": {"credits": "2000", "prices": {"RUB": "2174"}},
+  "p5000": {"credits": "5000", "prices": {"RUB": "5435"}}
+}
+"""
+
+
+def _telegram_id() -> int:
+    return 99_400_000_000_000 + random.randint(1, 999_999_999)
+
+
+@pytest.mark.asyncio
+async def test_card_package_endpoint_exposes_rox_gift_bonuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "card_packages_json", PACKAGES_JSON)
+
+    payload = await package_view()
+    packages = payload["packages"]
+
+    assert packages["p100"]["bonus_credits"] == "0"
+    assert packages["p100"]["total_credits"] == "100"
+    assert packages["p300"]["bonus_credits"] == "50"
+    assert packages["p300"]["total_credits"] == "350"
+    assert packages["p500"]["bonus_credits"] == "100"
+    assert packages["p500"]["total_credits"] == "600"
+    assert packages["p1000"]["bonus_credits"] == "150"
+    assert packages["p1000"]["total_credits"] == "1150"
+    assert packages["p2000"]["bonus_credits"] == "200"
+    assert packages["p2000"]["total_credits"] == "2200"
+    assert packages["p5000"]["bonus_credits"] == "500"
+    assert packages["p5000"]["total_credits"] == "5500"
+
+
+@pytest.mark.asyncio
+async def test_successful_card_payment_credits_paid_rox_plus_bonus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"p300":{"credits":"300","prices":{"RUB":"326.1"}}}',
+    )
+    seen: dict[str, object] = {}
+
+    async def fake_create_invoice(
+        self: CardCheckoutClient,
+        *,
+        email: str,
+        offer_id: str,
+        currency: str,
+        amount: Decimal | None,
+        payment_provider: str | None = None,
+    ) -> CreatedPayment:
+        seen["invoice"] = {
+            "email": email,
+            "currency": currency,
+            "amount": amount,
+            "payment_provider": payment_provider,
+        }
+        return CreatedPayment(
+            external_id="card-bonus-1",
+            payment_url="https://pay.example/bonus",
+            raw={"status": "pending"},
+        )
+
+    async def fake_accrue_from_payment(
+        session,
+        *,
+        source_user_id,
+        source_transaction_id,
+        payment_amount: Decimal,
+    ) -> None:
+        seen["referral_basis"] = payment_amount
+
+    monkeypatch.setattr(CardCheckoutClient, "create_invoice", fake_create_invoice)
+    monkeypatch.setattr(ReferralService, "accrue_from_payment", fake_accrue_from_payment)
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="ROX Bonus")
+        session.add(user)
+        await session.commit()
+
+        payment = await CardPaymentService.create(
+            session,
+            user_id=user.id,
+            package_id="p300",
+            currency="RUB",
+            billing_email="buyer@example.com",
+            request_key=str(uuid.uuid4()),
+        )
+
+        assert seen["invoice"] == {
+            "email": "buyer@example.com",
+            "currency": "RUB",
+            "amount": Decimal("326.1"),
+            "payment_provider": None,
+        }
+        assert Decimal(payment.amount) == Decimal("326.1")
+        assert Decimal(payment.rox_amount) == Decimal("350")
+        assert payment.payload["base_credits"] == "300"
+        assert payment.payload["bonus_credits"] == "50"
+        assert payment.payload["credited_credits"] == "350"
+
+        await CardPaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "paid"},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        assert wallet is not None
+        assert wallet.balance == Decimal("350.00")
+        assert seen["referral_basis"] == Decimal("300")
+
+
+def test_top_up_bonus_catalog_matches_public_promo() -> None:
+    assert TopUpBonusService.bonus_for(100) == Decimal("0")
+    assert TopUpBonusService.bonus_for(300) == Decimal("50")
+    assert TopUpBonusService.bonus_for(500) == Decimal("100")
+    assert TopUpBonusService.bonus_for(1000) == Decimal("150")
+    assert TopUpBonusService.bonus_for(2000) == Decimal("200")
+    assert TopUpBonusService.bonus_for(5000) == Decimal("500")
+
+
+def test_wallet_bonus_badges_are_loaded_in_mini_app() -> None:
+    layout = (FRONTEND / "app" / "layout.tsx").read_text(encoding="utf-8")
+    css = (FRONTEND / "app" / "wallet-bonuses.css").read_text(encoding="utf-8")
+
+    assert 'import "./wallet-bonuses.css";' in layout
+    for token in (
+        "+50 ROX 🎁",
+        "+100 ROX 🎁",
+        "+150 ROX 🎁",
+        "+200 ROX 🎁",
+        "+500 ROX 🎁",
+    ):
+        assert token in css
+    assert ".package-grid .package:nth-child(2)::after" in css
+    assert ".package-grid .package:nth-child(6)::after" in css
