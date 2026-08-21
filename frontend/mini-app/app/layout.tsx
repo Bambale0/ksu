@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import type { ReactNode } from "react";
 import "./globals.css";
+import "./loader.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
