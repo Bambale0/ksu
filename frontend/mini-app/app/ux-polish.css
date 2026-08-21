@@ -46,6 +46,16 @@
   display: none;
 }
 
+.bottom-nav button small {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.05;
+}
+
 .bottom-nav button.central {
   min-height: 62px;
   transform: translateY(-16px);
