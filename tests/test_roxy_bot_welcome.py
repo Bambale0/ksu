@@ -4,22 +4,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_roxy_bot_main_menu_uses_minimal_welcome_copy() -> None:
-    start = (ROOT / "app" / "bot" / "handlers" / "start.py").read_text(encoding="utf-8")
-    block = start.split("async def _send_main_menu", 1)[1].split(
-        "async def _profile_text", 1
+def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
+    launcher = (ROOT / "app" / "bot" / "handlers" / "launcher.py").read_text(encoding="utf-8")
+    block = launcher.split("async def _send_launcher", 1)[1].split(
+        "@router.callback_query", 1
     )[0]
 
-    assert "<b>ROXY ✨</b>" in block
-    assert "<b>Создавай. Вдохновляй.</b>" in block
-    assert "👇<b>Нажми, чтобы открыть ROXY</b>" in block
+    assert "<b>Добро пожаловать в ROXY ✨</b>" in block
+    assert "Создавайте изображения, видео и музыку" in block
+    assert "🚀 Открыть ROXY" in block
+    assert "Поддержка:" in block
     assert 'parse_mode="HTML"' in block
 
     for legacy_copy in (
-        "Привет,",
-        "Баланс ROX",
-        "Заработок партнёра",
-        "1 ROX = 1 ₽",
+        "ROXY теперь работает через приложение",
+        "Все функции — генерации",
+        "Быстрый доступ ROXY",
         "Выбери действие:",
     ):
         assert legacy_copy not in block
+
+
+def test_support_contact_defaults_to_korkinaxenia() -> None:
+    config = (ROOT / "app" / "core" / "config.py").read_text(encoding="utf-8")
+    assert 'support_telegram_url: str = "https://t.me/korkinaxenia"' in config
