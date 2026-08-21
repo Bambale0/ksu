@@ -39,40 +39,35 @@ def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
 
-def _open_app_button(*, route: str = "home", start_payload: str | None = None) -> KeyboardButton:
+def _open_app_inline_button(*, route: str = "home", start_payload: str | None = None) -> InlineKeyboardButton:
     if not settings.public_base_url:
-        return KeyboardButton(text=OPEN_APP_TEXT)
-    return KeyboardButton(
+        return InlineKeyboardButton(text=OPEN_APP_TEXT, callback_data="app:unavailable")
+    return InlineKeyboardButton(
         text=OPEN_APP_TEXT,
         web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
     )
-
-
-def _prompt_tool_button(text: str, mode: str) -> KeyboardButton:
-    if not settings.public_base_url:
-        return KeyboardButton(text=text)
-    return KeyboardButton(text=text, web_app=WebAppInfo(url=_prompt_tool_url(mode)))
 
 
 def app_launcher_menu(
     *,
     route: str = "home",
     start_payload: str | None = None,
-) -> ReplyKeyboardMarkup:
-    """Customer-facing Telegram navigation: app button plus prompt tools and support."""
+) -> InlineKeyboardMarkup:
+    """Inline app launcher: only the ROXY Mini App button under the message."""
     primary = OPEN_APP_TEXT  # contract: text="🚀 Открыть ROXY"
+    del primary
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[_open_app_inline_button(route=route, start_payload=start_payload)]]
+    )
+
+
+def app_reply_menu() -> ReplyKeyboardMarkup:
+    """Persistent Telegram bottom keyboard: only menu and support."""
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                _open_app_button(route=route, start_payload=start_payload),
-                _prompt_tool_button(QUICK_PROMPT_TEXT, "image"),
-                _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video"),
-            ],
-            [KeyboardButton(text=QUICK_SUPPORT_TEXT)],
-        ],
+        keyboard=[[KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)]],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder=f"{primary}, prompt или поддержка",
+        input_field_placeholder="Меню или поддержка",
     )
 
 
@@ -100,16 +95,8 @@ def _batch_button() -> InlineKeyboardButton:
 
 
 def quick_menu() -> ReplyKeyboardMarkup:
-    """Compatibility keyboard for retired text-bot handlers."""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [_open_app_button(route="home"), _prompt_tool_button(QUICK_PROMPT_TEXT, "image"), _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video")],
-            [KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="ROXY · выбери действие",
-    )
+    """Compatibility keyboard for launcher and support shortcuts."""
+    return app_reply_menu()
 
 
 def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
@@ -176,6 +163,6 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu() -> ReplyKeyboardMarkup:
-    """Compatibility alias for older imports; customer UX is Mini-App-only."""
+def main_menu() -> InlineKeyboardMarkup:
+    """Compatibility alias for older imports; customer UX opens the Mini App."""
     return app_launcher_menu(route="home")
