@@ -1,7 +1,7 @@
 export default {
   testDir: './e2e',
-  timeout: 45_000,
-  expect: { timeout: 8_000 },
+  timeout: 35_000,
+  expect: { timeout: 6_000 },
   fullyParallel: false,
   workers: process.env.CI ? 2 : undefined,
   projects: [
@@ -14,9 +14,9 @@ export default {
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'npm run dev -- --hostname 127.0.0.1 --port 3017',
-    url: 'http://127.0.0.1:3017',
+    command: 'npm run build && node e2e/static-server.mjs out 3017',
+    url: 'http://127.0.0.1:3017/mini-app/',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 180_000,
   },
 };
