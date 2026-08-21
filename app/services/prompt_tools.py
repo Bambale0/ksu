@@ -24,16 +24,24 @@ from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
-PromptToolName = Literal["image_analysis", "prompt_builder"]
+PromptToolName = Literal["image_analysis", "prompt_builder", "video_prompt"]
 
 _TOOL_MODEL = {
     "image_analysis": "gemini-2.5-pro",
     "prompt_builder": "gpt-5-5",
+    "video_prompt": "gemini-2.5-pro",
 }
 _TOOL_TITLE = {
-    "image_analysis": "Промпт по фото",
-    "prompt_builder": "Улучшить промпт",
+    "image_analysis": "Prompt по фото",
+    "prompt_builder": "Prompt по описанию",
+    "video_prompt": "Prompt по видео",
 }
+_DEFAULT_COSTS = {
+    "image_analysis": Decimal("1.00"),
+    "prompt_builder": Decimal("1.00"),
+    "video_prompt": Decimal("30.00"),
+}
+_ALLOWED_DURATIONS = {5, 10, 15}
 _TASK_NAMESPACE = uuid.UUID("b9346c9a-31c2-4de6-b2dd-0c76c359dd7f")
 
 
@@ -63,6 +71,7 @@ def _retry_delay(attempt: int) -> int:
 class PromptToolPricingService:
     @staticmethod
     async def prices(session: AsyncSession) -> dict[str, Decimal]:
+        result = dict(_DEFAULT_COSTS)
         tariff = await session.scalar(
             select(TariffVersion)
             .where(TariffVersion.status == "published")
@@ -70,11 +79,10 @@ class PromptToolPricingService:
             .limit(1)
         )
         if tariff is None:
-            return {}
+            return result
         raw = (tariff.payload or {}).get("prompt_costs") or {}
         if not isinstance(raw, dict):
-            return {}
-        result: dict[str, Decimal] = {}
+            return result
         for tool in _TOOL_MODEL:
             value = raw.get(tool)
             if isinstance(value, dict):
@@ -138,30 +146,50 @@ class PromptToolService:
     def _normalize_input(tool: PromptToolName, payload: dict[str, Any]) -> dict[str, Any]:
         text = str(payload.get("text") or "").strip()
         image_url_raw = str(payload.get("image_url") or "").strip()
+        video_url_raw = str(payload.get("video_url") or "").strip()
         instruction = str(payload.get("instruction") or "").strip()
+        duration_raw = payload.get("duration_seconds")
+        duration_seconds = int(duration_raw) if duration_raw not in (None, "") else None
+        if duration_seconds is not None and duration_seconds not in _ALLOWED_DURATIONS:
+            raise ValueError("duration_seconds must be 5, 10 or 15")
         if len(text) > 8000:
             raise ValueError("Text must be at most 8000 characters")
         if len(instruction) > 1000:
             raise ValueError("Instruction must be at most 1000 characters")
-        image_url = PromptToolService._safe_image_url(image_url_raw) if image_url_raw else None
+        image_url = cls_url = None
+        if image_url_raw:
+            image_url = cls_url = PromptToolService._safe_media_url(image_url_raw, kind="image")
         if tool == "image_analysis":
-            if image_url is None:
+            if cls_url is None:
                 raise ValueError("image_url is required")
-            return {"image_url": image_url, "instruction": instruction}
+            return {"image_url": cls_url, "instruction": instruction}
+        if tool == "video_prompt":
+            video_url = PromptToolService._safe_media_url(video_url_raw, kind="video") if video_url_raw else None
+            if video_url is None:
+                raise ValueError("video_url is required")
+            return {
+                "video_url": video_url,
+                "instruction": instruction,
+                "duration_seconds": duration_seconds,
+            }
         if not text and image_url is None:
             raise ValueError("text or image_url is required")
-        return {"text": text, "image_url": image_url}
+        return {
+            "text": text,
+            "image_url": image_url,
+            "duration_seconds": duration_seconds,
+        }
 
     @staticmethod
-    def _safe_image_url(value: str) -> str:
+    def _safe_media_url(value: str, *, kind: str) -> str:
         if len(value) > 4000:
-            raise ValueError("image_url is too long")
+            raise ValueError(f"{kind}_url is too long")
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.netloc:
-            raise ValueError("image_url must be an HTTPS URL")
+            raise ValueError(f"{kind}_url must be an HTTPS URL")
         host = (parsed.hostname or "").lower()
         if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local"):
-            raise ValueError("Local image URLs are not allowed")
+            raise ValueError(f"Local {kind} URLs are not allowed")
         return value
 
     @staticmethod
@@ -283,6 +311,8 @@ class PromptToolService:
             "result": task.result_payload if task.status == "succeeded" else None,
             "error": task.error if task.status == "failed" else None,
             "has_image": bool(metadata.get("image_url")),
+            "has_video": bool(metadata.get("video_url")),
+            "duration_seconds": metadata.get("duration_seconds"),
             "created_at": task.created_at.isoformat(),
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "idempotency_replayed": replayed,
@@ -418,6 +448,13 @@ class PromptToolProcessor:
                     result = await client.build_prompt(
                         text=str(data.get("text") or ""),
                         image_url=str(data.get("image_url") or "") or None,
+                    )
+                elif task.tool == "video_prompt":
+                    raw_duration = data.get("duration_seconds")
+                    result = await client.build_video_prompt(
+                        video_url=str(data.get("video_url") or ""),
+                        instruction=str(data.get("instruction") or ""),
+                        duration_seconds=int(raw_duration) if raw_duration else None,
                     )
                 else:
                     raise ValueError(f"Unknown prompt tool: {task.tool}")
