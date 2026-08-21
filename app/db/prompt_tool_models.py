@@ -27,7 +27,7 @@ class PromptToolTask(TimestampMixin, Base):
     __tablename__ = "prompt_tool_tasks"
     __table_args__ = (
         CheckConstraint(
-            "tool IN ('image_analysis', 'prompt_builder')",
+            "tool IN ('image_analysis', 'prompt_builder', 'video_prompt')",
             name="ck_prompt_tool_tasks_tool",
         ),
         CheckConstraint(
