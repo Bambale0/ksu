@@ -1,0 +1,83 @@
+/* Product UX overrides: friendly public copy, sane bottom navigation, no provider-facing text. */
+
+.screen-head p {
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+}
+
+.screen-head p::after {
+  content: "Выберите действие и продолжайте работу в ROXY.";
+  display: block;
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.bottom-nav {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-height: 76px;
+  padding: 8px;
+  border-radius: 24px;
+}
+
+/* Catalog remains reachable from Studio, but the bottom bar must stay clean. */
+.bottom-nav button:nth-child(3) {
+  display: none;
+}
+
+.bottom-nav button.central {
+  min-height: 62px;
+  transform: translateY(-16px);
+}
+
+.bottom-nav button.central > span {
+  width: 64px;
+  height: 64px;
+  border-radius: 24px;
+  color: #fff;
+  background: var(--gradient);
+  box-shadow: 0 16px 38px rgba(189, 93, 255, .36), 0 0 42px rgba(255, 95, 183, .22);
+}
+
+.bottom-nav button.central small {
+  margin-top: 2px;
+  color: #fff;
+  font-weight: 900;
+}
+
+.bottom-nav button.active:not(.central) {
+  background: rgba(155, 92, 255, .09);
+}
+
+.bottom-nav button.active:not(.central)::after {
+  bottom: 5px;
+  width: 22px;
+  background: var(--gradient);
+}
+
+.feed-provider-copy,
+.provider-copy,
+.tech-copy,
+[data-provider-copy="true"] {
+  display: none !important;
+}
+
+@media (max-width: 390px) {
+  .bottom-nav {
+    left: max(6px, var(--tg-safe-left));
+    right: max(6px, var(--tg-safe-right));
+    width: min(calc(100% - 12px), 620px);
+  }
+
+  .bottom-nav button small {
+    font-size: 8px;
+  }
+
+  .bottom-nav button.central > span {
+    width: 58px;
+    height: 58px;
+    border-radius: 21px;
+  }
+}
