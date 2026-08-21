@@ -121,7 +121,7 @@ async function openScenario(page: Page, scenario: (typeof scenarios)[number]) {
   await mockTelegram(page);
   await mockApi(page);
   await page.setViewportSize(scenario.viewport);
-  await page.goto(`/?route=${scenario.route}`);
+  await page.goto(`/mini-app/?route=${scenario.route}`);
   await expect(page.locator("body")).toContainText("ROXY");
 }
 
