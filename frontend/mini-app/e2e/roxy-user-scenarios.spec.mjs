@@ -35,6 +35,7 @@ async function mockRoxy(page) {
     if (path === '/api/v1/generations/models') return json({ models, families });
     if (path === '/api/v1/generations/quote') return json({ cost_rox: '25.00', balance_rox: '150.00', enough_balance: true });
     if (path === '/api/v1/generations' && method === 'POST') return json({ id: 'gen_new', status: 'queued', cost_rox: '25.00' });
+    if (path.endsWith('/recreate')) return json({ model_id: 'nano-banana-2', prompt: 'Портрет в неоне', input_url: null, billing_seconds: null, parameters: { resolution: '1K' } });
     if (path.startsWith('/api/v1/generations/')) return json(generation);
     if (path === '/api/v1/generations') return json({ items: [generation], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [feedCard] });
@@ -49,7 +50,7 @@ async function mockRoxy(page) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } });
     return json({ items: [] });
   });
 }
@@ -81,12 +82,12 @@ test.describe('ROXY Mini App E2E audit', () => {
         expect(await visibleTechCopyCount(page)).toBe(0);
         if (scenario.route === 'feed') await expect(page.getByText('Работы сообщества')).toBeVisible();
         if (scenario.route === 'catalog') await expect(page.getByText('Готовые сценарии')).toBeVisible();
-        if (scenario.route === 'create') await expect(page.getByText('Настрой генерацию')).toBeVisible();
+        if (scenario.route === 'create') await expect(page.getByText('Новая генерация')).toBeVisible();
         if (scenario.route === 'partners') await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
         if (scenario.route === 'profile') await expect(page.getByText('Профиль').first()).toBeVisible();
         if (scenario.check === 'navigation') {
           await page.locator('.bottom-nav button.central').click();
-          await expect(page.getByText('Настрой генерацию')).toBeVisible();
+          await expect(page.getByText('Новая генерация')).toBeVisible();
         }
       });
     }
