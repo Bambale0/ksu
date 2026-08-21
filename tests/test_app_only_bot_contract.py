@@ -31,7 +31,7 @@ def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher
         assert retired_customer_router not in dispatcher
 
 
-def test_launcher_removes_legacy_reply_keyboard_and_routes_everything_to_app() -> None:
+def test_launcher_uses_reply_keyboard_app_button_and_support() -> None:
     launcher = _read("app/bot/handlers/launcher.py")
     keyboards = _read("app/bot/keyboards.py")
     assert "ReplyKeyboardRemove()" in launcher
@@ -39,8 +39,13 @@ def test_launcher_removes_legacy_reply_keyboard_and_routes_everything_to_app() -
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher
     assert "Do not expose a parallel text UI" in launcher
+    assert "@router.message(F.text == QUICK_SUPPORT_TEXT)" in launcher
+    assert "@korkinaxenia" in keyboards
+    assert "ReplyKeyboardMarkup" in keyboards
+    assert "KeyboardButton(**open_button_kwargs)" in keyboards
     assert "web_app=WebAppInfo" in keyboards
-    assert 'text="🚀 Открыть ROXY"' in keyboards
+    assert "🚀 Открыть ROXY" in keyboards
+    assert "🆘 Поддержка" in keyboards
     assert 'query["start_payload"] = start_payload' in keyboards
 
 
