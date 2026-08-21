@@ -1,4 +1,4 @@
-name: Admin Console
+name: Admin Contour
 
 on:
   push:
@@ -9,16 +9,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: admin-console-${{ github.workflow }}-${{ github.ref }}
+  group: admin-contour-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  javascript:
+  contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - name: Validate admin console JavaScript
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
         run: |
-          node --check app/web/admin_app/admin.js
-          node --check app/web/admin_app/control.js
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Validate admin contour contracts
+        run: |
+          pytest -q \
+            tests/test_admin_console.py \
+            tests/test_admin_control_surface.py \
+            tests/test_admin_security.py \
+            tests/test_admin_telegram_security.py
