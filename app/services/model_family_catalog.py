@@ -71,10 +71,64 @@ MODEL_TO_FAMILY = {
     "suno-v5.5": "suno",
 }
 
+# One short line per customer-visible product. These labels are deliberately
+# about user outcomes, not provider modes: reference support is baseline and is
+# not repeated on every card.
+PRODUCT_DESCRIPTIONS = {
+    "nano-banana": "Быстрые изображения для простых идей",
+    "nano-banana-pro": "Максимальное качество, лучше для финального результата",
+    "nano-banana-2": "Оптимальный баланс качества и скорости",
+    "nano-banana-2-lite": "Быстрее и дешевле для черновиков",
+    "seedream-3": "Стабильная генерация изображений",
+    "seedream-4": "Фотореализм и аккуратное редактирование",
+    "seedream-4.5": "Детальные изображения с хорошей стилизацией",
+    "seedream-5-lite": "Быстрая генерация с хорошим качеством",
+    "seedream-5-pro": "Премиум-качество для сложных сцен",
+    "gpt-image-1.5": "Аккуратные иллюстрации и понятные правки",
+    "gpt-image-2": "Сильное качество и точное следование промпту",
+    "wan-2.7-image": "Универсальные изображения и быстрые правки",
+    "wan-2.7-image-pro": "Больше деталей и выше качество картинки",
+    "wan-2.7-video": "Универсальное видео по сценарию",
+    "seedance-1.5-pro": "Надёжное видео с хорошей динамикой",
+    "seedance-2.0": "Сбалансированное видео для большинства задач",
+    "seedance-2.0-fast": "Быстрые видео, когда важна скорость",
+    "seedance-2.0-mini": "Экономичный вариант для коротких тестов",
+    "seedance-2.5": "Более сильная версия для детальных роликов",
+    "kling-2.5-turbo-pro": "Кинематографичное видео в турбо-режиме",
+    "kling-3.0": "Кинематографичное видео с гибкой сценой",
+    "kling-motion-2.6": "Перенос движения с точным контролем",
+    "kling-motion-3.0": "Продвинутый motion control для персонажей",
+    "kling-avatar-standard": "Говорящий аватар для быстрых роликов",
+    "kling-avatar-pro": "Говорящий аватар с лучшим качеством",
+    "veo-3.1": "Премиум-видео с реалистичной динамикой",
+    "gemini-omni-video": "Мультимодальное видео с медиа и персонажами",
+    "grok-image": "Быстрые креативные изображения",
+    "grok-video": "Динамичные ролики в стиле Grok",
+    "grok-video-1.5": "Свежий preview для видео-экспериментов",
+    "grok-video-upscale": "Улучшение качества готового видео",
+    "grok-video-extend": "Продление готового видео",
+    "suno-v5.5": "Музыка и песни по описанию",
+}
+
 VARIANT_META = {
-    "nano-banana-pro": {"badge": "TOP", "recommended": True, "description": "Лучшее качество", "order": 0},
-    "nano-banana-2": {"badge": None, "recommended": False, "description": "Оптимальный баланс", "order": 1},
-    "nano-banana-2-lite": {"badge": None, "recommended": False, "description": "Быстрые генерации", "order": 2},
+    "nano-banana-pro": {
+        "badge": "TOP",
+        "recommended": True,
+        "description": PRODUCT_DESCRIPTIONS["nano-banana-pro"],
+        "order": 0,
+    },
+    "nano-banana-2": {
+        "badge": "2",
+        "recommended": False,
+        "description": PRODUCT_DESCRIPTIONS["nano-banana-2"],
+        "order": 1,
+    },
+    "nano-banana-2-lite": {
+        "badge": "2 Lite",
+        "recommended": False,
+        "description": PRODUCT_DESCRIPTIONS["nano-banana-2-lite"],
+        "order": 2,
+    },
 }
 
 
@@ -103,23 +157,56 @@ def _price_value(model: dict[str, Any]) -> Decimal:
     return Decimal(str(raw))
 
 
+def _product_title(model: dict[str, Any]) -> str:
+    presentation = model.get("presentation") if isinstance(model.get("presentation"), dict) else {}
+    model_id = str(model.get("id") or "")
+    return str(
+        presentation.get("product_title")
+        or presentation.get("title")
+        or model.get("title")
+        or model_id
+    )
+
+
+def _version_label(model: dict[str, Any]) -> str:
+    presentation = model.get("presentation") if isinstance(model.get("presentation"), dict) else {}
+    return str(presentation.get("version_label") or _product_title(model))
+
+
+def _description_for(model: dict[str, Any]) -> str:
+    model_id = str(model.get("id") or "")
+    product_key = _product_key(model)
+    presentation = model.get("presentation") if isinstance(model.get("presentation"), dict) else {}
+    return str(
+        PRODUCT_DESCRIPTIONS.get(product_key)
+        or PRODUCT_DESCRIPTIONS.get(model_id)
+        or presentation.get("product_title")
+        or model.get("title")
+        or model_id
+    )
+
+
 def _variant(model: dict[str, Any]) -> dict[str, Any]:
     model_id = str(model.get("id") or "")
-    presentation = model.get("presentation") if isinstance(model.get("presentation"), dict) else {}
     meta = VARIANT_META.get(model_id, {})
+    title = _product_title(model)
+    short_label = _version_label(model)
+    badge = meta.get("badge")
+    if badge is None and short_label != title:
+        badge = short_label
     return {
         "id": model_id,
-        "title": str(model.get("title") or model_id),
-        "version": str(presentation.get("version_label") or model.get("title") or model_id),
+        "title": title,
+        "version": title,
         "operation": str(model.get("operation") or ""),
         "media_type": str(model.get("media_type") or ""),
         "price_rox": model.get("price_rox"),
         "price_credits": model.get("price_credits"),
         "price_rub": model.get("price_rub"),
         "retail_price_rox": model.get("retail_price_rox"),
-        "badge": meta.get("badge"),
+        "badge": badge,
         "recommended": bool(meta.get("recommended", False)),
-        "description": meta.get("description") or str(presentation.get("product_title") or model.get("title") or model_id),
+        "description": meta.get("description") or _description_for(model),
         "ui_schema": model.get("ui_schema"),
         "order": int(meta.get("order", 1000)),
     }
@@ -151,18 +238,24 @@ def _coalesced_variants(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for product_models in buckets.values():
         chosen = _preferred_public_model(product_models)
         variant = _variant(chosen)
-        presentation = chosen.get("presentation") if isinstance(chosen.get("presentation"), dict) else {}
-        product_prices = [_price_value(item) for item in product_models if item.get("price_rox") is not None]
+        product_prices = [
+            _price_value(item)
+            for item in product_models
+            if item.get("price_rox") is not None
+        ]
         if product_prices:
             variant["price_rox"] = format(min(product_prices), ".2f")
-        is_auto = len(product_models) > 1 or str(chosen.get("id") or "") in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
+        is_auto = (
+            len(product_models) > 1
+            or str(chosen.get("id") or "") in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
+        )
         if is_auto:
-            product_title = str(presentation.get("product_title") or presentation.get("title") or variant["title"])
+            product_title = _product_title(chosen)
             variant["title"] = product_title
-            variant["version"] = str(presentation.get("version_label") or product_title)
+            variant["version"] = product_title
             variant["operation"] = "auto"
             variant["auto_mode"] = True
-            variant["description"] = "Текст или референс — режим выберется автоматически"
+            variant["description"] = _description_for(chosen)
         variants.append(variant)
     return variants
 
@@ -190,7 +283,9 @@ def build_model_families(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "id": family_id,
                 "title": FAMILY_TITLES.get(family_id, variants[0]["title"]),
                 "icon": FAMILY_ICONS.get(family_id, "spark"),
-                "media_types": sorted({str(item["media_type"]) for item in variants if item.get("media_type")}),
+                "media_types": sorted(
+                    {str(item["media_type"]) for item in variants if item.get("media_type")}
+                ),
                 "variant_count": len(variants),
                 "price_from_rox": format(min(prices), ".2f") if prices else None,
                 "variants": [
