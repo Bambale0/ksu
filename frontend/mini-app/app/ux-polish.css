@@ -1,15 +1,14 @@
 /* Product UX overrides: friendly public copy, sane bottom navigation, no provider-facing text. */
 
 .screen-head p {
-  font-size: 0;
-  line-height: 0;
-  color: transparent;
+  display: none;
 }
 
-.screen-head p::after {
+.screen-head::after {
   content: "Выберите действие и продолжайте работу в ROXY.";
   display: block;
   max-width: 640px;
+  margin-top: 8px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.55;
