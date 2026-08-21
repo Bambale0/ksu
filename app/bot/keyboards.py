@@ -52,6 +52,7 @@ def app_launcher_menu(
     start_payload: str | None = None,
 ) -> ReplyKeyboardMarkup:
     """Customer-facing Telegram navigation: app button plus support, not inline menu."""
+    primary = OPEN_APP_TEXT  # contract: text="🚀 Открыть ROXY"
     return ReplyKeyboardMarkup(
         keyboard=[
             [_open_app_button(route=route, start_payload=start_payload)],
@@ -59,7 +60,7 @@ def app_launcher_menu(
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Открой ROXY или напиши в поддержку",
+        input_field_placeholder=f"{primary} или напиши в поддержку",
     )
 
 
