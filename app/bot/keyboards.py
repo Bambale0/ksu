@@ -12,8 +12,9 @@ from app.core.config import settings
 
 BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
-QUICK_MENU_TEXT = "🏠 Меню"
+QUICK_MENU_TEXT = "🚀 Открыть ROXY"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
+SUPPORT_USERNAME = "@korkinaxenia"
 
 
 def _mini_app_url(route: str | None = None, *, start_payload: str | None = None) -> str:
@@ -40,23 +41,21 @@ def app_launcher_menu(
     *,
     route: str = "home",
     start_payload: str | None = None,
-) -> InlineKeyboardMarkup:
-    """The only customer-facing Telegram navigation: open the ROXY Mini App."""
-    if not settings.public_base_url:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🚀 Открыть ROXY", callback_data="app:unavailable")]
-            ]
+) -> ReplyKeyboardMarkup:
+    """Customer-facing Telegram launcher: ReplyKeyboard, not inline menu."""
+    open_button_kwargs: dict[str, object] = {"text": QUICK_MENU_TEXT}
+    if settings.public_base_url:
+        open_button_kwargs["web_app"] = WebAppInfo(
+            url=_mini_app_url(route, start_payload=start_payload),
         )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🚀 Открыть ROXY",
-                    web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
-                )
-            ]
-        ]
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(**open_button_kwargs)],
+            [KeyboardButton(text=QUICK_SUPPORT_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="ROXY · открыть приложение или поддержку",
     )
 
 
@@ -84,22 +83,7 @@ def _batch_button() -> InlineKeyboardButton:
 
 
 def quick_menu() -> ReplyKeyboardMarkup:
-    """Legacy keyboard kept only for imports in retired text-bot handlers.
-
-    The production dispatcher no longer registers those handlers. New customer
-    navigation must use :func:`app_launcher_menu`.
-    """
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=QUICK_MENU_TEXT),
-                KeyboardButton(text=QUICK_SUPPORT_TEXT),
-            ]
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-        input_field_placeholder="ROXY · выбери действие",
-    )
+    return app_launcher_menu(route="home")
 
 
 def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
@@ -160,6 +144,5 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu() -> InlineKeyboardMarkup:
-    """Compatibility alias for older imports; customer UX is Mini-App-only."""
+def main_menu() -> ReplyKeyboardMarkup:
     return app_launcher_menu(route="home")
