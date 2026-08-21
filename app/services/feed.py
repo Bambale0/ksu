@@ -3,13 +3,15 @@ from __future__ import annotations
 import html
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 
 from redis.asyncio import Redis
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.admin_content_models import GenerationModerationState
 from app.db.feed_models import FeedComment, FeedRemixEvent
 from app.db.media_models import MediaAsset
@@ -121,10 +123,7 @@ class FeedService:
         )
 
     @staticmethod
-    async def _moderation_state(
-        session: AsyncSession,
-        generation_id: uuid.UUID,
-    ) -> str | None:
+    async def _moderation_state(session: AsyncSession, generation_id: uuid.UUID) -> str | None:
         row = await session.get(GenerationModerationState, generation_id)
         return row.state if row is not None else None
 
@@ -141,11 +140,7 @@ class FeedService:
         if generation is None:
             raise FeedNotFoundError("Publication not found")
         moderation_state = await cls._moderation_state(session, generation.id)
-        if not cls._surface_visible(
-            generation,
-            surface=normalized,
-            moderation_state=moderation_state,
-        ):
+        if not cls._surface_visible(generation, surface=normalized, moderation_state=moderation_state):
             raise FeedNotFoundError("Publication not found")
         if not await cls._has_ready_media(session, generation.id):
             raise FeedNotFoundError("Publication media is unavailable")
@@ -184,10 +179,7 @@ class FeedService:
         stmt = (
             select(Generation)
             .join(User, User.id == Generation.user_id)
-            .outerjoin(
-                GenerationModerationState,
-                GenerationModerationState.generation_id == Generation.id,
-            )
+            .outerjoin(GenerationModerationState, GenerationModerationState.generation_id == Generation.id)
             .where(
                 Generation.status == "succeeded",
                 Generation.publication_scope == "feed",
@@ -203,20 +195,11 @@ class FeedService:
             )
         )
         if sort == "recent":
-            stmt = stmt.order_by(
-                Generation.feed_published_at.desc().nullslast(),
-                Generation.id.desc(),
-            )
+            stmt = stmt.order_by(Generation.feed_published_at.desc().nullslast(), Generation.id.desc())
         else:
             if sort == "top_day":
-                stmt = stmt.where(
-                    Generation.feed_published_at >= datetime.now(UTC) - timedelta(hours=24)
-                )
-            stmt = stmt.order_by(
-                score.desc(),
-                Generation.feed_published_at.desc().nullslast(),
-                Generation.id.desc(),
-            )
+                stmt = stmt.where(Generation.feed_published_at >= datetime.now(UTC) - timedelta(hours=24))
+            stmt = stmt.order_by(score.desc(), Generation.feed_published_at.desc().nullslast(), Generation.id.desc())
         return list((await session.scalars(stmt.offset(offset).limit(limit))).all())
 
     @classmethod
@@ -234,10 +217,7 @@ class FeedService:
         stmt = (
             select(Generation)
             .join(User, User.id == Generation.user_id)
-            .outerjoin(
-                GenerationModerationState,
-                GenerationModerationState.generation_id == Generation.id,
-            )
+            .outerjoin(GenerationModerationState, GenerationModerationState.generation_id == Generation.id)
             .where(
                 Generation.user_id == author_user_id,
                 Generation.status == "succeeded",
@@ -257,10 +237,7 @@ class FeedService:
         return list(
             (
                 await session.scalars(
-                    stmt.order_by(
-                        Generation.feed_published_at.desc().nullslast(),
-                        Generation.created_at.desc(),
-                    )
+                    stmt.order_by(Generation.feed_published_at.desc().nullslast(), Generation.created_at.desc())
                     .offset(offset)
                     .limit(limit)
                 )
@@ -275,17 +252,8 @@ class FeedService:
         generation_id: uuid.UUID,
         viewer_user_id: uuid.UUID,
     ) -> dict[str, Any]:
-        generation = await cls.assert_surface_visible(
-            session,
-            generation_id,
-            surface="feed",
-        )
-        return await cls.to_card(
-            session,
-            generation,
-            viewer_user_id=viewer_user_id,
-            surface="feed",
-        )
+        generation = await cls.assert_surface_visible(session, generation_id, surface="feed")
+        return await cls.to_card(session, generation, viewer_user_id=viewer_user_id, surface="feed")
 
     @classmethod
     async def get_profile_generation_card(
@@ -295,17 +263,8 @@ class FeedService:
         generation_id: uuid.UUID,
         viewer_user_id: uuid.UUID,
     ) -> dict[str, Any]:
-        generation = await cls.assert_surface_visible(
-            session,
-            generation_id,
-            surface="profile",
-        )
-        return await cls.to_card(
-            session,
-            generation,
-            viewer_user_id=viewer_user_id,
-            surface="profile",
-        )
+        generation = await cls.assert_surface_visible(session, generation_id, surface="profile")
+        return await cls.to_card(session, generation, viewer_user_id=viewer_user_id, surface="profile")
 
     @staticmethod
     def _provider_result_urls(generation: Generation) -> list[str]:
@@ -316,11 +275,7 @@ class FeedService:
         return [item for item in values if item.startswith("https://")]
 
     @classmethod
-    async def _media_views(
-        cls,
-        session: AsyncSession,
-        generation: Generation,
-    ) -> list[dict[str, Any]]:
+    async def _media_views(cls, session: AsyncSession, generation: Generation) -> list[dict[str, Any]]:
         assets = list(
             (
                 await session.scalars(
@@ -381,11 +336,7 @@ class FeedService:
     ) -> dict[str, Any]:
         normalized_surface = cls._validate_surface(surface)
         moderation = await session.get(GenerationModerationState, generation.id)
-        if not cls._surface_visible(
-            generation,
-            surface=normalized_surface,
-            moderation_state=moderation.state if moderation else None,
-        ):
+        if not cls._surface_visible(generation, surface=normalized_surface, moderation_state=moderation.state if moderation else None):
             raise FeedNotFoundError("Publication not found")
 
         author = await session.get(User, generation.user_id)
@@ -395,40 +346,19 @@ class FeedService:
         if not media:
             raise FeedNotFoundError("Publication media is unavailable")
 
-        like_count = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(GenerationLike)
-                    .where(GenerationLike.generation_id == generation.id)
-                )
-            )
-            or 0
-        )
+        like_count = int((await session.scalar(select(func.count()).select_from(GenerationLike).where(GenerationLike.generation_id == generation.id))) or 0)
         liked_by_me = (await session.get(GenerationLike, (generation.id, viewer_user_id))) is not None
         comments_count = int(
             (
                 await session.scalar(
                     select(func.count())
                     .select_from(FeedComment)
-                    .where(
-                        FeedComment.generation_id == generation.id,
-                        FeedComment.surface == normalized_surface,
-                    )
+                    .where(FeedComment.generation_id == generation.id, FeedComment.surface == normalized_surface)
                 )
             )
             or 0
         )
-        remixes = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(FeedRemixEvent)
-                    .where(FeedRemixEvent.source_generation_id == generation.id)
-                )
-            )
-            or 0
-        )
+        remixes = int((await session.scalar(select(func.count()).select_from(FeedRemixEvent).where(FeedRemixEvent.source_generation_id == generation.id))) or 0)
 
         derivative = generation.source_feed_gen_id is not None
         prompt_hidden = derivative or not generation.feed_prompt_visible
@@ -465,9 +395,7 @@ class FeedService:
                 "id": str(author.id),
                 "telegram_id": author.telegram_id,
                 "username": author.username,
-                "display_name": " ".join(
-                    part for part in (author.first_name, author.last_name or "") if part
-                ).strip()
+                "display_name": " ".join(part for part in (author.first_name, author.last_name or "") if part).strip()
                 or author.username
                 or "Пользователь Ксю",
             },
@@ -483,16 +411,11 @@ class FeedService:
             "feed_interactions_enabled": (
                 generation.publication_scope == "feed"
                 if normalized_surface == "feed"
-                else generation.is_profile_visible
-                and generation.publication_scope in {"feed", "profile"}
+                else generation.is_profile_visible and generation.publication_scope in {"feed", "profile"}
             ),
             "surface": normalized_surface,
-            "source_feed_gen_id": str(generation.source_feed_gen_id)
-            if generation.source_feed_gen_id
-            else None,
-            "feed_published_at": generation.feed_published_at.isoformat()
-            if generation.feed_published_at
-            else None,
+            "source_feed_gen_id": str(generation.source_feed_gen_id) if generation.source_feed_gen_id else None,
+            "feed_published_at": generation.feed_published_at.isoformat() if generation.feed_published_at else None,
         }
 
     @classmethod
@@ -507,14 +430,7 @@ class FeedService:
         cards: list[dict[str, Any]] = []
         for generation in generations:
             try:
-                cards.append(
-                    await cls.to_card(
-                        session,
-                        generation,
-                        viewer_user_id=viewer_user_id,
-                        surface=surface,
-                    )
-                )
+                cards.append(await cls.to_card(session, generation, viewer_user_id=viewer_user_id, surface=surface))
             except FeedNotFoundError:
                 continue
         return cards
@@ -533,9 +449,7 @@ class FeedService:
         if publication_scope not in {"profile", "feed"}:
             raise FeedPublicationError("Publication scope must be profile or feed")
         generation = await session.scalar(
-            select(Generation)
-            .where(Generation.id == generation_id, Generation.user_id == owner_user_id)
-            .with_for_update()
+            select(Generation).where(Generation.id == generation_id, Generation.user_id == owner_user_id).with_for_update()
         )
         if generation is None:
             raise FeedNotFoundError("Generation not found")
@@ -572,9 +486,7 @@ class FeedService:
         if target_scope not in {"private", "profile"}:
             raise FeedPublicationError("Remove target must be private or profile")
         generation = await session.scalar(
-            select(Generation)
-            .where(Generation.id == generation_id, Generation.user_id == owner_user_id)
-            .with_for_update()
+            select(Generation).where(Generation.id == generation_id, Generation.user_id == owner_user_id).with_for_update()
         )
         if generation is None:
             raise FeedNotFoundError("Generation not found")
@@ -600,20 +512,10 @@ class FeedService:
         await session.execute(
             pg_insert(GenerationLike)
             .values(generation_id=generation_id, user_id=user_id)
-            .on_conflict_do_nothing(
-                index_elements=[GenerationLike.generation_id, GenerationLike.user_id]
-            )
+            .on_conflict_do_nothing(index_elements=[GenerationLike.generation_id, GenerationLike.user_id])
         )
-        count = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(GenerationLike)
-                    .where(GenerationLike.generation_id == generation_id)
-                )
-            )
-            or 0
-        )
+        await session.flush()
+        count = int((await session.scalar(select(func.count()).select_from(GenerationLike).where(GenerationLike.generation_id == generation_id))) or 0)
         return {"liked_by_me": True, "likes_count": count}
 
     @classmethod
@@ -627,27 +529,73 @@ class FeedService:
     ) -> dict[str, Any]:
         await cls.assert_surface_visible(session, generation_id, surface=surface)
         await session.execute(
-            GenerationLike.__table__.delete().where(
+            delete(GenerationLike).where(
                 GenerationLike.generation_id == generation_id,
                 GenerationLike.user_id == user_id,
             )
         )
-        count = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(GenerationLike)
-                    .where(GenerationLike.generation_id == generation_id)
-                )
-            )
-            or 0
-        )
+        await session.flush()
+        count = int((await session.scalar(select(func.count()).select_from(GenerationLike).where(GenerationLike.generation_id == generation_id))) or 0)
         return {"liked_by_me": False, "likes_count": count}
+
+    @classmethod
+    async def increment_feed_share(cls, session: AsyncSession, *, generation_id: uuid.UUID, surface: str) -> int:
+        await cls.assert_surface_visible(session, generation_id, surface=surface)
+        generation = await session.scalar(select(Generation).where(Generation.id == generation_id).with_for_update())
+        if generation is None:
+            raise FeedNotFoundError("Publication not found")
+        generation.shares_count = int(generation.shares_count or 0) + 1
+        await session.flush()
+        return generation.shares_count
 
     @classmethod
     async def record_share(cls, session: AsyncSession, generation: Generation) -> None:
         generation.shares_count = int(generation.shares_count or 0) + 1
         await session.flush()
+
+    @classmethod
+    async def get_feed_comments(
+        cls,
+        session: AsyncSession,
+        *,
+        generation_id: uuid.UUID,
+        surface: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        normalized = cls._validate_surface(surface)
+        await cls.assert_surface_visible(session, generation_id, surface=normalized)
+        rows = list(
+            (
+                await session.execute(
+                    select(FeedComment, User)
+                    .join(User, User.id == FeedComment.user_id)
+                    .where(
+                        FeedComment.generation_id == generation_id,
+                        FeedComment.surface == normalized,
+                        User.is_active.is_(True),
+                    )
+                    .order_by(FeedComment.created_at.desc())
+                    .offset(max(0, offset))
+                    .limit(max(1, min(limit, 100)))
+                )
+            ).all()
+        )
+        return [
+            {
+                "id": str(comment.id),
+                "generation_id": str(comment.generation_id),
+                "surface": comment.surface,
+                "text": comment.text,
+                "created_at": comment.created_at.isoformat(),
+                "author": {
+                    "id": str(author.id),
+                    "username": author.username,
+                    "display_name": author.first_name or author.username or "Пользователь Ксю",
+                },
+            }
+            for comment, author in rows
+        ]
 
     @classmethod
     async def comments(
@@ -658,35 +606,35 @@ class FeedService:
         surface: str,
         viewer_user_id: uuid.UUID,
     ) -> list[dict[str, Any]]:
-        await cls.assert_surface_visible(session, generation_id, surface=surface)
-        rows = list(
-            (
-                await session.scalars(
-                    select(FeedComment)
-                    .where(
-                        FeedComment.generation_id == generation_id,
-                        FeedComment.surface == surface,
-                    )
-                    .order_by(FeedComment.created_at.asc())
-                    .limit(100)
-                )
-            ).all()
+        rows = await cls.get_feed_comments(session, generation_id=generation_id, surface=surface, limit=100)
+        return [{**row, "is_mine": row["user_id"] == str(viewer_user_id)} if "user_id" in row else row for row in rows]
+
+    @classmethod
+    async def add_feed_comment(
+        cls,
+        session: AsyncSession,
+        *,
+        generation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        surface: str,
+        text: str,
+    ) -> FeedComment:
+        normalized = cls._validate_surface(surface)
+        await cls.assert_surface_visible(session, generation_id, surface=normalized)
+        clean = " ".join(text.strip().split())
+        if not clean:
+            raise FeedError("Comment cannot be empty")
+        if len(clean) > cls.COMMENT_MAX_LENGTH:
+            raise FeedError(f"Comment is limited to {cls.COMMENT_MAX_LENGTH} characters")
+        item = FeedComment(
+            generation_id=generation_id,
+            user_id=user_id,
+            surface=normalized,
+            text=html.escape(clean, quote=False),
         )
-        users = {row.user_id for row in rows}
-        user_rows = list((await session.scalars(select(User).where(User.id.in_(users)))).all()) if users else []
-        by_id = {row.id: row for row in user_rows}
-        return [
-            {
-                "id": str(row.id),
-                "user_id": str(row.user_id),
-                "text": html.escape(row.text),
-                "created_at": row.created_at.isoformat(),
-                "is_mine": row.user_id == viewer_user_id,
-                "author": (by_id.get(row.user_id).username if by_id.get(row.user_id) else None)
-                or "ROXY user",
-            }
-            for row in rows
-        ]
+        session.add(item)
+        await session.flush()
+        return item
 
     @classmethod
     async def add_comment(
@@ -698,40 +646,76 @@ class FeedService:
         surface: str,
         text: str,
     ) -> dict[str, Any]:
-        await cls.assert_surface_visible(session, generation_id, surface=surface)
-        cleaned = text.strip()
-        if not cleaned:
-            raise FeedError("Comment cannot be empty")
-        if len(cleaned) > cls.COMMENT_MAX_LENGTH:
-            raise FeedError("Comment is too long")
-        row = FeedComment(
-            id=uuid.uuid4(),
+        row = await cls.add_feed_comment(
+            session,
             generation_id=generation_id,
             user_id=user_id,
             surface=surface,
-            text=cleaned,
+            text=text,
         )
-        session.add(row)
-        await session.flush()
         return {
             "id": str(row.id),
             "user_id": str(row.user_id),
-            "text": html.escape(row.text),
+            "text": row.text,
             "created_at": row.created_at.isoformat(),
             "is_mine": True,
             "author": "Вы",
         }
 
+    @staticmethod
+    def assert_prompt_library_publishable(generation: Generation) -> None:
+        if generation.source_feed_gen_id is not None:
+            raise FeedDerivativePublicationError("Derivative generations cannot be published to prompt library")
+
     @classmethod
-    async def author_by_referral_code(cls, session: AsyncSession, referral_code: str) -> User:
-        if not referral_code.isdigit():
-            raise FeedNotFoundError("Profile not found")
-        user = await session.scalar(
-            select(User).where(User.telegram_id == int(referral_code), User.is_active.is_(True))
+    async def remix(
+        cls,
+        session: AsyncSession,
+        redis: Redis,
+        *,
+        source_generation_id: uuid.UUID,
+        remix_author_id: uuid.UUID,
+        surface: str,
+    ) -> Generation:
+        source = await cls.assert_surface_visible(session, source_generation_id, surface=surface)
+        model_id = str((source.parameters or {}).get("_model_id") or "")
+        if not model_id:
+            raise FeedError("Source model is not reusable")
+        try:
+            spec = ModelCatalog.get(model_id)
+        except UnknownModelError as exc:
+            raise FeedError("Source model is no longer available") from exc
+
+        allowed = set(spec.known_fields)
+        source_parameters = {
+            key: value
+            for key, value in dict(source.parameters or {}).items()
+            if not key.startswith("_") and key in allowed and key != "prompt"
+        }
+        generation = await GenerationService.create(
+            session,
+            redis,
+            user_id=remix_author_id,
+            model_id=model_id,
+            prompt=source.prompt,
+            input_url=source.input_url,
+            parameters=source_parameters,
+            billing_seconds=(source.parameters or {}).get("_billing_seconds"),
+            source_feed_gen_id=source.id,
+            parent_generation_id=source.id,
+            action_type="remix",
         )
-        if user is None:
-            raise FeedNotFoundError("Profile not found")
-        return user
+        session.add(
+            FeedRemixEvent(
+                source_generation_id=source.id,
+                remix_generation_id=generation.id,
+                source_author_id=source.user_id,
+                remix_author_id=remix_author_id,
+                credits_spent=Decimal(generation.cost_rox),
+            )
+        )
+        await session.commit()
+        return generation
 
     @classmethod
     async def create_remix(
@@ -744,38 +728,48 @@ class FeedService:
         prompt: str | None = None,
     ) -> Generation:
         source = await cls.assert_surface_visible(session, source_generation_id, surface="feed")
-        try:
-            model_id = str((source.parameters or {}).get("_model_id") or "")
-            ModelCatalog.get(model_id)
-        except UnknownModelError as exc:
-            raise FeedError("Source model is no longer available") from exc
-        if source.source_feed_gen_id is not None:
-            raise FeedError("Cannot remix a derivative generation")
-        params = dict(source.parameters or {})
-        for key in list(params):
-            if key.startswith("_"):
-                params.pop(key, None)
-        if not source.feed_references_visible:
-            for key in cls.REFERENCE_IMAGE_KEYS + cls.REFERENCE_VIDEO_KEYS:
-                params.pop(key, None)
-        params["prompt"] = prompt.strip() if prompt and prompt.strip() else source.prompt
-        child = await GenerationService.create(
+        remix_prompt = prompt.strip() if prompt and prompt.strip() else source.prompt
+        source.prompt = remix_prompt
+        return await cls.remix(
             session,
             redis,
-            user_id=user_id,
-            model_id=model_id,
-            prompt=str(params.get("prompt") or ""),
-            parameters=params,
-            source_feed_gen_id=source.id,
-            action_type="feed_remix",
+            source_generation_id=source_generation_id,
+            remix_author_id=user_id,
+            surface="feed",
         )
-        session.add(
-            FeedRemixEvent(
-                id=uuid.uuid4(),
-                source_generation_id=source.id,
-                child_generation_id=child.id,
-                user_id=user_id,
-            )
-        )
-        await session.commit()
-        return child
+
+    @staticmethod
+    def _bot_username() -> str:
+        return settings.bot_username.strip().lstrip("@")
+
+    @classmethod
+    def post_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
+        username = cls._bot_username()
+        if not username:
+            return None
+        return f"https://t.me/{username}?start=feed_{generation_id}_ref_{author_referral_code}"
+
+    @classmethod
+    def profile_deep_link(cls, author_referral_code: str) -> str | None:
+        username = cls._bot_username()
+        if not username:
+            return None
+        return f"https://t.me/{username}?start=posts_{author_referral_code}_ref_{author_referral_code}"
+
+    @classmethod
+    def remix_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
+        username = cls._bot_username()
+        if not username:
+            return None
+        return f"https://t.me/{username}?start=remix_{generation_id}_ref_{author_referral_code}"
+
+    @staticmethod
+    async def author_by_referral_code(session: AsyncSession, referral_code: str) -> User:
+        try:
+            telegram_id = int(referral_code)
+        except ValueError as exc:
+            raise FeedNotFoundError("Profile not found") from exc
+        author = await session.scalar(select(User).where(User.telegram_id == telegram_id, User.is_active.is_(True)))
+        if author is None:
+            raise FeedNotFoundError("Profile not found")
+        return author
