@@ -31,19 +31,28 @@ def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher
         assert retired_customer_router not in dispatcher
 
 
-def test_launcher_uses_reply_keyboard_and_routes_everything_to_app() -> None:
+def test_launcher_uses_inline_app_button_and_clean_reply_keyboard() -> None:
     launcher = _read("app/bot/handlers/launcher.py")
     keyboards = _read("app/bot/keyboards.py")
     assert "app_launcher_menu" in launcher
+    assert "reply_markup=app_launcher_menu" in launcher
+    assert "reply_markup=quick_menu()" in launcher
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher
     assert "Do not expose a parallel text UI" in launcher
     assert "ReplyKeyboardRemove" not in launcher
+
+    assert "def app_launcher_menu" in keyboards
+    assert "InlineKeyboardMarkup" in keyboards
+    assert "inline_keyboard=[[_open_app_inline_button" in keyboards
+    assert "def app_reply_menu" in keyboards
     assert "ReplyKeyboardMarkup" in keyboards
     assert "KeyboardButton" in keyboards
     assert "web_app=WebAppInfo" in keyboards
     assert 'OPEN_APP_TEXT = "🚀 Открыть ROXY"' in keyboards
+    assert 'QUICK_MENU_TEXT = "🏠 Меню"' in keyboards
     assert 'QUICK_SUPPORT_TEXT = "🆘 Поддержка"' in keyboards
+    assert "keyboard=[[KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)]]" in keyboards
     assert 'query["start_payload"] = start_payload' in keyboards
 
 
