@@ -71,6 +71,26 @@ _PROMPT_PAIR_SCHEMA: dict[str, Any] = {
     },
 }
 
+_VIDEO_PROMPT_SCHEMA: dict[str, Any] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "video_prompt",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "prompt_ru": {"type": "string"},
+                "prompt_en": {"type": "string"},
+                "camera": {"type": "string"},
+                "motion": {"type": "string"},
+                "negative_prompt": {"type": "string"},
+            },
+            "required": ["prompt_ru", "prompt_en", "camera", "motion", "negative_prompt"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 _PROMPT_SYSTEM = (
     "Ты профессиональный prompt engineer для генерации изображений и видео. "
     "Пользователь может передать текст, изображение и/или аудиосообщение. "
@@ -79,7 +99,15 @@ _PROMPT_SYSTEM = (
     "не идентифицируй реальных людей и не угадывай чувствительные характеристики. "
     "Для аудио используй произнесённую идею как творческое направление, но не возвращай транскрипт. "
     "Создай ровно два цельных production-ready промпта с одинаковым смыслом: prompt_ru на русском "
-    "и prompt_en на английском. Не добавляй negative prompt, рекомендации моделей, комментарии или markdown."
+    "и prompt_en на английском. Не добавляй рекомендации моделей, комментарии или markdown."
+)
+
+_VIDEO_SYSTEM = (
+    "Ты режиссёр и prompt engineer для video-generation. Разбери переданное видео как визуальный "
+    "референс: сцена, герой/объекты, действие, камера, движение, свет, темп, монтажная логика, "
+    "атмосфера и финальное состояние. Не идентифицируй реальных людей и не угадывай чувствительные "
+    "характеристики. Верни JSON: prompt_ru, prompt_en для video-моделей, camera, motion и "
+    "negative_prompt. Без markdown, без комментариев и без упоминания провайдера."
 )
 
 
@@ -171,6 +199,47 @@ class KiePromptToolsClient:
                     f"Prompt builder providers failed: primary={primary_exc}; fallback={fallback_exc}"
                 ) from fallback_exc
 
+    async def build_video_prompt(
+        self,
+        *,
+        video_url: str,
+        instruction: str = "",
+        duration_seconds: int | None = None,
+    ) -> PromptToolProviderResult:
+        user_text = "Создай prompt для генерации похожего ролика по этому видео."
+        if duration_seconds:
+            user_text += f" Целевая длительность: {duration_seconds} секунд."
+        if instruction.strip():
+            user_text += f" Пользовательский фокус: {instruction.strip()}"
+        body = {
+            "model": "gemini-2.5-pro",
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": _VIDEO_SYSTEM},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {"type": "image_url", "image_url": {"url": video_url}},
+                    ],
+                },
+            ],
+            "response_format": _VIDEO_PROMPT_SCHEMA,
+        }
+        try:
+            response = await self._client.post("/gemini-2.5-pro/v1/chat/completions", json=body)
+            response.raise_for_status()
+            data = response.json()
+            content_text = (((data.get("choices") or [{}])[0].get("message") or {}).get("content"))
+            payload = _video_prompt(_parse_json_object(content_text))
+            return PromptToolProviderResult(
+                model="gemini-2.5-pro",
+                payload=payload,
+                credits_consumed=_credits(data),
+            )
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise PromptToolProviderError(f"Video prompt provider failed: {exc}") from exc
+
     async def _build_prompt_with_gpt55(
         self,
         *,
@@ -180,7 +249,7 @@ class KiePromptToolsClient:
         content: list[dict[str, Any]] = [
             {
                 "type": "input_text",
-                "text": text.strip() or "Создай подробный промпт по изображению.",
+                "text": text.strip() or "Создай подробный prompt по изображению или описанию.",
             }
         ]
         if image_url:
@@ -219,7 +288,7 @@ class KiePromptToolsClient:
                 "type": "text",
                 "text": text.strip()
                 or (
-                    "Создай подробный промпт на основе переданного визуального или голосового "
+                    "Создай подробный prompt на основе переданного визуального или голосового "
                     "референса."
                 ),
             }
@@ -269,6 +338,20 @@ def _prompt_pair(payload: dict[str, Any]) -> dict[str, str]:
     if not prompt_ru or not prompt_en:
         raise ValueError("Provider returned incomplete prompt pair")
     return {"prompt_ru": prompt_ru, "prompt_en": prompt_en}
+
+
+def _video_prompt(payload: dict[str, Any]) -> dict[str, str]:
+    result = {
+        "prompt_ru": str(payload.get("prompt_ru") or "").strip(),
+        "prompt_en": str(payload.get("prompt_en") or "").strip(),
+        "camera": str(payload.get("camera") or "").strip(),
+        "motion": str(payload.get("motion") or "").strip(),
+        "negative_prompt": str(payload.get("negative_prompt") or "").strip(),
+    }
+    missing = [key for key, value in result.items() if not value]
+    if missing:
+        raise ValueError(f"Provider returned incomplete video prompt: {', '.join(missing)}")
+    return result
 
 
 def _parse_json_object(value: Any) -> dict[str, Any]:

@@ -1,0 +1,39 @@
+name: Mini App Playwright E2E
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/mini-app/**'
+      - '.github/workflows/miniapp-playwright.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/mini-app/package-lock.json
+      - name: Install Mini App dependencies
+        working-directory: frontend/mini-app
+        run: npm ci
+      - name: Install Playwright test runtime
+        working-directory: frontend/mini-app
+        run: npm install --no-save @playwright/test@1.56.1
+      - name: Install Playwright browsers
+        working-directory: frontend/mini-app
+        run: npx playwright install --with-deps chromium
+      - name: Run 100-scenario Mini App audit
+        working-directory: frontend/mini-app
+        run: npx playwright test --project=chromium
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniapp-playwright-report
+          path: frontend/mini-app/playwright-report
+          if-no-files-found: ignore

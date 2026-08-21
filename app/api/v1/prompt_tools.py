@@ -4,7 +4,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.services.abuse_protection import ResourcePolicyError
@@ -18,6 +18,8 @@ from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/prompt-tools", tags=["prompt-tools"])
 
+_ALLOWED_SEEDANCE_DURATIONS = {5, 10, 15}
+
 
 class ImageAnalysisRequest(BaseModel):
     image_url: str = Field(min_length=1, max_length=4000)
@@ -27,28 +29,64 @@ class ImageAnalysisRequest(BaseModel):
 class PromptBuilderRequest(BaseModel):
     text: str = Field(default="", max_length=8000)
     image_url: str | None = Field(default=None, max_length=4000)
-    purpose: Literal["general", "image", "video"] = "general"
+    purpose: Literal["general", "image", "video", "seedance"] = "general"
+    duration_seconds: int | None = Field(default=None)
+
+    @field_validator("duration_seconds")
+    @classmethod
+    def validate_duration(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value not in _ALLOWED_SEEDANCE_DURATIONS:
+            raise ValueError("duration_seconds must be 5, 10 or 15")
+        return value
+
+
+class VideoPromptRequest(BaseModel):
+    video_url: str = Field(min_length=1, max_length=4000)
+    instruction: str = Field(default="", max_length=1000)
+    duration_seconds: int | None = Field(default=None)
+
+    @field_validator("duration_seconds")
+    @classmethod
+    def validate_duration(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value not in _ALLOWED_SEEDANCE_DURATIONS:
+            raise ValueError("duration_seconds must be 5, 10 or 15")
+        return value
 
 
 _PURPOSE_CONTEXT = {
     "image": (
-        "Сформируй production-ready промпт именно для генерации статичного изображения. "
+        "Сформируй production-ready prompt именно для генерации статичного изображения. "
         "Сделай явными композицию, оптику/ракурс, свет, материалы, палитру и визуальный стиль."
     ),
     "video": (
-        "Сформируй production-ready промпт именно для генерации видео. "
+        "Сформируй production-ready prompt именно для генерации видео. "
         "Опиши действие по времени, движение камеры и объектов, динамику сцены, свет, "
-        "непрерывность кадров и финальное состояние; не выдумывай длительность, если её нет во входе."
+        "непрерывность кадров и финальное состояние."
+    ),
+    "seedance": (
+        "Сформируй production-ready prompt для Seedance/video-моделей: короткая сцена, "
+        "понятная режиссура, камера, движение объектов, свет, финальное состояние и negative prompt."
     ),
 }
 
 
-def _prompt_builder_payload(payload: PromptBuilderRequest) -> dict[str, str | None]:
+def _prompt_builder_payload(payload: PromptBuilderRequest) -> dict[str, str | int | None]:
     text = payload.text.strip()
     context = _PURPOSE_CONTEXT.get(payload.purpose)
+    if payload.duration_seconds:
+        duration = f"Целевая длительность ролика: {payload.duration_seconds} секунд."
+        context = f"{context} {duration}" if context else duration
     if context:
         text = f"{context}\n\nИдея пользователя: {text}" if text else context
-    return {"text": text, "image_url": payload.image_url}
+    return {
+        "text": text,
+        "image_url": payload.image_url,
+        "duration_seconds": payload.duration_seconds,
+    }
 
 
 def _domain_error(exc: Exception) -> HTTPException:
@@ -117,6 +155,29 @@ async def create_prompt_builder(
             user_id=user.id,
             tool="prompt_builder",
             payload=_prompt_builder_payload(payload),
+            idempotency_key=idempotency_key,
+        )
+        return PromptToolService.public_view(task, replayed=replayed)
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.post("/video-prompt", status_code=status.HTTP_202_ACCEPTED)
+async def create_video_prompt(
+    payload: VideoPromptRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    redis: RedisDep,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, object]:
+    try:
+        task, replayed = await PromptToolService.create_task(
+            session,
+            redis,
+            user_id=user.id,
+            tool="video_prompt",
+            payload=payload.model_dump(),
             idempotency_key=idempotency_key,
         )
         return PromptToolService.public_view(task, replayed=replayed)

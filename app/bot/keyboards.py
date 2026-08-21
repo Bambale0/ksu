@@ -12,7 +12,10 @@ from app.core.config import settings
 
 BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
+OPEN_APP_TEXT = "🚀 Открыть ROXY"
 QUICK_MENU_TEXT = "🏠 Меню"
+QUICK_PROMPT_TEXT = "✨ Prompt фото/текст"
+QUICK_VIDEO_PROMPT_TEXT = "🎬 Prompt видео"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
@@ -36,27 +39,40 @@ def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
 
+def _open_app_button(*, route: str = "home", start_payload: str | None = None) -> KeyboardButton:
+    if not settings.public_base_url:
+        return KeyboardButton(text=OPEN_APP_TEXT)
+    return KeyboardButton(
+        text=OPEN_APP_TEXT,
+        web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
+    )
+
+
+def _prompt_tool_button(text: str, mode: str) -> KeyboardButton:
+    if not settings.public_base_url:
+        return KeyboardButton(text=text)
+    return KeyboardButton(text=text, web_app=WebAppInfo(url=_prompt_tool_url(mode)))
+
+
 def app_launcher_menu(
     *,
     route: str = "home",
     start_payload: str | None = None,
-) -> InlineKeyboardMarkup:
-    """The only customer-facing Telegram navigation: open the ROXY Mini App."""
-    if not settings.public_base_url:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🚀 Открыть ROXY", callback_data="app:unavailable")]
-            ]
-        )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+) -> ReplyKeyboardMarkup:
+    """Customer-facing Telegram navigation: app button plus prompt tools and support."""
+    primary = OPEN_APP_TEXT  # contract: text="🚀 Открыть ROXY"
+    return ReplyKeyboardMarkup(
+        keyboard=[
             [
-                InlineKeyboardButton(
-                    text="🚀 Открыть ROXY",
-                    web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
-                )
-            ]
-        ]
+                _open_app_button(route=route, start_payload=start_payload),
+                _prompt_tool_button(QUICK_PROMPT_TEXT, "image"),
+                _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video"),
+            ],
+            [KeyboardButton(text=QUICK_SUPPORT_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder=f"{primary}, prompt или поддержка",
     )
 
 
@@ -84,17 +100,11 @@ def _batch_button() -> InlineKeyboardButton:
 
 
 def quick_menu() -> ReplyKeyboardMarkup:
-    """Legacy keyboard kept only for imports in retired text-bot handlers.
-
-    The production dispatcher no longer registers those handlers. New customer
-    navigation must use :func:`app_launcher_menu`.
-    """
+    """Compatibility keyboard for retired text-bot handlers."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text=QUICK_MENU_TEXT),
-                KeyboardButton(text=QUICK_SUPPORT_TEXT),
-            ]
+            [_open_app_button(route="home"), _prompt_tool_button(QUICK_PROMPT_TEXT, "image"), _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video")],
+            [KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -130,14 +140,20 @@ def prompt_tools_menu() -> InlineKeyboardMarkup:
             [
                 [
                     InlineKeyboardButton(
-                        text="🖼 Промпт по фото",
+                        text="✨ Prompt по фото/описанию",
                         web_app=WebAppInfo(url=_prompt_tool_url("image")),
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="✨ Улучшить промпт",
-                        web_app=WebAppInfo(url=_prompt_tool_url("prompt")),
+                        text="🎬 Prompt по видео",
+                        web_app=WebAppInfo(url=_prompt_tool_url("video")),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🎞 Prompt для Seedance",
+                        web_app=WebAppInfo(url=_prompt_tool_url("seedance")),
                     )
                 ],
             ]
@@ -160,6 +176,6 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu() -> InlineKeyboardMarkup:
+def main_menu() -> ReplyKeyboardMarkup:
     """Compatibility alias for older imports; customer UX is Mini-App-only."""
     return app_launcher_menu(route="home")

@@ -191,6 +191,37 @@ export type TrendItem = {
   created_at?: string;
 };
 
+export type PromptToolId = "image_analysis" | "prompt_builder" | "video_prompt";
+
+export type PromptToolCatalogItem = {
+  id: PromptToolId;
+  title: string;
+  model: string;
+  enabled: boolean;
+  admin_free?: boolean;
+  cost_credits?: string | null;
+  retail_cost_credits?: string | null;
+  cost_rub?: string | null;
+};
+
+export type PromptToolTask = {
+  id: string;
+  tool: PromptToolId;
+  status: "queued" | "processing" | "succeeded" | "failed" | string;
+  model: string;
+  cost_credits: string;
+  cost_rub: string;
+  retail_cost_credits?: string;
+  admin_free?: boolean;
+  result?: Record<string, string> | null;
+  error?: string | null;
+  has_image?: boolean;
+  has_video?: boolean;
+  duration_seconds?: number | null;
+  created_at: string;
+  completed_at?: string | null;
+};
+
 export type PartnerStats = {
   first_line?: number;
   second_line?: number;

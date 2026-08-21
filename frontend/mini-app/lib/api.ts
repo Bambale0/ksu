@@ -8,6 +8,8 @@ import type {
   GenerationModelFamily,
   Me,
   PartnerStats,
+  PromptToolCatalogItem,
+  PromptToolTask,
   PublicationScope,
   Quote,
   ReferralInvitation,
@@ -41,10 +43,28 @@ type PublishOptions = {
   referencesVisible?: boolean;
 };
 
+type PromptBuilderBody = {
+  text?: string;
+  image_url?: string | null;
+  purpose?: "general" | "image" | "video" | "seedance";
+  duration_seconds?: 5 | 10 | 15 | null;
+};
+
+type VideoPromptBody = {
+  video_url: string;
+  instruction?: string;
+  duration_seconds?: 5 | 10 | 15 | null;
+};
+
 const publicPrivacyDefaults = { prompt_visible: false, references_visible: false };
 
 function normalizePublishOptions(options: Exclude<PublicationScope, "private"> | PublishOptions): PublishOptions {
   return typeof options === "string" ? { scope: options } : options;
+}
+
+function idempotencyKey(prefix: string): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}:${crypto.randomUUID()}`;
+  return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 }
 
 export const api = {
@@ -107,6 +127,23 @@ export const api = {
   runTrend: (id: string, referenceUrls: string[] = []) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({ reference_urls: referenceUrls }),
+  }),
+  promptTools: () => request<{ admin_free: boolean; items: PromptToolCatalogItem[] }>("/api/v1/prompt-tools"),
+  promptToolTask: (id: string) => request<PromptToolTask>(`/api/v1/prompt-tools/${encodeURIComponent(id)}`),
+  buildPrompt: (body: PromptBuilderBody) => request<PromptToolTask>("/api/v1/prompt-tools/prompt-builder", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey("prompt-builder") },
+    body: JSON.stringify(body),
+  }),
+  analyzeImagePrompt: (imageUrl: string, instruction = "") => request<PromptToolTask>("/api/v1/prompt-tools/image-analysis", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey("image-analysis") },
+    body: JSON.stringify({ image_url: imageUrl, instruction }),
+  }),
+  buildVideoPrompt: (body: VideoPromptBody) => request<PromptToolTask>("/api/v1/prompt-tools/video-prompt", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey("video-prompt") },
+    body: JSON.stringify(body),
   }),
   referralStats: () => request<PartnerStats>("/api/v1/referrals/stats"),
   referralInvitations: () => request<{ items: ReferralInvitation[] }>("/api/v1/referrals/invitations?limit=20"),

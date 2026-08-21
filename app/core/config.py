@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     bot_username: str = ""
-    support_telegram_url: str = ""
+    support_telegram_url: str = "https://t.me/korkinaxenia"
     partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
@@ -54,8 +54,6 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    # ROXY economy: 1 ROX = 1 RUB. Wallet ROX are spendable in ROXY; partner
-    # referral earnings stay in RUB until the user withdraws them or converts them to ROX.
     start_balance_rox: Decimal = Decimal("50")
     invite_bonus_rox: Decimal = Decimal("30")
     prompt_repeat_bonus_rox: Decimal = Decimal("5")
@@ -71,8 +69,6 @@ class Settings(BaseSettings):
     rox_packages_json: str = "{}"
     generation_pricing_json: str = DEFAULT_GENERATION_PRICING_JSON
 
-    # Music is a distinct Kie/Suno provider contract but uses the same ROXY wallet,
-    # generation history and durable worker/recovery infrastructure.
     music_generation_model: str = "V5_5"
     music_generation_price_rox: Decimal = Decimal("100")
 
@@ -110,12 +106,8 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
-    # Creator/Influencer partnership grants are spend-only ROX and are processed
-    # independently from withdrawable 30% / 5% referral accounting.
     creator_partnership_grant_interval_seconds: int = 3600
 
-    # Primary hosted checkout. User-facing product copy uses only the neutral
-    # "Оплата картой · USD / EUR / RUB / СБП" label.
     card_api_key: str = ""
     card_api_base_url: str = "https://gate.lava.top"
     card_webhook_key: str = ""
