@@ -92,3 +92,23 @@ def test_nano_banana_variants_are_top_first_and_keep_variant_pricing() -> None:
         Decimal(str(ModelCatalog.get("nano-banana-2-lite").public_dict()["price_rox"])),
     ]
     assert all(variant.get("ui_schema") for variant in variants)
+
+
+def test_admin_free_variants_still_show_retail_price() -> None:
+    model = ModelCatalog.get("gpt-image-2-i2i").public_dict()
+    model["presentation"] = presentation_for(model)
+    model["ui_schema"] = build_public_model_ui_schema(model)
+    model["admin_free"] = True
+    model["retail_price_rox"] = "180.00"
+    model["price_rox"] = "0.00"
+    model["price_credits"] = "0.00"
+    model["price_rub"] = "0.00"
+
+    families = build_model_families([model])
+    variant = families[0]["variants"][0]
+
+    assert families[0]["price_from_rox"] == "180.00"
+    assert variant["price_rox"] == "180.00"
+    assert variant["price_credits"] == "180.00"
+    assert variant["effective_price_rox"] == "0.00"
+    assert variant["admin_free"] is True
