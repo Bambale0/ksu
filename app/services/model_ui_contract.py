@@ -43,6 +43,33 @@ WAN_VIDEO_RATIOS = ["16:9", "9:16", "1:1"]
 GROK_IMAGE_RATIOS = ["2:3", "3:2", "1:1", "9:16", "16:9"]
 GROK_VIDEO_RATIOS = ["16:9", "9:16", "1:1", "2:3", "3:2"]
 
+# KIE does not expose one universal duration contract. Keep this map
+# intentionally model-specific so the Mini App never falls back to a free
+# number input such as 51015 seconds. Values are based on the current KIE
+# model pages: examples are used where the page exposes only an example value;
+# documented ranges are expanded for user-facing select controls.
+KIE_DURATION_OPTIONS: dict[str, list[int]] = {
+    # Wan 2.7 docs examples expose a 5-second duration; video-edit uses 0/auto.
+    "wan-2.7-t2v": [5],
+    "wan-2.7-i2v": [5],
+    "wan-2.7-r2v": [5],
+    "wan-2.7-video-edit": [0],
+    # Seedance 2.x examples use 15s; expose the user-requested short choices.
+    "seedance-2.0": [5, 10, 15],
+    "seedance-2.0-fast": [5, 10, 15],
+    "seedance-2.0-mini": [5, 10, 15],
+    "seedance-2.5": [5, 10, 15],
+    # Seedance 1.5 Pro docs example uses 8s.
+    "seedance-1.5-pro": [8],
+    # Kling 3.0 docs state a 3-15s range.
+    "kling-3.0": list(range(3, 16)),
+    # KIE Grok/Gemini pages expose fixed example durations in their payloads.
+    "grok-video-t2v": [6],
+    "grok-video-i2v": [6],
+    "grok-video-1.5": [8],
+    "gemini-omni-video": [4],
+}
+
 MODEL_FIELD_SUGGESTIONS: dict[str, dict[str, list[str]]] = {
     "nano-banana": {"aspect_ratio": NANO_LEGACY_RATIOS, "output_format": ["png", "jpeg"]},
     "nano-banana-edit": {"aspect_ratio": NANO_LEGACY_RATIOS, "output_format": ["png", "jpeg"]},
@@ -107,20 +134,21 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     "wan-2.7-image-pro": {"aspect_ratio": "1:1", "resolution": "1K", "n": 1, "thinking_mode": False, "watermark": False},
     "wan-2.7-t2v": {"ratio": "16:9", "resolution": "1080p", "duration": 5},
     "wan-2.7-i2v": {"aspect_ratio": "16:9", "resolution": "1080p", "duration": 5},
-    "wan-2.7-video-edit": {"aspect_ratio": "16:9", "resolution": "1080p", "duration": 5},
+    "wan-2.7-video-edit": {"aspect_ratio": "16:9", "resolution": "1080p", "duration": 0},
     "wan-2.7-r2v": {"aspect_ratio": "16:9", "resolution": "1080p", "duration": 5},
-    "seedance-1.5-pro": {"aspect_ratio": "16:9", "resolution": "720p", "duration": 5, "generate_audio": False, "fixed_lens": False, "nsfw_checker": True},
+    "seedance-1.5-pro": {"aspect_ratio": "16:9", "resolution": "720p", "duration": 8, "generate_audio": False, "fixed_lens": False, "nsfw_checker": True},
     "seedance-2.0": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
     "seedance-2.0-fast": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
     "seedance-2.0-mini": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
-    "seedance-2.5": {"resolution": "720p", "aspect_ratio": "adaptive", "output_format": "mp4", "generate_audio": False, "return_last_frame": False, "web_search": False, "nsfw_checker": True},
+    "seedance-2.5": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "output_format": "mp4", "generate_audio": False, "return_last_frame": False, "web_search": False, "nsfw_checker": True},
     "kling-3.0": {"mode": "pro", "aspect_ratio": "16:9", "sound": True, "multi_shots": False, "duration": 5},
     "kling-motion-2.6": {"mode": "720p", "character_orientation": "image"},
     "kling-motion-3.0": {"mode": "720p", "character_orientation": "image", "background_source": "input_video"},
     "veo-3.1": {"veo_model": "veo3_fast", "aspect_ratio": "16:9", "enable_fallback": False, "enable_translation": True, "generation_type": "TEXT_2_VIDEO"},
     "grok-video-t2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
     "grok-video-i2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
-    "grok-video-1.5": {"aspect_ratio": "16:9", "duration": 6, "resolution": "480p"},
+    "grok-video-1.5": {"aspect_ratio": "16:9", "duration": 8, "resolution": "480p"},
+    "gemini-omni-video": {"duration": 4},
 }
 
 MODEL_FIELD_OVERRIDES: dict[str, dict[str, dict[str, Any]]] = {
@@ -154,6 +182,16 @@ def _apply_model_contract(schema: dict[str, Any], model_id: str) -> None:
         _patch_field(schema, field_name, suggestions=suggestions)
     for field_name, values in MODEL_FIELD_OVERRIDES.get(model_id, {}).items():
         _patch_field(schema, field_name, **values)
+    if model_id in KIE_DURATION_OPTIONS:
+        _patch_field(
+            schema,
+            "duration",
+            label="Длительность",
+            control="combobox",
+            group="output",
+            suggestions=KIE_DURATION_OPTIONS[model_id],
+            suffix="с",
+        )
     defaults = MODEL_DEFAULTS.get(model_id)
     if defaults:
         schema["defaults"] = {**schema.get("defaults", {}), **defaults}
