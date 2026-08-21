@@ -165,6 +165,13 @@ def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
     ):
         _bool(payload, field)
 
+    _int_range(
+        payload,
+        "duration",
+        minimum=4 if model == "bytedance/seedance-2-5" else 1,
+        maximum=30,
+    )
+
     if model == "bytedance/seedance-1.5-pro":
         _list(payload, "input_urls", maximum=2)
         return

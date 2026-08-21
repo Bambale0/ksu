@@ -131,6 +131,14 @@ def test_public_profile_never_exposes_prompt() -> None:
     assert "profileWorks" in app
 
 
+def test_mini_app_resets_pre_duration_select_drafts_once() -> None:
+    layout = _read(FRONTEND / "app" / "layout.tsx")
+    assert 'id="roxy-draft-schema-reset"' in layout
+    assert 'roxy.next.generation-drafts.schema' in layout
+    assert 'currentVersion = "4"' in layout
+    assert 'removeItem("roxy.next.generation-drafts.v3")' in layout
+
+
 def test_design_tokens_match_current_roxy_system() -> None:
     css = _read(FRONTEND / "app" / "globals.css").lower()
     for token in ("#0b0b10", "#9b5cff", "#ff5fb7", "#ffffff", "#a6a6b3"):
