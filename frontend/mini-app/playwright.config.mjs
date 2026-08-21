@@ -4,6 +4,9 @@ export default {
   expect: { timeout: 8_000 },
   fullyParallel: false,
   workers: process.env.CI ? 2 : undefined,
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+  ],
   use: {
     baseURL: 'http://127.0.0.1:3017',
     trace: 'retain-on-failure',
