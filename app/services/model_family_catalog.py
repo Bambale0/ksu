@@ -152,9 +152,20 @@ def _product_key(model: dict[str, Any]) -> str:
     return str(presentation.get("product_key") or model.get("id") or "")
 
 
+def _display_price_source(model: dict[str, Any]) -> Any:
+    if model.get("admin_free") and model.get("retail_price_rox") is not None:
+        return model.get("retail_price_rox")
+    return model.get("price_rox") or model.get("price_credits") or "0"
+
+
 def _price_value(model: dict[str, Any]) -> Decimal:
-    raw = model.get("price_rox") or model.get("price_credits") or "0"
-    return Decimal(str(raw))
+    return Decimal(str(_display_price_source(model)))
+
+
+def _price_display(model: dict[str, Any]) -> str | None:
+    if model.get("price_rox") is None and model.get("price_credits") is None:
+        return None
+    return format(_price_value(model), ".2f")
 
 
 def _product_title(model: dict[str, Any]) -> str:
@@ -194,16 +205,19 @@ def _variant(model: dict[str, Any]) -> dict[str, Any]:
     badge = meta.get("badge")
     if badge is None and short_label != title:
         badge = short_label
+    display_price = _price_display(model)
     return {
         "id": model_id,
         "title": title,
         "version": title,
         "operation": str(model.get("operation") or ""),
         "media_type": str(model.get("media_type") or ""),
-        "price_rox": model.get("price_rox"),
-        "price_credits": model.get("price_credits"),
-        "price_rub": model.get("price_rub"),
+        "price_rox": display_price,
+        "price_credits": display_price,
+        "price_rub": display_price,
         "retail_price_rox": model.get("retail_price_rox"),
+        "effective_price_rox": model.get("price_rox"),
+        "admin_free": bool(model.get("admin_free")),
         "badge": badge,
         "recommended": bool(meta.get("recommended", False)),
         "description": meta.get("description") or _description_for(model),
@@ -245,6 +259,8 @@ def _coalesced_variants(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ]
         if product_prices:
             variant["price_rox"] = format(min(product_prices), ".2f")
+            variant["price_credits"] = variant["price_rox"]
+            variant["price_rub"] = variant["price_rox"]
         is_auto = (
             len(product_models) > 1
             or str(chosen.get("id") or "") in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
