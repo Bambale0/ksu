@@ -7,10 +7,13 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import (
+    QUICK_MENU_TEXT,
     QUICK_PROMPT_TEXT,
     QUICK_SUPPORT_TEXT,
     QUICK_VIDEO_PROMPT_TEXT,
     app_launcher_menu,
+    prompt_tools_menu,
+    quick_menu,
 )
 from app.core.config import settings
 from app.db.models import User
@@ -81,15 +84,19 @@ def _support_handle() -> str:
 
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
     await message.answer(
+        "Меню и поддержка закреплены снизу.",
+        reply_markup=quick_menu(),
+    )
+    await message.answer(
         "<b>Добро пожаловать в ROXY ✨</b>\n\n"
         "Создавайте изображения, видео и музыку.\n"
         "А ещё ROXY умеет делать готовые prompt по фото, видео или описанию.\n"
-        "Если не знаете, как красиво описать идею — загрузите фото, видео или напишите задумку, "
-        "а ROXY соберёт подробный prompt.\n\n"
+        "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
+        "или напишите задумку, а ROXY соберёт подробный prompt.\n\n"
         "<b>Бонусы:</b>\n"
         "🎁 50 ROX — сразу после регистрации\n"
         "🎁 +30 ROX — за друга после его первой генерации\n\n"
-        "Нажмите <b>«🚀 Открыть ROXY»</b> или выберите prompt-инструмент в меню.\n"
+        "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в Mini App.\n"
         f"Поддержка: {_support_handle()}",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
@@ -127,6 +134,16 @@ async def start_app_only(
     )
 
 
+@router.message(F.text == QUICK_MENU_TEXT)
+async def menu_shortcut(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+    await state.clear()
+    await UserService.get_or_create(session, message.from_user)
+    await session.commit()
+    await _send_launcher(message, route="home", payload=None)
+
+
 @router.message(F.text == QUICK_SUPPORT_TEXT)
 async def support_shortcut(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if message.from_user is None:
@@ -136,23 +153,23 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
     await session.commit()
     await message.answer(
         "Поддержка ROXY всегда рядом.\n\n"
-        f"Напишите {_support_handle()} — поможем с оплатой, балансом, генерациями, prompt и публикациями."
+        f"Напишите {_support_handle()} — поможем с оплатой, балансом, генерациями, prompt и публикациями.",
+        reply_markup=quick_menu(),
     )
 
 
 @router.message(F.text.in_({QUICK_PROMPT_TEXT, QUICK_VIDEO_PROMPT_TEXT}))
-async def prompt_shortcut(message: Message, session: AsyncSession, state: FSMContext) -> None:
+async def retired_prompt_shortcut(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    """Clean up old bottom prompt buttons while preserving a path to the tools."""
     if message.from_user is None:
         return
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
+    await message.answer("Меню обновлено: снизу только меню и поддержка.", reply_markup=quick_menu())
     await message.answer(
-        "Откройте prompt-инструмент кнопкой в меню ниже.\n\n"
-        "✨ Фото или описание — 1 ROX\n"
-        "🎬 Видео — 30 ROX\n"
-        "🎞 Для Seedance можно выбрать 5, 10 или 15 секунд.",
-        reply_markup=app_launcher_menu(route="home", start_payload=None),
+        "Prompt-инструменты открываются внутри ROXY или кнопками ниже.",
+        reply_markup=prompt_tools_menu(),
     )
 
 
