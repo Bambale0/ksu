@@ -64,30 +64,30 @@ async function visibleTechCopyCount(page) {
   }).length);
 }
 
-test.describe('ROXY Mini App 100 user scenarios', () => {
-  test('scenario matrix has at least 100 cases', () => {
+test.describe('ROXY Mini App E2E audit', () => {
+  test('covers at least 100 user scenarios across routes, viewports and actions', async ({ page }) => {
+    test.setTimeout(120_000);
     expect(scenarios.length).toBeGreaterThanOrEqual(100);
-  });
+    await mockRoxy(page);
 
-  for (const [index, scenario] of scenarios.entries()) {
-    test(`scenario ${String(index + 1).padStart(3, '0')} ${scenario.route} ${scenario.check} ${scenario.viewport.width}x${scenario.viewport.height}`, async ({ page }) => {
-      test.setTimeout(20_000);
-      await mockRoxy(page);
-      await page.setViewportSize(scenario.viewport);
-      await page.goto(`/mini-app/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
-      await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
-      await expect(page.getByRole('button', { name: /Создать/ })).toBeVisible();
-      expect(await visibleTechCopyCount(page)).toBe(0);
-      if (scenario.route === 'feed') await expect(page.getByText('Работы сообщества')).toBeVisible();
-      if (scenario.route === 'catalog') await expect(page.getByText('Готовые сценарии')).toBeVisible();
-      if (scenario.route === 'create') await expect(page.getByText('Настрой генерацию')).toBeVisible();
-      if (scenario.route === 'partners') await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
-      if (scenario.route === 'profile') await expect(page.getByText('Профиль').first()).toBeVisible();
-      if (scenario.check === 'navigation') {
-        await page.getByRole('button', { name: /Создать/ }).click();
-        await expect(page.getByText('Настрой генерацию')).toBeVisible();
-      }
-    });
-  }
+    for (const [index, scenario] of scenarios.entries()) {
+      await test.step(`scenario ${index + 1}: ${scenario.route}/${scenario.check}/${scenario.viewport.width}x${scenario.viewport.height}`, async () => {
+        await page.setViewportSize(scenario.viewport);
+        await page.goto(`/mini-app/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
+        await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
+        await expect(page.getByRole('button', { name: /Создать/ })).toBeVisible();
+        expect(await visibleTechCopyCount(page)).toBe(0);
+        if (scenario.route === 'feed') await expect(page.getByText('Работы сообщества')).toBeVisible();
+        if (scenario.route === 'catalog') await expect(page.getByText('Готовые сценарии')).toBeVisible();
+        if (scenario.route === 'create') await expect(page.getByText('Настрой генерацию')).toBeVisible();
+        if (scenario.route === 'partners') await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
+        if (scenario.route === 'profile') await expect(page.getByText('Профиль').first()).toBeVisible();
+        if (scenario.check === 'navigation') {
+          await page.getByRole('button', { name: /Создать/ }).click();
+          await expect(page.getByText('Настрой генерацию')).toBeVisible();
+        }
+      });
+    }
+  });
 });
