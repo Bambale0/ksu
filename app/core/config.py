@@ -54,8 +54,6 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    # ROXY economy: 1 ROX = 1 RUB. Wallet ROX are spendable in ROXY; partner
-    # referral earnings stay in RUB until the user withdraws them or converts them to ROX.
     start_balance_rox: Decimal = Decimal("50")
     invite_bonus_rox: Decimal = Decimal("30")
     prompt_repeat_bonus_rox: Decimal = Decimal("5")
@@ -71,8 +69,6 @@ class Settings(BaseSettings):
     rox_packages_json: str = "{}"
     generation_pricing_json: str = DEFAULT_GENERATION_PRICING_JSON
 
-    # Music is a distinct Kie/Suno provider contract but uses the same ROXY wallet,
-    # generation history and durable worker/recovery infrastructure.
     music_generation_model: str = "V5_5"
     music_generation_price_rox: Decimal = Decimal("100")
 
@@ -110,12 +106,8 @@ class Settings(BaseSettings):
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
 
-    # Creator/Influencer partnership grants are spend-only ROX and are processed
-    # independently from withdrawable 30% / 5% referral accounting.
     creator_partnership_grant_interval_seconds: int = 3600
 
-    # Primary hosted checkout. User-facing product copy uses only the neutral
-    # "Оплата картой · USD / EUR / RUB / СБП" label.
     card_api_key: str = ""
     card_api_base_url: str = "https://gate.lava.top"
     card_webhook_key: str = ""
@@ -177,6 +169,34 @@ class Settings(BaseSettings):
     internal_admin_hmac_secret: str = ""
     internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
     internal_admin_timestamp_skew_seconds: int = 300
+
+    kie_api_key: str = ""
+    kie_base_url: str = "https://api.kie.ai"
+    kie_upload_base_url: str = "https://kieai.redpandaai.co"
+    kie_upload_max_bytes: int = 100 * 1024 * 1024
+    kie_webhook_hmac_key: str = ""
+
+    cryptopay_api_token: str = ""
+    cryptopay_base_url: str = "https://pay.crypt.bot"
+
+    tbank_terminal_key: str = ""
+    tbank_password: str = ""
+    tbank_base_url: str = "https://securepay.tinkoff.ru"
+
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    yookassa_base_url: str = "https://api.yookassa.ru"
+
+    payment_return_url: str = ""
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() == "production"
+
+    def webhook_url(self, path: str) -> str:
+        if not self.public_base_url:
+            return ""
+        return f"{self.public_base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
 @lru_cache
