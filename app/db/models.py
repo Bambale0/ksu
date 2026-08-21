@@ -173,6 +173,14 @@ class Generation(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
 
+    # Telegram delivery mirrors the durable notification outbox for operator
+    # visibility and makes ordinary duplicate callbacks a no-op at the domain row.
+    telegram_notification_status: Mapped[str] = mapped_column(
+        String(24), default="not_scheduled", server_default="not_scheduled", nullable=False
+    )
+    telegram_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    telegram_message_id: Mapped[str | None] = mapped_column(String(128))
+
     # Feed/profile publication is explicit and orthogonal to private history state.
     publication_scope: Mapped[str] = mapped_column(String(16), default="private", nullable=False)
     is_public_feed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
