@@ -6,7 +6,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards import QUICK_SUPPORT_TEXT, app_launcher_menu
+from app.bot.keyboards import (
+    QUICK_PROMPT_TEXT,
+    QUICK_SUPPORT_TEXT,
+    QUICK_VIDEO_PROMPT_TEXT,
+    app_launcher_menu,
+)
 from app.core.config import settings
 from app.db.models import User
 from app.services.feed import FeedNotFoundError, FeedService
@@ -77,9 +82,13 @@ def _support_handle() -> str:
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
     await message.answer(
         "<b>Добро пожаловать в ROXY ✨</b>\n\n"
-        "Создавайте изображения, видео и музыку, сохраняйте лучшие работы "
-        "и публикуйте их в профиль или ленту.\n\n"
-        "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
+        "Создавайте изображения, видео, музыку и готовые prompt для генераций.\n"
+        "Если не знаете, как красиво описать идею — загрузите фото, видео или напишите задумку, "
+        "а ROXY соберёт подробный prompt.\n\n"
+        "<b>Бонусы:</b>\n"
+        "🎁 50 ROX — сразу после регистрации\n"
+        "🎁 +30 ROX — за друга после его первой генерации\n\n"
+        "Нажмите <b>«🚀 Открыть ROXY»</b> или выберите prompt-инструмент в меню.\n"
         f"Поддержка: {_support_handle()}",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
@@ -126,7 +135,23 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
     await session.commit()
     await message.answer(
         "Поддержка ROXY всегда рядом.\n\n"
-        f"Напишите {_support_handle()} — поможем с оплатой, балансом, генерациями и публикациями."
+        f"Напишите {_support_handle()} — поможем с оплатой, балансом, генерациями, prompt и публикациями."
+    )
+
+
+@router.message(F.text.in_({QUICK_PROMPT_TEXT, QUICK_VIDEO_PROMPT_TEXT}))
+async def prompt_shortcut(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+    await state.clear()
+    await UserService.get_or_create(session, message.from_user)
+    await session.commit()
+    await message.answer(
+        "Откройте prompt-инструмент кнопкой в меню ниже.\n\n"
+        "✨ Фото или описание — 1 ROX\n"
+        "🎬 Видео — 30 ROX\n"
+        "🎞 Для Seedance можно выбрать 5, 10 или 15 секунд.",
+        reply_markup=app_launcher_menu(route="home", start_payload=None),
     )
 
 
