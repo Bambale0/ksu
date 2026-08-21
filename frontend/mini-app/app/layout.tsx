@@ -20,11 +20,25 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+const draftSchemaReset = `
+(() => {
+  try {
+    const versionKey = "roxy.next.generation-drafts.schema";
+    const currentVersion = "4";
+    if (window.localStorage?.getItem(versionKey) !== currentVersion) {
+      window.localStorage?.removeItem("roxy.next.generation-drafts.v3");
+      window.localStorage?.setItem(versionKey, currentVersion);
+    }
+  } catch {}
+})();
+`;
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="ru">
       <body>
         <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" />
+        <Script id="roxy-draft-schema-reset" strategy="beforeInteractive">{draftSchemaReset}</Script>
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         {children}
       </body>
