@@ -17,6 +17,7 @@ from app.db.payment_models import PaymentRequest
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError
 from app.services.credits import InternalCreditService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import PaymentIdempotencyConflict, PaymentService, UnknownPaymentPackageError
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
@@ -247,6 +248,8 @@ class CardPaymentService:
         # Validate the operator-owned package before committing a local payment intent.
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
+        bonus_credits = TopUpBonusService.bonus_for(package.credits)
+        credited_credits = package.credits + bonus_credits
 
         existing_request = await session.scalar(
             select(PaymentRequest).where(
@@ -272,12 +275,15 @@ class CardPaymentService:
             provider=cls.PROVIDER,
             amount=amount,
             currency=currency,
-            rox_amount=package.credits,
+            rox_amount=credited_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "billing_email": email,
+                "base_credits": str(package.credits),
+                "bonus_credits": str(bonus_credits),
+                "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
@@ -390,8 +396,10 @@ class CardPaymentService:
             idempotency_key=f"payment:{payment.id}:credit",
         )
         # Referral accounting is RUB-denominated. Never treat a USD/EUR numeric
-        # amount as RUB; use the product's internal-credit accounting value.
-        reward_basis_rub = InternalCreditService.rubles_for(Decimal(payment.rox_amount))
+        # amount as RUB; use the product's paid ROX basis, excluding gift bonuses.
+        payload = payment.payload or {}
+        referral_credits = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        reward_basis_rub = InternalCreditService.rubles_for(referral_credits)
         await ReferralService.accrue_from_payment(
             session,
             source_user_id=payment.user_id,
