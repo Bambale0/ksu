@@ -12,19 +12,29 @@ import type {
   GenerationModel,
   GenerationModelFamily,
   Me,
+  PartnerStats,
   Quote,
+  ReferralInvitation,
+  ReferralReward,
   Route,
+  TrendItem,
   UiField,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 
-const ROUTES: Route[] = ["home", "catalog", "create", "history", "profile"];
-const DRAFTS_KEY = "roxy.next.generation-drafts.v2";
+const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
+const DRAFTS_KEY = "roxy.next.generation-drafts.v3";
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
-const ACTIVE_STATUSES = new Set(["queued", "retry", "submitting", "generating"]);
+const PROMO_SLIDES = [
+  { src: "/promo/roxy-promo-1.png", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
+  { src: "/promo/roxy-promo-2.png", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
+];
 
 type PreviewSurface = "private" | FeedSurface;
+type MediaFilter = "all" | "image" | "video" | "audio";
+
+type ProfilePublication = FeedCard | Generation;
 
 function isRoute(value: string | null): value is Route {
   return ROUTES.includes(value as Route);
@@ -37,6 +47,23 @@ function compact(value: unknown): string {
     notation: Math.abs(number) >= 1000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(number);
+}
+
+function dateLabel(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function displayName(me: Me | null): string {
+  if (!me) return "ROXY Creator";
+  return [me.first_name, me.last_name].filter(Boolean).join(" ") || me.username || "ROXY Creator";
 }
 
 function mediaUrl(item: Generation | FeedCard): string {
@@ -65,26 +92,14 @@ function priceLabel(value?: string | null): string {
   return value ? `${compact(value)} ROX` : "—";
 }
 
-function dateLabel(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
-}
-
-function displayName(me: Me | null): string {
-  if (!me) return "ROXY Creator";
-  return [me.first_name, me.last_name].filter(Boolean).join(" ") || me.username || "ROXY Creator";
+function normalizeMediaFilter(value: string | null): MediaFilter {
+  return value === "image" || value === "video" || value === "audio" ? value : "all";
 }
 
 function initialRoute(): Route {
   if (typeof window === "undefined") return "home";
   const route = new URL(window.location.href).searchParams.get("route");
   return isRoute(route) ? route : "home";
-}
-
-function normalizeMediaFilter(value: string | null): "all" | "image" | "video" | "audio" {
-  return value === "image" || value === "video" || value === "audio" ? value : "all";
 }
 
 function variantLabel(model: GenerationModel): string {
@@ -192,6 +207,15 @@ async function copyText(value: string | null | undefined) {
   return true;
 }
 
+function profileLink(stats: PartnerStats | null, me: Me | null): string | null {
+  if (!stats?.referral_link || !me?.telegram_id) return null;
+  return stats.referral_link.replace(`ref_${me.telegram_id}`, `profile_${me.telegram_id}`).replace("start=ref_", "start=profile_");
+}
+
+function isPublishedGeneration(item: Generation): boolean {
+  return Boolean(item.is_profile_visible || item.is_public_feed || item.publication_scope === "profile" || item.publication_scope === "feed");
+}
+
 export function RoxySocialApp() {
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState<Route>("home");
@@ -200,12 +224,17 @@ export function RoxySocialApp() {
   const [families, setFamilies] = useState<GenerationModelFamily[]>([]);
   const [recent, setRecent] = useState<Generation[]>([]);
   const [feed, setFeed] = useState<FeedCard[]>([]);
+  const [feedSort, setFeedSort] = useState<"recent" | "top_day" | "top">("recent");
+  const [trends, setTrends] = useState<TrendItem[]>([]);
   const [history, setHistory] = useState<Generation[]>([]);
   const [historyBefore, setHistoryBefore] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [profileWorks, setProfileWorks] = useState<Generation[]>([]);
-  const [profilePublications, setProfilePublications] = useState<FeedCard[]>([]);
+  const [profilePublications, setProfilePublications] = useState<ProfilePublication[]>([]);
   const [profileTab, setProfileTab] = useState<"works" | "publications">("works");
+  const [partnerStats, setPartnerStats] = useState<PartnerStats | null>(null);
+  const [partnerRewards, setPartnerRewards] = useState<ReferralReward[]>([]);
+  const [partnerInvites, setPartnerInvites] = useState<ReferralInvitation[]>([]);
   const [walletOpen, setWalletOpen] = useState(false);
   const [preview, setPreview] = useState<Generation | FeedCard | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface>("private");
@@ -216,7 +245,7 @@ export function RoxySocialApp() {
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2800);
   }, []);
 
   const refreshMe = useCallback(async () => {
@@ -225,9 +254,15 @@ export function RoxySocialApp() {
     return next;
   }, []);
 
-  const loadFeed = useCallback(async () => {
-    const payload = await api.feed("recent", 0);
+  const loadFeed = useCallback(async (sort = feedSort) => {
+    const payload = await api.feed(sort, 0);
     setFeed(payload.items || []);
+    return payload.items || [];
+  }, [feedSort]);
+
+  const loadTrends = useCallback(async () => {
+    const payload = await api.trends();
+    setTrends(payload.items || []);
     return payload.items || [];
   }, []);
 
@@ -242,17 +277,35 @@ export function RoxySocialApp() {
 
   const loadProfile = useCallback(async () => {
     const [works, publications] = await Promise.all([
-      api.generations("limit=24&status=succeeded"),
+      api.generations("limit=36&status=succeeded"),
       me ? api.profileFeed(String(me.telegram_id), 0) : Promise.resolve({ items: [] as FeedCard[] }),
     ]);
+    const ownPublished = works.items.filter(isPublishedGeneration);
+    const publishedIds = new Set((publications.items || []).map((item) => item.id));
     setProfileWorks(works.items);
-    setProfilePublications(publications.items);
+    setProfilePublications([
+      ...(publications.items || []),
+      ...ownPublished.filter((item) => !publishedIds.has(item.id)),
+    ]);
   }, [me]);
+
+  const loadPartners = useCallback(async () => {
+    const [stats, rewards, invitations] = await Promise.allSettled([
+      api.referralStats(),
+      api.referralRewards(),
+      api.referralInvitations(),
+    ]);
+    if (stats.status === "fulfilled") setPartnerStats(stats.value);
+    if (rewards.status === "fulfilled") setPartnerRewards(rewards.value.items || []);
+    if (invitations.status === "fulfilled") setPartnerInvites(invitations.value.items || []);
+  }, []);
 
   useEffect(() => {
     let active = true;
     const tg = initTelegram();
     const safe = () => syncSafeArea(tg);
+    tg?.ready?.();
+    tg?.expand?.();
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
@@ -260,11 +313,12 @@ export function RoxySocialApp() {
 
     (async () => {
       try {
-        const [modelResult, meResult, recentResult, feedResult, onboardingResult] = await Promise.allSettled([
+        const [modelResult, meResult, recentResult, feedResult, trendsResult, onboardingResult] = await Promise.allSettled([
           api.models(),
           tg?.initData ? api.me() : Promise.resolve(null),
           tg?.initData ? api.generations("limit=12") : Promise.resolve({ items: [] }),
           tg?.initData ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
+          tg?.initData ? api.trends() : Promise.resolve({ items: [] }),
           tg?.initData ? api.onboarding() : Promise.resolve(null),
         ]);
         if (!active) return;
@@ -276,6 +330,7 @@ export function RoxySocialApp() {
         if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
         if (recentResult.status === "fulfilled") setRecent(recentResult.value.items || []);
         if (feedResult.status === "fulfilled") setFeed(feedResult.value.items || []);
+        if (trendsResult.status === "fulfilled") setTrends(trendsResult.value.items || []);
         if (onboardingResult.status === "fulfilled" && onboardingResult.value) setOnboarding(onboardingResult.value);
       } finally {
         if (active) setBooting(false);
@@ -296,14 +351,16 @@ export function RoxySocialApp() {
   useEffect(() => {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
-  }, [route, history.length, loadHistory, loadProfile]);
+    if (route === "partners") void loadPartners();
+    if (route === "catalog") void loadTrends();
+  }, [route, history.length, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
-    if (route !== "catalog") return;
-    void loadFeed();
-    const timer = window.setInterval(() => void loadFeed(), 15000);
+    if (route !== "feed") return;
+    void loadFeed(feedSort);
+    const timer = window.setInterval(() => void loadFeed(feedSort), 15000);
     return () => window.clearInterval(timer);
-  }, [loadFeed, route]);
+  }, [feedSort, loadFeed, route]);
 
   const navigate = useCallback((next: Route) => {
     setWalletOpen(false);
@@ -354,11 +411,17 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
-        {route === "home" && <HomeScreen models={models} recent={recent} onNavigate={navigate} onCreate={openCreate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "catalog" && <CatalogScreen models={models} families={families} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
+        {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={openCreate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
+        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onRunTrend={async (trend) => {
+          if ((trend.reference_requirements?.min || 0) > 0) { showToast("Этот тренд требует референс. Откройте форму тренда позже."); return; }
+          try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
+          catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
+        }} />}
         {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "profile" && <ProfileScreen me={me} avatar={avatar} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} />}
+        {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
+        {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
 
       <BottomNav route={route} onNavigate={navigate} />
@@ -379,29 +442,56 @@ function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
 }
 
-function HomeScreen({ models, recent, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; onNavigate: (route: Route) => void; onCreate: (media: "image" | "video" | "audio") => void; onPreview: (item: Generation) => void }) {
+function HomeScreen({ models, recent, trends, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: "image" | "video" | "audio") => void; onPreview: (item: Generation) => void }) {
   const counts = useMemo(() => ({ image: models.filter((m) => m.media_type === "image").length, video: models.filter((m) => m.media_type === "video").length, audio: models.filter((m) => m.media_type === "audio").length }), [models]);
-  return <section className="screen home-screen"><SectionTitle kicker="Создание" title="Что создаём?" /><div className="format-grid"><FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onCreate("image")} /><FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onCreate("video")} /><FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onCreate("audio")} /></div><SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} /><MediaGrid items={recent.filter((item) => item.status === "succeeded").slice(0, 9)} empty="Готовые работы появятся здесь." onClick={onPreview} /></section>;
+  return <section className="screen home-screen">
+    <div className="promo-slider" aria-label="Промо ROXY">{PROMO_SLIDES.map((slide) => <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("partners")}><img src={slide.src} alt={slide.title} /></button>)}</div>
+    <SectionTitle kicker="Studio" title="Что создаём?" />
+    <div className="format-grid"><FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onCreate("image")} /><FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onCreate("video")} /><FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onCreate("audio")} /></div>
+    <SectionTitle kicker="Тренды" title="Быстрый старт" action="Каталог" onAction={() => onNavigate("catalog")} />
+    <TrendStrip items={trends.slice(0, 6)} />
+    <SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} />
+    <MediaGrid items={recent.filter((item) => item.status === "succeeded").slice(0, 9)} empty="Готовые работы появятся здесь." onClick={onPreview} />
+  </section>;
 }
 
 function FormatCard({ icon, title, count, onClick }: { icon: IconName; title: string; count: number; onClick: () => void }) {
   return <button className="format-card" type="button" onClick={onClick}><span className="format-icon"><Icon name={icon}/></span><strong>{title}</strong><small>{count ? `${count} моделей` : "Скоро"}</small><Icon name="chevron" className="format-chevron"/></button>;
 }
 
-function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models: GenerationModel[]; families: GenerationModelFamily[]; feed: FeedCard[]; onCreate: (model: GenerationModel) => void; onPreview: (item: FeedCard) => void }) {
-  const [media, setMedia] = useState<"all" | "image" | "video" | "audio">("all");
+function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: FeedCard[]; sort: "recent" | "top_day" | "top"; setSort: (sort: "recent" | "top_day" | "top") => void; onRefresh: () => void; onPreview: (item: FeedCard) => void }) {
+  return <section className="screen"><ScreenHead kicker="Лента" title="Работы сообщества" copy="Публичные публикации отдаются только через серверные media routes, без временных KIE-ссылок." />
+    <div className="segmented scrollable"><button className={sort === "recent" ? "active" : ""} type="button" onClick={() => setSort("recent")}>Новые</button><button className={sort === "top_day" ? "active" : ""} type="button" onClick={() => setSort("top_day")}>Топ дня</button><button className={sort === "top" ? "active" : ""} type="button" onClick={() => setSort("top")}>Топ</button><button type="button" onClick={onRefresh}>Обновить</button></div>
+    <MediaGrid items={items} empty="Лента пока пуста. Опубликуйте работу в предпросмотре." onClick={onPreview} reactions />
+  </section>;
+}
+
+function CatalogScreen({ models, families, trends, onCreate, onRunTrend }: { models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
+  const [media, setMedia] = useState<MediaFilter>("all");
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
-  const filtered = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
-  return <section className="screen"><ScreenHead kicker="Каталог" title="Модели и лента" copy="Модели строятся из backend schema; лента обновляется автоматически." /><div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div><div className="model-grid">{filtered.map((family) => <button key={family.id} className="model-card" type="button" onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>)}</div><SectionTitle kicker="Сообщество" title="Свежие работы" /><MediaGrid items={feed} empty="Публикаций пока нет." onClick={onPreview} reactions />{familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId="" onClose={() => setFamilySheet(null)} onChoose={(id) => { const model = byId.get(id); if (model) onCreate(model); setFamilySheet(null); }} />}</section>;
+  const filteredFamilies = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
+  const filteredTrends = media === "all" || media === "audio" ? trends : trends.filter((trend) => trend.media_type === media);
+  return <section className="screen"><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Сначала тренды и промо-сценарии, ниже — полный backend-каталог моделей." />
+    <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
+    <SectionTitle kicker="Тренды" title="Готовые сценарии" />
+    <div className="model-grid">{filteredTrends.slice(0, 12).map((trend) => <button className="model-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Тренд"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></button>)}</div>
+    <SectionTitle kicker="Модели" title="Полный каталог" />
+    <div className="model-grid">{filteredFamilies.map((family) => <button key={family.id} className="model-card" type="button" onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>)}</div>
+    {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId="" onClose={() => setFamilySheet(null)} onChoose={(id) => { const model = byId.get(id); if (model) onCreate(model); setFamilySheet(null); }} />}
+  </section>;
+}
+
+function TrendStrip({ items }: { items: TrendItem[] }) {
+  if (!items.length) return <Empty text="Тренды появятся после настройки в админ-контуре." />;
+  return <div className="model-grid">{items.map((trend) => <div className="model-card" key={trend.id}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Готовый сценарий"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></div>)}</div>;
 }
 
 function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
   const initialModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
   const initialMedia = typeof window !== "undefined" ? normalizeMediaFilter(localStorage.getItem(MEDIA_FILTER_KEY)) : "all";
   const [selectedId, setSelectedId] = useState(initialModelId || models[0]?.id || "");
-  const [media, setMedia] = useState<"all" | "image" | "video" | "audio">(initialMedia);
-  const selected = models.find((model) => model.id === selectedId) || models[0] || null;
+  const [media, setMedia] = useState<MediaFilter>(initialMedia);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState("");
@@ -410,22 +500,24 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const quoteSeq = useRef(0);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
+  const selected = models.find((model) => model.id === selectedId) || models[0] || null;
   const visibleFamilies = useMemo(() => media === "all" ? families : families.filter((family) => family.media_types?.includes(media)), [families, media]);
 
   useEffect(() => { try { setDrafts(JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}")); } catch { setDrafts({}); } }, []);
   useEffect(() => { if (!selectedId && models[0]) setSelectedId(models[0].id); }, [models, selectedId]);
   useEffect(() => {
     if (!visibleFamilies.length || !models.length) return;
-    const selectedIsVisible = visibleFamilies.some((family) => family.variants.some((variant) => variant.id === selectedId));
-    if (selectedIsVisible) return;
+    const visible = visibleFamilies.some((family) => family.variants.some((variant) => variant.id === selectedId));
+    if (visible) return;
     const next = visibleFamilies.flatMap((family) => family.variants).map((variant) => byId.get(variant.id)).find(Boolean);
     if (next) chooseModel(next.id);
   }, [byId, models.length, selectedId, visibleFamilies]);
 
   const draft = useMemo(() => {
     if (!selected) return null;
+    const base = createDefaultDraft(selected);
     const existing = drafts[selected.id];
-    return existing ? { ...createDefaultDraft(selected), ...existing, values: { ...createDefaultDraft(selected).values, ...(existing.values || {}) } } : createDefaultDraft(selected);
+    return existing ? { ...base, ...existing, values: { ...base.values, ...(existing.values || {}) } } : base;
   }, [drafts, selected]);
 
   const persist = useCallback((modelId: string, next: Draft) => {
@@ -441,12 +533,12 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
     const timer = window.setTimeout(async () => {
       try { const next = await api.quote(buildPayload(selected, draft)); if (quoteSeq.current === seq) { setQuote(next); setQuoteError(""); } }
       catch (error) { if (quoteSeq.current === seq) { setQuote(null); setQuoteError(error instanceof Error ? error.message : "Не удалось рассчитать цену"); } }
-    }, 320);
+    }, 300);
     return () => window.clearTimeout(timer);
   }, [draft, selected, uploading, errors.join("|")]);
 
   const chooseModel = (id: string) => { setSelectedId(id); localStorage.setItem(MODEL_KEY, id); setQuote(null); haptic("light"); };
-  const chooseMedia = (next: "all" | "image" | "video" | "audio") => { setMedia(next); localStorage.setItem(MEDIA_FILTER_KEY, next); };
+  const chooseMedia = (next: MediaFilter) => { setMedia(next); localStorage.setItem(MEDIA_FILTER_KEY, next); };
   const setScenario = (id: string) => { if (!selected || !draft) return; const scenario = selected.ui_schema?.scenario?.items?.find((item) => item.id === id); const values = { ...draft.values }; for (const key of scenario?.clear_fields || []) delete values[key]; persist(selected.id, { ...draft, scenario: id, values }); };
 
   const submit = async () => {
@@ -455,26 +547,29 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
     setSubmitting(true);
     try {
       const created = await api.create(buildPayload(selected, draft));
-      notify("success");
-      showToast("Генерация запущена");
       await onBalance();
-      let current: Generation = { id: created.id, status: created.status || "queued", model: selected, prompt: String(draft.values.prompt || "") };
-      const started = Date.now();
-      while (Date.now() - started < 10 * 60 * 1000) {
-        current = await api.generation(created.id);
-        if (!ACTIVE_STATUSES.has(current.status)) break;
-        await new Promise((resolve) => window.setTimeout(resolve, 1800));
-      }
-      onCreated(current);
-    } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось запустить генерацию"); }
-    finally { setSubmitting(false); }
+      let item: Generation = { id: created.id, status: created.status || "queued", model: selected, created_at: new Date().toISOString() };
+      try { item = await api.generation(created.id); } catch {}
+      notify("success");
+      onCreated(item);
+    } catch (error) {
+      notify("error");
+      showToast(error instanceof Error ? error.message : "Не удалось запустить генерацию");
+    } finally { setSubmitting(false); }
   };
 
   if (!selected || !draft) return <section className="screen"><ScreenHead kicker="Создание" title="Каталог моделей загружается" /></section>;
   const fields = visibleFields(selected, draft);
   const groups = selected.ui_schema?.groups || [{ id: "main", title: "Настройки" }];
 
-  return <section className="screen create-screen"><ScreenHead kicker="Создание" title="Настрой генерацию" copy="Один продукт сам выбирает text/reference режим по вашим файлам." /><div className="create-layout"><div className="create-controls"><div className="panel"><label className="label">Модель</label><div className="segmented scrollable family-tabs">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => chooseMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div><div className="family-grid">{visibleFamilies.map((family) => { const active = family.variants.some((variant) => variant.id === selected.id); return <button className={`family-card${active ? " active" : ""}`} type="button" key={family.id} onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>; })}</div><div className="chips"><span>{selected.media_type}</span><span>{selected.family}</span><span>{variantLabel(selected)}</span><span>{selected.operation.replaceAll("_", " ")}</span></div></div>{selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}{groups.map((group) => { const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group)); if (!grouped.length) return null; return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => { setUploading(true); try { const max = field.control === "file" ? 1 : field.max_items || 20; const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : []; for (const file of files.slice(0, Math.max(0, max - urls.length))) { if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; } const uploaded = await api.upload(file); if (field.control === "file") { updateValue(field.name, uploaded.url); break; } urls.push(uploaded.url); } if (field.control === "files") updateValue(field.name, urls); notify("success"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Ошибка загрузки"); } finally { setUploading(false); } }} />)}</div></div>; })}{selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}</div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${compact(quote.cost_rub)} ₽` : quoteError || errors[0] || "Считаю…"}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>{familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}</section>;
+  return <section className="screen create-screen"><ScreenHead kicker="Создание" title="Настрой генерацию" copy="Поля приходят из ui_schema выбранной модели. Неподдерживаемые параметры не показываются." />
+    <div className="create-layout"><div className="create-controls"><div className="panel"><label className="label">Модель</label><div className="segmented scrollable family-tabs">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => chooseMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div><div className="family-grid">{visibleFamilies.map((family) => { const active = family.variants.some((variant) => variant.id === selected.id); return <button className={`family-card${active ? " active" : ""}`} type="button" key={family.id} onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>; })}</div></div>
+      {selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}
+      {groups.map((group) => { const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group)); if (!grouped.length) return null; return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => { setUploading(true); try { const max = field.control === "file" ? 1 : field.max_items || 20; const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : []; for (const file of files.slice(0, Math.max(0, max - urls.length))) { if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; } const uploaded = await api.upload(file); if (field.control === "file") { updateValue(field.name, uploaded.url); break; } urls.push(uploaded.url); } if (field.control === "files") updateValue(field.name, urls); notify("success"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Ошибка загрузки"); } finally { setUploading(false); } }} />)}</div></div>; })}
+      {selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}
+    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${compact(quote.cost_rub)} ₽` : quoteError || errors[0] || "Считаю…"}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
+    {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
+  </section>;
 }
 
 function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: { family: GenerationModelFamily; models: Map<string, GenerationModel>; selectedId: string; onClose: () => void; onChoose: (id: string) => void }) {
@@ -483,24 +578,45 @@ function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: {
 
 function DynamicField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
-  if (field.control === "file" || field.control === "files") { const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : []; return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => void onUpload(Array.from(e.target.files || []))}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>; }
+  if (field.control === "file" || field.control === "files") {
+    const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
+    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => void onUpload(Array.from(e.target.files || []))}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{safeFileName(url) || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
+  }
   if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
   if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
   return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><div className="input-with-suffix"><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} placeholder={field.placeholder || ""} value={value == null ? "" : String(value)} onChange={(e) => onChange(field.control === "number" ? (e.target.value ? Number(e.target.value) : null) : e.target.value)}/>{field.suffix && <span>{field.suffix}</span>}</div></label>;
+}
+
+function safeFileName(url: string): string {
+  try { return new URL(url, window.location.href).pathname.split("/").pop() || ""; } catch { return ""; }
 }
 
 function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {
   return <section className="screen"><ScreenHead kicker="История" title="Все генерации" copy="Готовые результаты, активные задачи и ошибки — в одном месте."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "AI генерация"}</strong><small>{dateLabel(item.created_at)} · {item.status}</small>{item.error && <p>{item.error}</p>}</div><span className={`status ${item.status}`}>{item.status}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
 }
 
-function ProfileScreen({ me, avatar, tab, setTab, works, publications, onPreview, onWallet }: { me: Me | null; avatar: string; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: FeedCard[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void }) {
-  const likes = publications.reduce((sum, item) => sum + Number(item.likes_count || 0), 0);
-  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "ROXY creator"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет." onClick={(item) => onPreview(item, "profile")} reactions/>}</section>;
+function ProfileScreen({ me, avatar, stats, tab, setTab, works, publications, onPreview, onWallet, onCopy }: { me: Me | null; avatar: string; stats: PartnerStats | null; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: ProfilePublication[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void; onCopy: (value: string | null | undefined) => Promise<void> }) {
+  const likes = publications.reduce((sum, item) => sum + Number((item as FeedCard).likes_count || 0), 0);
+  const link = profileLink(stats, me);
+  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "ROXY creator"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div>{link && <div className="panel"><span className="kicker">Ссылка на профиль</span><p className="muted">{link}</p><button className="secondary wide" type="button" onClick={() => void onCopy(link)}>Скопировать профиль</button></div>}<div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет. Открой работу и нажми “В профиль” или “В ленту + профиль”." onClick={(item) => onPreview(item, "surface" in item && item.surface ? item.surface as FeedSurface : "private")} reactions/>}</section>;
+}
+
+function PartnerScreen({ me, stats, rewards, invitations, onRefresh, showToast }: { me: Me | null; stats: PartnerStats | null; rewards: ReferralReward[]; invitations: ReferralInvitation[]; onRefresh: () => void; showToast: (message: string) => void }) {
+  const pLink = profileLink(stats, me);
+  const copy = async (value?: string | null) => { if (await copyText(value)) showToast("Ссылка скопирована"); };
+  return <section className="screen"><ScreenHead kicker="Партнёрам" title="Кабинет автора" copy="Реферальная ссылка, профиль, приглашения, бонусы и выплаты из backend referral/partner контура." />
+    <div className="profile-stats panel"><div><strong>{compact(stats?.first_line)}</strong><span>1 линия</span></div><div><strong>{compact(stats?.second_line)}</strong><span>2 линия</span></div><div><strong>{compact(stats?.partner_balance_rub)} ₽</strong><span>доступно</span></div></div>
+    <div className="panel"><span className="kicker">Реферальная ссылка</span><p className="muted">{stats?.referral_link || "Задайте BOT_USERNAME на backend"}</p><button className="primary wide" type="button" onClick={() => void copy(stats?.referral_link)}>Скопировать реф-ссылку</button>{pLink && <button className="secondary wide" type="button" onClick={() => void copy(pLink)}>Скопировать ссылку на профиль</button>}{stats?.partner_chat_url && <a className="secondary wide" href={stats.partner_chat_url} target="_blank" rel="noreferrer">Чат партнёров</a>}</div>
+    <SectionTitle kicker="Доход" title="Последние начисления" action="Обновить" onAction={onRefresh} />
+    <div className="transaction-list">{rewards.length ? rewards.map((reward) => <div className="transaction" key={reward.id}><div><strong>{reward.source_user?.first_name || reward.source_user?.username || `Линия ${reward.line}`}</strong><small>{dateLabel(reward.created_at)} · {reward.status}</small></div><span>+{compact(reward.net_amount_rox || reward.amount_rox || reward.amount)} ROX</span></div>) : <Empty text="Начислений пока нет." />}</div>
+    <SectionTitle kicker="Рефералы" title="Новые приглашения" />
+    <div className="transaction-list">{invitations.length ? invitations.map((item) => <div className="transaction" key={item.user_id}><div><strong>{item.first_name || item.username || "Пользователь"}</strong><small>{dateLabel(item.joined_at)} · линия {item.line}</small></div><span>{item.username ? `@${item.username}` : "—"}</span></div>) : <Empty text="Приглашений пока нет." />}</div>
+  </section>;
 }
 
 function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, reactions = false }: { items: T[]; empty: string; onClick: (item: T) => void; reactions?: boolean }) {
   if (!items.length) return <Empty text={empty}/>;
-  return <div className="media-grid">{items.map((item) => <button className="media-tile" type="button" key={item.id} onClick={() => onClick(item)}><MediaThumb item={item}/>{reactions && <span className="tile-reactions"><Icon name="heart" size={13}/>{compact((item as FeedCard).likes_count)} <Icon name="comment" size={13}/>{compact((item as FeedCard).comments_count)}</span>}</button>)}</div>;
+  return <div className="media-grid">{items.map((item) => <button className="media-tile" type="button" key={item.id} onClick={() => onClick(item)}><MediaThumb item={item}/>{reactions && <span className="tile-reactions"><Icon name="heart" size={13}/>{compact((item as FeedCard).likes_count)}</span>}</button>)}</div>;
 }
 
 function MediaThumb({ item }: { item: Generation | FeedCard }) {
@@ -512,116 +628,37 @@ function MediaThumb({ item }: { item: Generation | FeedCard }) {
   return <img src={url} alt="" loading="lazy"/>;
 }
 
-function Preview({ item, surface, onClose, onPublished, showToast }: { item: Generation | FeedCard; surface: PreviewSurface; onClose: () => void; onPublished: (scope: "profile" | "feed", item: FeedCard) => Promise<void>; showToast: (message: string) => void }) {
+function Preview({ item, surface, onClose, onPublished, showToast }: { item: Generation | FeedCard; surface: PreviewSurface; onClose: () => void; onPublished: (scope: "profile" | "feed") => Promise<void>; showToast: (message: string) => void }) {
   const [current, setCurrent] = useState<Generation | FeedCard>(item);
   const [publishing, setPublishing] = useState<"profile" | "feed" | null>(null);
-  const [busy, setBusy] = useState<"like" | "share" | "comments" | "comment" | "remix" | "remove" | null>(null);
   const [promptVisible, setPromptVisible] = useState(false);
   const [referencesVisible, setReferencesVisible] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [commentText, setCommentText] = useState("");
-
-  useEffect(() => setCurrent(item), [item]);
-
-  const card = current as FeedCard;
   const url = mediaUrl(current);
   const type = mediaType(current);
-  const feedSurface: FeedSurface = surface === "profile" ? "profile" : "feed";
+  const card = current as FeedCard;
   const canPublish = surface === "private" && current.status === "succeeded";
+  const socialSurface: FeedSurface = surface === "profile" ? "profile" : "feed";
   const canSocial = surface !== "private";
   const isMine = Boolean(card.is_mine);
-  const publicReferences = [
-    ...(card.reference_images || []).map((value) => ({ type: "image" as const, value })),
-    ...(card.reference_videos || []).map((value) => ({ type: "video" as const, value })),
-  ];
-
-  const patchCard = (patch: Partial<FeedCard>) => setCurrent((prev) => ({ ...(prev as FeedCard), ...patch }));
 
   const publish = async (scope: "profile" | "feed") => {
     setPublishing(scope);
-    try {
-      const result = await api.publish(current.id, { scope, promptVisible, referencesVisible });
-      patchCard(result.item);
-      notify("success");
-      await onPublished(result.publication_scope === "feed" ? "feed" : "profile", result.item);
-      if (result.downgraded_to_profile) showToast("18+ работа опубликована только в профиле");
-    } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось опубликовать"); }
+    try { const result = await api.publish(current.id, { scope, promptVisible, referencesVisible }); setCurrent(result.item); notify("success"); await onPublished(scope); }
+    catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось опубликовать"); }
     finally { setPublishing(null); }
   };
+  const toggleLike = async () => { setBusy("like"); try { const result = card.liked_by_me ? await api.unlike(current.id, socialSurface) : await api.like(current.id, socialSurface); setCurrent({ ...card, liked_by_me: result.liked_by_me, likes_count: result.likes_count }); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось поставить лайк"); } finally { setBusy(null); } };
+  const share = async () => { setBusy("share"); try { const result = await api.share(current.id, socialSurface); setCurrent({ ...card, shares_count: result.shares_count }); if (result.link && await copyText(result.link)) showToast("Ссылка скопирована"); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось поделиться"); } finally { setBusy(null); } };
+  const loadComments = async () => { setBusy("comments"); try { const result = await api.comments(current.id, socialSurface); setComments(result.items || []); setCommentsOpen(true); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось открыть комментарии"); } finally { setBusy(null); } };
+  const addComment = async () => { const text = commentText.trim(); if (!text) return; setBusy("comment"); try { const next = await api.addComment(current.id, socialSurface, text); setComments((items) => [next, ...items]); setCommentText(""); setCurrent({ ...card, comments_count: Number(card.comments_count || 0) + 1 }); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось отправить комментарий"); } finally { setBusy(null); } };
+  const remix = async () => { setBusy("remix"); try { const result = await api.remix(current.id, socialSurface); showToast(`Повтор запущен: ${result.status}`); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось повторить"); } finally { setBusy(null); } };
+  const removePublication = async () => { setBusy("remove"); try { await api.removePublication(current.id, "private"); notify("success"); onClose(); await onPublished("profile"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось убрать публикацию"); } finally { setBusy(null); } };
 
-  const toggleLike = async () => {
-    if (!canSocial || busy) return;
-    setBusy("like");
-    try {
-      const result = card.liked_by_me ? await api.unlike(current.id, feedSurface) : await api.like(current.id, feedSurface);
-      patchCard({ liked_by_me: result.liked_by_me, likes_count: result.likes_count });
-      haptic("light");
-    } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось обновить лайк"); }
-    finally { setBusy(null); }
-  };
-
-  const share = async () => {
-    if (!canSocial || busy) return;
-    setBusy("share");
-    try {
-      const result = await api.share(current.id, feedSurface);
-      patchCard({ shares_count: result.shares_count });
-      if (await copyText(result.link)) showToast("Ссылка скопирована");
-      else showToast("Ссылка создана");
-    } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось создать ссылку"); }
-    finally { setBusy(null); }
-  };
-
-  const loadComments = async () => {
-    if (!canSocial) return;
-    setCommentsOpen(true);
-    setBusy("comments");
-    try {
-      const payload = await api.comments(current.id, feedSurface);
-      setComments(payload.items || []);
-    } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось загрузить комментарии"); }
-    finally { setBusy(null); }
-  };
-
-  const addComment = async () => {
-    const text = commentText.trim();
-    if (!text || busy) return;
-    setBusy("comment");
-    try {
-      const comment = await api.addComment(current.id, feedSurface, text);
-      setComments((items) => [comment, ...items]);
-      setCommentText("");
-      patchCard({ comments_count: Number(card.comments_count || 0) + 1 });
-    } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось отправить комментарий"); }
-    finally { setBusy(null); }
-  };
-
-  const remix = async () => {
-    if (!canSocial || busy) return;
-    setBusy("remix");
-    try {
-      await api.remix(current.id, feedSurface);
-      notify("success");
-      showToast("Повтор запущен. Результат появится в истории.");
-    } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось повторить"); }
-    finally { setBusy(null); }
-  };
-
-  const removePublication = async () => {
-    if (!isMine || busy) return;
-    setBusy("remove");
-    try {
-      const target = card.publication_scope === "feed" ? "profile" : "private";
-      await api.removePublication(current.id, target);
-      notify("success");
-      showToast(target === "profile" ? "Убрано из ленты, осталось в профиле" : "Публикация скрыта");
-      onClose();
-    } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось убрать публикацию"); }
-    finally { setBusy(null); }
-  };
-
-  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "ROXY generation"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{publicReferences.length > 0 && <div className="upload-list">{publicReferences.map((ref, index) => <a key={`${ref.value}-${index}`} href={ref.value} target="_blank" rel="noreferrer">{ref.type === "video" ? "Видео" : "Фото"} ref {index + 1}</a>)}</div>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать промпт</strong><small>Только если это не remix/trend</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label><label className="toggle-row"><span><strong>Показать референсы</strong><small>Откроет исходники в карточке</small></span><input type="checkbox" checked={referencesVisible} onChange={(e) => setReferencesVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Social</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Пока пусто."/>}</div></div>}</div></div></div>;
+  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "ROXY generation"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать промпт</strong><small>Публично только если включить</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label><label className="toggle-row"><span><strong>Показать референсы</strong><small>По умолчанию скрыты</small></span><input type="checkbox" checked={referencesVisible} onChange={(e) => setReferencesVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Social</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Пока пусто."/>}</div></div>}</div></div></div>;
 }
 
 function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onClose: () => void; onRefresh: () => Promise<Me>; showToast: (message: string) => void }) {
@@ -642,7 +679,7 @@ function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () =>
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
-  const menu: Array<[Route, IconName, string]> = [["home", "home", "Главная"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["history", "history", "История"], ["profile", "profile", "Профиль"]];
+  const menu: Array<[Route, IconName, string]> = [["home", "home", "Студия"], ["feed", "heart", "Лента"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
   return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label]) => <button type="button" key={key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
 }
 
