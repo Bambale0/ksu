@@ -2,7 +2,7 @@ from aiogram import Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
-from app.bot.handlers import admin, admin_extensions, launcher
+from app.bot.handlers import admin, admin_extensions, admin_web_removed, launcher
 from app.bot.middlewares import DatabaseSessionMiddleware
 
 
@@ -13,6 +13,8 @@ def create_dispatcher(redis: Redis) -> Dispatcher:
 
     # Keep trusted operator commands reachable without exposing the retired
     # customer text menus. Register them before the customer catch-all launcher.
+    admin_web_removed.disable_web_admin_button(admin)
+    dispatcher.include_router(admin_web_removed.router)
     dispatcher.include_router(admin.router)
     dispatcher.include_router(admin_extensions.router)
     dispatcher.include_router(launcher.router)
