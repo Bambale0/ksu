@@ -14,6 +14,8 @@ BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
 OPEN_APP_TEXT = "🚀 Открыть ROXY"
 QUICK_MENU_TEXT = "🏠 Меню"
+QUICK_PROMPT_TEXT = "✨ Prompt фото/текст"
+QUICK_VIDEO_PROMPT_TEXT = "🎬 Prompt видео"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
@@ -46,21 +48,31 @@ def _open_app_button(*, route: str = "home", start_payload: str | None = None) -
     )
 
 
+def _prompt_tool_button(text: str, mode: str) -> KeyboardButton:
+    if not settings.public_base_url:
+        return KeyboardButton(text=text)
+    return KeyboardButton(text=text, web_app=WebAppInfo(url=_prompt_tool_url(mode)))
+
+
 def app_launcher_menu(
     *,
     route: str = "home",
     start_payload: str | None = None,
 ) -> ReplyKeyboardMarkup:
-    """Customer-facing Telegram navigation: app button plus support, not inline menu."""
+    """Customer-facing Telegram navigation: app button plus prompt tools and support."""
     primary = OPEN_APP_TEXT  # contract: text="🚀 Открыть ROXY"
     return ReplyKeyboardMarkup(
         keyboard=[
-            [_open_app_button(route=route, start_payload=start_payload)],
+            [
+                _open_app_button(route=route, start_payload=start_payload),
+                _prompt_tool_button(QUICK_PROMPT_TEXT, "image"),
+                _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video"),
+            ],
             [KeyboardButton(text=QUICK_SUPPORT_TEXT)],
         ],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder=f"{primary} или напиши в поддержку",
+        input_field_placeholder=f"{primary}, prompt или поддержка",
     )
 
 
@@ -91,7 +103,7 @@ def quick_menu() -> ReplyKeyboardMarkup:
     """Compatibility keyboard for retired text-bot handlers."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [_open_app_button(route="home")],
+            [_open_app_button(route="home"), _prompt_tool_button(QUICK_PROMPT_TEXT, "image"), _prompt_tool_button(QUICK_VIDEO_PROMPT_TEXT, "video")],
             [KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)],
         ],
         resize_keyboard=True,
@@ -128,14 +140,20 @@ def prompt_tools_menu() -> InlineKeyboardMarkup:
             [
                 [
                     InlineKeyboardButton(
-                        text="🖼 Промпт по фото",
+                        text="✨ Prompt по фото/описанию",
                         web_app=WebAppInfo(url=_prompt_tool_url("image")),
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="✨ Улучшить промпт",
-                        web_app=WebAppInfo(url=_prompt_tool_url("prompt")),
+                        text="🎬 Prompt по видео",
+                        web_app=WebAppInfo(url=_prompt_tool_url("video")),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🎞 Prompt для Seedance",
+                        web_app=WebAppInfo(url=_prompt_tool_url("seedance")),
                     )
                 ],
             ]
