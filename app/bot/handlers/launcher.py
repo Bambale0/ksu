@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import QUICK_SUPPORT_TEXT, app_launcher_menu
@@ -75,7 +75,6 @@ def _support_handle() -> str:
 
 
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
-    await message.answer("Обновляю меню ROXY…", reply_markup=ReplyKeyboardRemove())
     await message.answer(
         "<b>Добро пожаловать в ROXY ✨</b>\n\n"
         "Создавайте изображения, видео и музыку, сохраняйте лучшие работы "
