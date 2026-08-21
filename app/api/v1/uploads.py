@@ -64,7 +64,35 @@ async def upload_to_kie(
     )
 
     filename = file.filename or "upload"
+    kind = content_type.split("/", 1)[0]
     file_hash = await asyncio.to_thread(_sha256_stream, file.file)
+
+    existing = await ReferenceService.get_by_hash(
+        session,
+        user_id=user.id,
+        kind=kind,
+        file_hash=file_hash,
+    )
+    if existing is not None:
+        reference, _ = await ReferenceService.register(
+            session,
+            user_id=user.id,
+            source_url=existing.source_url,
+            kind=kind,
+            original_filename=filename,
+            content_type=content_type,
+            file_hash=file_hash,
+            source="mini_app_upload",
+        )
+        return {
+            "url": reference.source_url,
+            "name": reference.original_filename or filename,
+            "mime_type": reference.content_type or content_type,
+            "size": size_bytes,
+            "replayed": True,
+            "reference": ReferenceService.public_view(reference),
+        }
+
     client = KieUploadClient(settings.kie_api_key, settings.kie_upload_base_url)
     try:
         await file.seek(0)
@@ -78,7 +106,6 @@ async def upload_to_kie(
     finally:
         await client.aclose()
 
-    kind = content_type.split("/", 1)[0]
     reference, replayed = await ReferenceService.register(
         session,
         user_id=user.id,
