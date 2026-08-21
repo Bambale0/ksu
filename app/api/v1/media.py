@@ -96,9 +96,11 @@ async def download_media_asset(
 
 
 @router.get("/{asset_id}/public")
+@router.get("/{asset_id}/public/{filename}")
 async def public_media_asset(
     asset_id: uuid.UUID,
     session: SessionDep,
+    filename: str | None = None,
 ) -> RedirectResponse:
     asset = _ready_asset(await session.get(MediaAsset, asset_id))
     generation = await session.get(Generation, asset.generation_id)
