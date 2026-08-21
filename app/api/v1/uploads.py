@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+from typing import BinaryIO
+
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.api.deps import CurrentUserDep, RedisDep
+from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.core.config import settings
 from app.providers.kie import KieProviderError
 from app.providers.kie_uploads import KieUploadClient
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.references import ReferenceService
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
@@ -25,10 +30,23 @@ def _upload_size(file: UploadFile) -> int:
     return int(size)
 
 
+def _sha256_stream(stream: BinaryIO) -> str:
+    stream.seek(0)
+    digest = hashlib.sha256()
+    while True:
+        chunk = stream.read(1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+    stream.seek(0)
+    return digest.hexdigest()
+
+
 @router.post("/kie", status_code=status.HTTP_201_CREATED)
 async def upload_to_kie(
     user: CurrentUserDep,
     redis: RedisDep,
+    session: SessionDep,
     file: UploadFile = File(...),
 ) -> dict[str, object]:
     content_type = (file.content_type or "application/octet-stream").lower()
@@ -46,6 +64,7 @@ async def upload_to_kie(
     )
 
     filename = file.filename or "upload"
+    file_hash = await asyncio.to_thread(_sha256_stream, file.file)
     client = KieUploadClient(settings.kie_api_key, settings.kie_upload_base_url)
     try:
         await file.seek(0)
@@ -59,9 +78,23 @@ async def upload_to_kie(
     finally:
         await client.aclose()
 
+    kind = content_type.split("/", 1)[0]
+    reference, replayed = await ReferenceService.register(
+        session,
+        user_id=user.id,
+        source_url=uploaded.url,
+        kind=kind,
+        original_filename=filename,
+        content_type=uploaded.mime_type or content_type,
+        file_hash=file_hash,
+        source="mini_app_upload",
+    )
+
     return {
-        "url": uploaded.url,
+        "url": reference.source_url,
         "name": uploaded.name,
         "mime_type": uploaded.mime_type,
         "size": uploaded.size,
+        "replayed": replayed,
+        "reference": ReferenceService.public_view(reference),
     }
