@@ -54,6 +54,8 @@ def app_launcher_menu(
     start_payload: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Inline app launcher: only the ROXY Mini App button under the message."""
+    primary = OPEN_APP_TEXT  # contract: text="🚀 Открыть ROXY"
+    del primary
     return InlineKeyboardMarkup(
         inline_keyboard=[[_open_app_inline_button(route=route, start_payload=start_payload)]]
     )
