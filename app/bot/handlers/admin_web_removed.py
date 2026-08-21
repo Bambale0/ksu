@@ -17,6 +17,9 @@ def disable_web_admin_button(admin_module: Any) -> None:
     Telegram admin module in the same change.
     """
 
+    if getattr(admin_module, "_web_admin_button_disabled", False):
+        return
+
     original: Callable[[], InlineKeyboardMarkup] = admin_module._main_keyboard
 
     def filtered_keyboard() -> InlineKeyboardMarkup:
@@ -29,6 +32,7 @@ def disable_web_admin_button(admin_module: Any) -> None:
         return markup
 
     admin_module._main_keyboard = filtered_keyboard
+    admin_module._web_admin_button_disabled = True
 
 
 @router.callback_query(F.data == "admin:web")
