@@ -5,6 +5,7 @@ import "./globals.css";
 import "./loader.css";
 import "./catalog.css";
 import "./ux-polish.css";
+import "./wallet-bonuses.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
