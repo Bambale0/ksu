@@ -192,7 +192,11 @@ def test_public_roxy_menu_is_mini_app_only() -> None:
     keyboard = (ROOT / "app" / "bot" / "keyboards.py").read_text(encoding="utf-8")
     launcher = keyboard.split("def app_launcher_menu(", 1)[1].split("\ndef _route_button", 1)[0]
     main_menu = keyboard.split("def main_menu()", 1)[1]
-    assert 'text="🚀 Открыть ROXY"' in launcher
+    assert "ReplyKeyboardMarkup" in launcher
+    assert "KeyboardButton(**open_button_kwargs)" in launcher
+    assert "QUICK_MENU_TEXT" in launcher
+    assert "QUICK_SUPPORT_TEXT" in launcher
+    assert "web_app" in launcher
     assert 'return app_launcher_menu(route="home")' in main_menu
     for label in (
         "✨ Создать",
