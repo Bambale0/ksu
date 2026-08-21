@@ -12,6 +12,7 @@ from app.core.config import settings
 
 BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
+OPEN_APP_TEXT = "🚀 Открыть ROXY"
 QUICK_MENU_TEXT = "🏠 Меню"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
@@ -36,27 +37,29 @@ def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
 
+def _open_app_button(*, route: str = "home", start_payload: str | None = None) -> KeyboardButton:
+    if not settings.public_base_url:
+        return KeyboardButton(text=OPEN_APP_TEXT)
+    return KeyboardButton(
+        text=OPEN_APP_TEXT,
+        web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
+    )
+
+
 def app_launcher_menu(
     *,
     route: str = "home",
     start_payload: str | None = None,
-) -> InlineKeyboardMarkup:
-    """The only customer-facing Telegram navigation: open the ROXY Mini App."""
-    if not settings.public_base_url:
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🚀 Открыть ROXY", callback_data="app:unavailable")]
-            ]
-        )
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🚀 Открыть ROXY",
-                    web_app=WebAppInfo(url=_mini_app_url(route, start_payload=start_payload)),
-                )
-            ]
-        ]
+) -> ReplyKeyboardMarkup:
+    """Customer-facing Telegram navigation: app button plus support, not inline menu."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [_open_app_button(route=route, start_payload=start_payload)],
+            [KeyboardButton(text=QUICK_SUPPORT_TEXT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="Открой ROXY или напиши в поддержку",
     )
 
 
@@ -84,17 +87,11 @@ def _batch_button() -> InlineKeyboardButton:
 
 
 def quick_menu() -> ReplyKeyboardMarkup:
-    """Legacy keyboard kept only for imports in retired text-bot handlers.
-
-    The production dispatcher no longer registers those handlers. New customer
-    navigation must use :func:`app_launcher_menu`.
-    """
+    """Compatibility keyboard for retired text-bot handlers."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text=QUICK_MENU_TEXT),
-                KeyboardButton(text=QUICK_SUPPORT_TEXT),
-            ]
+            [_open_app_button(route="home")],
+            [KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -160,6 +157,6 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu() -> InlineKeyboardMarkup:
+def main_menu() -> ReplyKeyboardMarkup:
     """Compatibility alias for older imports; customer UX is Mini-App-only."""
     return app_launcher_menu(route="home")
