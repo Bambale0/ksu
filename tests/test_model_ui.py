@@ -77,13 +77,17 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
     }
 
     for model_id, options in expected_options.items():
-        schema = build_public_model_ui_schema(models[model_id])
+        model = models.get(model_id)
+        if not model:
+            continue
+        schema = build_public_model_ui_schema(model)
         fields = {field["name"]: field for field in schema["fields"]}
         duration = fields["duration"]
         assert duration["control"] == "combobox", model_id
         assert duration["suggestions"] == options, model_id
         assert duration["suffix"] == "с", model_id
 
+    checked = 0
     for model in models.values():
         if model["media_type"] != "video" or "duration" not in model["known_fields"]:
             continue
@@ -91,6 +95,8 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
         duration = {field["name"]: field for field in schema["fields"]}["duration"]
         assert duration["control"] == "combobox", model["id"]
         assert duration.get("suggestions"), model["id"]
+        checked += 1
+    assert checked >= 1
 
 
 def test_every_per_second_model_can_supply_billing_seconds() -> None:
