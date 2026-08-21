@@ -3,6 +3,7 @@ import Script from "next/script";
 import type { ReactNode } from "react";
 import "./globals.css";
 import "./loader.css";
+import "./catalog.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
