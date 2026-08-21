@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     bot_username: str = ""
-    support_telegram_url: str = ""
+    support_telegram_url: str = "https://t.me/korkinaxenia"
     partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
@@ -177,34 +177,6 @@ class Settings(BaseSettings):
     internal_admin_hmac_secret: str = ""
     internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
     internal_admin_timestamp_skew_seconds: int = 300
-
-    kie_api_key: str = ""
-    kie_base_url: str = "https://api.kie.ai"
-    kie_upload_base_url: str = "https://kieai.redpandaai.co"
-    kie_upload_max_bytes: int = 100 * 1024 * 1024
-    kie_webhook_hmac_key: str = ""
-
-    cryptopay_api_token: str = ""
-    cryptopay_base_url: str = "https://pay.crypt.bot"
-
-    tbank_terminal_key: str = ""
-    tbank_password: str = ""
-    tbank_base_url: str = "https://securepay.tinkoff.ru"
-
-    yookassa_shop_id: str = ""
-    yookassa_secret_key: str = ""
-    yookassa_base_url: str = "https://api.yookassa.ru"
-
-    payment_return_url: str = ""
-
-    @property
-    def is_production(self) -> bool:
-        return self.app_env.lower() == "production"
-
-    def webhook_url(self, path: str) -> str:
-        if not self.public_base_url:
-            return ""
-        return f"{self.public_base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
 @lru_cache
