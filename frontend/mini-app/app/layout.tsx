@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import "./loader.css";
 import "./catalog.css";
+import "./ux-polish.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
