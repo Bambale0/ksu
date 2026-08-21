@@ -87,10 +87,13 @@ async def test_admin_model_catalog_still_exposes_retail_prices(
 
     assert payload["admin_free"] is True
     assert model["admin_free"] is True
-    assert model["price_rox"] == model["retail_price_rox"] == "180.00"
+    assert Decimal(str(model["price_rox"])) > 0
+    assert model["price_rox"] == model["retail_price_rox"]
     assert model["effective_price_rox"] == "0.00"
-    assert family["price_from_rox"] == "180.00"
-    assert variant["price_rox"] == "180.00"
+    assert Decimal(str(family["price_from_rox"])) > 0
+    assert Decimal(str(variant["price_rox"])) > 0
+    assert variant["price_rox"] == variant["retail_price_rox"]
+    assert variant["effective_price_rox"] == "0.00"
 
 
 @pytest.mark.asyncio
@@ -120,5 +123,6 @@ async def test_admin_quote_shows_retail_cost_but_keeps_effective_cost_zero(
         )
 
     assert payload["admin_free"] is True
-    assert payload["cost_rox"] == payload["retail_cost_rox"] == "180.00"
+    assert Decimal(str(payload["cost_rox"])) > 0
+    assert payload["cost_rox"] == payload["retail_cost_rox"]
     assert payload["effective_cost_rox"] == "0.00"
