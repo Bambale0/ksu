@@ -7,8 +7,12 @@ import type {
   GenerationModel,
   GenerationModelFamily,
   Me,
+  PartnerStats,
   PublicationScope,
   Quote,
+  ReferralInvitation,
+  ReferralReward,
+  TrendItem,
 } from "./types";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -60,7 +64,7 @@ export const api = {
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
-  profileFeed: (referralCode: string, offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/profiles/${encodeURIComponent(referralCode)}/feed?limit=24&offset=${offset}`),
+  profileFeed: (referralCode: string, offset = 0) => request<{ author?: Record<string, unknown>; items: FeedCard[] }>(`/api/v1/profiles/${encodeURIComponent(referralCode)}/feed?limit=24&offset=${offset}`),
   publish: (
     id: string,
     options: Exclude<PublicationScope, "private"> | PublishOptions,
@@ -97,6 +101,22 @@ export const api = {
   remix: (id: string, surface: FeedSurface = "feed") => request<{ id: string; status: string; source_feed_gen_id?: string; action_type?: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix`, {
     method: "POST",
     body: JSON.stringify({ surface }),
+  }),
+  trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
+  trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
+  runTrend: (id: string, referenceUrls: string[] = []) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+    body: JSON.stringify({ reference_urls: referenceUrls }),
+  }),
+  referralStats: () => request<PartnerStats>("/api/v1/referrals/stats"),
+  referralInvitations: () => request<{ items: ReferralInvitation[] }>("/api/v1/referrals/invitations?limit=20"),
+  referralRewards: () => request<{ items: ReferralReward[] }>("/api/v1/referrals/rewards?limit=20"),
+  referralTransfers: () => request<{ items: Array<{ id: string; amount_rub: string; rox_amount: string; created_at: string }> }>("/api/v1/referrals/wallet-transfers?limit=20"),
+  creatorPartnership: () => request<Record<string, any>>("/api/v1/creator-partnership"),
+  applyCreatorPartnership: (body: Record<string, unknown>) => request<Record<string, any>>("/api/v1/creator-partnership/applications", {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify(body),
   }),
   transactions: () => request<Array<{ id: string; kind: string; amount: string; balance_after: string; status: string; created_at: string }>>("/api/v1/me/transactions"),
   paymentPackages: () => request<{
