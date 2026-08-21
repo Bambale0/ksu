@@ -48,6 +48,30 @@ class ReferenceService:
         return normalized
 
     @classmethod
+    async def get_by_hash(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        kind: str,
+        file_hash: str,
+        include_deleted: bool = False,
+    ) -> UserReference | None:
+        if kind not in cls.KINDS:
+            raise ReferenceError("Unsupported reference kind")
+        safe_hash = cls._safe_hash(file_hash)
+        if not safe_hash:
+            return None
+        stmt = select(UserReference).where(
+            UserReference.user_id == user_id,
+            UserReference.kind == kind,
+            UserReference.file_hash == safe_hash,
+        )
+        if not include_deleted:
+            stmt = stmt.where(UserReference.status == "ready")
+        return await session.scalar(stmt)
+
+    @classmethod
     async def _find_existing(
         cls,
         session: AsyncSession,
