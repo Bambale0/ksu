@@ -21,6 +21,8 @@ export type Me = {
   balance_rox: string;
   created_at: string;
   is_active: boolean;
+  is_admin?: boolean;
+  billing_mode?: "admin_free" | "wallet" | string;
   preferences?: {
     ui_language: string;
     notifications_enabled: boolean;
@@ -51,6 +53,8 @@ export type UiScenarioItem = {
   title: string;
   visible_fields?: string[];
   clear_fields?: string[];
+  required_fields?: string[];
+  required_any?: string[];
 };
 
 export type UiSchema = {
@@ -119,6 +123,9 @@ export type Generation = {
   error?: string | null;
   created_at?: string;
   updated_at?: string;
+  publication_scope?: PublicationScope;
+  is_profile_visible?: boolean;
+  is_public_feed?: boolean;
 };
 
 export type FeedAuthor = {
@@ -166,6 +173,70 @@ export type FeedComment = {
   author?: FeedAuthor;
 };
 
+export type TrendItem = {
+  id: string;
+  title: string;
+  description?: string;
+  media_type: "image" | "video" | string;
+  preview_url?: string | null;
+  model?: { id: string; title?: string; family?: string };
+  cost_rox?: string;
+  retail_cost_rox?: string;
+  cost_rub?: string;
+  admin_free?: boolean;
+  billing_seconds?: number | null;
+  reference_requirements?: { kind?: string; min?: number; max?: number };
+  tags?: string[];
+  usage_count?: number;
+  created_at?: string;
+};
+
+export type PartnerStats = {
+  first_line?: number;
+  second_line?: number;
+  available?: string;
+  partner_balance_rub?: string;
+  pending?: string;
+  total_earned?: string;
+  transferred_to_rox?: string;
+  pending_withdrawals?: string;
+  minimum_withdrawal?: string;
+  first_line_percent?: string;
+  second_line_percent?: string;
+  referral_payload?: string;
+  referral_link?: string;
+  partner_chat_url?: string | null;
+  rox_balance?: string;
+  welcome_bonus_rox?: string;
+  invite_bonus_rox?: string;
+  prompt_repeat_bonus_rox?: string;
+  minimum_withdrawal_rox?: string;
+  prompts_created?: number;
+  prompt_repeats?: number;
+  withdrawal_status?: string;
+};
+
+export type ReferralReward = {
+  id: string;
+  line: number;
+  percent: string;
+  amount: string;
+  amount_rox?: string;
+  net_amount?: string;
+  net_amount_rox?: string;
+  status: string;
+  created_at: string;
+  source_user?: { username?: string | null; first_name?: string | null };
+};
+
+export type ReferralInvitation = {
+  user_id: string;
+  username?: string | null;
+  first_name?: string | null;
+  line: number;
+  joined_at: string;
+};
+
 export type Quote = {
   model_id: string;
   cost_rox: string;
@@ -179,4 +250,4 @@ export type Draft = {
   billing_seconds?: number | null;
 };
 
-export type Route = "home" | "catalog" | "create" | "history" | "profile";
+export type Route = "home" | "feed" | "catalog" | "create" | "history" | "profile" | "partners";
