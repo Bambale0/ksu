@@ -42,6 +42,9 @@ def test_mode_specific_inputs_are_required_by_the_contract() -> None:
 
     seedance = build_public_model_ui_schema(models["seedance-2.0"])
     seedance_modes = {item["id"]: item for item in seedance["scenario"]["items"]}
+    seedance_fields = {field["name"]: field for field in seedance["fields"]}
+    assert seedance_modes["first_frame"]["title"] == "Референс"
+    assert seedance_fields["first_frame_url"]["label"] == "Референс"
     assert seedance_modes["first_frame"]["required_fields"] == ["first_frame_url"]
     assert seedance_modes["first_last"]["required_fields"] == [
         "first_frame_url",
