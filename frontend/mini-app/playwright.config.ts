@@ -7,7 +7,7 @@ export default defineConfig({
   fullyParallel: true,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
-    baseURL: "http://127.0.0.1:3010",
+    baseURL: "http://127.0.0.1:3010/mini-app",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -16,8 +16,8 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev -- --hostname 127.0.0.1 --port 3010",
-    url: "http://127.0.0.1:3010",
+    url: "http://127.0.0.1:3010/mini-app/",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 180_000,
   },
 });
