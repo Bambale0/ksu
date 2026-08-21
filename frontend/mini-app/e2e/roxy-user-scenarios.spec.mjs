@@ -76,7 +76,8 @@ test.describe('ROXY Mini App E2E audit', () => {
         await page.goto(`/mini-app/?route=${scenario.route}`, { waitUntil: 'domcontentloaded' });
         await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 5_000 });
         await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
-        await expect(page.getByRole('button', { name: /Создать/ })).toBeVisible();
+        await expect(page.locator('.bottom-nav button.central')).toBeVisible();
+        await expect(page.locator('.bottom-nav button.central small')).toHaveText(/Создать/);
         expect(await visibleTechCopyCount(page)).toBe(0);
         if (scenario.route === 'feed') await expect(page.getByText('Работы сообщества')).toBeVisible();
         if (scenario.route === 'catalog') await expect(page.getByText('Готовые сценарии')).toBeVisible();
@@ -84,7 +85,7 @@ test.describe('ROXY Mini App E2E audit', () => {
         if (scenario.route === 'partners') await expect(page.getByText(/реферальн|партн/i).first()).toBeVisible();
         if (scenario.route === 'profile') await expect(page.getByText('Профиль').first()).toBeVisible();
         if (scenario.check === 'navigation') {
-          await page.getByRole('button', { name: /Создать/ }).click();
+          await page.locator('.bottom-nav button.central').click();
           await expect(page.getByText('Настрой генерацию')).toBeVisible();
         }
       });
