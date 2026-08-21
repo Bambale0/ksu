@@ -1,53 +1,53 @@
 # KSU admin contour
 
+Updated: 2026-08-21
+
 ## Architecture
 
 ```text
 Telegram /admin + FSM ───────────────┐
-                                     │
-Browser /admin-app/control.html ─────┼──> AdminPolicy
-                                     │       │
-Signed /internal/admin/* ────────────┘       ├──> AdminCommandLedger
-                                             │       │
-                                             │       └── idempotency + redacted request/response evidence
-                                             │
-                                             └──> shared admin services
-                                                    ├── users / wallet
-                                                    ├── partners / withdrawals
-                                                    ├── reporting / finance / exports
-                                                    ├── payments
-                                                    ├── generation operations
-                                                    ├── pricing / tariff versions
-                                                    ├── promos
-                                                    ├── prompt + feed moderation / trends
-                                                    ├── support
-                                                    ├── CMS versions
-                                                    ├── campaigns
-                                                    ├── runtime
-                                                    └── AI admin brief
-                                                             │
-                            ┌────────────────────────────────┴──────────────────────┐
-                            │                                                       │
-                     transactional DB writes                                durable side effects
-                                                                                    │
-                                                        ┌───────────────────────────┴──────────────────────────┐
-                                                        │                                                      │
-                                                SupportOutbox worker                              CampaignDelivery worker
+                                     ├──> AdminPolicy
+Signed /internal/admin/* ────────────┘       │
+                                             ├──> AdminCommandLedger
+/api/v1/admin/* authenticated API ───────────┘       │
+                                                     └── idempotency + redacted request/response evidence
+
+shared admin services
+├── users / wallet
+├── partners / withdrawals
+├── reporting / finance / exports
+├── payments
+├── generation operations
+├── pricing / tariff versions
+├── promos
+├── prompt + feed moderation / trends
+├── support
+├── CMS versions
+├── campaigns
+├── runtime
+└── AI admin brief
+       │
+       ├── transactional DB writes
+       └── durable side effects
+              ├── SupportOutbox worker
+              └── CampaignDelivery worker
 ```
 
+The retired static browser admin (`/admin-app`) is no longer mounted or shipped. The admin contour is Telegram/API-only until a new maintained admin product is intentionally built.
+
 ## Security boundaries
-
-### Browser admin
-
-The browser uses the existing bearer admin session/MFA system. The shared control page keeps the bearer token only in JavaScript memory, requires Telegram initData at login/step-up, confirms the admin identity with `/api/v1/admin/auth/me`, and relies on backend `require_permission()` for every protected route.
-
-`require_permission()` delegates to `AdminPolicy`, so browser RBAC and domain-service RBAC use the same policy facade. Sensitive browser routes additionally require a fresh existing MFA step-up.
 
 ### Telegram admin
 
 Every `/admin` callback and every continuation of an admin FSM state re-resolves an active `AdminAccount` from the Telegram user. Revoking the admin account therefore blocks an already-open keyboard/FSM flow on the next interaction.
 
 Handlers do not contain wallet/payment/campaign/support write logic. They collect input, render preview/confirmation, and call shared services.
+
+The old `admin:web` callback is intercepted and returns a removal notice. Current admin keyboards do not expose a web-admin button.
+
+### Authenticated admin API
+
+`/api/v1/admin/*` remains the backend admin API surface for sessions, MFA, account management, audit, capabilities, control, users, payments, operations and creator partnership flows. Route protection stays backend-driven via dependency-injected admin contexts and `AdminPolicy`.
 
 ### Internal admin API
 
@@ -120,9 +120,8 @@ Workers claim rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, leases, retry/backo
 ### Transport adapters
 
 - Signed HTTP: `app/api/internal_admin.py`
-- Browser shared control: `app/api/v1/admin_control.py`, `app/api/v1/admin_capabilities.py`
-- Telegram: `app/bot/handlers/admin.py`, `app/bot/handlers/admin_extensions.py`
-- Browser UI: `app/web/admin_app/control.html`, `control.js`, `control.css`
+- Authenticated admin API: `app/api/v1/admin_auth.py`, `admin_accounts.py`, `admin_audit.py`, `admin_capabilities.py`, `admin_control.py`, `admin_creator_partnership.py`, `admin_operations.py`, `admin_payments.py`, `admin_users.py`
+- Telegram: `app/bot/handlers/admin.py`, `app/bot/handlers/admin_extensions.py`, `app/bot/handlers/admin_web_removed.py`
 
 ### Workers
 
@@ -162,6 +161,6 @@ The required order is:
 5. Record audit evidence where operator attribution matters.
 6. Add durable outbox/delivery state if the action has an external side effect that can fail after commit.
 7. Add tests for permission, validation, idempotency and failure/retry behavior.
-8. Only then add Telegram, browser and/or signed HTTP adapters.
+8. Only then add Telegram and/or signed/authenticated HTTP adapters.
 
 A privileged mutation implemented only in a handler, callback, JavaScript module or one transport is an architecture regression.

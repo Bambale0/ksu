@@ -1,70 +1,33 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ADMIN = ROOT / "app" / "web" / "admin_app"
+ADMIN_WEB = ROOT / "app" / "web" / "admin_app"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_shared_admin_control_surface_is_present_and_discoverable() -> None:
-    index = _read(ADMIN / "index.html")
+def test_static_web_admin_surface_is_not_shipped_or_mounted() -> None:
+    main = _read(ROOT / "app" / "main.py")
     workflow = _read(ROOT / ".github" / "workflows" / "admin-console.yml")
 
-    assert (ADMIN / "control.html").is_file()
-    assert (ADMIN / "control.css").is_file()
-    assert (ADMIN / "control.js").is_file()
-    assert '/admin-app/control.html' in index
-    assert "node --check app/web/admin_app/control.js" in workflow
+    assert not ADMIN_WEB.exists()
+    assert 'app.mount("/admin-app"' not in main
+    assert 'app.mount("/mini-app"' in main
+    assert "node --check app/web/admin_app" not in workflow
+    assert "name: Admin Contour" in workflow
 
 
-def test_control_surface_keeps_privileged_credentials_memory_only_and_escapes_content() -> None:
-    js = _read(ADMIN / "control.js")
+def test_retired_telegram_web_callback_is_handled_without_opening_webapp() -> None:
+    dispatcher = _read(ROOT / "app" / "bot" / "dispatcher.py")
+    retired = _read(ROOT / "app" / "bot" / "handlers" / "admin_web_removed.py")
 
-    assert "state.token" in js
-    assert 'Authorization", `Bearer ${state.token}`' in js
-    assert "tg?.initData" in js
-    for forbidden in (
-        "localStorage",
-        "sessionStorage",
-        "indexedDB",
-        "innerHTML",
-        "outerHTML",
-        "document.write",
-        "eval(",
-        "new Function(",
-    ):
-        assert forbidden not in js
-    assert "textContent" in js
-
-
-def test_control_surface_uses_shared_backend_routes_and_command_headers() -> None:
-    js = _read(ADMIN / "control.js")
-    for token in (
-        "/api/v1/admin/control/users",
-        "/api/v1/admin/control/payments",
-        "/api/v1/admin/control/operations",
-        "/api/v1/admin/control/tickets",
-        "/api/v1/admin/tariffs",
-        "/api/v1/admin/cms/documents",
-        "/api/v1/admin/notifications/campaigns",
-        "/api/v1/admin/control/promocodes",
-        "/api/v1/admin/prompts",
-        "/api/v1/admin/trends",
-        "/api/v1/admin/feed/",
-        "/api/v1/admin/runtime",
-        "/api/v1/admin/partners/analytics",
-        "/api/v1/admin/control/exports/",
-    ):
-        assert token in js, token
-
-    assert '"Idempotency-Key"' in js
-    assert '"X-Admin-Confirm"' in js
-    assert '"X-Request-Id"' in js
-    assert "/api/v1/admin/auth/step-up" in js
-    assert "/api/v1/admin/auth/me" in js
-    assert "Server did not confirm active admin role" in js
+    assert "admin_web_removed.disable_web_admin_button(admin)" in dispatcher
+    assert "dispatcher.include_router(admin_web_removed.router)" in dispatcher
+    assert 'F.data == "admin:web"' in retired
+    assert "Web-админка удалена" in retired
+    assert "WebAppInfo" not in retired
 
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
@@ -83,6 +46,19 @@ def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     assert "session.execute(" not in source
     assert "Idempotency-Key" in source
     assert "X-Admin-Confirm" in source
+
+
+def test_control_backend_exposes_shared_admin_domains() -> None:
+    source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
+    for token in (
+        "/admin/control/users",
+        "/admin/control/payments",
+        "/admin/control/operations",
+        "/admin/control/tickets",
+        "/admin/control/promocodes",
+        "/admin/control/exports/",
+    ):
+        assert token in source, token
 
 
 def test_new_capability_backend_revalidates_permissions_server_side() -> None:
