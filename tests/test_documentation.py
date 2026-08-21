@@ -14,6 +14,8 @@ def test_current_documentation_entrypoints_exist() -> None:
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/GENERATION_MINI_APP.md",
         "docs/ADMIN_SECURITY.md",
+        "docs/ADMIN_CONTOUR.md",
+        "docs/ADMIN_WEB_REMOVAL_AUDIT_2026-08-21.md",
     ):
         path = ROOT / relative
         assert path.is_file(), relative
@@ -24,6 +26,8 @@ def test_readme_documents_current_runtime_surfaces() -> None:
     readme = _read("README.md")
     for token in (
         "/mini-app/",
+        "Telegram-admin/API-only",
+        "retired static `/admin-app/` web surface is not mounted or shipped",
         "/api/v1/uploads/kie",
         "generation-worker",
         "KIE_UPLOAD_BASE_URL",
@@ -69,10 +73,15 @@ def test_generation_docs_cover_schema_state_and_server_pricing() -> None:
         assert token in doc, token
 
 
-def test_admin_runbook_does_not_claim_visual_admin_is_bundled() -> None:
-    doc = _read("docs/ADMIN_SECURITY.md")
-    assert "dedicated visual admin web application" in doc
-    assert "not" in doc.lower()
-    assert "ADMIN_SECURITY_KEY" in doc
-    assert "X-Telegram-Init-Data" in doc
-    assert "step-up" in doc
+def test_admin_docs_mark_static_web_admin_removed() -> None:
+    contour = _read("docs/ADMIN_CONTOUR.md")
+    audit = _read("docs/ADMIN_WEB_REMOVAL_AUDIT_2026-08-21.md")
+    security = _read("docs/ADMIN_SECURITY.md")
+
+    assert "The retired static browser admin (`/admin-app`) is no longer mounted or shipped" in contour
+    assert "Telegram-admin/API-only" in contour
+    assert "app/bot/handlers/admin_web_removed.py" in contour
+    assert "static `/admin-app/` web surface is not mounted or shipped" in audit
+    assert "old `admin:web` callbacks" in audit
+    assert "ADMIN_SECURITY_KEY" in security
+    assert "step-up" in security
