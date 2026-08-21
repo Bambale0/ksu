@@ -23,7 +23,6 @@ class UserReference(TimestampMixin, Base):
             "kind",
             "file_hash",
             unique=True,
-            postgresql_where="file_hash IS NOT NULL",
         ),
         Index("ix_user_references_user_kind_last_used", "user_id", "kind", "last_used_at"),
     )
