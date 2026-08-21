@@ -128,6 +128,14 @@ export type Generation = {
   is_public_feed?: boolean;
 };
 
+export type RecreateGenerationPayload = {
+  model_id: string;
+  prompt: string;
+  input_url?: string | null;
+  billing_seconds?: number | null;
+  parameters: Record<string, unknown>;
+};
+
 export type FeedAuthor = {
   id?: string;
   telegram_id?: number;
@@ -279,6 +287,7 @@ export type Draft = {
   values: Record<string, unknown>;
   scenario?: string | null;
   billing_seconds?: number | null;
+  input_url?: string | null;
 };
 
 export type Route = "home" | "feed" | "catalog" | "create" | "history" | "profile" | "partners";
