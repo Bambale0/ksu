@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -257,7 +258,7 @@ async def test_generation_delivery_guard_does_not_send_media_twice() -> None:
         delivery.attempts = 2
         generation.telegram_notification_status = "sent"
         generation.telegram_message_id = "991"
-        generation.telegram_notification_sent_at = generation.updated_at
+        generation.telegram_notification_sent_at = datetime.now(UTC)
         await session.commit()
         delivery_id = delivery.id
 
