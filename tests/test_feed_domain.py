@@ -130,7 +130,7 @@ async def test_completed_image_generation_publishes_to_feed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_sets_scope_while_media_ingest_is_pending() -> None:
+async def test_publish_is_visible_while_media_ingest_is_pending() -> None:
     async with SessionFactory() as session:
         author = await _user(session, "Pending")
         generation = await _pending_generation(session, author)
@@ -148,13 +148,16 @@ async def test_publish_sets_scope_while_media_ingest_is_pending() -> None:
         assert published.feed_published_at is not None
 
         rows = await FeedService.get_feed_generations(session, sort="recent")
-        assert generation.id not in {row.id for row in rows}
-        with pytest.raises(FeedNotFoundError):
-            await FeedService.get_feed_generation_card(
-                session,
-                generation_id=generation.id,
-                viewer_user_id=author.id,
-            )
+        assert generation.id in {row.id for row in rows}
+        card = await FeedService.get_feed_generation_card(
+            session,
+            generation_id=generation.id,
+            viewer_user_id=author.id,
+        )
+        assert card["publication_scope"] == "feed"
+        assert card["is_public_feed"] is True
+        assert card["result_url"] == generation.result_url
+        assert card["media"][0]["id"] is None
 
 
 @pytest.mark.asyncio

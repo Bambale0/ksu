@@ -20,8 +20,6 @@
     document.querySelectorAll(".preview-card .panel").forEach((panel) => {
       const rows = Array.from(panel.querySelectorAll("label.toggle-row"));
       const promptRow = rows.find((row) => /Показать промпт|Скрыть промпт/.test(row.textContent || ""));
-      const referenceRow = rows.find((row) => /Показать референсы/.test(row.textContent || ""));
-      if (referenceRow) referenceRow.remove();
       bindPromptToggle(promptRow);
     });
   }
@@ -45,7 +43,6 @@
       if (isPublish && typeof init.body === "string") {
         const body = JSON.parse(init.body);
         body.prompt_visible = !state.hidePrompt;
-        body.references_visible = false;
         init = { ...init, body: JSON.stringify(body) };
       }
     } catch (_) {
