@@ -1,0 +1,30 @@
+.host {
+  min-height: 42px;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+}
+
+.backButton {
+  min-height: 42px;
+  padding: 9px 13px 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(155, 92, 255, .11), rgba(255, 255, 255, .025));
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.backButton:active {
+  transform: scale(.98);
+}
+
+.backButton svg {
+  flex: 0 0 auto;
+}
