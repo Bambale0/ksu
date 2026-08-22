@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.core.config import settings
 from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
 
 
@@ -22,6 +23,7 @@ async def test_existing_static_feed_url_is_reused(tmp_path: Path, monkeypatch) -
     root.mkdir()
     monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
     monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
     media = root / "existing.png"
     media.write_bytes(_png())
 
@@ -38,6 +40,29 @@ async def test_existing_static_feed_url_is_reused(tmp_path: Path, monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_existing_static_url_becomes_absolute_with_public_base(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "feed"
+    root.mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example/")
+    media = root / "existing.png"
+    media.write_bytes(_png())
+
+    items = await FeedStaticStorage.persist_urls(
+        ["/uploads/feed/existing.png"],
+        generation_id=uuid.uuid4(),
+    )
+
+    assert items[0].public_url == "https://roxy.example/uploads/feed/existing.png"
+    assert FeedStaticStorage.is_local_url(items[0].public_url)
+    assert FeedStaticStorage.local_url_exists(items[0].public_url)
+
+
+@pytest.mark.asyncio
 async def test_external_video_is_moved_to_immutable_static_name(
     tmp_path: Path,
     monkeypatch,
@@ -46,6 +71,7 @@ async def test_external_video_is_moved_to_immutable_static_name(
     root.mkdir()
     monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
     monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
     generation_id = uuid.uuid4()
 
     async def fake_download(_cls, _url: str):  # type: ignore[no-untyped-def]
@@ -78,6 +104,7 @@ async def test_static_persist_is_all_or_nothing(tmp_path: Path, monkeypatch) -> 
     root.mkdir()
     monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
     monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
     generation_id = uuid.uuid4()
     calls = 0
 
