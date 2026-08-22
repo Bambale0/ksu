@@ -20,6 +20,15 @@ export type SavedReference = {
   filename?: string | null;
   content_type?: string | null;
   source?: string | null;
+  size_bytes?: number | null;
+  duration_ms?: number | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  container?: string | null;
+  video_codec?: string | null;
+  audio_codec?: string | null;
+  probe_status?: string | null;
   created_at: string;
   updated_at?: string | null;
   last_used_at?: string | null;
@@ -31,6 +40,11 @@ type UploadResult = {
   mime_type?: string;
   size?: number;
   replayed?: boolean;
+  probe_status?: string;
+  duration_ms?: number | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
   reference?: SavedReference;
 };
 
@@ -91,6 +105,26 @@ function acceptedKinds(field: UiField): Set<SavedReference["kind"]> {
   if (raw.includes("audio/") || raw.includes(".mp3") || raw.includes(".wav") || raw.includes(".m4a") || raw.includes(".aac") || raw.includes(".ogg")) kinds.add("audio");
   if (!kinds.size) kinds.add("image");
   return kinds;
+}
+
+function referenceFitsField(reference: SavedReference, field: UiField): boolean {
+  if (!field.max_size_mb || !reference.size_bytes) return true;
+  return reference.size_bytes <= field.max_size_mb * 1024 * 1024;
+}
+
+function formatDuration(reference: SavedReference): string | null {
+  const seconds = reference.duration_seconds;
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return `${seconds}с`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatSize(reference: SavedReference): string | null {
+  if (!reference.size_bytes || reference.size_bytes <= 0) return null;
+  const mb = reference.size_bytes / 1024 / 1024;
+  return mb >= 1 ? `${mb.toFixed(mb >= 10 ? 0 : 1)} МБ` : `${Math.ceil(reference.size_bytes / 1024)} КБ`;
 }
 
 export function ReferenceMemoryProvider({ children }: { children: ReactNode }) {
@@ -191,7 +225,7 @@ export function SavedReferencePicker({
   const selectedSet = new Set(selected);
   const kinds = acceptedKinds(field);
   const available = memory.references
-    .filter((item) => kinds.has(item.kind) && !selectedSet.has(item.url))
+    .filter((item) => kinds.has(item.kind) && !selectedSet.has(item.url) && referenceFitsField(item, field))
     .slice(0, 12);
 
   if (!available.length) return null;
@@ -217,36 +251,44 @@ export function SavedReferencePicker({
         <small>{available.length} доступно</small>
       </div>
       <div className="saved-reference-row">
-        {available.map((reference) => (
-          <div className="saved-reference-card" key={reference.id}>
-            <button
-              className="saved-reference-pick"
-              type="button"
-              onClick={() => choose(reference)}
-              title={reference.filename || reference.label || "Сохранённый референс"}
-            >
-              <span className="saved-reference-preview">
-                {reference.kind === "image" ? (
-                  <img src={reference.url} alt="" loading="lazy" />
-                ) : (
-                  <span aria-hidden="true">{reference.kind === "video" ? "🎬" : "🎵"}</span>
-                )}
-              </span>
-              <span className="saved-reference-name">
-                {reference.label || reference.filename || (reference.kind === "image" ? "Фото" : reference.kind === "video" ? "Видео" : "Аудио")}
-              </span>
-              <span className="saved-reference-plus" aria-hidden="true">＋</span>
-            </button>
-            <button
-              className="saved-reference-delete"
-              type="button"
-              aria-label="Удалить из сохранённых референсов"
-              onClick={() => void memory.remove(reference.id)}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+        {available.map((reference) => {
+          const duration = formatDuration(reference);
+          const size = formatSize(reference);
+          return (
+            <div className="saved-reference-card" key={reference.id}>
+              <button
+                className="saved-reference-pick"
+                type="button"
+                onClick={() => choose(reference)}
+                title={reference.filename || reference.label || "Сохранённый референс"}
+              >
+                <span className="saved-reference-preview">
+                  {reference.kind === "image" ? (
+                    <img src={reference.url} alt="" loading="lazy" />
+                  ) : (
+                    <span aria-hidden="true">{reference.kind === "video" ? "🎬" : "🎵"}</span>
+                  )}
+                </span>
+                <span className="saved-reference-name">
+                  {reference.label || reference.filename || (reference.kind === "image" ? "Фото" : reference.kind === "video" ? "Видео" : "Аудио")}
+                  {(duration || size) && <small>{[duration, size].filter(Boolean).join(" · ")}</small>}
+                  {reference.kind !== "image" && reference.probe_status && reference.probe_status !== "ready" && (
+                    <small>Длительность не проверена</small>
+                  )}
+                </span>
+                <span className="saved-reference-plus" aria-hidden="true">＋</span>
+              </button>
+              <button
+                className="saved-reference-delete"
+                type="button"
+                aria-label="Удалить из сохранённых референсов"
+                onClick={() => void memory.remove(reference.id)}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
