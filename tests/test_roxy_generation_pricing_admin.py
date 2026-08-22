@@ -10,7 +10,7 @@ from app.db.session import SessionFactory
 from app.services.admin_policy import AdminPolicyError
 from app.services.admin_pricing import AdminPricingService
 from app.services.generations import GenerationService
-from app.services.kie_image_contracts import normalize_kie_image_input
+from app.services.kie_image_contracts import KieImageContractError, normalize_kie_image_input
 from app.services.model_catalog import ModelCatalog
 
 
@@ -93,11 +93,23 @@ def test_wan_27_pro_is_a_real_photo_generation_and_edit_model() -> None:
             "input_urls": ["https://example.test/reference.png"],
             "n": 1,
             "resolution": "2K",
-            "thinking_mode": True,
+            "thinking_mode": False,
         },
     )
     assert edit_payload["input_urls"]
     assert edit_payload["thinking_mode"] is False
+
+    with pytest.raises(KieImageContractError, match="thinking_mode"):
+        normalize_kie_image_input(
+            spec.kie_model,
+            {
+                "prompt": "Keep composition and replace the product color",
+                "input_urls": ["https://example.test/reference.png"],
+                "n": 1,
+                "resolution": "2K",
+                "thinking_mode": True,
+            },
+        )
 
 
 @pytest.mark.asyncio
