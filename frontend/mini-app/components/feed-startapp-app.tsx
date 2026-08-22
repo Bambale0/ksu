@@ -32,7 +32,7 @@ export function FeedStartApp({ generationId, referralCode }: { generationId: str
   const authorCode = String(card?.author_referral_code || card?.author?.telegram_id || "");
   const validReferral = Boolean(card && authorCode === referralCode);
   const author = card?.author?.display_name || card?.author?.username || "Автор ROXY";
-  const model = typeof card?.model === "object" ? card.model.title : String(card?.model || "ROXY");
+  const model = String(card?.model || "ROXY");
 
   const repeat = async () => {
     if (!card || !validReferral || busy) return;
