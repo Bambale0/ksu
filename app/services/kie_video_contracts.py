@@ -29,12 +29,12 @@ VIDEO_MODELS = {
     "grok-imagine/extend",
 }
 
-SEEDANCE_2_MODELS = {
+SEEDANCE_20_MODELS = {
     "bytedance/seedance-2",
     "bytedance/seedance-2-fast",
     "bytedance/seedance-2-mini",
-    "bytedance/seedance-2-5",
 }
+SEEDANCE_2_MODELS = {*SEEDANCE_20_MODELS, "bytedance/seedance-2-5"}
 MOTION_MODELS = {"kling-2.6/motion-control", "kling-3.0/motion-control"}
 GROK_GENERATORS = {
     "grok-imagine/text-to-video",
@@ -156,49 +156,86 @@ def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
 
 
 def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
-    for field in (
-        "fixed_lens",
-        "generate_audio",
-        "nsfw_checker",
-        "return_last_frame",
-        "web_search",
-    ):
-        _bool(payload, field)
-
-    _int_range(
-        payload,
-        "duration",
-        minimum=4 if model == "bytedance/seedance-2-5" else 1,
-        maximum=30,
-    )
+    # Kie's published Seedance 2.0 example briefly contained a trailing-space
+    # typo in this key. Accept old saved payloads, but only send the canonical
+    # field to the provider.
+    legacy_video_refs = payload.pop("reference_video_urls ", None)
+    if legacy_video_refs not in (None, "") and not payload.get("reference_video_urls"):
+        payload["reference_video_urls"] = legacy_video_refs
 
     if model == "bytedance/seedance-1.5-pro":
+        for field in ("fixed_lens", "generate_audio", "nsfw_checker"):
+            _bool(payload, field)
+        _int_range(payload, "duration", minimum=1, maximum=30)
         _list(payload, "input_urls", maximum=2)
         return
 
-    if model in SEEDANCE_2_MODELS:
+    if model in SEEDANCE_20_MODELS:
+        # Current Kie Seedance 2 / Fast / Mini request schemas do not expose the
+        # legacy fixed_lens or return_last_frame fields. Old ROXY drafts used to
+        # include them (return_last_frame=false even by default), which made Kie
+        # reject otherwise valid requests before a task appeared in the dashboard.
+        payload.pop("fixed_lens", None)
+        payload.pop("return_last_frame", None)
+        for field in ("generate_audio", "nsfw_checker", "web_search"):
+            _bool(payload, field)
+
+        _int_range(payload, "duration", minimum=4, maximum=15)
+        if model in {"bytedance/seedance-2", "bytedance/seedance-2-fast"}:
+            # The current Kie form does not list `adaptive` for Seedance 2 or
+            # Seedance 2 Fast. Normalize legacy defaults to a documented ratio.
+            if payload.get("aspect_ratio") == "adaptive":
+                payload["aspect_ratio"] = "16:9"
+            _enum(payload, "aspect_ratio", {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9"})
+        else:
+            _enum(
+                payload,
+                "aspect_ratio",
+                {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"},
+            )
+        _enum(payload, "resolution", {"480p", "720p"})
+
         first = bool(payload.get("first_frame_url"))
         last = bool(payload.get("last_frame_url"))
-        reference_mode = any(
-            payload.get(field)
-            for field in (
-                "reference_image_urls",
-                "reference_video_urls",
-                "reference_audio_urls",
-            )
-        )
         if last and not first:
             raise KieVideoContractError("Seedance last frame requires a first frame")
-        if (first or last) and reference_mode:
+
+        # Seedance 2.0 supports hybrid control: first/last temporal frames may be
+        # combined with multimodal reference arrays. The previous local mutual-
+        # exclusion check stopped these requests before KieClient.post().
+        _list(payload, "reference_image_urls", maximum=9)
+        _list(payload, "reference_video_urls", maximum=3)
+        _list(payload, "reference_audio_urls", maximum=3)
+        return
+
+    if model == "bytedance/seedance-2-5":
+        for field in ("generate_audio", "nsfw_checker", "return_last_frame", "web_search"):
+            _bool(payload, field)
+        payload.pop("fixed_lens", None)
+        _int_range(payload, "duration", minimum=4, maximum=30)
+        if payload.get("resolution") == "4K":
+            payload["resolution"] = "4k"
+        _enum(payload, "resolution", {"480p", "720p", "1080p"})
+        _enum(
+            payload,
+            "aspect_ratio",
+            {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"},
+        )
+        _enum(payload, "output_format", {"mp4", "mov"})
+
+        first = bool(payload.get("first_frame_url"))
+        last = bool(payload.get("last_frame_url"))
+        image_refs = _list(payload, "reference_image_urls", maximum=30)
+        video_refs = _list(payload, "reference_video_urls", maximum=10)
+        audio_refs = _list(payload, "reference_audio_urls", maximum=10)
+        if last and not first:
+            raise KieVideoContractError("Seedance last frame requires a first frame")
+        if (first or last) and (image_refs or video_refs or audio_refs):
+            # Keep 2.5's explicit frame-vs-reference mode separation. Unlike 2.0,
+            # this rule is also enforced in the pre-billing Seedance 2.5 contract.
             raise KieVideoContractError(
-                "Seedance frame mode and multimodal reference mode are mutually exclusive"
+                "Seedance 2.5 frame mode and multimodal reference mode are mutually exclusive"
             )
-        for field in (
-            "reference_image_urls",
-            "reference_video_urls",
-            "reference_audio_urls",
-        ):
-            _list(payload, field)
 
 
 def _normalize_kling_3(payload: dict[str, Any]) -> None:
