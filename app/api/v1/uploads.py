@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.providers.kie import KieProviderError
 from app.providers.kie_uploads import KieUploadClient
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.media_probe import MediaProbe, probe_media_stream
 from app.services.references import ReferenceService
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
@@ -42,11 +43,37 @@ def _sha256_stream(stream: BinaryIO) -> str:
     return digest.hexdigest()
 
 
-async def _persist_reference_size(session: SessionDep, reference: object, size_bytes: int) -> None:
-    # Uploaded references have a product-owned, measured byte size. Manual URL
-    # references intentionally remain unknown and are not guessed via remote HEAD.
+async def _persist_reference_metadata(
+    session: SessionDep,
+    reference: object,
+    *,
+    size_bytes: int,
+    probe: MediaProbe,
+) -> None:
+    # Uploaded references have product-owned, measured metadata. Manual URL
+    # references intentionally remain unknown instead of trusting remote headers.
     setattr(reference, "size_bytes", size_bytes)
+    setattr(reference, "duration_ms", probe.duration_ms)
+    setattr(reference, "width", probe.width)
+    setattr(reference, "height", probe.height)
+    setattr(reference, "container", probe.container)
+    setattr(reference, "video_codec", probe.video_codec)
+    setattr(reference, "audio_codec", probe.audio_codec)
+    setattr(reference, "probe_status", probe.status)
     await session.commit()
+
+
+def _metadata_view(probe: MediaProbe) -> dict[str, object | None]:
+    return {
+        "probe_status": probe.status,
+        "duration_ms": probe.duration_ms,
+        "duration_seconds": probe.duration_seconds,
+        "width": probe.width,
+        "height": probe.height,
+        "container": probe.container,
+        "video_codec": probe.video_codec,
+        "audio_codec": probe.audio_codec,
+    }
 
 
 @router.post("/kie", status_code=status.HTTP_201_CREATED)
@@ -73,6 +100,7 @@ async def upload_to_kie(
     filename = file.filename or "upload"
     kind = content_type.split("/", 1)[0]
     file_hash = await asyncio.to_thread(_sha256_stream, file.file)
+    probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
 
     existing = await ReferenceService.get_by_hash(
         session,
@@ -91,7 +119,12 @@ async def upload_to_kie(
             file_hash=file_hash,
             source="mini_app_upload",
         )
-        await _persist_reference_size(session, reference, size_bytes)
+        await _persist_reference_metadata(
+            session,
+            reference,
+            size_bytes=size_bytes,
+            probe=probe,
+        )
         return {
             "url": reference.source_url,
             "name": reference.original_filename or filename,
@@ -99,6 +132,7 @@ async def upload_to_kie(
             "size": size_bytes,
             "replayed": True,
             "reference": ReferenceService.public_view(reference),
+            **_metadata_view(probe),
         }
 
     client = KieUploadClient(settings.kie_api_key, settings.kie_upload_base_url)
@@ -124,7 +158,12 @@ async def upload_to_kie(
         file_hash=file_hash,
         source="mini_app_upload",
     )
-    await _persist_reference_size(session, reference, size_bytes)
+    await _persist_reference_metadata(
+        session,
+        reference,
+        size_bytes=size_bytes,
+        probe=probe,
+    )
 
     return {
         "url": reference.source_url,
@@ -133,4 +172,5 @@ async def upload_to_kie(
         "size": uploaded.size,
         "replayed": replayed,
         "reference": ReferenceService.public_view(reference),
+        **_metadata_view(probe),
     }
