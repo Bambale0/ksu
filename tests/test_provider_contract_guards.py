@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services.kie_image_contracts import KieImageContractError, normalize_kie_image_input
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
 
@@ -21,33 +22,33 @@ def test_wan_video_edit_audio_setting_is_a_real_provider_control() -> None:
 
 
 def test_wan_thinking_mode_with_references_is_rejected_instead_of_silently_disabled() -> None:
+    payload = {
+        "prompt": "portrait",
+        "input_urls": ["https://example.com/ref.jpg"],
+        "aspect_ratio": "1:1",
+        "resolution": "2K",
+        "n": 1,
+        "thinking_mode": True,
+    }
     with pytest.raises(InvalidModelParametersError, match="thinking_mode"):
-        ModelCatalog.prepare(
-            "wan-2.7-image",
-            {
-                "prompt": "portrait",
-                "input_urls": ["https://example.com/ref.jpg"],
-                "aspect_ratio": "1:1",
-                "resolution": "1K",
-                "n": 1,
-                "thinking_mode": True,
-            },
-        )
+        ModelCatalog.prepare("wan-2.7-image-pro", payload)
+    with pytest.raises(KieImageContractError, match="thinking_mode"):
+        normalize_kie_image_input("wan/2-7-image-pro", payload)
 
 
 def test_wan_pro_4k_edit_is_rejected_instead_of_silently_downgraded() -> None:
+    payload = {
+        "prompt": "edit portrait",
+        "input_urls": ["https://example.com/ref.jpg"],
+        "aspect_ratio": "1:1",
+        "resolution": "4K",
+        "n": 1,
+        "thinking_mode": False,
+    }
     with pytest.raises(InvalidModelParametersError, match="4K"):
-        ModelCatalog.prepare(
-            "wan-2.7-image-pro",
-            {
-                "prompt": "edit portrait",
-                "input_urls": ["https://example.com/ref.jpg"],
-                "aspect_ratio": "1:1",
-                "resolution": "4K",
-                "n": 1,
-                "thinking_mode": False,
-            },
-        )
+        ModelCatalog.prepare("wan-2.7-image-pro", payload)
+    with pytest.raises(KieImageContractError, match="4K"):
+        normalize_kie_image_input("wan/2-7-image-pro", payload)
 
 
 def test_removed_provider_fields_cannot_survive_as_hidden_defaults() -> None:
