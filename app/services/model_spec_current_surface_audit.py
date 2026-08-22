@@ -49,6 +49,7 @@ def install_model_spec_current_surface_audit() -> None:
                 known_fields=tuple(fields),
                 min_seconds=4,
                 max_seconds=8,
+                duration_field="duration",
             )
         patched_specs.append(spec)
 
