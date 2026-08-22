@@ -5,6 +5,18 @@ from typing import Any
 
 from app.services.model_catalog import ModelCatalog, ModelSpec, UnknownModelError
 
+LEGACY_IMAGE_REFERENCE_FIELDS = (
+    "reference_images",
+    "image_references",
+    "image_reference_urls",
+    "reference_image_url",
+)
+LEGACY_VIDEO_REFERENCE_FIELDS = (
+    "reference_videos",
+    "video_references",
+    "video_reference_urls",
+    "reference_video_url",
+)
 IMAGE_REFERENCE_FIELDS = (
     "image_urls",
     "input_urls",
@@ -15,6 +27,7 @@ IMAGE_REFERENCE_FIELDS = (
     "first_frame",
     "reference_image",
     "reference_image_urls",
+    *LEGACY_IMAGE_REFERENCE_FIELDS,
 )
 VIDEO_REFERENCE_FIELDS = (
     "video_urls",
@@ -22,7 +35,26 @@ VIDEO_REFERENCE_FIELDS = (
     "first_clip_url",
     "reference_video",
     "reference_video_urls",
+    *LEGACY_VIDEO_REFERENCE_FIELDS,
 )
+SEEDANCE_GENERAL_IMAGE_REFERENCE_FIELDS = (
+    "image_urls",
+    "input_urls",
+    "image_input",
+    "image_url",
+    "reference_image",
+    "reference_image_urls",
+    *LEGACY_IMAGE_REFERENCE_FIELDS,
+)
+SEEDANCE_GENERAL_VIDEO_REFERENCE_FIELDS = (
+    "video_urls",
+    "video_url",
+    "first_clip_url",
+    "reference_video",
+    "reference_video_urls",
+    *LEGACY_VIDEO_REFERENCE_FIELDS,
+)
+REFERENCE_PARAMETER_FIELDS = frozenset((*IMAGE_REFERENCE_FIELDS, *VIDEO_REFERENCE_FIELDS))
 SEEDANCE_EXACT_MODELS = {
     "seedance-2.0",
     "seedance-2.0-fast",
@@ -103,20 +135,22 @@ def _as_list(value: Any) -> list[str]:
     return [str(value)]
 
 
-def image_references(parameters: dict[str, Any], input_url: str | None = None) -> list[str]:
+def _collect_fields(parameters: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
     refs: list[str] = []
-    for field in IMAGE_REFERENCE_FIELDS:
+    for field in fields:
         refs.extend(_as_list(parameters.get(field)))
+    return list(dict.fromkeys(refs))
+
+
+def image_references(parameters: dict[str, Any], input_url: str | None = None) -> list[str]:
+    refs = _collect_fields(parameters, IMAGE_REFERENCE_FIELDS)
     if input_url:
         refs.append(str(input_url))
     return list(dict.fromkeys(refs))
 
 
 def video_references(parameters: dict[str, Any]) -> list[str]:
-    refs: list[str] = []
-    for field in VIDEO_REFERENCE_FIELDS:
-        refs.extend(_as_list(parameters.get(field)))
-    return list(dict.fromkeys(refs))
+    return _collect_fields(parameters, VIDEO_REFERENCE_FIELDS)
 
 
 def has_references(parameters: dict[str, Any], input_url: str | None = None) -> bool:
@@ -139,6 +173,25 @@ def _select_model_id(requested_model_id: str, parameters: dict[str, Any], input_
     return target if _available(target) else requested_model_id
 
 
+def _merge_urls(*values: Any) -> list[str]:
+    refs: list[str] = []
+    for value in values:
+        refs.extend(_as_list(value))
+    return list(dict.fromkeys(refs))
+
+
+def _drop_reference_fields_not_supported(
+    spec: ModelSpec,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    allowed = set(spec.known_fields)
+    return {
+        key: value
+        for key, value in parameters.items()
+        if key not in REFERENCE_PARAMETER_FIELDS or key in allowed
+    }
+
+
 def _apply_seedance_reference_contract(
     spec: ModelSpec,
     parameters: dict[str, Any],
@@ -148,14 +201,31 @@ def _apply_seedance_reference_contract(
         return None
 
     normalized = dict(parameters)
+    image_refs = _collect_fields(parameters, SEEDANCE_GENERAL_IMAGE_REFERENCE_FIELDS)
+    video_refs = _collect_fields(parameters, SEEDANCE_GENERAL_VIDEO_REFERENCE_FIELDS)
+
+    # Seedance treats first/last frames and multimodal references as different
+    # controls. Generic/legacy image/video fields are references, never frames.
+    if image_refs:
+        normalized["reference_image_urls"] = _merge_urls(
+            normalized.get("reference_image_urls"),
+            image_refs,
+        )
+    if video_refs:
+        normalized["reference_video_urls"] = _merge_urls(
+            normalized.get("reference_video_urls"),
+            video_refs,
+        )
+
+    # Historical clients used `first_frame`; preserve its temporal semantics.
+    if _non_empty(normalized.get("first_frame")) and not _non_empty(normalized.get("first_frame_url")):
+        normalized["first_frame_url"] = normalized.get("first_frame")
+
+    normalized = _drop_reference_fields_not_supported(spec, normalized)
     explicit_media = any(
         _non_empty(normalized.get(field))
         for field in (*SEEDANCE_EXACT_IMAGE_FIELDS, *SEEDANCE_EXACT_VIDEO_FIELDS)
     )
-    # Seedance exposes distinct first/last-frame and multimodal reference fields.
-    # Never fan one explicit reference into every compatible alias. That old generic
-    # behavior turned reference_image_urls into first_frame_url and made Seedance 2.5
-    # fail its frame-vs-reference validation before any Kie request was sent.
     if input_url and not explicit_media:
         normalized.setdefault("first_frame_url", input_url)
     return normalized
@@ -166,9 +236,9 @@ def _apply_reference_aliases(spec: ModelSpec, parameters: dict[str, Any], input_
     if seedance is not None:
         return seedance
 
-    normalized = dict(parameters)
     image_refs = image_references(parameters, input_url)
     video_refs = video_references(parameters)
+    normalized = _drop_reference_fields_not_supported(spec, dict(parameters))
     fields = set(spec.known_fields)
 
     if image_refs:
