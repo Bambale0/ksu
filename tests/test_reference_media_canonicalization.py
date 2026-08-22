@@ -54,7 +54,7 @@ def test_seedance_legacy_photo_and_video_refs_keep_multimodal_semantics() -> Non
     assert "reference_videos" not in result.parameters
     assert "first_frame_url" not in result.parameters
 
-    provider_input = normalize_kie_video_input(result.spec.provider_model, result.parameters)
+    provider_input = normalize_kie_video_input(result.spec.kie_model, result.parameters)
     assert provider_input["reference_image_urls"] == ["https://cdn.example/character.png"]
     assert provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
 
