@@ -47,6 +47,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         {telegramSdkEnabled ? <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" /> : null}
         <Script id="roxy-draft-schema-reset" strategy="beforeInteractive">{draftSchemaReset}</Script>
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
+        <Script src="/mini-app/rox-price-only.js" strategy="afterInteractive" />
         <Script src="/mini-app/keyboard-reference-ux.js" strategy="afterInteractive" />
         {children}
       </body>
