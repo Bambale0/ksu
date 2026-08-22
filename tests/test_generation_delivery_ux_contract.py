@@ -14,9 +14,11 @@ def _read(path: Path) -> str:
 def test_active_mini_app_uses_fresh_drafts_by_default_and_explicit_reuse() -> None:
     page = _read(FRONTEND / "app" / "page.tsx")
     app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    action_app = _read(FRONTEND / "components" / "generation-action-app.tsx")
     api = _read(FRONTEND / "lib" / "api.ts")
 
-    assert "RoxySocialApp" in page
+    assert "GenerationActionGate" in page
+    assert "RoxySocialApp" in action_app
     assert "DRAFTS_KEY" not in app
     assert "createDefaultDraft(target)" in app
     assert 'kind: "new"' in app
@@ -29,11 +31,17 @@ def test_active_mini_app_uses_fresh_drafts_by_default_and_explicit_reuse() -> No
 
 def test_generation_result_deep_link_and_background_copy_are_present() -> None:
     app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    action_app = _read(FRONTEND / "components" / "generation-action-app.tsx")
+    worker = _read(ROOT / "app" / "workers" / "notifications.py")
 
     assert 'searchParams.get("generation")' in app
     assert 'setPreviewSurface("private")' in app
     assert 'setRoute("history")' in app
     assert "ROXY можно закрыть — результат придёт в Telegram" in app
+    assert 'route=generation-action' not in worker  # URL is built structurally, not as an unsafe literal.
+    assert '"route": "generation-action" if action else "history"' in worker
+    assert 'searchParams.get("action")' in action_app
+    assert '/action-context?action=' in action_app
 
 
 def test_bottom_navigation_labels_are_forced_to_one_line() -> None:
@@ -60,3 +68,29 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
     assert "send_video" in worker
     assert "🚀 Открыть в ROXY" in worker
     assert "📥 Скачать оригинал" in worker
+
+
+def test_lena_style_actions_are_delivered_with_result_and_live_in_mini_app() -> None:
+    worker = _read(ROOT / "app" / "workers" / "notifications.py")
+    service = _read(ROOT / "app" / "services" / "generation_actions.py")
+    api = _read(ROOT / "app" / "api" / "v1" / "generation_actions.py")
+    action_app = _read(FRONTEND / "components" / "generation-action-app.tsx")
+
+    for label in (
+        "✨ Ремикс",
+        "🔁 Ещё вариант",
+        "💅 Изменить образ",
+        "🎬 Оживить",
+        "✏️ Новый промпт",
+        "⚙️ Изменить параметры",
+        "📤 Опубликовать",
+    ):
+        assert label in service
+    assert "GenerationActionService.available_actions" in worker
+    assert 'web_app=WebAppInfo(url=action_url)' in worker
+    assert '@router.get("/{generation_id}/action-context")' in api
+    assert '@router.post("/{generation_id}/actions/{action}"' in api
+    assert 'parent_generation_id=parent.id' in api
+    assert 'action_type=canonical' in api
+    assert "SavedReferencePicker" in action_app
+    assert "grok-video-i2v" in service
