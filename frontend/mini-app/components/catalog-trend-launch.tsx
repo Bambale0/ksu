@@ -31,11 +31,8 @@ export function CatalogTrendLaunch() {
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // The global reference-trend launcher listens on document capture. Window
-    // capture runs first, so zero-reference catalog trends can keep the existing
-    // preview sheet while reference trends continue into the dedicated upload
-    // route. The marker is restored immediately after the current event dispatch.
     const preservePreview = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Enter" && event.key !== " ") return;
       const target = event.target instanceof Element
         ? event.target.closest<HTMLElement>("[data-trend-launch='true']")
         : null;
