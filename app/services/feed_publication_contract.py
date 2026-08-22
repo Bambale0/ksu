@@ -25,6 +25,7 @@ def install_feed_publication_contract() -> None:
         return
     _INSTALLED = True
 
+    from app.db.media_models import MediaAsset
     from app.db.models import Generation
     from app.services.feed import (
         FeedDerivativePublicationError,
@@ -33,6 +34,7 @@ def install_feed_publication_contract() -> None:
         FeedPublicationError,
         FeedService,
     )
+    from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
     previous_provider_result_urls = FeedService._provider_result_urls
 
@@ -45,6 +47,39 @@ def install_feed_publication_contract() -> None:
             if url not in values:
                 values.append(url)
         return [item for item in values if item.startswith("https://")]
+
+    async def owned_media_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
+        assets = list(
+            (
+                await session.scalars(
+                    select(MediaAsset)
+                    .where(
+                        MediaAsset.generation_id == generation.id,
+                        MediaAsset.status == "ready",
+                        MediaAsset.object_key.is_not(None),
+                        MediaAsset.bucket.is_not(None),
+                    )
+                    .order_by(MediaAsset.ordinal)
+                )
+            ).all()
+        )
+        if not assets:
+            return []
+        try:
+            storage = ObjectStorage()
+        except ObjectStorageNotConfigured:
+            return []
+        urls: list[str] = []
+        for asset in assets:
+            if not asset.object_key or not asset.bucket:
+                continue
+            try:
+                url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+            except Exception:
+                continue
+            if url.startswith("https://"):
+                urls.append(url)
+        return urls
 
     @staticmethod
     def static_ready_condition() -> Any:
@@ -99,29 +134,46 @@ def install_feed_publication_contract() -> None:
             )
 
         params = dict(generation.parameters or {})
+        provider_urls = provider_result_urls(generation)
         current_local = _local_result_urls(generation)
-        if current_local and all(FeedStaticStorage.local_url_exists(url) for url in current_local):
-            sources = current_local
-        else:
-            sources = provider_result_urls(generation)
-        if not sources:
-            raise FeedMediaUnavailableError("Generation media is not ready for publication")
+        persisted = None
 
-        try:
-            persisted = await FeedStaticStorage.persist_urls(
-                sources,
-                generation_id=generation.id,
-            )
-        except FeedStaticStorageError as exc:
+        if current_local and all(FeedStaticStorage.local_url_exists(url) for url in current_local):
+            try:
+                persisted = await FeedStaticStorage.persist_urls(
+                    current_local,
+                    generation_id=generation.id,
+                )
+            except FeedStaticStorageError:
+                persisted = None
+
+        if persisted is None and provider_urls:
+            try:
+                persisted = await FeedStaticStorage.persist_urls(
+                    provider_urls,
+                    generation_id=generation.id,
+                )
+            except FeedStaticStorageError:
+                persisted = None
+
+        if persisted is None:
+            owned_urls = await owned_media_urls(session, generation)
+            if owned_urls:
+                try:
+                    persisted = await FeedStaticStorage.persist_urls(
+                        owned_urls,
+                        generation_id=generation.id,
+                    )
+                except FeedStaticStorageError:
+                    persisted = None
+
+        if not persisted:
             raise FeedMediaUnavailableError(
                 "Не удалось сохранить медиа публикации на сервере"
-            ) from exc
-        if not persisted:
-            raise FeedMediaUnavailableError("Generation media is not ready for publication")
+            )
 
         public_urls = [item.public_url for item in persisted]
-        provider_urls = provider_result_urls(generation)
-        if provider_urls and not isinstance(params.get("_provider_result_urls"), list):
+        if provider_urls:
             params["_provider_result_urls"] = provider_urls
         params["_result_urls"] = public_urls
         params["_feed_static"] = True
