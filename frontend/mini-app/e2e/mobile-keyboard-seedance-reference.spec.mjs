@@ -147,7 +147,7 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   await fileInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
   await expect(page.getByText('1 загружено')).toBeVisible();
   await page.getByRole('textbox', { name: /Промпт/ }).fill('Персонаж поворачивает голову и улыбается');
-  await expect(page.getByText('55 ROX')).toBeVisible();
+  await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
   await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
