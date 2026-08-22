@@ -42,6 +42,13 @@ def _sha256_stream(stream: BinaryIO) -> str:
     return digest.hexdigest()
 
 
+async def _persist_reference_size(session: SessionDep, reference: object, size_bytes: int) -> None:
+    # Uploaded references have a product-owned, measured byte size. Manual URL
+    # references intentionally remain unknown and are not guessed via remote HEAD.
+    setattr(reference, "size_bytes", size_bytes)
+    await session.commit()
+
+
 @router.post("/kie", status_code=status.HTTP_201_CREATED)
 async def upload_to_kie(
     user: CurrentUserDep,
@@ -84,6 +91,7 @@ async def upload_to_kie(
             file_hash=file_hash,
             source="mini_app_upload",
         )
+        await _persist_reference_size(session, reference, size_bytes)
         return {
             "url": reference.source_url,
             "name": reference.original_filename or filename,
@@ -116,6 +124,7 @@ async def upload_to_kie(
         file_hash=file_hash,
         source="mini_app_upload",
     )
+    await _persist_reference_size(session, reference, size_bytes)
 
     return {
         "url": reference.source_url,
