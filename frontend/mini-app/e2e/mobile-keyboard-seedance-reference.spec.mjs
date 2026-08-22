@@ -108,19 +108,28 @@ async function mockRoxy(page) {
   });
 }
 
-test('prompt focus hides fixed bottom navigation on mobile', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await mockRoxy(page);
-  await page.goto('/mini-app/?route=create');
+test('prompt focus hides fixed bottom navigation on a touch-first mobile context', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  try {
+    await mockRoxy(page);
+    await page.goto('/mini-app/?route=create');
 
-  const prompt = page.getByRole('textbox', { name: /Промпт/ });
-  const nav = page.getByRole('navigation', { name: 'Основная навигация' });
-  await expect(nav).toBeVisible();
-  await prompt.focus();
-  await expect(nav).toBeHidden();
-  await prompt.fill('Портрет, плавное движение камеры');
-  await prompt.blur();
-  await expect(nav).toBeVisible();
+    const prompt = page.getByRole('textbox', { name: /Промпт/ });
+    const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    await expect(nav).toBeVisible();
+    await prompt.focus();
+    await expect(nav).toBeHidden();
+    await prompt.fill('Портрет, плавное движение камеры');
+    await prompt.blur();
+    await expect(nav).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
 
 test('Seedance reference upload survives retry and is sent as first_frame_url', async ({ page }) => {
@@ -128,7 +137,7 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   await mockRoxy(page);
   await page.goto('/mini-app/?route=create');
 
-  await page.getByRole('button', { name: 'Референс' }).click();
+  await page.getByRole('button', { name: 'Референс', exact: true }).click();
   const fileInput = page.locator('input[type="file"]').first();
   await fileInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
   await expect(page.getByText('1 загружено')).toBeVisible();
