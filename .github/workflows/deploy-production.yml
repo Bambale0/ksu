@@ -237,6 +237,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
           printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
+          install -d -m 755 static/uploads/feed
 
           docker compose config -q
           docker compose up -d postgres redis </dev/null
@@ -311,7 +312,12 @@ jobs:
             exit 1
           fi
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; backup-worker is running."
+          # Existing public/profile rows may still point at provider/S3 media from
+          # releases before the static-feed contract. Localize them after health
+          # is established, matching banano_kling:tanyapi production backfill.
+          docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
+
+          echo "Production is healthy, feed static backfill completed, and Mini App serves ${DEPLOY_SHA}; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -332,6 +338,7 @@ jobs:
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- backup-worker running check: required"
+            echo "- feed static backfill after health gate: required"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
