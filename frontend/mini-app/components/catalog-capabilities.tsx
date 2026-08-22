@@ -19,8 +19,6 @@ type Capability = {
   price?: string | null;
 };
 
-const MEDIA_KEY = "ksu-selected-media";
-
 function price(tool?: PromptToolCatalogItem): string | null {
   if (!tool?.enabled) return null;
   if (tool.admin_free || tool.cost_credits === "0.00" || tool.cost_credits === "0") return "Бесплатно";
@@ -47,12 +45,15 @@ function ensureHost(): HTMLElement | null {
   return host;
 }
 
-function openCreate(media: MediaKind) {
-  localStorage.setItem(MEDIA_KEY, media);
-  const url = new URL(window.location.href);
-  url.searchParams.set("route", "create");
-  url.searchParams.delete("generation");
-  window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+function focusModels(media: MediaKind) {
+  const screen = catalogScreen();
+  if (!screen) return;
+  const label = media === "image" ? "Фото" : media === "video" ? "Видео" : "Музыка";
+  const filter = Array.from(screen.querySelectorAll<HTMLButtonElement>(".segmented button"))
+    .find((button) => button.textContent?.trim() === label);
+  filter?.click();
+  const headings = Array.from(screen.querySelectorAll<HTMLElement>(".section-title h2"));
+  headings.find((heading) => heading.textContent?.trim() === "Полный каталог")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function openCatalog() {
@@ -108,9 +109,9 @@ export function CatalogCapabilities() {
     const imageTool = byId.get("prompt_builder") || byId.get("image_analysis");
     const videoTool = byId.get("video_prompt");
     return [
-      { id: "create-image", title: "Создать фото", copy: "Все фото-модели и режимы", icon: "image", media: "image" },
-      { id: "create-video", title: "Создать видео", copy: "Все видео-модели и режимы", icon: "video", media: "video" },
-      { id: "create-audio", title: "Создать музыку", copy: "Аудио-модели ROXY", icon: "music", media: "audio" },
+      { id: "create-image", title: "Фото-модели", copy: "Все модели и режимы для изображений", icon: "image", media: "image" },
+      { id: "create-video", title: "Видео-модели", copy: "Все модели и режимы для видео", icon: "video", media: "video" },
+      { id: "create-audio", title: "Музыка", copy: "Аудио-модели ROXY", icon: "music", media: "audio" },
       { id: "prompt-image", title: "Prompt фото / описание", copy: "Разобрать фото или улучшить идею", icon: "spark", href: "/mini-app/prompt-tools.html?mode=image", price: price(imageTool) },
       { id: "prompt-video", title: "Prompt по видео", copy: "Разбор ролика, камера и динамика", icon: "video", href: "/mini-app/prompt-tools.html?mode=video", price: price(videoTool) },
       { id: "prompt-seedance", title: "Prompt для Seedance", copy: "Сцена, камера, движение и negative prompt", icon: "spark", href: "/mini-app/prompt-tools.html?mode=seedance", price: price(imageTool) },
@@ -128,7 +129,7 @@ export function CatalogCapabilities() {
       <div className="model-grid catalog-capability-grid">
         {capabilities.map((item) => {
           const content = <><span className="model-icon"><Icon name={item.icon}/></span><div><strong>{item.title}</strong><small>{item.copy}</small></div><span className="price-pill">{item.price || "Открыть"}</span></>;
-          if (item.media) return <button data-catalog-feature={item.id} className="model-card" type="button" key={item.id} onClick={() => openCreate(item.media!)}>{content}</button>;
+          if (item.media) return <button data-catalog-feature={item.id} className="model-card" type="button" key={item.id} onClick={() => focusModels(item.media!)}>{content}</button>;
           return <a data-catalog-feature={item.id} className="model-card" key={item.id} href={item.href}>{content}</a>;
         })}
       </div>
