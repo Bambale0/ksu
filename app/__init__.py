@@ -8,6 +8,7 @@ from app.services.model_spec_image_audit import install_model_spec_image_audit
 from app.services.model_spec_motion_audit import install_model_spec_motion_audit
 from app.services.model_spec_music_audit import install_model_spec_music_audit
 from app.services.model_spec_pricing_audit import install_model_spec_pricing_audit
+from app.services.model_spec_reference_size_audit import install_model_spec_reference_size_audit
 from app.services.model_spec_video_audit import install_model_spec_video_audit
 from app.services.provider_contract_guards import install_provider_contract_guards
 from app.services.provider_contract_sync import install_provider_contract_sync
@@ -25,3 +26,4 @@ install_model_spec_grok_extend_audit()
 install_model_spec_current_surface_audit()
 install_model_spec_pricing_audit()
 install_model_spec_admin_pricing_audit()
+install_model_spec_reference_size_audit()
