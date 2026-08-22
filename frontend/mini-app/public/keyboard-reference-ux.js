@@ -3,6 +3,8 @@
   if (!body || body.dataset.roxyKeyboardUx === "1") return;
   body.dataset.roxyKeyboardUx = "1";
 
+  const touchFirst = window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches ?? false;
+
   const isEditable = (node) => {
     if (!(node instanceof HTMLElement)) return false;
     if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) return true;
@@ -18,7 +20,7 @@
   let largestViewport = window.visualViewport?.height || window.innerHeight || 0;
 
   const sync = () => {
-    body.classList.toggle("roxy-keyboard-open", focusedEditable || keyboardByViewport);
+    body.classList.toggle("roxy-keyboard-open", keyboardByViewport || (touchFirst && focusedEditable));
   };
 
   const updateViewport = () => {
