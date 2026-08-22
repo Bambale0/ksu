@@ -82,17 +82,47 @@ def test_current_wan_photo_model_accepts_edit_references() -> None:
     assert cost > Decimal("0")
 
 
-def test_grok_extend_requires_explicit_billed_seconds() -> None:
-    with pytest.raises(InvalidModelParametersError, match="duration"):
+def test_grok_extend_uses_provider_extension_seconds_for_billing() -> None:
+    with pytest.raises(InvalidModelParametersError, match="prompt"):
         ModelCatalog.prepare(
             "grok-video-extend",
-            {"task_id": "task_grok_123", "extend_times": "6"},
+            {
+                "task_id": "task_grok_123",
+                "extend_at": 2,
+                "extend_times": "6",
+            },
         )
 
-    _spec, _params, cost, seconds, _unit = ModelCatalog.prepare(
+    with pytest.raises(InvalidModelParametersError, match="extend_at"):
+        ModelCatalog.prepare(
+            "grok-video-extend",
+            {
+                "task_id": "task_grok_123",
+                "prompt": "continue the camera move",
+                "extend_times": "6",
+            },
+        )
+
+    with pytest.raises(InvalidModelParametersError, match="6 or 10"):
+        ModelCatalog.prepare(
+            "grok-video-extend",
+            {
+                "task_id": "task_grok_123",
+                "prompt": "continue the camera move",
+                "extend_at": 2,
+                "extend_times": "8",
+            },
+        )
+
+    _spec, params, cost, seconds, _unit = ModelCatalog.prepare(
         "grok-video-extend",
-        {"task_id": "task_grok_123", "extend_times": "6"},
-        billing_seconds=6,
+        {
+            "task_id": "task_grok_123",
+            "prompt": "continue the camera move",
+            "extend_at": 2,
+            "extend_times": "6",
+        },
     )
+    assert params["extend_times"] == "6"
     assert seconds == 6
     assert cost == Decimal("60.00")
