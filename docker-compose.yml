@@ -29,6 +29,7 @@ services:
     env_file: .env
     volumes:
       - ./logs:/app/logs
+      - ./static/uploads:/app/static/uploads
     ports:
       - "8000:8000"
     depends_on:
