@@ -14,6 +14,9 @@ htmlcov/
 logs/*.log
 logs/*.log.*
 
+# Runtime-owned media. Public feed assets are durable host files, not git assets.
+static/uploads/
+
 # Next.js mini app local build artifacts
 frontend/mini-app/.next/
 frontend/mini-app/node_modules/
