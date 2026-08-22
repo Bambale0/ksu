@@ -60,12 +60,13 @@ export function FeedStartApp({ generationId, referralCode }: { generationId: str
   };
 
   return (
-    <StandaloneShell kicker="Лента ROXY" title={model} copy={`Автор: ${author}`}>
+    <StandaloneShell kicker="Лента ROXY" title={model} copy="Публичная работа автора ROXY">
       <div className="tool-grid">
         <div className="panel tool-panel">
           {media.url && media.type === "video" ? <video className="trend-preview" src={media.url} controls playsInline /> : null}
           {media.url && media.type === "audio" ? <audio src={media.url} controls /> : null}
           {media.url && media.type === "image" ? <img className="trend-preview" src={media.url} alt="Работа из ленты ROXY" /> : null}
+          {card ? <p className="muted" data-feed-startapp-author>Автор: <strong>{author}</strong></p> : null}
           {card?.prompt && !card.prompt_hidden ? <p className="prompt-copy">{card.prompt}</p> : null}
           {card && !validReferral ? <div className="action-error" role="alert">Реферальная подпись не совпадает с автором работы.</div> : null}
           {error ? <div className="action-error" role="alert">{error}</div> : null}
