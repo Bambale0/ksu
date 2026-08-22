@@ -8,6 +8,7 @@ import "./ux-polish.css";
 import "./wallet-bonuses.css";
 import "./reference-memory.css";
 import "./generation-actions.css";
+import "./mobile-keyboard.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
