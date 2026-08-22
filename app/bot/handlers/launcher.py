@@ -30,14 +30,14 @@ def _start_link(text: str | None) -> FeedDeepLink | None:
 
 def _launcher_route(link: FeedDeepLink | None) -> str:
     if link is None or link.action == "ref":
-        return "home"
+        return "catalog"
     if link.action == "feed":
         return "feed"
     if link.action == "posts":
         return "profile"
     if link.action == "remix":
         return "create"
-    return "home"
+    return "catalog"
 
 
 async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -> int | None:
@@ -141,7 +141,7 @@ async def menu_shortcut(message: Message, session: AsyncSession, state: FSMConte
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
-    await _send_launcher(message, route="home", payload=None)
+    await _send_launcher(message, route="catalog", payload=None)
 
 
 @router.message(F.text == QUICK_SUPPORT_TEXT)
@@ -185,4 +185,4 @@ async def redirect_everything_to_app(
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
-    await _send_launcher(message, route="home", payload=None)
+    await _send_launcher(message, route="catalog", payload=None)
