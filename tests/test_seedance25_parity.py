@@ -19,7 +19,7 @@ def test_seedance25_contract_accepts_current_kie_surface() -> None:
             "reference_audio_urls": [f"https://example.com/audio-{index}.mp3" for index in range(10)],
             "generate_audio": True,
             "return_last_frame": True,
-            "resolution": "720p",
+            "resolution": "1080p",
             "aspect_ratio": "adaptive",
             "duration": 30,
             "output_format": "mov",
@@ -30,7 +30,7 @@ def test_seedance25_contract_accepts_current_kie_surface() -> None:
         }
     )
 
-    assert payload["resolution"] == "720p"
+    assert payload["resolution"] == "1080p"
     assert payload["aspect_ratio"] == "adaptive"
     assert payload["duration"] == 30
     assert payload["output_format"] == "mov"
@@ -82,7 +82,6 @@ def test_seedance25_auto_or_out_of_range_duration_is_rejected_until_settlement_e
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("resolution", "1080p"),
         ("resolution", "4K"),
         ("aspect_ratio", "2:3"),
         ("output_format", "webm"),
@@ -129,7 +128,7 @@ def test_seedance25_catalog_and_public_ui_match_current_provider_contract() -> N
     assert "fixed_lens" not in fields
     assert fields["duration"]["min"] == 4
     assert fields["duration"]["max"] == 30
-    assert fields["resolution"]["suggestions"] == ["480p", "720p"]
+    assert fields["resolution"]["suggestions"] == ["480p", "720p", "1080p"]
     assert fields["aspect_ratio"]["suggestions"] == [
         "16:9",
         "4:3",
@@ -142,8 +141,11 @@ def test_seedance25_catalog_and_public_ui_match_current_provider_contract() -> N
     assert fields["output_format"]["suggestions"] == ["mp4", "mov"]
     assert fields["nsfw_checker"]["control"] == "toggle"
     assert fields["reference_image_urls"]["max_items"] == 30
+    assert fields["reference_image_urls"]["max_size_mb"] == 30
     assert fields["reference_video_urls"]["max_items"] == 10
+    assert fields["reference_video_urls"]["max_size_mb"] == 200
     assert fields["reference_audio_urls"]["max_items"] == 10
+    assert fields["reference_audio_urls"]["max_size_mb"] == 15
     assert schema["defaults"]["output_format"] == "mp4"
 
 
@@ -155,7 +157,7 @@ async def test_seedance25_generation_prevalidation_runs_before_billing() -> None
         prompt="cinematic city",
         parameters={
             "duration": 4,
-            "resolution": "720p",
+            "resolution": "1080p",
             "aspect_ratio": "16:9",
             "output_format": "mp4",
             "nsfw_checker": True,
@@ -163,6 +165,7 @@ async def test_seedance25_generation_prevalidation_runs_before_billing() -> None
     )
 
     assert seconds == 4
+    assert clean["resolution"] == "1080p"
     assert clean["output_format"] == "mp4"
     assert clean["nsfw_checker"] is True
     assert cost == unit_price * Decimal("4")
