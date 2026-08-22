@@ -100,6 +100,7 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
 
 
 def test_every_per_second_model_has_a_billing_source() -> None:
+    server_sources = {"reference_metadata"}
     for model in ModelCatalog.list():
         if model["price_mode"] != "per_second":
             continue
@@ -107,7 +108,8 @@ def test_every_per_second_model_has_a_billing_source() -> None:
         schema = build_public_model_ui_schema(model)
         has_provider_duration = bool(spec.duration_field and spec.duration_field in model["known_fields"])
         has_explicit_billing = bool(schema.get("billing_seconds"))
-        assert has_provider_duration or has_explicit_billing, model["id"]
+        has_server_billing = schema.get("billing_source") in server_sources
+        assert has_provider_duration or has_explicit_billing or has_server_billing, model["id"]
 
 
 def test_kling_motion_upload_limits_match_provider_contract() -> None:

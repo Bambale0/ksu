@@ -39,6 +39,13 @@ class UserReference(TimestampMixin, Base):
     original_filename: Mapped[str | None] = mapped_column(String(255))
     content_type: Mapped[str | None] = mapped_column(String(255))
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    container: Mapped[str | None] = mapped_column(String(64))
+    video_codec: Mapped[str | None] = mapped_column(String(64))
+    audio_codec: Mapped[str | None] = mapped_column(String(64))
+    probe_status: Mapped[str | None] = mapped_column(String(16))
     source: Mapped[str] = mapped_column(String(64), default="manual", server_default="manual", nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
