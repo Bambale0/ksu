@@ -9,7 +9,7 @@ SEEDANCE25_MODEL_ID = "seedance-2.5"
 SEEDANCE25_PROVIDER_MODEL = "bytedance/seedance-2-5"
 
 # Follow Kie's callable input schema, not broader marketing capability claims.
-SEEDANCE25_RESOLUTIONS = {"480p", "720p"}
+SEEDANCE25_RESOLUTIONS = {"480p", "720p", "1080p"}
 SEEDANCE25_ASPECT_RATIOS = {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"}
 SEEDANCE25_OUTPUT_FORMATS = {"mp4", "mov"}
 SEEDANCE25_MIN_DURATION = 4
