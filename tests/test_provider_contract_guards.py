@@ -11,7 +11,7 @@ def _field(schema: dict, name: str) -> dict | None:
 
 
 def test_wan_video_edit_audio_setting_is_a_real_provider_control() -> None:
-    model = next(item for item in ModelCatalog.list() if item["id"] == "wan-2.7-video-edit")
+    model = ModelCatalog.get("wan-2.7-video-edit").public_dict()
     schema = build_public_model_ui_schema(model)
     audio = _field(schema, "audio_setting")
     assert audio is not None
