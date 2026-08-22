@@ -39,7 +39,6 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
             "image_urls": ["https://example.com/start.png"],
             "sound": True,
             "duration": 5,
-            "aspect_ratio": "16:9",
             "mode": "pro",
             "multi_shots": False,
             "kling_elements": [
@@ -57,6 +56,7 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
     assert spec.kie_model == "kling-3.0/video"
     assert seconds == 5
     assert clean["mode"] == "pro"
+    assert "aspect_ratio" not in clean
 
     _, multi, _, seconds, _ = ModelCatalog.prepare(
         "kling-3.0",
@@ -78,9 +78,12 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
     [
         {"duration": 5, "image_urls": ["a", "b", "c"]},
         {
-            "duration": 5,
+            "duration": 6,
             "multi_shots": True,
-            "multi_prompt": [{"prompt": "one", "duration": 3}],
+            "multi_prompt": [
+                {"prompt": f"shot {index}", "duration": 1}
+                for index in range(6)
+            ],
         },
         {
             "duration": 5,
