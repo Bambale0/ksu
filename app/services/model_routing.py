@@ -23,6 +23,21 @@ VIDEO_REFERENCE_FIELDS = (
     "reference_video",
     "reference_video_urls",
 )
+SEEDANCE_EXACT_MODELS = {
+    "seedance-2.0",
+    "seedance-2.0-fast",
+    "seedance-2.0-mini",
+    "seedance-2.5",
+}
+SEEDANCE_EXACT_IMAGE_FIELDS = (
+    "first_frame_url",
+    "last_frame_url",
+    "reference_image_urls",
+)
+SEEDANCE_EXACT_VIDEO_FIELDS = (
+    "reference_video_urls",
+    "reference_audio_urls",
+)
 
 # One customer-facing product can have two callable provider contracts. The Mini
 # App may send either side of the pair; this router picks the executable contract
@@ -124,7 +139,33 @@ def _select_model_id(requested_model_id: str, parameters: dict[str, Any], input_
     return target if _available(target) else requested_model_id
 
 
+def _apply_seedance_reference_contract(
+    spec: ModelSpec,
+    parameters: dict[str, Any],
+    input_url: str | None,
+) -> dict[str, Any] | None:
+    if spec.id not in SEEDANCE_EXACT_MODELS:
+        return None
+
+    normalized = dict(parameters)
+    explicit_media = any(
+        _non_empty(normalized.get(field))
+        for field in (*SEEDANCE_EXACT_IMAGE_FIELDS, *SEEDANCE_EXACT_VIDEO_FIELDS)
+    )
+    # Seedance exposes distinct first/last-frame and multimodal reference fields.
+    # Never fan one explicit reference into every compatible alias. That old generic
+    # behavior turned reference_image_urls into first_frame_url and made Seedance 2.5
+    # fail its frame-vs-reference validation before any Kie request was sent.
+    if input_url and not explicit_media:
+        normalized.setdefault("first_frame_url", input_url)
+    return normalized
+
+
 def _apply_reference_aliases(spec: ModelSpec, parameters: dict[str, Any], input_url: str | None) -> dict[str, Any]:
+    seedance = _apply_seedance_reference_contract(spec, parameters, input_url)
+    if seedance is not None:
+        return seedance
+
     normalized = dict(parameters)
     image_refs = image_references(parameters, input_url)
     video_refs = video_references(parameters)
