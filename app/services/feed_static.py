@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from app.core.config import settings
 from app.services.media_assets import MediaIngestError, MediaIngestService, UnsafeMediaSource
 
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
@@ -49,6 +50,12 @@ class FeedStaticStorage:
         value = os.getenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed").strip()
         value = "/" + value.strip("/")
         return value.rstrip("/")
+
+    @classmethod
+    def public_url_for(cls, filename: str) -> str:
+        relative = f"{cls.public_prefix()}/{filename.lstrip('/')}"
+        base = settings.public_base_url.strip().rstrip("/")
+        return f"{base}{relative}" if base else relative
 
     @staticmethod
     def max_bytes() -> int:
@@ -149,7 +156,6 @@ class FeedStaticStorage:
         if size > cls.max_bytes():
             raise FeedStaticStorageError("Feed media exceeds FEED_STATIC_MAX_BYTES")
         digest = hashlib.sha256()
-        first = b""
         with path.open("rb") as handle:
             first = handle.read(64)
             digest.update(first)
@@ -267,7 +273,7 @@ class FeedStaticStorage:
             _suffix, content_type, size, digest = cls._inspect_file(existing)
             return (
                 PersistedFeedMedia(
-                    public_url=source_url,
+                    public_url=cls.public_url_for(existing.name),
                     path=existing,
                     content_type=content_type,
                     size_bytes=size,
@@ -294,10 +300,9 @@ class FeedStaticStorage:
             else:
                 os.replace(temp_path, target)
                 created = True
-            public_url = f"{cls.public_prefix()}/{filename}"
             return (
                 PersistedFeedMedia(
-                    public_url=public_url,
+                    public_url=cls.public_url_for(filename),
                     path=target,
                     content_type=content_type,
                     size_bytes=size,
@@ -347,11 +352,12 @@ class FeedStaticStorage:
             _suffix, content_type, size, _digest = cls._inspect_file(path)
         except FeedStaticStorageError:
             return None
+        public_url = cls.public_url_for(path.name)
         return {
             "id": None,
-            "url": url,
-            "download_url": url,
-            "public_url": url,
+            "url": public_url,
+            "download_url": public_url,
+            "public_url": public_url,
             "content_type": content_type,
             "size_bytes": size,
             "ordinal": ordinal,
