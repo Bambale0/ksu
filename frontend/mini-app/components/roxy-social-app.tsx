@@ -49,7 +49,7 @@ function compact(value: unknown): string {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   return new Intl.NumberFormat("ru-RU", {
-    notation: Math.abs(number) >= 1000 ? "compact" : "standard",
+    notation: Math.abs(number) >= 10000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(number);
 }
