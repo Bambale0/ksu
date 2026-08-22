@@ -1,0 +1,34 @@
+/* Mobile keyboard UX: the fixed product navigation must never float over an
+   active prompt/input in Telegram's iOS/Android webviews. Keep the page's
+   reserved bottom space unchanged so focusing a field does not cause a layout
+   jump; only move the interactive nav out of the visual viewport. */
+.bottom-nav {
+  transition: opacity 140ms ease, transform 180ms ease, visibility 0s linear 180ms;
+}
+
+/* visualViewport is the primary signal for a real soft keyboard. */
+body.roxy-keyboard-open .bottom-nav {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(calc(100% + 32px));
+}
+
+/* iOS/Android WebViews can delay visualViewport resize. On touch-first devices,
+   hide immediately on editable focus so the nav never flashes above the keyboard.
+   Desktop/fine-pointer browsers keep normal navigation while a field is focused. */
+@media (hover: none) and (pointer: coarse) {
+  .roxy-app:has(textarea:focus) .bottom-nav,
+  .roxy-app:has(select:focus) .bottom-nav,
+  .roxy-app:has(input:focus:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"])) .bottom-nav,
+  .roxy-app:has([contenteditable="true"]:focus) .bottom-nav {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + 32px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav { transition: none; }
+}
