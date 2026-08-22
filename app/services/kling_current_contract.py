@@ -82,7 +82,7 @@ CURRENT_KLING_SPECS = (
         "video",
         "audio_driven_avatar",
         ("image_url", "audio_url", "prompt"),
-        ("image_url", "audio_url", "prompt"),
+        ("image_url", "audio_url"),
         "per_second",
         Decimal("2"),
         1,
@@ -90,7 +90,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "720p avatar generation; billing_seconds must match the input audio duration.",
-            "Current Kie contract requires image, audio and prompt.",
+            "Kie's executable API example sends prompt as an empty string; guidance is optional.",
         ),
     ),
     catalog.ModelSpec(
@@ -101,7 +101,7 @@ CURRENT_KLING_SPECS = (
         "video",
         "audio_driven_avatar",
         ("image_url", "audio_url", "prompt"),
-        ("image_url", "audio_url", "prompt"),
+        ("image_url", "audio_url"),
         "per_second",
         Decimal("3"),
         1,
@@ -109,7 +109,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "1080p/48fps avatar generation; billing_seconds must match the input audio duration.",
-            "Current Kie contract requires image, audio and prompt.",
+            "Kie's executable API example sends prompt as an empty string; guidance is optional.",
         ),
     ),
 )
@@ -182,8 +182,10 @@ def _validate_current_kling_rules(spec: catalog.ModelSpec, clean: dict[str, Any]
         clean["image_url"] = _https_url(clean.get("image_url"), field="image_url")
         clean["audio_url"] = _https_url(clean.get("audio_url"), field="audio_url")
         prompt = clean.get("prompt")
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise catalog.InvalidModelParametersError("Kling Avatar prompt is required")
+        if prompt is None:
+            clean["prompt"] = ""
+        elif not isinstance(prompt, str):
+            raise catalog.InvalidModelParametersError("prompt must be a string")
 
 
 def _contract_error(message: str) -> video_contracts.KieVideoContractError:
@@ -236,7 +238,7 @@ def normalize_current_kling_input(model: str, input_data: dict[str, Any]) -> dic
         required = {"prompt", "image_url", "duration"}
     elif model in {KLING_AVATAR_STANDARD_PROVIDER, KLING_AVATAR_PRO_PROVIDER}:
         allowed = {"image_url", "audio_url", "prompt"}
-        required = {"image_url", "audio_url", "prompt"}
+        required = {"image_url", "audio_url"}
     else:
         return payload
 
@@ -280,8 +282,10 @@ def normalize_current_kling_input(model: str, input_data: dict[str, Any]) -> dic
         payload["image_url"] = _provider_https_url(payload["image_url"], field="image_url")
         payload["audio_url"] = _provider_https_url(payload["audio_url"], field="audio_url")
         prompt = payload.get("prompt")
-        if not isinstance(prompt, str) or not prompt.strip():
-            raise _contract_error("Kling Avatar prompt is required")
+        if prompt is None:
+            payload["prompt"] = ""
+        elif not isinstance(prompt, str):
+            raise _contract_error("prompt must be a string")
 
     return payload
 
@@ -396,7 +400,7 @@ def _install_ui_contracts() -> None:
                     },
                     "prompt": {
                         "label": "Эмоции и стиль движения",
-                        "placeholder": "Опишите подачу, эмоции и движения аватара",
+                        "placeholder": "Опционально: спокойная подача, лёгкие движения головы...",
                     },
                 },
                 "billing_seconds": {
@@ -420,7 +424,7 @@ def _install_ui_contracts() -> None:
                     },
                     "prompt": {
                         "label": "Эмоции и стиль движения",
-                        "placeholder": "Опишите подачу, эмоции и движения аватара",
+                        "placeholder": "Опционально: энергичная подача, выразительная мимика...",
                     },
                 },
                 "billing_seconds": {
