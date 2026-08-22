@@ -70,6 +70,21 @@ def is_active_new_work_model(model_id: str) -> bool:
     return str(model_id) in ACTIVE_NEW_WORK_MODEL_IDS
 
 
+def _validate_active_wan_request(model_id: str, parameters: dict[str, Any]) -> None:
+    if model_id != "wan-2.7-image-pro":
+        return
+    references = parameters.get("input_urls") or []
+    gallery = bool(parameters.get("enable_sequential"))
+    if bool(parameters.get("thinking_mode")) and (references or gallery):
+        raise catalog.InvalidModelParametersError(
+            "WAN thinking_mode is available only for a single text-to-image generation"
+        )
+    if references and str(parameters.get("resolution") or "") == "4K":
+        raise catalog.InvalidModelParametersError(
+            "WAN 2.7 Pro 4K is available only for text-to-image generation"
+        )
+
+
 def install_trending_model_catalog() -> None:
     """Expose Tanya's trend set while preserving read/recovery compatibility.
 
@@ -107,6 +122,7 @@ def install_trending_model_catalog() -> None:
     ):
         if model_id not in ACTIVE_NEW_WORK_MODEL_IDS:
             raise catalog.UnknownModelError(f"Inactive generation model: {model_id}")
+        _validate_active_wan_request(model_id, parameters)
         return original_prepare(
             model_id,
             parameters,
