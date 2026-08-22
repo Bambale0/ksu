@@ -14,7 +14,7 @@ export default {
     video: 'retain-on-failure',
   },
   webServer: {
-    command: 'npm run build && node e2e/static-server.mjs out 3017',
+    command: 'ROXY_E2E=1 npm run build && node e2e/static-server.mjs out 3017',
     url: 'http://127.0.0.1:3017/mini-app/',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
