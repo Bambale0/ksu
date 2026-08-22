@@ -1,7 +1,8 @@
+import json
 from decimal import Decimal
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,28 @@ DEFAULT_GENERATION_PRICING_JSON = (
     '"kling-motion-3.0":{"per_second":60,"by_mode":{"720p":60,"1080p":80}}'
     '}'
 )
+
+
+def _generation_pricing_with_defaults(value: object) -> str:
+    """Merge deployment overrides over the canonical public ROXY tariff matrix.
+
+    Production .env files historically carried GENERATION_PRICING_JSON={}. An
+    empty object must mean "no overrides", not "discard product tariffs and fall
+    back to legacy ModelSpec prices". Partial deployment overrides behave the same
+    way as published admin tariffs: only named models replace code defaults.
+    """
+
+    defaults = json.loads(DEFAULT_GENERATION_PRICING_JSON)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        overrides: object = {}
+    elif isinstance(value, str):
+        overrides = json.loads(value)
+    else:
+        overrides = value
+    if not isinstance(overrides, dict):
+        raise ValueError("GENERATION_PRICING_JSON must be a JSON object")
+    defaults.update(overrides)
+    return json.dumps(defaults, separators=(",", ":"), sort_keys=True)
 
 
 class Settings(BaseSettings):
@@ -68,6 +91,11 @@ class Settings(BaseSettings):
     referral_antifraud_burst_autoban: bool = True
     rox_packages_json: str = "{}"
     generation_pricing_json: str = DEFAULT_GENERATION_PRICING_JSON
+
+    @field_validator("generation_pricing_json", mode="before")
+    @classmethod
+    def merge_generation_pricing_defaults(cls, value: object) -> str:
+        return _generation_pricing_with_defaults(value)
 
     music_generation_model: str = "V5_5"
     music_generation_price_rox: Decimal = Decimal("100")
@@ -164,7 +192,7 @@ class Settings(BaseSettings):
     admin_login_rate_limit_per_minute: int = 5
     admin_request_rate_limit_per_minute: int = 120
     admin_login_max_failures: int = 5
-    admin_login_lock_minutes: int = 15
+    admin_login_lock_minute: int = 15
 
     internal_admin_hmac_secret: str = ""
     internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
