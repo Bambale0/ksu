@@ -120,6 +120,10 @@ async def get_current_user(
                 "version": settings.onboarding_version.strip() or "1",
             },
         )
+    # Carry the authenticated principal on this SQLAlchemy session so shared
+    # quote/model preflight code can read only this user's trusted reference
+    # metadata without changing every service method signature.
+    session.info["current_user_id"] = user.id
     return user
 
 
