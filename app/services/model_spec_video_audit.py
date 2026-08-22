@@ -49,6 +49,44 @@ def install_model_spec_video_audit() -> None:
 
     @staticmethod
     def audited_rules(spec: Any, clean: dict[str, Any]) -> None:
+        # Validate Veo against the current public/provider surface before the
+        # legacy catalog rules. The older layer still accepts retired R2V aliases
+        # and emits stale Fast/Lite wording, so it must not win for invalid input.
+        if spec.id == "veo-3.1":
+            model = str(clean.get("veo_model") or "veo3_fast")
+            if model not in {"veo3", "veo3_fast", "veo3_lite"}:
+                raise catalog.InvalidModelParametersError(
+                    "Veo 3.1 model must be veo3, veo3_fast or veo3_lite"
+                )
+            images = clean.get("image_urls") or []
+            if not isinstance(images, list) or len(images) > 3:
+                raise catalog.InvalidModelParametersError(
+                    "Veo 3.1 accepts at most three image references"
+                )
+            generation_type = str(clean.get("generation_type") or "TEXT_2_VIDEO")
+            aspect = str(clean.get("aspect_ratio") or "16:9").lower()
+            if generation_type == "TEXT_2_VIDEO" and images:
+                raise catalog.InvalidModelParametersError(
+                    "Veo TEXT_2_VIDEO cannot include image references; use first/last-frame or reference mode"
+                )
+            if generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and not 1 <= len(images) <= 2:
+                raise catalog.InvalidModelParametersError(
+                    "Veo first/last-frame mode requires one or two images"
+                )
+            if generation_type == "REFERENCE_2_VIDEO":
+                if not 1 <= len(images) <= 3:
+                    raise catalog.InvalidModelParametersError(
+                        "Veo reference mode requires one to three images"
+                    )
+                if model not in {"veo3_fast", "veo3_lite"}:
+                    raise catalog.InvalidModelParametersError(
+                        "Veo reference mode is available only on Fast or Lite"
+                    )
+                if aspect not in {"16:9", "9:16"}:
+                    raise catalog.InvalidModelParametersError(
+                        "Veo reference mode requires 16:9 or 9:16 aspect ratio"
+                    )
+
         if spec.id == "kling-3.0" and clean.get("multi_shots"):
             # The legacy rule required sum(multi_prompt.duration) == duration.
             # Kie's current docs define per-shot duration plus an overall 15s
@@ -89,41 +127,6 @@ def install_model_spec_video_audit() -> None:
                 if total > 15:
                     raise catalog.InvalidModelParametersError(
                         "Kling multi-shot storyboard must not exceed 15 seconds"
-                    )
-
-        if spec.id == "veo-3.1":
-            model = str(clean.get("veo_model") or "veo3_fast")
-            if model not in {"veo3", "veo3_fast", "veo3_lite"}:
-                raise catalog.InvalidModelParametersError(
-                    "Veo 3.1 model must be veo3, veo3_fast or veo3_lite"
-                )
-            images = clean.get("image_urls") or []
-            if not isinstance(images, list) or len(images) > 3:
-                raise catalog.InvalidModelParametersError(
-                    "Veo 3.1 accepts at most three image references"
-                )
-            generation_type = str(clean.get("generation_type") or "TEXT_2_VIDEO")
-            aspect = str(clean.get("aspect_ratio") or "16:9").lower()
-            if generation_type == "TEXT_2_VIDEO" and images:
-                raise catalog.InvalidModelParametersError(
-                    "Veo TEXT_2_VIDEO cannot include image references; use first/last-frame or reference mode"
-                )
-            if generation_type == "FIRST_AND_LAST_FRAMES_2_VIDEO" and not 1 <= len(images) <= 2:
-                raise catalog.InvalidModelParametersError(
-                    "Veo first/last-frame mode requires one or two images"
-                )
-            if generation_type == "REFERENCE_2_VIDEO":
-                if not 1 <= len(images) <= 3:
-                    raise catalog.InvalidModelParametersError(
-                        "Veo reference mode requires one to three images"
-                    )
-                if model not in {"veo3_fast", "veo3_lite"}:
-                    raise catalog.InvalidModelParametersError(
-                        "Veo reference mode is available only on Fast or Lite"
-                    )
-                if aspect not in {"16:9", "9:16"}:
-                    raise catalog.InvalidModelParametersError(
-                        "Veo reference mode requires 16:9 or 9:16 aspect ratio"
                     )
 
     catalog.ModelCatalog._validate_model_rules = audited_rules
