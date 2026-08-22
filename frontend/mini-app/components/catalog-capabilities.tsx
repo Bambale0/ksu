@@ -56,13 +56,6 @@ function focusModels(media: MediaKind) {
   headings.find((heading) => heading.textContent?.trim() === "Полный каталог")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function openCatalog() {
-  const url = new URL(window.location.href);
-  url.searchParams.set("route", "catalog");
-  url.searchParams.delete("generation");
-  window.location.assign(`${url.pathname}${url.search}${url.hash}`);
-}
-
 export function CatalogCapabilities() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [tools, setTools] = useState<PromptToolCatalogItem[]>([]);
@@ -76,18 +69,9 @@ export function CatalogCapabilities() {
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
-
-    const brand = document.querySelector<HTMLElement>(".topbar .brand");
-    const brandHandler = (event: Event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openCatalog();
-    };
-    brand?.addEventListener("click", brandHandler, true);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      brand?.removeEventListener("click", brandHandler, true);
     };
   }, []);
 
@@ -112,10 +96,10 @@ export function CatalogCapabilities() {
       { id: "create-image", title: "Фото-модели", copy: "Все модели и режимы для изображений", icon: "image", media: "image" },
       { id: "create-video", title: "Видео-модели", copy: "Все модели и режимы для видео", icon: "video", media: "video" },
       { id: "create-audio", title: "Музыка", copy: "Аудио-модели ROXY", icon: "music", media: "audio" },
-      { id: "prompt-image", title: "Prompt фото / описание", copy: "Разобрать фото или улучшить идею", icon: "spark", href: "/mini-app/prompt-tools.html?mode=image", price: price(imageTool) },
-      { id: "prompt-video", title: "Prompt по видео", copy: "Разбор ролика, камера и динамика", icon: "video", href: "/mini-app/prompt-tools.html?mode=video", price: price(videoTool) },
-      { id: "prompt-seedance", title: "Prompt для Seedance", copy: "Сцена, камера, движение и negative prompt", icon: "spark", href: "/mini-app/prompt-tools.html?mode=seedance", price: price(imageTool) },
-      { id: "batch", title: "Пакетная обработка", copy: "Несколько генераций одной задачей", icon: "catalog", href: "/mini-app/batch.html" },
+      { id: "prompt-image", title: "Prompt фото / описание", copy: "Разобрать фото или улучшить идею", icon: "spark", href: "/mini-app/prompt-tools/?mode=image", price: price(imageTool) },
+      { id: "prompt-video", title: "Prompt по видео", copy: "Разбор ролика, камера и динамика", icon: "video", href: "/mini-app/prompt-tools/?mode=video", price: price(videoTool) },
+      { id: "prompt-seedance", title: "Prompt для Seedance", copy: "Сцена, камера, движение и negative prompt", icon: "spark", href: "/mini-app/prompt-tools/?mode=seedance", price: price(imageTool) },
+      { id: "batch", title: "Пакетная обработка", copy: "Несколько генераций одной задачей", icon: "catalog", href: "/mini-app/batch/" },
     ];
   }, [tools]);
 
