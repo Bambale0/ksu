@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -8,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Generation
-from app.services.credits import InternalCreditService
 from app.services.generation_actions import DERIVATIVE_ACTIONS, GenerationActionService
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, UnknownModelError
@@ -27,7 +27,7 @@ class DeriveGenerationRequest(BaseModel):
 
 
 def _amount(value: object) -> str:
-    return format(InternalCreditService.to_decimal(value), ".2f")
+    return format(Decimal(str(value)), ".2f")
 
 
 async def _owned_generation(
