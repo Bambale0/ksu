@@ -38,10 +38,17 @@ def _provider_urls(generation: Generation) -> list[str]:
         if isinstance(raw, list):
             for item in raw:
                 value = str(item)
-                if value.startswith("https://") and value not in values:
+                if (
+                    value.startswith("https://")
+                    and not FeedStaticStorage.is_local_url(value)
+                    and value not in values
+                ):
                     values.append(value)
     if generation.result_url and generation.result_url.startswith("https://"):
-        if generation.result_url not in values:
+        if (
+            not FeedStaticStorage.is_local_url(generation.result_url)
+            and generation.result_url not in values
+        ):
             values.insert(0, generation.result_url)
     return values
 
