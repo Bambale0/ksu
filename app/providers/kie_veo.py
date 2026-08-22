@@ -40,6 +40,8 @@ class KieVeoClient:
             "imageUrls": list(normalized.get("image_urls") or []),
             "model": str(normalized.get("veo_model") or "veo3_fast"),
             "aspect_ratio": str(normalized.get("aspect_ratio") or "16:9"),
+            "resolution": str(normalized.get("resolution") or "720p"),
+            "duration": int(normalized.get("duration") or 4),
             "enableFallback": bool(normalized.get("enable_fallback", False)),
             "enableTranslation": bool(normalized.get("enable_translation", True)),
             "generationType": str(normalized.get("generation_type") or "TEXT_2_VIDEO"),
