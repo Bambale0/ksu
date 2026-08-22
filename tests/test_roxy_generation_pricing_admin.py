@@ -6,6 +6,7 @@ import pytest
 
 from app.core.config import DEFAULT_GENERATION_PRICING_JSON, settings
 from app.db.models import AdminAccount, User
+from app.db.reference_models import UserReference
 from app.db.session import SessionFactory
 from app.services.admin_policy import AdminPolicyError
 from app.services.admin_pricing import AdminPricingService
@@ -166,17 +167,33 @@ async def test_admin_published_tariff_changes_real_quote_prices_and_survives_hyd
         assert unit_price == Decimal("27")
         assert cost == Decimal("27.00")
 
+        motion_url = f"https://example.test/{uuid.uuid4()}/motion.mp4"
+        session.add(
+            UserReference(
+                user_id=admin_user.id,
+                kind="video",
+                status="ready",
+                source_url=motion_url,
+                source="mini_app_upload",
+                size_bytes=1024,
+                duration_ms=5000,
+                probe_status="ready",
+            )
+        )
+        await session.flush()
+
         spec, _clean, cost, seconds, unit_price = await GenerationService.prepare_request(
             session,
             model_id="kling-motion-3.0",
             prompt="Follow the reference motion",
             parameters={
                 "input_urls": ["https://example.test/character.png"],
-                "video_urls": ["https://example.test/motion.mp4"],
+                "video_urls": [motion_url],
                 "mode": "1080p",
                 "character_orientation": "image",
             },
-            billing_seconds=5,
+            # Deliberately wrong client value: pricing must use trusted media.
+            billing_seconds=1,
         )
         assert spec.id == "kling-motion-3.0"
         assert seconds == 5
