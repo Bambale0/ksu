@@ -6,13 +6,6 @@ from typing import Any
 
 _INSTALLED = False
 
-SEEDANCE20_IDS = {"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"}
-SEEDANCE20_PROVIDERS = {
-    "bytedance/seedance-2",
-    "bytedance/seedance-2-fast",
-    "bytedance/seedance-2-mini",
-}
-
 
 def install_model_spec_current_surface_audit() -> None:
     """Final public-surface corrections from the live Kie model pages.
@@ -32,13 +25,6 @@ def install_model_spec_current_surface_audit() -> None:
 
     patched_specs = []
     for spec in catalog.SPECS:
-        if spec.id in SEEDANCE20_IDS and "return_last_frame" in spec.known_fields:
-            spec = replace(
-                spec,
-                known_fields=tuple(
-                    field for field in spec.known_fields if field != "return_last_frame"
-                ),
-            )
         if spec.id == "veo-3.1":
             fields = list(spec.known_fields)
             for field in ("resolution", "duration"):
@@ -56,9 +42,6 @@ def install_model_spec_current_surface_audit() -> None:
     catalog.SPECS = tuple(patched_specs)
     catalog.ModelCatalog._by_id = {spec.id: spec for spec in catalog.SPECS}
 
-    for model_id in SEEDANCE20_IDS:
-        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {}).pop("return_last_frame", None)
-
     veo_fields = ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("veo-3.1", {})
     veo_fields["resolution"] = ["720p", "1080p", "4k"]
     ui_contract.KIE_DURATION_OPTIONS["veo-3.1"] = [4, 6, 8]
@@ -70,9 +53,6 @@ def install_model_spec_current_surface_audit() -> None:
 
     @staticmethod
     def audited_rules(spec: Any, clean: dict[str, Any]) -> None:
-        if spec.id in SEEDANCE20_IDS:
-            clean.pop("return_last_frame", None)
-
         if spec.id == "veo-3.1":
             resolution = str(clean.get("resolution") or "720p").lower()
             if resolution not in {"720p", "1080p", "4k"}:
@@ -100,14 +80,7 @@ def install_model_spec_current_surface_audit() -> None:
 
     catalog.ModelCatalog._validate_model_rules = audited_rules
 
-    previous_video_normalizer = video_contracts.normalize_kie_video_input
     previous_veo_normalizer = video_contracts.normalize_kie_veo_input
-
-    def audited_video_normalizer(model: str, input_data: dict[str, Any]) -> dict[str, Any]:
-        source = deepcopy(input_data)
-        if model in SEEDANCE20_PROVIDERS:
-            source.pop("return_last_frame", None)
-        return previous_video_normalizer(model, source)
 
     def audited_veo_normalizer(input_data: dict[str, Any]) -> dict[str, Any]:
         source = deepcopy(input_data)
@@ -138,5 +111,4 @@ def install_model_spec_current_surface_audit() -> None:
         normalized["duration"] = duration
         return normalized
 
-    video_contracts.normalize_kie_video_input = audited_video_normalizer
     video_contracts.normalize_kie_veo_input = audited_veo_normalizer
