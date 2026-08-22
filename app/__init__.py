@@ -11,6 +11,7 @@ from app.services.model_spec_pricing_audit import install_model_spec_pricing_aud
 from app.services.model_spec_reference_size_audit import install_model_spec_reference_size_audit
 from app.services.model_spec_trusted_media_audit import install_model_spec_trusted_media_audit
 from app.services.model_spec_video_audit import install_model_spec_video_audit
+from app.services.model_spec_wan_duration_audit import install_model_spec_wan_duration_audit
 from app.services.provider_contract_guards import install_provider_contract_guards
 from app.services.provider_contract_sync import install_provider_contract_sync
 
@@ -29,3 +30,4 @@ install_model_spec_pricing_audit()
 install_model_spec_admin_pricing_audit()
 install_model_spec_reference_size_audit()
 install_model_spec_trusted_media_audit()
+install_model_spec_wan_duration_audit()
