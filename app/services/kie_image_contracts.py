@@ -242,12 +242,14 @@ def normalize_kie_image_input(model: str, input_data: dict[str, Any]) -> dict[st
         _bool(data, "thinking_mode")
         _bool(data, "watermark")
         _bool(data, "nsfw_checker")
-        if _has_images(data) or gallery:
-            # Provider docs limit thinking mode to single text-to-image mode.
-            data["thinking_mode"] = False
+        if (_has_images(data) or gallery) and bool(data.get("thinking_mode")):
+            raise KieImageContractError(
+                "WAN thinking_mode is available only for a single text-to-image generation"
+            )
         if model.endswith("-pro") and _has_images(data) and data.get("resolution") == "4K":
-            # 4K is text-to-image only; editing/reference flows remain at <=2K.
-            data["resolution"] = "2K"
+            raise KieImageContractError(
+                "WAN 2.7 Pro 4K is available only for text-to-image generation"
+            )
         return data
 
     if model == "grok-imagine/text-to-image":
