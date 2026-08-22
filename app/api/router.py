@@ -14,6 +14,7 @@ from app.api.v1 import (
     creator_partnership,
     discovery,
     feed,
+    generation_actions,
     generation_history,
     generations,
     me,
@@ -38,6 +39,7 @@ api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(creator_partnership.router)
 api_router.include_router(generations.router)
+api_router.include_router(generation_actions.router)
 api_router.include_router(generation_history.router)
 api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
