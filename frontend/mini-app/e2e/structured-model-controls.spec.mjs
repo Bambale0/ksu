@@ -58,14 +58,15 @@ test('Kling multi-shot and elements use guided controls without placebo fields',
   await mock(page, 'kling');
   await page.goto('/mini-app/?route=create');
 
-  const scenes = page.locator('[data-structured-kind="multi_prompt"]');
+  const sceneField = page.locator('.field', { hasText: 'Кадры multi-shot' }).first();
+  const scenes = sceneField.locator('[data-structured-kind="multi_prompt"]');
   const elements = page.locator('[data-structured-kind="kling_elements"]');
   await expect(elements).toBeVisible();
   await expect(page.getByRole('button', { name: '+ Добавить элемент' })).toBeVisible();
 
   // Multi-shot scenes must not be editable while Multi-shot is off because the
   // provider ignores multi_prompt in single-shot mode.
-  await expect(scenes).toBeHidden();
+  await expect(sceneField).toBeHidden();
   const multiShotToggle = page.locator('.toggle-row', { hasText: 'Multi-shot' }).locator("input[type='checkbox']");
   await expect(multiShotToggle).not.toBeChecked();
   await multiShotToggle.check();
@@ -77,9 +78,8 @@ test('Kling multi-shot and elements use guided controls without placebo fields',
 
   await page.getByRole('button', { name: '+ Добавить сцену' }).click();
   await multiShotToggle.uncheck();
-  await expect(scenes).toBeHidden();
-  const sourceValue = await page.locator('textarea.structured-json-source').filter({ has: page.locator('xpath=..') }).first().inputValue().catch(() => '[]');
-  expect(sourceValue === '[]' || sourceValue === '').toBeTruthy();
+  await expect(sceneField).toBeHidden();
+  expect(await sceneField.locator('textarea.structured-json-source').inputValue()).toBe('[]');
 });
 
 test('Gemini media/id arrays use guided controls instead of visible JSON', async ({ page }) => {
