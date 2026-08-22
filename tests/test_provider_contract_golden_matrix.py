@@ -28,13 +28,16 @@ AUDIO_SINGLE_FIELDS = {"audio_url", "driving_audio_url", "reference_voice"}
 
 def _registered_models() -> list[dict[str, Any]]:
     """Return every provider spec, including hidden/history-compatible routes."""
-    return [
-        spec.public_dict()
-        for _model_id, spec in sorted(ModelCatalog._by_id.items())
-    ]
+    return [spec.public_dict() for _model_id, spec in sorted(ModelCatalog._by_id.items())]
+
+
+def _callable_models() -> list[dict[str, Any]]:
+    """Return every provider spec admitted at the new-work boundary."""
+    return [ModelCatalog.get(model_id).public_dict() for model_id in sorted(ACTIVE_NEW_WORK_MODEL_IDS)]
 
 
 REGISTERED_MODELS = _registered_models()
+CALLABLE_MODELS = _callable_models()
 
 
 def _field(schema: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -149,49 +152,52 @@ def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) ->
     return normalize_kie_video_input(spec.kie_model, clean)
 
 
-def test_registry_golden_payload_count_including_music() -> None:
-    # The audit originally counted 43 entries. The current branch has since grown
-    # to 46 registered Kie contracts; Suno is a dedicated audio contract outside
-    # ModelCatalog. Cover the current set rather than freezing the obsolete count.
+def test_golden_payload_inventory_covers_current_contracts() -> None:
+    # The audit originally counted 43 entries. The current implementation has
+    # grown since then, so lock both the new-work set and the full recovery set.
     assert len(ModelCatalog.list()) == 23  # customer-visible products
-    assert len(REGISTERED_MODELS) == 46  # provider/history/auto-route registry
+    assert len(REGISTERED_MODELS) == 46  # includes historical/recovery routes
+    assert set(ACTIVE_NEW_WORK_MODEL_IDS) <= set(ModelCatalog._by_id)
     assert MUSIC_MODEL_ID == "suno-v5.5"
     assert len(REGISTERED_MODELS) + 1 == 47
 
 
-@pytest.mark.parametrize("model", REGISTERED_MODELS, ids=lambda item: item["id"])
-def test_every_registered_model_has_a_normalizable_golden_payload(model: dict[str, Any]) -> None:
+@pytest.mark.parametrize("model", CALLABLE_MODELS, ids=lambda item: f"callable:{item['id']}")
+def test_every_callable_model_has_a_normalizable_golden_payload(model: dict[str, Any]) -> None:
     schema = build_public_model_ui_schema(model)
     fields = {item["name"] for item in schema.get("fields", [])}
     assert fields == set(model["known_fields"])
 
     parameters, billing_seconds = _minimal(model)
-    spec = ModelCatalog.get(model["id"])
-
-    if model["id"] in ACTIVE_NEW_WORK_MODEL_IDS:
-        prepared_spec, clean, cost, seconds, _unit = ModelCatalog.prepare(
-            model["id"],
-            parameters,
-            billing_seconds=billing_seconds,
-        )
-        assert prepared_spec.id == spec.id
-        assert cost > 0
-        if spec.price_mode == "per_second":
-            assert seconds is not None and seconds > 0
-    else:
-        # Historical specs remain registered so existing generation rows can be
-        # replayed/rendered. They are not admitted for new customer work, but their
-        # provider payload contract must still stay valid for recovery/reconciliation.
-        clean = dict(parameters)
-        for required in spec.required_fields:
-            assert clean.get(required) not in (None, "", []), (spec.id, required)
-        ModelCatalog._validate_model_rules(spec, clean)
+    spec, clean, cost, seconds, _unit = ModelCatalog.prepare(
+        model["id"], parameters, billing_seconds=billing_seconds
+    )
+    assert spec.id == model["id"]
+    assert cost > 0
+    if spec.price_mode == "per_second":
+        assert seconds is not None and seconds > 0
 
     normalized = _normalize_provider_payload(model, clean)
-
-    # A value exposed by the schema and accepted by the model contract must reach
-    # the provider boundary instead of being silently discarded.
     assert set(clean) <= set(normalized), (model["id"], set(clean) - set(normalized))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [item for item in REGISTERED_MODELS if item["id"] not in ACTIVE_NEW_WORK_MODEL_IDS],
+    ids=lambda item: f"recovery:{item['id']}",
+)
+def test_historical_provider_specs_stay_normalizable_for_recovery(model: dict[str, Any]) -> None:
+    schema = build_public_model_ui_schema(model)
+    fields = {item["name"] for item in schema.get("fields", [])}
+    assert fields == set(model["known_fields"])
+
+    parameters, _billing_seconds = _minimal(model)
+    spec = ModelCatalog.get(model["id"])
+    for required in spec.required_fields:
+        assert parameters.get(required) not in (None, "", []), (spec.id, required)
+    ModelCatalog._validate_model_rules(spec, parameters)
+    normalized = _normalize_provider_payload(model, parameters)
+    assert set(parameters) <= set(normalized), (model["id"], set(parameters) - set(normalized))
 
 
 def test_suno_has_a_golden_payload_entry() -> None:
