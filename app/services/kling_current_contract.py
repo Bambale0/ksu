@@ -31,9 +31,8 @@ KLING_CURRENT_PROVIDER_MODELS = {
     KLING_AVATAR_PRO_PROVIDER,
 }
 
-# Catalog defaults are still stored in the legacy 10-RUB credit denomination and
-# converted to public 1 RUB = 1 ROX by GenerationService when no live tariff exists.
-# Therefore 3 -> 30 ROX/s and 2 -> 20 ROX/s.
+# All catalog prices are public ROX. ROXY's product denomination is 1 ROX = 1 RUB;
+# historical 10-RUB balances were migrated once and are never re-denominated here.
 CURRENT_KLING_SPECS = (
     catalog.ModelSpec(
         "kling-2.5-turbo-pro-t2v",
@@ -91,7 +90,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "720p avatar generation; billing_seconds must match the input audio duration.",
-            "Prompt guidance may be empty; image and audio are required.",
+            "Kie's executable API example sends prompt as an empty string; guidance is optional.",
         ),
     ),
     catalog.ModelSpec(
@@ -110,7 +109,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "1080p/48fps avatar generation; billing_seconds must match the input audio duration.",
-            "Prompt guidance may be empty; image and audio are required.",
+            "Kie's executable API example sends prompt as an empty string; guidance is optional.",
         ),
     ),
 )

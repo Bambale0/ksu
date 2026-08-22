@@ -39,7 +39,6 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
             "image_urls": ["https://example.com/start.png"],
             "sound": True,
             "duration": 5,
-            "aspect_ratio": "16:9",
             "mode": "pro",
             "multi_shots": False,
             "kling_elements": [
@@ -57,6 +56,7 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
     assert spec.kie_model == "kling-3.0/video"
     assert seconds == 5
     assert clean["mode"] == "pro"
+    assert "aspect_ratio" not in clean
 
     _, multi, _, seconds, _ = ModelCatalog.prepare(
         "kling-3.0",
@@ -78,9 +78,12 @@ def test_kling_3_full_spec_accepts_single_and_valid_multishot() -> None:
     [
         {"duration": 5, "image_urls": ["a", "b", "c"]},
         {
-            "duration": 5,
+            "duration": 6,
             "multi_shots": True,
-            "multi_prompt": [{"prompt": "one", "duration": 3}],
+            "multi_prompt": [
+                {"prompt": f"shot {index}", "duration": 1}
+                for index in range(6)
+            ],
         },
         {
             "duration": 5,
@@ -117,8 +120,9 @@ def test_veo_modes_and_reference_rules_are_server_validated() -> None:
             "veo_model": "veo3_fast",
             "generation_type": "REFERENCE_2_VIDEO",
             "image_urls": ["https://example.com/reference.png"],
+            "duration": 8,
+            "resolution": "1080p",
         },
-        billing_seconds=8,
     )
     # Current Kie Veo 3.1 docs explicitly allow one or two images in
     # FIRST_AND_LAST_FRAMES_2_VIDEO. One image acts as a single reference
@@ -136,8 +140,9 @@ def test_veo_modes_and_reference_rules_are_server_validated() -> None:
                 "prompt": "scene",
                 "generation_type": "FIRST_AND_LAST_FRAMES_2_VIDEO",
                 "image_urls": image_urls,
+                "duration": 8,
+                "resolution": "1080p",
             },
-            billing_seconds=8,
         )
     with pytest.raises(InvalidModelParametersError, match="one or two"):
         ModelCatalog.prepare(
@@ -146,8 +151,9 @@ def test_veo_modes_and_reference_rules_are_server_validated() -> None:
                 "prompt": "scene",
                 "generation_type": "FIRST_AND_LAST_FRAMES_2_VIDEO",
                 "image_urls": [],
+                "duration": 8,
+                "resolution": "1080p",
             },
-            billing_seconds=8,
         )
 
 
@@ -165,7 +171,9 @@ def test_requested_kie_models_have_rich_dynamic_controls() -> None:
     controls = {field["name"]: field for field in veo["fields"]}
     assert controls["veo_model"]["control"] == "combobox"
     assert controls["generation_type"]["control"] == "combobox"
-    assert veo["billing_seconds"]["required"] is True
+    assert controls["duration"]["suggestions"] == [4, 6, 8]
+    assert controls["resolution"]["suggestions"] == ["720p", "1080p", "4k"]
+    assert "billing_seconds" not in veo
 
     gemini = build_public_model_ui_schema(models["gemini-omni-video"])
     controls = {field["name"]: field for field in gemini["fields"]}

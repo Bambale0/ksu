@@ -173,7 +173,9 @@ class Settings(BaseSettings):
     kie_api_key: str = ""
     kie_base_url: str = "https://api.kie.ai"
     kie_upload_base_url: str = "https://kieai.redpandaai.co"
-    kie_upload_max_bytes: int = 100 * 1024 * 1024
+    # Must be at least as large as the biggest per-model upload advertised in
+    # ui_schema. Seedance 2.5 currently accepts reference videos up to 200 MB.
+    kie_upload_max_bytes: int = 200 * 1024 * 1024
     kie_webhook_hmac_key: str = ""
 
     cryptopay_api_token: str = ""

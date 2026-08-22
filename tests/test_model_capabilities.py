@@ -83,15 +83,18 @@ def test_current_wan_photo_model_accepts_edit_references() -> None:
 
 
 def test_grok_extend_uses_provider_extension_seconds_for_billing() -> None:
-    with pytest.raises(InvalidModelParametersError, match="prompt"):
-        ModelCatalog.prepare(
-            "grok-video-extend",
-            {
-                "task_id": "task_grok_123",
-                "extend_at": 2,
-                "extend_times": "6",
-            },
-        )
+    _spec, params, cost, seconds, _unit = ModelCatalog.prepare(
+        "grok-video-extend",
+        {
+            "task_id": "task_grok_123",
+            "extend_at": 2,
+            "extend_times": "6",
+        },
+    )
+    assert params["prompt"] == ""
+    assert params["extend_times"] == "6"
+    assert seconds == 6
+    assert cost == Decimal("60.00")
 
     with pytest.raises(InvalidModelParametersError, match="extend_at"):
         ModelCatalog.prepare(

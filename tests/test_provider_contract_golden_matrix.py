@@ -153,9 +153,6 @@ def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) ->
 
 
 def test_golden_payload_inventory_covers_current_contracts() -> None:
-    # The audit originally counted 43 entries. The implementation has grown
-    # since then, so cover the complete current registry instead of dropping
-    # newer contracts merely to preserve an obsolete count.
     assert len(ModelCatalog.list()) == 23
     assert len(REGISTERED_MODELS) == 46
     assert len(CALLABLE_MODELS) >= 23
@@ -256,7 +253,8 @@ def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
     assert _field(seedance, "resolution")["suggestions"] == ["480p", "720p", "1080p", "4K"]
     assert "adaptive" not in _field(seedance, "aspect_ratio")["suggestions"]
     assert _field(seedance, "fixed_lens") is None
-    assert _field(seedance, "return_last_frame") is None
+    assert _field(seedance, "return_last_frame") is not None
+    assert seedance["defaults"]["return_last_frame"] is False
     assert _field(seedance, "nsfw_checker") is not None
 
     seedance25 = build_public_model_ui_schema(models["seedance-2.5"])
@@ -276,6 +274,28 @@ def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
 
     seedream_lite = build_public_model_ui_schema(models["seedream-5-lite-t2i"])
     assert _field(seedream_lite, "output_format")["suggestions"] == ["png", "jpeg"]
+
+    gpt2 = build_public_model_ui_schema(models["gpt-image-2-t2i"])
+    assert _field(gpt2, "resolution")["suggestions"] == ["1K", "2K", "4K"]
+
+    gemini = build_public_model_ui_schema(models["gemini-omni-video"])
+    for name in ("aspect_ratio", "resolution", "seed"):
+        assert _field(gemini, name) is not None
+    assert _field(gemini, "duration")["suggestions"] == [4, 6, 8, 10]
+
+    kling25_t2v = build_public_model_ui_schema(models["kling-2.5-turbo-pro-t2v"])
+    assert _field(kling25_t2v, "duration")["suggestions"] == ["5", "10"]
+    assert _field(kling25_t2v, "aspect_ratio")["suggestions"] == ["16:9", "9:16", "1:1"]
+
+    kling25_i2v = build_public_model_ui_schema(models["kling-2.5-turbo-pro-i2v"])
+    assert _field(kling25_i2v, "aspect_ratio") is None
+    assert _field(kling25_i2v, "image_url")["max_size_mb"] == 10
+    assert _field(kling25_i2v, "tail_image_url")["max_size_mb"] == 10
+
+    avatar = build_public_model_ui_schema(models["kling-avatar-pro"])
+    assert _field(avatar, "image_url")["max_size_mb"] == 10
+    assert _field(avatar, "audio_url")["max_size_mb"] == 100
+    assert avatar["billing_seconds"]["max"] == 300
 
     grok_t2v = build_public_model_ui_schema(models["grok-video-t2v"])
     assert _field(grok_t2v, "mode")["suggestions"] == ["fun", "normal", "spicy"]

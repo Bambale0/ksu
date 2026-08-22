@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -38,6 +38,7 @@ class UserReference(TimestampMixin, Base):
     file_hash: Mapped[str | None] = mapped_column(String(64))
     original_filename: Mapped[str | None] = mapped_column(String(255))
     content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     source: Mapped[str] = mapped_column(String(64), default="manual", server_default="manual", nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

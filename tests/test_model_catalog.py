@@ -61,6 +61,7 @@ def test_kling_motion_requires_reference_video_billing_duration() -> None:
             "prompt": "copy the motion",
             "input_urls": ["https://example.com/a.png"],
             "video_urls": ["https://example.com/a.mp4"],
+            "character_orientation": "video",
         },
         billing_seconds=12,
     )

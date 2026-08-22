@@ -122,6 +122,48 @@ def test_tariff_validation_rejects_unknown_and_negative_values() -> None:
         validate_tariff_payload({"image_prices": {"model": -1}})
 
 
+def test_admin_generation_pricing_tiers_follow_model_ui_contract() -> None:
+    valid = validate_tariff_payload(
+        {
+            "generation_pricing": {
+                "kling-motion-3.0": {
+                    "per_second": 60,
+                    "by_mode": {"720p": 60, "1080p": 80},
+                },
+                "veo-3.1": {
+                    "per_second": 35,
+                    "by_resolution": {"720p": 35, "1080p": 50, "4k": 80},
+                },
+            }
+        }
+    )
+    assert valid["generation_pricing"]["kling-motion-3.0"]["by_mode"]["1080p"] == 80
+
+    with pytest.raises(TariffValidationError, match="unsupported resolution"):
+        validate_tariff_payload(
+            {
+                "generation_pricing": {
+                    "veo-3.1": {
+                        "per_second": 35,
+                        "by_resolution": {"1440p": 50},
+                    }
+                }
+            }
+        )
+
+    with pytest.raises(TariffValidationError, match="unsupported mode"):
+        validate_tariff_payload(
+            {
+                "generation_pricing": {
+                    "kling-motion-3.0": {
+                        "per_second": 60,
+                        "by_mode": {"4K": 100},
+                    }
+                }
+            }
+        )
+
+
 def test_campaign_segment_validation_is_bounded() -> None:
     user_id = uuid.uuid4()
     segment = validate_campaign_segment(

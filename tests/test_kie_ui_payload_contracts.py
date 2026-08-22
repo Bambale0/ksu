@@ -33,11 +33,39 @@ def test_image_models_do_not_expose_video_resolutions() -> None:
 def test_resolution_options_are_model_specific() -> None:
     assert _field("nano-banana-2", "resolution")["suggestions"] == ["1K", "2K", "4K"]
     assert _field("nano-banana-pro", "resolution")["suggestions"] == ["1K", "2K", "4K"]
+    assert _field("gpt-image-2-t2i", "resolution")["suggestions"] == ["1K", "2K", "4K"]
+    assert _field("gpt-image-2-i2i", "resolution")["suggestions"] == ["1K", "2K", "4K"]
     assert _field("wan-2.7-image", "resolution")["suggestions"] == ["1K", "2K"]
     assert _field("wan-2.7-image-pro", "resolution")["suggestions"] == ["1K", "2K", "4K"]
     assert _field("grok-video-i2v", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
     assert _field("grok-video-t2v", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
     assert _field("seedance-2.5", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
+
+
+def test_current_image_upload_limits_are_exposed_to_dynamic_ui() -> None:
+    expected = {
+        ("nano-banana-edit", "image_urls"): (10, 10),
+        ("nano-banana-pro", "image_input"): (8, 30),
+        ("nano-banana-2", "image_input"): (14, 30),
+        ("nano-banana-2-lite", "image_urls"): (10, 30),
+        ("seedream-4.5-edit", "image_urls"): (14, 10),
+        ("seedream-5-lite-i2i", "image_urls"): (14, 30),
+        ("seedream-5-pro-i2i", "image_urls"): (10, 10),
+        ("gpt-image-1.5-i2i", "input_urls"): (16, 10),
+        ("gpt-image-2-i2i", "input_urls"): (16, 30),
+        ("grok-image-i2i", "image_urls"): (1, 10),
+    }
+    for (model_id, field_name), (max_items, max_size_mb) in expected.items():
+        field = _field(model_id, field_name)
+        assert field["max_items"] == max_items, model_id
+        assert field["max_size_mb"] == max_size_mb, model_id
+
+
+def test_nano_banana_public_contract_exposes_provider_nsfw_toggle() -> None:
+    for model_id in ("nano-banana", "nano-banana-edit"):
+        field = _field(model_id, "nsfw_checker")
+        assert field["control"] == "toggle"
+        assert _schema(model_id)["defaults"]["nsfw_checker"] is True
 
 
 def test_prompt_is_always_present_in_provider_payload() -> None:

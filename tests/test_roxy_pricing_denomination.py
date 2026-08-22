@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.db.session import SessionFactory
 from app.services.billing_access import BillingAccessService, BillingDecision
 from app.services.generations import GenerationService
+from app.services.model_catalog import ModelCatalog
 
 
 class _AdminUser:
@@ -52,6 +53,59 @@ async def test_explicit_generation_price_override_is_already_public_rox() -> Non
     assert seconds == 4
     assert unit_price == Decimal("72.50")
     assert cost == Decimal("290.00")
+
+
+def test_mode_pricing_tier_changes_actual_billed_unit_price() -> None:
+    previous = settings.generation_pricing_json
+    settings.generation_pricing_json = (
+        '{"kling-motion-3.0":{"per_second":60,'
+        '"by_mode":{"720p":60,"1080p":80}}}'
+    )
+    try:
+        _spec, _params, cost, seconds, unit_price = ModelCatalog.prepare(
+            "kling-motion-3.0",
+            {
+                "prompt": "transfer the movement",
+                "input_urls": ["https://example.com/person.png"],
+                "video_urls": ["https://example.com/motion.mp4"],
+                "character_orientation": "image",
+                "mode": "1080p",
+            },
+            billing_seconds=5,
+        )
+    finally:
+        settings.generation_pricing_json = previous
+
+    assert seconds == 5
+    assert unit_price == Decimal("80")
+    assert cost == Decimal("400.00")
+
+
+def test_resolution_pricing_tier_changes_actual_billed_unit_price() -> None:
+    previous = settings.generation_pricing_json
+    settings.generation_pricing_json = (
+        '{"veo-3.1":{"per_second":35,'
+        '"by_resolution":{"720p":35,"1080p":50,"4k":80}}}'
+    )
+    try:
+        _spec, clean, cost, seconds, unit_price = ModelCatalog.prepare(
+            "veo-3.1",
+            {
+                "prompt": "cinematic landscape",
+                "generation_type": "TEXT_2_VIDEO",
+                "veo_model": "veo3_fast",
+                "aspect_ratio": "auto",
+                "resolution": "1080p",
+                "duration": 6,
+            },
+        )
+    finally:
+        settings.generation_pricing_json = previous
+
+    assert clean["resolution"] == "1080p"
+    assert seconds == 6
+    assert unit_price == Decimal("50")
+    assert cost == Decimal("300.00")
 
 
 @pytest.mark.asyncio
