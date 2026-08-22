@@ -113,12 +113,26 @@ def test_seedance_scenarios_and_reference_limits() -> None:
             },
         )
 
-    hybrid = normalize_kie_video_input(
+    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
+        normalize_kie_video_input(
+            "bytedance/seedance-2",
+            {
+                "prompt": "x",
+                "first_frame_url": "https://example.com/first.png",
+                "last_frame_url": "https://example.com/last.png",
+                "reference_image_urls": ["https://example.com/ref.png"],
+                "reference_video_urls": ["https://example.com/ref.mp4"],
+                "reference_audio_urls": ["https://example.com/ref.wav"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+            },
+        )
+
+    references = normalize_kie_video_input(
         "bytedance/seedance-2",
         {
             "prompt": "x",
-            "first_frame_url": "https://example.com/first.png",
-            "last_frame_url": "https://example.com/last.png",
             "reference_image_urls": ["https://example.com/ref.png"],
             "reference_video_urls": ["https://example.com/ref.mp4"],
             "reference_audio_urls": ["https://example.com/ref.wav"],
@@ -127,8 +141,7 @@ def test_seedance_scenarios_and_reference_limits() -> None:
             "aspect_ratio": "16:9",
         },
     )
-    assert hybrid["first_frame_url"].endswith("first.png")
-    assert hybrid["reference_video_urls"] == ["https://example.com/ref.mp4"]
+    assert references["reference_video_urls"] == ["https://example.com/ref.mp4"]
 
     with pytest.raises(KieVideoContractError):
         normalize_kie_video_input(
