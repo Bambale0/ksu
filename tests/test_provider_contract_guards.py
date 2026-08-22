@@ -53,7 +53,7 @@ def test_wan_pro_4k_edit_is_rejected_instead_of_silently_downgraded() -> None:
 
 def test_removed_provider_fields_cannot_survive_as_hidden_defaults() -> None:
     for model_id in ("seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"):
-        model = next(item for item in ModelCatalog.list() if item["id"] == model_id)
+        model = ModelCatalog.get(model_id).public_dict()
         schema = build_public_model_ui_schema(model)
         fields = {field["name"] for field in schema["fields"]}
         assert "fixed_lens" not in fields
