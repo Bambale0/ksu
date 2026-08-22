@@ -18,14 +18,15 @@ SEEDANCE20 = (
 )
 
 
-def test_seedance20_return_last_frame_is_not_public_and_legacy_payload_is_stripped() -> None:
+def test_seedance20_return_last_frame_is_public_and_preserved_for_provider() -> None:
     for model_id, provider in SEEDANCE20:
         spec = ModelCatalog.get(model_id)
-        assert "return_last_frame" not in spec.known_fields
+        assert "return_last_frame" in spec.known_fields
 
         schema = build_public_model_ui_schema(spec.public_dict())
-        assert "return_last_frame" not in {item["name"] for item in schema["fields"]}
-        assert "return_last_frame" not in schema["defaults"]
+        fields = {item["name"]: item for item in schema["fields"]}
+        assert fields["return_last_frame"]["control"] == "toggle"
+        assert schema["defaults"]["return_last_frame"] is False
 
         payload = normalize_kie_video_input(
             provider,
@@ -37,7 +38,7 @@ def test_seedance20_return_last_frame_is_not_public_and_legacy_payload_is_stripp
                 "return_last_frame": True,
             },
         )
-        assert "return_last_frame" not in payload
+        assert payload["return_last_frame"] is True
 
 
 def test_veo_31_resolution_and_duration_are_public_billed_and_provider_validated() -> None:
