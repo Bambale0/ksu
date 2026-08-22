@@ -57,13 +57,37 @@ def test_wan_standard_and_pro_apply_documented_image_limits() -> None:
         {
             "prompt": "x",
             "input_urls": ["https://example.com/reference.png"],
-            "resolution": "4K",
+            "resolution": "2K",
             "n": 1,
-            "thinking_mode": True,
+            "thinking_mode": False,
         },
     )
     assert payload["resolution"] == "2K"
     assert payload["thinking_mode"] is False
+
+    with pytest.raises(KieImageContractError, match="4K"):
+        normalize_kie_image_input(
+            "wan/2-7-image-pro",
+            {
+                "prompt": "x",
+                "input_urls": ["https://example.com/reference.png"],
+                "resolution": "4K",
+                "n": 1,
+                "thinking_mode": False,
+            },
+        )
+
+    with pytest.raises(KieImageContractError, match="thinking_mode"):
+        normalize_kie_image_input(
+            "wan/2-7-image-pro",
+            {
+                "prompt": "x",
+                "input_urls": ["https://example.com/reference.png"],
+                "resolution": "2K",
+                "n": 1,
+                "thinking_mode": True,
+            },
+        )
 
     with pytest.raises(KieImageContractError):
         normalize_kie_image_input(
@@ -79,10 +103,16 @@ def test_wan_standard_and_pro_apply_documented_image_limits() -> None:
 
     gallery = normalize_kie_image_input(
         "wan/2-7-image",
-        {"prompt": "x", "n": 12, "enable_sequential": True, "thinking_mode": True},
+        {"prompt": "x", "n": 12, "enable_sequential": True, "thinking_mode": False},
     )
     assert gallery["n"] == 12
     assert gallery["thinking_mode"] is False
+
+    with pytest.raises(KieImageContractError, match="thinking_mode"):
+        normalize_kie_image_input(
+            "wan/2-7-image",
+            {"prompt": "x", "n": 12, "enable_sequential": True, "thinking_mode": True},
+        )
 
 
 def test_nano_banana_2_limits_references_and_enums() -> None:
