@@ -50,29 +50,36 @@ async def _persist_reference_metadata(
     size_bytes: int,
     probe: MediaProbe,
 ) -> None:
-    # Uploaded references have product-owned, measured metadata. Manual URL
-    # references intentionally remain unknown instead of trusting remote headers.
+    # Byte size is measured on every upload. Never replace already verified media
+    # metadata with an unavailable/failed replay probe: a transient ffprobe issue
+    # must not turn a trusted reference back into an unverified billing source.
     setattr(reference, "size_bytes", size_bytes)
-    setattr(reference, "duration_ms", probe.duration_ms)
-    setattr(reference, "width", probe.width)
-    setattr(reference, "height", probe.height)
-    setattr(reference, "container", probe.container)
-    setattr(reference, "video_codec", probe.video_codec)
-    setattr(reference, "audio_codec", probe.audio_codec)
-    setattr(reference, "probe_status", probe.status)
+    previously_ready = getattr(reference, "probe_status", None) == "ready"
+    if probe.status == "ready" or not previously_ready:
+        setattr(reference, "duration_ms", probe.duration_ms)
+        setattr(reference, "width", probe.width)
+        setattr(reference, "height", probe.height)
+        setattr(reference, "container", probe.container)
+        setattr(reference, "video_codec", probe.video_codec)
+        setattr(reference, "audio_codec", probe.audio_codec)
+        setattr(reference, "probe_status", probe.status)
     await session.commit()
 
 
-def _metadata_view(probe: MediaProbe) -> dict[str, object | None]:
+def _metadata_view(reference: object) -> dict[str, object | None]:
+    duration_ms = getattr(reference, "duration_ms", None)
+    duration_seconds = None
+    if isinstance(duration_ms, int) and duration_ms > 0:
+        duration_seconds = max(1, (duration_ms + 999) // 1000)
     return {
-        "probe_status": probe.status,
-        "duration_ms": probe.duration_ms,
-        "duration_seconds": probe.duration_seconds,
-        "width": probe.width,
-        "height": probe.height,
-        "container": probe.container,
-        "video_codec": probe.video_codec,
-        "audio_codec": probe.audio_codec,
+        "probe_status": getattr(reference, "probe_status", None),
+        "duration_ms": duration_ms,
+        "duration_seconds": duration_seconds,
+        "width": getattr(reference, "width", None),
+        "height": getattr(reference, "height", None),
+        "container": getattr(reference, "container", None),
+        "video_codec": getattr(reference, "video_codec", None),
+        "audio_codec": getattr(reference, "audio_codec", None),
     }
 
 
@@ -132,7 +139,7 @@ async def upload_to_kie(
             "size": size_bytes,
             "replayed": True,
             "reference": ReferenceService.public_view(reference),
-            **_metadata_view(probe),
+            **_metadata_view(reference),
         }
 
     client = KieUploadClient(settings.kie_api_key, settings.kie_upload_base_url)
@@ -172,5 +179,5 @@ async def upload_to_kie(
         "size": uploaded.size,
         "replayed": replayed,
         "reference": ReferenceService.public_view(reference),
-        **_metadata_view(probe),
+        **_metadata_view(reference),
     }
