@@ -17,6 +17,7 @@ from app.db.models import Generation, Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
+from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
 
@@ -84,10 +85,16 @@ def _media_count_label(media_type: str, count: int) -> str:
     return f"{count} фото"
 
 
-def _mini_app_url(generation_id: uuid.UUID) -> str | None:
+def _mini_app_url(generation_id: uuid.UUID, action: str | None = None) -> str | None:
     if not settings.public_base_url:
         return None
-    query = urlencode({"route": "history", "generation": str(generation_id)})
+    query_data = {
+        "route": "generation-action" if action else "history",
+        "generation": str(generation_id),
+    }
+    if action:
+        query_data["action"] = action
+    query = urlencode(query_data)
     return f"{settings.public_base_url.rstrip('/')}/mini-app/?{query}"
 
 
@@ -96,18 +103,34 @@ def _generation_keyboard(
     original_url: str | None = None,
 ) -> InlineKeyboardMarkup | None:
     rows: list[list[InlineKeyboardButton]] = []
+
+    action_buttons: list[InlineKeyboardButton] = []
+    for action in GenerationActionService.available_actions(generation):
+        action_url = _mini_app_url(generation.id, action.id)
+        if not action_url:
+            continue
+        action_buttons.append(
+            InlineKeyboardButton(
+                text=action.label,
+                web_app=WebAppInfo(url=action_url),
+            )
+        )
+    for index in range(0, len(action_buttons), 2):
+        rows.append(action_buttons[index:index + 2])
+
+    utilities: list[InlineKeyboardButton] = []
     if original_url and original_url.startswith(("https://", "http://")):
-        rows.append([InlineKeyboardButton(text="📥 Скачать оригинал", url=original_url)])
+        utilities.append(InlineKeyboardButton(text="📥 Оригинал", url=original_url))
     app_url = _mini_app_url(generation.id)
     if app_url:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="🚀 Открыть в ROXY",
-                    web_app=WebAppInfo(url=app_url),
-                )
-            ]
+        utilities.append(
+            InlineKeyboardButton(
+                text="🚀 Открыть в ROXY",
+                web_app=WebAppInfo(url=app_url),
+            )
         )
+    if utilities:
+        rows.append(utilities)
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
