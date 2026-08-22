@@ -9,6 +9,7 @@ from app.services.kie_video_contracts import normalize_kie_veo_input, normalize_
 from app.services.model_catalog import ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.music_generation import MUSIC_MODEL_ID, MusicGenerationError, MusicGenerationService
+from app.services.trending_model_catalog import ACTIVE_NEW_WORK_MODEL_IDS
 
 
 IMAGE_LIST_FIELDS = {
@@ -23,6 +24,17 @@ VIDEO_LIST_FIELDS = {"video_urls", "reference_video_urls", "reference_video"}
 VIDEO_SINGLE_FIELDS = {"video_url", "first_clip_url"}
 AUDIO_LIST_FIELDS = {"reference_audio_urls"}
 AUDIO_SINGLE_FIELDS = {"audio_url", "driving_audio_url", "reference_voice"}
+
+
+def _registered_models() -> list[dict[str, Any]]:
+    """Return every provider spec, including hidden/history-compatible routes."""
+    return [
+        spec.public_dict()
+        for _model_id, spec in sorted(ModelCatalog._by_id.items())
+    ]
+
+
+REGISTERED_MODELS = _registered_models()
 
 
 def _field(schema: dict[str, Any], name: str) -> dict[str, Any] | None:
@@ -70,15 +82,16 @@ def _default_value(model: dict[str, Any], schema: dict[str, Any], name: str) -> 
 
 def _minimal(model: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
     schema = build_public_model_ui_schema(model)
+    known_fields = set(model["known_fields"])
     clean = {
         key: value
         for key, value in dict(schema.get("defaults", {})).items()
-        if key in set(model["known_fields"])
+        if key in known_fields
     }
     for name in model["required_fields"]:
         if clean.get(name) in (None, "", []):
             clean[name] = _default_value(model, schema, name)
-    if "prompt" in model["known_fields"] and not clean.get("prompt"):
+    if "prompt" in known_fields and not clean.get("prompt"):
         clean["prompt"] = "Golden contract test"
 
     model_id = model["id"]
@@ -91,7 +104,14 @@ def _minimal(model: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
         clean.pop("task_id", None)
         clean.pop("index", None)
     elif model_id == "grok-video-extend":
-        clean.update({"task_id": "task_golden", "prompt": "Continue", "extend_at": 2, "extend_times": "6"})
+        clean.update(
+            {
+                "task_id": "task_golden",
+                "prompt": "Continue",
+                "extend_at": 2,
+                "extend_times": "6",
+            }
+        )
     elif model_id == "grok-video-upscale":
         clean["task_id"] = "task_golden"
     elif model_id.startswith("kling-motion-"):
@@ -103,10 +123,13 @@ def _minimal(model: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
             }
         )
 
-    if "duration" in model["known_fields"] and clean.get("duration") in (None, "", 0, "0"):
+    if "duration" in known_fields and clean.get("duration") in (None, "", 0, "0"):
         duration = _field(schema, "duration") or {}
         suggestions = duration.get("suggestions") or []
-        clean["duration"] = next((value for value in suggestions if int(value) > 0), model.get("min_seconds") or 1)
+        clean["duration"] = next(
+            (value for value in suggestions if int(value) > 0),
+            model.get("min_seconds") or 1,
+        )
 
     billing = schema.get("billing_seconds") or {}
     billing_seconds = None
@@ -117,44 +140,75 @@ def _minimal(model: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
     return clean, billing_seconds
 
 
-def test_catalog_has_43_customer_callable_entries_including_music() -> None:
-    models = ModelCatalog.list()
-    assert len(models) == 42
+def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) -> dict[str, Any]:
+    spec = ModelCatalog.get(model["id"])
+    if spec.media_type == "image":
+        return normalize_kie_image_input(spec.kie_model, clean)
+    if spec.id == "veo-3.1":
+        return normalize_kie_veo_input(clean)
+    return normalize_kie_video_input(spec.kie_model, clean)
+
+
+def test_registry_has_43_golden_payload_entries_including_music() -> None:
+    assert len(ModelCatalog.list()) == 23  # customer-visible products
+    assert len(REGISTERED_MODELS) == 42  # provider/history/auto-route registry
     assert MUSIC_MODEL_ID == "suno-v5.5"
-    assert len(models) + 1 == 43
+    assert len(REGISTERED_MODELS) + 1 == 43
 
 
-@pytest.mark.parametrize("model", ModelCatalog.list(), ids=lambda item: item["id"])
-def test_every_model_has_a_normalizable_golden_payload(model: dict[str, Any]) -> None:
+@pytest.mark.parametrize("model", REGISTERED_MODELS, ids=lambda item: item["id"])
+def test_every_registered_model_has_a_normalizable_golden_payload(model: dict[str, Any]) -> None:
     schema = build_public_model_ui_schema(model)
     fields = {item["name"] for item in schema.get("fields", [])}
     assert fields == set(model["known_fields"])
 
     parameters, billing_seconds = _minimal(model)
-    spec, clean, cost, seconds, _unit = ModelCatalog.prepare(
-        model["id"],
-        parameters,
-        billing_seconds=billing_seconds,
-    )
-    assert cost > 0
-    if spec.price_mode == "per_second":
-        assert seconds is not None and seconds > 0
+    spec = ModelCatalog.get(model["id"])
 
-    if spec.media_type == "image":
-        normalized = normalize_kie_image_input(spec.kie_model, clean)
-    elif spec.id == "veo-3.1":
-        normalized = normalize_kie_veo_input(clean)
+    if model["id"] in ACTIVE_NEW_WORK_MODEL_IDS:
+        prepared_spec, clean, cost, seconds, _unit = ModelCatalog.prepare(
+            model["id"],
+            parameters,
+            billing_seconds=billing_seconds,
+        )
+        assert prepared_spec.id == spec.id
+        assert cost > 0
+        if spec.price_mode == "per_second":
+            assert seconds is not None and seconds > 0
     else:
-        normalized = normalize_kie_video_input(spec.kie_model, clean)
+        # Historical specs remain registered so existing generation rows can be
+        # replayed/rendered. They are not admitted for new customer work, but their
+        # provider payload contract must still stay valid for recovery/reconciliation.
+        clean = dict(parameters)
+        for required in spec.required_fields:
+            assert clean.get(required) not in (None, "", []), (spec.id, required)
+        ModelCatalog._validate_model_rules(spec, clean)
 
-    # A value that was exposed in ui_schema and accepted by billing must reach the
-    # provider boundary. Aliases are normalized before this test and are therefore
-    # not allowed to disappear silently here.
+    normalized = _normalize_provider_payload(model, clean)
+
+    # A value exposed by the schema and accepted by the model contract must reach
+    # the provider boundary instead of being silently discarded.
     assert set(clean) <= set(normalized), (model["id"], set(clean) - set(normalized))
 
 
+def test_suno_has_a_golden_payload_entry() -> None:
+    clean, cost = MusicGenerationService.prepare(
+        {
+            "prompt": "Golden music contract",
+            "customMode": False,
+            "instrumental": False,
+        }
+    )
+    assert clean == {
+        "prompt": "Golden music contract",
+        "customMode": False,
+        "instrumental": False,
+    }
+    assert cost > 0
+
+
 def test_p0_contract_regressions_are_locked() -> None:
-    models = {item["id"]: item for item in ModelCatalog.list()}
+    models = {item["id"]: item for item in REGISTERED_MODELS}
 
     wan_t2v = models["wan-2.7-t2v"]
     assert "ratio" in wan_t2v["known_fields"]
@@ -174,7 +228,9 @@ def test_p0_contract_regressions_are_locked() -> None:
 
     veo = build_public_model_ui_schema(models["veo-3.1"])
     assert _field(veo, "aspect_ratio")["suggestions"] == ["16:9", "9:16", "auto"]
-    assert normalize_kie_veo_input({"prompt": "x", "aspect_ratio": "auto"})["aspect_ratio"] == "auto"
+    assert normalize_kie_veo_input({"prompt": "x", "aspect_ratio": "auto"})[
+        "aspect_ratio"
+    ] == "auto"
 
     with pytest.raises(MusicGenerationError):
         MusicGenerationService.prepare({"prompt": "x" * 501})
@@ -183,7 +239,7 @@ def test_p0_contract_regressions_are_locked() -> None:
 
 
 def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
-    models = {item["id"]: item for item in ModelCatalog.list()}
+    models = {item["id"]: item for item in REGISTERED_MODELS}
 
     seedance = build_public_model_ui_schema(models["seedance-2.0"])
     assert _field(seedance, "resolution")["suggestions"] == ["480p", "720p", "1080p", "4K"]
