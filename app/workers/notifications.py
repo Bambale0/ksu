@@ -120,7 +120,7 @@ def _generation_keyboard(
 
     utilities: list[InlineKeyboardButton] = []
     if original_url and original_url.startswith(("https://", "http://")):
-        utilities.append(InlineKeyboardButton(text="📥 Оригинал", url=original_url))
+        utilities.append(InlineKeyboardButton(text="📥 Скачать оригинал", url=original_url))
     app_url = _mini_app_url(generation.id)
     if app_url:
         utilities.append(
