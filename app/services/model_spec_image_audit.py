@@ -39,8 +39,21 @@ def install_model_spec_image_audit() -> None:
 
     # Current Kie upload limits. These are surfaced to every dynamic client via
     # ui_schema instead of being reimplemented in the Mini App.
-    nano_lite = ui_contract.MODEL_FIELD_OVERRIDES.setdefault("nano-banana-2-lite", {})
-    nano_lite["image_urls"] = {"max_items": 10, "max_size_mb": 30}
+    upload_limits = {
+        "nano-banana-pro": ("image_input", 8, 30),
+        "nano-banana-2": ("image_input", 14, 30),
+        "nano-banana-2-lite": ("image_urls", 10, 30),
+        "seedream-4.5-edit": ("image_urls", 14, 10),
+        "seedream-5-lite-i2i": ("image_urls", 14, 30),
+        "seedream-5-pro-i2i": ("image_urls", 10, 10),
+        "gpt-image-1.5-i2i": ("input_urls", 16, 10),
+        "gpt-image-2-i2i": ("input_urls", 16, 30),
+    }
+    for model_id, (field, max_items, max_size_mb) in upload_limits.items():
+        ui_contract.MODEL_FIELD_OVERRIDES.setdefault(model_id, {})[field] = {
+            "max_items": max_items,
+            "max_size_mb": max_size_mb,
+        }
 
     for model_id in wan_ids:
         overrides = ui_contract.MODEL_FIELD_OVERRIDES.setdefault(model_id, {})
