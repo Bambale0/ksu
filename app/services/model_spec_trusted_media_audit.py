@@ -316,9 +316,11 @@ def install_model_spec_trusted_media_audit() -> None:
         return
     _INSTALLED = True
 
+    from app.services import model_ui_contract as ui_contract
     from app.services.generations import GenerationService
     from app.services.model_routing import resolve_model_request
-    from app.services import model_ui_contract as ui_contract
+    from app.services.reference_size_contract import validate_reference_sizes
+    from app.services.references import ReferenceService
 
     previous_prepare = GenerationService.prepare_request
 
@@ -337,6 +339,11 @@ def install_model_spec_trusted_media_audit() -> None:
         if prompt and not source_parameters.get("prompt"):
             source_parameters["prompt"] = prompt
         routed = resolve_model_request(model_id, source_parameters, input_url=input_url)
+        await validate_reference_sizes(
+            session,
+            spec=routed.spec,
+            parameters=routed.parameters,
+        )
         await validate_reference_duration_contracts(
             session,
             model_id=routed.model_id,
@@ -428,3 +435,24 @@ def install_model_spec_trusted_media_audit() -> None:
         return schema
 
     ui_contract.build_public_model_ui_schema = trusted_schema
+
+    previous_reference_view = ReferenceService.public_view
+
+    def trusted_reference_view(row: Any) -> dict[str, Any]:
+        view = previous_reference_view(row)
+        view.update(
+            {
+                "size_bytes": row.size_bytes,
+                "duration_ms": row.duration_ms,
+                "duration_seconds": _seconds_from_ms(row.duration_ms),
+                "width": row.width,
+                "height": row.height,
+                "container": row.container,
+                "video_codec": row.video_codec,
+                "audio_codec": row.audio_codec,
+                "probe_status": row.probe_status,
+            }
+        )
+        return view
+
+    ReferenceService.public_view = staticmethod(trusted_reference_view)
