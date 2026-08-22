@@ -47,8 +47,8 @@ def test_veo_31_resolution_and_duration_are_public_billed_and_provider_validated
 
     schema = build_public_model_ui_schema(spec.public_dict())
     fields = {item["name"]: item for item in schema["fields"]}
-    assert fields["resolution"]["options"] == ["720p", "1080p", "4k"]
-    assert fields["duration"]["options"] == [4, 6, 8]
+    assert fields["resolution"]["suggestions"] == ["720p", "1080p", "4k"]
+    assert fields["duration"]["suggestions"] == [4, 6, 8]
 
     params = {
         "prompt": "cinematic tracking shot",
