@@ -156,6 +156,17 @@ async def derive_generation(
     if action not in DERIVATIVE_ACTIONS or not GenerationActionService.action_allowed(parent, action):
         raise HTTPException(status_code=409, detail="Action is not available for this generation")
 
+    candidate_ids = {
+        str(item.get("id") or "")
+        for item in GenerationActionService.public_candidates(parent, action)
+        if item.get("id")
+    }
+    if payload.model_id not in candidate_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected model is not compatible with this generation action",
+        )
+
     canonical = GenerationActionService.canonical_action(action)
     prompt = payload.prompt.strip()
     parameters = dict(payload.parameters or {})
