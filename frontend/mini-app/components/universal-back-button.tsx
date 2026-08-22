@@ -13,8 +13,15 @@ type TelegramWindow = Window & {
   };
 };
 
+function isStandalonePath(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname.replace(/\/+$/, "");
+  return path !== "/mini-app" && path.startsWith("/mini-app/");
+}
+
 function currentRoute(): string {
   if (typeof window === "undefined") return "home";
+  if (isStandalonePath()) return "standalone";
   return new URL(window.location.href).searchParams.get("route") || "home";
 }
 
@@ -85,6 +92,15 @@ export function UniversalBackButton() {
 
     if (activeRoute === "generation-action") {
       returnToGeneration();
+      return;
+    }
+
+    if (activeRoute === "standalone") {
+      if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
+        window.history.back();
+      } else {
+        window.location.assign("/mini-app/?route=catalog");
+      }
       return;
     }
 
