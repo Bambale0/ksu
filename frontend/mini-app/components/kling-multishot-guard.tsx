@@ -9,7 +9,7 @@ function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string) {
   textarea.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function labelText(element: Element | null): string {
+function labelText(element: Element | null | undefined): string {
   return element?.textContent?.replace(/\s+\*$/, "").trim() || "";
 }
 
