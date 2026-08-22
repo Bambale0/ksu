@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import User
 from app.db.session import get_session
+from app.services.feed import FeedNotFoundError, FeedService
+from app.services.feed_links import parse_feed_deep_link
 from app.services.onboarding import OnboardingService
 from app.services.users import UserService
 
@@ -49,6 +51,29 @@ def _onboarding_gate_applies(request: Request) -> bool:
     return path.startswith("/api/v1/")
 
 
+async def _validated_startapp_inviter(
+    session: AsyncSession,
+    start_param: str | None,
+) -> int | None:
+    """Accept referral attribution only when a signed startapp payload matches the work author."""
+
+    link = parse_feed_deep_link(start_param)
+    if link is None or link.action != "feed" or link.generation_id is None:
+        return None
+    try:
+        generation = await FeedService.assert_surface_visible(
+            session,
+            link.generation_id,
+            surface="feed",
+        )
+    except FeedNotFoundError:
+        return None
+    author = await session.get(User, generation.user_id)
+    if author is None or author.telegram_id != link.referral_telegram_id:
+        return None
+    return author.telegram_id
+
+
 async def get_current_user(
     request: Request,
     session: SessionDep,
@@ -75,7 +100,15 @@ async def get_current_user(
         username=web_user.username,
         language_code=web_user.language_code,
     )
-    user = await UserService.get_or_create(session, tg_user)
+    inviter_telegram_id = await _validated_startapp_inviter(
+        session,
+        getattr(init_data, "start_param", None),
+    )
+    user = await UserService.get_or_create(
+        session,
+        tg_user,
+        inviter_telegram_id=inviter_telegram_id,
+    )
     await session.commit()
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is restricted")
