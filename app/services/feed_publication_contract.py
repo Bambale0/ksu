@@ -46,7 +46,11 @@ def install_feed_publication_contract() -> None:
         for url in previous_provider_result_urls(generation):
             if url not in values:
                 values.append(url)
-        return [item for item in values if item.startswith("https://")]
+        return [
+            item
+            for item in values
+            if item.startswith("https://") and not FeedStaticStorage.is_local_url(item)
+        ]
 
     async def owned_media_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
         assets = list(
@@ -84,7 +88,9 @@ def install_feed_publication_contract() -> None:
     @staticmethod
     def static_ready_condition() -> Any:
         prefix = FeedStaticStorage.public_prefix().replace("%", "\\%").replace("_", "\\_")
-        return Generation.result_url.like(f"{prefix}/%", escape="\\")
+        # Production rows use PUBLIC_BASE_URL + /uploads/feed/... like tanyapi;
+        # tests/local development may use the relative path when no public base is configured.
+        return Generation.result_url.like(f"%{prefix}/%", escape="\\")
 
     @staticmethod
     async def has_static_media(session, generation_id: uuid.UUID) -> bool:  # type: ignore[no-untyped-def]
