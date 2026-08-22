@@ -1,6 +1,7 @@
 from app.services.model_spec_audit_fixes import install_model_spec_audit_fixes
 from app.services.model_spec_gemini_audit import install_model_spec_gemini_audit
 from app.services.model_spec_generation_audit import install_model_spec_generation_audit
+from app.services.model_spec_grok_extend_audit import install_model_spec_grok_extend_audit
 from app.services.model_spec_image_audit import install_model_spec_image_audit
 from app.services.model_spec_motion_audit import install_model_spec_motion_audit
 from app.services.model_spec_music_audit import install_model_spec_music_audit
@@ -17,3 +18,4 @@ install_model_spec_image_audit()
 install_model_spec_gemini_audit()
 install_model_spec_generation_audit()
 install_model_spec_music_audit()
+install_model_spec_grok_extend_audit()
