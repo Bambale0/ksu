@@ -74,6 +74,25 @@ def test_kling_multishot_uses_storyboard_cap_not_stale_duration_equality() -> No
         ModelCatalog.prepare("kling-3.0", too_long)
 
 
+def test_kling_multishot_top_duration_stays_strict_when_equality_check_is_bypassed() -> None:
+    base = {
+        "multi_shots": True,
+        "mode": "pro",
+        "multi_prompt": [
+            {"prompt": "one", "duration": 3},
+            {"prompt": "two", "duration": 3},
+        ],
+    }
+
+    with pytest.raises(InvalidModelParametersError, match="between 3 and 15"):
+        ModelCatalog.prepare("kling-3.0", {**base, "duration": 16})
+    with pytest.raises(KieVideoContractError, match="between 3 and 15"):
+        normalize_kie_video_input("kling-3.0/video", {**base, "duration": 16})
+
+    with pytest.raises(KieVideoContractError, match="integer"):
+        normalize_kie_video_input("kling-3.0/video", {**base, "duration": "invalid"})
+
+
 def test_veo_public_schema_uses_current_quality_fast_lite_surface() -> None:
     schema = build_public_model_ui_schema(ModelCatalog.get("veo-3.1").public_dict())
     fields = {field["name"]: field for field in schema["fields"]}
