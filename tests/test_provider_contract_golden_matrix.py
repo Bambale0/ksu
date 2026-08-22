@@ -149,11 +149,14 @@ def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) ->
     return normalize_kie_video_input(spec.kie_model, clean)
 
 
-def test_registry_has_43_golden_payload_entries_including_music() -> None:
+def test_registry_golden_payload_count_including_music() -> None:
+    # The audit originally counted 43 entries. The current branch has since grown
+    # to 46 registered Kie contracts; Suno is a dedicated audio contract outside
+    # ModelCatalog. Cover the current set rather than freezing the obsolete count.
     assert len(ModelCatalog.list()) == 23  # customer-visible products
-    assert len(REGISTERED_MODELS) == 42  # provider/history/auto-route registry
+    assert len(REGISTERED_MODELS) == 46  # provider/history/auto-route registry
     assert MUSIC_MODEL_ID == "suno-v5.5"
-    assert len(REGISTERED_MODELS) + 1 == 43
+    assert len(REGISTERED_MODELS) + 1 == 47
 
 
 @pytest.mark.parametrize("model", REGISTERED_MODELS, ids=lambda item: item["id"])
