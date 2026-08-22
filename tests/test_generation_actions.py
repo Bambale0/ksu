@@ -375,18 +375,18 @@ async def test_parameters_action_normalizes_lineage_to_repeat(monkeypatch: pytes
         await session.flush()
         parent = Generation(
             user_id=user.id,
-            kind="text_to_image",
+            kind="text_to_video",
             status="succeeded",
-            prompt="same prompt",
-            result_url="https://cdn.example/parent.png",
+            prompt="same motion prompt",
+            result_url="https://cdn.example/parent.mp4",
             cost_rox=Decimal("25.00"),
             provider="kie",
             parameters={
-                "_model_id": "nano-banana-pro",
-                "_media_type": "image",
-                "aspect_ratio": "1:1",
-                "resolution": "1K",
-                "output_format": "png",
+                "_model_id": "grok-video-1.5",
+                "_media_type": "video",
+                "aspect_ratio": "16:9",
+                "duration": 8,
+                "resolution": "480p",
             },
         )
         session.add(parent)
@@ -399,7 +399,7 @@ async def test_parameters_action_normalizes_lineage_to_repeat(monkeypatch: pytes
             child = Generation(
                 id=uuid.uuid4(),
                 user_id=kwargs["user_id"],
-                kind="generate_or_edit",
+                kind="text_to_video",
                 status="queued",
                 prompt=kwargs["prompt"],
                 cost_rox=Decimal("25.00"),
@@ -421,9 +421,9 @@ async def test_parameters_action_normalizes_lineage_to_repeat(monkeypatch: pytes
             parent.id,
             "parameters",
             DeriveGenerationRequest(
-                model_id="nano-banana-pro",
-                prompt="same prompt",
-                parameters={"resolution": "2K"},
+                model_id="grok-video-1.5",
+                prompt="same motion prompt",
+                parameters={"aspect_ratio": "9:16"},
             ),
             user,
             session,
@@ -432,5 +432,5 @@ async def test_parameters_action_normalizes_lineage_to_repeat(monkeypatch: pytes
 
         assert captured["parent_generation_id"] == parent.id
         assert captured["action_type"] == "repeat"
-        assert captured["prompt"] == "same prompt"
+        assert captured["prompt"] == "same motion prompt"
         assert result["action_type"] == "repeat"
