@@ -11,6 +11,7 @@ from app.db.media_models import MediaAsset
 from app.db.models import Generation, User
 from app.db.session import SessionFactory
 from app.services.feed import FeedNotFoundError, FeedService
+from app.services.feed_static import FeedStaticStorage
 
 
 def _telegram_id() -> int:
@@ -24,13 +25,14 @@ async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch
         remix_author = User(telegram_id=_telegram_id(), first_name="Remixer")
         session.add_all([source_author, remix_author])
         await session.flush()
+        provider_url = "https://example.invalid/source.png"
         source = Generation(
             user_id=source_author.id,
             kind="text_to_image",
             status="succeeded",
             prompt="server-only prompt",
             input_url="https://example.invalid/reference.png",
-            result_url="https://example.invalid/source.png",
+            result_url=provider_url,
             cost_rox=Decimal("8.00"),
             provider="kie",
             parameters={
@@ -46,12 +48,24 @@ async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch
         )
         session.add(source)
         await session.flush()
+        filename = f"test-remix-{source.id}.png"
+        (FeedStaticStorage.ensure_root() / filename).write_bytes(
+            b"\x89PNG\r\n\x1a\nroxy-feed-remix-fixture"
+        )
+        local_url = f"{FeedStaticStorage.public_prefix()}/{filename}"
+        source.result_url = local_url
+        source.parameters = {
+            **source.parameters,
+            "_provider_result_urls": [provider_url],
+            "_result_urls": [local_url],
+            "_feed_static": True,
+        }
         session.add(
             MediaAsset(
                 generation_id=source.id,
                 user_id=source_author.id,
                 ordinal=0,
-                source_url=source.result_url,
+                source_url=provider_url,
                 status="ready",
                 bucket="test-feed",
                 object_key=f"feed/{source.id}.png",

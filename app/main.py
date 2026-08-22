@@ -25,6 +25,7 @@ from app.core.observability import configure_telemetry, shutdown_telemetry
 from app.db.session import SessionFactory, engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
 from app.services.admin_pricing import AdminPricingService
+from app.services.feed_static import FeedStaticStorage
 from app.services.notification_events import register_notification_events
 
 configure_logging()
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = redis
     app.state.bot = None
     app.state.dispatcher = None
+    FeedStaticStorage.ensure_root()
 
     # Admin tariff versions are durable DB state. Restore the latest published
     # generation_pricing section before serving catalog/quote requests after restart.
@@ -109,5 +111,14 @@ web_dir = Path(__file__).resolve().parent / "web"
 mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
 mimetypes.add_type("image/webp", ".webp")
+
+# Production Nginx serves this path directly with immutable caching/range support,
+# matching banano_kling:tanyapi. StaticFiles is the same-origin fallback for local
+# development and deployments where the reverse proxy has not taken the route.
+app.mount(
+    FeedStaticStorage.public_prefix(),
+    StaticFiles(directory=FeedStaticStorage.ensure_root()),
+    name="feed-static",
+)
 app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
 app.mount("/admin-app", StaticFiles(directory=admin_app_dir, html=True), name="admin-app")

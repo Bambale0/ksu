@@ -15,9 +15,11 @@ from app.db.session import SessionFactory
 from app.db.social_models import GenerationLike
 from app.services.feed import (
     FeedDerivativePublicationError,
+    FeedMediaUnavailableError,
     FeedNotFoundError,
     FeedService,
 )
+from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
 
 
 def _telegram_id() -> int:
@@ -64,6 +66,18 @@ async def _pending_generation(
     return generation
 
 
+def _fixture_media_bytes(suffix: str) -> bytes:
+    if suffix.lower() in {".mp4", ".mov"}:
+        return b"\x00\x00\x00\x18ftypisom0000roxy-feed-fixture"
+    if suffix.lower() == ".webm":
+        return b"\x1aE\xdf\xa3roxy-feed-fixture"
+    if suffix.lower() in {".jpg", ".jpeg"}:
+        return b"\xff\xd8\xffroxy-feed-fixture"
+    if suffix.lower() == ".webp":
+        return b"RIFF\x10\x00\x00\x00WEBProxy-feed-fixture"
+    return b"\x89PNG\r\n\x1a\nroxy-feed-fixture"
+
+
 async def _ready_generation(
     session,
     user: User,
@@ -84,12 +98,24 @@ async def _ready_generation(
         adult=adult,
         prompt=prompt,
     )
+    provider_url = generation.result_url
+    extension = ".mp4" if suffix.lower() in {".mp4", ".mov"} else suffix.lower()
+    filename = f"test-{generation.id}{extension}"
+    path = FeedStaticStorage.ensure_root() / filename
+    path.write_bytes(_fixture_media_bytes(extension))
+    local_url = f"{FeedStaticStorage.public_prefix()}/{filename}"
+    params = dict(generation.parameters or {})
+    params["_provider_result_urls"] = [provider_url]
+    params["_result_urls"] = [local_url]
+    params["_feed_static"] = True
+    generation.parameters = params
+    generation.result_url = local_url
     session.add(
         MediaAsset(
             generation_id=generation.id,
             user_id=user.id,
             ordinal=0,
-            source_url=generation.result_url,
+            source_url=provider_url,
             status="ready",
             bucket="test-feed",
             object_key=f"feed/{generation.id}{suffix}",
@@ -127,37 +153,33 @@ async def test_completed_image_generation_publishes_to_feed() -> None:
         assert card["is_public_feed"] is True
         assert card["is_profile_visible"] is True
         assert card["prompt"] == "secret source prompt"
+        assert str(card["result_url"]).startswith(FeedStaticStorage.public_prefix() + "/")
+        assert card["media"][0]["storage"] == "static"
 
 
 @pytest.mark.asyncio
-async def test_publish_is_visible_while_media_ingest_is_pending() -> None:
+async def test_publish_fails_closed_when_static_persistence_fails(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     async with SessionFactory() as session:
         author = await _user(session, "Pending")
         generation = await _pending_generation(session, author)
-        published = await FeedService.share_to_feed(
-            session,
-            generation_id=generation.id,
-            owner_user_id=author.id,
-            publication_scope="feed",
-        )
-        await session.commit()
 
-        assert published.publication_scope == "feed"
-        assert published.is_public_feed is True
-        assert published.is_profile_visible is True
-        assert published.feed_published_at is not None
+        async def fail_persist(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise FeedStaticStorageError("provider unavailable")
 
-        rows = await FeedService.get_feed_generations(session, sort="recent")
-        assert generation.id in {row.id for row in rows}
-        card = await FeedService.get_feed_generation_card(
-            session,
-            generation_id=generation.id,
-            viewer_user_id=author.id,
-        )
-        assert card["publication_scope"] == "feed"
-        assert card["is_public_feed"] is True
-        assert card["result_url"] == generation.result_url
-        assert card["media"][0]["id"] is None
+        monkeypatch.setattr(FeedStaticStorage, "persist_urls", fail_persist)
+        with pytest.raises(FeedMediaUnavailableError):
+            await FeedService.share_to_feed(
+                session,
+                generation_id=generation.id,
+                owner_user_id=author.id,
+                publication_scope="feed",
+            )
+
+        await session.refresh(generation)
+        assert generation.publication_scope == "private"
+        assert generation.is_public_feed is False
+        assert generation.is_profile_visible is False
+        assert generation.feed_published_at is None
 
 
 @pytest.mark.asyncio
@@ -185,6 +207,8 @@ async def test_completed_video_generation_publishes_with_video_result() -> None:
         )
         assert card["gen_type"] == "text_to_video"
         assert str(card["result_url"]).endswith(".mp4")
+        assert card["media"][0]["content_type"] == "video/mp4"
+        assert card["media"][0]["storage"] == "static"
 
 
 @pytest.mark.asyncio
