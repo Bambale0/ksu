@@ -111,7 +111,7 @@ export const api = {
         ...publicPrivacyDefaults,
         publication_scope: normalized.scope,
         prompt_visible: promptVisibleForPublish(normalized),
-        references_visible: false,
+        references_visible: Boolean(normalized.referencesVisible),
       }),
     });
   },
