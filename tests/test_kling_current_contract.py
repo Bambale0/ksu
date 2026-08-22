@@ -291,5 +291,5 @@ def test_roxy_default_public_rates_for_current_kling(monkeypatch: pytest.MonkeyP
     assert GenerationService._effective_unit_price(model_id=AVATAR_STD_ID, parameters={}) == Decimal("2")
     assert GenerationService._effective_unit_price(model_id=AVATAR_PRO_ID, parameters={}) == Decimal("3")
 
-    # Historical migration compatibility remains 10x, but live generation prices are 1:1 ROX.
-    assert InternalCreditService.legacy_credits_to_rox(Decimal("3")) == Decimal("30")
+    # Compatibility callers also see public 1:1 ROX; only legacy package detection keeps the historical 10-RUB pair logic.
+    assert InternalCreditService.legacy_credits_to_rox(Decimal("3")) == Decimal("3.00")
