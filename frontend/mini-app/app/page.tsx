@@ -1,6 +1,6 @@
+import { AppEntryGate } from "@/components/app-entry-gate";
 import { CatalogCapabilities } from "@/components/catalog-capabilities";
 import { CatalogTrendLaunch } from "@/components/catalog-trend-launch";
-import { GenerationActionGate } from "@/components/generation-action-app";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { UniversalBackButton } from "@/components/universal-back-button";
@@ -10,7 +10,7 @@ export default function Page() {
   return (
     <ReferenceMemoryProvider>
       <UniversalBackButton />
-      <GenerationActionGate />
+      <AppEntryGate />
       <CatalogCapabilities />
       <CatalogTrendLaunch />
       <GlobalUxEnhancers />
