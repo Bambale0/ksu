@@ -12,8 +12,8 @@ const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const ACTIVE_STATUSES = new Set(["queued", "retry", "submitting", "generating"]);
 const PROMO_SLIDES = [
-  { src: "promo/roxy-promo-1.png", alt: "ROXY Creator Rewards" },
-  { src: "promo/roxy-promo-2.png", alt: "ROXY Partner Referrals" },
+  { src: "promo/roxy-promo-1.webp", alt: "ROXY Creator Rewards" },
+  { src: "promo/roxy-promo-2.webp", alt: "ROXY Partner Referrals" },
 ];
 
 function isRoute(value: string | null): value is Route {
