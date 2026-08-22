@@ -7,7 +7,15 @@ _INSTALLED = False
 _ALLOWED_WAN_EDIT_DURATIONS = {0, *range(2, 11)}
 
 
-def _wan_edit_duration(value: Any) -> int:
+def validate_wan_video_edit_duration(value: Any) -> int:
+    """Normalize the current Kie WAN Video Edit duration enum.
+
+    WAN Video Edit is retained as a registered provider/historical contract even
+    while it is not admitted for new customer work. Keeping this validator public
+    lets contract tests exercise the provider rule without bypassing the product
+    admission boundary.
+    """
+
     from app.services.model_catalog import InvalidModelParametersError
 
     try:
@@ -41,7 +49,7 @@ def install_model_spec_wan_duration_audit() -> None:
     @staticmethod
     def audited_rules(spec: Any, clean: dict[str, Any]) -> None:
         if spec.id == "wan-2.7-video-edit":
-            clean["duration"] = _wan_edit_duration(clean.get("duration", 0))
+            clean["duration"] = validate_wan_video_edit_duration(clean.get("duration", 0))
         previous_rules(spec, clean)
 
     catalog.ModelCatalog._validate_model_rules = audited_rules
@@ -52,7 +60,7 @@ def install_model_spec_wan_duration_audit() -> None:
         source = deepcopy(input_data)
         if model == "wan/2-7-videoedit":
             try:
-                duration = _wan_edit_duration(source.get("duration", 0))
+                duration = validate_wan_video_edit_duration(source.get("duration", 0))
             except catalog.InvalidModelParametersError as exc:
                 raise video_contracts.KieVideoContractError(str(exc)) from exc
             source["duration"] = duration
