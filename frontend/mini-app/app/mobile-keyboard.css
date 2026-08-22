@@ -1,0 +1,16 @@
+/* Mobile Telegram WebView keyboard safety.
+   iOS moves fixed elements to the top edge of the software keyboard. The ROXY
+   bottom navigation must disappear while the user is editing a form control so
+   it cannot cover the prompt or steal the next tap/paste. */
+@supports selector(:has(*)) {
+  .roxy-app:has(textarea:focus, input:focus, select:focus, [contenteditable="true"]:focus) .bottom-nav {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(24px);
+  }
+}
+
+.bottom-nav {
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms step-end;
+}
