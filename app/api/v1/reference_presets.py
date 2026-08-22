@@ -22,6 +22,10 @@ class ReferenceCreate(BaseModel):
     content_type: str | None = Field(default=None, max_length=255)
 
 
+class ReferenceTouch(BaseModel):
+    urls: list[str] = Field(default_factory=list, max_length=64)
+
+
 class PresetWrite(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=128)
@@ -70,8 +74,27 @@ async def register_reference(
             label=payload.label,
             original_filename=payload.original_filename,
             content_type=payload.content_type,
+            source="manual",
         )
         return {**ReferenceService.public_view(row), "replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _error(exc) from exc
+
+
+@router.post("/references/touch")
+async def touch_references(
+    payload: ReferenceTouch,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, int]:
+    try:
+        touched = await ReferenceService.touch_urls(
+            session,
+            user_id=user.id,
+            source_urls=payload.urls,
+        )
+        return {"touched": touched}
     except Exception as exc:
         await session.rollback()
         raise _error(exc) from exc

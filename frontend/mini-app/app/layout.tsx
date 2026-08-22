@@ -6,6 +6,7 @@ import "./loader.css";
 import "./catalog.css";
 import "./ux-polish.css";
 import "./wallet-bonuses.css";
+import "./reference-memory.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
@@ -34,11 +35,13 @@ const draftSchemaReset = `
 })();
 `;
 
+const telegramSdkEnabled = process.env.ROXY_E2E !== "1";
+
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="ru">
       <body>
-        <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" />
+        {telegramSdkEnabled ? <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" /> : null}
         <Script id="roxy-draft-schema-reset" strategy="beforeInteractive">{draftSchemaReset}</Script>
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         {children}

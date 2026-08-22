@@ -1,0 +1,128 @@
+.saved-reference-library {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.saved-reference-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.saved-reference-head > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.saved-reference-head strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.saved-reference-head small {
+  color: var(--muted, #8f8f9d);
+  font-size: 10px;
+}
+
+.saved-reference-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 1px 4px;
+  scrollbar-width: none;
+}
+
+.saved-reference-row::-webkit-scrollbar {
+  display: none;
+}
+
+.saved-reference-card {
+  position: relative;
+  flex: 0 0 104px;
+  min-width: 0;
+}
+
+.saved-reference-pick {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 5px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: inherit;
+  text-align: left;
+}
+
+.saved-reference-pick:active {
+  transform: scale(0.98);
+}
+
+.saved-reference-preview {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 18px;
+}
+
+.saved-reference-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.saved-reference-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.saved-reference-plus {
+  color: #f5c66b;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.saved-reference-delete {
+  position: absolute;
+  top: -6px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  background: #19191f;
+  color: #a9a9b6;
+  font-size: 14px;
+  line-height: 1;
+  z-index: 2;
+}
+
+@media (max-width: 390px) {
+  .saved-reference-library {
+    margin-inline: -2px;
+    padding: 10px;
+  }
+
+  .saved-reference-card {
+    flex-basis: 98px;
+  }
+}

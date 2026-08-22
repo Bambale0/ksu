@@ -12,6 +12,7 @@ import type {
   PromptToolTask,
   PublicationScope,
   Quote,
+  RecreateGenerationPayload,
   ReferralInvitation,
   ReferralReward,
   TrendItem,
@@ -88,6 +89,7 @@ export const api = {
   models: () => request<{ models: GenerationModel[]; families?: GenerationModelFamily[] }>("/api/v1/generations/models"),
   generations: (params = "limit=24") => request<{ items: Generation[]; has_more: boolean; next_before?: string | null }>(`/api/v1/generations?${params}`),
   generation: (id: string) => request<Generation>(`/api/v1/generations/${encodeURIComponent(id)}`),
+  recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: (body: Record<string, unknown>) => request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) }),
   create: (body: Record<string, unknown>) => request<{ id: string; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) }),
   upload: (file: File) => {

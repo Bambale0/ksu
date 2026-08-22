@@ -34,8 +34,14 @@ def _add_notification(
     kind: str,
     title: str,
     body: str,
+    notification_id: uuid.UUID | None = None,
 ) -> None:
-    notification_id = uuid.uuid4()
+    # Generation notifications intentionally reuse the generation UUID. This gives
+    # the durable notification outbox a stable domain reference without adding a
+    # second nullable metadata column or doing an unsafe "latest generation" lookup
+    # when several jobs finish at the same time. Other notification kinds keep a
+    # normal independent UUID.
+    notification_id = notification_id or uuid.uuid4()
     session.add(
         Notification(
             id=notification_id,
@@ -103,21 +109,42 @@ def _add_referral_reward_notification(session: Session, reward: ReferralReward) 
     )
 
 
+def _queue_generation_notification(
+    session: Session,
+    generation: Generation,
+    *,
+    kind: str,
+    title: str,
+    body: str,
+) -> None:
+    generation.telegram_notification_status = "pending"
+    generation.telegram_notification_sent_at = None
+    generation.telegram_message_id = None
+    _add_notification(
+        session,
+        notification_id=generation.id,
+        user_id=generation.user_id,
+        kind=kind,
+        title=title,
+        body=body,
+    )
+
+
 def _before_flush(session: Session, _flush_context: object, _instances: object) -> None:
     for obj in list(session.dirty):
         if isinstance(obj, Generation) and _status_changed(obj):
             if obj.status == "succeeded":
-                _add_notification(
+                _queue_generation_notification(
                     session,
-                    user_id=obj.user_id,
+                    obj,
                     kind="generation_succeeded",
                     title="Контент готов",
                     body="Генерация завершена. Результат доступен в истории.",
                 )
             elif obj.status == "failed":
-                _add_notification(
+                _queue_generation_notification(
                     session,
-                    user_id=obj.user_id,
+                    obj,
                     kind="generation_failed",
                     title="Генерация не завершилась",
                     body="Задача завершилась с ошибкой. Проверьте историю и статус возврата ROX.",

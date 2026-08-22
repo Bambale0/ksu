@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { SavedReferencePicker } from "@/lib/reference-memory";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type {
   Draft,
@@ -14,27 +15,31 @@ import type {
   Me,
   PartnerStats,
   Quote,
+  RecreateGenerationPayload,
   ReferralInvitation,
   ReferralReward,
   Route,
   TrendItem,
   UiField,
+  UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
-const DRAFTS_KEY = "roxy.next.generation-drafts.v3";
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const PROMO_SLIDES = [
-  { src: "/promo/roxy-promo-1.webp", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
-  { src: "/promo/roxy-promo-2.webp", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
+  { src: "/promo/roxy-promo-1.png", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
+  { src: "/promo/roxy-promo-2.png", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
 ];
 
 type PreviewSurface = "private" | FeedSurface;
 type MediaFilter = "all" | "image" | "video" | "audio";
-
+type CreationMedia = Exclude<MediaFilter, "all">;
 type ProfilePublication = FeedCard | Generation;
+type CreateLaunch =
+  | { nonce: number; kind: "new"; modelId?: string; media?: CreationMedia }
+  | { nonce: number; kind: "reuse"; payload: RecreateGenerationPayload };
 
 function isRoute(value: string | null): value is Route {
   return ROUTES.includes(value as Route);
@@ -44,7 +49,7 @@ function compact(value: unknown): string {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   return new Intl.NumberFormat("ru-RU", {
-    notation: Math.abs(number) >= 1000 ? "compact" : "standard",
+    notation: Math.abs(number) >= 10000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(number);
 }
@@ -85,6 +90,12 @@ function mediaType(item: Generation | FeedCard): string {
 
 function modelIcon(media?: string): IconName {
   return media === "video" ? "video" : media === "audio" ? "music" : "image";
+}
+
+function creationMedia(model?: GenerationModel | null): CreationMedia | undefined {
+  if (model?.media_type === "video" || model?.media_type === "audio") return model.media_type;
+  if (model?.media_type === "image") return "image";
+  return undefined;
 }
 
 function priceLabel(value?: string | null): string {
@@ -142,11 +153,52 @@ function createDefaultDraft(model: GenerationModel): Draft {
     values: { ...(model.ui_schema?.defaults || {}) },
     scenario: model.ui_schema?.scenario?.default || model.ui_schema?.scenario?.items?.[0]?.id || null,
     billing_seconds: null,
+    input_url: null,
   };
 }
 
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+function scenarioScore(item: UiScenarioItem, values: Record<string, unknown>): number {
+  const required = item.required_fields || [];
+  const requiredAny = item.required_any || [];
+  if (required.some((name) => isEmpty(values[name]))) return -1;
+  if (requiredAny.length && !requiredAny.some((name) => !isEmpty(values[name]))) return -1;
+  let score = required.length * 4 + (requiredAny.length ? 3 : 0);
+  for (const name of item.visible_fields || []) if (!isEmpty(values[name])) score += 1;
+  return score;
+}
+
+function inferReuseScenario(model: GenerationModel, values: Record<string, unknown>): string | null {
+  const items = model.ui_schema?.scenario?.items || [];
+  if (!items.length) return null;
+  let winner: UiScenarioItem | null = null;
+  let winnerScore = -1;
+  for (const item of items) {
+    const score = scenarioScore(item, values);
+    if (score > winnerScore) {
+      winner = item;
+      winnerScore = score;
+    }
+  }
+  return winner?.id || model.ui_schema?.scenario?.default || items[0]?.id || null;
+}
+
+function hydrateReuseDraft(model: GenerationModel, payload: RecreateGenerationPayload): Draft {
+  const base = createDefaultDraft(model);
+  const values = {
+    ...base.values,
+    ...(payload.parameters || {}),
+    prompt: payload.prompt || "",
+  };
+  return {
+    values,
+    scenario: inferReuseScenario(model, values),
+    billing_seconds: payload.billing_seconds ?? null,
+    input_url: payload.input_url ?? null,
+  };
 }
 
 function visibleFields(model: GenerationModel, draft: Draft): UiField[] {
@@ -175,6 +227,7 @@ function buildPayload(model: GenerationModel, draft: Draft): Record<string, unkn
     prompt: String(draft.values.prompt || ""),
     parameters,
   };
+  if (draft.input_url) payload.input_url = draft.input_url;
   if (draft.billing_seconds) payload.billing_seconds = Number(draft.billing_seconds);
   return payload;
 }
@@ -188,12 +241,12 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
       try { JSON.parse(String(value)); } catch { errors.push(`Исправьте JSON в «${field.label}»`); }
     }
   }
-  const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario) as any;
+  const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario);
   for (const name of scenario?.required_fields || []) {
     if (isEmpty(draft.values[name])) errors.push("Заполните обязательное поле");
   }
   const any = scenario?.required_any || [];
-  if (any.length && !any.some((name: string) => !isEmpty(draft.values[name]))) errors.push("Добавьте хотя бы один референс");
+  if (any.length && !any.some((name) => !isEmpty(draft.values[name]))) errors.push("Добавьте хотя бы один референс");
   const billing = model.ui_schema?.billing_seconds;
   if (billing?.required && !draft.billing_seconds) errors.push(`Заполните «${billing.label || "Длительность"}»`);
   if (draft.billing_seconds && billing?.min && draft.billing_seconds < billing.min) errors.push(`Минимум ${billing.min} сек.`);
@@ -240,6 +293,9 @@ export function RoxySocialApp() {
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface>("private");
   const [toast, setToast] = useState("");
   const [onboarding, setOnboarding] = useState<Record<string, any> | null>(null);
+  const [createLaunch, setCreateLaunch] = useState<CreateLaunch>({ nonce: 0, kind: "new" });
+  const createLaunchSeq = useRef(0);
+  const deepLinkedGeneration = useRef<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   const showToast = useCallback((message: string) => {
@@ -362,21 +418,50 @@ export function RoxySocialApp() {
     return () => window.clearInterval(timer);
   }, [feedSort, loadFeed, route]);
 
+  useEffect(() => {
+    if (booting || !telegram()?.initData) return;
+    const generationId = new URL(window.location.href).searchParams.get("generation");
+    if (!generationId || deepLinkedGeneration.current === generationId) return;
+    deepLinkedGeneration.current = generationId;
+    void api.generation(generationId)
+      .then((item) => {
+        setPreviewSurface("private");
+        setPreview(item);
+        setRoute("history");
+        void loadHistory();
+      })
+      .catch((error) => showToast(error instanceof Error ? error.message : "Не удалось открыть генерацию"));
+  }, [booting, loadHistory, showToast]);
+
   const navigate = useCallback((next: Route) => {
     setWalletOpen(false);
     setPreview(null);
     setRoute(next);
     const url = new URL(window.location.href);
     url.searchParams.set("route", next);
+    url.searchParams.delete("generation");
     window.history.pushState({ roxyRoute: next }, "", `${url.pathname}${url.search}${url.hash}`);
     haptic(next === "create" ? "medium" : "light");
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
-  const openCreate = useCallback((media?: "image" | "video" | "audio") => {
+  const startNewGeneration = useCallback((media?: CreationMedia, modelId?: string) => {
     if (media) localStorage.setItem(MEDIA_FILTER_KEY, media);
+    if (modelId) localStorage.setItem(MODEL_KEY, modelId);
+    setCreateLaunch({ nonce: ++createLaunchSeq.current, kind: "new", media, modelId });
     navigate("create");
   }, [navigate]);
+
+  const reuseGeneration = useCallback(async (generationId: string) => {
+    const payload = await api.recreateGeneration(generationId);
+    const model = models.find((item) => item.id === payload.model_id);
+    if (!model) throw new Error("Эта модель больше недоступна");
+    localStorage.setItem(MODEL_KEY, model.id);
+    const media = creationMedia(model);
+    if (media) localStorage.setItem(MEDIA_FILTER_KEY, media);
+    setCreateLaunch({ nonce: ++createLaunchSeq.current, kind: "reuse", payload });
+    navigate("create");
+  }, [models, navigate]);
 
   useEffect(() => {
     const tg = telegram();
@@ -411,23 +496,23 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
-        {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={openCreate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={(media) => startNewGeneration(media)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
-        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onRunTrend={async (trend) => {
+        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onRunTrend={async (trend) => {
           if ((trend.reference_requirements?.min || 0) > 0) { showToast("Этот тренд требует референс. Откройте форму тренда позже."); return; }
           try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
           catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
         }} />}
-        {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
+        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
 
-      <BottomNav route={route} onNavigate={navigate} />
+      <BottomNav route={route} onNavigate={(next) => next === "create" ? startNewGeneration() : navigate(next)} />
 
       {walletOpen && <WalletSheet me={me} onClose={() => setWalletOpen(false)} onRefresh={refreshMe} showToast={showToast} />}
-      {preview && <Preview item={preview} surface={previewSurface} onClose={() => setPreview(null)} onPublished={async (scope) => { await Promise.allSettled([loadProfile(), loadFeed(), loadHistory()]); showToast(scope === "feed" ? "Работа опубликована в ленте и профиле" : "Работа опубликована в профиле"); }} showToast={showToast} />}
+      {preview && <Preview item={preview} surface={previewSurface} onClose={() => setPreview(null)} onReuse={reuseGeneration} onPublished={async (scope) => { await Promise.allSettled([loadProfile(), loadFeed(), loadHistory()]); showToast(scope === "feed" ? "Работа опубликована в ленте и профиле" : "Работа опубликована в профиле"); }} showToast={showToast} />}
       {onboarding?.enabled && !onboarding?.completed && <Onboarding data={onboarding} onDone={async () => { const next = await api.completeOnboarding(); setOnboarding(next); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
@@ -442,7 +527,7 @@ function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
 }
 
-function HomeScreen({ models, recent, trends, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: "image" | "video" | "audio") => void; onPreview: (item: Generation) => void }) {
+function HomeScreen({ models, recent, trends, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: CreationMedia) => void; onPreview: (item: Generation) => void }) {
   const counts = useMemo(() => ({ image: models.filter((m) => m.media_type === "image").length, video: models.filter((m) => m.media_type === "video").length, audio: models.filter((m) => m.media_type === "audio").length }), [models]);
   return <section className="screen home-screen">
     <div className="promo-slider" aria-label="Промо ROXY">{PROMO_SLIDES.map((slide) => <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("partners")}><img src={slide.src} alt={slide.title} /></button>)}</div>
@@ -487,11 +572,12 @@ function TrendStrip({ items }: { items: TrendItem[] }) {
   return <div className="model-grid">{items.map((trend) => <div className="model-card" key={trend.id}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Готовый сценарий"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></div>)}</div>;
 }
 
-function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
-  const initialModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
-  const initialMedia = typeof window !== "undefined" ? normalizeMediaFilter(localStorage.getItem(MEDIA_FILTER_KEY)) : "all";
-  const [selectedId, setSelectedId] = useState(initialModelId || models[0]?.id || "");
-  const [media, setMedia] = useState<MediaFilter>(initialMedia);
+function CreateScreen({ launch, models, families, me, onBalance, onCreated, showToast }: { launch: CreateLaunch; models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
+  const launchModelId = launch.kind === "reuse" ? launch.payload.model_id : launch.modelId;
+  const storedModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
+  const storedMedia = typeof window !== "undefined" ? normalizeMediaFilter(localStorage.getItem(MEDIA_FILTER_KEY)) : "all";
+  const [selectedId, setSelectedId] = useState(launchModelId || storedModelId || models[0]?.id || "");
+  const [media, setMedia] = useState<MediaFilter>(launch.kind === "new" && launch.media ? launch.media : storedMedia);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState("");
@@ -503,8 +589,21 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const selected = models.find((model) => model.id === selectedId) || models[0] || null;
   const visibleFamilies = useMemo(() => media === "all" ? families : families.filter((family) => family.media_types?.includes(media)), [families, media]);
 
-  useEffect(() => { try { setDrafts(JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}")); } catch { setDrafts({}); } }, []);
-  useEffect(() => { if (!selectedId && models[0]) setSelectedId(models[0].id); }, [models, selectedId]);
+  useEffect(() => {
+    if (!models.length) return;
+    const requestedId = launch.kind === "reuse" ? launch.payload.model_id : launch.modelId || storedModelId || models[0]?.id;
+    const target = models.find((model) => model.id === requestedId) || models[0];
+    if (!target) return;
+    setSelectedId(target.id);
+    localStorage.setItem(MODEL_KEY, target.id);
+    const nextMedia = launch.kind === "new" && launch.media ? launch.media : creationMedia(target) || storedMedia;
+    setMedia(nextMedia);
+    if (nextMedia !== "all") localStorage.setItem(MEDIA_FILTER_KEY, nextMedia);
+    setDrafts({ [target.id]: launch.kind === "reuse" ? hydrateReuseDraft(target, launch.payload) : createDefaultDraft(target) });
+    setQuote(null);
+    setQuoteError("");
+  }, [launch, models]);
+
   useEffect(() => {
     if (!visibleFamilies.length || !models.length) return;
     const visible = visibleFamilies.some((family) => family.variants.some((variant) => variant.id === selectedId));
@@ -515,13 +614,11 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
 
   const draft = useMemo(() => {
     if (!selected) return null;
-    const base = createDefaultDraft(selected);
-    const existing = drafts[selected.id];
-    return existing ? { ...base, ...existing, values: { ...base.values, ...(existing.values || {}) } } : base;
+    return drafts[selected.id] || createDefaultDraft(selected);
   }, [drafts, selected]);
 
   const persist = useCallback((modelId: string, next: Draft) => {
-    setDrafts((current) => { const all = { ...current, [modelId]: next }; localStorage.setItem(DRAFTS_KEY, JSON.stringify(all)); return all; });
+    setDrafts((current) => ({ ...current, [modelId]: next }));
   }, []);
 
   const updateValue = (name: string, value: unknown) => { if (selected && draft) persist(selected.id, { ...draft, values: { ...draft.values, [name]: value } }); };
@@ -537,7 +634,21 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
     return () => window.clearTimeout(timer);
   }, [draft, selected, uploading, errors.join("|")]);
 
-  const chooseModel = (id: string) => { setSelectedId(id); localStorage.setItem(MODEL_KEY, id); setQuote(null); haptic("light"); };
+  const chooseModel = (id: string) => {
+    const target = byId.get(id);
+    if (!target) return;
+    setDrafts((current) => ({ ...current, [id]: createDefaultDraft(target) }));
+    setSelectedId(id);
+    localStorage.setItem(MODEL_KEY, id);
+    const nextMedia = creationMedia(target);
+    if (nextMedia) {
+      setMedia(nextMedia);
+      localStorage.setItem(MEDIA_FILTER_KEY, nextMedia);
+    }
+    setQuote(null);
+    setQuoteError("");
+    haptic("light");
+  };
   const chooseMedia = (next: MediaFilter) => { setMedia(next); localStorage.setItem(MEDIA_FILTER_KEY, next); };
   const setScenario = (id: string) => { if (!selected || !draft) return; const scenario = selected.ui_schema?.scenario?.items?.find((item) => item.id === id); const values = { ...draft.values }; for (const key of scenario?.clear_fields || []) delete values[key]; persist(selected.id, { ...draft, scenario: id, values }); };
 
@@ -551,6 +662,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
       let item: Generation = { id: created.id, status: created.status || "queued", model: selected, created_at: new Date().toISOString() };
       try { item = await api.generation(created.id); } catch {}
       notify("success");
+      showToast("Генерация запущена. ROXY можно закрыть — результат придёт в Telegram.");
       onCreated(item);
     } catch (error) {
       notify("error");
@@ -562,12 +674,13 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const fields = visibleFields(selected, draft);
   const groups = selected.ui_schema?.groups || [{ id: "main", title: "Настройки" }];
 
-  return <section className="screen create-screen"><ScreenHead kicker="Создание" title="Настрой генерацию" copy="Поля приходят из ui_schema выбранной модели. Неподдерживаемые параметры не показываются." />
+  return <section className="screen create-screen"><ScreenHead kicker="Создание" title={launch.kind === "reuse" ? "Использовать настройки" : "Новая генерация"} copy="Поля приходят из ui_schema выбранной модели. Неподдерживаемые параметры не показываются." />
+    {launch.kind === "reuse" && <div className="panel"><span className="kicker">Повторное использование</span><p className="muted">Промпт и совместимые настройки перенесены намеренно. При выборе другой модели форма сбросится к её дефолтам.</p></div>}
     <div className="create-layout"><div className="create-controls"><div className="panel"><label className="label">Модель</label><div className="segmented scrollable family-tabs">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => chooseMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div><div className="family-grid">{visibleFamilies.map((family) => { const active = family.variants.some((variant) => variant.id === selected.id); return <button className={`family-card${active ? " active" : ""}`} type="button" key={family.id} onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>; })}</div></div>
       {selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}
       {groups.map((group) => { const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group)); if (!grouped.length) return null; return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => { setUploading(true); try { const max = field.control === "file" ? 1 : field.max_items || 20; const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : []; for (const file of files.slice(0, Math.max(0, max - urls.length))) { if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; } const uploaded = await api.upload(file); if (field.control === "file") { updateValue(field.name, uploaded.url); break; } urls.push(uploaded.url); } if (field.control === "files") updateValue(field.name, urls); notify("success"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Ошибка загрузки"); } finally { setUploading(false); } }} />)}</div></div>; })}
       {selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}
-    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${compact(quote.cost_rub)} ₽` : quoteError || errors[0] || "Считаю…"}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
+    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${compact(quote.cost_rub)} ₽` : quoteError || errors[0] || "Считаю…"}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Запускаю…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
     {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
   </section>;
 }
@@ -580,7 +693,7 @@ function DynamicField({ field, value, onChange, onUpload }: { field: UiField; va
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {
     const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
-    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => void onUpload(Array.from(e.target.files || []))}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{safeFileName(url) || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
+    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><SavedReferencePicker field={field} value={value} onChange={onChange}/><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => void onUpload(Array.from(e.target.files || []))}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{safeFileName(url) || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
   }
   if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
   if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
@@ -628,7 +741,7 @@ function MediaThumb({ item }: { item: Generation | FeedCard }) {
   return <img src={url} alt="" loading="lazy"/>;
 }
 
-function Preview({ item, surface, onClose, onPublished, showToast }: { item: Generation | FeedCard; surface: PreviewSurface; onClose: () => void; onPublished: (scope: "profile" | "feed") => Promise<void>; showToast: (message: string) => void }) {
+function Preview({ item, surface, onClose, onReuse, onPublished, showToast }: { item: Generation | FeedCard; surface: PreviewSurface; onClose: () => void; onReuse: (generationId: string) => Promise<void>; onPublished: (scope: "profile" | "feed") => Promise<void>; showToast: (message: string) => void }) {
   const [current, setCurrent] = useState<Generation | FeedCard>(item);
   const [publishing, setPublishing] = useState<"profile" | "feed" | null>(null);
   const [promptVisible, setPromptVisible] = useState(false);
@@ -641,6 +754,7 @@ function Preview({ item, surface, onClose, onPublished, showToast }: { item: Gen
   const type = mediaType(current);
   const card = current as FeedCard;
   const canPublish = surface === "private" && current.status === "succeeded";
+  const canReuse = canPublish && current.prompt_actions_allowed !== false;
   const socialSurface: FeedSurface = surface === "profile" ? "profile" : "feed";
   const canSocial = surface !== "private";
   const isMine = Boolean(card.is_mine);
@@ -651,6 +765,7 @@ function Preview({ item, surface, onClose, onPublished, showToast }: { item: Gen
     catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось опубликовать"); }
     finally { setPublishing(null); }
   };
+  const reuseSettings = async () => { setBusy("reuse"); try { await onReuse(current.id); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось перенести настройки"); } finally { setBusy(null); } };
   const toggleLike = async () => { setBusy("like"); try { const result = card.liked_by_me ? await api.unlike(current.id, socialSurface) : await api.like(current.id, socialSurface); setCurrent({ ...card, liked_by_me: result.liked_by_me, likes_count: result.likes_count }); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось поставить лайк"); } finally { setBusy(null); } };
   const share = async () => { setBusy("share"); try { const result = await api.share(current.id, socialSurface); setCurrent({ ...card, shares_count: result.shares_count }); if (result.link && await copyText(result.link)) showToast("Ссылка скопирована"); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось поделиться"); } finally { setBusy(null); } };
   const loadComments = async () => { setBusy("comments"); try { const result = await api.comments(current.id, socialSurface); setComments(result.items || []); setCommentsOpen(true); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось открыть комментарии"); } finally { setBusy(null); } };
@@ -658,7 +773,7 @@ function Preview({ item, surface, onClose, onPublished, showToast }: { item: Gen
   const remix = async () => { setBusy("remix"); try { const result = await api.remix(current.id, socialSurface); showToast(`Повтор запущен: ${result.status}`); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось повторить"); } finally { setBusy(null); } };
   const removePublication = async () => { setBusy("remove"); try { await api.removePublication(current.id, "private"); notify("success"); onClose(); await onPublished("profile"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось убрать публикацию"); } finally { setBusy(null); } };
 
-  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "ROXY generation"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать промпт</strong><small>Публично только если включить</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label><label className="toggle-row"><span><strong>Показать референсы</strong><small>По умолчанию скрыты</small></span><input type="checkbox" checked={referencesVisible} onChange={(e) => setReferencesVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Social</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Пока пусто."/>}</div></div>}</div></div></div>;
+  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "ROXY generation"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать промпт</strong><small>Публично только если включить</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label><label className="toggle-row"><span><strong>Показать референсы</strong><small>По умолчанию скрыты</small></span><input type="checkbox" checked={referencesVisible} onChange={(e) => setReferencesVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canReuse && <button className="secondary" type="button" disabled={busy === "reuse"} onClick={() => void reuseSettings()}><Icon name="create" size={16}/>{busy === "reuse" ? "Переношу…" : "Использовать настройки"}</button>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Social</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Пока пусто."/>}</div></div>}</div></div></div>;
 }
 
 function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onClose: () => void; onRefresh: () => Promise<Me>; showToast: (message: string) => void }) {

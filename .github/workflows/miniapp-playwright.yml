@@ -27,7 +27,7 @@ jobs:
       - name: Install Playwright browsers
         working-directory: frontend/mini-app
         run: npx playwright install --with-deps chromium
-      - name: Run 100-scenario Mini App audit
+      - name: Run 300-scenario Mini App audit
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium
       - name: Upload Playwright report
