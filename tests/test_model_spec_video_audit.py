@@ -2,72 +2,86 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.kie_video_contracts import KieVideoContractError, normalize_kie_veo_input, normalize_kie_video_input
+from app.services.kie_video_contracts import (
+    KieVideoContractError,
+    normalize_kie_veo_input,
+    normalize_kie_video_input,
+)
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
 
 
-def test_kling_public_schema_no_longer_forces_aspect_ratio_for_frame_mode() -> None:
+def test_kling_frame_flow_has_no_forced_aspect_ratio_default() -> None:
     schema = build_public_model_ui_schema(ModelCatalog.get("kling-3.0").public_dict())
-    fields = {field["name"]: field for field in schema["fields"]}
-    assert "default" not in fields["aspect_ratio"]
+    assert "aspect_ratio" not in schema["defaults"]
 
-
-def test_kling_frame_mode_rejects_explicit_aspect_ratio_before_provider() -> None:
-    base = {
-        "prompt": "a cinematic reveal",
+    params = {
+        "prompt": "camera moves around the subject",
         "image_urls": ["https://cdn.example/first.png"],
+        "sound": True,
         "duration": 5,
-        "mode": "std",
+        "mode": "pro",
+        "multi_shots": False,
     }
-    spec, clean, _cost, _seconds, _unit = ModelCatalog.prepare("kling-3.0", base)
+    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("kling-3.0", params)
+    assert seconds == 5
     payload = normalize_kie_video_input(spec.kie_model, clean)
     assert "aspect_ratio" not in payload
 
-    with pytest.raises(InvalidModelParametersError, match="must be omitted"):
-        ModelCatalog.prepare("kling-3.0", {**base, "aspect_ratio": "16:9"})
-    with pytest.raises(KieVideoContractError, match="must be omitted"):
-        normalize_kie_video_input(
-            "kling-3.0/video", {**base, "aspect_ratio": "16:9"}
-        )
+    invalid = {**params, "aspect_ratio": "16:9"}
+    with pytest.raises(InvalidModelParametersError, match="aspect_ratio must be omitted"):
+        ModelCatalog.prepare("kling-3.0", invalid)
+    with pytest.raises(KieVideoContractError, match="aspect_ratio must be omitted"):
+        normalize_kie_video_input("kling-3.0/video", invalid)
 
 
-def test_kling_multishot_uses_storyboard_cap_not_stale_sum_equality() -> None:
-    valid = {
-        "prompt": "multi scene campaign",
-        "duration": 5,
-        "mode": "std",
+def test_kling_multishot_uses_storyboard_cap_not_stale_duration_equality() -> None:
+    params = {
         "multi_shots": True,
+        "duration": 5,
+        "mode": "pro",
+        "sound": True,
         "multi_prompt": [
-            {"prompt": "wide establishing shot", "duration": "3"},
-            {"prompt": "product close-up", "duration": "4"},
+            {"prompt": "first shot", "duration": 3},
+            {"prompt": "second shot", "duration": 3},
         ],
     }
-    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("kling-3.0", valid)
+    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("kling-3.0", params)
     assert seconds == 5
     payload = normalize_kie_video_input(spec.kie_model, clean)
     assert payload["duration"] == 5
-    assert payload["multi_prompt"] == valid["multi_prompt"]
+    assert sum(item["duration"] for item in payload["multi_prompt"]) == 6
+
+    too_many = {
+        "multi_shots": True,
+        "duration": 15,
+        "mode": "pro",
+        "multi_prompt": [{"prompt": f"shot {index}", "duration": 1} for index in range(6)],
+    }
+    with pytest.raises(InvalidModelParametersError, match="one to five"):
+        ModelCatalog.prepare("kling-3.0", too_many)
 
     too_long = {
-        **valid,
+        "multi_shots": True,
+        "duration": 15,
+        "mode": "pro",
         "multi_prompt": [
-            {"prompt": "shot one", "duration": "8"},
-            {"prompt": "shot two", "duration": "8"},
+            {"prompt": "one", "duration": 8},
+            {"prompt": "two", "duration": 8},
         ],
     }
     with pytest.raises(InvalidModelParametersError, match="must not exceed 15"):
         ModelCatalog.prepare("kling-3.0", too_long)
-    with pytest.raises(KieVideoContractError, match="must not exceed 15"):
-        normalize_kie_video_input("kling-3.0/video", too_long)
 
 
-def test_kling_top_level_duration_is_still_bounded() -> None:
+def test_kling_multishot_top_duration_stays_strict_when_equality_check_is_bypassed() -> None:
     base = {
-        "prompt": "multi scene campaign",
-        "mode": "std",
         "multi_shots": True,
-        "multi_prompt": [{"prompt": "single shot", "duration": "3"}],
+        "mode": "pro",
+        "multi_prompt": [
+            {"prompt": "one", "duration": 3},
+            {"prompt": "two", "duration": 3},
+        ],
     }
 
     with pytest.raises(InvalidModelParametersError, match="between 3 and 15"):
