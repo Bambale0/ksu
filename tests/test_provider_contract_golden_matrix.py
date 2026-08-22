@@ -153,10 +153,12 @@ def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) ->
 
 
 def test_golden_payload_inventory_covers_current_contracts() -> None:
-    # The audit originally counted 43 entries. The current implementation has
-    # grown since then, so lock both the new-work set and the full recovery set.
-    assert len(ModelCatalog.list()) == 23  # customer-visible products
-    assert len(REGISTERED_MODELS) == 46  # includes historical/recovery routes
+    # The audit originally counted 43 entries. The implementation has grown
+    # since then, so cover the complete current registry instead of dropping
+    # newer contracts merely to preserve an obsolete count.
+    assert len(ModelCatalog.list()) == 23
+    assert len(REGISTERED_MODELS) == 46
+    assert len(CALLABLE_MODELS) >= 23
     assert set(ACTIVE_NEW_WORK_MODEL_IDS) <= set(ModelCatalog._by_id)
     assert MUSIC_MODEL_ID == "suno-v5.5"
     assert len(REGISTERED_MODELS) + 1 == 47
