@@ -192,7 +192,7 @@ class Settings(BaseSettings):
     admin_login_rate_limit_per_minute: int = 5
     admin_request_rate_limit_per_minute: int = 120
     admin_login_max_failures: int = 5
-    admin_login_lock_minute: int = 15
+    admin_login_lock_minutes: int = 15
 
     internal_admin_hmac_secret: str = ""
     internal_admin_network_allowlist: str = "127.0.0.1/32,::1/128"
