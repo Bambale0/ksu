@@ -36,6 +36,8 @@ function safeFile(urlPath) {
       if (existsSync(index) && statSync(index).isFile()) return index;
     }
   }
+  const htmlCandidate = `${candidate}.html`;
+  if (existsSync(htmlCandidate) && statSync(htmlCandidate).isFile()) return htmlCandidate;
   return join(root, 'index.html');
 }
 
