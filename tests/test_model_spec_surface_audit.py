@@ -18,7 +18,7 @@ def test_gemini_omni_exposes_all_current_output_controls() -> None:
 
     schema = build_public_model_ui_schema(spec.public_dict())
     fields = {item["name"]: item for item in schema["fields"]}
-    assert fields["duration"]["suggestions"] == ["4", "6", "8", "10"]
+    assert fields["duration"]["suggestions"] == [4, 6, 8, 10]
     assert fields["aspect_ratio"]["suggestions"] == ["16:9", "9:16"]
     assert fields["resolution"]["suggestions"] == ["720p", "1080p", "4k"]
     assert fields["image_urls"]["max_items"] == 7
