@@ -39,14 +39,23 @@ def install_model_spec_audit_fixes() -> None:
     for spec in catalog.SPECS:
         if spec.id in seedance20_ids and "return_last_frame" not in spec.known_fields:
             fields = list(spec.known_fields)
-            # Keep the result option next to generate_audio when possible.
             try:
                 index = fields.index("generate_audio")
             except ValueError:
                 index = len(fields) - 1
             fields.insert(index + 1, "return_last_frame")
             spec = replace(spec, known_fields=tuple(fields))
+
+        # Kie's current Extend example explicitly sends prompt="". The field
+        # must exist, but an empty string is valid; generic required_fields would
+        # reject that example before the provider call.
+        if spec.id == "grok-video-extend" and "prompt" in spec.required_fields:
+            spec = replace(
+                spec,
+                required_fields=tuple(field for field in spec.required_fields if field != "prompt"),
+            )
         patched_specs.append(spec)
+
     catalog.SPECS = tuple(patched_specs)
     catalog.ModelCatalog._by_id = {spec.id: spec for spec in catalog.SPECS}
     for model_id in seedance20_ids:
@@ -107,9 +116,8 @@ def install_model_spec_audit_fixes() -> None:
                 raise catalog.InvalidModelParametersError("Grok nsfw_checker must be boolean")
 
         if spec.id == "grok-video-extend":
-            prompt = str(clean.get("prompt") or "").strip()
-            if not prompt and clean.get("prompt") is None:
-                raise catalog.InvalidModelParametersError("Grok Extend requires prompt")
+            if "prompt" not in clean:
+                raise catalog.InvalidModelParametersError("Grok Extend requires prompt field")
             try:
                 extend_at = int(clean.get("extend_at"))
             except (TypeError, ValueError) as exc:
@@ -153,8 +161,6 @@ def install_model_spec_audit_fixes() -> None:
                     "Seedance return_last_frame must be boolean"
                 )
             normalized = previous_normalize(model, source)
-            # The legacy normalizer removes this documented field. Restore the
-            # exact user value after its other validation has completed.
             if return_last is not _MISSING:
                 normalized["return_last_frame"] = return_last
             return normalized
@@ -234,7 +240,7 @@ def install_model_spec_audit_fixes() -> None:
             if not task_id:
                 raise video_contracts.KieVideoContractError("Grok Extend requires task_id")
             if "prompt" not in source:
-                raise video_contracts.KieVideoContractError("Grok Extend requires prompt")
+                raise video_contracts.KieVideoContractError("Grok Extend requires prompt field")
             try:
                 extend_at = int(source.get("extend_at"))
             except (TypeError, ValueError) as exc:
@@ -250,8 +256,6 @@ def install_model_spec_audit_fixes() -> None:
                 raise video_contracts.KieVideoContractError(
                     "Grok Extend supports only 6 or 10 seconds"
                 )
-            # Existing compatibility normalizer internally expects an int but
-            # restores the provider enum as string. Preserve that exact contract.
             source["extend_at"] = extend_at
             source["extend_times"] = extend_times
 
