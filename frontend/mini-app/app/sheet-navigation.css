@@ -1,0 +1,35 @@
+/* Variant picker behaves as a nested screen on mobile. A close-only affordance
+   feels like dismissing the whole flow, so expose the existing onClose action as
+   an explicit Back control and keep the selected draft untouched. */
+.bottom-sheet .sheet-head {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.bottom-sheet .sheet-head > .icon-button {
+  order: -1;
+  width: auto;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px 0 4px;
+  border-radius: 12px;
+  gap: 5px;
+  color: var(--text);
+  font-weight: 750;
+}
+
+.bottom-sheet .sheet-head > .icon-button svg {
+  display: none;
+}
+
+.bottom-sheet .sheet-head > .icon-button::before {
+  content: "←";
+  font-size: 25px;
+  line-height: 1;
+}
+
+.bottom-sheet .sheet-head > .icon-button::after {
+  content: "Назад";
+  font-size: 13px;
+  line-height: 1;
+}
