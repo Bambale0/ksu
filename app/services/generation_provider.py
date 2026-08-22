@@ -26,6 +26,22 @@ from app.services.wallet import WalletService
 SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
 _TERMINAL_STATUSES = {"succeeded", "failed"}
 _UNCERTAIN_CLIENT_STATUSES = {408, 425}
+_EXPLICIT_MEDIA_INPUT_FIELDS = (
+    "image_url",
+    "image_urls",
+    "image_input",
+    "input_urls",
+    "first_frame_url",
+    "last_frame_url",
+    "first_frame",
+    "first_clip_url",
+    "reference_image",
+    "reference_image_urls",
+    "video_url",
+    "video_urls",
+    "reference_video",
+    "reference_video_urls",
+)
 
 
 class GenerationProviderService:
@@ -415,15 +431,6 @@ class GenerationProviderService:
         }
         if generation.prompt and not data.get("prompt"):
             data["prompt"] = generation.prompt
-        if generation.input_url and not any(
-            key in data
-            for key in (
-                "image_url",
-                "image_urls",
-                "image_input",
-                "input_urls",
-                "first_frame_url",
-            )
-        ):
+        if generation.input_url and not any(data.get(key) for key in _EXPLICIT_MEDIA_INPUT_FIELDS):
             data["image_url"] = generation.input_url
         return data

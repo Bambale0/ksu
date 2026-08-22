@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+
+from app.services.generation_provider import GenerationProviderService
 from app.services.kie_video_contracts import normalize_kie_video_input
 from app.services.model_routing import resolve_model_request
 
@@ -89,3 +92,34 @@ def test_first_frame_stays_a_frame_and_is_not_duplicated_as_reference() -> None:
 
     assert result.parameters["first_frame_url"] == "https://cdn.example/frame.png"
     assert "reference_image_urls" not in result.parameters
+
+
+def test_provider_input_does_not_shadow_explicit_multimodal_refs_with_legacy_input_url() -> None:
+    generation = SimpleNamespace(
+        parameters={
+            "prompt": "follow the references",
+            "reference_image_urls": ["https://cdn.example/look.png"],
+            "reference_video_urls": ["https://cdn.example/motion.mp4"],
+            "_model_id": "seedance-2.5",
+        },
+        prompt="follow the references",
+        input_url="https://cdn.example/legacy-source.png",
+    )
+
+    provider_input = GenerationProviderService._input_for(generation)
+
+    assert provider_input["reference_image_urls"] == ["https://cdn.example/look.png"]
+    assert provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
+    assert "image_url" not in provider_input
+
+
+def test_provider_input_keeps_legacy_input_url_fallback_without_explicit_media() -> None:
+    generation = SimpleNamespace(
+        parameters={"prompt": "animate source", "_model_id": "legacy-model"},
+        prompt="animate source",
+        input_url="https://cdn.example/legacy-source.png",
+    )
+
+    provider_input = GenerationProviderService._input_for(generation)
+
+    assert provider_input["image_url"] == "https://cdn.example/legacy-source.png"
