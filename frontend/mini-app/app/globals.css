@@ -164,6 +164,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   object-fit: cover;
 }
 
+.promo-carousel {
+  position: relative;
+  margin: 3px 0 24px;
+  overflow: hidden;
+  border-radius: 25px;
+  aspect-ratio: 1672 / 941;
+  background: #09090e;
+  box-shadow: var(--shadow), 0 0 40px rgba(155, 92, 255, .11);
+}
+.promo-carousel-slide { width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.promo-carousel-slide img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.promo-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 9, 14, .68);
+  color: #fff;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.promo-carousel-arrow:hover { background: rgba(155, 92, 255, .8); }
+.promo-carousel-prev { left: 10px; transform: translateY(-50%) rotate(180deg); }
+.promo-carousel-next { right: 10px; }
+.promo-carousel-dots { position: absolute; left: 50%; bottom: 10px; display: flex; gap: 6px; transform: translateX(-50%); }
+.promo-carousel-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.45); cursor: pointer; }
+.promo-carousel-dots button.active { width: 19px; border-radius: 5px; background: #fff; }
+
 .primary, .secondary {
   min-height: 44px;
   padding: 10px 15px;

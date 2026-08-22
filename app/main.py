@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import mimetypes
 from pathlib import Path
 
 from aiogram import Bot
@@ -107,5 +108,6 @@ app.include_router(batch_router, prefix="/api/v1")
 web_dir = Path(__file__).resolve().parent / "web"
 mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
+mimetypes.add_type("image/webp", ".webp")
 app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
 app.mount("/admin-app", StaticFiles(directory=admin_app_dir, html=True), name="admin-app")

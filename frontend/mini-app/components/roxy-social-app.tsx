@@ -29,8 +29,8 @@ const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profil
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const PROMO_SLIDES = [
-  { src: "/promo/roxy-promo-1.png", title: "Промо для авторов", copy: "Готовые ассеты и офферы для привлечения пользователей" },
-  { src: "/promo/roxy-promo-2.png", title: "Партнёрские выплаты", copy: "Рефералы, повторы промптов и доход автора" },
+  { src: "promo/roxy-promo-1.webp", title: "Промо для авторов" },
+  { src: "promo/roxy-promo-2.webp", title: "Партнёрские выплаты" },
 ];
 
 type PreviewSurface = "private" | FeedSurface;
@@ -498,7 +498,7 @@ export function RoxySocialApp() {
       <main className="main-shell">
         {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={(media) => startNewGeneration(media)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
-        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onRunTrend={async (trend) => {
+        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
           if ((trend.reference_requirements?.min || 0) > 0) { showToast("Этот тренд требует референс. Откройте форму тренда позже."); return; }
           try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
           catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
@@ -551,13 +551,13 @@ function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: Fee
   </section>;
 }
 
-function CatalogScreen({ models, families, trends, onCreate, onRunTrend }: { models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
+function CatalogScreen({ models, families, trends, onCreate, onOpenPartners, onRunTrend }: { models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onOpenPartners: () => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
   const [media, setMedia] = useState<MediaFilter>("all");
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const filteredFamilies = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   const filteredTrends = media === "all" || media === "audio" ? trends : trends.filter((trend) => trend.media_type === media);
-  return <section className="screen"><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Сначала тренды и промо-сценарии, ниже — полный backend-каталог моделей." />
+  return <section className="screen"><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Сначала тренды и промо-сценарии, ниже — полный backend-каталог моделей." />
     <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
     <SectionTitle kicker="Тренды" title="Готовые сценарии" />
     <div className="model-grid">{filteredTrends.slice(0, 12).map((trend) => <button className="model-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Тренд"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></button>)}</div>
@@ -565,6 +565,32 @@ function CatalogScreen({ models, families, trends, onCreate, onRunTrend }: { mod
     <div className="model-grid">{filteredFamilies.map((family) => <button key={family.id} className="model-card" type="button" onClick={() => setFamilySheet(family)}><span className="model-icon"><Icon name={modelIcon(family.media_types?.[0])}/></span><div><strong>{family.title}</strong><small>{family.variant_count} вариантов</small></div><span className="price-pill">от {priceLabel(family.price_from_rox)}</span></button>)}</div>
     {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId="" onClose={() => setFamilySheet(null)} onChoose={(id) => { const model = byId.get(id); if (model) onCreate(model); setFamilySheet(null); }} />}
   </section>;
+}
+
+function PromoCarousel({ onOpenPartners }: { onOpenPartners: () => void }) {
+  const [active, setActive] = useState(0);
+  const paused = useRef(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!paused.current) setActive((current) => (current + 1) % PROMO_SLIDES.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const select = (index: number) => setActive((index + PROMO_SLIDES.length) % PROMO_SLIDES.length);
+  const slide = PROMO_SLIDES[active];
+
+  return <div className="promo-carousel" aria-label="Промо ROXY" onMouseEnter={() => { paused.current = true; }} onMouseLeave={() => { paused.current = false; }} onFocus={() => { paused.current = true; }} onBlur={() => { paused.current = false; }}>
+    <button className="promo-carousel-slide" type="button" onClick={onOpenPartners} aria-label={slide.title}>
+      <img src={slide.src} alt={slide.title} />
+    </button>
+    <button className="promo-carousel-arrow promo-carousel-prev" type="button" onClick={() => select(active - 1)} aria-label="Предыдущий слайд"><Icon name="chevron" size={18} /></button>
+    <button className="promo-carousel-arrow promo-carousel-next" type="button" onClick={() => select(active + 1)} aria-label="Следующий слайд"><Icon name="chevron" size={18} /></button>
+    <div className="promo-carousel-dots" role="tablist" aria-label="Слайды промо">
+      {PROMO_SLIDES.map((item, index) => <button key={item.src} className={index === active ? "active" : ""} type="button" role="tab" aria-selected={index === active} aria-label={`Слайд ${index + 1}`} onClick={() => select(index)} />)}
+    </div>
+  </div>;
 }
 
 function TrendStrip({ items }: { items: TrendItem[] }) {
