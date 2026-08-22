@@ -6,6 +6,18 @@ from typing import Any
 _INSTALLED = False
 
 
+def _kling_top_duration(value: Any, *, error_type: type[Exception]) -> int:
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        duration = int(value)
+    except (TypeError, ValueError) as exc:
+        raise error_type("Kling duration must be an integer between 3 and 15 seconds") from exc
+    if not 3 <= duration <= 15:
+        raise error_type("Kling duration must be between 3 and 15 seconds")
+    return duration
+
+
 def install_model_spec_video_audit() -> None:
     """Harden Kling 3.0 and Veo 3.1 against their current Kie contracts."""
 
@@ -55,6 +67,12 @@ def install_model_spec_video_audit() -> None:
                     "Kling aspect_ratio must be omitted when first/last frame images are provided"
                 )
             if clean.get("multi_shots"):
+                # Duration remains a real top-level provider field even though it
+                # no longer has to equal the storyboard sum. Validate it explicitly
+                # because the legacy equality bypass removes it from the shadow.
+                clean["duration"] = _kling_top_duration(
+                    clean.get("duration"), error_type=catalog.InvalidModelParametersError
+                )
                 shots = clean.get("multi_prompt") or []
                 if not isinstance(shots, list) or not 1 <= len(shots) <= 5:
                     raise catalog.InvalidModelParametersError(
@@ -125,6 +143,9 @@ def install_model_spec_video_audit() -> None:
             )
 
         if source.get("multi_shots"):
+            top_duration = _kling_top_duration(
+                source.get("duration"), error_type=video_contracts.KieVideoContractError
+            )
             shots = source.get("multi_prompt") or []
             if not isinstance(shots, list) or not 1 <= len(shots) <= 5:
                 raise video_contracts.KieVideoContractError(
@@ -143,13 +164,12 @@ def install_model_spec_video_audit() -> None:
                     "Kling multi-shot storyboard must not exceed 15 seconds"
                 )
 
-            # Bypass only the stale equality rule, then restore the user's exact
+            # Bypass only the stale equality rule, then restore the validated
             # top-level provider field after all other Kling validation.
             provider_source = deepcopy(source)
-            top_duration = provider_source.pop("duration", None)
+            provider_source.pop("duration", None)
             normalized = previous_video_normalizer(model, provider_source)
-            if top_duration is not None:
-                normalized["duration"] = top_duration
+            normalized["duration"] = top_duration
             return normalized
 
         return previous_video_normalizer(model, source)
