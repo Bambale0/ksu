@@ -138,6 +138,16 @@ def _minimal(model: dict[str, Any]) -> tuple[dict[str, Any], int | None]:
     billing_seconds = None
     if billing.get("required"):
         billing_seconds = int(billing.get("min") or model.get("min_seconds") or 1)
+    if model_id in {
+        "kling-avatar-standard",
+        "kling-avatar-pro",
+        "kling-motion-2.6",
+        "kling-motion-3.0",
+    }:
+        # The public UI deliberately hides billing_seconds for these products.
+        # ModelCatalog still receives a scalar internally, now derived by the
+        # server from verified media metadata before this lower-level boundary.
+        billing_seconds = int(model.get("min_seconds") or 1)
     if model_id == "grok-video-upscale":
         billing_seconds = 6
     return clean, billing_seconds
@@ -226,7 +236,8 @@ def test_p0_contract_regressions_are_locked() -> None:
     duration = _field(wan_edit, "duration")
     assert duration and duration["suggestions"] == [0, *range(2, 11)]
     assert wan_edit["defaults"]["duration"] == 5
-    assert wan_edit["billing_seconds"]["required"] is False
+    assert "billing_seconds" not in wan_edit
+    assert wan_edit["billing_source"] == "reference_metadata"
 
     grok_extend = build_public_model_ui_schema(models["grok-video-extend"])
     assert _field(grok_extend, "extend_at")["control"] == "number"
@@ -282,6 +293,7 @@ def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
     for name in ("aspect_ratio", "resolution", "seed"):
         assert _field(gemini, name) is not None
     assert _field(gemini, "duration")["suggestions"] == [4, 6, 8, 10]
+    assert gemini["video_billing_source"] == "verified_video_segment"
 
     kling25_t2v = build_public_model_ui_schema(models["kling-2.5-turbo-pro-t2v"])
     assert _field(kling25_t2v, "duration")["suggestions"] == ["5", "10"]
@@ -295,7 +307,8 @@ def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
     avatar = build_public_model_ui_schema(models["kling-avatar-pro"])
     assert _field(avatar, "image_url")["max_size_mb"] == 10
     assert _field(avatar, "audio_url")["max_size_mb"] == 100
-    assert avatar["billing_seconds"]["max"] == 300
+    assert "billing_seconds" not in avatar
+    assert avatar["billing_source"] == "reference_metadata"
 
     grok_t2v = build_public_model_ui_schema(models["grok-video-t2v"])
     assert _field(grok_t2v, "mode")["suggestions"] == ["fun", "normal", "spicy"]
