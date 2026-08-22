@@ -37,6 +37,25 @@ def _first_url(value: Any) -> str:
     return ""
 
 
+def _is_auto_duration(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return float(value) == 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _requires_trusted_billing(model_id: str, parameters: dict[str, Any]) -> bool:
+    if model_id in _DURATION_BILLED_REFERENCE_MODELS:
+        return True
+    if model_id == "wan-2.7-video-edit":
+        return _is_auto_duration(parameters.get("duration", 0))
+    if model_id == "gemini-omni-video":
+        return bool(parameters.get("video_list"))
+    return model_id == "grok-video-upscale" and bool(parameters.get("task_id"))
+
+
 async def _reference_for_url(
     session: Any,
     *,
@@ -194,7 +213,7 @@ async def resolve_trusted_billing_seconds(
             label="Kling Motion video",
         )
 
-    if model_id == "wan-2.7-video-edit" and str(parameters.get("duration", "0")) in {"0", "0.0"}:
+    if model_id == "wan-2.7-video-edit" and _is_auto_duration(parameters.get("duration", 0)):
         return await _require_reference_seconds(
             session,
             url=str(parameters.get("video_url") or "").strip(),
@@ -277,7 +296,7 @@ async def validate_owned_trusted_sources(
             url=_first_url(parameters.get("video_urls")),
             label="Kling Motion video",
         )
-    elif model_id == "wan-2.7-video-edit" and str(parameters.get("duration", "0")) in {"0", "0.0"}:
+    elif model_id == "wan-2.7-video-edit" and _is_auto_duration(parameters.get("duration", 0)):
         await _require_reference_seconds(
             session,
             user_id=user_id,
@@ -339,22 +358,20 @@ def install_model_spec_trusted_media_audit() -> None:
         if prompt and not source_parameters.get("prompt"):
             source_parameters["prompt"] = prompt
         routed = resolve_model_request(model_id, source_parameters, input_url=input_url)
-        await validate_reference_sizes(
-            session,
-            spec=routed.spec,
-            parameters=routed.parameters,
-        )
-        await validate_reference_duration_contracts(
-            session,
-            model_id=routed.model_id,
-            parameters=routed.parameters,
-        )
-        trusted_seconds = await resolve_trusted_billing_seconds(
-            session,
-            model_id=routed.model_id,
-            parameters=routed.parameters,
-            client_billing_seconds=billing_seconds,
-        )
+
+        # Only media-derived billing needs database metadata before ModelCatalog can
+        # compute a price. Every other request goes through the normal structural
+        # model validation first, so malformed payloads fail before optional media
+        # lookups and keep quote/preflight deterministic.
+        trusted_seconds = billing_seconds
+        if _requires_trusted_billing(routed.model_id, routed.parameters):
+            trusted_seconds = await resolve_trusted_billing_seconds(
+                session,
+                model_id=routed.model_id,
+                parameters=routed.parameters,
+                client_billing_seconds=billing_seconds,
+            )
+
         spec, clean, cost, seconds, unit_price = await previous_prepare(
             session,
             model_id=model_id,
@@ -362,6 +379,17 @@ def install_model_spec_trusted_media_audit() -> None:
             input_url=input_url,
             parameters=parameters,
             billing_seconds=trusted_seconds,
+        )
+
+        await validate_reference_sizes(
+            session,
+            spec=spec,
+            parameters=clean,
+        )
+        await validate_reference_duration_contracts(
+            session,
+            model_id=spec.id,
+            parameters=clean,
         )
 
         # Gemini ignores `duration` when video_list is supplied. Keep the valid
