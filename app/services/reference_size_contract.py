@@ -16,22 +16,32 @@ def _field_urls(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value] if value else []
     if isinstance(value, (list, tuple)):
-        return [str(item) for item in value if isinstance(item, str) and item]
+        result: list[str] = []
+        for item in value:
+            result.extend(_field_urls(item))
+        return result
+    if isinstance(value, dict):
+        result: list[str] = []
+        for key, item in value.items():
+            if key in {"url", "source_url", "image_url", "video_url", "audio_url"} or key.endswith("_url") or key.endswith("_urls"):
+                result.extend(_field_urls(item))
+        return result
     return []
 
 
-async def validate_owned_reference_sizes(
+async def validate_reference_sizes(
     session: AsyncSession,
     *,
-    user_id: uuid.UUID,
     spec: ModelSpec,
     parameters: dict[str, Any],
+    user_id: uuid.UUID | None = None,
 ) -> None:
-    """Enforce model upload limits for product-owned references before debit.
+    """Enforce known model upload limits before quote/debit.
 
-    External/manual URLs have no trusted byte metadata and continue to provider
-    validation. Files uploaded through ROXY have a measured size and must obey the
-    exact max_size_mb exposed by the resolved model's public ui_schema.
+    Product-owned uploads have measured sizes. Quote can validate by the opaque
+    provider URL without a user context; create additionally scopes the same check
+    to the current owner. Manual URLs have no trusted byte metadata and are left to
+    provider validation unless a model-specific trusted-media rule fails closed.
     """
 
     schema = build_public_model_ui_schema(spec.public_dict())
@@ -49,17 +59,13 @@ async def validate_owned_reference_sizes(
     if not limits_by_url:
         return
 
-    rows = list(
-        (
-            await session.scalars(
-                select(UserReference).where(
-                    UserReference.user_id == user_id,
-                    UserReference.status == "ready",
-                    UserReference.source_url.in_(list(limits_by_url)),
-                )
-            )
-        ).all()
+    statement = select(UserReference).where(
+        UserReference.status == "ready",
+        UserReference.source_url.in_(list(limits_by_url)),
     )
+    if user_id is not None:
+        statement = statement.where(UserReference.user_id == user_id)
+    rows = list((await session.scalars(statement)).all())
     for row in rows:
         if row.size_bytes is None:
             continue
@@ -68,3 +74,18 @@ async def validate_owned_reference_sizes(
                 raise InvalidModelParametersError(
                     f"{field_name} reference exceeds {max_size_mb} MB for {spec.title}"
                 )
+
+
+async def validate_owned_reference_sizes(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    spec: ModelSpec,
+    parameters: dict[str, Any],
+) -> None:
+    await validate_reference_sizes(
+        session,
+        user_id=user_id,
+        spec=spec,
+        parameters=parameters,
+    )
