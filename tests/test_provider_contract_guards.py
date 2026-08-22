@@ -51,11 +51,12 @@ def test_wan_pro_4k_edit_is_rejected_instead_of_silently_downgraded() -> None:
         normalize_kie_image_input("wan/2-7-image-pro", payload)
 
 
-def test_removed_provider_fields_cannot_survive_as_hidden_defaults() -> None:
+def test_provider_fields_and_defaults_stay_visible_and_current() -> None:
     for model_id in ("seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"):
         model = ModelCatalog.get(model_id).public_dict()
         schema = build_public_model_ui_schema(model)
         fields = {field["name"] for field in schema["fields"]}
         assert "fixed_lens" not in fields
-        assert "return_last_frame" not in fields
+        assert "return_last_frame" in fields
+        assert schema["defaults"]["return_last_frame"] is False
         assert set(schema.get("defaults", {})) <= fields
