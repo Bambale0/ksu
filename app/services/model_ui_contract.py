@@ -49,21 +49,16 @@ GROK_VIDEO_RATIOS = ["16:9", "9:16", "1:1", "2:3", "3:2"]
 # model pages: examples are used where the page exposes only an example value;
 # documented ranges are expanded for user-facing select controls.
 KIE_DURATION_OPTIONS: dict[str, list[int]] = {
-    # Wan 2.7 docs examples expose a 5-second duration; video-edit uses 0/auto.
     "wan-2.7-t2v": [5],
     "wan-2.7-i2v": [5],
     "wan-2.7-r2v": [5],
     "wan-2.7-video-edit": [0],
-    # Seedance 2.x examples use 15s; expose the user-requested short choices.
     "seedance-2.0": [5, 10, 15],
     "seedance-2.0-fast": [5, 10, 15],
     "seedance-2.0-mini": [5, 10, 15],
     "seedance-2.5": [5, 10, 15],
-    # Seedance 1.5 Pro docs example uses 8s.
     "seedance-1.5-pro": [8],
-    # Kling 3.0 docs state a 3-15s range.
     "kling-3.0": list(range(3, 16)),
-    # KIE Grok/Gemini pages expose fixed example durations in their payloads.
     "grok-video-t2v": [6],
     "grok-video-i2v": [6],
     "grok-video-1.5": [8],
@@ -140,83 +135,57 @@ MODEL_DEFAULTS: dict[str, dict[str, Any]] = {
     "seedance-2.0": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
     "seedance-2.0-fast": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
     "seedance-2.0-mini": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "generate_audio": False, "return_last_frame": False, "web_search": False},
-    "seedance-2.5": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "output_format": "mp4", "generate_audio": False, "return_last_frame": False, "web_search": False, "nsfw_checker": True},
-    "kling-3.0": {"mode": "pro", "aspect_ratio": "16:9", "sound": True, "multi_shots": False, "duration": 5},
+    "seedance-2.5": {"resolution": "720p", "aspect_ratio": "adaptive", "duration": 5, "output_format": "mp4", "generate_audio": False, "return_last_frame": False, "web_search": False},
+    "kling-3.0": {"mode": "std", "aspect_ratio": "16:9", "duration": 5, "sound": False, "multi_shots": False},
     "kling-motion-2.6": {"mode": "720p", "character_orientation": "image"},
     "kling-motion-3.0": {"mode": "720p", "character_orientation": "image", "background_source": "input_video"},
-    "veo-3.1": {"veo_model": "veo3_fast", "aspect_ratio": "16:9", "enable_fallback": False, "enable_translation": True, "generation_type": "TEXT_2_VIDEO"},
-    "grok-video-t2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
-    "grok-video-i2v": {"aspect_ratio": "16:9", "mode": "normal", "duration": 6, "resolution": "480p"},
-    "grok-video-1.5": {"aspect_ratio": "16:9", "duration": 8, "resolution": "480p"},
-    "gemini-omni-video": {"duration": 4},
-}
-
-MODEL_FIELD_OVERRIDES: dict[str, dict[str, dict[str, Any]]] = {
-    "wan-2.7-image": {"input_urls": {"max_items": 9}, "n": {"max": 4}},
-    "wan-2.7-image-pro": {"input_urls": {"max_items": 9}, "n": {"max": 4}},
-    "seedream-4-t2i": {"max_images": {"max": 6}},
-    "seedream-4-edit": {"image_urls": {"max_items": 10}, "max_images": {"max": 6}},
-    "seedream-4.5-edit": {"image_urls": {"max_items": 14}},
-    "seedream-5-lite-i2i": {"image_urls": {"max_items": 14}},
-    "seedream-5-pro-i2i": {"image_urls": {"max_items": 10}},
-    "gpt-image-1.5-i2i": {"input_urls": {"max_items": 16}},
-    "gpt-image-2-i2i": {"input_urls": {"max_items": 16}},
-    "grok-image-i2i": {"image_urls": {"max_items": 1}},
+    "veo-3.1": {"veo_model": "veo3_fast", "aspect_ratio": "Auto", "generation_type": "TEXT_2_VIDEO", "enable_fallback": True, "enable_translation": True},
+    "grok-image-t2i": {"aspect_ratio": "1:1"},
+    "grok-video-t2v": {"aspect_ratio": "16:9", "mode": "normal", "resolution": "480p", "duration": 6},
+    "grok-video-i2v": {"aspect_ratio": "16:9", "mode": "normal", "resolution": "480p", "duration": 6},
+    "grok-video-1.5": {"aspect_ratio": "16:9", "resolution": "480p", "duration": 8},
 }
 
 
-def _patch_field(schema: dict[str, Any], name: str, **values: Any) -> None:
+def _field(schema: dict[str, Any], name: str) -> dict[str, Any] | None:
     for field in schema.get("fields", []):
         if field.get("name") == name:
-            field.update(values)
-            return
+            return field
+    return None
 
 
-def _make_reference_fields_optional(schema: dict[str, Any]) -> None:
-    for name in REFERENCE_FIELD_NAMES:
-        _patch_field(schema, name, required=False)
-
-
-def _apply_model_contract(schema: dict[str, Any], model_id: str) -> None:
-    for field_name, suggestions in MODEL_FIELD_SUGGESTIONS.get(model_id, {}).items():
-        _patch_field(schema, field_name, suggestions=suggestions)
-    for field_name, values in MODEL_FIELD_OVERRIDES.get(model_id, {}).items():
-        _patch_field(schema, field_name, **values)
-    if model_id in KIE_DURATION_OPTIONS:
-        _patch_field(
-            schema,
-            "duration",
-            label="Длительность",
-            control="combobox",
-            group="output",
-            suggestions=KIE_DURATION_OPTIONS[model_id],
-            suffix="с",
-        )
-    defaults = MODEL_DEFAULTS.get(model_id)
-    if defaults:
-        schema["defaults"] = {**schema.get("defaults", {}), **defaults}
+def _patch_field(schema: dict[str, Any], name: str, **updates: Any) -> None:
+    field = _field(schema, name)
+    if field is not None:
+        field.update(updates)
 
 
 def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
+    model_id = str(model.get("id") or "")
     schema = deepcopy(build_model_ui_schema(model))
-    model_id = str(model["id"])
-    _apply_model_contract(schema, model_id)
+
+    defaults = deepcopy(MODEL_DEFAULTS.get(model_id, {}))
+    for name, suggestions in MODEL_FIELD_SUGGESTIONS.get(model_id, {}).items():
+        _patch_field(schema, name, suggestions=suggestions, control="combobox")
+    if defaults:
+        schema["defaults"] = {
+            **schema.get("defaults", {}),
+            **{name: value for name, value in defaults.items() if _field(schema, name)},
+        }
+
+    duration_options = KIE_DURATION_OPTIONS.get(model_id)
+    if duration_options and _field(schema, "duration") is not None:
+        _patch_field(schema, "duration", control="combobox", suggestions=duration_options)
 
     if model_id in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS:
-        # These public cards are automatic product entries: without refs the
-        # backend routes to T2I/T2V, with refs it routes to I2I/I2V. Therefore
-        # reference fields must be available but not mandatory in the form.
-        _make_reference_fields_optional(schema)
-        schema["auto_mode"] = {
-            "enabled": True,
-            "text_without_reference": True,
-            "reference_when_uploaded": True,
-        }
+        for field in schema.get("fields", []):
+            if field.get("name") in REFERENCE_FIELD_NAMES:
+                field["required"] = False
 
     scenario = schema.get("scenario")
     if isinstance(scenario, dict):
         for item in scenario.get("items", []):
-            visible = list(item.get("visible_fields", []))
+            visible = [str(name) for name in item.get("visible_fields", [])]
             scenario_id = str(item.get("id") or "")
             if model_id in SEEDANCE_MODELS:
                 if scenario_id == "references":
@@ -228,7 +197,7 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
 
     if model_id == "seedance-2.5":
         _patch_field(schema, "reference_image_urls", max_items=30, max_size_mb=30)
-        _patch_field(schema, "reference_video_urls", max_items=10, max_size_mb=100)
+        _patch_field(schema, "reference_video_urls", max_items=10, max_size_mb=200)
         _patch_field(schema, "reference_audio_urls", max_items=10, max_size_mb=15)
 
     if model_id in {"kling-motion-2.6", "kling-motion-3.0"}:
