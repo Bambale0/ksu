@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.kie_video_contracts import KieVideoContractError, normalize_kie_video_input
+from app.services.kie_video_contracts import (
+    KieVideoContractError,
+    normalize_kie_veo_input,
+    normalize_kie_video_input,
+)
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
 
@@ -14,15 +18,14 @@ SEEDANCE20 = (
 )
 
 
-def test_seedance20_return_last_frame_is_public_and_provider_preserved() -> None:
+def test_seedance20_return_last_frame_is_not_public_and_legacy_payload_is_stripped() -> None:
     for model_id, provider in SEEDANCE20:
         spec = ModelCatalog.get(model_id)
-        assert "return_last_frame" in spec.known_fields
+        assert "return_last_frame" not in spec.known_fields
 
         schema = build_public_model_ui_schema(spec.public_dict())
-        field = next(item for item in schema["fields"] if item["name"] == "return_last_frame")
-        assert field["control"] == "toggle"
-        assert schema["defaults"]["return_last_frame"] is False
+        assert "return_last_frame" not in {item["name"] for item in schema["fields"]}
+        assert "return_last_frame" not in schema["defaults"]
 
         payload = normalize_kie_video_input(
             provider,
@@ -34,7 +37,44 @@ def test_seedance20_return_last_frame_is_public_and_provider_preserved() -> None
                 "return_last_frame": True,
             },
         )
-        assert payload["return_last_frame"] is True
+        assert "return_last_frame" not in payload
+
+
+def test_veo_31_resolution_and_duration_are_public_billed_and_provider_validated() -> None:
+    spec = ModelCatalog.get("veo-3.1")
+    assert "resolution" in spec.known_fields
+    assert "duration" in spec.known_fields
+
+    schema = build_public_model_ui_schema(spec.public_dict())
+    fields = {item["name"]: item for item in schema["fields"]}
+    assert fields["resolution"]["options"] == ["720p", "1080p", "4k"]
+    assert fields["duration"]["options"] == [4, 6, 8]
+
+    params = {
+        "prompt": "cinematic tracking shot",
+        "veo_model": "veo3_fast",
+        "aspect_ratio": "auto",
+        "generation_type": "TEXT_2_VIDEO",
+        "resolution": "1080p",
+        "duration": 6,
+    }
+    _spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("veo-3.1", params)
+    assert seconds == 6
+    assert clean["resolution"] == "1080p"
+
+    payload = normalize_kie_veo_input(clean)
+    assert payload["resolution"] == "1080p"
+    assert payload["duration"] == 6
+
+    with pytest.raises(InvalidModelParametersError, match="4, 6 or 8"):
+        ModelCatalog.prepare("veo-3.1", {**params, "duration": 5})
+    with pytest.raises(KieVideoContractError, match="4, 6 or 8"):
+        normalize_kie_veo_input({**params, "duration": 5})
+
+    with pytest.raises(InvalidModelParametersError, match="720p, 1080p or 4k"):
+        ModelCatalog.prepare("veo-3.1", {**params, "resolution": "1440p"})
+    with pytest.raises(KieVideoContractError, match="720p, 1080p or 4k"):
+        normalize_kie_veo_input({**params, "resolution": "1440p"})
 
 
 def test_seedance20_frame_and_multimodal_modes_are_mutually_exclusive_everywhere() -> None:
