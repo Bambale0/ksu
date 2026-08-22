@@ -7,7 +7,7 @@ from app.db.models import Generation
 from app.services.model_catalog import ModelCatalog, ModelSpec, UnknownModelError
 from app.services.model_routing import image_references, video_references
 from app.services.model_ui_contract import build_public_model_ui_schema
-from app.services.music_generation import MUSIC_MODEL_ID, MusicGenerationService
+from app.services.music_generation import MusicGenerationService
 
 
 @dataclass(frozen=True, slots=True)
