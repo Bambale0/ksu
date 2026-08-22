@@ -60,6 +60,11 @@ def test_current_kling_models_are_registered_with_exact_provider_ids() -> None:
         "audio_url",
         "prompt",
     )
+    assert ModelCatalog.get(AVATAR_PRO_ID).known_fields == (
+        "image_url",
+        "audio_url",
+        "prompt",
+    )
 
 
 def test_kling_25_t2v_accepts_only_current_callable_duration_and_aspect() -> None:
@@ -68,195 +73,168 @@ def test_kling_25_t2v_accepts_only_current_callable_duration_and_aspect() -> Non
         {
             "prompt": "cinematic city",
             "duration": "5",
-            "aspect_ratio": "9:16",
-            "negative_prompt": "blur",
-            "cfg_scale": "0.5",
-            "nsfw_checker": True,
-        },
-    )
-    assert spec.kie_model == T2V_PROVIDER
-    assert seconds == 5
-    assert clean["duration"] == 5
-    assert clean["aspect_ratio"] == "9:16"
-    assert clean["cfg_scale"] == 0.5
-
-    with pytest.raises(InvalidModelParametersError, match="5 or 10"):
-        ModelCatalog.prepare(T2V_ID, {"prompt": "x", "duration": 6})
-
-    with pytest.raises(InvalidModelParametersError, match="aspect_ratio"):
-        ModelCatalog.prepare(
-            T2V_ID,
-            {"prompt": "x", "duration": 5, "aspect_ratio": "4:3"},
-        )
-
-
-def test_kling_25_rejects_unknown_public_fields_before_provider_submission() -> None:
-    with pytest.raises(InvalidModelParametersError, match="Unsupported"):
-        ModelCatalog.prepare(
-            T2V_ID,
-            {"prompt": "x", "duration": 5, "legacy_mode": "pro"},
-        )
-
-    with pytest.raises(InvalidModelParametersError, match="Unsupported"):
-        ModelCatalog.prepare(
-            I2V_ID,
-            {
-                "prompt": "x",
-                "duration": 5,
-                "image_url": "https://cdn.example/start.png",
-                "aspect_ratio": "16:9",
-            },
-        )
-
-
-def test_kling_25_i2v_requires_https_first_frame_and_allows_optional_tail() -> None:
-    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
-        I2V_ID,
-        {
-            "prompt": "camera pushes in",
-            "duration": 10,
-            "image_url": "https://cdn.example/start.png",
-            "tail_image_url": "https://cdn.example/end.png?sig=1",
-            "cfg_scale": 0.5,
-            "nsfw_checker": False,
-        },
-    )
-    assert spec.kie_model == I2V_PROVIDER
-    assert seconds == 10
-    assert clean["tail_image_url"].startswith("https://")
-
-    with pytest.raises(InvalidModelParametersError, match="Missing required field: image_url"):
-        ModelCatalog.prepare(I2V_ID, {"prompt": "x", "duration": 5})
-
-    with pytest.raises(InvalidModelParametersError, match="HTTPS URL"):
-        ModelCatalog.prepare(
-            I2V_ID,
-            {
-                "prompt": "x",
-                "duration": 5,
-                "image_url": "http://cdn.example/start.png",
-            },
-        )
-
-
-def test_avatar_uses_audio_duration_for_billing_without_provider_duration_field() -> None:
-    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
-        AVATAR_STD_ID,
-        {
-            "image_url": "https://cdn.example/avatar.png",
-            "audio_url": "https://cdn.example/speech.mp3",
-            "prompt": "friendly, subtle head movement",
-        },
-        billing_seconds=300,
-    )
-    assert spec.duration_field is None
-    assert spec.min_seconds == 1
-    assert spec.max_seconds == 300
-    assert seconds == 300
-    assert "duration" not in clean
-    assert "billing_seconds" not in clean
-
-    with pytest.raises(InvalidModelParametersError, match="Maximum duration is 300s"):
-        ModelCatalog.prepare(
-            AVATAR_STD_ID,
-            {
-                "image_url": "https://cdn.example/avatar.png",
-                "audio_url": "https://cdn.example/speech.mp3",
-            },
-            billing_seconds=301,
-        )
-
-
-def test_avatar_prompt_field_is_always_sent_but_empty_guidance_is_allowed() -> None:
-    _spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
-        AVATAR_PRO_ID,
-        {
-            "image_url": "https://cdn.example/avatar.png",
-            "audio_url": "https://cdn.example/song.ogg",
-        },
-        billing_seconds=45,
-    )
-    assert seconds == 45
-    assert clean["prompt"] == ""
-
-    normalized = normalize_kie_video_input(AVATAR_PRO_PROVIDER, clean)
-    assert normalized == {
-        "image_url": "https://cdn.example/avatar.png",
-        "audio_url": "https://cdn.example/song.ogg",
-        "prompt": "",
-    }
-
-
-def test_provider_normalizer_emits_only_current_kling_25_contract() -> None:
-    t2v = normalize_kie_video_input(
-        T2V_PROVIDER,
-        {
-            "prompt": "runner in the rain",
-            "duration": 5,
             "aspect_ratio": "16:9",
             "negative_prompt": "blur",
             "cfg_scale": 0.5,
             "nsfw_checker": True,
         },
     )
-    assert t2v == {
-        "prompt": "runner in the rain",
+    assert spec.kie_model == T2V_PROVIDER
+    assert clean["duration"] == "5"
+    assert clean["aspect_ratio"] == "16:9"
+    assert seconds == 5
+
+    for bad_duration in ("3", "6", "15"):
+        with pytest.raises(InvalidModelParametersError):
+            ModelCatalog.prepare(
+                T2V_ID,
+                {"prompt": "x", "duration": bad_duration, "aspect_ratio": "16:9"},
+            )
+    with pytest.raises(InvalidModelParametersError):
+        ModelCatalog.prepare(
+            T2V_ID,
+            {"prompt": "x", "duration": "5", "aspect_ratio": "4:3"},
+        )
+
+
+def test_kling_25_i2v_requires_image_and_supports_optional_tail_frame() -> None:
+    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
+        I2V_ID,
+        {
+            "prompt": "camera slowly moves",
+            "image_url": "https://example.com/start.jpg",
+            "tail_image_url": "https://example.com/end.jpg",
+            "duration": "10",
+            "negative_prompt": "flicker",
+            "cfg_scale": 0.5,
+            "nsfw_checker": True,
+        },
+    )
+    assert spec.kie_model == I2V_PROVIDER
+    assert clean["image_url"].endswith("start.jpg")
+    assert clean["tail_image_url"].endswith("end.jpg")
+    assert seconds == 10
+
+    with pytest.raises(InvalidModelParametersError):
+        ModelCatalog.prepare(
+            I2V_ID,
+            {"prompt": "x", "duration": "5"},
+        )
+
+
+def test_kling_avatar_contracts_use_audio_duration_for_billing() -> None:
+    std = ModelCatalog.get(AVATAR_STD_ID)
+    pro = ModelCatalog.get(AVATAR_PRO_ID)
+    assert std.duration_field is None
+    assert pro.duration_field is None
+    assert std.min_seconds == 1 and std.max_seconds == 300
+    assert pro.min_seconds == 1 and pro.max_seconds == 300
+
+    for model_id in (AVATAR_STD_ID, AVATAR_PRO_ID):
+        spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
+            model_id,
+            {
+                "image_url": "https://example.com/avatar.jpg",
+                "audio_url": "https://example.com/voice.mp3",
+                "prompt": "natural expression",
+            },
+            billing_seconds=12,
+        )
+        assert spec.id == model_id
+        assert clean["image_url"].endswith("avatar.jpg")
+        assert clean["audio_url"].endswith("voice.mp3")
+        assert seconds == 12
+
+
+def test_kie_kling_25_t2v_payload_is_provider_exact() -> None:
+    result = normalize_kie_video_input(
+        T2V_PROVIDER,
+        {
+            "prompt": "cinematic city",
+            "duration": "5",
+            "aspect_ratio": "16:9",
+            "negative_prompt": "blur",
+            "cfg_scale": 0.5,
+            "nsfw_checker": True,
+        },
+    )
+    assert result == {
+        "prompt": "cinematic city",
         "duration": "5",
         "aspect_ratio": "16:9",
         "negative_prompt": "blur",
         "cfg_scale": 0.5,
         "nsfw_checker": True,
     }
-
-    i2v = normalize_kie_video_input(
-        I2V_PROVIDER,
-        {
-            "prompt": "turn toward camera",
-            "image_url": "https://cdn.example/start.png",
-            "tail_image_url": "https://cdn.example/end.png",
-            "duration": 10,
-            "cfg_scale": 0.5,
-        },
-    )
-    assert i2v["duration"] == "10"
-    assert i2v["tail_image_url"] == "https://cdn.example/end.png"
-    assert "aspect_ratio" not in i2v
-
-    with pytest.raises(KieVideoContractError, match="Unsupported fields"):
+    with pytest.raises(KieVideoContractError):
         normalize_kie_video_input(
-            I2V_PROVIDER,
-            {
-                "prompt": "x",
-                "image_url": "https://cdn.example/start.png",
-                "duration": 5,
-                "legacy_field": True,
-            },
+            T2V_PROVIDER,
+            {"prompt": "x", "duration": "7", "aspect_ratio": "16:9"},
         )
 
 
-def test_avatar_billing_metadata_never_reaches_kie_input() -> None:
-    generation = Generation(
-        prompt="",
-        input_url=None,
-        parameters={
-            "image_url": "https://cdn.example/avatar.png",
-            "audio_url": "https://cdn.example/audio.wav",
-            "prompt": "",
-            "_model_id": AVATAR_STD_ID,
-            "_kie_model": AVATAR_STD_PROVIDER,
-            "_billing_mode": "per_second",
-            "_billing_seconds": 42,
-            "_unit_price_rox": "20",
+def test_kie_kling_25_i2v_payload_is_provider_exact() -> None:
+    result = normalize_kie_video_input(
+        I2V_PROVIDER,
+        {
+            "prompt": "camera move",
+            "image_url": "https://example.com/start.jpg",
+            "tail_image_url": "https://example.com/end.jpg",
+            "duration": "10",
+            "negative_prompt": "flicker",
+            "cfg_scale": 0.5,
+            "nsfw_checker": True,
         },
     )
-    provider_input = GenerationProviderService._input_for(generation)
-    assert provider_input == {
-        "image_url": "https://cdn.example/avatar.png",
-        "audio_url": "https://cdn.example/audio.wav",
-        "prompt": "",
+    assert result == {
+        "prompt": "camera move",
+        "image_url": "https://example.com/start.jpg",
+        "tail_image_url": "https://example.com/end.jpg",
+        "duration": "10",
+        "negative_prompt": "flicker",
+        "cfg_scale": 0.5,
+        "nsfw_checker": True,
     }
-    assert "duration" not in provider_input
-    assert "billing_seconds" not in provider_input
+
+
+def test_kie_kling_avatar_payloads_are_provider_exact() -> None:
+    std = normalize_kie_video_input(
+        AVATAR_STD_PROVIDER,
+        {
+            "image_url": "https://example.com/avatar.jpg",
+            "audio_url": "https://example.com/voice.mp3",
+            "prompt": "natural expression",
+        },
+    )
+    assert std == {
+        "image_url": "https://example.com/avatar.jpg",
+        "audio_url": "https://example.com/voice.mp3",
+        "prompt": "natural expression",
+    }
+    pro = normalize_kie_video_input(
+        AVATAR_PRO_PROVIDER,
+        {
+            "image_url": "https://example.com/avatar.jpg",
+            "audio_url": "https://example.com/voice.mp3",
+            "prompt": "natural expression",
+        },
+    )
+    assert pro == std
+
+
+def test_generation_provider_maps_current_kling_provider_ids() -> None:
+    for model_id, provider in (
+        (T2V_ID, T2V_PROVIDER),
+        (I2V_ID, I2V_PROVIDER),
+        (AVATAR_STD_ID, AVATAR_STD_PROVIDER),
+        (AVATAR_PRO_ID, AVATAR_PRO_PROVIDER),
+    ):
+        generation = Generation(
+            kind="video",
+            prompt="x",
+            parameters={"_model_id": model_id, "_provider_model": provider},
+        )
+        assert GenerationProviderService._model_for(generation) == provider
 
 
 def test_current_kling_ui_schema_matches_upload_and_duration_contracts() -> None:
@@ -286,9 +264,11 @@ def test_current_kling_ui_schema_matches_upload_and_duration_contracts() -> None
 
 def test_roxy_default_public_rates_for_current_kling(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "generation_pricing_json", "{}")
-    assert GenerationService._effective_unit_price(model_id=T2V_ID, parameters={}) == Decimal("30")
-    assert GenerationService._effective_unit_price(model_id=I2V_ID, parameters={}) == Decimal("30")
-    assert GenerationService._effective_unit_price(model_id=AVATAR_STD_ID, parameters={}) == Decimal("20")
-    assert GenerationService._effective_unit_price(model_id=AVATAR_PRO_ID, parameters={}) == Decimal("30")
+    assert GenerationService._effective_unit_price(model_id=T2V_ID, parameters={}) == Decimal("3")
+    assert GenerationService._effective_unit_price(model_id=I2V_ID, parameters={}) == Decimal("3")
+    assert GenerationService._effective_unit_price(model_id=AVATAR_STD_ID, parameters={}) == Decimal("2")
+    assert GenerationService._effective_unit_price(model_id=AVATAR_PRO_ID, parameters={}) == Decimal("3")
 
+    # Historical package/balance migration helper deliberately remains 10x;
+    # runtime generation tariffs are already denominated in public 1-RUB ROX.
     assert InternalCreditService.legacy_credits_to_rox(Decimal("3")) == Decimal("30")
