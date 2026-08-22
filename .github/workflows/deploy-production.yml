@@ -317,7 +317,7 @@ jobs:
           # is established, matching banano_kling:tanyapi production backfill.
           docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
 
-          echo "Production is healthy, feed static backfill completed, and Mini App serves ${DEPLOY_SHA}; backup-worker is running."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; feed static backfill completed; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
