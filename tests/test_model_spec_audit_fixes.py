@@ -116,7 +116,7 @@ def test_grok_upscale_resolution_is_limited_to_provider_enum() -> None:
         )
 
 
-def test_grok_extend_allows_documented_empty_prompt_and_keeps_string_duration_enum() -> None:
+def test_grok_extend_allows_documented_empty_or_omitted_prompt_and_keeps_string_duration_enum() -> None:
     params = {
         "task_id": "task_grok_12345678",
         "prompt": "",
@@ -132,11 +132,38 @@ def test_grok_extend_allows_documented_empty_prompt_and_keeps_string_duration_en
     assert isinstance(payload["extend_times"], str)
 
     missing_prompt = {"task_id": "task_grok_123", "extend_at": 2, "extend_times": "6"}
-    with pytest.raises(InvalidModelParametersError, match="prompt field"):
-        ModelCatalog.prepare("grok-video-extend", missing_prompt)
+    spec, clean, _cost, seconds, _unit = ModelCatalog.prepare(
+        "grok-video-extend", missing_prompt
+    )
+    assert seconds == 6
+    assert clean["prompt"] == ""
 
-    with pytest.raises(KieVideoContractError, match="prompt field"):
-        normalize_kie_video_input("grok-imagine/extend", missing_prompt)
+    payload = normalize_kie_video_input(spec.kie_model, missing_prompt)
+    assert payload["prompt"] == ""
+    assert payload["extend_at"] == 2
+    assert payload["extend_times"] == "6"
+
+    with pytest.raises(InvalidModelParametersError, match="prompt must be a string"):
+        ModelCatalog.prepare(
+            "grok-video-extend",
+            {
+                "task_id": "task_grok_123",
+                "prompt": None,
+                "extend_at": 2,
+                "extend_times": "6",
+            },
+        )
+
+    with pytest.raises(KieVideoContractError, match="prompt must be a string"):
+        normalize_kie_video_input(
+            "grok-imagine/extend",
+            {
+                "task_id": "task_grok_123",
+                "prompt": None,
+                "extend_at": 2,
+                "extend_times": "6",
+            },
+        )
 
     with pytest.raises(InvalidModelParametersError, match="at least 2"):
         ModelCatalog.prepare(
