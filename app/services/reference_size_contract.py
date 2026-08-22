@@ -29,6 +29,21 @@ def _field_urls(value: Any) -> list[str]:
     return []
 
 
+def _request_user_id(session: AsyncSession, explicit: uuid.UUID | None) -> uuid.UUID | None:
+    if explicit is not None:
+        return explicit
+    info = getattr(session, "info", None)
+    if not isinstance(info, dict):
+        return None
+    value = info.get("current_user_id")
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value)) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
 async def validate_reference_sizes(
     session: AsyncSession,
     *,
@@ -36,13 +51,18 @@ async def validate_reference_sizes(
     parameters: dict[str, Any],
     user_id: uuid.UUID | None = None,
 ) -> None:
-    """Enforce known model upload limits before quote/debit.
+    """Enforce known model upload limits for the authenticated reference owner.
 
-    Product-owned uploads have measured sizes. Quote can validate by the opaque
-    provider URL without a user context; create additionally scopes the same check
-    to the current owner. Manual URLs have no trusted byte metadata and are left to
-    provider validation unless a model-specific trusted-media rule fails closed.
+    Product-owned uploads have measured sizes. The user id is either passed by the
+    create boundary or inherited from the authenticated request session. Public
+    catalog/trend rendering and anonymous quotes never search another user's
+    reference library by URL. Manual URLs have no trusted byte metadata and remain
+    subject to provider/model-specific validation.
     """
+
+    owner_id = _request_user_id(session, user_id)
+    if owner_id is None:
+        return
 
     schema = build_public_model_ui_schema(spec.public_dict())
     limits_by_url: dict[str, list[tuple[str, int]]] = defaultdict(list)
@@ -59,13 +79,17 @@ async def validate_reference_sizes(
     if not limits_by_url:
         return
 
-    statement = select(UserReference).where(
-        UserReference.status == "ready",
-        UserReference.source_url.in_(list(limits_by_url)),
+    rows = list(
+        (
+            await session.scalars(
+                select(UserReference).where(
+                    UserReference.user_id == owner_id,
+                    UserReference.status == "ready",
+                    UserReference.source_url.in_(list(limits_by_url)),
+                )
+            )
+        ).all()
     )
-    if user_id is not None:
-        statement = statement.where(UserReference.user_id == user_id)
-    rows = list((await session.scalars(statement)).all())
     for row in rows:
         if row.size_bytes is None:
             continue
