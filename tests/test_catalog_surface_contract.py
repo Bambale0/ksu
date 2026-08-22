@@ -40,7 +40,8 @@ def test_catalog_exposes_bot_tools_and_admin_published_trends() -> None:
     assert "api.promptTools()" in catalog
     assert 'href: "/mini-app/batch.html"' in catalog
     assert "api.trends()" in social
-    assert '"/api/v1/trends"' in api
+    assert "trends: (mediaType?:" in api
+    assert "`/api/v1/trends?limit=60" in api
     assert "api.models()" in social
 
 
