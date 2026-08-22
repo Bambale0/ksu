@@ -41,8 +41,8 @@
   border-radius: 24px;
 }
 
-/* Catalog remains reachable from Studio, but the bottom bar must stay clean. */
-.bottom-nav button:nth-child(3) {
+/* Catalog replaces the legacy Studio tab in the customer navigation. */
+.bottom-nav button:first-child {
   display: none;
 }
 
@@ -84,6 +84,14 @@
   bottom: 5px;
   width: 22px;
   background: var(--gradient);
+}
+
+.catalog-capabilities {
+  margin-top: 4px;
+}
+
+.catalog-capability-grid .model-card {
+  text-decoration: none;
 }
 
 .feed-provider-copy,
