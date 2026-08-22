@@ -11,7 +11,10 @@ from app.db.reference_models import UserReference
 from app.db.session import SessionFactory
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
-from app.services.model_spec_trusted_media_audit import validate_owned_trusted_sources
+from app.services.model_spec_trusted_media_audit import (
+    resolve_trusted_billing_seconds,
+    validate_owned_trusted_sources,
+)
 from app.services.model_ui_contract import build_public_model_ui_schema
 
 
@@ -138,6 +141,13 @@ async def test_motion_duration_cannot_be_underreported_to_bypass_orientation_lim
 
 @pytest.mark.asyncio
 async def test_wan_video_edit_auto_bills_verified_source_duration() -> None:
+    """Lock trusted auto-duration billing without bypassing the new-work admission gate.
+
+    WAN Video Edit remains a registered historical/provider contract, but it is not
+    currently an active customer-facing model. Test the trusted duration boundary
+    directly instead of making GenerationService admit an intentionally inactive ID.
+    """
+
     async with SessionFactory() as session:
         owner = await _user(session)
         video = await _trusted_reference(
@@ -149,10 +159,9 @@ async def test_wan_video_edit_auto_bills_verified_source_duration() -> None:
         )
         await session.commit()
 
-        _spec, _clean, cost, seconds, unit = await GenerationService.prepare_request(
+        seconds = await resolve_trusted_billing_seconds(
             session,
             model_id="wan-2.7-video-edit",
-            prompt="Clean this clip",
             parameters={
                 "prompt": "Clean this clip",
                 "video_url": video.source_url,
@@ -160,11 +169,11 @@ async def test_wan_video_edit_auto_bills_verified_source_duration() -> None:
                 "resolution": "1080p",
                 "audio_setting": "auto",
             },
-            billing_seconds=1,
+            client_billing_seconds=1,
         )
 
         assert seconds == 9
-        assert cost == (unit * Decimal(9)).quantize(Decimal("0.01"))
+        assert seconds != 1
 
 
 @pytest.mark.asyncio
