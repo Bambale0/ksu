@@ -176,7 +176,6 @@ def test_kling_3_validates_modes_multishot_and_elements() -> None:
             "multi_shots": True,
             "image_urls": ["https://example.com/first.png"],
             "duration": 6,
-            "aspect_ratio": "16:9",
             "mode": "4K",
             "multi_prompt": [
                 {"prompt": "first scene", "duration": 3},
@@ -197,6 +196,18 @@ def test_kling_3_validates_modes_multishot_and_elements() -> None:
 
     assert payload["mode"] == "4K"
     assert len(payload["multi_prompt"]) == 2
+    assert "aspect_ratio" not in payload
+
+    with pytest.raises(KieVideoContractError, match="aspect_ratio"):
+        normalize_kie_video_input(
+            "kling-3.0/video",
+            {
+                "image_urls": ["https://example.com/first.png"],
+                "duration": 5,
+                "aspect_ratio": "16:9",
+                "mode": "pro",
+            },
+        )
 
     with pytest.raises(KieVideoContractError):
         normalize_kie_video_input(
