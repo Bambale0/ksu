@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ROXY — Пакетная обработка</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root { color-scheme:dark; --bg:#09070f; --panel:#15101d; --panel2:#1d1428; --line:rgba(196,118,255,.28); --muted:#b7aec2; --text:#fff; --violet:#a866ff; --pink:#ff5ab8; --danger:#ff7b9c; --success:#74e2ad; --grad:linear-gradient(135deg,#8f55ff,#ff57bf); }
+    * { box-sizing:border-box; }
+    html { background:var(--bg); }
+    body { margin:0 auto; min-height:100vh; max-width:780px; padding:18px 16px calc(30px + env(safe-area-inset-bottom)); font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at 18% 0%,rgba(179,82,255,.22),transparent 31%),var(--bg); }
+    button,input,textarea,select { font:inherit; }
+    button { color:inherit; cursor:pointer; }
+    .top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+    .brand { display:flex; align-items:center; gap:10px; border:0; padding:0; background:transparent; font-weight:950; letter-spacing:.06em; }
+    .mark { width:44px; height:44px; display:grid; place-items:center; border:1px solid var(--line); border-radius:16px; background:rgba(156,80,255,.14); color:#db7cff; }
+    .balance { padding:8px 12px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.04); font-size:12px; white-space:nowrap; }
+    h1 { margin:0; font-size:34px; line-height:.98; letter-spacing:-.05em; }
+    .lead { margin:10px 0 18px; color:var(--muted); line-height:1.5; }
+    .panel { margin-top:12px; padding:16px; border:1px solid var(--line); border-radius:24px; background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025)); box-shadow:0 18px 60px rgba(0,0,0,.27); }
+    .grid { display:grid; gap:13px; }
+    .field { display:grid; gap:7px; }
+    .label { color:#ded4ea; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; }
+    select,input[type="number"],textarea { width:100%; min-height:46px; border:1px solid var(--line); border-radius:15px; outline:0; padding:11px 12px; background:#0d0a12; color:#fff; }
+    textarea { min-height:108px; resize:vertical; line-height:1.45; }
+    select:focus,input:focus,textarea:focus { border-color:var(--violet); box-shadow:0 0 0 3px rgba(168,102,255,.12); }
+    .drop { display:grid; place-items:center; min-height:108px; padding:14px; border:1px dashed #925bd5; border-radius:20px; background:rgba(146,91,213,.09); text-align:center; cursor:pointer; }
+    .drop strong { display:block; margin-bottom:5px; }
+    .drop small,.hint { color:var(--muted); font-size:11px; line-height:1.4; }
+    .drop input { position:absolute; width:1px; height:1px; opacity:0; }
+    .files { display:grid; gap:7px; }
+    .file-row { display:grid; grid-template-columns:36px minmax(0,1fr) auto; align-items:center; gap:9px; padding:8px 10px; border:1px solid rgba(255,255,255,.09); border-radius:14px; background:rgba(255,255,255,.025); }
+    .file-index { width:30px; height:30px; display:grid; place-items:center; border-radius:10px; background:rgba(168,102,255,.13); color:#dbc1ff; font-weight:900; font-size:11px; }
+    .file-row span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+    .remove { border:0; background:transparent; color:var(--muted); font-size:18px; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .primary,.secondary { min-height:48px; border-radius:16px; font-weight:950; }
+    .primary { border:0; background:var(--grad); box-shadow:0 14px 36px rgba(204,91,255,.25); }
+    .primary:disabled { opacity:.42; cursor:not-allowed; box-shadow:none; }
+    .secondary { border:1px solid var(--line); background:rgba(255,255,255,.035); }
+    .quote { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .metric { padding:11px; border:1px solid rgba(255,255,255,.08); border-radius:15px; background:rgba(0,0,0,.16); }
+    .metric small { display:block; color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.07em; }
+    .metric strong { display:block; margin-top:5px; font-size:15px; }
+    .progress { height:8px; overflow:hidden; border-radius:999px; background:rgba(255,255,255,.08); }
+    .progress i { display:block; width:0; height:100%; background:var(--grad); transition:width .25s ease; }
+    .job-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .job-head h2 { margin:3px 0 0; font-size:19px; }
+    .status { flex:0 0 auto; padding:6px 9px; border-radius:999px; background:rgba(168,102,255,.12); color:#d9bcff; font-size:10px; font-weight:900; }
+    .status.completed { color:var(--success); background:rgba(116,226,173,.1); }
+    .status.failed { color:var(--danger); background:rgba(255,123,156,.1); }
+    .items { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .item { min-width:0; padding:9px; border:1px solid rgba(255,255,255,.08); border-radius:15px; background:rgba(0,0,0,.16); }
+    .item img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:11px; background:#09080d; }
+    .item strong { display:block; margin-top:7px; font-size:11px; }
+    .item small { display:block; margin-top:3px; color:var(--muted); font-size:9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .empty { color:var(--muted); font-size:12px; line-height:1.45; }
+    .toast { position:fixed; z-index:50; left:16px; right:16px; bottom:18px; max-width:720px; margin:auto; display:none; padding:13px 14px; border:1px solid var(--line); border-radius:17px; background:#21172f; box-shadow:0 12px 32px rgba(0,0,0,.35); }
+    .toast.show { display:block; }
+    details { border:1px solid rgba(255,255,255,.08); border-radius:15px; padding:10px 12px; background:rgba(255,255,255,.02); }
+    summary { cursor:pointer; font-size:12px; font-weight:850; }
+    details .field { margin-top:10px; }
+    @media(max-width:440px){ h1{font-size:31px}.row{grid-template-columns:1fr}.quote{grid-template-columns:1fr 1fr}.items{grid-template-columns:1fr 1fr} }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <button class="brand" id="backToCatalog" type="button"><span class="mark">RX</span><span>ROXY</span></button>
+    <span class="balance" id="balance">Баланс —</span>
+  </div>
+
+  <header>
+    <h1>Пакетная обработка</h1>
+    <p class="lead">Загрузите от 2 до 20 изображений. ROXY применит один prompt и настройки к каждому файлу отдельной генерацией.</p>
+  </header>
+
+  <main class="panel grid">
+    <label class="field"><span class="label">Модель</span><select id="model"><option value="">Загружаю модели…</option></select></label>
+    <label class="field"><span class="label">Prompt</span><textarea id="prompt" placeholder="Например: сохранить композицию, заменить фон на ночной Токио, мягкий неоновый свет…"></textarea></label>
+
+    <label class="drop">
+      <span><strong>Добавить изображения</strong><small>2–20 файлов · JPG, PNG, WEBP</small></span>
+      <input id="filesInput" type="file" accept="image/*" multiple />
+    </label>
+    <div class="files" id="files"></div>
+
+    <details>
+      <summary>Дополнительные параметры модели</summary>
+      <label class="field"><span class="label">JSON параметров</span><textarea id="parameters" placeholder='Например: {"resolution":"2K"}'>{}</textarea></label>
+      <label class="field"><span class="label">Длительность, сек. — если модель использует</span><input id="seconds" type="number" min="1" max="600" inputmode="numeric" placeholder="Не указывать для обычных фото-моделей" /></label>
+      <p class="hint">Поля изображения сюда добавлять не нужно: batch-входы назначает сервер.</p>
+    </details>
+
+    <div class="row">
+      <button class="secondary" id="quoteBtn" type="button">Рассчитать стоимость</button>
+      <button class="primary" id="startBtn" type="button">Запустить пакет</button>
+    </div>
+
+    <section id="quoteBox" hidden>
+      <div class="quote">
+        <div class="metric"><small>Изображений</small><strong id="qCount">—</strong></div>
+        <div class="metric"><small>За файл</small><strong id="qPer">—</strong></div>
+        <div class="metric"><small>Всего</small><strong id="qTotal">—</strong></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="panel grid" id="jobsPanel">
+    <div class="job-head"><div><span class="label">История</span><h2>Последние пакеты</h2></div><button class="secondary" id="refreshBtn" type="button">Обновить</button></div>
+    <div id="jobs" class="grid"><p class="empty">Загружаю историю…</p></div>
+  </section>
+
+  <div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); } catch (_) {} }
+  const state = { models: [], files: [], uploaded: [], busy: false, activeJob: null, pollTimer: null };
+  const $ = (id) => document.getElementById(id);
+  const headers = (json = false) => {
+    const result = { Accept: 'application/json' };
+    if (tg && tg.initData) result['X-Telegram-Init-Data'] = tg.initData;
+    if (json) result['Content-Type'] = 'application/json';
+    return result;
+  };
+  async function request(path, init = {}) {
+    const bodyIsJson = Boolean(init.body) && !(init.body instanceof FormData);
+    const response = await fetch(path, { ...init, credentials:'same-origin', cache:'no-store', headers:{ ...headers(bodyIsJson), ...(init.headers || {}) } });
+    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok) throw new Error((data && (data.detail || data.message)) || `HTTP ${response.status}`);
+    return data;
+  }
+  function key(prefix) { return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`; }
+  function toast(text) { const el=$('toast'); el.textContent=text; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000); }
+  function rox(value) { if (value === null || value === undefined || value === '') return '—'; const number=Number(value); return `${Number.isFinite(number) ? number.toLocaleString('ru-RU',{maximumFractionDigits:2}) : value} ROX`; }
+  function setBusy(value, label) { state.busy=value; $('startBtn').disabled=value; $('quoteBtn').disabled=value; $('filesInput').disabled=value; $('startBtn').textContent=value ? (label || 'Работаю…') : 'Запустить пакет'; }
+  function catalogUrl() { const url=new URL(location.href); url.pathname='/mini-app/'; url.search='?route=catalog'; return `${url.pathname}${url.search}`; }
+  $('backToCatalog').addEventListener('click', () => location.assign(catalogUrl()));
+
+  function compatible(model) {
+    if (!model || model.media_type !== 'image') return false;
+    const fields = (model.ui_schema && model.ui_schema.fields) || [];
+    return fields.some((field) => ['image_url','image_urls','image_input','input_urls','reference_images'].includes(String(field.name || '')) || ['file','files'].includes(String(field.control || '')));
+  }
+
+  async function loadBootstrap() {
+    const [me, catalog] = await Promise.all([request('/api/v1/me'), request('/api/v1/generations/models')]);
+    $('balance').textContent = `Баланс ${rox(me.balance_rox)}`;
+    state.models = (catalog.models || []).filter(compatible);
+    const select = $('model'); select.replaceChildren();
+    if (!state.models.length) {
+      const option=document.createElement('option'); option.value=''; option.textContent='Нет совместимых моделей'; select.append(option); return;
+    }
+    state.models.forEach((model) => { const option=document.createElement('option'); option.value=model.id; option.textContent=`${model.title} · от ${rox(model.effective_price_rox ?? model.price_rox)}`; select.append(option); });
+  }
+
+  function renderFiles() {
+    const box=$('files'); box.replaceChildren();
+    state.files.forEach((file,index) => {
+      const row=document.createElement('div'); row.className='file-row';
+      const badge=document.createElement('span'); badge.className='file-index'; badge.textContent=String(index+1);
+      const name=document.createElement('span'); name.textContent=file.name;
+      const remove=document.createElement('button'); remove.className='remove'; remove.type='button'; remove.setAttribute('aria-label',`Удалить ${file.name}`); remove.textContent='×';
+      remove.addEventListener('click',()=>{ state.files.splice(index,1); state.uploaded=[]; renderFiles(); $('quoteBox').hidden=true; });
+      row.append(badge,name,remove); box.append(row);
+    });
+  }
+  $('filesInput').addEventListener('change', (event) => {
+    const incoming=Array.from(event.target.files || []).filter((file)=>file.type.startsWith('image/'));
+    const seen=new Set(state.files.map((file)=>`${file.name}:${file.size}:${file.lastModified}`));
+    for (const file of incoming) { const id=`${file.name}:${file.size}:${file.lastModified}`; if (!seen.has(id) && state.files.length<20) { state.files.push(file); seen.add(id); } }
+    state.uploaded=[]; event.target.value=''; renderFiles(); $('quoteBox').hidden=true;
+    if (incoming.length && state.files.length < 2) toast('Для пакета нужно минимум 2 изображения');
+    if (state.files.length === 20) toast('Добавлено максимум 20 изображений');
+  });
+
+  function parameters() {
+    const raw=$('parameters').value.trim() || '{}';
+    let value; try { value=JSON.parse(raw); } catch (_) { throw new Error('Параметры должны быть корректным JSON'); }
+    if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Параметры должны быть JSON-объектом');
+    for (const key of ['image_url','image_urls','image_input','input_urls']) if (value[key]) throw new Error(`Уберите ${key}: изображения пакет назначает автоматически`);
+    return value;
+  }
+  function seconds() { const raw=$('seconds').value.trim(); return raw ? Number(raw) : null; }
+  function validate() {
+    if (!$('model').value) throw new Error('Выберите модель');
+    if (state.files.length < 2 || state.files.length > 20) throw new Error('Добавьте от 2 до 20 изображений');
+    const value=seconds(); if (value !== null && (!Number.isInteger(value) || value<1 || value>600)) throw new Error('Длительность должна быть от 1 до 600 секунд');
+    return { model_id:$('model').value, prompt:$('prompt').value.trim(), parameters:parameters(), billing_seconds:value };
+  }
+  async function uploadFiles() {
+    if (state.uploaded.length === state.files.length && state.uploaded.every(Boolean)) return state.uploaded;
+    const urls=[];
+    for (let index=0; index<state.files.length; index++) {
+      setBusy(true,`Загружаю ${index+1}/${state.files.length}…`);
+      const form=new FormData(); form.append('file',state.files[index],state.files[index].name);
+      const result=await request('/api/v1/uploads/kie',{method:'POST',body:form});
+      urls.push(result.url);
+    }
+    state.uploaded=urls; return urls;
+  }
+  async function payload() { const base=validate(); const input_urls=await uploadFiles(); return { ...base, input_urls, reference_ids:[] }; }
+
+  async function quote() {
+    if (state.busy) return;
+    try {
+      setBusy(true,'Готовлю файлы…'); const body=await payload();
+      setBusy(true,'Считаю…'); const data=await request('/api/v1/batch-generations/quote',{method:'POST',body:JSON.stringify(body)});
+      $('qCount').textContent=String(data.input_count || state.files.length);
+      $('qPer').textContent=rox(data.per_item_cost_credits);
+      $('qTotal').textContent=data.admin_free ? 'Бесплатно' : rox(data.total_cost_credits);
+      $('quoteBox').hidden=false;
+    } catch(error) { toast(error.message || 'Не удалось рассчитать пакет'); }
+    finally { setBusy(false); }
+  }
+  $('quoteBtn').addEventListener('click', quote);
+
+  async function start() {
+    if (state.busy) return;
+    try {
+      setBusy(true,'Готовлю файлы…'); const body=await payload();
+      setBusy(true,'Запускаю…'); const job=await request('/api/v1/batch-generations',{method:'POST',headers:{'Idempotency-Key':key('batch')},body:JSON.stringify(body)});
+      state.activeJob=job.id; toast(`Пакет запущен: ${job.input_count} изображений`); state.files=[]; state.uploaded=[]; renderFiles(); $('quoteBox').hidden=true; await loadJobs(); poll(job.id);
+      try { tg && tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch (_) {}
+    } catch(error) { toast(error.message || 'Не удалось запустить пакет'); }
+    finally { setBusy(false); }
+  }
+  $('startBtn').addEventListener('click', start);
+
+  function humanStatus(status) { return ({running:'В работе',queued:'В очереди',completed:'Готово',partial:'Частично',failed:'Ошибка'}[status] || status || '—'); }
+  function itemCard(item) {
+    const card=document.createElement('div'); card.className='item';
+    const generation=item.generation || {};
+    if (generation.result_url) { const img=document.createElement('img'); img.src=generation.result_url; img.alt=`Результат ${item.ordinal+1}`; img.loading='lazy'; card.append(img); }
+    const title=document.createElement('strong'); title.textContent=`#${Number(item.ordinal)+1} · ${humanStatus(generation.status)}`; card.append(title);
+    const copy=document.createElement('small'); copy.textContent=generation.error || rox(generation.cost_credits); card.append(copy);
+    return card;
+  }
+  function jobCard(job) {
+    const card=document.createElement('article'); card.className='panel grid'; card.style.marginTop='0';
+    const head=document.createElement('div'); head.className='job-head';
+    const titleWrap=document.createElement('div'); const label=document.createElement('span'); label.className='label'; label.textContent=job.model_id || 'Batch'; const title=document.createElement('h2'); title.textContent=`${job.succeeded_count || 0}/${job.input_count || 0} готово`; titleWrap.append(label,title);
+    const status=document.createElement('span'); status.className=`status ${job.status || ''}`; status.textContent=humanStatus(job.status); head.append(titleWrap,status); card.append(head);
+    const progress=document.createElement('div'); progress.className='progress'; const bar=document.createElement('i'); bar.style.width=`${Math.max(0,Math.min(100,Number(job.progress_percent)||0))}%`; progress.append(bar); card.append(progress);
+    const metrics=document.createElement('div'); metrics.className='quote';
+    [['Успешно',job.succeeded_count],['Ошибок',job.failed_count],['Списано',job.admin_free?'Бесплатно':rox(job.total_charged_credits)]].forEach(([name,value])=>{ const m=document.createElement('div');m.className='metric';const s=document.createElement('small');s.textContent=name;const b=document.createElement('strong');b.textContent=String(value ?? '—');m.append(s,b);metrics.append(m); }); card.append(metrics);
+    if (Array.isArray(job.items) && job.items.length) { const items=document.createElement('div'); items.className='items'; job.items.forEach((item)=>items.append(itemCard(item))); card.append(items); }
+    if ((job.failed_count || 0)>0 && !['running','queued'].includes(job.status)) {
+      const retry=document.createElement('button'); retry.type='button'; retry.className='secondary'; retry.textContent='Повторить ошибки'; retry.addEventListener('click',()=>retryFailed(job.id)); card.append(retry);
+    }
+    return card;
+  }
+  async function loadJobs() {
+    const box=$('jobs');
+    try {
+      const data=await request('/api/v1/batch-generations?limit=10'); box.replaceChildren();
+      const jobs=data.items || []; if (!jobs.length) { const empty=document.createElement('p'); empty.className='empty'; empty.textContent='Пакетов пока нет. Загрузите несколько изображений выше.'; box.append(empty); return; }
+      jobs.forEach((job)=>box.append(jobCard(job)));
+      if (!state.activeJob) { const running=jobs.find((job)=>['running','queued'].includes(job.status)); if (running) poll(running.id); }
+    } catch(error) { box.replaceChildren(); const empty=document.createElement('p'); empty.className='empty'; empty.textContent=error.message || 'Не удалось загрузить историю'; box.append(empty); }
+  }
+  $('refreshBtn').addEventListener('click',loadJobs);
+
+  async function retryFailed(id) {
+    try {
+      const quote=await request(`/api/v1/batch-generations/${encodeURIComponent(id)}/retry-quote`);
+      if (!quote.retry_count) return toast('Ошибок для повтора нет');
+      const total=quote.admin_free ? 'бесплатно' : rox(quote.total_cost_credits);
+      if (!confirm(`Повторить ${quote.retry_count} неуспешных генераций? Стоимость: ${total}`)) return;
+      const job=await request(`/api/v1/batch-generations/${encodeURIComponent(id)}/retry`,{method:'POST',headers:{'Idempotency-Key':key('batch-retry')}});
+      toast(`Повтор запущен: ${job.retried_count || quote.retry_count}`); poll(id); await loadJobs();
+    } catch(error) { toast(error.message || 'Не удалось повторить ошибки'); }
+  }
+  function poll(id) {
+    state.activeJob=id; if (state.pollTimer) clearTimeout(state.pollTimer);
+    const tick=async()=>{
+      try {
+        const job=await request(`/api/v1/batch-generations/${encodeURIComponent(id)}`); await loadJobs();
+        if (['completed','partial','failed'].includes(job.status)) { state.activeJob=null; state.pollTimer=null; toast(job.status==='completed'?'Пакет готов':'Пакет завершён'); return; }
+      } catch (_) {}
+      state.pollTimer=setTimeout(tick,2500);
+    };
+    state.pollTimer=setTimeout(tick,800);
+  }
+
+  Promise.all([loadBootstrap(),loadJobs()]).catch((error)=>toast(error.message || 'ROXY временно недоступна'));
+})();
+</script>
+</body>
+</html>
