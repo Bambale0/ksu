@@ -1,4 +1,5 @@
 from app.services.model_spec_audit_fixes import install_model_spec_audit_fixes
+from app.services.model_spec_image_audit import install_model_spec_image_audit
 from app.services.model_spec_motion_audit import install_model_spec_motion_audit
 from app.services.model_spec_video_audit import install_model_spec_video_audit
 from app.services.provider_contract_guards import install_provider_contract_guards
@@ -9,3 +10,4 @@ install_provider_contract_guards()
 install_model_spec_audit_fixes()
 install_model_spec_video_audit()
 install_model_spec_motion_audit()
+install_model_spec_image_audit()
