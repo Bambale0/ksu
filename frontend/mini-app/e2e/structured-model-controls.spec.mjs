@@ -54,15 +54,32 @@ async function mock(page, kind) {
   });
 }
 
-test('Kling multi-shot and elements use guided controls instead of visible JSON', async ({ page }) => {
+test('Kling multi-shot and elements use guided controls without placebo fields', async ({ page }) => {
   await mock(page, 'kling');
   await page.goto('/mini-app/?route=create');
-  await expect(page.locator('[data-structured-kind="multi_prompt"]')).toBeVisible();
-  await expect(page.locator('[data-structured-kind="kling_elements"]')).toBeVisible();
-  await expect(page.getByRole('button', { name: '+ Добавить сцену' })).toBeVisible();
+
+  const scenes = page.locator('[data-structured-kind="multi_prompt"]');
+  const elements = page.locator('[data-structured-kind="kling_elements"]');
+  await expect(elements).toBeVisible();
   await expect(page.getByRole('button', { name: '+ Добавить элемент' })).toBeVisible();
+
+  // Multi-shot scenes must not be editable while Multi-shot is off because the
+  // provider ignores multi_prompt in single-shot mode.
+  await expect(scenes).toBeHidden();
+  const multiShotToggle = page.locator('.toggle-row', { hasText: 'Multi-shot' }).locator("input[type='checkbox']");
+  await expect(multiShotToggle).not.toBeChecked();
+  await multiShotToggle.check();
+  await expect(scenes).toBeVisible();
+  await expect(page.getByRole('button', { name: '+ Добавить сцену' })).toBeVisible();
+
   await expect(page.locator('textarea.structured-json-source')).toHaveCount(2);
   for (const textarea of await page.locator('textarea.structured-json-source').all()) await expect(textarea).toBeHidden();
+
+  await page.getByRole('button', { name: '+ Добавить сцену' }).click();
+  await multiShotToggle.uncheck();
+  await expect(scenes).toBeHidden();
+  const sourceValue = await page.locator('textarea.structured-json-source').filter({ has: page.locator('xpath=..') }).first().inputValue().catch(() => '[]');
+  expect(sourceValue === '[]' || sourceValue === '').toBeTruthy();
 });
 
 test('Gemini media/id arrays use guided controls instead of visible JSON', async ({ page }) => {
