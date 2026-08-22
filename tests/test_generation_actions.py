@@ -101,7 +101,7 @@ def test_edit_candidates_exclude_non_edit_image_operations() -> None:
     generation = _generation(media_type="image", model_id="nano-banana-pro")
     candidate_ids = {item["id"] for item in GenerationActionService.public_candidates(generation, "edit")}
     assert "seedream-5-pro-layers" not in candidate_ids
-    assert "nano-banana-edit" in candidate_ids
+    assert "nano-banana-pro" in candidate_ids
 
 
 def test_repeat_prefers_current_model_and_preserves_compatible_references() -> None:
@@ -350,7 +350,7 @@ async def test_remix_submit_persists_explicit_parent_lineage(monkeypatch: pytest
             parent.id,
             "remix",
             DeriveGenerationRequest(
-                model_id="nano-banana-edit",
+                model_id="nano-banana-pro",
                 prompt="make the dress blue",
                 parameters={},
             ),
