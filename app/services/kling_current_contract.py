@@ -31,9 +31,8 @@ KLING_CURRENT_PROVIDER_MODELS = {
     KLING_AVATAR_PRO_PROVIDER,
 }
 
-# Catalog defaults are still stored in the legacy 10-RUB credit denomination and
-# converted to public 1 RUB = 1 ROX by GenerationService when no live tariff exists.
-# Therefore 3 -> 30 ROX/s and 2 -> 20 ROX/s.
+# All catalog prices are public ROX. ROXY's product denomination is 1 ROX = 1 RUB;
+# historical 10-RUB balances were migrated once and are never re-denominated here.
 CURRENT_KLING_SPECS = (
     catalog.ModelSpec(
         "kling-2.5-turbo-pro-t2v",
@@ -83,7 +82,7 @@ CURRENT_KLING_SPECS = (
         "video",
         "audio_driven_avatar",
         ("image_url", "audio_url", "prompt"),
-        ("image_url", "audio_url"),
+        ("image_url", "audio_url", "prompt"),
         "per_second",
         Decimal("2"),
         1,
@@ -91,7 +90,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "720p avatar generation; billing_seconds must match the input audio duration.",
-            "Prompt guidance may be empty; image and audio are required.",
+            "Current Kie contract requires image, audio and prompt.",
         ),
     ),
     catalog.ModelSpec(
@@ -102,7 +101,7 @@ CURRENT_KLING_SPECS = (
         "video",
         "audio_driven_avatar",
         ("image_url", "audio_url", "prompt"),
-        ("image_url", "audio_url"),
+        ("image_url", "audio_url", "prompt"),
         "per_second",
         Decimal("3"),
         1,
@@ -110,7 +109,7 @@ CURRENT_KLING_SPECS = (
         None,
         (
             "1080p/48fps avatar generation; billing_seconds must match the input audio duration.",
-            "Prompt guidance may be empty; image and audio are required.",
+            "Current Kie contract requires image, audio and prompt.",
         ),
     ),
 )
@@ -183,10 +182,8 @@ def _validate_current_kling_rules(spec: catalog.ModelSpec, clean: dict[str, Any]
         clean["image_url"] = _https_url(clean.get("image_url"), field="image_url")
         clean["audio_url"] = _https_url(clean.get("audio_url"), field="audio_url")
         prompt = clean.get("prompt")
-        if prompt is None:
-            clean["prompt"] = ""
-        elif not isinstance(prompt, str):
-            raise catalog.InvalidModelParametersError("prompt must be a string")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise catalog.InvalidModelParametersError("Kling Avatar prompt is required")
 
 
 def _contract_error(message: str) -> video_contracts.KieVideoContractError:
@@ -239,7 +236,7 @@ def normalize_current_kling_input(model: str, input_data: dict[str, Any]) -> dic
         required = {"prompt", "image_url", "duration"}
     elif model in {KLING_AVATAR_STANDARD_PROVIDER, KLING_AVATAR_PRO_PROVIDER}:
         allowed = {"image_url", "audio_url", "prompt"}
-        required = {"image_url", "audio_url"}
+        required = {"image_url", "audio_url", "prompt"}
     else:
         return payload
 
@@ -283,10 +280,8 @@ def normalize_current_kling_input(model: str, input_data: dict[str, Any]) -> dic
         payload["image_url"] = _provider_https_url(payload["image_url"], field="image_url")
         payload["audio_url"] = _provider_https_url(payload["audio_url"], field="audio_url")
         prompt = payload.get("prompt")
-        if prompt is None:
-            payload["prompt"] = ""
-        elif not isinstance(prompt, str):
-            raise _contract_error("prompt must be a string")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise _contract_error("Kling Avatar prompt is required")
 
     return payload
 
@@ -401,7 +396,7 @@ def _install_ui_contracts() -> None:
                     },
                     "prompt": {
                         "label": "Эмоции и стиль движения",
-                        "placeholder": "Опционально: спокойная подача, лёгкие движения головы...",
+                        "placeholder": "Опишите подачу, эмоции и движения аватара",
                     },
                 },
                 "billing_seconds": {
@@ -425,7 +420,7 @@ def _install_ui_contracts() -> None:
                     },
                     "prompt": {
                         "label": "Эмоции и стиль движения",
-                        "placeholder": "Опционально: энергичная подача, выразительная мимика...",
+                        "placeholder": "Опишите подачу, эмоции и движения аватара",
                     },
                 },
                 "billing_seconds": {
