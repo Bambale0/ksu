@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.generations import GenerationService
+from app.services.model_catalog import InvalidModelParametersError
 from app.services.model_routing import resolve_model_request
 
 
@@ -97,27 +98,21 @@ async def test_seedance_25_reference_mode_survives_generation_prepare() -> None:
 
 
 @pytest.mark.asyncio
-async def test_seedance_20_explicit_hybrid_survives_generation_prepare() -> None:
-    spec, clean, _cost, seconds, _unit = await GenerationService.prepare_request(
-        object(),  # type: ignore[arg-type]
-        model_id="seedance-2.0",
-        prompt="hybrid control",
-        parameters={
-            "first_frame_url": "https://cdn.example/first.png",
-            "last_frame_url": "https://cdn.example/last.png",
-            "reference_image_urls": ["https://cdn.example/subject.png"],
-            "reference_video_urls": ["https://cdn.example/motion.mp4"],
-            "duration": 10,
-            "resolution": "720p",
-            "aspect_ratio": "16:9",
-            "generate_audio": False,
-            "web_search": False,
-        },
-    )
-
-    assert spec.id == "seedance-2.0"
-    assert clean["first_frame_url"].endswith("first.png")
-    assert clean["last_frame_url"].endswith("last.png")
-    assert clean["reference_image_urls"] == ["https://cdn.example/subject.png"]
-    assert clean["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
-    assert seconds == 10
+async def test_seedance_20_explicit_hybrid_is_rejected_before_billing() -> None:
+    with pytest.raises(InvalidModelParametersError, match="mutually exclusive"):
+        await GenerationService.prepare_request(
+            object(),  # type: ignore[arg-type]
+            model_id="seedance-2.0",
+            prompt="hybrid control",
+            parameters={
+                "first_frame_url": "https://cdn.example/first.png",
+                "last_frame_url": "https://cdn.example/last.png",
+                "reference_image_urls": ["https://cdn.example/subject.png"],
+                "reference_video_urls": ["https://cdn.example/motion.mp4"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "generate_audio": False,
+                "web_search": False,
+            },
+        )

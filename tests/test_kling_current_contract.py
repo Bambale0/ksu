@@ -286,9 +286,10 @@ def test_current_kling_ui_schema_matches_upload_and_duration_contracts() -> None
 
 def test_roxy_default_public_rates_for_current_kling(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "generation_pricing_json", "{}")
-    assert GenerationService._effective_unit_price(model_id=T2V_ID, parameters={}) == Decimal("30")
-    assert GenerationService._effective_unit_price(model_id=I2V_ID, parameters={}) == Decimal("30")
-    assert GenerationService._effective_unit_price(model_id=AVATAR_STD_ID, parameters={}) == Decimal("20")
-    assert GenerationService._effective_unit_price(model_id=AVATAR_PRO_ID, parameters={}) == Decimal("30")
+    assert GenerationService._effective_unit_price(model_id=T2V_ID, parameters={}) == Decimal("3")
+    assert GenerationService._effective_unit_price(model_id=I2V_ID, parameters={}) == Decimal("3")
+    assert GenerationService._effective_unit_price(model_id=AVATAR_STD_ID, parameters={}) == Decimal("2")
+    assert GenerationService._effective_unit_price(model_id=AVATAR_PRO_ID, parameters={}) == Decimal("3")
 
-    assert InternalCreditService.legacy_credits_to_rox(Decimal("3")) == Decimal("30")
+    # Compatibility callers also see public 1:1 ROX; only legacy package detection keeps the historical 10-RUB pair logic.
+    assert InternalCreditService.legacy_credits_to_rox(Decimal("3")) == Decimal("3.00")

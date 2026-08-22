@@ -70,8 +70,9 @@ def test_simple_music_mode_is_bounded_and_drops_custom_only_fields() -> None:
     }
     assert cost > Decimal("0")
 
-    with pytest.raises(MusicGenerationError, match="3000"):
-        MusicGenerationService.prepare({"prompt": "x" * 3001, "customMode": False})
+    MusicGenerationService.prepare({"prompt": "x" * 500, "customMode": False})
+    with pytest.raises(MusicGenerationError, match="500"):
+        MusicGenerationService.prepare({"prompt": "x" * 501, "customMode": False})
 
 
 def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> None:

@@ -62,18 +62,18 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
     expected_options = {
         "wan-2.7-t2v": [5],
         "wan-2.7-i2v": [5],
-        "wan-2.7-video-edit": [0],
-        "wan-2.7-r2v": [5],
+        "wan-2.7-video-edit": [0, *range(2, 11)],
+        "wan-2.7-r2v": list(range(2, 11)),
         "seedance-1.5-pro": [8],
-        "seedance-2.0": [5, 10, 15],
-        "seedance-2.0-fast": [5, 10, 15],
-        "seedance-2.0-mini": [5, 10, 15],
-        "seedance-2.5": [5, 10, 15],
+        "seedance-2.0": list(range(4, 16)),
+        "seedance-2.0-fast": list(range(4, 16)),
+        "seedance-2.0-mini": list(range(4, 16)),
+        "seedance-2.5": list(range(4, 31)),
         "kling-3.0": list(range(3, 16)),
         "gemini-omni-video": [4],
-        "grok-video-t2v": [6],
-        "grok-video-i2v": [6],
-        "grok-video-1.5": [8],
+        "grok-video-t2v": list(range(1, 31)),
+        "grok-video-i2v": list(range(1, 31)),
+        "grok-video-1.5": list(range(1, 16)),
     }
 
     for model_id, options in expected_options.items():
@@ -99,14 +99,15 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
     assert checked >= 1
 
 
-def test_every_per_second_model_can_supply_billing_seconds() -> None:
+def test_every_per_second_model_has_a_billing_source() -> None:
     for model in ModelCatalog.list():
         if model["price_mode"] != "per_second":
             continue
+        spec = ModelCatalog.get(model["id"])
         schema = build_public_model_ui_schema(model)
-        has_duration = "duration" in model["known_fields"]
+        has_provider_duration = bool(spec.duration_field and spec.duration_field in model["known_fields"])
         has_explicit_billing = bool(schema.get("billing_seconds"))
-        assert has_duration or has_explicit_billing, model["id"]
+        assert has_provider_duration or has_explicit_billing, model["id"]
 
 
 def test_kling_motion_upload_limits_match_provider_contract() -> None:

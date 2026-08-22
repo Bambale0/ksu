@@ -13,11 +13,14 @@ def _read(path: Path) -> str:
 
 def test_active_mini_app_uses_fresh_drafts_by_default_and_explicit_reuse() -> None:
     page = _read(FRONTEND / "app" / "page.tsx")
+    entry_gate = _read(FRONTEND / "components" / "app-entry-gate.tsx")
     app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
     action_app = _read(FRONTEND / "components" / "generation-action-app.tsx")
     api = _read(FRONTEND / "lib" / "api.ts")
 
-    assert "GenerationActionGate" in page
+    assert "AppEntryGate" in page
+    assert "GenerationActionGate" in entry_gate
+    assert "FeedStartApp" in entry_gate
     assert "RoxySocialApp" in action_app
     assert "DRAFTS_KEY" not in app
     assert "createDefaultDraft(target)" in app

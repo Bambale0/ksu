@@ -38,27 +38,33 @@ def test_catalog_exposes_bot_tools_and_admin_published_trends() -> None:
     ):
         assert token in catalog
     assert "api.promptTools()" in catalog
-    assert 'href: "/mini-app/batch.html"' in catalog
+    assert 'href: "/mini-app/batch/"' in catalog
     assert "api.trends()" in social
     assert "trends: (mediaType?:" in api
     assert "`/api/v1/trends?limit=60" in api
     assert "api.models()" in social
 
 
-def test_batch_screen_is_live_backend_driven_not_a_dead_link() -> None:
-    batch = _read(FRONTEND / "public" / "batch.html")
+def test_batch_screen_is_shared_react_shell_and_legacy_url_redirects() -> None:
+    batch = _read(FRONTEND / "app" / "batch" / "page.tsx")
+    legacy = _read(FRONTEND / "public" / "batch.html")
+
     for token in (
-        "/api/v1/generations/models",
-        "/api/v1/uploads/kie",
+        "StandaloneShell",
+        "api.models()",
+        "api.upload(file)",
         "/api/v1/batch-generations/quote",
         "/api/v1/batch-generations",
         "/retry-quote",
         "/retry",
         "Idempotency-Key",
         "failed_count",
-        "succeeded",
-        "known_fields",
+        "succeeded_count",
+        "ui_schema",
     ):
         assert token in batch
     assert "2–20" in batch
     assert "Пакетная обработка" in batch
+    assert "DynamicBatchField" in batch
+    assert 'window.location.replace(\'/mini-app/batch/\')' in legacy
+    assert 'href="/mini-app/batch/"' in legacy

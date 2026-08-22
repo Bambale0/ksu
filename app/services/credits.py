@@ -31,16 +31,17 @@ class InternalCreditService:
 
     @classmethod
     def legacy_credits_to_rox(cls, credits: Decimal | int | str) -> Decimal:
-        """Convert one pre-ROXY 10-RUB credit amount to the public 1-RUB ROX unit.
+        """Compatibility shim for old callers now that source tariffs are public ROX.
 
-        Price definitions that still live in source/config can use this helper while
-        persisted balances/history are converted once by Alembic migration 0023.
+        Catalog/default generation prices are already denominated in ROX, and the
+        public product contract is 1 ROX = 1 RUB. Persisted pre-ROXY balances were
+        converted once by Alembic migration 0023, so runtime pricing must not apply
+        the historical 10-RUB multiplier again.
         """
         value = Decimal(str(credits))
         if value < 0:
             raise ValueError("Credits cannot be negative")
-        rubles = value * LEGACY_RUB_PER_CREDIT
-        return (rubles / cls.rub_per_credit()).quantize(CREDIT_QUANT, rounding=ROUND_HALF_UP)
+        return value.quantize(CREDIT_QUANT, rounding=ROUND_HALF_UP)
 
     @classmethod
     def legacy_package_credits(cls, *, credits: Decimal, rubles: Decimal) -> Decimal | None:

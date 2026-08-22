@@ -54,6 +54,18 @@ def _http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="Feed operation failed")
 
 
+def _direct_mini_app_link(link: str | None) -> str | None:
+    """Turn a verified bot start payload into a Main Mini App deep link.
+
+    The payload itself stays identical (feed_<generation>_ref_<author>) so old
+    bot /start links and the new direct Mini App links share one parser.
+    """
+
+    if not link:
+        return None
+    return link.replace("?start=", "?startapp=", 1)
+
+
 def _sanitize_trend_card(card: dict[str, object], generation: Generation) -> dict[str, object]:
     if generation.action_type != "trend":
         return card
@@ -264,7 +276,9 @@ async def share(
         author = await session.get(User, generation.user_id)
         if author is None:
             raise FeedNotFoundError("Publication author not found")
-        link = FeedService.post_deep_link(generation.id, str(author.telegram_id))
+        link = _direct_mini_app_link(
+            FeedService.post_deep_link(generation.id, str(author.telegram_id))
+        )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
@@ -370,7 +384,7 @@ async def link(
         raise _http_error(exc) from exc
     referral_code = str(author.telegram_id)
     value = (
-        FeedService.post_deep_link(generation.id, referral_code)
+        _direct_mini_app_link(FeedService.post_deep_link(generation.id, referral_code))
         if kind == "post"
         else FeedService.remix_deep_link(generation.id, referral_code)
     )

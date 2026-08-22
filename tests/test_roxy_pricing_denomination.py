@@ -15,7 +15,7 @@ class _AdminUser:
 
 
 @pytest.mark.asyncio
-async def test_builtin_generation_price_is_redenominated_without_changing_rub_price() -> None:
+async def test_builtin_generation_price_is_already_public_rox_one_to_one() -> None:
     previous = settings.generation_pricing_json
     settings.generation_pricing_json = "{}"
     try:
@@ -30,8 +30,8 @@ async def test_builtin_generation_price_is_redenominated_without_changing_rub_pr
         settings.generation_pricing_json = previous
 
     assert seconds == 5
-    assert unit_price == Decimal("150.00")
-    assert cost == Decimal("750.00")
+    assert unit_price == Decimal("15.00")
+    assert cost == Decimal("75.00")
 
 
 @pytest.mark.asyncio
@@ -64,9 +64,9 @@ async def test_public_model_catalog_uses_same_public_rox_unit() -> None:
         settings.generation_pricing_json = previous
 
     model = next(item for item in payload["models"] if item["id"] == "gpt-image-2-t2i")
-    assert model["price_rox"] == "180.00"
-    assert model["price_credits"] == "180.00"
-    assert model["price_rub"] == "180.00"
+    assert model["price_rox"] == "18.00"
+    assert model["price_credits"] == "18.00"
+    assert model["price_rub"] == "18.00"
     assert payload["internal_credit_rub"] == "1.00"
 
 

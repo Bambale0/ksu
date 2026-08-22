@@ -273,7 +273,7 @@ def test_grok_generation_and_task_operations_are_explicit() -> None:
         {"task_id": "task_123", "extend_at": 2, "extend_times": 6},
     )
     assert extended["extend_at"] == 2
-    assert extended["extend_times"] == 6
+    assert extended["extend_times"] == "6"
 
     with pytest.raises(KieVideoContractError):
         normalize_kie_video_input("grok-imagine/upscale", {"task_id": ""})

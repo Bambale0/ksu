@@ -35,9 +35,9 @@ def test_resolution_options_are_model_specific() -> None:
     assert _field("nano-banana-pro", "resolution")["suggestions"] == ["1K", "2K", "4K"]
     assert _field("wan-2.7-image", "resolution")["suggestions"] == ["1K", "2K"]
     assert _field("wan-2.7-image-pro", "resolution")["suggestions"] == ["1K", "2K", "4K"]
-    assert _field("grok-video-i2v", "resolution")["suggestions"] == ["480p"]
-    assert _field("grok-video-t2v", "resolution")["suggestions"] == ["480p"]
-    assert _field("seedance-2.5", "resolution")["suggestions"] == ["480p", "720p"]
+    assert _field("grok-video-i2v", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
+    assert _field("grok-video-t2v", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
+    assert _field("seedance-2.5", "resolution")["suggestions"] == ["480p", "720p", "1080p"]
 
 
 def test_prompt_is_always_present_in_provider_payload() -> None:

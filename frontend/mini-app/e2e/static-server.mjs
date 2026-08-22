@@ -28,7 +28,16 @@ function safeFile(urlPath) {
   if (pathname === '/') pathname = '/index.html';
   const candidate = normalize(join(root, pathname));
   if (!candidate.startsWith(root + sep) && candidate !== root) return null;
-  if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  if (existsSync(candidate)) {
+    const stat = statSync(candidate);
+    if (stat.isFile()) return candidate;
+    if (stat.isDirectory()) {
+      const index = join(candidate, 'index.html');
+      if (existsSync(index) && statSync(index).isFile()) return index;
+    }
+  }
+  const htmlCandidate = `${candidate}.html`;
+  if (existsSync(htmlCandidate) && statSync(htmlCandidate).isFile()) return htmlCandidate;
   return join(root, 'index.html');
 }
 
