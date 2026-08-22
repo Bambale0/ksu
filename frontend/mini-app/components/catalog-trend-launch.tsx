@@ -43,9 +43,9 @@ export function CatalogTrendLaunch() {
       const trend = byTitle.get(title);
       if (!trend || Number(trend.reference_requirements?.min || 0) > 0) return;
       target.dataset.trendLaunch = "preview";
-      queueMicrotask(() => {
+      setTimeout(() => {
         if (target.isConnected) target.dataset.trendLaunch = "true";
-      });
+      }, 0);
     };
 
     window.addEventListener("click", preservePreview, true);
