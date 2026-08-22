@@ -109,6 +109,11 @@ const trends = [
   { id: 'trend_portrait', title: 'Неоновый портрет', description: 'Готовая идея для яркого аватара', media_type: 'image', cost_rox: '25.00', model: { title: 'Nano Banana 2' } },
   { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', cost_rox: '60.00', model: { title: 'Seedance 2.5' } },
 ];
+const promptTools = [
+  { id: 'image_analysis', title: 'Prompt по фото', model: 'gemini-2.5-pro', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
+  { id: 'prompt_builder', title: 'Prompt по описанию', model: 'gpt-5-5', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
+  { id: 'video_prompt', title: 'Prompt по видео', model: 'gemini-2.5-pro', enabled: true, cost_credits: '30.00', retail_cost_credits: '30.00', cost_rub: '30.00' },
+];
 const savedReferences = [
   {
     id: 'ref_saved_1',
@@ -201,6 +206,7 @@ async function mockRoxy(page) {
 
     if (path === '/api/v1/trends') return json(route, { items: trends });
     if (path.includes('/api/v1/trends/') && path.endsWith('/run')) return json(route, { id: 'trend_run', status: 'queued', cost_rox: '25.00' });
+    if (path === '/api/v1/prompt-tools') return json(route, { admin_free: false, items: promptTools });
 
     if (path === '/api/v1/references') return json(route, { items: savedReferences });
     if (path === '/api/v1/references/touch') return json(route, { touched: 1 });
@@ -233,13 +239,14 @@ async function boot(page, scenario) {
   await expect(page.getByText('ROXY').first()).toBeVisible({ timeout: 6_000 });
   const nav = page.getByRole('navigation', { name: 'Основная навигация' });
   await expect(nav).toBeVisible();
-  await expect(nav.locator('button')).toHaveCount(6);
+  const visibleButtons = nav.locator('button:visible');
+  await expect(visibleButtons).toHaveCount(5);
+  await expect(visibleButtons.locator('small')).toHaveText(['Лента', 'Каталог', 'Создать', 'Партнёры', 'Профиль']);
   await expect(page.locator('.bottom-nav button.central small')).toHaveText('Создать');
-  await expect(page.locator('.bottom-nav button small')).not.toContainText('\n');
 }
 
 function bottomButton(page, label) {
-  return page.locator('.bottom-nav button').filter({ hasText: label }).first();
+  return page.locator('.bottom-nav button:visible').filter({ hasText: label }).first();
 }
 
 async function openFeedPreview(page) {
@@ -273,7 +280,7 @@ async function runHome(page, check) {
     await page.locator('.format-card').filter({ hasText: 'Музыка' }).click();
     await expect(page.getByText('Новая генерация')).toBeVisible();
   } else if (check === 'catalog') {
-    await page.getByRole('button', { name: /Каталог/ }).first().click();
+    await bottomButton(page, 'Каталог').click();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
   } else if (check === 'history') {
     await page.getByRole('button', { name: 'Все' }).last().click();
@@ -333,6 +340,12 @@ async function runFeed(page, check) {
 
 async function runCatalog(page, check) {
   if (check === 'shell') {
+    await expect(page.getByText('Все инструменты ROXY')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(7);
+    await expect(page.getByText('Prompt фото / описание')).toBeVisible();
+    await expect(page.getByText('Prompt по видео').first()).toBeVisible();
+    await expect(page.getByText('Prompt для Seedance')).toBeVisible();
+    await expect(page.getByText('Пакетная обработка')).toBeVisible();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
     await expect(page.getByText('Полный каталог')).toBeVisible();
   } else if (check === 'image-filter') {
@@ -401,7 +414,8 @@ async function runCreate(page, check) {
     await expect(page.getByText(/ROXY можно закрыть/)).toBeVisible();
   } else if (check === 'fresh-after-return') {
     await prompt.fill('Этот текст не должен пережить новый запуск');
-    await bottomButton(page, 'Студия').click();
+    await bottomButton(page, 'Каталог').click();
+    await expect(page.getByText('Готовые сценарии')).toBeVisible();
     await bottomButton(page, 'Создать').click();
     await expect(page.locator('textarea.control').first()).toHaveValue('');
   } else if (check === 'reuse') {
