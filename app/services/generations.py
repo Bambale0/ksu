@@ -20,6 +20,13 @@ from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
+_SEEDANCE_20_MODEL_IDS = {"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"}
+_SEEDANCE_REFERENCE_FIELDS = (
+    "reference_image_urls",
+    "reference_video_urls",
+    "reference_audio_urls",
+)
+
 
 class GenerationService:
     # Kept for compatibility with older deployments/metrics. The worker no longer
@@ -125,6 +132,31 @@ class GenerationService:
             return str(clean.get("veo_model") or spec.kie_model)
         return spec.kie_model
 
+    @staticmethod
+    def _seedance20_hybrid_references(
+        model_id: str,
+        parameters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Temporarily isolate valid Seedance 2 hybrid refs from an obsolete catalog rule.
+
+        The old ModelCatalog rule treated temporal first/last frames and multimodal
+        references as mutually exclusive. Kie's current Seedance 2 / Fast / Mini
+        contract supports hybrid control, so preserve the reference arrays and add
+        them back immediately after the generic billing/required-field validation.
+        """
+
+        if model_id not in _SEEDANCE_20_MODEL_IDS:
+            return {}
+        if not (parameters.get("first_frame_url") or parameters.get("last_frame_url")):
+            return {}
+        if not any(parameters.get(field) for field in _SEEDANCE_REFERENCE_FIELDS):
+            return {}
+        return {
+            field: parameters.pop(field)
+            for field in _SEEDANCE_REFERENCE_FIELDS
+            if field in parameters
+        }
+
     @classmethod
     async def prepare_request(
         cls,
@@ -148,6 +180,10 @@ class GenerationService:
             # normalizes old saved drafts (for example obsolete fixed_lens).
             merged = normalize_seedance25_input(merged)
 
+        # Keep the normal catalog responsible for required fields, pricing and
+        # duration billing, but bypass its obsolete Seedance 2.0-only mode split.
+        hybrid_references = cls._seedance20_hybrid_references(routed.model_id, merged)
+
         resolved_seconds = await cls._resolve_billing_seconds(
             session,
             model_id=routed.model_id,
@@ -159,6 +195,8 @@ class GenerationService:
             merged,
             billing_seconds=resolved_seconds,
         )
+        if hybrid_references:
+            clean.update(hybrid_references)
         unit_price = cls._effective_unit_price(model_id=spec.id, parameters=clean)
         multiplier = Decimal(seconds) if spec.price_mode == "per_second" and seconds is not None else Decimal("1")
         cost_rox = (unit_price * multiplier).quantize(
