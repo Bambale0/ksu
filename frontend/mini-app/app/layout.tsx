@@ -9,6 +9,7 @@ import "./wallet-bonuses.css";
 import "./reference-memory.css";
 import "./generation-actions.css";
 import "./mobile-keyboard.css";
+import "./sheet-navigation.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
