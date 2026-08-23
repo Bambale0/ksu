@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import SessionDep
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.reference_previews import ReferencePreviewService
 from app.services.reference_static import ReferenceStaticStorage
@@ -42,6 +42,9 @@ async def _visible_reference_image(
     except (FeedNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference not found") from exc
 
+    # Public media access is controlled by the publication itself, not by a
+    # Telegram auth header. Browser <img> requests cannot attach initData. A
+    # hidden reference, private generation or derivative therefore fails here.
     if generation.source_feed_gen_id is not None or not generation.feed_references_visible:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference not found")
 
@@ -59,7 +62,6 @@ async def _visible_reference_image(
 async def feed_reference_image_thumbnail(
     generation_id: uuid.UUID,
     index: int,
-    _user: CurrentUserDep,
     session: SessionDep,
     surface: str = Query(default="feed", pattern="^(feed|profile)$"),
 ) -> FileResponse:
@@ -83,7 +85,6 @@ async def feed_reference_image_thumbnail(
 async def feed_reference_image_full(
     generation_id: uuid.UUID,
     index: int,
-    _user: CurrentUserDep,
     session: SessionDep,
     surface: str = Query(default="feed", pattern="^(feed|profile)$"),
 ) -> FileResponse:
