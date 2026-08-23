@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.reference_models import UserReference
+from app.services.reference_static import ReferenceStaticStorage
 
 
 class ReferenceError(ValueError):
@@ -30,9 +31,11 @@ class ReferenceService:
         value = value.strip()
         if len(value) > 4000:
             raise ReferenceError("Reference URL is too long")
+        if ReferenceStaticStorage.is_local_url(value):
+            return value
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.netloc:
-            raise ReferenceError("Reference URL must be HTTPS")
+            raise ReferenceError("Reference URL must be HTTPS or product-owned media")
         host = (parsed.hostname or "").lower()
         if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local"):
             raise ReferenceError("Local reference URLs are not allowed")
@@ -323,13 +326,27 @@ class ReferenceService:
 
     @staticmethod
     def public_view(row: UserReference) -> dict[str, Any]:
+        duration_ms = getattr(row, "duration_ms", None)
+        duration_seconds = None
+        if isinstance(duration_ms, int) and duration_ms > 0:
+            duration_seconds = max(1, (duration_ms + 999) // 1000)
         return {
             "id": str(row.id),
             "kind": row.kind,
             "label": row.label,
             "url": row.source_url,
+            "source_url": row.source_url,
             "filename": row.original_filename,
             "content_type": row.content_type,
+            "size_bytes": getattr(row, "size_bytes", None),
+            "probe_status": getattr(row, "probe_status", None),
+            "duration_ms": duration_ms,
+            "duration_seconds": duration_seconds,
+            "width": getattr(row, "width", None),
+            "height": getattr(row, "height", None),
+            "container": getattr(row, "container", None),
+            "video_codec": getattr(row, "video_codec", None),
+            "audio_codec": getattr(row, "audio_codec", None),
             "source": row.source,
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
