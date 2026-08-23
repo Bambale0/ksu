@@ -20,6 +20,7 @@ from app.services.account_profile import AccountProfileService
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
 from app.services.onboarding import OnboardingService
+from app.services.partner import PartnerService
 from app.services.partner_wallet import PartnerWalletTransferService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
@@ -244,6 +245,7 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
     user = await UserService.get_or_create(session, callback.from_user)
     stats = await ReferralService.stats(session, user.id)
     partner = await PartnerWalletTransferService.accounting(session, user.id)
+    referral_link = PartnerService.referral_link(user.telegram_id) or "недоступна"
     await callback.answer()
     if callback.message:
         await callback.message.answer(
@@ -256,7 +258,7 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
             f"Доступно: {partner['available']} ₽\n"
             f"Вывод деньгами от {settings.partner_min_withdrawal_rub} ₽ или перевод в ROX без смешивания балансов.\n\n"
             f"1 линия: {stats['first_line']} · 2 линия: {stats['second_line']}\n\n"
-            f"Реферальная ссылка: https://t.me/{(await callback.bot.me()).username}?start=ref_{user.telegram_id}",
+            f"Реферальная ссылка: {referral_link}",
             reply_markup=back_menu(),
         )
 
