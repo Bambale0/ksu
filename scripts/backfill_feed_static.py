@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.db.session import SessionFactory
+from app.services.feed_previews import FeedPreviewService
 from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
@@ -53,6 +54,11 @@ def _provider_urls(generation: Generation) -> list[str]:
     return values
 
 
+def _ensure_previews(urls: list[str]) -> None:
+    for url in urls:
+        FeedPreviewService.preview_url_for(url)
+
+
 async def _s3_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
     assets = list(
         (
@@ -88,6 +94,7 @@ async def _s3_urls(session, generation: Generation) -> list[str]:  # type: ignor
 async def _persist_generation(session, generation: Generation) -> bool:  # type: ignore[no-untyped-def]
     local = _local_urls(generation)
     if local and all(FeedStaticStorage.local_url_exists(url) for url in local):
+        _ensure_previews(local)
         return False
 
     provider_sources = _provider_urls(generation)
@@ -109,6 +116,7 @@ async def _persist_generation(session, generation: Generation) -> bool:  # type:
         )
 
     public_urls = [item.public_url for item in persisted]
+    _ensure_previews(public_urls)
     params = dict(generation.parameters or {})
     if provider_sources:
         params["_provider_result_urls"] = provider_sources
