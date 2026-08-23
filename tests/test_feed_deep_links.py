@@ -43,28 +43,30 @@ def test_remix_deep_link_is_distinct_action() -> None:
 
 def test_all_generated_social_links_open_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
+    monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
     generation_id = uuid.uuid4()
 
     assert PartnerService.referral_link(123456) == (
-        "https://t.me/RoxyExampleBot?startapp=ref_123456"
+        "https://t.me/RoxyExampleBot/app?startapp=ref_123456"
     )
     assert FeedService.post_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=feed_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot/app?startapp=feed_{generation_id}_ref_123456"
     )
     assert FeedService.profile_deep_link("123456") == (
-        "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
+        "https://t.me/RoxyExampleBot/app?startapp=profile_123456_ref_123456"
     )
     assert FeedService.remix_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=remix_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot/app?startapp=remix_{generation_id}_ref_123456"
     )
 
 
 def test_mini_app_link_encodes_payload_like_tanyapi(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
+    monkeypatch.setattr(settings, "telegram_mini_app_short_name", "roxy")
     assert mini_app_deep_link("prompt_hello world_ref_ABC") == (
-        "https://t.me/RoxyExampleBot?startapp=prompt_hello%20world_ref_ABC"
+        "https://t.me/RoxyExampleBot/roxy?startapp=prompt_hello%20world_ref_ABC"
     )
-    assert mini_app_deep_link("") == "https://t.me/RoxyExampleBot?startapp"
+    assert mini_app_deep_link("") == "https://t.me/RoxyExampleBot/roxy?startapp"
 
 
 def test_invalid_deep_link_does_not_fall_back_to_private_lookup() -> None:
