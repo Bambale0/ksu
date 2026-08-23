@@ -27,6 +27,7 @@ from app.services.abuse_protection import ProtectionBackendUnavailable, Resource
 from app.services.admin_pricing import AdminPricingService
 from app.services.feed_static import FeedStaticStorage
 from app.services.notification_events import register_notification_events
+from app.services.reference_static import ReferenceStaticStorage
 
 configure_logging()
 register_notification_events()
@@ -39,9 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.bot = None
     app.state.dispatcher = None
     FeedStaticStorage.ensure_root()
+    ReferenceStaticStorage.ensure_root()
 
-    # Admin tariff versions are durable DB state. Restore the latest published
-    # generation_pricing section before serving catalog/quote requests after restart.
     if settings.app_env.lower() != "test":
         async with SessionFactory() as session:
             await AdminPricingService.hydrate_runtime(session)
@@ -112,13 +112,17 @@ mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
 mimetypes.add_type("image/webp", ".webp")
 
-# Production Nginx serves this path directly with immutable caching/range support,
-# matching banano_kling:tanyapi. StaticFiles is the same-origin fallback for local
-# development and deployments where the reverse proxy has not taken the route.
+# Production Nginx can serve these paths directly. StaticFiles keeps local and
+# reverse-proxy-less deployments on the same product-owned URL contract.
 app.mount(
     FeedStaticStorage.public_prefix(),
     StaticFiles(directory=FeedStaticStorage.ensure_root()),
     name="feed-static",
+)
+app.mount(
+    ReferenceStaticStorage.public_prefix(),
+    StaticFiles(directory=ReferenceStaticStorage.ensure_root()),
+    name="reference-static",
 )
 app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
 app.mount("/admin-app", StaticFiles(directory=admin_app_dir, html=True), name="admin-app")
