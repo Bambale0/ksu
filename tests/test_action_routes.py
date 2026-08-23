@@ -98,7 +98,7 @@ async def test_alias_read_route_matches_canonical_route() -> None:
         canonical = await read_context(context_id, user, session)
         alias = await read_context_alias(context_id, user, session)
         assert canonical == alias
-        assert canonical["action"] == "animate"
+        assert canonical["action"]["id"] == "animate"
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ async def test_execute_marks_context_consumed_once() -> None:
 
         created = await create_context(
             generation.id,
-            CreateActionContextRequest(action="variation"),
+            CreateActionContextRequest(action="repeat"),
             user,
             session,
         )
@@ -154,10 +154,10 @@ async def test_foreign_user_cannot_read_or_consume_context() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("action", "expected_mode"),
-    [("remix", "image_to_image"), ("edit", "image_to_image"), ("animate", "image_to_video")],
+    [("remix", None), ("edit", "image_to_image"), ("animate", "image_to_video")],
 )
 async def test_image_result_scenarios_restore_prefilled_flow(
-    action: str, expected_mode: str
+    action: str, expected_mode: str | None
 ) -> None:
     """Generate image -> click action -> prefilled screen with restored context."""
     async with SessionFactory() as session:
@@ -179,7 +179,11 @@ async def test_image_result_scenarios_restore_prefilled_flow(
         assert payload["action"]["id"] == action
         assert payload["source_url"] == generation.result_url
         scenario = payload.get("scenario") or {}
-        assert scenario["mode"] == expected_mode
+        if expected_mode is not None:
+            assert scenario["mode"] == expected_mode
+        else:
+            # Remix restores the original intent instead of forcing a mode.
+            assert scenario["prompt"]
         assert scenario["model"]
         # The Mini App can restore the exact screen from the short id alone.
         restored = await get_action_context(session, context.id, user.id)
