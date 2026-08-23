@@ -29,7 +29,13 @@ def test_customer_app_has_one_next_react_source() -> None:
 
 def test_generated_static_directory_contains_no_customer_source() -> None:
     files = sorted(path.name for path in GENERATED.iterdir() if path.is_file())
-    assert files == ["README.md"]
+    runtime_artifacts = {"release.json"}
+    assert [name for name in files if name not in runtime_artifacts] == ["README.md"]
+    if "release.json" in files:
+        release = json.loads(_read(GENERATED / "release.json"))
+        assert set(release) == {"sha"}
+        assert isinstance(release["sha"], str)
+        assert release["sha"]
     readme = _read(GENERATED / "README.md")
     assert "frontend/mini-app" in readme
     assert "Do not add customer UI source files" in readme
@@ -68,6 +74,15 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
     ):
         assert token in app
     assert "Лента" not in app
+
+
+def test_feed_startapp_entry_gate_maps_target_to_explicit_props() -> None:
+    gate = _read(FRONTEND / "components" / "app-entry-gate.tsx")
+    assert "<FeedStartApp {...target}" not in gate
+    assert "target?.kind === \"post\" || target?.kind === \"remix\"" in gate
+    assert "generationId={target.generationId}" in gate
+    assert "referralCode={target.referralCode}" in gate
+    assert "intent={target.kind}" in gate
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
