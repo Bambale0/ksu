@@ -1,3 +1,4 @@
+from app.services.mini_app_link_contract import install_mini_app_link_contract
 from app.services.model_spec_admin_pricing_audit import install_model_spec_admin_pricing_audit
 from app.services.model_spec_audit_fixes import install_model_spec_audit_fixes
 from app.services.model_spec_current_surface_audit import install_model_spec_current_surface_audit
@@ -15,6 +16,7 @@ from app.services.model_spec_wan_duration_audit import install_model_spec_wan_du
 from app.services.provider_contract_guards import install_provider_contract_guards
 from app.services.provider_contract_sync import install_provider_contract_sync
 
+install_mini_app_link_contract()
 install_provider_contract_sync()
 install_provider_contract_guards()
 install_model_spec_audit_fixes()
