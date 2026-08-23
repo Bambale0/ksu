@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from functools import partial
 from typing import BinaryIO
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.core.config import settings
-from app.providers.kie import KieProviderError
-from app.providers.kie_uploads import KieUploadClient
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.media_probe import MediaProbe, probe_media_stream
+from app.services.reference_static import ReferenceStaticStorage, ReferenceStaticStorageError
 from app.services.references import ReferenceService
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
@@ -22,8 +22,6 @@ ALLOWED_MEDIA_PREFIXES = ("image/", "video/", "audio/")
 def _upload_size(file: UploadFile) -> int:
     if file.size is not None:
         return int(file.size)
-    # Starlette already spooled the multipart part by the time the endpoint runs.
-    # Measure the spool instead of disabling the daily-byte quota for chunked clients.
     current = file.file.tell()
     file.file.seek(0, 2)
     size = file.file.tell()
@@ -50,9 +48,6 @@ async def _persist_reference_metadata(
     size_bytes: int,
     probe: MediaProbe,
 ) -> None:
-    # Byte size is measured on every upload. Never replace already verified media
-    # metadata with an unavailable/failed replay probe: a transient ffprobe issue
-    # must not turn a trusted reference back into an unverified billing source.
     setattr(reference, "size_bytes", size_bytes)
     previously_ready = getattr(reference, "probe_status", None) == "ready"
     if probe.status == "ready" or not previously_ready:
@@ -90,6 +85,13 @@ async def upload_to_kie(
     session: SessionDep,
     file: UploadFile = File(...),
 ) -> dict[str, object]:
+    """Persist a reusable reference under ROXY ownership.
+
+    The legacy route name is kept for Mini App compatibility. The upload is no
+    longer stored as a temporary Kie URL. Kie transport happens just in time in
+    the generation worker so saved references remain reusable indefinitely.
+    """
+
     content_type = (file.content_type or "application/octet-stream").lower()
     if not content_type.startswith(ALLOWED_MEDIA_PREFIXES):
         raise HTTPException(status_code=415, detail="Only image, video and audio files are allowed")
@@ -115,7 +117,7 @@ async def upload_to_kie(
         kind=kind,
         file_hash=file_hash,
     )
-    if existing is not None:
+    if existing is not None and ReferenceStaticStorage.local_url_exists(existing.source_url):
         reference, _ = await ReferenceService.register(
             session,
             user_id=user.id,
@@ -142,41 +144,44 @@ async def upload_to_kie(
             **_metadata_view(reference),
         }
 
-    client = KieUploadClient(settings.kie_api_key, settings.kie_upload_base_url)
     try:
-        await file.seek(0)
-        uploaded = await client.upload_stream(
-            file_name=filename,
-            content_type=content_type,
-            stream=file.file,
+        local_url, _path, stored_size = await asyncio.to_thread(
+            partial(
+                ReferenceStaticStorage.persist_stream,
+                file.file,
+                user_id=user.id,
+                kind=kind,
+                file_hash=file_hash,
+                filename=filename,
+                content_type=content_type,
+                expected_size=size_bytes,
+            )
         )
-    except KieProviderError as exc:
-        raise HTTPException(status_code=502, detail="Media upload failed") from exc
-    finally:
-        await client.aclose()
+    except ReferenceStaticStorageError as exc:
+        raise HTTPException(status_code=500, detail="Reference storage failed") from exc
 
     reference, replayed = await ReferenceService.register(
         session,
         user_id=user.id,
-        source_url=uploaded.url,
+        source_url=local_url,
         kind=kind,
         original_filename=filename,
-        content_type=uploaded.mime_type or content_type,
+        content_type=content_type,
         file_hash=file_hash,
         source="mini_app_upload",
     )
     await _persist_reference_metadata(
         session,
         reference,
-        size_bytes=size_bytes,
+        size_bytes=stored_size,
         probe=probe,
     )
 
     return {
         "url": reference.source_url,
-        "name": uploaded.name,
-        "mime_type": uploaded.mime_type,
-        "size": uploaded.size,
+        "name": reference.original_filename or filename,
+        "mime_type": reference.content_type or content_type,
+        "size": stored_size,
         "replayed": replayed,
         "reference": ReferenceService.public_view(reference),
         **_metadata_view(reference),
