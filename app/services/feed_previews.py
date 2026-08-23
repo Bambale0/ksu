@@ -79,12 +79,10 @@ class FeedPreviewService:
         with Image.open(source) as opened:
             transposed = ImageOps.exif_transpose(opened)
             transposed.load()
-        image = cls._flatten(transposed)
-        if transposed is not opened:
-            try:
+            image = cls._flatten(transposed)
+            if transposed is not opened:
                 transposed.close()
-            except Exception:
-                pass
+
         image.thumbnail(
             (_FEED_THUMB_MAX_SIDE, _FEED_THUMB_MAX_SIDE),
             Image.Resampling.LANCZOS,
