@@ -75,7 +75,7 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
 
 def test_lena_style_actions_are_delivered_with_result_and_live_in_mini_app() -> None:
     worker = _read(ROOT / "app" / "workers" / "notifications.py")
-    service = _read(ROOT / "app" / "services" / "generation_actions.py")
+    service = _read(ROOT / "app" / "services" / "generation_actions" / "core.py")
     api = _read(ROOT / "app" / "api" / "v1" / "generation_actions.py")
     action_app = _read(FRONTEND / "components" / "generation-action-app.tsx")
 
