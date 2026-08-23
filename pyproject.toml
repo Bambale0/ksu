@@ -17,6 +17,7 @@ dependencies = [
   "opentelemetry-instrumentation-fastapi>=0.65b0,<0.66",
   "opentelemetry-instrumentation-httpx>=0.65b0,<0.66",
   "opentelemetry-sdk>=1.44,<2",
+  "pillow>=11,<13",
   "prometheus-client>=0.25,<1",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<1",

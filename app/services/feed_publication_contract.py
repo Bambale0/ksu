@@ -6,7 +6,9 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.services.feed_previews import FeedPreviewService
 from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
+from app.services.reference_static import ReferenceStaticStorage
 
 _INSTALLED = False
 
@@ -37,6 +39,7 @@ def install_feed_publication_contract() -> None:
     from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
     previous_provider_result_urls = FeedService._provider_result_urls
+    previous_to_card = FeedService.to_card
 
     @staticmethod
     def provider_result_urls(generation: Generation) -> list[str]:
@@ -108,8 +111,88 @@ def install_feed_publication_contract() -> None:
             view = FeedStaticStorage.media_view(url, ordinal=ordinal)
             if view is None:
                 return []
+            preview = FeedPreviewService.preview_url_for(url)
+            if preview:
+                view["preview_url"] = preview
             views.append(view)
         return views
+
+    @classmethod
+    def durable_references(cls, generation: Generation) -> tuple[list[str], list[str]]:
+        params = dict(generation.parameters or {})
+        images: list[str] = []
+        videos: list[str] = []
+        image_keys = tuple(
+            dict.fromkeys(
+                (
+                    *cls.REFERENCE_IMAGE_KEYS,
+                    "reference_image",
+                    "reference_image_url",
+                    "reference_image_urls",
+                    "reference_images",
+                    "image_reference_urls",
+                )
+            )
+        )
+        video_keys = tuple(
+            dict.fromkeys(
+                (
+                    *cls.REFERENCE_VIDEO_KEYS,
+                    "reference_video",
+                    "reference_video_url",
+                    "reference_video_urls",
+                    "reference_videos",
+                    "video_reference_urls",
+                    "first_clip_url",
+                )
+            )
+        )
+
+        def accepted(value: str) -> bool:
+            return (
+                value.startswith("https://")
+                or ReferenceStaticStorage.is_local_url(value)
+                or FeedStaticStorage.is_local_url(value)
+            )
+
+        for key in image_keys:
+            value = params.get(key)
+            if isinstance(value, str) and accepted(value):
+                images.append(value)
+            elif isinstance(value, list):
+                images.extend(str(item) for item in value if accepted(str(item)))
+        for key in video_keys:
+            value = params.get(key)
+            if isinstance(value, str) and accepted(value):
+                videos.append(value)
+            elif isinstance(value, list):
+                videos.extend(str(item) for item in value if accepted(str(item)))
+        if generation.input_url and accepted(str(generation.input_url)):
+            images.append(str(generation.input_url))
+        return list(dict.fromkeys(images)), list(dict.fromkeys(videos))
+
+    @classmethod
+    async def card_with_preview(
+        cls,
+        session,
+        generation: Generation,
+        *,
+        viewer_user_id: uuid.UUID,
+        surface: str,
+    ) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+        card = await previous_to_card(
+            session,
+            generation,
+            viewer_user_id=viewer_user_id,
+            surface=surface,
+        )
+        media = card.get("media")
+        if isinstance(media, list) and media:
+            first = media[0] if isinstance(media[0], dict) else {}
+            preview = first.get("preview_url")
+            if isinstance(preview, str) and preview:
+                card["preview_url"] = preview
+        return card
 
     @classmethod
     async def share_to_static_feed(
@@ -179,6 +262,8 @@ def install_feed_publication_contract() -> None:
             )
 
         public_urls = [item.public_url for item in persisted]
+        for url in public_urls:
+            FeedPreviewService.preview_url_for(url)
         if provider_urls:
             params["_provider_result_urls"] = provider_urls
         params["_result_urls"] = public_urls
@@ -203,6 +288,8 @@ def install_feed_publication_contract() -> None:
     FeedService._ready_media_condition = static_ready_condition
     FeedService._has_ready_media = has_static_media
     FeedService._media_views = static_media_views
+    FeedService._references = durable_references
+    FeedService.to_card = card_with_preview
     FeedService.share_to_feed = share_to_static_feed
 
 
