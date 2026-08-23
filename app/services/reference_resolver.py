@@ -5,7 +5,12 @@ from typing import Any
 
 from app.db.models import Generation
 from app.services.feed_static import FeedStaticStorage
-from app.services.model_routing import image_references, video_references
+from app.services.model_routing import (
+    IMAGE_REFERENCE_FIELDS,
+    VIDEO_REFERENCE_FIELDS,
+    image_references,
+    video_references,
+)
 from app.services.reference_static import ReferenceStaticStorage
 
 EXPLICIT_MEDIA_INPUT_FIELDS = (
@@ -24,6 +29,8 @@ EXPLICIT_MEDIA_INPUT_FIELDS = (
     "reference_video",
     "reference_video_urls",
 )
+PUBLIC_IMAGE_REFERENCE_FIELDS = tuple(dict.fromkeys((*IMAGE_REFERENCE_FIELDS, "last_frame")))
+PUBLIC_VIDEO_REFERENCE_FIELDS = tuple(dict.fromkeys((*VIDEO_REFERENCE_FIELDS, "input_video_url")))
 
 
 @dataclass(frozen=True, slots=True)

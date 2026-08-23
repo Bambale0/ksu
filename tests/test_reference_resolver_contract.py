@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from app.api.v1.generations import _recreate_payload_for_generation
 from app.db.models import Generation
+from app.services.feed import FeedService
 from app.services.generation_provider import GenerationProviderService
 from app.services.reference_resolver import ReferenceResolver
 
@@ -45,6 +46,12 @@ def test_reference_resolver_exposes_roxy_owned_refs_for_feed_cards() -> None:
         "/uploads/refs/image/u/2026/08/input.png",
     ]
     assert context.reference_videos == ["/uploads/refs/video/u/2026/08/motion.mp4"]
+
+
+def test_feed_runtime_patch_reference_key_aliases_remain_available() -> None:
+    assert "reference_image_urls" in FeedService.REFERENCE_IMAGE_KEYS
+    assert "reference_video_urls" in FeedService.REFERENCE_VIDEO_KEYS
+    assert "input_video_url" in FeedService.REFERENCE_VIDEO_KEYS
 
 
 def test_generation_provider_uses_generation_context_for_submit_payload() -> None:

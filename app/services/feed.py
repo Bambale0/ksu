@@ -20,7 +20,11 @@ from app.db.social_models import GenerationLike
 from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
-from app.services.reference_resolver import ReferenceResolver
+from app.services.reference_resolver import (
+    PUBLIC_IMAGE_REFERENCE_FIELDS,
+    PUBLIC_VIDEO_REFERENCE_FIELDS,
+    ReferenceResolver,
+)
 
 FeedSurface = Literal["feed", "profile"]
 FeedSort = Literal["recent", "top_day", "top"]
@@ -53,6 +57,10 @@ class FeedMediaUnavailableError(FeedPublicationError):
 
 class FeedService:
     COMMENT_MAX_LENGTH = 300
+    # Runtime parity patches still read these class attrs. Keep them as aliases
+    # to the shared resolver field set so feed cards and patches agree.
+    REFERENCE_IMAGE_KEYS = PUBLIC_IMAGE_REFERENCE_FIELDS
+    REFERENCE_VIDEO_KEYS = PUBLIC_VIDEO_REFERENCE_FIELDS
 
     @staticmethod
     def _validate_surface(surface: str) -> FeedSurface:
