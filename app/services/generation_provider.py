@@ -21,6 +21,11 @@ from app.services.kie_video_contracts import KieVideoContractError
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
 from app.services.music_media import MusicMediaAssetService
+from app.services.provider_media_transport import (
+    ProviderMediaTransport,
+    ProviderMediaTransportError,
+    ProviderMediaTransportPermanentError,
+)
 from app.services.wallet import WalletService
 
 SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
@@ -55,12 +60,7 @@ class GenerationProviderService:
 
     @staticmethod
     def _provider_model_snapshot(generation: Generation) -> str:
-        """Return the provider identity frozen when the generation was created.
-
-        Falling back to the live catalog is only for legacy rows created before
-        provider snapshots existed. New queued jobs must never silently switch to
-        a different upstream model because a catalog mapping changed meanwhile.
-        """
+        """Return the provider identity frozen when the generation was created."""
 
         params = generation.parameters or {}
         stored = str(params.get("_provider_model") or params.get("_kie_model") or "").strip()
@@ -72,17 +72,16 @@ class GenerationProviderService:
 
     @staticmethod
     def _submission_error_disposition(exc: Exception) -> SubmissionDisposition:
-        """Classify create-task failures by whether a provider task may exist.
-
-        Permanent validation/auth failures can be refunded immediately. A 429 is
-        safe to retry because the provider explicitly rejected admission. Network,
-        timeout, malformed-success and 5xx outcomes are treated as uncertain to
-        avoid creating a duplicate paid task when the original request actually
-        reached Kie.
-        """
+        """Classify create-task failures by whether a provider task may exist."""
 
         if isinstance(exc, (KieImageContractError, KieVideoContractError)):
             return "permanent"
+        if isinstance(exc, ProviderMediaTransportPermanentError):
+            return "permanent"
+        if isinstance(exc, ProviderMediaTransportError):
+            # Media transport happens before create-task, so retrying cannot
+            # duplicate a paid generation task upstream.
+            return "retryable"
 
         if isinstance(exc, httpx.HTTPStatusError):
             status_code = exc.response.status_code
@@ -101,12 +100,8 @@ class GenerationProviderService:
             message = str(exc).lower()
             if "not configured" in message or " rejected:" in message:
                 return "permanent"
-            # A 2xx response without a task id is still ambiguous: Kie may have
-            # accepted the job even though our response was malformed/incomplete.
             return "uncertain"
 
-        # Unknown local/programming errors are not evidence that Kie accepted a
-        # task, so preserve the existing fail-fast/refund behaviour.
         return "permanent"
 
     @classmethod
@@ -180,6 +175,7 @@ class GenerationProviderService:
         input_data = cls._input_for(generation)
 
         try:
+            input_data = await ProviderMediaTransport.prepare(input_data)
             if provider_api == "suno_music":
                 client = KieClient(settings.kie_api_key, settings.kie_base_url)
                 try:
@@ -193,8 +189,6 @@ class GenerationProviderService:
             elif model_id == "veo-3.1":
                 client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
                 try:
-                    # The dedicated Veo callback contract differs from Market callbacks;
-                    # worker reconciliation is the authoritative fallback for this model.
                     task_id = await client.create_task(input_data=input_data)
                 finally:
                     await client.aclose()
@@ -327,8 +321,6 @@ class GenerationProviderService:
         generation: Generation,
         task: KieTask,
     ) -> None:
-        # Provider callbacks/polls may arrive more than once or out of order.
-        # Once accounting is terminal, never let a late provider state reverse it.
         if generation.status in _TERMINAL_STATUSES:
             return
 
