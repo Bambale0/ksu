@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import mimetypes
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
+
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.providers.kie import KieProviderError
@@ -25,6 +31,10 @@ class ProviderMediaTransport:
     Generation drafts and reference memory keep stable ROXY URLs. Kie upload URLs
     are deliberately short-lived transport details and are never written back to
     generation parameters or the user's reference library.
+
+    Like ``banano_kling:tanyapi``, local images that providers commonly reject
+    (WEBP/GIF/etc.) are normalized to a cached PNG transport artifact. The saved
+    reference itself remains untouched and keeps its original stable ROXY URL.
     """
 
     @staticmethod
@@ -48,6 +58,70 @@ class ProviderMediaTransport:
     def _content_type(path: Path) -> str:
         guessed, _encoding = mimetypes.guess_type(path.name)
         return guessed or "application/octet-stream"
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @classmethod
+    def _normalize_image_sync(cls, path: Path) -> Path:
+        suffix = path.suffix.lower()
+        if suffix in {".jpg", ".jpeg", ".png"}:
+            return path
+        guessed = cls._content_type(path)
+        if not guessed.startswith("image/"):
+            return path
+
+        digest = cls._sha256(path)
+        cache_root = ReferenceStaticStorage.ensure_root() / ".provider"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        target = cache_root / f"{digest}.png"
+        if target.is_file() and target.stat().st_size > 0:
+            return target
+
+        temp_handle = tempfile.NamedTemporaryFile(
+            prefix=".roxy-provider-image-",
+            suffix=".png",
+            dir=cache_root,
+            delete=False,
+        )
+        temp_path = Path(temp_handle.name)
+        temp_handle.close()
+        try:
+            with Image.open(path) as opened:
+                image = ImageOps.exif_transpose(opened)
+                image.seek(0)
+                image.load()
+                if image.mode not in {"RGB", "RGBA", "L", "LA"}:
+                    converted = image.convert("RGBA" if "transparency" in image.info else "RGB")
+                    if image is not opened:
+                        image.close()
+                    image = converted
+                image.save(temp_path, format="PNG", optimize=True)
+                if image is not opened:
+                    image.close()
+            os.replace(temp_path, target)
+            try:
+                os.chmod(target, 0o644)
+            except OSError:
+                pass
+            return target
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            temp_path.unlink(missing_ok=True)
+            raise ProviderMediaTransportPermanentError(
+                f"Stored image cannot be normalized for provider transport: {path.name}"
+            ) from exc
+
+    @classmethod
+    async def _provider_safe_path(cls, path: Path) -> Path:
+        return await asyncio.to_thread(cls._normalize_image_sync, path)
 
     @classmethod
     async def prepare(cls, payload: dict[str, Any]) -> dict[str, Any]:
@@ -73,11 +147,12 @@ class ProviderMediaTransport:
                         raise ProviderMediaTransportPermanentError(
                             f"Stored provider input is missing: {value}"
                         )
+                    provider_path = await cls._provider_safe_path(path)
                     try:
-                        with path.open("rb") as stream:
+                        with provider_path.open("rb") as stream:
                             uploaded = await client.upload_stream(
-                                file_name=path.name,
-                                content_type=cls._content_type(path),
+                                file_name=provider_path.name,
+                                content_type=cls._content_type(provider_path),
                                 stream=stream,
                                 upload_path="ksu/runtime-inputs",
                             )
