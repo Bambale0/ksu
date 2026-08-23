@@ -21,6 +21,7 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert 'initDataUnsafe?.start_param' in entry
     assert 'searchParams.get("tgWebAppStartParam")' in entry
     assert 'searchParams.get("start_payload")' in entry
+    assert entry.index('searchParams.get("start_payload")') < entry.index("initDataUnsafe?.start_param")
     assert "feed_" in entry
     assert "remix_" in entry
     assert "posts_" in entry

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderResult
 from app.providers.tanyapi_photo_prompt import PRIMARY_MODEL, build_photo_prompt
 from app.services.feed_static import FeedStaticStorage
@@ -11,6 +13,10 @@ _INSTALLED = False
 
 def _local_media(value: str) -> bool:
     return ReferenceStaticStorage.is_local_url(value) or FeedStaticStorage.is_local_url(value)
+
+
+def _local_media_path(value: str) -> Path | None:
+    return ReferenceStaticStorage.path_for_url(value) or FeedStaticStorage.path_for_url(value)
 
 
 def install_tanyapi_prompt_contract() -> None:
@@ -29,10 +35,9 @@ def install_tanyapi_prompt_contract() -> None:
     def safe_media_url(value: str, *, kind: str) -> str:
         clean = str(value or "").strip()
         if _local_media(clean):
-            if kind == "image":
-                path = ReferenceStaticStorage.path_for_url(clean) or FeedStaticStorage.path_for_url(clean)
-                if path is None or not path.is_file() or path.stat().st_size <= 0:
-                    raise ValueError("Stored image reference is missing")
+            path = _local_media_path(clean)
+            if path is None or not path.is_file() or path.stat().st_size <= 0:
+                raise ValueError(f"Stored {kind} reference is missing")
             return clean
         return original_safe_media_url(clean, kind=kind)
 

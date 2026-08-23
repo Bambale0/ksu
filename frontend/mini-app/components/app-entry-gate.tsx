@@ -17,9 +17,9 @@ type Target =
 
 function startPayload(): string {
   const url = new URL(window.location.href);
-  return telegram()?.initDataUnsafe?.start_param
+  return url.searchParams.get("start_payload")
     || url.searchParams.get("tgWebAppStartParam")
-    || url.searchParams.get("start_payload")
+    || telegram()?.initDataUnsafe?.start_param
     || "";
 }
 
