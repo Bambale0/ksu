@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from app.core.config import settings
 from app.services.feed_static import FeedStaticStorage
@@ -80,6 +81,62 @@ async def test_local_reference_is_uploaded_only_for_provider_payload(
     assert prepared["external"] == "https://cdn.example/keep.png"
     assert len(uploads) == 1
     assert uploads[0][1] == _png()
+
+
+@pytest.mark.asyncio
+async def test_webp_reference_is_normalized_to_png_for_provider(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("REFERENCE_STATIC_ROOT", str(tmp_path / "refs"))
+    monkeypatch.setenv("REFERENCE_STATIC_PUBLIC_PREFIX", "/uploads/refs")
+    monkeypatch.setattr(settings, "public_base_url", "")
+    monkeypatch.setattr(settings, "kie_api_key", "test-key")
+
+    buffer = io.BytesIO()
+    Image.new("RGBA", (32, 24), (20, 40, 60, 180)).save(buffer, "WEBP")
+    data = buffer.getvalue()
+    local_url, original_path, _size = ReferenceStaticStorage.persist_stream(
+        io.BytesIO(data),
+        user_id=uuid.uuid4(),
+        kind="image",
+        file_hash=hashlib.sha256(data).hexdigest(),
+        filename="ref.webp",
+        content_type="image/webp",
+        expected_size=len(data),
+    )
+    seen: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        async def upload_stream(self, *, file_name, content_type, stream, upload_path):  # type: ignore[no-untyped-def]
+            payload = stream.read()
+            seen.update(
+                file_name=file_name,
+                content_type=content_type,
+                payload=payload,
+                upload_path=upload_path,
+            )
+            return SimpleNamespace(url="https://kie.example/runtime/ref.png")
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "app.services.provider_media_transport.KieUploadClient",
+        FakeClient,
+    )
+
+    prepared = await ProviderMediaTransport.prepare({"image_url": local_url})
+
+    assert prepared["image_url"] == "https://kie.example/runtime/ref.png"
+    assert str(seen["file_name"]).endswith(".png")
+    assert seen["content_type"] == "image/png"
+    assert bytes(seen["payload"]).startswith(b"\x89PNG\r\n\x1a\n")
+    assert seen["upload_path"] == "ksu/runtime-inputs"
+    assert original_path.read_bytes() == data
 
 
 @pytest.mark.asyncio
