@@ -8,6 +8,12 @@ import type { PromptToolCatalogItem, PromptToolTask } from "@/lib/types";
 
 type Mode = "image" | "video" | "seedance";
 
+const SEEDANCE_PRICES: Record<5 | 10 | 15, number> = {
+  5: 30,
+  10: 60,
+  15: 90,
+};
+
 function initialMode(): Mode {
   if (typeof window === "undefined") return "image";
   const value = new URL(window.location.href).searchParams.get("mode");
@@ -55,7 +61,11 @@ export default function PromptToolsPage() {
   }, []);
 
   const toolById = useMemo(() => new Map(tools.map((item) => [item.id, item])), [tools]);
-  const modePrice = mode === "video" ? price(toolById.get("video_prompt")) : price(toolById.get("prompt_builder") || toolById.get("image_analysis"));
+  const modePrice = mode === "seedance"
+    ? formatRox(SEEDANCE_PRICES[duration])
+    : mode === "video"
+      ? price(toolById.get("video_prompt"))
+      : price(toolById.get("prompt_builder") || toolById.get("image_analysis"));
 
   const selectMode = (next: Mode) => {
     setMode(next);
@@ -137,12 +147,7 @@ export default function PromptToolsPage() {
 
         <label className="field">
           <span className="label">{mode === "video" ? "Инструкция" : "Описание идеи"}</span>
-          <textarea
-            className="control textarea"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={mode === "video" ? "Что важно извлечь из ролика?" : "Опишите сцену, стиль и желаемый результат"}
-          />
+          <textarea className="control textarea" value={text} onChange={(event) => setText(event.target.value)} placeholder={mode === "video" ? "Что важно извлечь из ролика?" : "Опишите сцену, стиль и желаемый результат"} />
         </label>
 
         {mode === "image" ? (
@@ -171,16 +176,12 @@ export default function PromptToolsPage() {
         ) : null}
 
         {error ? <div className="action-error" role="alert">{error}</div> : null}
-        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>
-          {busy ? "Готовлю prompt…" : "Создать prompt"}
-        </button>
+        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>{busy ? "Готовлю prompt…" : "Создать prompt"}</button>
       </div>
 
       {resultEntries.length ? (
         <div className="tool-result" aria-live="polite">
-          {resultEntries.map(([label, value]) => (
-            <div className="tool-result-card" key={label}><strong>{label}</strong><pre>{value}</pre></div>
-          ))}
+          {resultEntries.map(([label, value]) => <div className="tool-result-card" key={label}><strong>{label}</strong><pre>{value}</pre></div>)}
         </div>
       ) : null}
     </StandaloneShell>
