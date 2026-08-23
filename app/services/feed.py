@@ -20,6 +20,7 @@ from app.db.social_models import GenerationLike
 from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.reference_resolver import ReferenceResolver
 
 FeedSurface = Literal["feed", "profile"]
 FeedSort = Literal["recent", "top_day", "top"]
@@ -52,17 +53,6 @@ class FeedMediaUnavailableError(FeedPublicationError):
 
 class FeedService:
     COMMENT_MAX_LENGTH = 300
-    REFERENCE_IMAGE_KEYS = (
-        "image_url",
-        "image_urls",
-        "image_input",
-        "input_urls",
-        "first_frame_url",
-        "first_frame",
-        "last_frame_url",
-        "last_frame",
-    )
-    REFERENCE_VIDEO_KEYS = ("video_url", "video_urls", "input_video_url")
 
     @staticmethod
     def _validate_surface(surface: str) -> FeedSurface:
@@ -322,24 +312,8 @@ class FeedService:
 
     @classmethod
     def _references(cls, generation: Generation) -> tuple[list[str], list[str]]:
-        params = dict(generation.parameters or {})
-        images: list[str] = []
-        videos: list[str] = []
-        for key in cls.REFERENCE_IMAGE_KEYS:
-            value = params.get(key)
-            if isinstance(value, str) and value.startswith("https://"):
-                images.append(value)
-            elif isinstance(value, list):
-                images.extend(str(item) for item in value if str(item).startswith("https://"))
-        for key in cls.REFERENCE_VIDEO_KEYS:
-            value = params.get(key)
-            if isinstance(value, str) and value.startswith("https://"):
-                videos.append(value)
-            elif isinstance(value, list):
-                videos.extend(str(item) for item in value if str(item).startswith("https://"))
-        if generation.input_url and generation.input_url.startswith("https://"):
-            images.append(generation.input_url)
-        return list(dict.fromkeys(images)), list(dict.fromkeys(videos))
+        context = ReferenceResolver.generation_context(generation)
+        return context.reference_images, context.reference_videos
 
     @classmethod
     async def to_card(
