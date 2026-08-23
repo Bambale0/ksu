@@ -164,6 +164,8 @@ class Settings(BaseSettings):
     generation_rate_limit_per_minute: int = 10
     generation_max_active_per_user: int = 3
     generation_daily_spend_limit_credits: Decimal = Decimal("0")
+    generation_action_contexts_enabled: bool = True
+    generation_action_context_ttl_seconds: int = 604800
     upload_rate_limit_per_minute: int = 12
     upload_daily_bytes_limit: int = 1024 * 1024 * 1024
     payment_create_rate_limit_per_minute: int = 6

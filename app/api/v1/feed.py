@@ -196,6 +196,7 @@ async def publish(
             payload.publication_scope == "feed" and generation.publication_scope == "profile"
         ),
         "item": card,
+        "share": FeedService.share_payload(generation, user.telegram_id),
     }
 
 
@@ -282,7 +283,12 @@ async def share(
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    return {"id": str(generation_id), "shares_count": shares_count, "link": link}
+    return {
+        "id": str(generation_id),
+        "shares_count": shares_count,
+        "link": link,
+        "share": FeedService.share_payload(generation, author.telegram_id),
+    }
 
 
 @router.get("/feed/{generation_id}/comments")

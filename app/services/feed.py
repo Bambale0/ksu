@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import quote
 
 from redis.asyncio import Redis
 from sqlalchemy import delete, exists, func, or_, select
@@ -798,6 +799,32 @@ class FeedService:
         if not username:
             return None
         return f"https://t.me/{username}?start=feed_{generation_id}_ref_{author_referral_code}"
+
+    @classmethod
+    def share_payload(cls, generation: Generation, author_telegram_id: int) -> dict[str, object]:
+        """Post-publish share payload for author-side success/share screens.
+
+        ``link`` is the direct Mini App post deep link (``startapp`` form so it
+        opens inside the app), ``share_url`` is a ready ``t.me/share/url`` link
+        for Telegram-native sharing and ``copy_link`` is the value a user copies
+        into any messenger.
+        """
+
+        raw_link = cls.post_deep_link(generation.id, str(author_telegram_id))
+        link = raw_link.replace("?start=", "?startapp=", 1) if raw_link else None
+        share_text = f"Посмотри мою работу в ROXY ✨\n{link}" if link else "Посмотри мою работу в ROXY ✨"
+        share_url = None
+        if link:
+            share_url = (
+                "https://t.me/share/url"
+                f"?url={quote(link, safe='')}&text={quote(share_text, safe='')}"
+            )
+        return {
+            "link": link,
+            "share_url": share_url,
+            "share_text": share_text,
+            "copy_link": link,
+        }
 
     @classmethod
     def profile_deep_link(cls, author_referral_code: str) -> str | None:

@@ -2,12 +2,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SavedReferencePicker } from "@/lib/reference-memory";
-import { haptic, initTelegram, notify, telegram, telegramHeaders } from "@/lib/telegram";
+import {
+  copyToClipboard,
+  haptic,
+  initTelegram,
+  notify,
+  openExternalLink,
+  openTelegramShare,
+  telegram,
+  telegramHeaders,
+} from "@/lib/telegram";
 import type { UiField, UiSchema } from "@/lib/types";
 import { Icon } from "./icons";
 import { RoxySocialApp } from "./roxy-social-app";
 
-type ActionRoute = { generationId: string; action: string };
+type ActionRoute = { generationId: string; action: string; actionContextId?: string };
+type SharePayload = {
+  link?: string | null;
+  share_url?: string | null;
+  share_text?: string;
+  copy_link?: string | null;
+};
 type ActionModel = {
   id: string;
   title: string;
@@ -54,8 +69,12 @@ function parseActionRoute(): ActionRoute | null {
   if (typeof window === "undefined") return null;
   const url = new URL(window.location.href);
   if (url.searchParams.get("route") !== "generation-action") return null;
+  const actionContextId = url.searchParams.get("action_context_id") || "";
   const generationId = url.searchParams.get("generation") || "";
   const action = url.searchParams.get("action") || "";
+  // Server-owned context links restore the screen from a snapshot; the
+  // classic generation+action deep link stays fully supported as a fallback.
+  if (actionContextId) return { generationId, action, actionContextId };
   return generationId && action ? { generationId, action } : null;
 }
 
@@ -162,11 +181,12 @@ export function GenerationActionGate() {
 
   if (!ready) return <div className="splash" role="status"><strong>ROXY</strong><small>Загружаю действие…</small></div>;
   if (!route) return <RoxySocialApp />;
-  return <GenerationActionApp generationId={route.generationId} action={route.action} />;
+  return <GenerationActionApp generationId={route.generationId} action={route.action} actionContextId={route.actionContextId} />;
 }
 
-function GenerationActionApp({ generationId, action }: { generationId: string; action: string }) {
+function GenerationActionApp({ generationId, action, actionContextId }: { generationId: string; action: string; actionContextId?: string }) {
   const [context, setContext] = useState<ActionContext | null>(null);
+  const [actionId, setActionId] = useState(action);
   const [modelId, setModelId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
@@ -180,24 +200,29 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
   const [error, setError] = useState("");
   const [promptVisible, setPromptVisible] = useState(false);
   const [scope, setScope] = useState<"profile" | "feed">("feed");
+  const [published, setPublished] = useState<SharePayload | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
     tg?.ready?.();
     tg?.expand?.();
-    const goBack = () => goToGeneration(generationId);
+    const goBack = () => goToGeneration(context?.generation.id || generationId);
     tg?.BackButton?.show?.();
     tg?.BackButton?.onClick?.(goBack);
     return () => tg?.BackButton?.offClick?.(goBack);
-  }, [generationId]);
+  }, [context?.generation.id, generationId]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    request<ActionContext>(`/api/v1/generations/${encodeURIComponent(generationId)}/action-context?action=${encodeURIComponent(action)}`)
+    const target = actionContextId
+      ? `/api/v1/generation-action-contexts/${encodeURIComponent(actionContextId)}`
+      : `/api/v1/generations/${encodeURIComponent(generationId)}/action-context?action=${encodeURIComponent(action)}`;
+    request<ActionContext>(target)
       .then((next) => {
         if (!active) return;
         setContext(next);
+        setActionId(next.action.id);
         setModelId(String(next.defaults.model_id || next.candidate_models[0]?.id || ""));
         setPrompt(String(next.defaults.prompt || ""));
         setParameters({ ...(next.defaults.parameters || {}) });
@@ -208,26 +233,26 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Не удалось открыть действие"))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [action, generationId]);
+  }, [action, actionContextId, generationId]);
 
   const model = useMemo(() => context?.candidate_models.find((item) => item.id === modelId) || null, [context, modelId]);
-  const fields = useMemo(() => visibleFields(model, action, parameters), [action, model, parameters]);
-  const promptMeta = defaultPromptLabel(action);
+  const fields = useMemo(() => visibleFields(model, actionId, parameters), [actionId, model, parameters]);
+  const promptMeta = defaultPromptLabel(actionId);
 
   const formError = useMemo(() => {
-    if (!context || action === "publish") return "";
+    if (!context || actionId === "publish") return "";
     if (!model) return "Выберите модель";
-    if ((SOURCE_ACTIONS.has(action) || action === "new_prompt") && !prompt.trim()) return "Добавьте промпт";
+    if ((SOURCE_ACTIONS.has(actionId) || actionId === "new_prompt") && !prompt.trim()) return "Добавьте промпт";
     for (const field of fields) {
       const value = parameters[field.name];
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
       if (field.required && empty) return `Заполните «${field.label}»`;
     }
     return "";
-  }, [action, context, fields, model, parameters, prompt]);
+  }, [actionId, context, fields, model, parameters, prompt]);
 
   useEffect(() => {
-    if (!context || !model || action === "publish" || formError || uploading) {
+    if (!context || !model || actionId === "publish" || formError || uploading) {
       setQuote(null);
       return;
     }
@@ -237,12 +262,12 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
       catch (reason) { setQuote(null); setQuoteError(reason instanceof Error ? reason.message : "Проверьте параметры"); return; }
       void request<Quote>("/api/v1/generations/quote", {
         method: "POST",
-        body: JSON.stringify(buildQuoteBody(context, action, model, prompt, serialized, billingSeconds)),
+        body: JSON.stringify(buildQuoteBody(context, actionId, model, prompt, serialized, billingSeconds)),
       }).then((next) => { setQuote(next); setQuoteError(""); })
         .catch((reason) => { setQuote(null); setQuoteError(reason instanceof Error ? reason.message : "Не удалось рассчитать цену"); });
     }, 280);
     return () => window.clearTimeout(timer);
-  }, [action, billingSeconds, context, fields, formError, model, parameters, prompt, uploading]);
+  }, [actionId, billingSeconds, context, fields, formError, model, parameters, prompt, uploading]);
 
   const chooseModel = (nextId: string) => {
     if (!context) return;
@@ -287,14 +312,15 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
     setError("");
     try {
       const serialized = serializeParameters(fields, parameters);
-      const result = await request<{ id: string; status: string }>(`/api/v1/generations/${encodeURIComponent(generationId)}/actions/${encodeURIComponent(action)}`, {
+      const result = await request<{ id: string; status: string }>(`/api/v1/generations/${encodeURIComponent(generationId)}/actions/${encodeURIComponent(actionId)}`, {
         method: "POST",
         body: JSON.stringify({
           model_id: model.id,
           prompt,
           parameters: serialized,
           billing_seconds: billingSeconds,
-          edit_kind: action === "edit" ? editKind : null,
+          edit_kind: actionId === "edit" ? editKind : null,
+          action_context_id: actionContextId || null,
         }),
       });
       notify("success");
@@ -311,12 +337,20 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
     setSubmitting(true);
     setError("");
     try {
-      await request(`/api/v1/feed/${encodeURIComponent(generationId)}/publish`, {
+      const result = await request<{ publication_scope?: string; downgraded_to_profile?: boolean; share?: SharePayload }>(`/api/v1/feed/${encodeURIComponent(context.generation.id)}/publish`, {
         method: "POST",
         body: JSON.stringify({ publication_scope: scope, prompt_visible: promptVisible, references_visible: false }),
       });
+      const share = result.share?.link ? result.share : null;
       notify("success");
-      goToGeneration(generationId);
+      haptic("medium");
+      if (!share) {
+        // Link building depends on the deployed bot username; without it we at
+        // least keep the user on the published card instead of navigating away.
+        setPublished({});
+        return;
+      }
+      setPublished(share);
     } catch (reason) {
       notify("error");
       setError(reason instanceof Error ? reason.message : "Не удалось опубликовать");
@@ -329,6 +363,8 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
   const mediaType = resultMediaType(context);
   const source = context.source_url;
 
+  if (published) return <PublishSuccess share={published} generationId={context.generation.id} />;
+
   return <div className="roxy-app generation-action-app">
     <header className="topbar action-topbar">
       <button className="brand" type="button" onClick={() => goToGeneration(generationId)} aria-label="Вернуться к работе"><span className="action-back">‹</span><span className="brand-copy"><strong>ROXY</strong><small>{context.action.label}</small></span></button>
@@ -340,13 +376,13 @@ function GenerationActionApp({ generationId, action }: { generationId: string; a
         <div><span className="kicker">Исходная работа</span><h1>{context.generation.model_title || "ROXY generation"}</h1><p className="muted">{context.action.label} · связь с исходником сохранится в истории</p></div>
       </div>
 
-      {action === "publish" ? <div className="action-grid">
+      {actionId === "publish" ? <div className="action-grid">
         <div className="panel"><span className="kicker">Публикация</span><h2>Куда опубликовать?</h2><div className="segmented"><button type="button" className={scope === "profile" ? "active" : ""} onClick={() => setScope("profile")}>В профиль</button><button type="button" className={scope === "feed" ? "active" : ""} onClick={() => setScope("feed")}>Лента + профиль</button></div><label className="toggle-row"><span><strong>Показать промпт</strong><small>По умолчанию промпт скрыт</small></span><input type="checkbox" checked={promptVisible} onChange={(event) => setPromptVisible(event.target.checked)}/><i/></label><p className="muted">Референсы остаются скрытыми.</p></div>
         <aside className="panel create-summary"><span className="kicker">Готово</span><h2>{scope === "feed" ? "Публичная лента" : "Профиль"}</h2><button className="primary wide" type="button" disabled={submitting} onClick={() => void publish()}>{submitting ? "Публикую…" : "Опубликовать"}</button></aside>
       </div> : <div className="action-grid">
         <div className="action-form">
           {context.candidate_models.length > 1 && <div className="panel"><label className="label">Модель</label><select className="control" value={modelId} onChange={(event) => chooseModel(event.target.value)}>{context.candidate_models.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>}
-          <div className="panel"><span className="kicker">{context.action.label}</span><h2>{promptMeta.title}</h2><p className="muted">{promptMeta.copy}</p>{action === "edit" && Boolean(context.edit_presets?.length) && <div className="segmented scrollable action-presets">{context.edit_presets?.map((preset) => <button type="button" key={preset.id} className={editKind === preset.id ? "active" : ""} onClick={() => setEditKind(preset.id)}>{preset.label}</button>)}</div>}<textarea className="control textarea action-prompt" value={prompt} placeholder={promptMeta.placeholder} onChange={(event) => setPrompt(event.target.value)} /></div>
+          <div className="panel"><span className="kicker">{context.action.label}</span><h2>{promptMeta.title}</h2><p className="muted">{promptMeta.copy}</p>{actionId === "edit" && Boolean(context.edit_presets?.length) && <div className="segmented scrollable action-presets">{context.edit_presets?.map((preset) => <button type="button" key={preset.id} className={editKind === preset.id ? "active" : ""} onClick={() => setEditKind(preset.id)}>{preset.label}</button>)}</div>}<textarea className="control textarea action-prompt" value={prompt} placeholder={promptMeta.placeholder} onChange={(event) => setPrompt(event.target.value)} /></div>
 
           {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить параметры" : "Параметры модели"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
           {model?.ui_schema?.billing_seconds && <div className="panel"><label className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={model.ui_schema.billing_seconds.min || 1} max={model.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></div>}
@@ -389,6 +425,53 @@ function goToGeneration(generationId: string) {
   url.searchParams.set("generation", generationId);
   url.searchParams.delete("action");
   window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+}
+
+function PublishSuccess({ share, generationId }: { share: SharePayload; generationId: string }) {
+  const [copied, setCopied] = useState(false);
+  const postLink = share.link || share.copy_link || "";
+
+  const copy = async () => {
+    const target = share.copy_link || share.link;
+    if (!target) return;
+    const ok = await copyToClipboard(target);
+    notify(ok ? "success" : "error");
+    haptic("light");
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2400);
+  };
+
+  const sharePost = () => {
+    if (share.share_url) { openTelegramShare(share.share_url); return; }
+    if (postLink) {
+      openTelegramShare(`https://t.me/share/url?url=${encodeURIComponent(postLink)}&text=${encodeURIComponent(share.share_text || "Посмотри мою работу в ROXY ✨")}`);
+    }
+  };
+
+  return (
+    <div className="roxy-app publish-success">
+      <main className="main-shell">
+        <section className="screen">
+          <div className="panel publish-success-card" role="status">
+            <span className="publish-success-badge">🎉</span>
+            <h1>Работа опубликована!</h1>
+            <p className="muted">Теперь она доступна в ленте. Поделитесь ссылкой — так работу увидят больше людей.</p>
+            <div className="publish-success-actions">
+              <button className="primary wide" type="button" disabled={!share.share_url && !postLink} onClick={sharePost}>
+                <Icon name="spark"/>Поделиться ссылкой
+              </button>
+              <button className="secondary wide" type="button" disabled={!postLink} onClick={() => void copy()}>
+                {copied ? "Ссылка скопирована ✓" : "Скопировать ссылку"}
+              </button>
+              {postLink && <button className="ghost wide" type="button" onClick={() => openTelegramShare(postLink)}>Открыть публикацию</button>}
+            </div>
+            <button className="publish-success-back" type="button" onClick={() => goToGeneration(generationId)}>Вернуться к работе</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
 }
 
 function ActionError({ error, generationId }: { error: string; generationId: string }) {

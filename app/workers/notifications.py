@@ -85,9 +85,16 @@ def _media_count_label(media_type: str, count: int) -> str:
     return f"{count} фото"
 
 
-def _mini_app_url(generation_id: uuid.UUID, action: str | None = None) -> str | None:
+def _mini_app_url(
+    generation_id: uuid.UUID,
+    action: str | None = None,
+    action_context_id: uuid.UUID | None = None,
+) -> str | None:
     if not settings.public_base_url:
         return None
+    base = f"{settings.public_base_url.rstrip('/')}/mini-app/"
+    if action_context_id:
+        return f"{base}?{urlencode({'route': 'generation-action', 'action_context_id': str(action_context_id)})}"
     query_data = {
         "route": "generation-action" if action else "history",
         "generation": str(generation_id),
@@ -95,18 +102,20 @@ def _mini_app_url(generation_id: uuid.UUID, action: str | None = None) -> str | 
     if action:
         query_data["action"] = action
     query = urlencode(query_data)
-    return f"{settings.public_base_url.rstrip('/')}/mini-app/?{query}"
+    return f"{base}?{query}"
 
 
 def _generation_keyboard(
     generation: Generation,
     original_url: str | None = None,
+    action_context_ids: dict[str, uuid.UUID] | None = None,
 ) -> InlineKeyboardMarkup | None:
     rows: list[list[InlineKeyboardButton]] = []
 
     action_buttons: list[InlineKeyboardButton] = []
     for action in GenerationActionService.available_actions(generation):
-        action_url = _mini_app_url(generation.id, action.id)
+        context_id = (action_context_ids or {}).get(action.id)
+        action_url = _mini_app_url(generation.id, action.id, context_id)
         if not action_url:
             continue
         action_buttons.append(
@@ -132,6 +141,42 @@ def _generation_keyboard(
     if utilities:
         rows.append(utilities)
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+async def _ensure_action_contexts(
+    session: AsyncSession,
+    generation: Generation,
+) -> dict[str, uuid.UUID]:
+    """Create server-owned action contexts for every delivered action button.
+
+    Best-effort only: the durable notification path must never depend on the
+    context store. If the snapshot build fails for any reason we skip the rows
+    and keep the classic ``generation`` + ``action`` deep links, which the Mini
+    App still resolves server-side on demand.
+    """
+
+    from app.services.generation_action_contexts import create_action_context
+
+    if not settings.generation_action_contexts_enabled:
+        return {}
+    mapped: dict[str, uuid.UUID] = {}
+    try:
+        for action in GenerationActionService.available_actions(generation):
+            context = await create_action_context(
+                session,
+                user_id=generation.user_id,
+                generation=generation,
+                action=action.id,
+            )
+            mapped[action.id] = context.id
+    except Exception:  # noqa: BLE001 - delivery is the source of truth
+        logger.info(
+            "generation_action_contexts_creation_skipped",
+            extra={"generation_id": str(generation.id)},
+            exc_info=True,
+        )
+        return {}
+    return mapped
 
 
 def _generation_success_text(generation: Generation, *, result_count: int) -> str:
@@ -198,11 +243,17 @@ def _sync_generation_delivery(generation: Generation | None, delivery: Notificat
         generation.telegram_message_id = delivery.external_message_id
 
 
-async def _send_generation_success(bot: Bot, *, chat_id: int, generation: Generation):  # type: ignore[no-untyped-def]
+async def _send_generation_success(  # type: ignore[no-untyped-def]
+    bot: Bot,
+    *,
+    chat_id: int,
+    generation: Generation,
+    action_context_ids: dict[str, uuid.UUID] | None = None,
+):
     urls = _generation_result_urls(generation)
     result_url = urls[0] if urls else None
     text = _generation_success_text(generation, result_count=max(1, len(urls)))
-    keyboard = _generation_keyboard(generation, result_url)
+    keyboard = _generation_keyboard(generation, result_url, action_context_ids)
     if not result_url:
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
@@ -241,15 +292,21 @@ async def _send_generation_success(bot: Bot, *, chat_id: int, generation: Genera
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
 
-async def _send_generation_notification(
+async def _send_generation_notification(  # type: ignore[no-untyped-def]
     bot: Bot,
     *,
     chat_id: int,
     notification: Notification,
     generation: Generation,
-):  # type: ignore[no-untyped-def]
+    action_context_ids: dict[str, uuid.UUID] | None = None,
+):
     if notification.kind == "generation_succeeded" and generation.status == "succeeded":
-        return await _send_generation_success(bot, chat_id=chat_id, generation=generation)
+        return await _send_generation_success(
+            bot,
+            chat_id=chat_id,
+            generation=generation,
+            action_context_ids=action_context_ids,
+        )
     if notification.kind == "generation_failed" and generation.status == "failed":
         return await bot.send_message(
             chat_id=chat_id,
@@ -332,12 +389,16 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             return
 
         try:
+            action_context_ids: dict[str, uuid.UUID] = {}
+            if generation is not None:
+                action_context_ids = await _ensure_action_contexts(session, generation)
             if generation is not None:
                 message = await _send_generation_notification(
                     bot,
                     chat_id=user.telegram_id,
                     notification=notification,
                     generation=generation,
+                    action_context_ids=action_context_ids,
                 )
             else:
                 message = await bot.send_message(
