@@ -10,6 +10,7 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.billing_email import normalize_billing_email
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import PaymentIdempotencyConflict, UnknownPaymentPackageError
@@ -94,7 +95,7 @@ async def checkout(
             user_id=user.id,
             package_id=payload.package_id,
             currency=payload.currency,
-            billing_email=payload.billing_email,
+            billing_email=normalize_billing_email(payload.billing_email),
             request_key=request_key,
         )
     except UnknownPaymentPackageError as exc:
