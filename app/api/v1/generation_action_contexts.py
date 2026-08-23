@@ -86,8 +86,11 @@ async def create_context(
     await session.commit()
     return {
         "id": str(context.id),
+        "action_context_id": str(context.id),
         "action": context.action,
         "source_generation_id": str(context.source_generation_id),
+        # Mini App scenario route (query-based routing, same as open_app_url).
+        "route": f"/mini-app/?route=generation-action&action_context_id={context.id}",
         "target_mode": context.target_mode,
         "target_model_id": context.target_model_id,
         "expires_at": context.expires_at.isoformat(),
@@ -108,3 +111,13 @@ async def read_context(
         raise _http_error(exc) from exc
     await session.commit()
     return _context_meta(context)
+
+
+@router.get("/action-context/{context_id}")
+async def read_context_alias(
+    context_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    """Contract alias: GET /api/v1/action-context/{id}."""
+    return await read_context(context_id, user, session)

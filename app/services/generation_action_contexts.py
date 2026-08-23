@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.action_context_models import GenerationActionContext
 from app.db.models import Generation
-from app.services.generation_actions import GenerationActionService
+from app.services import action_telemetry
+from app.services.generation_actions import resolver_for
+from app.services.generation_actions.base import ActionResolveError
+from app.services.generation_actions.core import GenerationActionService
 
 _EDIT_MODE = {
     "remix": "image_to_image",
@@ -143,7 +146,7 @@ def build_action_context_payload(generation: Generation, action: str) -> dict[st
     )
     images, videos = GenerationActionService.parent_references(generation)
 
-    return {
+    payload: dict[str, object] = {
         "generation": context_generation(generation),
         "action": action_spec.public_dict(),
         "candidate_models": candidates,
@@ -152,6 +155,17 @@ def build_action_context_payload(generation: Generation, action: str) -> dict[st
         "source_references": {"images": images, "videos": videos},
         "edit_presets": edit_presets() if action == "edit" else [],
     }
+
+    # Scenario-specific resolver output (mode/source media/quote hints) is
+    # merged without touching the keys above, so the Mini App contract is
+    # purely additive.
+    resolver = resolver_for(action)
+    if resolver is not None:
+        try:
+            payload["scenario"] = resolver.resolve(generation)
+        except ActionResolveError:
+            payload["scenario"] = None
+    return payload
 
 
 async def create_action_context(
@@ -204,6 +218,13 @@ async def create_action_context(
     )
     if existing is None:
         raise ActionContextError("Failed to create generation action context")
+    action_telemetry.track(
+        action_telemetry.ACTION_CONTEXT_CREATED,
+        user_id=user_id,
+        context_id=str(existing.id),
+        action=canonical,
+        generation_id=str(generation.id),
+    )
     return existing
 
 
@@ -221,6 +242,13 @@ async def get_action_context(
         raise ActionContextExpiredError("Generation action context has expired")
     context.opened_count = (context.opened_count or 0) + 1
     context.opened_at = datetime.now(UTC)
+    action_telemetry.track(
+        action_telemetry.ACTION_CONTEXT_OPENED,
+        user_id=user_id,
+        context_id=str(context.id),
+        action=context.action,
+        generation_id=str(context.source_generation_id),
+    )
     return context
 
 
@@ -236,5 +264,12 @@ async def mark_action_context_executed(
     if context.status == "active":
         context.status = "executed"
         context.executed_at = datetime.now(UTC)
+        action_telemetry.track(
+            action_telemetry.ACTION_EXECUTED,
+            user_id=user_id,
+            context_id=str(context.id),
+            action=context.action,
+            generation_id=str(context.source_generation_id),
+        )
         return True
     return False

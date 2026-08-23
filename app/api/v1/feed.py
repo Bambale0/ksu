@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Generation, User
+from app.services import action_telemetry
 from app.services.feed import (
     FeedDerivativePublicationError,
     FeedError,
@@ -190,6 +191,12 @@ async def publish(
         card = _sanitize_trend_card(card, generation)
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
+    action_telemetry.track(
+        action_telemetry.PUBLISH_SUCCESS,
+        user_id=user.id,
+        generation_id=str(generation.id),
+        publication_scope=generation.publication_scope,
+    )
     return {
         "publication_scope": generation.publication_scope,
         "downgraded_to_profile": (
@@ -266,7 +273,6 @@ async def share(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    del user
     try:
         generation = await FeedService.assert_surface_visible(
             session, generation_id, surface=payload.surface
@@ -283,6 +289,12 @@ async def share(
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
+    action_telemetry.track(
+        action_telemetry.SHARE_CLICKED,
+        user_id=user.id,
+        generation_id=str(generation_id),
+        surface=payload.surface,
+    )
     return {
         "id": str(generation_id),
         "shares_count": shares_count,
