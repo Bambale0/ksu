@@ -25,6 +25,31 @@ def test_reference_capable_image_product_routes_to_i2i_with_ref() -> None:
     assert routed.parameters["input_urls"] == ["https://example.com/ref.png"]
 
 
+def test_roxy_owned_uploaded_photo_routes_to_i2i() -> None:
+    routed = resolve_model_request(
+        "gpt-image-2-i2i",
+        {"prompt": "portrait", "input_urls": ["/uploads/refs/image/u/2026/08/ref.png"]},
+    )
+
+    assert routed.model_id == "gpt-image-2-i2i"
+    assert routed.mode == "i2i"
+    assert routed.parameters["input_urls"] == ["/uploads/refs/image/u/2026/08/ref.png"]
+
+
+def test_video_reference_routes_to_i2v() -> None:
+    routed = resolve_model_request(
+        "wan-2.7-i2v",
+        {
+            "prompt": "follow motion",
+            "reference_video_urls": ["/uploads/refs/video/u/2026/08/motion.mp4"],
+        },
+    )
+
+    assert routed.model_id == "wan-2.7-i2v"
+    assert routed.mode == "i2v"
+    assert routed.parameters["first_clip_url"] == "/uploads/refs/video/u/2026/08/motion.mp4"
+
+
 def test_input_url_is_promoted_to_target_reference_field() -> None:
     routed = resolve_model_request(
         "seedream-4.5-edit",

@@ -193,6 +193,46 @@ async def _owned_generation(
     return generation
 
 
+def _recreate_payload_for_generation(generation: Generation) -> dict[str, object]:
+    if generation.action_type == "trend":
+        raise HTTPException(
+            status_code=409,
+            detail="Trend generations can only be repeated from the Trends catalog",
+        )
+
+    params = dict(generation.parameters or {})
+    model_id = str(params.get("_model_id") or "")
+    if not model_id:
+        raise HTTPException(status_code=409, detail="Generation has no reusable model")
+    if MusicGenerationService.is_music_model(model_id):
+        return {
+            "model_id": MUSIC_MODEL_ID,
+            "prompt": generation.prompt,
+            "input_url": None,
+            "billing_seconds": None,
+            "parameters": MusicGenerationService.reusable_parameters(params),
+        }
+
+    try:
+        spec = ModelCatalog.get(model_id)
+    except UnknownModelError as exc:
+        raise HTTPException(status_code=409, detail="Generation model is no longer available") from exc
+
+    allowed = set(spec.known_fields)
+    clean = {
+        key: value
+        for key, value in params.items()
+        if not key.startswith("_") and key in allowed and key != "prompt"
+    }
+    return {
+        "model_id": model_id,
+        "prompt": generation.prompt,
+        "input_url": generation.input_url,
+        "billing_seconds": params.get("_billing_seconds"),
+        "parameters": clean,
+    }
+
+
 @router.get("/models")
 async def generation_models(
     user: OptionalCurrentUserDep,
@@ -408,43 +448,7 @@ async def recreate_generation_payload(
     session: SessionDep,
 ) -> dict[str, object]:
     generation = await _owned_generation(generation_id, user, session)
-    if generation.action_type == "trend":
-        raise HTTPException(
-            status_code=409,
-            detail="Trend generations can only be repeated from the Trends catalog",
-        )
-
-    params = dict(generation.parameters or {})
-    model_id = str(params.get("_model_id") or "")
-    if not model_id:
-        raise HTTPException(status_code=409, detail="Generation has no reusable model")
-    if MusicGenerationService.is_music_model(model_id):
-        return {
-            "model_id": MUSIC_MODEL_ID,
-            "prompt": generation.prompt,
-            "input_url": None,
-            "billing_seconds": None,
-            "parameters": MusicGenerationService.reusable_parameters(params),
-        }
-
-    try:
-        spec = ModelCatalog.get(model_id)
-    except UnknownModelError as exc:
-        raise HTTPException(status_code=409, detail="Generation model is no longer available") from exc
-
-    allowed = set(spec.known_fields)
-    clean = {
-        key: value
-        for key, value in params.items()
-        if not key.startswith("_") and key in allowed and key != "prompt"
-    }
-    return {
-        "model_id": model_id,
-        "prompt": generation.prompt,
-        "input_url": generation.input_url,
-        "billing_seconds": params.get("_billing_seconds"),
-        "parameters": clean,
-    }
+    return _recreate_payload_for_generation(generation)
 
 
 @router.delete("/{generation_id}/history")
