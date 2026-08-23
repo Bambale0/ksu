@@ -450,9 +450,14 @@ class PromptToolProcessor:
                         image_url=str(data.get("image_url") or "") or None,
                     )
                 elif task.tool == "video_prompt":
+                    from app.services.provider_media_transport import ProviderMediaTransport
+
                     raw_duration = data.get("duration_seconds")
+                    provider_input = await ProviderMediaTransport.prepare(
+                        {"video_url": str(data.get("video_url") or "")}
+                    )
                     result = await client.build_video_prompt(
-                        video_url=str(data.get("video_url") or ""),
+                        video_url=str(provider_input.get("video_url") or ""),
                         instruction=str(data.get("instruction") or ""),
                         duration_seconds=int(raw_duration) if raw_duration else None,
                     )

@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from app.api.deps import _validated_startapp_inviter
+
+
+@pytest.mark.asyncio
+async def test_plain_ref_startapp_preserves_inviter_without_bot_start() -> None:
+    assert await _validated_startapp_inviter(object(), "ref_123456") == 123456  # type: ignore[arg-type]
+
+
+def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
+    root = Path(__file__).resolve().parents[1]
+    entry = (root / "frontend/mini-app/components/app-entry-gate.tsx").read_text(encoding="utf-8")
+    profile = (root / "frontend/mini-app/components/profile-startapp-app.tsx").read_text(encoding="utf-8")
+    post = (root / "frontend/mini-app/components/feed-startapp-app.tsx").read_text(encoding="utf-8")
+
+    assert 'initDataUnsafe?.start_param' in entry
+    assert 'searchParams.get("tgWebAppStartParam")' in entry
+    assert 'searchParams.get("start_payload")' in entry
+    assert entry.index('searchParams.get("start_payload")') < entry.index("initDataUnsafe?.start_param")
+    assert "feed_" in entry
+    assert "remix_" in entry
+    assert "posts_" in entry
+    assert "profile_" in entry
+    assert "ProfileStartApp" in entry
+    assert 'intent={target.kind}' in entry
+
+    assert "api.profileFeed(referralCode, 0)" in profile
+    assert "data-profile-startapp-posts" in profile
+    assert "start_payload" in profile
+
+    # A shared profile-only post must still open, and remix/share must use the
+    # surface on which the publication was actually found.
+    assert 'api.feedItem(generationId, "feed")' in post
+    assert 'api.feedItem(generationId, "profile")' in post
+    assert "api.remix(card.id, surface)" in post
+    assert "api.share(card.id, surface)" in post

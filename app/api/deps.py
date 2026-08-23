@@ -55,18 +55,44 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Accept referral attribution only when a signed startapp payload matches the work author."""
+    """Validate referral attribution carried by Telegram-signed ``start_param``.
+
+    Plain referral links are allowed directly. Post/remix/profile links are
+    additionally bound to the public author they claim to represent so changing
+    the numeric suffix cannot steal attribution.
+    """
 
     link = parse_feed_deep_link(start_param)
-    if link is None or link.action != "feed" or link.generation_id is None:
+    if link is None:
         return None
-    try:
-        generation = await FeedService.assert_surface_visible(
-            session,
-            link.generation_id,
-            surface="feed",
-        )
-    except FeedNotFoundError:
+    if link.action == "ref":
+        return link.referral_telegram_id
+    if link.action == "posts" and link.profile_referral_code:
+        if str(link.referral_telegram_id) != link.profile_referral_code:
+            return None
+        try:
+            author = await FeedService.author_by_referral_code(
+                session,
+                link.profile_referral_code,
+            )
+        except FeedNotFoundError:
+            return None
+        return author.telegram_id
+    if link.generation_id is None:
+        return None
+
+    generation = None
+    for surface in ("feed", "profile"):
+        try:
+            generation = await FeedService.assert_surface_visible(
+                session,
+                link.generation_id,
+                surface=surface,
+            )
+            break
+        except FeedNotFoundError:
+            continue
+    if generation is None:
         return None
     author = await session.get(User, generation.user_id)
     if author is None or author.telegram_id != link.referral_telegram_id:

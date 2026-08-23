@@ -4,13 +4,17 @@ import re
 import uuid
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import quote
+
+from app.core.config import settings
 
 FeedLinkAction = Literal["ref", "feed", "posts", "remix"]
 
-_REF_RE = re.compile(r"^ref_(\d+)$")
-_POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})_ref_(\d+)$")
-_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$")
-_REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})_ref_(\d+)$")
+_REF_RE = re.compile(r"^ref_(\d+)$", re.IGNORECASE)
+_POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
+_LEGACY_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$", re.IGNORECASE)
+_PROFILE_RE = re.compile(r"^profile_(\d+)(?:_ref_(\d+))?$", re.IGNORECASE)
+_REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +23,72 @@ class FeedDeepLink:
     referral_telegram_id: int
     generation_id: uuid.UUID | None = None
     profile_referral_code: str | None = None
+
+
+def _code(value: int | str) -> str:
+    return str(value).strip().upper()
+
+
+def referral_payload(telegram_id: int | str) -> str:
+    return f"ref_{_code(telegram_id)}"
+
+
+def post_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | None = None) -> str:
+    payload = f"feed_{generation_id}"
+    code = _code(referral_telegram_id) if referral_telegram_id is not None else ""
+    return f"{payload}_ref_{code}" if code else payload
+
+
+def profile_payload(telegram_id: int | str) -> str:
+    # Match banano_kling:tanyapi exactly: profile target and referral attribution
+    # travel together in one signed Telegram start_param.
+    code = _code(telegram_id)
+    return f"profile_{code}_ref_{code}"
+
+
+def remix_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | None = None) -> str:
+    payload = f"remix_{generation_id}"
+    code = _code(referral_telegram_id) if referral_telegram_id is not None else ""
+    return f"{payload}_ref_{code}" if code else payload
+
+
+def prompt_payload(prompt_id: uuid.UUID | str, referral_telegram_id: int | str | None = None) -> str:
+    payload = f"prompt_{str(prompt_id).strip()}"
+    code = _code(referral_telegram_id) if referral_telegram_id is not None else ""
+    return f"{payload}_ref_{code}" if code else payload
+
+
+def task_payload(task_id: uuid.UUID | str) -> str:
+    return f"task_{str(task_id).strip()}"
+
+
+def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
+    """Build the same Main Mini App URL contract used by tanyapi.
+
+    The payload is URL-encoded with ``_`` and ``-`` left readable. Telegram then
+    returns it as signed ``start_param`` in WebApp initData. When no bot username
+    is configured we fall back to the supplied app URL, matching tanyapi behavior.
+    """
+
+    username = settings.bot_username.strip().lstrip("@")
+    if not username:
+        return fallback_url
+    param = str(payload or "").strip()
+    if not param:
+        return f"https://t.me/{username}?startapp"
+    return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
+
+
+def bot_start_link(payload: str | None) -> str | None:
+    """Compatibility link for legacy bot /start surfaces; new UI uses startapp."""
+
+    username = settings.bot_username.strip().lstrip("@")
+    if not username:
+        return None
+    param = str(payload or "").strip()
+    if not param:
+        return f"https://t.me/{username}"
+    return f"https://t.me/{username}?start={quote(param, safe='_-')}"
 
 
 def start_payload(text: str | None) -> str | None:
@@ -31,6 +101,17 @@ def start_payload(text: str | None) -> str | None:
     return payload or None
 
 
+def _profile_link(profile_code: str, referral_code: str | None) -> FeedDeepLink | None:
+    effective_referral = referral_code or profile_code
+    if profile_code != effective_referral:
+        return None
+    return FeedDeepLink(
+        action="posts",
+        profile_referral_code=profile_code,
+        referral_telegram_id=int(effective_referral),
+    )
+
+
 def parse_feed_deep_link(payload: str | None) -> FeedDeepLink | None:
     if not payload:
         return None
@@ -41,28 +122,25 @@ def parse_feed_deep_link(payload: str | None) -> FeedDeepLink | None:
             generation_id = uuid.UUID(match.group(1))
         except ValueError:
             return None
+        referral = int(match.group(2)) if match.group(2) else 0
         return FeedDeepLink(
             action="feed",
             generation_id=generation_id,
-            referral_telegram_id=int(match.group(2)),
+            referral_telegram_id=referral,
         )
+    if match := _LEGACY_PROFILE_RE.fullmatch(payload):
+        return _profile_link(match.group(1), match.group(2))
     if match := _PROFILE_RE.fullmatch(payload):
-        profile_code, referral_code = match.groups()
-        if profile_code != referral_code:
-            return None
-        return FeedDeepLink(
-            action="posts",
-            profile_referral_code=profile_code,
-            referral_telegram_id=int(referral_code),
-        )
+        return _profile_link(match.group(1), match.group(2))
     if match := _REMIX_RE.fullmatch(payload):
         try:
             generation_id = uuid.UUID(match.group(1))
         except ValueError:
             return None
+        referral = int(match.group(2)) if match.group(2) else 0
         return FeedDeepLink(
             action="remix",
             generation_id=generation_id,
-            referral_telegram_id=int(match.group(2)),
+            referral_telegram_id=referral,
         )
     return None

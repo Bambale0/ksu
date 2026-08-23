@@ -10,16 +10,15 @@ from app.api.v1.feed import _direct_mini_app_link
 from app.services.feed import FeedService
 
 
-def test_feed_share_link_opens_main_mini_app_without_changing_payload() -> None:
+def test_legacy_feed_bot_link_can_still_upgrade_to_main_mini_app() -> None:
     generation_id = uuid.uuid4()
     legacy = f"https://t.me/roxy_bot?start=feed_{generation_id}_ref_777"
     direct = _direct_mini_app_link(legacy)
     assert direct == f"https://t.me/roxy_bot?startapp=feed_{generation_id}_ref_777"
-    assert len(f"feed_{generation_id}_ref_777") <= 64
 
 
 @pytest.mark.asyncio
-async def test_startapp_referral_is_accepted_only_for_the_public_work_author(
+async def test_startapp_referral_is_accepted_for_public_post_and_remix_author(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     generation_id = uuid.uuid4()
@@ -41,6 +40,7 @@ async def test_startapp_referral_is_accepted_only_for_the_public_work_author(
     session = Session()
 
     assert await _validated_startapp_inviter(session, f"feed_{generation_id}_ref_777") == 777
+    assert await _validated_startapp_inviter(session, f"remix_{generation_id}_ref_777") == 777
     assert await _validated_startapp_inviter(session, f"feed_{generation_id}_ref_999") is None
-    assert await _validated_startapp_inviter(session, f"remix_{generation_id}_ref_777") is None
+    assert await _validated_startapp_inviter(session, "ref_777") == 777
     assert await _validated_startapp_inviter(session, "garbage") is None

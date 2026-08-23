@@ -2,29 +2,49 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { FeedCard } from "@/lib/types";
+import type { FeedCard, FeedSurface } from "@/lib/types";
 import { Icon } from "./icons";
 import { StandaloneShell } from "./standalone-shell";
 
 function asset(card: FeedCard): { url: string; type: "image" | "video" | "audio" } {
-  const url = card.preview_url || card.result_url || card.result_urls?.[0] || card.media?.[0]?.url || "";
+  const url = card.result_url || card.result_urls?.[0] || card.media?.[0]?.url || card.preview_url || "";
   const contentType = String(card.media?.[0]?.content_type || "").toLowerCase();
   if (contentType.startsWith("video/") || /\.(mp4|mov|webm)(\?|$)/i.test(url)) return { url, type: "video" };
   if (contentType.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)(\?|$)/i.test(url)) return { url, type: "audio" };
   return { url, type: "image" };
 }
 
-export function FeedStartApp({ generationId, referralCode }: { generationId: string; referralCode: string }) {
+export function FeedStartApp({
+  generationId,
+  referralCode,
+  intent = "post",
+}: {
+  generationId: string;
+  referralCode: string;
+  intent?: "post" | "remix";
+}) {
   const [card, setCard] = useState<FeedCard | null>(null);
+  const [surface, setSurface] = useState<FeedSurface>("feed");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let active = true;
-    void api.feedItem(generationId, "feed")
-      .then((value) => active && setCard(value))
-      .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Не удалось открыть работу"));
+    const load = async () => {
+      try {
+        const value = await api.feedItem(generationId, "feed");
+        if (active) { setCard(value); setSurface("feed"); }
+      } catch {
+        try {
+          const value = await api.feedItem(generationId, "profile");
+          if (active) { setCard(value); setSurface("profile"); }
+        } catch (reason) {
+          if (active) setError(reason instanceof Error ? reason.message : "Не удалось открыть работу");
+        }
+      }
+    };
+    void load();
     return () => { active = false; };
   }, [generationId]);
 
@@ -39,7 +59,7 @@ export function FeedStartApp({ generationId, referralCode }: { generationId: str
     setBusy(true);
     setError("");
     try {
-      const result = await api.remix(card.id, "feed");
+      const result = await api.remix(card.id, surface);
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось повторить работу");
@@ -50,22 +70,22 @@ export function FeedStartApp({ generationId, referralCode }: { generationId: str
   const copyLink = async () => {
     if (!card || !validReferral) return;
     try {
-      const result = await api.share(card.id, "feed");
+      const result = await api.share(card.id, surface);
       if (!result.link) throw new Error("Ссылка недоступна");
       await navigator.clipboard.writeText(result.link);
-      setNotice("Реферальная ссылка скопирована");
+      setNotice("Ссылка на работу скопирована");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось скопировать ссылку");
     }
   };
 
   return (
-    <StandaloneShell kicker="Лента ROXY" title={model} copy="Публичная работа автора ROXY">
+    <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={model} copy={intent === "remix" ? "Открой работу и запусти свой вариант" : "Публичная работа автора ROXY"}>
       <div className="tool-grid">
         <div className="panel tool-panel">
           {media.url && media.type === "video" ? <video className="trend-preview" src={media.url} controls playsInline /> : null}
           {media.url && media.type === "audio" ? <audio src={media.url} controls /> : null}
-          {media.url && media.type === "image" ? <img className="trend-preview" src={media.url} alt="Работа из ленты ROXY" /> : null}
+          {media.url && media.type === "image" ? <img className="trend-preview" src={media.url} alt="Работа ROXY" /> : null}
           {card ? <p className="muted" data-feed-startapp-author>Автор: <strong>{author}</strong></p> : null}
           {card?.prompt && !card.prompt_hidden ? <p className="prompt-copy">{card.prompt}</p> : null}
           {card && !validReferral ? <div className="action-error" role="alert">Реферальная подпись не совпадает с автором работы.</div> : null}
@@ -73,8 +93,9 @@ export function FeedStartApp({ generationId, referralCode }: { generationId: str
           {notice ? <div role="status">{notice}</div> : null}
           {!card && !error ? <p className="muted">Открываю работу…</p> : null}
           <div className="tool-actions">
-            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Запускаю…" : "Повторить"}</button> : null}
+            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Запускаю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
             {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => void copyLink()}><Icon name="share" size={16} />Скопировать ссылку</button> : null}
+            {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`profile_${referralCode}`)}`)}><Icon name="profile" size={16}/>Профиль автора</button> : null}
             <button className="secondary" type="button" onClick={() => window.location.assign("/mini-app/?route=feed")}>Открыть всю ленту</button>
           </div>
         </div>
