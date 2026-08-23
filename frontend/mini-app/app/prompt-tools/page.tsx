@@ -14,10 +14,17 @@ function initialMode(): Mode {
   return value === "video" || value === "seedance" ? value : "image";
 }
 
+function formatRox(value: number): string {
+  return `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ROX`;
+}
+
 function price(tool?: PromptToolCatalogItem): string {
   if (!tool) return "—";
-  if (tool.admin_free || Number(tool.cost_credits || 0) === 0) return "Бесплатно";
-  return `${Number(tool.cost_credits || 0).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ROX`;
+  const retail = Number(tool.retail_cost_credits ?? tool.cost_credits ?? 0);
+  const effective = Number(tool.cost_credits ?? retail);
+  if (tool.admin_free && retail > 0) return `Для вас бесплатно · пользователям ${formatRox(retail)}`;
+  if (effective <= 0) return "Бесплатно";
+  return formatRox(effective);
 }
 
 async function waitForTask(id: string): Promise<PromptToolTask> {
