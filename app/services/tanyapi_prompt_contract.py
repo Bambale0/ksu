@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-from urllib.parse import urlsplit
-
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderResult
 from app.providers.tanyapi_photo_prompt import PRIMARY_MODEL, build_photo_prompt
 from app.services.feed_static import FeedStaticStorage
@@ -49,7 +46,7 @@ def install_tanyapi_prompt_contract() -> None:
         if not prepared:
             raise ValueError("image_url is required")
         return await build_photo_prompt(
-            self._client,  # noqa: SLF001 - adapter intentionally reuses authenticated Kie session
+            self._client,
             image_url=prepared,
             instruction=instruction,
         )
@@ -66,7 +63,7 @@ def install_tanyapi_prompt_contract() -> None:
             if not prepared:
                 raise ValueError("image_url is required")
             return await build_photo_prompt(
-                self._client,  # noqa: SLF001 - adapter intentionally reuses authenticated Kie session
+                self._client,
                 image_url=prepared,
                 instruction=text,
             )
