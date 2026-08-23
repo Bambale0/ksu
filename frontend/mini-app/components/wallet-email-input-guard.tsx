@@ -31,11 +31,15 @@ export function WalletEmailInputGuard() {
         }
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
-    document.addEventListener("input", (event) => {
+    const onInput = (event: Event) => {
       if (event.target instanceof HTMLInputElement) normalizeWalletEmailInput(event.target);
-    });
-    return () => observer.disconnect();
+    };
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("input", onInput);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("input", onInput);
+    };
   }, []);
   return null;
 }
