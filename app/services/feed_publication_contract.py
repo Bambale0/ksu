@@ -122,17 +122,46 @@ def install_feed_publication_contract() -> None:
         params = dict(generation.parameters or {})
         images: list[str] = []
         videos: list[str] = []
+        image_keys = tuple(
+            dict.fromkeys(
+                (
+                    *cls.REFERENCE_IMAGE_KEYS,
+                    "reference_image",
+                    "reference_image_url",
+                    "reference_image_urls",
+                    "reference_images",
+                    "image_reference_urls",
+                )
+            )
+        )
+        video_keys = tuple(
+            dict.fromkeys(
+                (
+                    *cls.REFERENCE_VIDEO_KEYS,
+                    "reference_video",
+                    "reference_video_url",
+                    "reference_video_urls",
+                    "reference_videos",
+                    "video_reference_urls",
+                    "first_clip_url",
+                )
+            )
+        )
 
         def accepted(value: str) -> bool:
-            return value.startswith("https://") or ReferenceStaticStorage.is_local_url(value)
+            return (
+                value.startswith("https://")
+                or ReferenceStaticStorage.is_local_url(value)
+                or FeedStaticStorage.is_local_url(value)
+            )
 
-        for key in cls.REFERENCE_IMAGE_KEYS:
+        for key in image_keys:
             value = params.get(key)
             if isinstance(value, str) and accepted(value):
                 images.append(value)
             elif isinstance(value, list):
                 images.extend(str(item) for item in value if accepted(str(item)))
-        for key in cls.REFERENCE_VIDEO_KEYS:
+        for key in video_keys:
             value = params.get(key)
             if isinstance(value, str) and accepted(value):
                 videos.append(value)
