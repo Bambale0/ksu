@@ -25,6 +25,7 @@ MUSIC_MODEL_ID = "suno-v5.5"
 MUSIC_FAMILY = "suno"
 MUSIC_OPERATION = "text_to_music"
 MUSIC_MEDIA_TYPE = "audio"
+MAX_MUSIC_GENERATION_QUANTITY = 6
 
 _MUSIC_FIELDS = (
     "prompt",
@@ -332,6 +333,132 @@ class MusicGenerationService:
             raise MusicGenerationError("Цена генерации музыки не опубликована")
         return raw, price
 
+    @staticmethod
+    def _generation_parameters(
+        *,
+        clean: dict[str, Any],
+        provider_model: str,
+        retail_cost_rox: Decimal,
+        admin_free: bool,
+        batch_id: uuid.UUID | None = None,
+        batch_index: int = 1,
+        batch_size: int = 1,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            **clean,
+            "_model_id": MUSIC_MODEL_ID,
+            "_model_title": music_model_title(provider_model),
+            "_model_family": MUSIC_FAMILY,
+            "_media_type": MUSIC_MEDIA_TYPE,
+            "_operation": MUSIC_OPERATION,
+            "_provider_api": "suno_music",
+            "_kie_model": provider_model,
+            "_provider_model": provider_model,
+            "_billing_mode": "flat",
+            "_billing_seconds": None,
+            "_unit_price_rox": str(retail_cost_rox),
+            "_retail_cost_rox": str(retail_cost_rox),
+            "_admin_free": admin_free,
+            **(
+                {"_admin_free_generation": True, "_quoted_cost_rox": str(retail_cost_rox)}
+                if admin_free
+                else {}
+            ),
+        }
+        if batch_id is not None and batch_size > 1:
+            params.update(
+                {
+                    "_batch_id": str(batch_id),
+                    "_batch_index": batch_index,
+                    "_batch_size": batch_size,
+                }
+            )
+        return params
+
+    @classmethod
+    async def create_many(
+        cls,
+        session: AsyncSession,
+        redis: Redis,
+        *,
+        user_id: uuid.UUID,
+        prompt: str,
+        parameters: dict[str, Any],
+        quantity: int = 1,
+    ) -> list[Generation]:
+        requested = int(quantity)
+        if requested < 1 or requested > MAX_MUSIC_GENERATION_QUANTITY:
+            raise MusicGenerationError(
+                f"Количество генераций должно быть от 1 до {MAX_MUSIC_GENERATION_QUANTITY}"
+            )
+
+        clean, retail_cost_rox = cls.prepare(parameters, prompt)
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_cost_rox,
+        )
+        charge_rox = billing.effective_cost
+        total_charge_rox = (charge_rox * Decimal(requested)).quantize(Decimal("0.01"))
+        await AbuseProtectionService.generation_rate(redis, user_id, amount=requested)
+        await GenerationAdmissionService.enforce(
+            session,
+            user_id=user_id,
+            next_cost=total_charge_rox,
+            quantity=requested,
+        )
+
+        provider_model = str(settings.music_generation_model)
+        batch_id = uuid.uuid4() if requested > 1 else None
+        generations: list[Generation] = []
+        for index in range(1, requested + 1):
+            generation = Generation(
+                user_id=user_id,
+                kind="music",
+                prompt=str(clean.get("prompt") or ""),
+                cost_rox=charge_rox,
+                provider="kie",
+                status="queued",
+                parameters=cls._generation_parameters(
+                    clean=clean,
+                    provider_model=provider_model,
+                    retail_cost_rox=billing.retail_cost,
+                    admin_free=billing.admin_free,
+                    batch_id=batch_id,
+                    batch_index=index,
+                    batch_size=requested,
+                ),
+                publication_scope="private",
+                is_public_feed=False,
+                is_profile_visible=False,
+                feed_prompt_visible=False,
+                feed_references_visible=False,
+            )
+            session.add(generation)
+            generations.append(generation)
+
+        await session.flush()
+
+        for generation in generations:
+            GenerationOutboxService.add(session, generation.id)
+            if charge_rox > 0:
+                await WalletService.debit(
+                    session,
+                    user_id=user_id,
+                    amount=charge_rox,
+                    kind="generation",
+                    reference_type="generation",
+                    reference_id=str(generation.id),
+                    idempotency_key=f"generation:{generation.id}:charge",
+                )
+        await session.commit()
+
+        try:
+            await redis.rpush(cls.WAKE_KEY, *[str(generation.id) for generation in generations])
+        except RedisError:
+            logger.warning("Redis wake-up failed for %s music generation(s)", len(generations))
+        return generations
+
     @classmethod
     async def create(
         cls,
@@ -342,71 +469,15 @@ class MusicGenerationService:
         prompt: str,
         parameters: dict[str, Any],
     ) -> Generation:
-        clean, retail_cost_rox = cls.prepare(parameters, prompt)
-        billing = await BillingAccessService.decision(
+        generations = await cls.create_many(
             session,
+            redis,
             user_id=user_id,
-            retail_cost=retail_cost_rox,
+            prompt=prompt,
+            parameters=parameters,
+            quantity=1,
         )
-        charge_rox = billing.effective_cost
-        await AbuseProtectionService.generation_rate(redis, user_id)
-        await GenerationAdmissionService.enforce(session, user_id=user_id, next_cost=charge_rox)
-
-        provider_model = str(settings.music_generation_model)
-        generation = Generation(
-            user_id=user_id,
-            kind="music",
-            prompt=str(clean.get("prompt") or ""),
-            cost_rox=charge_rox,
-            provider="kie",
-            status="queued",
-            parameters={
-                **clean,
-                "_model_id": MUSIC_MODEL_ID,
-                "_model_title": music_model_title(provider_model),
-                "_model_family": MUSIC_FAMILY,
-                "_media_type": MUSIC_MEDIA_TYPE,
-                "_operation": MUSIC_OPERATION,
-                "_provider_api": "suno_music",
-                "_kie_model": provider_model,
-                "_provider_model": provider_model,
-                "_billing_mode": "flat",
-                "_billing_seconds": None,
-                "_unit_price_rox": str(retail_cost_rox),
-                "_retail_cost_rox": str(billing.retail_cost),
-                "_admin_free": billing.admin_free,
-                **(
-                    {"_admin_free_generation": True, "_quoted_cost_rox": str(billing.retail_cost)}
-                    if billing.admin_free
-                    else {}
-                ),
-            },
-            publication_scope="private",
-            is_public_feed=False,
-            is_profile_visible=False,
-            feed_prompt_visible=False,
-            feed_references_visible=False,
-        )
-        session.add(generation)
-        await session.flush()
-        GenerationOutboxService.add(session, generation.id)
-        if charge_rox > 0:
-            await WalletService.debit(
-                session,
-                user_id=user_id,
-                amount=charge_rox,
-                kind="generation",
-                reference_type="generation",
-                reference_id=str(generation.id),
-                idempotency_key=f"generation:{generation.id}:charge",
-            )
-        await session.commit()
-
-        try:
-            await redis.rpush(cls.WAKE_KEY, str(generation.id))
-        except RedisError:
-            logger.warning("Redis wake-up failed for music generation %s", generation.id)
-        return generation
+        return generations[0]
 
     @staticmethod
     def public_settings(parameters: dict[str, Any]) -> dict[str, Any]:
