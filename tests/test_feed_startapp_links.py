@@ -17,7 +17,7 @@ def test_legacy_feed_bot_link_can_still_upgrade_to_main_mini_app(monkeypatch) ->
     generation_id = uuid.uuid4()
     legacy = f"https://t.me/roxy_bot?start=feed_{generation_id}_ref_777"
     direct = _direct_mini_app_link(legacy)
-    assert direct == f"https://t.me/roxy_bot/app?startapp=feed_{generation_id}_ref_777"
+    assert direct == f"https://t.me/roxy_bot?startapp=feed_{generation_id}_ref_777"
 
 
 @pytest.mark.asyncio
