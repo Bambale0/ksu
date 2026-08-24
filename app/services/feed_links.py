@@ -15,6 +15,7 @@ _POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE
 _LEGACY_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$", re.IGNORECASE)
 _PROFILE_RE = re.compile(r"^profile_(\d+)(?:_ref_(\d+))?$", re.IGNORECASE)
 _REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
+_MAIN_MINI_APP_SHORT_NAME_MARKERS = {"", "app", "main", "default"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,19 +67,32 @@ def _mini_app_short_name() -> str:
     return settings.telegram_mini_app_short_name.strip().strip("/")
 
 
-def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
-    """Build a direct Telegram Mini App URL.
+def _mini_app_base(username: str) -> str:
+    """Prefer the Main Mini App unless a real Direct Mini App short name is set."""
 
-    ``https://t.me/<bot>?startapp=...`` opens only the bot profile in many clients.
-    Direct Mini App entry needs the BotFather short name in the path:
-    ``https://t.me/<bot>/<short_name>?startapp=...``.
+    short_name = _mini_app_short_name()
+    if short_name.casefold() in _MAIN_MINI_APP_SHORT_NAME_MARKERS:
+        return f"https://t.me/{username}"
+    return f"https://t.me/{username}/{quote(short_name, safe='')}"
+
+
+def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
+    """Build a Telegram Mini App URL with a startapp payload.
+
+    Telegram has two Mini App link shapes:
+    ``https://t.me/<bot>?startapp=...`` for the bot's Main Mini App, and
+    ``https://t.me/<bot>/<short_name>?startapp=...`` for a named Direct Mini App.
+
+    ``app`` is the historical ROXY env default and a common placeholder. Do not
+    append it as a path segment unless the operator configures a non-placeholder
+    BotFather short name, otherwise referral links open the bot profile instead
+    of the Mini App on real Telegram clients.
     """
 
     username = settings.bot_username.strip().lstrip("@")
     if not username:
         return fallback_url
-    short_name = _mini_app_short_name()
-    base = f"https://t.me/{username}/{quote(short_name, safe='')}" if short_name else f"https://t.me/{username}"
+    base = _mini_app_base(username)
     param = str(payload or "").strip()
     if not param:
         return f"{base}?startapp"
