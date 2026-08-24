@@ -111,12 +111,13 @@ return {failures, ttl}
         return RateLimitResult(used=used, limit=limit, retry_after=ttl)
 
     @classmethod
-    async def generation_rate(cls, redis: Redis, user_id: uuid.UUID) -> None:
+    async def generation_rate(cls, redis: Redis, user_id: uuid.UUID, *, amount: int = 1) -> None:
         await cls.consume(
             redis,
             key=f"abuse:generation:user:{user_id}",
             limit=settings.generation_rate_limit_per_minute,
             window_seconds=60,
+            amount=max(1, int(amount)),
             message="Generation rate limit exceeded",
         )
 
@@ -229,9 +230,12 @@ class GenerationAdmissionService:
         *,
         user_id: uuid.UUID,
         next_cost: Decimal,
+        quantity: int = 1,
     ) -> None:
         if not settings.abuse_protection_enabled:
             return
+
+        requested = max(1, int(quantity))
 
         # Serialize admission decisions per user inside the same transaction that
         # later debits the wallet and creates the generation/outbox row.
@@ -253,7 +257,7 @@ class GenerationAdmissionService:
                 )
                 or 0
             )
-            if active >= settings.generation_max_active_per_user:
+            if active + requested > settings.generation_max_active_per_user:
                 raise ResourceLimitExceeded(
                     "Too many active generations",
                     retry_after=max(5, settings.generation_reconcile_stale_seconds),
