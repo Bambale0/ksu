@@ -1,11 +1,23 @@
 name: Mini App Playwright E2E
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/mini-app/**'
+      - '.github/workflows/miniapp-playwright.yml'
   pull_request:
     paths:
       - 'frontend/mini-app/**'
       - '.github/workflows/miniapp-playwright.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miniapp-playwright-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
