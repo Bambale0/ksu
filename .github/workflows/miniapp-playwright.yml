@@ -3,9 +3,6 @@ name: Mini App Playwright E2E
 on:
   push:
     branches: [main]
-    paths:
-      - 'frontend/mini-app/**'
-      - '.github/workflows/miniapp-playwright.yml'
   pull_request:
     paths:
       - 'frontend/mini-app/**'
