@@ -157,3 +157,27 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   expect(payload.parameters.first_frame_url).toBe(referenceUrl);
   expect(payload.parameters.reference_image_urls).toBeUndefined();
 });
+
+test('Seedance multimodal reference mode sends reference_image_urls without frame fields', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockRoxy(page);
+  await page.goto('/mini-app/?route=create');
+
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const imageInput = page.locator('input[type="file"]').first();
+  await imageInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
+  await expect(page.getByText('1 загружено')).toBeVisible();
+  await page.getByRole('textbox', { name: /Промпт/ }).fill('Собери видео по визуальному референсу, без первого кадра');
+  await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
+
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
+  const request = await submitted;
+  const payload = request.postDataJSON();
+  expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.parameters.reference_image_urls).toEqual([referenceUrl]);
+  expect(payload.parameters.first_frame_url).toBeUndefined();
+  expect(payload.parameters.last_frame_url).toBeUndefined();
+  expect(payload.parameters.reference_video_urls).toBeUndefined();
+  expect(payload.parameters.reference_audio_urls).toBeUndefined();
+});
