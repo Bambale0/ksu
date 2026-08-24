@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          required=("CI" "Admin Console" "Batch Generation")
+          required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")
           deadline=$((SECONDS + 900))
 
           api_header=(
@@ -337,6 +337,7 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
+            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- backup-worker running check: required"
             echo "- reference static backfill after health gate: required"
