@@ -12,6 +12,7 @@ import httpx
 
 from app.services.kie_image_contracts import normalize_kie_image_input
 from app.services.kie_video_contracts import normalize_kie_video_input
+from app.services.seedance_reference_modes import enforce_seedance_reference_mode
 
 
 class KieProviderError(RuntimeError):
@@ -51,6 +52,7 @@ class KieClient:
     ) -> str:
         normalized_input = normalize_kie_image_input(model, input_data)
         normalized_input = normalize_kie_video_input(model, normalized_input)
+        enforce_seedance_reference_mode(model, normalized_input)
         body: dict[str, Any] = {"model": model, "input": normalized_input}
         if callback_url:
             body["callBackUrl"] = callback_url
