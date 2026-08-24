@@ -11,6 +11,7 @@ const DRAFTS_KEY = "roxy.next.generation-drafts.v1";
 const MODEL_KEY = "ksu-selected-model";
 const MEDIA_FILTER_KEY = "ksu-selected-media";
 const ACTIVE_STATUSES = new Set(["queued", "retry", "submitting", "generating"]);
+const MAX_GENERATION_QUANTITY = 6;
 const PROMO_SLIDES = [
   { src: "promo/roxy-promo-1.webp", alt: "ROXY Creator Rewards" },
   { src: "promo/roxy-promo-2.webp", alt: "ROXY Partner Referrals" },
@@ -117,6 +118,7 @@ function createDefaultDraft(model: GenerationModel): Draft {
     values: { ...(model.ui_schema?.defaults || {}) },
     scenario: model.ui_schema?.scenario?.default || model.ui_schema?.scenario?.items?.[0]?.id || null,
     billing_seconds: null,
+    quantity: 1,
   };
 }
 
@@ -145,10 +147,12 @@ function buildPayload(model: GenerationModel, draft: Draft): Record<string, unkn
     if (field.control === "json" && typeof value === "string") parameters[field.name] = JSON.parse(value);
     else parameters[field.name] = value;
   }
+  const quantity = Math.min(MAX_GENERATION_QUANTITY, Math.max(1, Number(draft.quantity || 1)));
   const payload: Record<string, unknown> = {
     model_id: model.id,
     prompt: String(draft.values.prompt || ""),
     parameters,
+    quantity,
   };
   if (draft.billing_seconds) payload.billing_seconds = Number(draft.billing_seconds);
   return payload;
@@ -173,6 +177,8 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
   if (billing?.required && !draft.billing_seconds) errors.push(`Заполните «${billing.label || "Длительность"}»`);
   if (draft.billing_seconds && billing?.min && draft.billing_seconds < billing.min) errors.push(`Минимум ${billing.min} сек.`);
   if (draft.billing_seconds && billing?.max && draft.billing_seconds > billing.max) errors.push(`Максимум ${billing.max} сек.`);
+  const quantity = Number(draft.quantity || 1);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_GENERATION_QUANTITY) errors.push(`Количество — от 1 до ${MAX_GENERATION_QUANTITY}`);
   return [...new Set(errors)];
 }
 
@@ -327,7 +333,7 @@ export function RoxyApp() {
       <main className="main-shell">
         {route === "home" && <HomeScreen models={models} recent={recent} onNavigate={navigate} onCreate={openCreate} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "catalog" && <CatalogScreen models={models} families={families} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
-        {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
+        {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(items) => { const list = Array.isArray(items) ? items : [items]; setRecent((current) => [...list, ...current.filter((x) => !list.some((item) => item.id === x.id))].slice(0, 12)); setPreviewSurface("private"); setPreview(list[0]); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} />}
       </main>
@@ -412,7 +418,7 @@ function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models
   );
 }
 
-function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
+function CreateScreen({ models, families, me, onBalance, onCreated, showToast }: { models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (items: Generation[]) => void; showToast: (message: string) => void }) {
   const initialModelId = typeof window !== "undefined" ? localStorage.getItem(MODEL_KEY) : null;
   const initialMedia = typeof window !== "undefined" ? normalizeMediaFilter(localStorage.getItem(MEDIA_FILTER_KEY)) : "all";
   const [selectedId, setSelectedId] = useState(initialModelId || models[0]?.id || "");
@@ -505,17 +511,26 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
     setSubmitting(true);
     try {
       const created = await api.create(buildPayload(selected, draft));
+      const ids = created.ids?.length ? created.ids : [created.id];
+      const createdQuantity = created.quantity || ids.length;
       notify("success");
-      showToast("Генерация запущена");
+      showToast(createdQuantity > 1 ? `${createdQuantity} генераций запущено` : "Генерация запущена");
       await onBalance();
-      let current: Generation = { id: created.id, status: created.status || "queued", model: selected, prompt: String(draft.values.prompt || "") };
+      let items: Generation[] = ids.map((id, index) => ({
+        id,
+        status: created.status || "queued",
+        model: selected,
+        prompt: String(draft.values.prompt || ""),
+        batch_index: createdQuantity > 1 ? index + 1 : undefined,
+        batch_size: createdQuantity > 1 ? createdQuantity : undefined,
+      }));
       const started = Date.now();
       while (Date.now() - started < 10 * 60 * 1000) {
-        current = await api.generation(created.id);
-        if (!ACTIVE_STATUSES.has(current.status)) break;
+        items = await Promise.all(items.map((item) => ACTIVE_STATUSES.has(item.status) ? api.generation(item.id).catch(() => item) : Promise.resolve(item)));
+        if (items.every((item) => !ACTIVE_STATUSES.has(item.status))) break;
         await new Promise((resolve) => window.setTimeout(resolve, 1800));
       }
-      onCreated(current);
+      onCreated(items);
     } catch (error) {
       notify("error");
       showToast(error instanceof Error ? error.message : "Не удалось запустить генерацию");
@@ -527,6 +542,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   if (!selected || !draft) return <section className="screen"><ScreenHead kicker="Создание" title="Каталог моделей загружается" /></section>;
   const fields = visibleFields(selected, draft);
   const groups = selected.ui_schema?.groups || [{ id: "main", title: "Настройки" }];
+  const quantity = Math.min(MAX_GENERATION_QUANTITY, Math.max(1, Number(draft.quantity || 1)));
 
   return (
     <section className="screen create-screen">
@@ -571,12 +587,13 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
           })}
 
           {selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}
+          <div className="panel"><label className="label">Количество запусков</label><div className="segmented scrollable">{[1, 2, 3, 4, 5, 6].map((count) => <button key={count} type="button" className={quantity === count ? "active" : ""} onClick={() => persist(selected.id, { ...draft, quantity: count })}>{count}</button>)}</div><p className="muted">Каждый запуск создаёт отдельную работу. Стоимость считается за все запуски.</p></div>
         </div>
         <aside className="create-summary panel">
           <span className="kicker">Итог</span><h2>{selected.title}</h2>
           <p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p>
-          <div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${compact(quote.cost_rub)} ₽` : quoteError || errors[0] || "Считаю…"}</small></div>
-          <button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button>
+          <div className="quote-box"><span>{quantity > 1 ? `Стоимость за ${quantity}` : "Стоимость"}</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? (quantity > 1 && quote.unit_price_rox ? `≈ ${compact(quote.cost_rub)} ₽ · по ${compact(quote.unit_price_rox)} ROX` : `≈ ${compact(quote.cost_rub)} ₽`) : quoteError || errors[0] || "Считаю…"}</small></div>
+          <button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? (quantity > 1 ? `Создать ${quantity} · ${compact(quote.cost_rox)} ROX` : `Создать · ${compact(quote.cost_rox)} ROX`) : "Создать"}</button>
         </aside>
       </div>
       {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
@@ -605,7 +622,7 @@ function DynamicField({ field, value, onChange, onUpload }: { field: UiField; va
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {
     const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
-    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => void onUpload(Array.from(e.target.files || []))}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
+    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ""; void onUpload(files); }}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
   }
   if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
   if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
