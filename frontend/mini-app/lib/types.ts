@@ -117,6 +117,9 @@ export type Generation = {
   cost_rox?: string;
   cost_rub?: string;
   billing_seconds?: number | null;
+  batch_id?: string | null;
+  batch_index?: number | null;
+  batch_size?: number | null;
   result_url?: string | null;
   result_urls?: string[];
   media?: Array<{ url?: string; kind?: string; content_type?: string | null; ordinal?: number }>;
@@ -280,6 +283,10 @@ export type Quote = {
   model_id: string;
   cost_rox: string;
   cost_rub: string;
+  quantity?: number;
+  unit_price_rox?: string;
+  effective_cost_rox?: string;
+  retail_cost_rox?: string;
   billing_seconds?: number | null;
 };
 
@@ -288,6 +295,7 @@ export type Draft = {
   scenario?: string | null;
   billing_seconds?: number | null;
   input_url?: string | null;
+  quantity?: number;
 };
 
 export type Route = "home" | "feed" | "catalog" | "create" | "history" | "profile" | "partners";
