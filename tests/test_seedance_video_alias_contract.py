@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
 from app.services.generations import GenerationService
 from app.services.model_routing import resolve_model_request
 from app.services.reference_resolver import ReferenceResolver
+
+
+class TrustedReferenceSession:
+    async def scalar(self, _statement: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            duration_ms=5_000,
+            probe_status="ready",
+            size_bytes=1_000_000,
+        )
 
 
 def test_seedance_input_video_url_alias_becomes_reference_video() -> None:
@@ -50,7 +62,7 @@ def test_seedance_input_video_urls_alias_becomes_reference_videos() -> None:
 @pytest.mark.asyncio
 async def test_seedance_25_video_upload_alias_survives_generation_prepare() -> None:
     spec, clean, _cost, seconds, _unit = await GenerationService.prepare_request(
-        object(),  # type: ignore[arg-type]
+        TrustedReferenceSession(),
         model_id="seedance-2.5",
         prompt="motion from uploaded video",
         parameters={
