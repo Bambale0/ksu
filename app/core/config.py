@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True
     generation_rate_limit_per_minute: int = 10
-    generation_max_active_per_user: int = 3
+    generation_max_active_per_user: int = 6
     generation_daily_spend_limit_credits: Decimal = Decimal("0")
     generation_action_contexts_enabled: bool = True
     generation_action_context_ttl_seconds: int = 604800
