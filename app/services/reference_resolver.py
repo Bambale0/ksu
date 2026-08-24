@@ -9,6 +9,7 @@ from app.services.model_routing import (
     IMAGE_REFERENCE_FIELDS,
     VIDEO_REFERENCE_FIELDS,
     image_references,
+    resolve_model_request,
     video_references,
 )
 from app.services.reference_static import ReferenceStaticStorage
@@ -53,6 +54,45 @@ class ReferenceResolver:
             or FeedStaticStorage.is_local_url(value)
         )
 
+    @staticmethod
+    def _canonical_generation_parameters(
+        parameters: dict[str, Any],
+        input_url: str | None,
+    ) -> dict[str, Any]:
+        """Re-apply model routing before provider submit.
+
+        Existing queued rows may contain old Mini App aliases such as
+        ``input_video_urls`` or ``input_image_urls``. Creation-time validation is
+        not enough for those rows: the worker builds the Kie payload from saved
+        ``Generation.parameters``. Normalize again at the provider boundary so
+        Seedance multi-reference requests reach Kie as canonical
+        ``reference_*_urls`` arrays.
+        """
+
+        model_id = str(parameters.get("_model_id") or "").strip()
+        if not model_id:
+            return parameters
+
+        private_parameters = {
+            key: value
+            for key, value in parameters.items()
+            if key.startswith("_")
+        }
+        public_parameters = {
+            key: value
+            for key, value in parameters.items()
+            if not key.startswith("_")
+        }
+        try:
+            routed = resolve_model_request(
+                model_id,
+                public_parameters,
+                input_url=input_url,
+            )
+        except Exception:
+            return parameters
+        return {**routed.parameters, **private_parameters}
+
     @classmethod
     def public_image_references(
         cls,
@@ -93,8 +133,9 @@ class ReferenceResolver:
 
     @classmethod
     def generation_context(cls, generation: Generation) -> GenerationContext:
-        parameters = dict(generation.parameters or {})
+        raw_parameters = dict(generation.parameters or {})
         input_url = str(generation.input_url) if generation.input_url else None
+        parameters = cls._canonical_generation_parameters(raw_parameters, input_url)
         prompt = str(generation.prompt or "")
         return GenerationContext(
             model_id=str(parameters.get("_model_id") or ""),
