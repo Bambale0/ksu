@@ -71,6 +71,10 @@ const family = {
   variants: [{ id: seedance.id, title: seedance.title, version: '2.0', media_type: 'video', operation: seedance.operation, price_rox: '11.00' }],
 };
 
+function money(value) {
+  return `${Number(value).toFixed(2)}`;
+}
+
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
@@ -94,12 +98,26 @@ async function mockRoxy(page) {
     const method = route.request().method();
     if (path === '/api/v1/me') return json(route, { id: 'user_1', telegram_id: 777, first_name: 'QA', balance_rox: '500.00' });
     if (path === '/api/v1/onboarding') return json(route, { enabled: false, completed: true });
-    if (path === '/api/v1/generations/models') return json(route, { models: [seedance], families: [family] });
-    if (path === '/api/v1/generations/quote') return json(route, { cost_rox: '55.00', cost_rub: '55.00' });
+    if (path === '/api/v1/generations/models') return json(route, { models: [seedance], families: [family], max_generation_quantity: 6 });
+    if (path === '/api/v1/generations/quote') {
+      const payload = route.request().postDataJSON();
+      const quantity = Number(payload.quantity || 1);
+      return json(route, {
+        quantity,
+        unit_price_rox: '55.00',
+        cost_rox: money(55 * quantity),
+        cost_rub: money(55 * quantity),
+      });
+    }
     if (path === '/api/v1/uploads/kie') return json(route, { url: referenceUrl, name: 'reference.png', mime_type: 'image/png', size: 4, replayed: false }, 201);
     if (path === '/api/v1/references') return json(route, { items: [] });
-    if (path === '/api/v1/generations' && method === 'POST') return json(route, { id: 'gen_new', status: 'queued', cost_rox: '55.00' }, 202);
-    if (path === '/api/v1/generations/gen_new') return json(route, { id: 'gen_new', status: 'queued', model: seedance, created_at: new Date().toISOString(), result_url: null, result_urls: [] });
+    if (path === '/api/v1/generations' && method === 'POST') {
+      const payload = route.request().postDataJSON();
+      const quantity = Number(payload.quantity || 1);
+      const ids = Array.from({ length: quantity }, (_, index) => `gen_new_${index + 1}`);
+      return json(route, { id: ids[0], ids, quantity, status: 'queued', cost_rox: money(55 * quantity) }, 202);
+    }
+    if (path.startsWith('/api/v1/generations/gen_new_')) return json(route, { id: path.split('/').pop(), status: 'queued', model: seedance, created_at: new Date().toISOString(), result_url: null, result_urls: [] });
     if (path === '/api/v1/generations') return json(route, { items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json(route, { items: [] });
     if (path === '/api/v1/trends') return json(route, { items: [] });
@@ -154,6 +172,7 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   const request = await submitted;
   const payload = request.postDataJSON();
   expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.quantity).toBe(1);
   expect(payload.parameters.first_frame_url).toBe(referenceUrl);
   expect(payload.parameters.reference_image_urls).toBeUndefined();
 });
@@ -175,9 +194,29 @@ test('Seedance multimodal reference mode sends reference_image_urls without fram
   const request = await submitted;
   const payload = request.postDataJSON();
   expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.quantity).toBe(1);
   expect(payload.parameters.reference_image_urls).toEqual([referenceUrl]);
   expect(payload.parameters.first_frame_url).toBeUndefined();
   expect(payload.parameters.last_frame_url).toBeUndefined();
   expect(payload.parameters.reference_video_urls).toBeUndefined();
   expect(payload.parameters.reference_audio_urls).toBeUndefined();
+});
+
+test('Mini App quantity picker sends six launches and total quote', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockRoxy(page);
+  await page.goto('/mini-app/?route=create');
+
+  await page.getByRole('textbox', { name: /Промпт/ }).fill('Сделай шесть разных вариантов динамичного видео');
+  await page.getByRole('button', { name: '6', exact: true }).click();
+  await expect(page.getByText('Стоимость за 6')).toBeVisible();
+  await expect(page.getByText('330 ROX', { exact: true })).toBeVisible();
+
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Создать 6 · 330 ROX/ }).click();
+  const request = await submitted;
+  const payload = request.postDataJSON();
+  expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.quantity).toBe(6);
+  expect(payload.prompt).toBe('Сделай шесть разных вариантов динамичного видео');
 });
