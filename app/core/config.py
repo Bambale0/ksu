@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     bot_token: str = ""
     bot_username: str = ""
     telegram_mini_app_short_name: str = "app"
-    support_telegram_url: str = "https://t.me/korkinaxenia"
+    support_telegram_url: str = ""
     partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
