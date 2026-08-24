@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import QUICK_SUPPORT_TEXT, back_menu
+from app.bot.support_links import normalize_direct_support_url
 from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
 from app.services.users import UserService
@@ -18,10 +19,7 @@ class SupportFlow(StatesGroup):
 
 
 def _direct_support_url() -> str | None:
-    url = settings.support_telegram_url.strip()
-    if url.startswith("https://t.me/") or url.startswith("tg://resolve?"):
-        return url
-    return None
+    return normalize_direct_support_url(settings.support_telegram_url)
 
 
 def _direct_support_markup(url: str) -> InlineKeyboardMarkup:
