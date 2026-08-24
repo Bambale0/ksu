@@ -20,6 +20,8 @@ from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
+MAX_GENERATION_QUANTITY = 6
+
 
 class GenerationService:
     # Kept for compatibility with older deployments/metrics. The worker no longer
@@ -167,6 +169,164 @@ class GenerationService:
         return spec, clean, cost_rox, seconds, unit_price
 
     @classmethod
+    def _generation_parameters(
+        cls,
+        *,
+        clean: dict[str, Any],
+        requested_model_id: str,
+        spec: ModelSpec,
+        provider_model: str,
+        seconds: int | None,
+        unit_price: Decimal,
+        retail_cost_rox: Decimal,
+        admin_free: bool,
+        batch_id: uuid.UUID | None = None,
+        batch_index: int = 1,
+        batch_size: int = 1,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            **clean,
+            "_requested_model_id": requested_model_id,
+            "_auto_routed": spec.id != requested_model_id,
+            "_auto_mode": "reference" if any(clean.get(key) for key in ("image_urls", "input_urls", "image_input", "image_url", "first_frame_url", "reference_image_urls", "video_urls", "video_url", "first_clip_url", "reference_video_urls")) else "text",
+            "_model_id": spec.id,
+            "_model_title": spec.title,
+            "_model_family": spec.family,
+            "_operation": spec.operation,
+            "_media_type": spec.media_type,
+            "_kie_model": spec.kie_model,
+            "_provider_model": provider_model,
+            "_billing_mode": spec.price_mode,
+            "_billing_seconds": seconds,
+            "_unit_price_rox": str(unit_price),
+            "_retail_cost_rox": str(retail_cost_rox),
+            "_admin_free": admin_free,
+            **(
+                {"_admin_free_generation": True, "_quoted_cost_rox": str(retail_cost_rox)}
+                if admin_free
+                else {}
+            ),
+        }
+        if batch_id is not None and batch_size > 1:
+            params.update(
+                {
+                    "_batch_id": str(batch_id),
+                    "_batch_index": batch_index,
+                    "_batch_size": batch_size,
+                }
+            )
+        return params
+
+    @classmethod
+    async def create_many(
+        cls,
+        session: AsyncSession,
+        redis: Redis,
+        *,
+        user_id: uuid.UUID,
+        model_id: str,
+        prompt: str = "",
+        input_url: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        billing_seconds: int | None = None,
+        quantity: int = 1,
+        source_feed_gen_id: uuid.UUID | None = None,
+        parent_generation_id: uuid.UUID | None = None,
+        action_type: str | None = None,
+    ) -> list[Generation]:
+        requested = int(quantity)
+        if requested < 1 or requested > MAX_GENERATION_QUANTITY:
+            raise ValueError(f"Generation quantity must be between 1 and {MAX_GENERATION_QUANTITY}")
+
+        spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
+            session,
+            model_id=model_id,
+            prompt=prompt,
+            input_url=input_url,
+            parameters=parameters,
+            billing_seconds=billing_seconds,
+        )
+        billing = await BillingAccessService.decision(
+            session,
+            user_id=user_id,
+            retail_cost=retail_cost_rox,
+        )
+        charge_rox = billing.effective_cost
+        total_charge_rox = (charge_rox * Decimal(requested)).quantize(Decimal("0.01"))
+
+        # Admins are free, not unbounded: request/provider resource safety remains
+        # active. Passing zero only removes spend accounting from the admission gate.
+        await AbuseProtectionService.generation_rate(redis, user_id, amount=requested)
+        await GenerationAdmissionService.enforce(
+            session,
+            user_id=user_id,
+            next_cost=total_charge_rox,
+            quantity=requested,
+        )
+
+        provider_model = cls._provider_model_snapshot(spec, clean)
+        batch_id = uuid.uuid4() if requested > 1 else None
+        generations: list[Generation] = []
+        for index in range(1, requested + 1):
+            generation = Generation(
+                user_id=user_id,
+                kind=spec.operation,
+                prompt=str(clean.get("prompt") or prompt or ""),
+                input_url=input_url,
+                cost_rox=charge_rox,
+                provider="kie",
+                parameters=cls._generation_parameters(
+                    clean=clean,
+                    requested_model_id=model_id,
+                    spec=spec,
+                    provider_model=provider_model,
+                    seconds=seconds,
+                    unit_price=unit_price,
+                    retail_cost_rox=billing.retail_cost,
+                    admin_free=billing.admin_free,
+                    batch_id=batch_id,
+                    batch_index=index,
+                    batch_size=requested,
+                ),
+                status="queued",
+                source_feed_gen_id=source_feed_gen_id,
+                parent_generation_id=parent_generation_id,
+                action_type=action_type,
+                publication_scope="private",
+                is_public_feed=False,
+                is_profile_visible=False,
+                feed_prompt_visible=False if source_feed_gen_id else False,
+                feed_references_visible=False if source_feed_gen_id else False,
+            )
+            session.add(generation)
+            generations.append(generation)
+
+        await session.flush()
+
+        for generation in generations:
+            GenerationOutboxService.add(session, generation.id)
+            if charge_rox > 0:
+                await WalletService.debit(
+                    session,
+                    user_id=user_id,
+                    amount=charge_rox,
+                    kind="generation",
+                    reference_type="generation",
+                    reference_id=str(generation.id),
+                    idempotency_key=f"generation:{generation.id}:charge",
+                )
+        await session.commit()
+
+        try:
+            await redis.rpush(cls.WAKE_KEY, *[str(generation.id) for generation in generations])
+        except RedisError:
+            logger.warning(
+                "Redis wake-up failed for %s generation(s); outbox will recover them",
+                len(generations),
+            )
+        return generations
+
+    @classmethod
     async def create(
         cls,
         session: AsyncSession,
@@ -182,89 +342,18 @@ class GenerationService:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
     ) -> Generation:
-        spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
+        generations = await cls.create_many(
             session,
+            redis,
+            user_id=user_id,
             model_id=model_id,
             prompt=prompt,
             input_url=input_url,
             parameters=parameters,
             billing_seconds=billing_seconds,
-        )
-        billing = await BillingAccessService.decision(
-            session,
-            user_id=user_id,
-            retail_cost=retail_cost_rox,
-        )
-        charge_rox = billing.effective_cost
-
-        # Admins are free, not unbounded: request/provider resource safety remains
-        # active. Passing zero only removes spend accounting from the admission gate.
-        await AbuseProtectionService.generation_rate(redis, user_id)
-        await GenerationAdmissionService.enforce(
-            session,
-            user_id=user_id,
-            next_cost=charge_rox,
-        )
-
-        provider_model = cls._provider_model_snapshot(spec, clean)
-        generation = Generation(
-            user_id=user_id,
-            kind=spec.operation,
-            prompt=str(clean.get("prompt") or prompt or ""),
-            input_url=input_url,
-            cost_rox=charge_rox,
-            provider="kie",
-            parameters={
-                **clean,
-                "_requested_model_id": model_id,
-                "_auto_routed": spec.id != model_id,
-                "_auto_mode": "reference" if any(clean.get(key) for key in ("image_urls", "input_urls", "image_input", "image_url", "first_frame_url", "reference_image_urls", "video_urls", "video_url", "first_clip_url", "reference_video_urls")) else "text",
-                "_model_id": spec.id,
-                "_model_title": spec.title,
-                "_model_family": spec.family,
-                "_operation": spec.operation,
-                "_media_type": spec.media_type,
-                "_kie_model": spec.kie_model,
-                "_provider_model": provider_model,
-                "_billing_mode": spec.price_mode,
-                "_billing_seconds": seconds,
-                "_unit_price_rox": str(unit_price),
-                "_retail_cost_rox": str(billing.retail_cost),
-                "_admin_free": billing.admin_free,
-                **(
-                    {"_admin_free_generation": True, "_quoted_cost_rox": str(billing.retail_cost)}
-                    if billing.admin_free
-                    else {}
-                ),
-            },
-            status="queued",
+            quantity=1,
             source_feed_gen_id=source_feed_gen_id,
             parent_generation_id=parent_generation_id,
             action_type=action_type,
-            publication_scope="private",
-            is_public_feed=False,
-            is_profile_visible=False,
-            feed_prompt_visible=False if source_feed_gen_id else False,
-            feed_references_visible=False if source_feed_gen_id else False,
         )
-        session.add(generation)
-        await session.flush()
-
-        GenerationOutboxService.add(session, generation.id)
-        if charge_rox > 0:
-            await WalletService.debit(
-                session,
-                user_id=user_id,
-                amount=charge_rox,
-                kind="generation",
-                reference_type="generation",
-                reference_id=str(generation.id),
-                idempotency_key=f"generation:{generation.id}:charge",
-            )
-        await session.commit()
-
-        try:
-            await redis.rpush(cls.WAKE_KEY, str(generation.id))
-        except RedisError:
-            logger.warning("Redis wake-up failed for generation %s; outbox will recover it", generation.id)
-        return generation
+        return generations[0]
