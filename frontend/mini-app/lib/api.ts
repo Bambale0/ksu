@@ -86,12 +86,12 @@ export const api = {
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
   onboarding: () => request<Record<string, any>>("/api/v1/onboarding"),
   completeOnboarding: () => request<Record<string, any>>("/api/v1/onboarding/complete", { method: "POST" }),
-  models: () => request<{ models: GenerationModel[]; families?: GenerationModelFamily[] }>("/api/v1/generations/models"),
+  models: () => request<{ models: GenerationModel[]; families?: GenerationModelFamily[]; max_generation_quantity?: number }>("/api/v1/generations/models"),
   generations: (params = "limit=24") => request<{ items: Generation[]; has_more: boolean; next_before?: string | null }>(`/api/v1/generations?${params}`),
   generation: (id: string) => request<Generation>(`/api/v1/generations/${encodeURIComponent(id)}`),
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: (body: Record<string, unknown>) => request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) }),
-  create: (body: Record<string, unknown>) => request<{ id: string; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) }),
+  create: (body: Record<string, unknown>) => request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) }),
   upload: (file: File) => {
     const form = new FormData();
     form.append("file", file, file.name);
