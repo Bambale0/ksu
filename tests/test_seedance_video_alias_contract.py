@@ -82,3 +82,25 @@ def test_reference_resolver_treats_video_alias_as_explicit_media_input() -> None
 
     assert provider_input["input_video_url"] == "https://cdn.example/motion.mp4"
     assert "image_url" not in provider_input
+
+
+def test_seedance_video_alias_reaches_provider_input_as_canonical_reference() -> None:
+    routed = resolve_model_request(
+        "seedance-2.5",
+        {
+            "prompt": "send this to Kie",
+            "input_video_url": "https://cdn.example/motion.mp4",
+            "duration": 5,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+        },
+    )
+    provider_input = ReferenceResolver.provider_input(
+        prompt="send this to Kie",
+        input_url=None,
+        parameters=routed.parameters,
+    )
+
+    assert provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
+    assert "input_video_url" not in provider_input
+    assert "image_url" not in provider_input
