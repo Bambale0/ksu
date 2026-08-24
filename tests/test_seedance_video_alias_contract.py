@@ -7,6 +7,7 @@ import pytest
 
 from app.services.generations import GenerationService
 from app.services.model_routing import resolve_model_request
+from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.reference_resolver import ReferenceResolver
 
 
@@ -56,6 +57,31 @@ def test_seedance_input_video_urls_alias_becomes_reference_videos() -> None:
         "https://cdn.example/motion-b.mp4",
     ]
     assert "input_video_urls" not in routed.parameters
+    assert "first_frame_url" not in routed.parameters
+
+
+def test_seedance_input_image_urls_alias_becomes_reference_images() -> None:
+    routed = resolve_model_request(
+        "seedance-2.0",
+        {
+            "prompt": "use three image refs",
+            "input_image_urls": [
+                "https://cdn.example/ref-a.png",
+                "https://cdn.example/ref-b.png",
+                "https://cdn.example/ref-c.png",
+            ],
+            "duration": 5,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+        },
+    )
+
+    assert routed.parameters["reference_image_urls"] == [
+        "https://cdn.example/ref-a.png",
+        "https://cdn.example/ref-b.png",
+        "https://cdn.example/ref-c.png",
+    ]
+    assert "input_image_urls" not in routed.parameters
     assert "first_frame_url" not in routed.parameters
 
 
@@ -116,3 +142,66 @@ def test_seedance_video_alias_reaches_provider_input_as_canonical_reference() ->
     assert provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
     assert "input_video_url" not in provider_input
     assert "image_url" not in provider_input
+
+
+def test_generation_context_normalizes_saved_seedance_multirefs_before_provider_submit() -> None:
+    generation = SimpleNamespace(
+        prompt="send saved multirefs to Kie",
+        input_url=None,
+        parameters={
+            "_model_id": "seedance-2.5",
+            "_provider_model": "bytedance/seedance-2-5",
+            "input_image_urls": [
+                "https://cdn.example/ref-a.png",
+                "https://cdn.example/ref-b.png",
+                "https://cdn.example/ref-c.png",
+            ],
+            "input_video_urls": ["https://cdn.example/motion.mp4"],
+            "duration": 5,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+        },
+    )
+
+    context = ReferenceResolver.generation_context(generation)
+
+    assert context.provider_input["reference_image_urls"] == [
+        "https://cdn.example/ref-a.png",
+        "https://cdn.example/ref-b.png",
+        "https://cdn.example/ref-c.png",
+    ]
+    assert context.provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
+    assert "input_image_urls" not in context.provider_input
+    assert "input_video_urls" not in context.provider_input
+    assert context.parameters["_provider_model"] == "bytedance/seedance-2-5"
+
+
+def test_seedance_reference_mode_ui_appends_images_instead_of_replacing() -> None:
+    schema = build_public_model_ui_schema(
+        {
+            "id": "seedance-2.0",
+            "known_fields": [
+                "prompt",
+                "first_frame_url",
+                "last_frame_url",
+                "reference_image_urls",
+                "reference_video_urls",
+                "reference_audio_urls",
+                "duration",
+                "resolution",
+                "aspect_ratio",
+            ],
+            "required_fields": ["prompt", "duration"],
+            "media_type": "video",
+            "operation": "multimodal_video",
+        }
+    )
+
+    fields = {field["name"]: field for field in schema["fields"]}
+    assert fields["reference_image_urls"]["control"] == "files"
+    assert fields["reference_image_urls"]["max_items"] >= 3
+
+    scenarios = {item["id"]: item for item in schema["scenario"]["items"]}
+    assert scenarios["first_frame"]["title"] == "Фото-референсы"
+    assert scenarios["first_frame"]["visible_fields"] == ["reference_image_urls"]
+    assert scenarios["first_frame"]["required_fields"] == ["reference_image_urls"]
