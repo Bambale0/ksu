@@ -37,8 +37,8 @@ _TOOL_TITLE = {
     "video_prompt": "Prompt по видео",
 }
 _DEFAULT_COSTS = {
-    "image_analysis": Decimal("1.00"),
-    "prompt_builder": Decimal("1.00"),
+    "image_analysis": Decimal("15.00"),
+    "prompt_builder": Decimal("10.00"),
     "video_prompt": Decimal("30.00"),
 }
 _ALLOWED_DURATIONS = {5, 10, 15}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Literal
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -17,6 +18,7 @@ from app.services.feed import (
     FeedPublicationError,
     FeedService,
 )
+from app.services.feed_links import mini_app_deep_link
 from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(tags=["feed"])
@@ -56,15 +58,15 @@ def _http_error(exc: Exception) -> HTTPException:
 
 
 def _direct_mini_app_link(link: str | None) -> str | None:
-    """Turn a verified bot start payload into a Main Mini App deep link.
-
-    The payload itself stays identical (feed_<generation>_ref_<author>) so old
-    bot /start links and the new direct Mini App links share one parser.
-    """
+    """Turn a verified bot start payload into a direct Main Mini App link."""
 
     if not link:
         return None
-    return link.replace("?start=", "?startapp=", 1)
+    parsed = urlparse(link)
+    payload = (parse_qs(parsed.query).get("start") or parse_qs(parsed.query).get("startapp") or [""])[0]
+    if payload:
+        return mini_app_deep_link(payload)
+    return link
 
 
 def _sanitize_trend_card(card: dict[str, object], generation: Generation) -> dict[str, object]:

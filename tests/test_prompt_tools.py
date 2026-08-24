@@ -58,8 +58,8 @@ async def _fixture_user_and_tariff(session) -> tuple[User, AdminAccount]:  # typ
             "video_models": {},
             "partner_rates": {},
             "prompt_costs": {
-                "image_analysis": "1.00",
-                "prompt_builder": "1.00",
+                "image_analysis": "15.00",
+                "prompt_builder": "10.00",
                 "video_prompt": "30.00",
             },
         },
@@ -111,7 +111,7 @@ async def test_prompt_tool_create_is_idempotent_and_charges_once(monkeypatch: py
         assert replayed_second is True
         assert first.id == second.id
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("39.00")
+        assert Decimal(wallet.balance) == Decimal("30.00")
         outboxes = list(
             (
                 await session.scalars(
@@ -271,7 +271,7 @@ async def test_terminal_provider_failure_refunds_user(
         task_id = task.id
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
-        assert Decimal(wallet_after_charge.balance) == Decimal("39.00")
+        assert Decimal(wallet_after_charge.balance) == Decimal("25.00")
 
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None

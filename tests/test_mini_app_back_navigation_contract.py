@@ -14,7 +14,10 @@ def test_universal_back_button_is_mounted_above_route_gate() -> None:
     assert 'import { AppEntryGate } from "@/components/app-entry-gate";' in page
     assert page.index("<UniversalBackButton />") < page.index("<AppEntryGate />")
     assert "<GenerationActionGate />" in entry
-    assert "<FeedStartApp {...target} />" in entry
+    assert "<FeedStartApp {...target} />" not in entry
+    assert "generationId={target.generationId}" in entry
+    assert "referralCode={target.referralCode}" in entry
+    assert "intent={target.kind}" in entry
 
 
 def test_back_button_is_injected_into_every_rendered_screen() -> None:

@@ -62,21 +62,27 @@ def task_payload(task_id: uuid.UUID | str) -> str:
     return f"task_{str(task_id).strip()}"
 
 
-def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
-    """Build the same Main Mini App URL contract used by tanyapi.
+def _mini_app_short_name() -> str:
+    return settings.telegram_mini_app_short_name.strip().strip("/")
 
-    The payload is URL-encoded with ``_`` and ``-`` left readable. Telegram then
-    returns it as signed ``start_param`` in WebApp initData. When no bot username
-    is configured we fall back to the supplied app URL, matching tanyapi behavior.
+
+def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
+    """Build a direct Telegram Mini App URL.
+
+    ``https://t.me/<bot>?startapp=...`` opens only the bot profile in many clients.
+    Direct Mini App entry needs the BotFather short name in the path:
+    ``https://t.me/<bot>/<short_name>?startapp=...``.
     """
 
     username = settings.bot_username.strip().lstrip("@")
     if not username:
         return fallback_url
+    short_name = _mini_app_short_name()
+    base = f"https://t.me/{username}/{quote(short_name, safe='')}" if short_name else f"https://t.me/{username}"
     param = str(payload or "").strip()
     if not param:
-        return f"https://t.me/{username}?startapp"
-    return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
+        return f"{base}?startapp"
+    return f"{base}?startapp={quote(param, safe='_-')}"
 
 
 def bot_start_link(payload: str | None) -> str | None:
