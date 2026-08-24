@@ -14,7 +14,7 @@ from app.db.history_models import GenerationHistoryState
 from app.db.models import Generation
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
-from app.services.generations import GenerationService
+from app.services.generations import MAX_GENERATION_QUANTITY, GenerationService
 from app.services.media_assets import MediaAssetService
 from app.services.model_family_catalog import build_model_families
 from app.services.model_catalog import (
@@ -25,6 +25,7 @@ from app.services.model_catalog import (
 from app.services.model_presentation import music_model_title, presentation_for, public_model_title
 from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.music_generation import (
+    MAX_MUSIC_GENERATION_QUANTITY,
     MUSIC_MODEL_ID,
     MusicGenerationError,
     MusicGenerationService,
@@ -34,6 +35,8 @@ from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/generations", tags=["generations"])
 
+MAX_REQUEST_QUANTITY = min(MAX_GENERATION_QUANTITY, MAX_MUSIC_GENERATION_QUANTITY)
+
 
 class CreateGenerationRequest(BaseModel):
     model_id: str = Field(min_length=1, max_length=100)
@@ -41,10 +44,15 @@ class CreateGenerationRequest(BaseModel):
     input_url: str | None = Field(default=None, max_length=4000)
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     parameters: dict[str, Any] = Field(default_factory=dict)
+    quantity: int = Field(default=1, ge=1, le=MAX_REQUEST_QUANTITY)
 
 
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
+
+
+def _total(value: Decimal | str | int | float, quantity: int) -> Decimal:
+    return (Decimal(str(value)) * Decimal(max(1, int(quantity)))).quantize(Decimal("0.01"))
 
 
 def _public_catalog_unit_price(model_id: str, value: Decimal | str | int | float) -> Decimal:
@@ -144,6 +152,9 @@ def _generation_view(
         "retail_cost_rox": _amount(retail_cost),
         "admin_free": admin_free,
         "billing_seconds": params.get("_billing_seconds"),
+        "batch_id": params.get("_batch_id"),
+        "batch_index": params.get("_batch_index"),
+        "batch_size": params.get("_batch_size"),
         "result_url": result_urls[0] if result_urls else None,
         "result_urls": result_urls,
         "media": owned_media,
@@ -286,6 +297,7 @@ async def generation_models(
         "schema_version": 2,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
         "admin_free": admin_free,
+        "max_generation_quantity": MAX_REQUEST_QUANTITY,
         "families": build_model_families(models),
         "models": models,
     }
@@ -297,34 +309,37 @@ async def quote_generation(
     user: OptionalCurrentUserDep,
     session: SessionDep,
 ) -> dict[str, Any]:
+    quantity = payload.quantity
     if MusicGenerationService.is_music_model(payload.model_id):
         try:
             _clean, retail_cost = MusicGenerationService.prepare(payload.parameters, payload.prompt)
         except MusicGenerationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        retail_total = _total(retail_cost, quantity)
         billing = None
         if user is not None:
             billing = await BillingAccessService.decision(
                 session,
                 user_id=user.id,
-                retail_cost=retail_cost,
+                retail_cost=retail_total,
             )
-        effective_cost = billing.effective_cost if billing else retail_cost
+        effective_cost = billing.effective_cost if billing else retail_total
         admin_free = bool(billing and billing.admin_free)
         return {
             "model_id": MUSIC_MODEL_ID,
             "price_mode": "flat",
+            "quantity": quantity,
             "unit_price_credits": _amount(retail_cost),
             "unit_price_rox": _amount(retail_cost),
             "unit_price_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
             "billing_seconds": None,
-            "cost_credits": _amount(retail_cost),
-            "cost_rox": _amount(retail_cost),
-            "cost_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
+            "cost_credits": _amount(retail_total),
+            "cost_rox": _amount(retail_total),
+            "cost_rub": _amount(InternalCreditService.rubles_for(retail_total)),
             "effective_cost_credits": _amount(effective_cost),
             "effective_cost_rox": _amount(effective_cost),
             "effective_cost_rub": _amount(InternalCreditService.rubles_for(effective_cost)),
-            "retail_cost_rox": _amount(retail_cost),
+            "retail_cost_rox": _amount(retail_total),
             "admin_free": admin_free,
             "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
         }
@@ -341,29 +356,31 @@ async def quote_generation(
     except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    retail_total = _total(retail_cost, quantity)
     billing = None
     if user is not None:
         billing = await BillingAccessService.decision(
             session,
             user_id=user.id,
-            retail_cost=retail_cost,
+            retail_cost=retail_total,
         )
-    effective_cost = billing.effective_cost if billing else retail_cost
+    effective_cost = billing.effective_cost if billing else retail_total
     admin_free = bool(billing and billing.admin_free)
     return {
         "model_id": spec.id,
         "price_mode": spec.price_mode,
+        "quantity": quantity,
         "unit_price_credits": _amount(retail_unit_price),
         "unit_price_rox": _amount(retail_unit_price),
         "unit_price_rub": _amount(InternalCreditService.rubles_for(retail_unit_price)),
         "billing_seconds": seconds,
-        "cost_credits": _amount(retail_cost),
-        "cost_rox": _amount(retail_cost),
-        "cost_rub": _amount(InternalCreditService.rubles_for(retail_cost)),
+        "cost_credits": _amount(retail_total),
+        "cost_rox": _amount(retail_total),
+        "cost_rub": _amount(InternalCreditService.rubles_for(retail_total)),
         "effective_cost_credits": _amount(effective_cost),
         "effective_cost_rox": _amount(effective_cost),
         "effective_cost_rub": _amount(InternalCreditService.rubles_for(effective_cost)),
-        "retail_cost_rox": _amount(retail_cost),
+        "retail_cost_rox": _amount(retail_total),
         "admin_free": admin_free,
         "internal_credit_rub": _amount(InternalCreditService.rub_per_credit()),
     }
@@ -491,18 +508,19 @@ async def create_generation(
     user: CurrentUserDep,
     session: SessionDep,
     redis: RedisDep,
-) -> dict[str, str | bool | None]:
+) -> dict[str, str | bool | None | int | list[str]]:
     try:
         if MusicGenerationService.is_music_model(payload.model_id):
-            generation = await MusicGenerationService.create(
+            generations = await MusicGenerationService.create_many(
                 session,
                 redis,
                 user_id=user.id,
                 prompt=payload.prompt,
                 parameters=payload.parameters,
+                quantity=payload.quantity,
             )
         else:
-            generation = await GenerationService.create(
+            generations = await GenerationService.create_many(
                 session,
                 redis,
                 user_id=user.id,
@@ -511,19 +529,24 @@ async def create_generation(
                 input_url=payload.input_url,
                 parameters=payload.parameters,
                 billing_seconds=payload.billing_seconds,
+                quantity=payload.quantity,
             )
     except (UnknownModelError, InvalidModelParametersError, MusicGenerationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except InsufficientBalanceError as exc:
         raise HTTPException(status_code=409, detail="Insufficient credits") from exc
 
-    admin_free = bool((generation.parameters or {}).get("_admin_free"))
+    first = generations[0]
+    total_cost = sum((Decimal(item.cost_rox) for item in generations), Decimal("0.00"))
+    admin_free = bool((first.parameters or {}).get("_admin_free"))
     return {
-        "id": str(generation.id),
-        "status": generation.status,
-        "cost_credits": _amount(generation.cost_rox),
-        "cost_rox": _amount(generation.cost_rox),
-        "cost_rub": _amount(InternalCreditService.rubles_for(generation.cost_rox)),
+        "id": str(first.id),
+        "ids": [str(item.id) for item in generations],
+        "quantity": len(generations),
+        "status": first.status,
+        "cost_credits": _amount(total_cost),
+        "cost_rox": _amount(total_cost),
+        "cost_rub": _amount(InternalCreditService.rubles_for(total_cost)),
         "admin_free": admin_free,
-        "result_url": generation.result_url,
+        "result_url": first.result_url,
     }
