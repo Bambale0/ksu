@@ -15,6 +15,7 @@ from app.bot.keyboards import (
     prompt_tools_menu,
     quick_menu,
 )
+from app.bot.support_links import direct_support_handle
 from app.core.config import settings
 from app.db.models import User
 from app.services.feed import FeedNotFoundError, FeedService
@@ -75,11 +76,15 @@ async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -
     return author.telegram_id
 
 
-def _support_handle() -> str:
-    url = settings.support_telegram_url.strip()
-    if url.startswith("https://t.me/"):
-        return "@" + url.rstrip("/").rsplit("/", 1)[-1]
-    return "@korkinaxenia"
+def _support_handle() -> str | None:
+    return direct_support_handle(settings.support_telegram_url)
+
+
+def _support_line() -> str:
+    handle = _support_handle()
+    if handle:
+        return f"Поддержка: {handle}"
+    return "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY"
 
 
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
@@ -97,7 +102,7 @@ async def _send_launcher(message: Message, *, route: str, payload: str | None) -
         "🎁 50 ROX — сразу после регистрации\n"
         "🎁 +30 ROX — за друга после его первой генерации\n\n"
         "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в Mini App.\n"
-        f"Поддержка: {_support_handle()}",
+        f"{_support_line()}",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
     )
@@ -151,10 +156,21 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
+
+    handle = _support_handle()
+    if handle:
+        await message.answer(
+            "Поддержка ROXY всегда рядом.\n\n"
+            f"Напишите {handle} — поможем с оплатой, балансом, генерациями, prompt и публикациями.",
+            reply_markup=quick_menu(),
+        )
+        return
+
     await message.answer(
         "Поддержка ROXY всегда рядом.\n\n"
-        f"Напишите {_support_handle()} — поможем с оплатой, балансом, генерациями, prompt и публикациями.",
-        reply_markup=quick_menu(),
+        "Откройте ROXY → Профиль → Поддержка и создайте обращение. "
+        "Так заявка сохранится в системе, а ответ придёт в уведомления.",
+        reply_markup=app_launcher_menu(route="profile"),
     )
 
 
