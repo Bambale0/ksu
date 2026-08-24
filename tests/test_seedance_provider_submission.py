@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from app.providers.kie import KieClient
+from app.services.kie_video_contracts import KieVideoContractError
 
 
 class _Response:
@@ -60,7 +61,35 @@ async def test_seedance_20_default_like_payload_reaches_kie() -> None:
 
 
 @pytest.mark.asyncio
-async def test_seedance_20_hybrid_frame_and_references_reaches_kie() -> None:
+async def test_seedance_20_hybrid_frame_and_references_is_rejected_before_kie() -> None:
+    client = KieClient("test-key")
+    fake = _FakeAsyncClient()
+    client._client = fake  # type: ignore[attr-defined]
+
+    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
+        await client.create_task(
+            model="bytedance/seedance-2",
+            input_data={
+                "prompt": "keep the hero and follow the motion reference",
+                "first_frame_url": "https://cdn.example/first.png",
+                "last_frame_url": "https://cdn.example/last.png",
+                "reference_image_urls": ["https://cdn.example/hero.png"],
+                "reference_video_urls": ["https://cdn.example/motion.mp4"],
+                "reference_audio_urls": ["https://cdn.example/voice.wav"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "generate_audio": True,
+                "web_search": False,
+            },
+            callback_url="https://example.test/webhooks/kie?generation_id=21",
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_seedance_20_reference_mode_reaches_kie() -> None:
     client = KieClient("test-key")
     fake = _FakeAsyncClient()
     client._client = fake  # type: ignore[attr-defined]
@@ -68,9 +97,7 @@ async def test_seedance_20_hybrid_frame_and_references_reaches_kie() -> None:
     task_id = await client.create_task(
         model="bytedance/seedance-2",
         input_data={
-            "prompt": "keep the hero and follow the motion reference",
-            "first_frame_url": "https://cdn.example/first.png",
-            "last_frame_url": "https://cdn.example/last.png",
+            "prompt": "keep the subject consistent",
             "reference_image_urls": ["https://cdn.example/hero.png"],
             "reference_video_urls": ["https://cdn.example/motion.mp4"],
             "reference_audio_urls": ["https://cdn.example/voice.wav"],
@@ -80,18 +107,18 @@ async def test_seedance_20_hybrid_frame_and_references_reaches_kie() -> None:
             "generate_audio": True,
             "web_search": False,
         },
-        callback_url="https://example.test/webhooks/kie?generation_id=21",
+        callback_url="https://example.test/webhooks/kie?generation_id=22",
     )
 
     assert task_id == "seedance-task-1"
     assert len(fake.calls) == 1
     _, body = fake.calls[0]
     provider_input = body["input"]
-    assert provider_input["first_frame_url"].endswith("first.png")
-    assert provider_input["last_frame_url"].endswith("last.png")
     assert provider_input["reference_image_urls"] == ["https://cdn.example/hero.png"]
     assert provider_input["reference_video_urls"] == ["https://cdn.example/motion.mp4"]
     assert provider_input["reference_audio_urls"] == ["https://cdn.example/voice.wav"]
+    assert "first_frame_url" not in provider_input
+    assert "last_frame_url" not in provider_input
 
 
 @pytest.mark.asyncio
