@@ -213,7 +213,7 @@ test('Mini App quantity picker sends six launches and total quote', async ({ pag
   await expect(page.getByText('330 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
-  await page.getByRole('button', { name: /Создать 6 · 330 ROX/ }).click();
+  await page.getByRole('button', { name: /Создать · 330 ROX/ }).click();
   const request = await submitted;
   const payload = request.postDataJSON();
   expect(payload.model_id).toBe('seedance-2.0');
