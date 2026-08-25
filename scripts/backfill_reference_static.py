@@ -158,19 +158,22 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
     ReferenceStaticStorage.ensure_root()
     async with SessionFactory() as session:
         stmt = (
-            select(UserReference)
+            select(UserReference.id, UserReference.source_url)
             .where(UserReference.status == "ready")
             .order_by(UserReference.created_at.asc(), UserReference.id.asc())
         )
         if limit is not None:
             stmt = stmt.limit(max(1, int(limit)))
-        rows = list((await session.scalars(stmt)).all())
-        for row in rows:
-            reference_id = row.id
-            source_url = row.source_url
+        references = [(row_id, source_url) for row_id, source_url in (await session.execute(stmt)).all()]
+        for reference_id, source_url in references:
             stats.scanned += 1
             if ReferenceStaticStorage.local_url_exists(source_url):
                 stats.already_static += 1
+                continue
+            row = await session.get(UserReference, reference_id)
+            if row is None or row.status != "ready":
+                stats.failed += 1
+                print(f"reference-static backfill skipped missing reference={reference_id}")
                 continue
             try:
                 changed = await _persist_reference(session, row)
