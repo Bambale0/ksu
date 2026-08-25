@@ -26,6 +26,10 @@ def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
         assert legacy_copy not in block
 
 
-def test_support_contact_defaults_to_korkinaxenia() -> None:
+def test_support_contact_has_safe_fallback_when_not_configured() -> None:
     config = (ROOT / "app" / "core" / "config.py").read_text(encoding="utf-8")
-    assert 'support_telegram_url: str = "https://t.me/korkinaxenia"' in config
+    launcher = (ROOT / "app" / "bot" / "handlers" / "launcher.py").read_text(encoding="utf-8")
+
+    assert 'support_telegram_url: str = ""' in config
+    assert "direct_support_handle(settings.support_telegram_url)" in launcher
+    assert "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY" in launcher
