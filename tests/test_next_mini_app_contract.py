@@ -65,7 +65,6 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
         '"history"',
         '"profile"',
         "Главная",
-        "Лента",
         "Каталог",
         "Создать",
         "История",
@@ -91,6 +90,7 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert not (styles_dir / "feed-social-interactions.css").exists()
     assert "<SingleFeedSurfaceGuard />" in page
     assert 'currentRoute() === "feed"' in guard
+    assert "Лента" in guard
     assert "roxy-hybrid-feed-screen" in guard
     assert "roxy-feed-tiktok-preview" in guard
     assert 'feedButtons.length > 1' in guard
