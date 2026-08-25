@@ -1,12 +1,9 @@
 import { AppEntryGate } from "@/components/app-entry-gate";
-import { CatalogCapabilities } from "@/components/catalog-capabilities";
-import { CatalogMediaQuickJump } from "@/components/catalog-media-quick-jump";
-import { CatalogTrendLaunch } from "@/components/catalog-trend-launch";
+import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
-import { ServicesLauncher } from "@/components/services-launcher";
 import { UniversalBackButton } from "@/components/universal-back-button";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
@@ -16,10 +13,7 @@ export default function Page() {
     <ReferenceMemoryProvider>
       <UniversalBackButton />
       <AppEntryGate />
-      <ServicesLauncher />
-      <CatalogCapabilities />
-      <CatalogMediaQuickJump />
-      <CatalogTrendLaunch />
+      <CatalogFeatureHub />
       <GenerationQuantityControl />
       <UploadInputResetGuard />
       <PostPublishSharePrompt />
