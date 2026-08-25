@@ -499,7 +499,7 @@ export function RoxySocialApp() {
   return (
     <div className="roxy-app">
       <header className="topbar">
-        <button className="brand" type="button" onClick={() => navigate("home")} aria-label="ROXY — главная">
+        <button className="brand" type="button" data-roxy-customer-route="home" onClick={() => navigate("home")} aria-label="ROXY — главная">
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>AI CREATIVE STUDIO</small></span>
         </button>

@@ -111,17 +111,20 @@ def test_nano_banana_2_lite_exposes_current_reference_upload_limits() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generation_pipeline_no_longer_bypasses_seedance_hybrid_rejection() -> None:
-    with pytest.raises(InvalidModelParametersError, match="mutually exclusive"):
-        await GenerationService.prepare_request(
-            object(),  # no DB access is required for this model before validation
-            model_id="seedance-2.0",
-            prompt="keep the subject consistent",
-            parameters={
-                "first_frame_url": "https://cdn.example/first.png",
-                "reference_image_urls": ["https://cdn.example/ref.png"],
-                "duration": 5,
-                "resolution": "720p",
-                "aspect_ratio": "16:9",
-            },
-        )
+async def test_generation_pipeline_normalizes_seedance_hybrid_reference_mode() -> None:
+    _spec, clean, _cost, seconds, _unit = await GenerationService.prepare_request(
+        object(),  # no DB access is required for this model before validation
+        model_id="seedance-2.0",
+        prompt="keep the subject consistent",
+        parameters={
+            "first_frame_url": "https://cdn.example/first.png",
+            "reference_image_urls": ["https://cdn.example/ref.png"],
+            "duration": 5,
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+        },
+    )
+
+    assert seconds == 5
+    assert clean["reference_image_urls"] == ["https://cdn.example/ref.png"]
+    assert "first_frame_url" not in clean
