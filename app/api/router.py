@@ -24,6 +24,7 @@ from app.api.v1 import (
     notifications,
     onboarding,
     payments,
+    pinterest_flow,
     promocodes,
     prompt_tools,
     reference_presets,
@@ -48,6 +49,7 @@ api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
 api_router.include_router(feed_reference_media.router)
 api_router.include_router(trends.router)
+api_router.include_router(pinterest_flow.router)
 api_router.include_router(prompt_tools.router)
 api_router.include_router(reference_presets.router)
 api_router.include_router(media.router)
