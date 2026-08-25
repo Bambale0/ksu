@@ -70,6 +70,19 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
     assert "Лента" not in app
 
 
+def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
+    layout = _read(FRONTEND / "app" / "layout.tsx")
+    public_dir = FRONTEND / "public"
+    styles_dir = FRONTEND / "app"
+
+    assert "feed-social-polish.js" not in layout
+    assert "feed-social.css" not in layout
+    assert "feed-social-interactions.css" not in layout
+    assert not (public_dir / "feed-social-polish.js").exists()
+    assert not (styles_dir / "feed-social.css").exists()
+    assert not (styles_dir / "feed-social-interactions.css").exists()
+
+
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
     app = _read(FRONTEND / "components" / "roxy-app.tsx")
     css = _read(FRONTEND / "app" / "globals.css")
