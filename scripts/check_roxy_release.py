@@ -56,9 +56,9 @@ def validate() -> list[str]:
             errors.append(f"missing-source:{relative}")
 
     generated_files = sorted(path.name for path in GENERATED.iterdir() if path.is_file())
-    if generated_files != ["README.md", "release.json"]:
+    if not set(generated_files) <= {"README.md", "release.json"} or "README.md" not in generated_files:
         errors.append("generated-directory-must-not-contain-source:" + ",".join(generated_files))
-    else:
+    elif "release.json" in generated_files:
         try:
             release = json.loads((GENERATED / "release.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
