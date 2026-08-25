@@ -280,7 +280,7 @@ async def scenario_boot_and_navigation(page: Page, report: Report) -> None:
     prompt = page.get_by_role("button", name=re.compile("Prompt", re.I))
     if await prompt.count():
         await click_visible(prompt)
-        await expect(page).to_have_url(re.compile(r"[?&]route=prompt-tools(?:&|$)"), timeout=7000)
+        await expect(page).to_have_url(re.compile(r"/mini-app/prompt-tools/(?:\?|$)"), timeout=7000)
         await page.go_back()
         await expect(page).to_have_url(re.compile(r"[?&]route=catalog(?:&|$)"), timeout=7000)
         report.controls_seen.add("catalog:prompt-tools/back")

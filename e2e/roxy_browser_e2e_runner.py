@@ -50,7 +50,7 @@ async def scenario_navigation(page: Page, report: suite.Report) -> None:
     prompt = page.get_by_role("button", name=re.compile("Prompt", re.I))
     if await prompt.count():
         await suite.click_visible(prompt)
-        await expect(page).to_have_url(re.compile(r"[?&]route=prompt-tools(?:&|$)"), timeout=8000)
+        await expect(page).to_have_url(re.compile(r"/mini-app/prompt-tools/(?:\?|$)"), timeout=8000)
         await page.go_back()
         await expect(page).to_have_url(re.compile(r"[?&]route=catalog(?:&|$)"), timeout=8000)
         report.controls.add("nav:browser-back")
