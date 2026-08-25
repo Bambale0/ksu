@@ -50,9 +50,13 @@
   background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 34%);
 }
 
-.preview-copy > .panel .toggle-row {
+.preview-copy > .panel .toggle-row,
+.preview-actions {
   position: relative;
   z-index: 1;
+}
+
+.preview-copy > .panel .toggle-row {
   min-height: 52px;
   padding: 0;
   gap: 14px;
@@ -64,7 +68,6 @@
 }
 
 .preview-copy > .panel .toggle-row > span {
-  position: relative;
   min-width: 0;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -140,8 +143,6 @@
 }
 
 .preview-actions {
-  position: relative;
-  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
@@ -159,20 +160,33 @@
   background: linear-gradient(90deg, transparent, rgba(164, 106, 255, 0.22), transparent);
 }
 
+.preview-actions::after {
+  content: "Опубликовать";
+  position: absolute;
+  left: 0;
+  top: 132px;
+  color: rgba(235, 226, 255, 0.50);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+}
+
 .preview-actions .primary,
 .preview-actions .secondary {
   position: relative;
   width: 100%;
-  min-height: 42px;
-  padding: 0 42px 0 46px;
-  border-radius: 14px;
+  min-height: 40px;
+  padding: 0 38px 0 46px;
+  border-radius: 13px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
   justify-content: stretch;
   text-align: left;
   gap: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.12;
   letter-spacing: -0.012em;
   font-weight: 780;
@@ -195,10 +209,22 @@
 .preview-actions .secondary::after {
   content: "›";
   right: 15px;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.64);
   font-size: 24px;
   line-height: 1;
   font-weight: 400;
+}
+
+.preview-actions .secondary::before,
+.preview-actions > button.primary:not(:first-child)::before {
+  left: 15px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #b86dff;
+  background: rgba(143, 83, 255, 0.16);
+  font-size: 14px;
+  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
 }
 
 .preview-actions > a.primary:first-child {
@@ -231,25 +257,16 @@
   color: rgba(255, 255, 255, 0.86);
 }
 
-.preview-actions .secondary {
-  border: 1px solid rgba(162, 92, 255, 0.32);
-  background: rgba(10, 10, 17, 0.72);
-  color: rgba(255, 255, 255, 0.9);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
-}
-
-.preview-actions .secondary::before {
-  left: 16px;
-  width: 21px;
-  height: 21px;
-  border-radius: 8px;
-  color: #b56dff;
-  background: rgba(141, 77, 255, 0.14);
-  font-size: 13px;
-  box-shadow: 0 0 14px rgba(142, 81, 255, 0.14);
+.preview-actions .secondary,
+.preview-actions > button.primary:not(:first-child) {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 12, 19, 0.78);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
 .preview-actions > button.secondary:first-of-type {
+  min-height: 40px;
   margin-bottom: 12px;
   border-color: rgba(171, 92, 255, 0.62);
   background: rgba(13, 12, 20, 0.78);
@@ -268,232 +285,10 @@
   content: "";
 }
 
-.preview-actions > button.secondary:first-of-type + button::before,
-.preview-actions > button.primary:first-of-type + button.secondary::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(3)::before {
-  content: "▤";
-}
-
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  content: "▣";
-}
-
-.preview-actions > button.primary:not(:first-child),
-.preview-actions > button.secondary:nth-of-type(n + 2) {
-  min-height: 40px;
-  border-color: rgba(255, 255, 255, 0.08);
-  border-radius: 13px;
-  background: rgba(12, 12, 19, 0.78);
-  color: rgba(255, 255, 255, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  margin-top: 21px;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after,
-.preview-actions > button.secondary:nth-of-type(3)::after,
-.preview-actions > button.primary:not(:first-child)::after,
-.preview-actions > button.secondary:nth-of-type(4)::after {
-  content: "›";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::marker {
-  content: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before,
-.preview-actions > button.secondary:nth-of-type(3)::before,
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  left: 15px;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(3)::before {
-  content: "▤";
-}
-
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  content: "▣";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before,
-.preview-actions > button.secondary:nth-of-type(3)::before,
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  background: rgba(143, 83, 255, 0.16);
-  color: #b86dff;
-  font-size: 14px;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after,
-.preview-actions > button.secondary:nth-of-type(3)::after,
-.preview-actions > button.primary:not(:first-child)::after,
-.preview-actions > button.secondary:nth-of-type(4)::after {
-  color: rgba(255,255,255,0.62);
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before,
-.preview-actions > button.secondary:nth-of-type(3)::before,
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  position: relative;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::selection {
-  background: transparent;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  z-index: 1;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  z-index: 1;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) span,
-.preview-actions > button.secondary:nth-of-type(3) span,
-.preview-actions > button.primary:not(:first-child) span,
-.preview-actions > button.secondary:nth-of-type(4) span {
-  min-width: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  --preview-section-label: "Опубликовать";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  overflow: visible;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  content: "›";
-}
-
-.preview-actions > button.secondary:nth-of-type(2) + button,
-.preview-actions > button.secondary:nth-of-type(3),
-.preview-actions > button.primary:not(:first-child) {
-  margin-top: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.03),
-    0 -21px 0 -20px transparent;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::selection {
-  color: inherit;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  content: "›";
-}
-
 .preview-actions > button.secondary:nth-of-type(2) {
   margin-top: 20px;
 }
 
-.preview-actions > button.secondary:nth-of-type(2)::first-letter {
-  color: inherit;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::placeholder {
-  color: inherit;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  content: "›";
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  isolation: isolate;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::backdrop {
-  background: transparent;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  --dummy: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  content: "›";
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  clip-path: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  clip-path: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  clip-path: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  transform: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  transform: translateY(-50%);
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  transform: translateY(-50%);
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before,
-.preview-actions > button.secondary:nth-of-type(3)::before,
-.preview-actions > button.primary:not(:first-child)::before {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
 .preview-actions > button.secondary:nth-of-type(2)::before {
   content: "♙";
 }
@@ -502,119 +297,9 @@
   content: "▤";
 }
 
-.preview-actions > button.primary:not(:first-child)::before {
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
   content: "▣";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after,
-.preview-actions > button.secondary:nth-of-type(3)::after,
-.preview-actions > button.primary:not(:first-child)::after {
-  content: "›";
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  z-index: 1;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  z-index: 1;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  contain: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  contain: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  contain: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  outline-offset: 3px;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  pointer-events: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  pointer-events: none;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  text-indent: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  text-indent: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  text-indent: 0;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  white-space: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  white-space: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  white-space: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  word-break: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  word-break: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  word-break: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  overflow-wrap: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  overflow-wrap: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  overflow-wrap: normal;
-}
-
-.preview-actions > button.secondary:nth-of-type(2) {
-  hyphens: manual;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  hyphens: manual;
-}
-
-.preview-actions > button.secondary:nth-of-type(2)::after {
-  hyphens: manual;
-}
-
-.preview-actions::after {
-  content: "Опубликовать";
-  position: absolute;
-  left: 0;
-  top: 134px;
-  color: rgba(235, 226, 255, 0.50);
-  font-size: 11px;
-  line-height: 1;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  pointer-events: none;
 }
 
 .preview-actions .secondary:hover,
@@ -661,6 +346,10 @@
     padding-top: 15px;
   }
 
+  .preview-actions::after {
+    top: 130px;
+  }
+
   .preview-actions .primary,
   .preview-actions .secondary {
     min-height: 40px;
@@ -674,9 +363,5 @@
     min-height: 52px;
     padding-left: 52px;
     font-size: 14px;
-  }
-
-  .preview-actions::after {
-    top: 130px;
   }
 }
