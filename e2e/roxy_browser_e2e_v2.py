@@ -5,7 +5,8 @@ import re
 
 from playwright.async_api import Page
 
-import roxy_browser_e2e as legacy
+from e2e import roxy_browser_e2e as legacy
+from e2e.roxy_browser_e2e import *  # noqa: F403
 
 _ORIGINAL_GET_BY_ROLE = Page.get_by_role
 _REUSE_PATTERN = "Повторить / изменить|Использовать настройки"
