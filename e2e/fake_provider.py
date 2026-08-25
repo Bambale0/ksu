@@ -72,6 +72,28 @@ async def task_info(taskId: str) -> dict[str, Any]:  # noqa: N803 - provider con
     }
 
 
+@app.post("/api/v1/veo/generate")
+async def create_veo(request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    task_id = _task("veo", payload)
+    return {"code": 200, "msg": "success", "data": {"taskId": task_id}}
+
+
+@app.get("/api/v1/veo/record-info")
+async def veo_info(taskId: str) -> dict[str, Any]:  # noqa: N803 - provider contract
+    return {
+        "code": 200,
+        "msg": "success",
+        "data": {
+            "taskId": taskId,
+            "successFlag": 1,
+            "response": {
+                "resultUrls": ["http://127.0.0.1:18081/media/result.png"],
+            },
+        },
+    }
+
+
 @app.post("/api/v1/generate")
 async def create_music(request: Request) -> dict[str, Any]:
     payload = await request.json()
