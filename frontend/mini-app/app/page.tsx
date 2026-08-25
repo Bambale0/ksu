@@ -5,6 +5,7 @@ import { GenerationQuantityControl } from "@/components/generation-quantity-cont
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { UniversalBackButton } from "@/components/universal-back-button";
+import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
 
 export default function Page() {
@@ -15,6 +16,7 @@ export default function Page() {
       <CatalogCapabilities />
       <CatalogTrendLaunch />
       <GenerationQuantityControl />
+      <UploadInputResetGuard />
       <GlobalUxEnhancers />
       <KlingMultishotGuard />
     </ReferenceMemoryProvider>
