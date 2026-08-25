@@ -1,15 +1,15 @@
-/* Compact premium polish for the generation preview publication area.
-   Keep behavior in roxy-social-app.tsx intact; only reduce visual weight. */
+/* Reference-matched premium polish for the generation preview publication area.
+   Behavior stays in roxy-social-app.tsx; this layer only reshapes the active Preview UI. */
 
 .preview-card {
-  border-color: rgba(185, 100, 255, 0.28);
+  border-color: rgba(163, 92, 255, 0.34);
   background:
-    radial-gradient(circle at 18% 0%, rgba(146, 72, 255, 0.18), transparent 34%),
-    radial-gradient(circle at 100% 30%, rgba(255, 82, 188, 0.12), transparent 30%),
-    rgba(10, 9, 15, 0.96);
+    radial-gradient(circle at 50% 0%, rgba(139, 78, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 100% 30%, rgba(255, 82, 188, 0.10), transparent 31%),
+    rgba(8, 8, 14, 0.98);
   box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 26px 82px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 .preview-copy {
@@ -27,52 +27,112 @@
 }
 
 .preview-copy > .panel {
-  padding: 14px !important;
-  border-radius: 22px;
-  border: 1px solid rgba(184, 104, 255, 0.24);
+  position: relative;
+  overflow: hidden;
+  margin-top: 2px;
+  padding: 20px 16px 16px !important;
+  border-radius: 24px;
+  border: 1px solid rgba(160, 91, 255, 0.42);
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
-    rgba(18, 15, 28, 0.72);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+    radial-gradient(circle at 86% 8%, rgba(178, 92, 255, 0.16), transparent 33%),
+    linear-gradient(180deg, rgba(21, 18, 33, 0.98), rgba(10, 10, 18, 0.98));
+  box-shadow:
+    0 0 28px rgba(121, 72, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.052);
+}
+
+.preview-copy > .panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 34%);
 }
 
 .preview-copy > .panel .toggle-row {
-  min-height: auto;
+  position: relative;
+  z-index: 1;
+  min-height: 52px;
   padding: 0;
   gap: 14px;
   border: 0;
   background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.preview-copy > .panel .toggle-row span {
-  gap: 4px;
+.preview-copy > .panel .toggle-row > span {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: start;
+}
+
+.preview-copy > .panel .toggle-row > span::before {
+  content: "⌁";
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  color: #b264ff;
+  font-size: 22px;
+  line-height: 1;
+  transform: rotate(-28deg);
+  text-shadow: 0 0 16px rgba(177, 89, 255, 0.45);
+}
+
+.preview-copy > .panel .toggle-row strong,
+.preview-copy > .panel .toggle-row small {
+  grid-column: 2;
 }
 
 .preview-copy > .panel .toggle-row strong {
-  font-size: 16px;
-  line-height: 1.12;
+  display: block;
+  max-width: 156px;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1.15;
   letter-spacing: -0.02em;
+  font-weight: 850;
 }
 
 .preview-copy > .panel .toggle-row small {
-  max-width: 210px;
+  display: block;
+  max-width: 176px;
+  margin-top: 3px;
   color: rgba(235, 226, 255, 0.62);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.34;
+  font-weight: 560;
 }
 
 .preview-copy > .panel .toggle-row i {
-  width: 52px;
-  height: 30px;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 29px;
   border-radius: 999px;
-  background: linear-gradient(135deg, #8f48ff, #f24fb7);
-  box-shadow: 0 0 22px rgba(209, 85, 255, 0.28);
+  background: linear-gradient(110deg, #8b4fff, #ef53b6);
+  box-shadow:
+    0 0 18px rgba(207, 83, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .preview-copy > .panel .toggle-row i::after {
-  width: 24px;
-  height: 24px;
-  transform: translate(24px, 3px);
+  width: 23px;
+  height: 23px;
+  transform: translate(22px, 3px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.preview-copy > .panel .toggle-row input:not(:checked) + i {
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 .preview-copy > .panel .toggle-row input:not(:checked) + i::after {
@@ -80,71 +140,500 @@
 }
 
 .preview-actions {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 16px;
+}
+
+.preview-actions::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(164, 106, 255, 0.22), transparent);
 }
 
 .preview-actions .primary,
 .preview-actions .secondary {
+  position: relative;
   width: 100%;
-  min-height: 48px;
-  justify-content: center;
-  gap: 9px;
-  border-radius: 18px;
-  padding: 12px 16px;
-  font-size: 15px;
-  line-height: 1.1;
-  letter-spacing: -0.015em;
+  min-height: 42px;
+  padding: 0 42px 0 46px;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  text-align: left;
+  gap: 0;
+  font-size: 14px;
+  line-height: 1.12;
+  letter-spacing: -0.012em;
+  font-weight: 780;
   box-shadow: none;
+}
+
+.preview-actions .primary::before,
+.preview-actions .secondary::before,
+.preview-actions .primary::after,
+.preview-actions .secondary::after {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.preview-actions .primary::after,
+.preview-actions .secondary::after {
+  content: "›";
+  right: 15px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 400;
 }
 
 .preview-actions > a.primary:first-child {
   min-height: 54px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background:
-    linear-gradient(135deg, rgba(128, 72, 255, 0.98), rgba(237, 72, 188, 0.98)),
-    #9a4dff;
+  margin-bottom: 6px;
+  padding-left: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 15px;
+  background: linear-gradient(100deg, #8655ff 0%, #ba52f2 45%, #f254a7 100%);
+  color: #fff;
   box-shadow:
-    0 14px 32px rgba(219, 76, 203, 0.26),
-    inset 0 1px 0 rgba(255, 255, 255, 0.26);
-  font-size: 16px;
-  font-weight: 800;
+    0 12px 28px rgba(180, 75, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  font-size: 15px;
+  font-weight: 840;
+}
+
+.preview-actions > a.primary:first-child::before {
+  content: "✦";
+  left: 18px;
+  width: 22px;
+  height: 22px;
+  color: #ffffff;
+  font-size: 19px;
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.35);
+}
+
+.preview-actions > a.primary:first-child::after {
+  right: 17px;
+  color: rgba(255, 255, 255, 0.86);
 }
 
 .preview-actions .secondary {
-  border-color: rgba(184, 104, 255, 0.26);
-  background: rgba(12, 10, 18, 0.66);
+  border: 1px solid rgba(162, 92, 255, 0.32);
+  background: rgba(10, 10, 17, 0.72);
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+}
+
+.preview-actions .secondary::before {
+  left: 16px;
+  width: 21px;
+  height: 21px;
+  border-radius: 8px;
+  color: #b56dff;
+  background: rgba(141, 77, 255, 0.14);
+  font-size: 13px;
+  box-shadow: 0 0 14px rgba(142, 81, 255, 0.14);
+}
+
+.preview-actions > button.secondary:first-of-type {
+  margin-bottom: 12px;
+  border-color: rgba(171, 92, 255, 0.62);
+  background: rgba(13, 12, 20, 0.78);
+  text-align: center;
+  padding-left: 46px;
+}
+
+.preview-actions > button.secondary:first-of-type::before {
+  content: "≛";
+  background: transparent;
+  box-shadow: none;
+  font-size: 18px;
+}
+
+.preview-actions > button.secondary:first-of-type::after {
+  content: "";
+}
+
+.preview-actions > button.secondary:first-of-type + button::before,
+.preview-actions > button.primary:first-of-type + button.secondary::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(3)::before {
+  content: "▤";
+}
+
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
+  content: "▣";
+}
+
+.preview-actions > button.primary:not(:first-child),
+.preview-actions > button.secondary:nth-of-type(n + 2) {
+  min-height: 40px;
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  background: rgba(12, 12, 19, 0.78);
   color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  margin-top: 21px;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after,
+.preview-actions > button.secondary:nth-of-type(3)::after,
+.preview-actions > button.primary:not(:first-child)::after,
+.preview-actions > button.secondary:nth-of-type(4)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::marker {
+  content: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before,
+.preview-actions > button.secondary:nth-of-type(3)::before,
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
+  left: 15px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(3)::before {
+  content: "▤";
+}
+
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
+  content: "▣";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before,
+.preview-actions > button.secondary:nth-of-type(3)::before,
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
+  background: rgba(143, 83, 255, 0.16);
+  color: #b86dff;
+  font-size: 14px;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after,
+.preview-actions > button.secondary:nth-of-type(3)::after,
+.preview-actions > button.primary:not(:first-child)::after,
+.preview-actions > button.secondary:nth-of-type(4)::after {
+  color: rgba(255,255,255,0.62);
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before,
+.preview-actions > button.secondary:nth-of-type(3)::before,
+.preview-actions > button.primary:not(:first-child)::before,
+.preview-actions > button.secondary:nth-of-type(4)::before {
+  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  position: relative;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::selection {
+  background: transparent;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  z-index: 1;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  z-index: 1;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) span,
+.preview-actions > button.secondary:nth-of-type(3) span,
+.preview-actions > button.primary:not(:first-child) span,
+.preview-actions > button.secondary:nth-of-type(4) span {
+  min-width: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  --preview-section-label: "Опубликовать";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  overflow: visible;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2) + button,
+.preview-actions > button.secondary:nth-of-type(3),
+.preview-actions > button.primary:not(:first-child) {
+  margin-top: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.03),
+    0 -21px 0 -20px transparent;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::selection {
+  color: inherit;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  margin-top: 20px;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::first-letter {
+  color: inherit;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::placeholder {
+  color: inherit;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  isolation: isolate;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::backdrop {
+  background: transparent;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  --dummy: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  clip-path: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  clip-path: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  clip-path: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  transform: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  transform: translateY(-50%);
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  transform: translateY(-50%);
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before,
+.preview-actions > button.secondary:nth-of-type(3)::before,
+.preview-actions > button.primary:not(:first-child)::before {
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  content: "♙";
+}
+
+.preview-actions > button.secondary:nth-of-type(3)::before {
+  content: "▤";
+}
+
+.preview-actions > button.primary:not(:first-child)::before {
+  content: "▣";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after,
+.preview-actions > button.secondary:nth-of-type(3)::after,
+.preview-actions > button.primary:not(:first-child)::after {
+  content: "›";
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  z-index: 1;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  z-index: 1;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  contain: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  contain: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  contain: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  outline-offset: 3px;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  pointer-events: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  pointer-events: none;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  text-indent: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  text-indent: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  text-indent: 0;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  white-space: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  white-space: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  white-space: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  word-break: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  word-break: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  word-break: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  overflow-wrap: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  overflow-wrap: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  overflow-wrap: normal;
+}
+
+.preview-actions > button.secondary:nth-of-type(2) {
+  hyphens: manual;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::before {
+  hyphens: manual;
+}
+
+.preview-actions > button.secondary:nth-of-type(2)::after {
+  hyphens: manual;
+}
+
+.preview-actions::after {
+  content: "Опубликовать";
+  position: absolute;
+  left: 0;
+  top: 134px;
+  color: rgba(235, 226, 255, 0.50);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  pointer-events: none;
 }
 
 .preview-actions .secondary:hover,
-.preview-actions .secondary:focus-visible {
-  border-color: rgba(210, 124, 255, 0.5);
-  background: rgba(28, 20, 42, 0.8);
+.preview-actions .secondary:focus-visible,
+.preview-actions > button.primary:not(:first-child):hover,
+.preview-actions > button.primary:not(:first-child):focus-visible {
+  border-color: rgba(187, 107, 255, 0.42);
+  background: rgba(22, 18, 32, 0.88);
+  filter: none;
 }
 
-.preview-actions > button.primary {
-  background: linear-gradient(135deg, rgba(139, 71, 255, 0.95), rgba(244, 83, 190, 0.96));
-  border: 0;
+.preview-actions > a.primary:first-child:hover,
+.preview-actions > a.primary:first-child:focus-visible {
+  filter: brightness(1.04);
 }
 
-.preview-actions > button.secondary:nth-of-type(2),
-.preview-actions > button.primary:nth-of-type(3) {
-  min-height: 44px;
-}
-
-@media (min-width: 390px) {
-  .preview-actions > button.secondary:nth-of-type(2),
-  .preview-actions > button.primary:nth-of-type(3) {
-    width: auto;
-  }
-}
-
-@media (max-width: 390px) {
+@media (max-width: 430px) {
   .preview-card {
-    border-radius: 26px 26px 0 0;
+    border-radius: 24px 24px 0 0;
   }
 
   .preview-copy {
@@ -152,13 +641,42 @@
   }
 
   .preview-copy > .panel {
-    border-radius: 20px;
+    padding: 18px 15px 15px !important;
+    border-radius: 22px;
+  }
+
+  .preview-copy > .panel .toggle-row strong {
+    max-width: 142px;
+    font-size: 14px;
+  }
+
+  .preview-copy > .panel .toggle-row small {
+    max-width: 160px;
+    font-size: 11px;
+  }
+
+  .preview-actions {
+    gap: 8px;
+    margin-top: 13px;
+    padding-top: 15px;
   }
 
   .preview-actions .primary,
   .preview-actions .secondary {
-    min-height: 46px;
-    border-radius: 16px;
+    min-height: 40px;
+    border-radius: 13px;
+    font-size: 13px;
+    padding-left: 44px;
+    padding-right: 38px;
+  }
+
+  .preview-actions > a.primary:first-child {
+    min-height: 52px;
+    padding-left: 52px;
     font-size: 14px;
+  }
+
+  .preview-actions::after {
+    top: 130px;
   }
 }
