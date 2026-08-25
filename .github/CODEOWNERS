@@ -1,0 +1,13 @@
+# Sensitive runtime and release surfaces require owner review.
+/app/services/** @Bambale0
+/app/api/v1/payments.py @Bambale0
+/app/api/v1/admin_payments.py @Bambale0
+/app/api/v1/referrals.py @Bambale0
+/app/services/*payment* @Bambale0
+/app/services/*wallet* @Bambale0
+/app/services/*withdraw* @Bambale0
+/app/db/*payment* @Bambale0
+/app/db/*wallet* @Bambale0
+/app/db/*withdraw* @Bambale0
+/alembic/** @Bambale0
+/.github/workflows/** @Bambale0
