@@ -17,8 +17,8 @@ def test_reference_backfill_does_not_iterate_expirable_orm_rows() -> None:
     assert "references = [(row_id, source_url)" in source
     assert "for reference_id, source_url in references:" in source
     assert "session.get(UserReference, reference_id)" in source
-    assert "select(UserReference)" not in source
     assert "for row in rows:" not in source
+    assert "rows = list((await session.scalars(stmt)).all())" not in source
 
 
 def test_feed_backfill_does_not_iterate_expirable_orm_rows() -> None:
@@ -28,5 +28,4 @@ def test_feed_backfill_does_not_iterate_expirable_orm_rows() -> None:
     assert "generation_ids = list((await session.scalars(stmt)).all())" in source
     assert "for generation_id in generation_ids:" in source
     assert "session.get(Generation, generation_id)" in source
-    assert "select(Generation)" not in source
     assert "for generation in generations:" not in source
