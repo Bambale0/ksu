@@ -128,8 +128,9 @@ def test_seedance_scenarios_and_reference_limits() -> None:
             "aspect_ratio": "16:9",
         },
     )
-    assert hybrid["first_frame_url"].endswith("first.png")
     assert hybrid["reference_image_urls"] == ["https://example.com/ref.png"]
+    assert "first_frame_url" not in hybrid
+    assert "last_frame_url" not in hybrid
     enforce_seedance_reference_mode("bytedance/seedance-2", hybrid)
 
     references = normalize_kie_video_input(

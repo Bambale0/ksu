@@ -10,6 +10,7 @@ SEEDANCE_REFERENCE_MODELS = {
     "bytedance/seedance-2-mini",
     "bytedance/seedance-2-5",
 }
+SEEDANCE_STRICT_REFERENCE_MODELS = {"bytedance/seedance-2-5"}
 SEEDANCE_REFERENCE_FIELDS = (
     "reference_image_urls",
     "reference_video_urls",
@@ -35,13 +36,17 @@ def enforce_seedance_reference_mode(model: str, payload: dict[str, Any]) -> None
         return
 
     reference_mode = any(bool(payload.get(field)) for field in SEEDANCE_REFERENCE_FIELDS)
+    first = bool(payload.get("first_frame_url"))
+    last = bool(payload.get("last_frame_url"))
+    if model in SEEDANCE_STRICT_REFERENCE_MODELS and (first or last) and reference_mode:
+        raise KieVideoContractError(
+            "Seedance frame mode and multimodal reference mode are mutually exclusive"
+        )
     if reference_mode:
         payload.pop("first_frame_url", None)
         payload.pop("last_frame_url", None)
         payload.pop("first_frame", None)
         return
 
-    first = bool(payload.get("first_frame_url"))
-    last = bool(payload.get("last_frame_url"))
     if last and not first:
         raise KieVideoContractError("Seedance last frame requires a first frame")

@@ -238,7 +238,7 @@ def _apply_seedance_reference_contract(
     # Kie docs make Seedance frame mode and multimodal reference mode mutually
     # exclusive. If references are present, route to pure multimodal reference
     # mode so backend validation and provider payloads stay documented.
-    if any(
+    if spec.id != "seedance-2.5" and any(
         _non_empty(normalized.get(field))
         for field in ("reference_image_urls", "reference_video_urls", "reference_audio_urls")
     ):
