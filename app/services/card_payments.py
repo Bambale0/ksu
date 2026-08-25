@@ -32,8 +32,32 @@ class CardPackage:
     dynamic_amount: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class CardOfferResolution:
+    offer_id: str
+    source: str
+
+
 class CardPackageCatalog:
     CURRENCIES = frozenset({"RUB", "USD", "EUR"})
+    DYNAMIC_PRICE_KEYS = frozenset(
+        {
+            "apiPrice",
+            "customPrice",
+            "dynamicPrice",
+            "isCustomPrice",
+            "isDynamicPrice",
+            "isPriceOnRequest",
+            "isPriceOnRequestViaApi",
+            "isPriceOnRequestViaAPI",
+            "priceByRequest",
+            "priceOnRequest",
+            "priceOnRequestViaApi",
+            "priceOnRequestViaAPI",
+            "price_on_request",
+            "requestPrice",
+        }
+    )
 
     @classmethod
     def packages(cls) -> dict[str, CardPackage]:
@@ -124,28 +148,86 @@ class CardPackageCatalog:
         return package
 
     @classmethod
-    def _parse_lava_products(cls, payload: dict[str, Any], configured_id: str) -> dict[str, CardPackage]:
-        products = payload.get("items")
-        if not isinstance(products, list):
-            data = payload.get("data")
-            products = data.get("items") if isinstance(data, dict) else data
-        if not isinstance(products, list):
-            return {}
+    async def resolve_invoice_offer(
+        cls,
+        client: CardCheckoutClient,
+        package: CardPackage,
+    ) -> CardOfferResolution:
+        configured_id = str(package.offer_id or settings.card_offer_id or "").strip()
+        if configured_id:
+            try:
+                payload = await client.get_products()
+            except PaymentProviderError:
+                return CardOfferResolution(configured_id, "configured")
+            resolved = cls._resolve_configured_offer(payload, configured_id)
+            if resolved is not None:
+                return resolved
+            return CardOfferResolution(configured_id, "configured")
 
+        try:
+            payload = await client.get_products()
+        except PaymentProviderError as exc:
+            raise PaymentProviderError(
+                "Card checkout offer id is not configured and product lookup failed"
+            ) from exc
+        candidates = cls._dynamic_offer_ids(payload)
+        if len(candidates) == 1:
+            return CardOfferResolution(candidates[0], "single_dynamic_offer")
+        raise PaymentProviderError(
+            "Card checkout offer id is not configured; set CARD_OFFER_ID or package offer_id"
+        )
+
+    @classmethod
+    def _resolve_configured_offer(
+        cls,
+        payload: dict[str, Any],
+        configured_id: str,
+    ) -> CardOfferResolution | None:
+        product_match_offers: list[dict[str, Any]] = []
+        for product in cls._products_from_payload(payload):
+            product_id = cls._object_id(product, product_keys=True)
+            offers = cls._offers_from_product(product)
+            for offer in offers:
+                offer_id = cls._object_id(offer, product_keys=False)
+                if offer_id == configured_id:
+                    return CardOfferResolution(offer_id, "offer_id")
+            if product_id == configured_id:
+                product_match_offers = offers
+
+        if not product_match_offers:
+            return None
+
+        dynamic_offers = [
+            offer
+            for offer in product_match_offers
+            if cls._object_id(offer, product_keys=False) and cls._is_dynamic_price_offer(offer)
+        ]
+        if len(dynamic_offers) == 1:
+            return CardOfferResolution(
+                cls._object_id(dynamic_offers[0], product_keys=False),
+                "product_dynamic_offer",
+            )
+
+        available_offer_ids = [
+            cls._object_id(offer, product_keys=False)
+            for offer in product_match_offers
+            if cls._object_id(offer, product_keys=False)
+        ]
+        if len(available_offer_ids) == 1:
+            return CardOfferResolution(available_offer_ids[0], "product_single_offer")
+        raise PaymentProviderError(
+            "CARD_OFFER_ID points to a product with multiple offers; set exact package offer_id"
+        )
+
+    @classmethod
+    def _parse_lava_products(cls, payload: dict[str, Any], configured_id: str) -> dict[str, CardPackage]:
         configured_id = configured_id.strip()
         result: dict[str, CardPackage] = {}
-        for product in products:
-            if not isinstance(product, dict):
-                continue
-            product_id = str(product.get("id") or product.get("productId") or "")
+        for product in cls._products_from_payload(payload):
+            product_id = cls._object_id(product, product_keys=True)
             product_matches = bool(configured_id and product_id == configured_id)
-            offers = product.get("offers")
-            if not isinstance(offers, list):
-                continue
-            for offer in offers:
-                if not isinstance(offer, dict):
-                    continue
-                offer_id = str(offer.get("id") or offer.get("offerId") or "")
+            for offer in cls._offers_from_product(product):
+                offer_id = cls._object_id(offer, product_keys=False)
                 if configured_id and not product_matches and offer_id != configured_id:
                     continue
                 credits = cls._credits_from_offer(offer)
@@ -160,6 +242,60 @@ class CardPackageCatalog:
                     dynamic_amount=False,
                 )
         return result
+
+    @classmethod
+    def _dynamic_offer_ids(cls, payload: dict[str, Any]) -> list[str]:
+        result: list[str] = []
+        for product in cls._products_from_payload(payload):
+            for offer in cls._offers_from_product(product):
+                offer_id = cls._object_id(offer, product_keys=False)
+                if offer_id and cls._is_dynamic_price_offer(offer):
+                    result.append(offer_id)
+        return result
+
+    @staticmethod
+    def _products_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        candidates: list[Any] = [payload.get("items"), payload.get("products")]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            candidates.extend([data.get("items"), data.get("products")])
+        elif isinstance(data, list):
+            candidates.append(data)
+        for candidate in candidates:
+            if isinstance(candidate, list):
+                return [item for item in candidate if isinstance(item, dict)]
+        return []
+
+    @staticmethod
+    def _offers_from_product(product: dict[str, Any]) -> list[dict[str, Any]]:
+        offers = product.get("offers")
+        if isinstance(offers, list):
+            return [offer for offer in offers if isinstance(offer, dict)]
+        offer = product.get("offer")
+        if isinstance(offer, dict):
+            return [offer]
+        return []
+
+    @staticmethod
+    def _object_id(item: dict[str, Any], *, product_keys: bool) -> str:
+        keys = ("id", "productId", "product_id") if product_keys else ("id", "offerId", "offer_id")
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return ""
+
+    @classmethod
+    def _is_dynamic_price_offer(cls, offer: dict[str, Any]) -> bool:
+        for key in cls.DYNAMIC_PRICE_KEYS:
+            value = offer.get(key)
+            if value is True:
+                return True
+            if isinstance(value, str) and value.strip().lower() in {"true", "1", "yes", "on"}:
+                return True
+        text = " ".join(str(offer.get(key) or "") for key in ("type", "priceType", "paymentType"))
+        normalized = text.lower().replace("_", "-")
+        return "dynamic" in normalized or "custom" in normalized or "request" in normalized
 
     @staticmethod
     def _credits_from_offer(offer: dict[str, Any]) -> Decimal | None:
@@ -322,7 +458,6 @@ class CardPaymentService:
                 )
             return existing_payment
 
-        offer_id = package.offer_id or settings.card_offer_id
         route = cls._route_for(currency)
         client = CardCheckoutClient(
             settings.card_api_key,
@@ -330,9 +465,10 @@ class CardPaymentService:
             settings.card_webhook_key,
         )
         try:
+            offer = await CardPackageCatalog.resolve_invoice_offer(client, package)
             created = await client.create_invoice(
                 email=email,
-                offer_id=offer_id,
+                offer_id=offer.offer_id,
                 currency=currency,
                 amount=amount if package.dynamic_amount else None,
                 payment_provider=route,
@@ -361,6 +497,8 @@ class CardPaymentService:
             **payment.payload,
             "payment_url": created.payment_url,
             "route": route or "hosted_checkout",
+            "offer_id": offer.offer_id,
+            "offer_id_source": offer.source,
             "provider_response": created.raw,
         }
         request_row.status = "completed"
