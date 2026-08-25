@@ -23,7 +23,7 @@ async function request<T>(path: string): Promise<T> {
 }
 
 function price(item: TrendItem): string {
-  const raw = item.cost_rox ?? item.cost_credits ?? item.retail_cost_rox;
+  const raw = item.cost_rox ?? item.retail_cost_rox;
   const parsed = Number(raw ?? 0);
   if (!Number.isFinite(parsed)) return "—";
   return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(parsed)} ROX`;
