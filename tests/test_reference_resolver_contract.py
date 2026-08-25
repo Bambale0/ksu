@@ -68,7 +68,7 @@ def test_generation_provider_uses_generation_context_for_submit_payload() -> Non
     assert payload == {
         "resolution": "1K",
         "prompt": "source prompt",
-        "image_url": "/uploads/refs/image/u/2026/08/input.png",
+        "image_urls": ["/uploads/refs/image/u/2026/08/input.png"],
     }
 
 
