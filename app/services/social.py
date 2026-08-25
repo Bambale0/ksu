@@ -105,7 +105,36 @@ class SocialService:
         if user.last_name:
             parts.append(user.last_name.strip())
         value = " ".join(part for part in parts if part).strip()
-        return value or user.username or "Пользователь Ксю"
+        return value or user.username or "Пользователь ROXY"
+
+    @staticmethod
+    async def _has_public_profile_work(session: AsyncSession, author_user_id: uuid.UUID) -> bool:
+        return bool(
+            await session.scalar(
+                select(Generation.id)
+                .where(
+                    Generation.user_id == author_user_id,
+                    Generation.status == "succeeded",
+                    Generation.is_profile_visible.is_(True),
+                    Generation.publication_scope.in_(("feed", "profile")),
+                )
+                .limit(1)
+            )
+        )
+
+    @classmethod
+    async def _profile_publicly_available(
+        cls,
+        session: AsyncSession,
+        *,
+        author: User,
+        preference: UserPreference | None,
+    ) -> bool:
+        if not author.is_active:
+            return False
+        if preference and preference.profile_discoverable:
+            return True
+        return await cls._has_public_profile_work(session, author.id)
 
     @classmethod
     async def public_profile(
@@ -119,9 +148,13 @@ class SocialService:
         if author is None or not author.is_active:
             raise SocialProfileNotFoundError
         preference = await session.get(UserPreference, author_user_id)
-        discoverable = bool(preference and preference.profile_discoverable)
         is_self = author_user_id == viewer_user_id
-        if not is_self and not discoverable:
+        profile_available = await cls._profile_publicly_available(
+            session,
+            author=author,
+            preference=preference,
+        )
+        if not is_self and not profile_available:
             raise SocialProfileNotFoundError
 
         follower_count = int(
@@ -148,7 +181,7 @@ class SocialService:
             "display_name": cls._display_name(author),
             "username": author.username,
             "referral_code": str(author.telegram_id),
-            "profile_discoverable": discoverable,
+            "profile_discoverable": profile_available,
             "is_self": is_self,
             "subscribed_by_me": subscribed_by_me,
             "follower_count": follower_count,
@@ -209,8 +242,15 @@ class SocialService:
 
         author = await session.get(User, author_user_id)
         preference = await session.get(UserPreference, author_user_id) if author else None
-        discoverable = bool(author and author.is_active and preference and preference.profile_discoverable)
-        if discoverable:
+        profile_available = bool(
+            author
+            and await cls._profile_publicly_available(
+                session,
+                author=author,
+                preference=preference,
+            )
+        )
+        if profile_available and author is not None:
             return await cls.public_profile(
                 session,
                 author_user_id=author_user_id,
@@ -251,18 +291,20 @@ class SocialService:
         )
         result: list[dict[str, object]] = []
         for subscription, author, preference in rows:
-            discoverable = bool(
-                author.is_active and preference and preference.profile_discoverable
+            profile_available = await cls._profile_publicly_available(
+                session,
+                author=author,
+                preference=preference,
             )
             result.append(
                 {
                     "id": str(author.id),
                     "display_name": (
-                        cls._display_name(author) if discoverable else "Скрытый профиль"
+                        cls._display_name(author) if profile_available else "Скрытый профиль"
                     ),
-                    "username": author.username if discoverable else None,
-                    "referral_code": str(author.telegram_id) if discoverable else None,
-                    "profile_discoverable": discoverable,
+                    "username": author.username if profile_available else None,
+                    "referral_code": str(author.telegram_id) if profile_available else None,
+                    "profile_discoverable": profile_available,
                     "subscribed_by_me": True,
                     "subscribed_at": subscription.created_at.isoformat(),
                 }
