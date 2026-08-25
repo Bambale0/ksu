@@ -47,12 +47,12 @@ async def select_prompt_friendly_model(page: Page, media: str) -> None:
     # and voice files. The browser smoke test is prompt-only, so use a text/video
     # model explicitly instead of depending on whichever card was active last.
     if media == "video":
-        veo = page.locator("button").filter(has_text=re.compile(r"\bVeo\b", re.I)).first
+        veo = page.get_by_role("button", name=re.compile("Veo", re.I)).first
         await expect(veo).to_be_visible(timeout=8000)
         await veo.click()
         return
     if media == "audio":
-        suno = page.locator("button").filter(has_text=re.compile(r"Suno|Музыка", re.I)).first
+        suno = page.get_by_role("button", name=re.compile("Suno|Музыка", re.I)).first
         if await suno.count() and await suno.is_visible():
             await suno.click()
 
