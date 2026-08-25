@@ -11,15 +11,6 @@ type PublishedPrompt = {
   copied?: boolean;
 };
 
-function publishedSurface(payload: any): FeedSurface {
-  return payload?.publication_scope === "profile" || payload?.item?.publication_scope === "profile" ? "profile" : "feed";
-}
-
-function generationIdFromPublishUrl(url: string): string | null {
-  const match = /\/api\/v1\/feed\/([^/]+)\/publish(?:\?|$)/.exec(url);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 async function copyText(value: string | null | undefined): Promise<boolean> {
   if (!value || typeof navigator === "undefined" || !navigator.clipboard) return false;
   await navigator.clipboard.writeText(value);
@@ -31,21 +22,11 @@ export function PostPublishSharePrompt() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const originalFetch = window.fetch.bind(window);
-    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
-      const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
-      const generationId = method === "POST" ? generationIdFromPublishUrl(url) : null;
-      const response = await originalFetch(input, init);
-      if (!generationId || !response.ok) return response;
-      void response.clone().json()
-        .then((payload) => setPublished({ id: payload?.item?.id || generationId, surface: publishedSurface(payload) }))
-        .catch(() => setPublished({ id: generationId, surface: "feed" }));
-      return response;
-    }) as typeof window.fetch;
-    return () => {
-      window.fetch = originalFetch;
+    const onPublished = (event: WindowEventMap["roxy:published"]) => {
+      setPublished({ id: event.detail.id, surface: event.detail.surface });
     };
+    window.addEventListener("roxy:published", onPublished);
+    return () => window.removeEventListener("roxy:published", onPublished);
   }, []);
 
   if (!published) return null;
