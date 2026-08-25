@@ -1,0 +1,128 @@
+.services-launcher {
+  position: fixed;
+  right: max(14px, calc(var(--tg-safe-right, 0px) + 10px));
+  bottom: max(92px, calc(var(--tg-safe-bottom, 0px) + 86px));
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(155,92,255,.96), rgba(255,95,183,.92));
+  box-shadow: 0 14px 34px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.05) inset;
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+}
+.services-launcher-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: rgba(11,11,16,.32);
+  font-size: 18px;
+}
+.services-launcher > span:last-child { display: grid; gap: 1px; text-align: left; }
+.services-launcher strong { font-size: 13px; line-height: 1.1; }
+.services-launcher small { font-size: 9px; line-height: 1.1; color: rgba(255,255,255,.78); }
+.services-grid { display: grid; gap: 14px; }
+.service-card {
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(31,24,43,.96), rgba(18,17,26,.98));
+  box-shadow: 0 22px 52px rgba(0,0,0,.24);
+}
+.service-card-media, .pinterest-service-preview {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+  background: radial-gradient(circle at 25% 20%, rgba(255,95,183,.34), transparent 42%), radial-gradient(circle at 75% 75%, rgba(155,92,255,.44), transparent 48%), #17131f;
+}
+.service-card-media img, .pinterest-service-preview img { width: 100%; height: 100%; min-height: 180px; max-height: 340px; display: block; object-fit: cover; }
+.service-card-placeholder { display: grid; min-height: 180px; place-items: center; font-size: 82px; font-weight: 900; color: rgba(255,255,255,.9); }
+.service-new-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  background: rgba(11,11,16,.72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  backdrop-filter: blur(12px);
+}
+.service-card-body { display: grid; gap: 13px; padding: 16px; }
+.service-card-body h2 { margin: 2px 0 0; font-size: 24px; line-height: 1.08; }
+.service-card-body p { margin: 0; color: #a6a6b3; line-height: 1.5; }
+.service-eyebrow { color: #ff8dcd; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.service-points { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; color: #d8d5df; font-size: 12px; }
+.service-points li { position: relative; padding-left: 18px; }
+.service-points li::before { content: "✦"; position: absolute; left: 0; color: #b894ff; }
+.service-primary-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #9b5cff, #ff5fb7);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 12px 26px rgba(155,92,255,.2);
+}
+.service-primary-button:disabled { opacity: .46; cursor: not-allowed; filter: saturate(.6); }
+.service-primary-button strong { font-size: 12px; color: rgba(255,255,255,.82); }
+.service-error { padding: 12px 14px; border: 1px solid rgba(255,95,120,.28); border-radius: 14px; background: rgba(255,95,120,.08); color: #ffb6c4; font-size: 12px; }
+.pinterest-flow-stack { display: grid; gap: 14px; padding-bottom: 24px; }
+.pinterest-service-preview { min-height: 150px; border-radius: 20px; border: 1px solid rgba(255,255,255,.08); }
+.pinterest-service-preview img { min-height: 150px; max-height: 260px; }
+.pinterest-step { display: grid; gap: 12px; padding: 15px; border: 1px solid rgba(255,255,255,.09); border-radius: 20px; background: rgba(255,255,255,.035); }
+.pinterest-step-head { display: flex; align-items: flex-start; gap: 11px; }
+.pinterest-step-head > span { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 11px; background: rgba(155,92,255,.18); color: #c9adff; font-size: 12px; font-weight: 900; }
+.pinterest-step-head h2 { margin: 1px 0 3px; font-size: 15px; }
+.pinterest-step-head p { margin: 0; color: #a6a6b3; font-size: 11px; line-height: 1.45; }
+.pinterest-upload { position: relative; display: grid; gap: 3px; min-height: 72px; padding: 14px; border: 1px dashed rgba(255,255,255,.2); border-radius: 16px; background: rgba(11,11,16,.5); cursor: pointer; }
+.pinterest-upload:hover { border-color: rgba(155,92,255,.65); }
+.pinterest-upload.is-ready { border-style: solid; border-color: rgba(105,225,164,.35); background: rgba(105,225,164,.06); }
+.pinterest-upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.pinterest-upload strong { font-size: 13px; }
+.pinterest-upload small { color: #8f8c99; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinterest-upload-secondary { min-height: 62px; }
+.pinterest-ref-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pinterest-ref-chips button { min-height: 32px; padding: 0 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; color: #d9d5e2; background: rgba(255,255,255,.05); font-size: 10px; }
+.pinterest-measure-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pinterest-measure-grid label { display: grid; gap: 6px; color: #b8b5c0; font-size: 10px; }
+.pinterest-measure-grid input { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; outline: 0; color: #fff; background: #111117; font: inherit; }
+.pinterest-measure-grid input:focus { border-color: #9b5cff; box-shadow: 0 0 0 3px rgba(155,92,255,.12); }
+.pinterest-consent { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; border: 1px solid rgba(255,255,255,.08); border-radius: 15px; color: #b8b5c0; background: rgba(255,255,255,.025); font-size: 11px; line-height: 1.45; }
+.pinterest-consent input { width: 18px; height: 18px; margin: 0; accent-color: #9b5cff; }
+.pinterest-run { min-height: 56px; font-size: 14px; }
+.pinterest-success { display: grid; gap: 7px; padding: 15px; border: 1px solid rgba(105,225,164,.28); border-radius: 18px; background: rgba(105,225,164,.07); }
+.pinterest-success strong { color: #9af0c1; }
+.pinterest-success p { margin: 0; color: #b8b5c0; font-size: 11px; line-height: 1.45; }
+.pinterest-success button { justify-self: start; min-height: 36px; padding: 0 12px; border: 1px solid rgba(105,225,164,.25); border-radius: 11px; color: #bdf8d8; background: rgba(105,225,164,.08); font-weight: 700; }
+@media (min-width: 720px) {
+  .services-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .service-card-pinterest { grid-column: span 2; display: grid; grid-template-columns: minmax(260px, .9fr) 1.1fr; }
+  .service-card-media { min-height: 100%; }
+  .services-launcher { right: max(24px, calc((100vw - 1180px) / 2)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .services-launcher { transition: transform .16s ease, box-shadow .16s ease; }
+  .services-launcher:active { transform: scale(.97); }
+}
