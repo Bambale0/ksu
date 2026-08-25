@@ -6,7 +6,9 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUserDep, SessionDep
-from app.db.models import User
+from app.db.models import Generation, User
+from app.db.social_models import UserSubscription
+from app.services.feed import FeedService
 from app.services.social import (
     SelfSubscriptionError,
     SocialProfileNotFoundError,
@@ -158,6 +160,54 @@ async def unsubscribe(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     await session.commit()
     return result
+
+
+@router.get("/subscriptions/feed")
+async def subscriptions_feed(
+    user: CurrentUserDep,
+    session: SessionDep,
+    limit: int = Query(default=24, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, object]:
+    """Return one merged feed for authors followed by the current viewer.
+
+    This mirrors the mature Banano Mini App contract: the frontend should not fan
+    out to every followed profile just to build the subscriptions tab.
+    """
+
+    statement = (
+        select(Generation)
+        .join(UserSubscription, UserSubscription.author_user_id == Generation.user_id)
+        .join(User, User.id == Generation.user_id)
+        .where(
+            UserSubscription.subscriber_user_id == user.id,
+            Generation.status == "succeeded",
+            Generation.is_profile_visible.is_(True),
+            Generation.publication_scope.in_(("feed", "profile")),
+            User.is_active.is_(True),
+        )
+        .order_by(
+            Generation.feed_published_at.desc().nullslast(),
+            Generation.created_at.desc(),
+            Generation.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    rows = list((await session.scalars(statement)).all())
+    page = rows[:limit]
+    cards = await FeedService.cards_for_generations(
+        session,
+        page,
+        viewer_user_id=user.id,
+        surface="profile",
+    )
+    return {
+        "items": cards,
+        "limit": limit,
+        "offset": offset,
+        "has_more": len(rows) > limit,
+    }
 
 
 @router.get("/subscriptions")
