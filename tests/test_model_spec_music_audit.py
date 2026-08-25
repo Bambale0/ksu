@@ -75,10 +75,13 @@ def test_suno_custom_style_title_and_weight_ranges_are_enforced() -> None:
         MusicGenerationService.prepare(
             {"customMode": True, "instrumental": True, "title": "Song"}
         )
-    with pytest.raises(MusicGenerationError, match="название"):
-        MusicGenerationService.prepare(
-            {"customMode": True, "instrumental": True, "style": "pop"}
-        )
+
+    clean, _price = MusicGenerationService.prepare(
+        {"customMode": True, "instrumental": True, "style": "pop"}
+    )
+    assert clean["style"] == "pop"
+    assert "title" not in clean
+
     with pytest.raises(MusicGenerationError, match="1000"):
         MusicGenerationService.prepare(
             {
