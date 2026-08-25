@@ -166,8 +166,10 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
             stmt = stmt.limit(max(1, int(limit)))
         rows = list((await session.scalars(stmt)).all())
         for row in rows:
+            reference_id = row.id
+            source_url = row.source_url
             stats.scanned += 1
-            if ReferenceStaticStorage.local_url_exists(row.source_url):
+            if ReferenceStaticStorage.local_url_exists(source_url):
                 stats.already_static += 1
                 continue
             try:
@@ -175,13 +177,13 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
             except (ReferenceStaticStorageError, UnsafeMediaSource, httpx.HTTPError) as exc:
                 await session.rollback()
                 stats.failed += 1
-                print(f"reference-static backfill failed reference={row.id}: {exc}")
+                print(f"reference-static backfill failed reference={reference_id}: {exc}")
                 if strict:
                     raise
             except Exception as exc:
                 await session.rollback()
                 stats.failed += 1
-                print(f"reference-static backfill unexpected reference={row.id}: {exc}")
+                print(f"reference-static backfill unexpected reference={reference_id}: {exc}")
                 if strict:
                     raise
             else:
