@@ -12,30 +12,22 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
-.preview-copy {
-  gap: 12px;
-}
-
+.preview-copy { gap: 12px; }
 .preview-copy > .kicker,
 .preview-copy > h2,
-.preview-copy > .muted {
-  margin-bottom: 0;
-}
-
-.preview-copy > h2 {
-  line-height: 1.08;
-}
+.preview-copy > .muted { margin-bottom: 0; }
+.preview-copy > h2 { line-height: 1.08; }
 
 .preview-copy > .panel {
   position: relative;
   overflow: hidden;
   margin-top: 2px;
-  padding: 20px 16px 16px !important;
-  border-radius: 24px;
+  padding: 18px 15px 15px !important;
+  border-radius: 23px;
   border: 1px solid rgba(160, 91, 255, 0.42);
   background:
-    radial-gradient(circle at 86% 8%, rgba(178, 92, 255, 0.16), transparent 33%),
-    linear-gradient(180deg, rgba(21, 18, 33, 0.98), rgba(10, 10, 18, 0.98));
+    radial-gradient(circle at 86% 8%, rgba(178, 92, 255, 0.15), transparent 33%),
+    linear-gradient(180deg, rgba(20, 17, 31, 0.98), rgba(9, 9, 16, 0.985));
   box-shadow:
     0 0 28px rgba(121, 72, 255, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.052);
@@ -47,7 +39,7 @@
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255,255,255,0.035), transparent 34%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.032), transparent 34%);
 }
 
 .preview-copy > .panel .toggle-row,
@@ -91,9 +83,7 @@
 }
 
 .preview-copy > .panel .toggle-row strong,
-.preview-copy > .panel .toggle-row small {
-  grid-column: 2;
-}
+.preview-copy > .panel .toggle-row small { grid-column: 2; }
 
 .preview-copy > .panel .toggle-row strong {
   display: block;
@@ -138,33 +128,28 @@
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
-.preview-copy > .panel .toggle-row input:not(:checked) + i::after {
-  transform: translate(3px, 3px);
-}
+.preview-copy > .panel .toggle-row input:not(:checked) + i::after { transform: translate(3px, 3px); }
 
 .preview-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-top: 14px;
-  padding-top: 16px;
+  margin-top: 13px;
+  padding-top: 15px;
 }
 
 .preview-actions::before {
   content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  order: 0;
   height: 1px;
+  margin-bottom: 1px;
   background: linear-gradient(90deg, transparent, rgba(164, 106, 255, 0.22), transparent);
 }
 
 .preview-actions::after {
   content: "Опубликовать";
-  position: absolute;
-  left: 0;
-  top: 132px;
+  order: 3;
+  margin: 6px 0 2px;
   color: rgba(235, 226, 255, 0.50);
   font-size: 11px;
   line-height: 1;
@@ -215,19 +200,8 @@
   font-weight: 400;
 }
 
-.preview-actions .secondary::before,
-.preview-actions > button.primary:not(:first-child)::before {
-  left: 15px;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  color: #b86dff;
-  background: rgba(143, 83, 255, 0.16);
-  font-size: 14px;
-  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
-}
-
 .preview-actions > a.primary:first-child {
+  order: 1;
   min-height: 54px;
   margin-bottom: 6px;
   padding-left: 54px;
@@ -257,17 +231,10 @@
   color: rgba(255, 255, 255, 0.86);
 }
 
-.preview-actions .secondary,
-.preview-actions > button.primary:not(:first-child) {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(12, 12, 19, 0.78);
-  color: rgba(255, 255, 255, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
 .preview-actions > button.secondary:first-of-type {
+  order: 2;
   min-height: 40px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   border-color: rgba(171, 92, 255, 0.62);
   background: rgba(13, 12, 20, 0.78);
   text-align: center;
@@ -276,31 +243,46 @@
 
 .preview-actions > button.secondary:first-of-type::before {
   content: "≛";
+  left: 15px;
+  width: 24px;
+  height: 24px;
+  color: #b86dff;
   background: transparent;
-  box-shadow: none;
   font-size: 18px;
+  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
 }
 
-.preview-actions > button.secondary:first-of-type::after {
-  content: "";
+.preview-actions > button.secondary:first-of-type::after { content: ""; }
+
+.preview-actions .secondary,
+.preview-actions > button.primary:not(:first-child) {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 12, 19, 0.78);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
-.preview-actions > button.secondary:nth-of-type(2) {
-  margin-top: 20px;
+.preview-actions > button.secondary:nth-of-type(n+2),
+.preview-actions > button.primary:not(:first-child) {
+  order: 4;
 }
 
-.preview-actions > button.secondary:nth-of-type(2)::before {
-  content: "♙";
+.preview-actions > button.secondary:nth-of-type(n+2)::before,
+.preview-actions > button.primary:not(:first-child)::before {
+  left: 15px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #b86dff;
+  background: rgba(143, 83, 255, 0.16);
+  font-size: 13px;
+  text-shadow: 0 0 14px rgba(177, 95, 255, 0.35);
 }
 
-.preview-actions > button.secondary:nth-of-type(3)::before {
-  content: "▤";
-}
-
-.preview-actions > button.primary:not(:first-child)::before,
-.preview-actions > button.secondary:nth-of-type(4)::before {
-  content: "▣";
-}
+.preview-actions > button.secondary:nth-of-type(2)::before { content: "◉"; }
+.preview-actions > button.secondary:nth-of-type(3)::before { content: "▤"; }
+.preview-actions > button.secondary:nth-of-type(n+4)::before,
+.preview-actions > button.primary:not(:first-child)::before { content: "▦"; }
 
 .preview-actions .secondary:hover,
 .preview-actions .secondary:focus-visible,
@@ -312,18 +294,11 @@
 }
 
 .preview-actions > a.primary:first-child:hover,
-.preview-actions > a.primary:first-child:focus-visible {
-  filter: brightness(1.04);
-}
+.preview-actions > a.primary:first-child:focus-visible { filter: brightness(1.04); }
 
 @media (max-width: 430px) {
-  .preview-card {
-    border-radius: 24px 24px 0 0;
-  }
-
-  .preview-copy {
-    padding-inline: 16px;
-  }
+  .preview-card { border-radius: 24px 24px 0 0; }
+  .preview-copy { padding-inline: 16px; }
 
   .preview-copy > .panel {
     padding: 18px 15px 15px !important;
@@ -344,10 +319,6 @@
     gap: 8px;
     margin-top: 13px;
     padding-top: 15px;
-  }
-
-  .preview-actions::after {
-    top: 130px;
   }
 
   .preview-actions .primary,
