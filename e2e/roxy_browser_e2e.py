@@ -180,7 +180,7 @@ async def select_primary(page: Page, route: str) -> None:
 
 
 async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
-    prompt_input = page.locator("#dynamicForm textarea, #dynamicForm input[type=text]").first
+    prompt_input = page.locator("#dynamicForm textarea, #dynamicForm input[type=text], .create-screen textarea, .create-screen input[type=text]").first
     await expect(prompt_input).to_be_visible(timeout=7000)
     await prompt_input.fill(prompt)
 
@@ -195,7 +195,7 @@ async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
             minimum = await number.first.get_attribute("min")
             value = max(3, int(float(minimum or "1")))
             await number.first.fill(str(value))
-    billing = page.locator('#dynamicForm input[type="number"]')
+    billing = page.locator('#dynamicForm input[type="number"], .create-screen input[type="number"]')
     for index in range(await billing.count()):
         item = billing.nth(index)
         if not await item.input_value():
@@ -203,19 +203,20 @@ async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
             if minimum is not None:
                 await item.fill(str(max(3, int(float(minimum)))))
 
-    await expect(page.locator("#createButton")).to_be_enabled(timeout=10000)
+    create = page.locator("#createButton, .create-summary button.primary").first
+    await expect(create).to_be_enabled(timeout=10000)
     async with page.expect_response(
         lambda response: response.url.rstrip("/").endswith("/api/v1/generations")
         and response.request.method == "POST",
         timeout=10000,
     ) as response_info:
-        await page.locator("#createButton").click()
+        await create.click()
     response = await response_info.value
     assert response.ok, f"generation create failed: {response.status} {await response.text()}"
     created = await response.json()
     generation = await wait_generation(page, created["id"])
     assert generation["status"] == "succeeded", generation
-    await expect(page.locator("#resultCard h3")).to_have_text("Готово", timeout=10000)
+    await expect(page.locator("#resultCard, .preview-card")).to_be_visible(timeout=10000)
     return generation
 
 
@@ -296,11 +297,15 @@ async def scenario_generations(page: Page, report: Report) -> list[dict]:
     ):
         await select_primary(page, "create")
         card = page.locator(f'[data-roxy-media="{media}"]')
-        await expect(card).to_be_visible(timeout=8000)
-        if media == "audio":
-            await expect(card).to_be_enabled(timeout=10000)
-        await card.click()
-        await expect(page.locator("#builderView")).to_be_visible(timeout=8000)
+        if await card.count():
+            await expect(card).to_be_visible(timeout=8000)
+            if media == "audio":
+                await expect(card).to_be_enabled(timeout=10000)
+            await card.click()
+        else:
+            label = {"image": "Фото", "video": "Видео", "audio": "Музыка"}[media]
+            await click_visible(page.get_by_role("button", name=label))
+        await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
         result = await fill_builder_and_generate(page, prompt)
         results.append(result)
         report.controls_seen.update({f"create:{media}", f"generate:{media}"})
@@ -312,10 +317,10 @@ async def scenario_generations(page: Page, report: Report) -> list[dict]:
             after = await page.evaluate("window.__roxyE2E.opened.length")
             assert after > before
             report.controls_seen.add("result:share")
-        reuse = page.get_by_role("button", name="Повторить / изменить")
+        reuse = page.get_by_role("button", name=re.compile("Повторить / изменить|Использовать настройки"))
         await expect(reuse).to_be_visible()
         await reuse.click()
-        await expect(page.locator("#builderView")).to_be_visible()
+        await expect(page.locator("#builderView, .create-screen")).to_be_visible()
         report.controls_seen.add("result:reuse")
     report.ok("image + video + music generation through real API/DB/Redis/worker + fake Kie")
     return results

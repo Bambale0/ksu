@@ -156,20 +156,25 @@ async def wait_generation(page: Page, generation_id: str) -> dict:
 
 async def generate(page: Page, media: str, prompt: str, report: Report) -> None:
     await route(page, "create")
-    card = page.locator(f'[data-roxy-media="{media}"]')
-    await expect(card).to_be_visible(timeout=8000)
-    await expect(card).to_be_enabled(timeout=10000)
-    await card.click()
-    await expect(page.locator("#builderView")).to_be_visible(timeout=8000)
-    prompt_input = page.locator("#dynamicForm textarea, #dynamicForm input[type=text]").first
+    legacy_card = page.locator(f'[data-roxy-media="{media}"]')
+    if await legacy_card.count():
+        await expect(legacy_card).to_be_visible(timeout=8000)
+        await expect(legacy_card).to_be_enabled(timeout=10000)
+        await legacy_card.click()
+    else:
+        label = {"image": "Фото", "video": "Видео", "audio": "Музыка"}[media]
+        await click_visible(page.get_by_role("button", name=label))
+    await expect(page.locator(".create-screen")).to_be_visible(timeout=8000)
+    prompt_input = page.locator(".create-screen textarea, .create-screen input[type=text]").first
     await expect(prompt_input).to_be_visible(timeout=8000)
     await prompt_input.fill(prompt)
-    for index in range(await page.locator('#dynamicForm input[type="number"]').count()):
-        field = page.locator('#dynamicForm input[type="number"]').nth(index)
+    number_fields = page.locator('.create-screen input[type="number"]')
+    for index in range(await number_fields.count()):
+        field = number_fields.nth(index)
         if not await field.input_value():
             minimum = await field.get_attribute("min")
             await field.fill(str(max(3, int(float(minimum or "1")))))
-    create = page.locator("#createButton")
+    create = page.locator("#createButton, .create-summary button.primary").first
     await expect(create).to_be_enabled(timeout=10000)
     async with page.expect_response(
         lambda response: response.url.rstrip("/").endswith("/api/v1/generations") and response.request.method == "POST",
@@ -181,7 +186,7 @@ async def generate(page: Page, media: str, prompt: str, report: Report) -> None:
     created = await response.json()
     finished = await wait_generation(page, created["id"])
     assert finished["status"] == "succeeded", finished
-    await expect(page.locator("#resultCard h3")).to_have_text("Готово", timeout=10000)
+    await expect(page.locator("#resultCard, .preview-card")).to_be_visible(timeout=10000)
     report.controls.update({f"create:{media}", f"generation:{media}:submit"})
     share = page.get_by_role("button", name="Поделиться")
     if await share.count() and await share.first.is_visible():
@@ -189,10 +194,10 @@ async def generate(page: Page, media: str, prompt: str, report: Report) -> None:
         await share.first.click()
         assert await page.evaluate("window.__roxyE2E.opened.length") > before
         report.controls.add("result:share")
-    reuse = page.get_by_role("button", name="Повторить / изменить")
+    reuse = page.get_by_role("button", name=re.compile("Повторить / изменить|Использовать настройки"))
     await expect(reuse).to_be_visible()
     await reuse.click()
-    await expect(page.locator("#builderView")).to_be_visible()
+    await expect(page.locator("#builderView, .create-screen")).to_be_visible()
     report.controls.add("result:reuse")
 
 
