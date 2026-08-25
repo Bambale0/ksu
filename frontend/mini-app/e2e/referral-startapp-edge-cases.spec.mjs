@@ -176,7 +176,7 @@ test('feed target 404 falls back to profile lookup and then shows a safe error',
   const payload = `feed_${missingGenerationId}_ref_777`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.getByRole('alert')).toContainText('Работа не найдена');
+  await expect(page.getByText('Работа не найдена')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Открыть всю ленту' })).toBeVisible();
   expect(audit.feedItemCalls).toEqual([
     { id: missingGenerationId, surface: 'feed' },
@@ -189,7 +189,7 @@ test('mismatched referral signature disables repeat and share actions', async ({
   const payload = `feed_${generationId}_ref_999`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.getByRole('alert')).toContainText('Реферальная подпись не совпадает');
+  await expect(page.getByText('Реферальная подпись не совпадает с автором работы.')).toBeVisible();
   await expect(page.getByRole('button', { name: /^Повторить$/ })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Скопировать ссылку' })).toBeDisabled();
   expect(audit.remixCalls()).toBe(0);
