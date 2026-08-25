@@ -47,16 +47,16 @@ def test_all_generated_social_links_open_main_mini_app(monkeypatch) -> None:  # 
     generation_id = uuid.uuid4()
 
     assert PartnerService.referral_link(123456) == (
-        "https://t.me/RoxyExampleBot/app?startapp=ref_123456"
+        "https://t.me/RoxyExampleBot?startapp=ref_123456"
     )
     assert FeedService.post_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot/app?startapp=feed_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot?startapp=feed_{generation_id}_ref_123456"
     )
     assert FeedService.profile_deep_link("123456") == (
-        "https://t.me/RoxyExampleBot/app?startapp=profile_123456_ref_123456"
+        "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
     )
     assert FeedService.remix_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot/app?startapp=remix_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot?startapp=remix_{generation_id}_ref_123456"
     )
 
 
