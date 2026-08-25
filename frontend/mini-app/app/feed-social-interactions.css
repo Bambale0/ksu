@@ -1,0 +1,168 @@
+.rsf-source-tabs {
+  width: min(100%, 420px);
+  margin: -8px auto 0;
+  padding: 4px;
+  border: 1px solid rgba(255, 216, 106, .16);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.rsf-source-tabs button {
+  min-height: 35px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255,255,255,.58);
+  font-size: 12px;
+  font-weight: 880;
+}
+
+.rsf-source-tabs button.active {
+  background: linear-gradient(180deg, #ffe783, #ebb128);
+  color: #141008;
+  box-shadow: 0 10px 24px rgba(235,177,40,.22), inset 0 1px rgba(255,255,255,.58);
+}
+
+.rsf-load-more {
+  min-height: 50px;
+  border: 1px solid rgba(255,216,106,.28);
+  border-radius: 17px;
+  background: rgba(255,255,255,.045);
+  color: #ffe17a;
+  font-weight: 940;
+}
+
+.rsf-side-actions button:disabled,
+.rsf-repeat:disabled,
+.rsf-follow:disabled,
+.rsf-load-more:disabled {
+  opacity: .56;
+}
+
+.rsf-comments-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  max-height: min(76vh, 720px);
+  overflow: hidden;
+  border: 1px solid rgba(255,216,106,.28);
+  border-radius: 26px;
+  background: #090909;
+  box-shadow: 0 30px 100px rgba(0,0,0,.7);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.rsf-comments-card header {
+  min-height: 70px;
+  padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.rsf-comments-card header span {
+  color: #ffd86a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+
+.rsf-comments-card header h2 {
+  margin: 2px 0 0;
+  color: #fff;
+  font-size: 19px;
+  letter-spacing: -.025em;
+}
+
+.rsf-comments-card header button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  font-size: 24px;
+}
+
+.rsf-comments-list {
+  overflow-y: auto;
+  padding: 11px;
+  display: grid;
+  gap: 8px;
+}
+
+.rsf-comment {
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 15px;
+  background: rgba(255,255,255,.035);
+}
+
+.rsf-comment strong {
+  color: #fff;
+  font-size: 13px;
+}
+
+.rsf-comment p {
+  margin: 4px 0;
+  color: rgba(255,255,255,.78);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.rsf-comment small,
+.rsf-comments-empty {
+  color: rgba(255,255,255,.48);
+  font-size: 11px;
+}
+
+.rsf-comments-empty {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.rsf-comment-form {
+  padding: 11px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.rsf-comment-form input {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  outline: 0;
+  background: rgba(255,255,255,.04);
+  color: #fff;
+}
+
+.rsf-comment-form input:focus {
+  border-color: rgba(255,216,106,.48);
+}
+
+.rsf-comment-form button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffe783, #ebb128);
+  color: #141008;
+  font-weight: 930;
+}
+
+@media (max-width: 520px) {
+  .rsf-source-tabs { width: 100%; }
+  .rsf-comments-card { align-self: end; max-height: 82vh; border-radius: 24px 24px 0 0; }
+}
