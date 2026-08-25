@@ -167,7 +167,7 @@ class CardCheckoutClient:
     def _unwrap(payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise PaymentProviderError("Card checkout returned invalid JSON")
-        for key in ("data", "invoice", "contract"):
+        for key in ("data", "invoice", "contract", "result", "payload"):
             nested = payload.get(key)
             if isinstance(nested, dict):
                 return nested
@@ -180,6 +180,7 @@ class CardCheckoutClient:
             or payload.get("contractId")
             or payload.get("invoiceId")
             or payload.get("contract_id")
+            or payload.get("invoice_id")
             or ""
         )
 
@@ -187,8 +188,16 @@ class CardCheckoutClient:
     def extract_payment_url(payload: dict[str, Any]) -> str:
         return str(
             payload.get("paymentUrl")
+            or payload.get("paymentURL")
             or payload.get("payment_url")
+            or payload.get("paymentLink")
+            or payload.get("payment_link")
+            or payload.get("checkoutUrl")
+            or payload.get("checkout_url")
+            or payload.get("redirectUrl")
+            or payload.get("redirect_url")
             or payload.get("url")
+            or payload.get("link")
             or ""
         )
 
