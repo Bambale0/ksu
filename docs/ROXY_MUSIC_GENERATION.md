@@ -45,19 +45,20 @@ The V5.5 product surface exposes:
 - `title`;
 - `negativeTags`;
 - `vocalGender` (`m` / `f`);
-- `styleWeight` (`0..1`);
-- `weirdnessConstraint` (`0..1`);
-- `audioWeight` (`0..1`);
+- `styleWeight` (`0..1`, UI default `0.7`);
+- `weirdnessConstraint` (`0..1`, UI default `0.3`);
+- `audioWeight` (`0..1`, UI default `0.6`);
 - `personaId`;
 - `personaModel`;
 - `duration` (V5_5 only).
 
 The requirements are conditional rather than represented by a single static `required_fields` list:
 
-- Simple Mode (`customMode=false`): `prompt` is required; current Generate Music docs allow up to 3000 characters; other custom fields are stripped before submission.
-- Custom + instrumental: `style` and `title` are required; `prompt` may be omitted.
-- Custom + vocal: `style`, `prompt`, and `title` are required.
-- V5_5 custom prompt: up to 5000 characters.
+- Simple Mode (`customMode=false`): `prompt` is required; the public builder keeps this short and validates up to 500 characters; other custom fields are stripped before submission.
+- Custom + instrumental: `style` is required; `prompt` may be omitted.
+- Custom + vocal: `style` and `prompt` are required.
+- `title` is optional in the product UI and is sent only when filled.
+- V5_5 custom prompt / lyrics: up to 5000 characters.
 - V5_5 style: up to 1000 characters.
 - title: up to 80 characters.
 - `duration` is accepted only while the configured provider model is `V5_5`.
@@ -70,10 +71,10 @@ Music has its own public ROX price:
 
 ```env
 MUSIC_GENERATION_MODEL=V5_5
-MUSIC_GENERATION_PRICE_ROX=100
+MUSIC_GENERATION_PRICE_ROX=25
 ```
 
-The default is intentionally configurable. Provider-credit pricing is not exposed to the browser and is not used to redefine the public ROXY economy.
+The default product tariff is **25 ROX**. Provider-credit pricing is not exposed to the browser and is not used to redefine the public ROXY economy.
 
 `1 ROX = 1 RUB` remains unchanged.
 
@@ -116,11 +117,12 @@ Supported file extensions at ingest are currently `.mp3`, `.wav`, `.ogg`, `.m4a`
 
 The existing `Создать -> Фото / Видео / Музыка` selector now enables Music when an audio model is present in the server catalog.
 
-The `roxy-music` product layer:
+The `suno-v5.5` product layer:
 
-- opens the Suno builder directly;
-- labels the family as Music;
-- hides the image/video prompt helper for audio jobs;
+- opens as a dedicated audio builder inside the shared Create surface;
+- exposes the same concepts as the approved mockup: prompt, optional title, simple/custom mode, vocal/instrumental choice, voice, lyrics, advanced style controls and excluded tags;
+- defaults the advanced controls to `styleWeight=0.7`, `weirdnessConstraint=0.3`, `audioWeight=0.6`;
+- shows the server-owned 25 ROX quote before launch;
 - converts generated audio result elements into native `<audio controls>` players;
 - keeps the same polling, History and `Повторить / изменить` flows used by other generation media.
 
@@ -143,7 +145,7 @@ Before production release:
 2. keep `KIE_WEBHOOK_HMAC_KEY` configured where Kie callback signing is enabled;
 3. confirm `PUBLIC_BASE_URL` resolves to the callback-capable service;
 4. configure S3-compatible storage;
-5. explicitly approve `MUSIC_GENERATION_PRICE_ROX` for the current commercial tariff;
+5. explicitly approve `MUSIC_GENERATION_PRICE_ROX=25` or the intended production override for the current commercial tariff;
 6. verify `media-worker` heartbeat and audio ingest events;
 7. perform one vocal and one instrumental generation from Telegram Mini App;
 8. verify provider URL changes to owned storage in History;
