@@ -14,6 +14,7 @@ import "./standalone-tools.css";
 import "./action-polish.css";
 import "./services.css";
 import "./suno-audio.css";
+import "./feed-social.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         <Script src="/mini-app/rox-price-only.js" strategy="afterInteractive" />
         <Script src="/mini-app/keyboard-reference-ux.js" strategy="afterInteractive" />
+        <Script src="/mini-app/feed-social-polish.js" strategy="afterInteractive" />
         {children}
       </body>
     </html>
