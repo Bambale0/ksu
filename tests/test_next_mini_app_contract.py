@@ -72,6 +72,8 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
 
 def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     layout = _read(FRONTEND / "app" / "layout.tsx")
+    page = _read(FRONTEND / "app" / "page.tsx")
+    guard = _read(FRONTEND / "components" / "single-feed-surface-guard.tsx")
     public_dir = FRONTEND / "public"
     styles_dir = FRONTEND / "app"
 
@@ -81,6 +83,11 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert not (public_dir / "feed-social-polish.js").exists()
     assert not (styles_dir / "feed-social.css").exists()
     assert not (styles_dir / "feed-social-interactions.css").exists()
+    assert "<SingleFeedSurfaceGuard />" in page
+    assert 'currentRoute() === "feed"' in guard
+    assert 'replaceRoute("catalog")' in guard
+    assert 'buttonLabel(button) !== "Лента"' in guard
+    assert 'buttonLabel(button) === "Каталог"' in guard
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
