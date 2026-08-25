@@ -2,11 +2,34 @@
 
 import { useEffect, useState } from "react";
 
+import { Icon, type IconName } from "@/components/icons";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { haptic, initTelegram, telegramHeaders } from "@/lib/telegram";
 import type { TrendItem } from "@/lib/types";
 
 type ServicesResponse = { items?: TrendItem[] };
+type CreationMedia = "image" | "video" | "audio";
+type ServiceShortcut = {
+  title: string;
+  description: string;
+  icon: IconName;
+  route?: "create" | "partners" | "profile";
+  media?: CreationMedia;
+  pinterest?: boolean;
+  badge?: string;
+};
+
+const MEDIA_FILTER_KEY = "ksu-selected-media";
+
+const SERVICE_SHORTCUTS: ServiceShortcut[] = [
+  { title: "Оживить", description: "Image-to-video", icon: "video", route: "create", media: "video" },
+  { title: "Изменить", description: "Редактирование фото", icon: "image", route: "create", media: "image" },
+  { title: "Музыка", description: "Генерация музыки", icon: "music", route: "create", media: "audio" },
+  { title: "Avatar", description: "Фото и видео-сценарии", icon: "profile", route: "create", media: "video" },
+  { title: "Партнёры", description: "Партнёрская программа", icon: "share", route: "partners" },
+  { title: "Помощь", description: "Профиль и поддержка", icon: "settings", route: "profile" },
+  { title: "Pinterest", description: "Повторить Pinterest-сцену со своей внешностью", icon: "spark", pinterest: true, badge: "Новинка" },
+];
 
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(path, {
@@ -22,11 +45,10 @@ async function request<T>(path: string): Promise<T> {
   return payload as T;
 }
 
-function price(item: TrendItem): string {
-  const raw = item.cost_rox ?? item.retail_cost_rox;
-  const parsed = Number(raw ?? 0);
-  if (!Number.isFinite(parsed)) return "—";
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(parsed)} ROX`;
+function openMainRoute(route: "create" | "partners" | "profile", media?: CreationMedia) {
+  if (media) localStorage.setItem(MEDIA_FILTER_KEY, media);
+  haptic(route === "create" ? "medium" : "light");
+  window.location.assign(`/mini-app/?route=${encodeURIComponent(route)}`);
 }
 
 export default function ServicesPage() {
@@ -43,63 +65,48 @@ export default function ServicesPage() {
         setItems(Array.isArray(payload.items) ? payload.items : []);
         setError("");
       })
-      .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Не удалось загрузить сервисы"))
+      .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Не удалось загрузить Pinterest"))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, []);
 
   const pinterest = items[0] ?? null;
 
+  const openShortcut = (shortcut: ServiceShortcut) => {
+    if (shortcut.pinterest) {
+      if (!pinterest) return;
+      haptic("medium");
+      window.location.assign(`/mini-app/pinterest-flow/?id=${encodeURIComponent(pinterest.id)}`);
+      return;
+    }
+    if (shortcut.route) openMainRoute(shortcut.route, shortcut.media);
+  };
+
   return (
-    <StandaloneShell
-      kicker="ROXY SERVICES"
-      title="Сервисы"
-      copy="Готовые AI-сценарии, где сложная логика референсов и промптов уже настроена за тебя."
-    >
-      <div className="services-grid">
-        <article className="service-card service-card-pinterest">
-          <div className="service-card-media">
-            {pinterest?.preview_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={pinterest.preview_url} alt="Pinterest AI" />
-            ) : (
-              <div className="service-card-placeholder" aria-hidden="true">P</div>
-            )}
-            <span className="service-new-badge">НОВИНКА</span>
-          </div>
-          <div className="service-card-body">
-            <div>
-              <span className="service-eyebrow">Pinterest Flow</span>
-              <h2>Pinterest AI</h2>
-            </div>
-            <p>Повторяй трендовые сцены с твоим лицом, телом и дополнительными ракурсами.</p>
-            <ul className="service-points">
-              <li>Сцена из Pinterest — отдельный референс</li>
-              <li>Лицо и тело — отдельный identity reference</li>
-              <li>До 5 дополнительных ракурсов</li>
-            </ul>
-            {pinterest ? (
-              <button
-                type="button"
-                className="service-primary-button"
-                onClick={() => {
-                  haptic("medium");
-                  window.location.assign(`/mini-app/pinterest-flow/?id=${encodeURIComponent(pinterest.id)}`);
-                }}
-              >
-                <span>Открыть Pinterest Flow</span>
-                <strong>{price(pinterest)}</strong>
-              </button>
-            ) : (
-              <button type="button" className="service-primary-button" disabled>
-                {loading ? "Загружаю сервис…" : "Pinterest Flow пока не опубликован"}
-              </button>
-            )}
-          </div>
-        </article>
+    <StandaloneShell kicker="AI" title="Сервисы" copy="Что здесь есть">
+      <div className="service-shortcut-grid" aria-label="Сервисы">
+        {SERVICE_SHORTCUTS.map((shortcut) => {
+          const unavailable = shortcut.pinterest && !pinterest;
+          return (
+            <button
+              key={shortcut.title}
+              type="button"
+              className={`service-shortcut${shortcut.pinterest ? " service-shortcut-pinterest" : ""}`}
+              title={unavailable && !loading ? "Pinterest Flow пока не опубликован" : shortcut.description}
+              aria-label={shortcut.title}
+              disabled={unavailable}
+              onClick={() => openShortcut(shortcut)}
+            >
+              {shortcut.badge ? <span className="service-shortcut-badge">{shortcut.badge}</span> : null}
+              <span className="service-shortcut-icon" aria-hidden="true"><Icon name={shortcut.icon} size={19} /></span>
+              <span className="service-shortcut-title">{shortcut.title}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {error ? <div className="service-error" role="alert">{error}</div> : null}
+      {loading ? <div className="service-status" role="status">Проверяю Pinterest Flow…</div> : null}
+      {error ? <div className="service-error" role="alert">Pinterest временно недоступен: {error}</div> : null}
     </StandaloneShell>
   );
 }
