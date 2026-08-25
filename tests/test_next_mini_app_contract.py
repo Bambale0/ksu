@@ -59,11 +59,13 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
     app = _read(FRONTEND / "components" / "roxy-app.tsx")
     for token in (
         '"home"',
+        '"feed"',
         '"catalog"',
         '"create"',
         '"history"',
         '"profile"',
         "Главная",
+        "Лента",
         "Каталог",
         "Создать",
         "История",
@@ -72,7 +74,6 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
         "Публикации",
     ):
         assert token in app
-    assert "Лента" not in app
 
 
 def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
@@ -95,6 +96,8 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert 'feedButtons.length > 1' in guard
     assert 'setButtonLabel(duplicate, "Каталог")' in guard
     assert "Do not redirect Feed away" in guard
+    assert "aspect-ratio: 3 / 4" in guard
+    assert "object-fit: contain" in guard
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
