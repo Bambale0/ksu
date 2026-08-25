@@ -250,6 +250,29 @@ VALID_MARKET_MODEL_INPUTS: dict[str, dict[str, Any]] = {
             }
         ],
     },
+    "kling/v2-5-turbo-text-to-video-pro": {
+        "prompt": "legacy kling text video",
+        "aspect_ratio": "16:9",
+        "duration": 5,
+        "mode": "pro",
+    },
+    "kling/v2-5-turbo-image-to-video-pro": {
+        "prompt": "legacy kling image video",
+        "image_url": IMG,
+        "aspect_ratio": "16:9",
+        "duration": 5,
+        "mode": "pro",
+    },
+    "kling/ai-avatar-standard": {
+        "prompt": "avatar speech",
+        "image_url": IMG,
+        "audio_url": AUDIO,
+    },
+    "kling/ai-avatar-pro": {
+        "prompt": "avatar speech pro",
+        "image_url": IMG,
+        "audio_url": AUDIO,
+    },
     "kling-2.6/motion-control": {
         "input_urls": [IMG],
         "video_urls": [MP4],
