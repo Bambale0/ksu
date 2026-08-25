@@ -10,6 +10,7 @@ SEEDANCE_REFERENCE_MODELS = {
     "bytedance/seedance-2-mini",
     "bytedance/seedance-2-5",
 }
+SEEDANCE_STRICT_REFERENCE_MODELS = {"bytedance/seedance-2-5"}
 SEEDANCE_REFERENCE_FIELDS = (
     "reference_image_urls",
     "reference_video_urls",
@@ -18,15 +19,12 @@ SEEDANCE_REFERENCE_FIELDS = (
 
 
 def enforce_seedance_reference_mode(model: str, payload: dict[str, Any]) -> None:
-    """Enforce Seedance's documented frame-vs-reference mode split.
+    """Validate Seedance reference mode at the last provider boundary.
 
-    Seedance 2.x has two separate reference flows:
-    - temporal frame mode: first_frame_url and optional last_frame_url;
-    - multimodal reference mode: reference_image_urls/reference_video_urls/reference_audio_urls.
-
-    Mixing those modes creates ambiguous provider requests: some deployments reject
-    the task, while others accept it but ignore part of the references. Keep the
-    boundary strict so ROXY does not charge for a request Kie will not honor.
+    Seedance 2.0 / Fast / Mini support hybrid control: temporal first/last
+    frames can travel with multimodal reference arrays. Seedance 2.5 keeps the
+    stricter frame-vs-reference split and must reject mixed payloads before Kie
+    receives them.
     """
 
     if model not in SEEDANCE_REFERENCE_MODELS:
@@ -38,7 +36,7 @@ def enforce_seedance_reference_mode(model: str, payload: dict[str, Any]) -> None
 
     if last and not first:
         raise KieVideoContractError("Seedance last frame requires a first frame")
-    if (first or last) and reference_mode:
+    if model in SEEDANCE_STRICT_REFERENCE_MODELS and (first or last) and reference_mode:
         raise KieVideoContractError(
             "Seedance frame mode and multimodal reference mode are mutually exclusive"
         )
