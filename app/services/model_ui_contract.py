@@ -202,20 +202,6 @@ def _patch_seedance_multiref_schema(schema: dict[str, Any], model_id: str) -> No
         max_size_mb=15,
     )
 
-    scenario = schema.get("scenario")
-    if not isinstance(scenario, dict):
-        return
-    for item in scenario.get("items", []):
-        if str(item.get("id") or "") == "first_frame":
-            item["title"] = "Фото-референсы"
-            item["visible_fields"] = ["reference_image_urls"]
-            item["clear_fields"] = [
-                "first_frame_url",
-                "last_frame_url",
-                "reference_video_urls",
-                "reference_audio_urls",
-            ]
-
 
 def _apply_model_contract(schema: dict[str, Any], model_id: str) -> None:
     for field_name, suggestions in MODEL_FIELD_SUGGESTIONS.get(model_id, {}).items():
