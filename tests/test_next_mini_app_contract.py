@@ -86,8 +86,8 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert "<SingleFeedSurfaceGuard />" in page
     assert 'currentRoute() === "feed"' in guard
     assert 'replaceRoute("catalog")' in guard
-    assert 'buttonLabel(button) !== "Лента"' in guard
-    assert 'buttonLabel(button) === "Каталог"' in guard
+    assert 'feedButtons.length > 1' in guard
+    assert 'setButtonLabel(duplicate, "Каталог")' in guard
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
