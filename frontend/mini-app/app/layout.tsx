@@ -5,6 +5,7 @@ import "./globals.css";
 import "./loader.css";
 import "./catalog.css";
 import "./ux-polish.css";
+import "./preview-polish.css";
 import "./wallet-bonuses.css";
 import "./reference-memory.css";
 import "./generation-actions.css";
