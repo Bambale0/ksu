@@ -37,15 +37,35 @@ class PinterestFlowService:
         *,
         limit: int = 50,
     ) -> dict[str, Any]:
-        return await TrendService.list_public(session, limit=limit, pinterest_only=True)
+        rows = list(
+            (
+                await session.scalars(
+                    select(AdminTrend)
+                    .where(AdminTrend.is_active.is_(True))
+                    .order_by(AdminTrend.created_at.desc())
+                )
+            ).all()
+        )
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            if not is_pinterest_trend(row.title, row.payload or {}):
+                continue
+            try:
+                items.append(await TrendService.public_view(session, row))
+            except (ValueError, KeyError):
+                continue
+        items.sort(key=lambda item: (int(item["sort_order"]), item["created_at"]), reverse=True)
+        return {"items": items[: max(1, min(limit, 50))]}
 
     @staticmethod
     async def get_public(session: AsyncSession, *, trend_id: uuid.UUID) -> dict[str, Any]:
-        item = await TrendService.get_public(session, trend_id=trend_id, allow_pinterest=True)
-        raw = await session.get(AdminTrend, trend_id)
-        if raw is None or not is_pinterest_trend(raw.title, raw.payload or {}):
+        item = await session.get(AdminTrend, trend_id)
+        if item is None or not item.is_active or not is_pinterest_trend(item.title, item.payload or {}):
             raise LookupError("Pinterest service not found")
-        return item
+        try:
+            return await TrendService.public_view(session, item)
+        except (ValueError, KeyError) as exc:
+            raise LookupError("Pinterest service not found") from exc
 
     @staticmethod
     async def run(
