@@ -325,7 +325,7 @@ export function RoxyApp() {
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>AI CREATIVE STUDIO</small></span>
         </button>
-        <button className="balance-button" type="button" onClick={() => setWalletOpen(true)}>
+        <button id="balance" className="balance-button" type="button" onClick={() => setWalletOpen(true)}>
           <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
         </button>
       </header>

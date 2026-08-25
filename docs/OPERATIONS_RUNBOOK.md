@@ -202,7 +202,7 @@ Do not reactivate an autobanned inviter or delete audit rows until traffic is re
 KIE_API_KEY=...
 KIE_BASE_URL=https://api.kie.ai
 KIE_UPLOAD_BASE_URL=https://kieai.redpandaai.co
-KIE_UPLOAD_MAX_BYTES=104857600
+KIE_UPLOAD_MAX_BYTES=209715200
 KIE_WEBHOOK_HMAC_KEY=...
 GENERATION_PRICING_JSON={}
 
