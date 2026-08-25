@@ -145,13 +145,14 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
             stmt = stmt.limit(max(1, limit))
         generations = list((await session.scalars(stmt)).all())
         for generation in generations:
+            generation_id = generation.id
             stats.scanned += 1
             try:
                 changed = await _persist_generation(session, generation)
             except Exception as exc:
                 await session.rollback()
                 stats.failed += 1
-                print(f"feed-static backfill failed generation={generation.id}: {exc}")
+                print(f"feed-static backfill failed generation={generation_id}: {exc}")
                 if strict:
                     raise
             else:
