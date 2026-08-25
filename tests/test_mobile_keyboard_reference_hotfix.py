@@ -40,7 +40,11 @@ def test_all_seedance_reference_scenarios_are_explicitly_required() -> None:
         schema = build_public_model_ui_schema(ModelCatalog.get(model_id).public_dict())
         scenarios = {item["id"]: item for item in schema["scenario"]["items"]}
 
-        assert scenarios["first_frame"]["required_fields"] == ["first_frame_url"]
+        assert scenarios["first_frame"]["title"] == "Фото-референсы"
+        assert scenarios["first_frame"]["visible_fields"] == ["reference_image_urls"]
+        assert scenarios["first_frame"]["required_fields"] == ["reference_image_urls"]
+        assert "first_frame_url" in scenarios["first_frame"]["clear_fields"]
+        assert "last_frame_url" in scenarios["first_frame"]["clear_fields"]
         assert scenarios["first_last"]["required_fields"] == [
             "first_frame_url",
             "last_frame_url",
