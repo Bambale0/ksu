@@ -1,5 +1,6 @@
 import { AppEntryGate } from "@/components/app-entry-gate";
 import { CatalogCapabilities } from "@/components/catalog-capabilities";
+import { CatalogMediaQuickJump } from "@/components/catalog-media-quick-jump";
 import { CatalogTrendLaunch } from "@/components/catalog-trend-launch";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
@@ -17,6 +18,7 @@ export default function Page() {
       <AppEntryGate />
       <ServicesLauncher />
       <CatalogCapabilities />
+      <CatalogMediaQuickJump />
       <CatalogTrendLaunch />
       <GenerationQuantityControl />
       <UploadInputResetGuard />
