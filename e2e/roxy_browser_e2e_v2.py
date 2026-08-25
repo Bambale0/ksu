@@ -117,10 +117,29 @@ async def scenario_history(page: Page, report: legacy.Report) -> None:
     report.ok("history generated items")
 
 
+async def scenario_wallet(page: Page, report: legacy.Report) -> None:
+    await page.goto(f"{legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
+    wallet_entry = page.get_by_role("button", name=re.compile("Баланс|ROX", re.I)).first
+    if await wallet_entry.count() and await wallet_entry.is_visible():
+        await wallet_entry.click()
+        await expect(page).to_have_url(re.compile(r"[?&]route=wallet(?:&|$)"), timeout=8000)
+    else:
+        await page.goto(f"{legacy.BASE_URL}/mini-app/?route=wallet", wait_until="domcontentloaded")
+    main = page.locator("main")
+    await expect(main).to_contain_text(re.compile("Баланс|Оплат|ROX|Lava|Crypto", re.I), timeout=10000)
+    for method in ("lava", "crypto"):
+        tab = page.locator(f'[data-checkout-method="{method}"]')
+        if await tab.count() and await tab.first.is_visible():
+            await tab.first.click()
+            report.controls_seen.add(f"wallet:method:{method}")
+    report.ok("wallet route and checkout controls")
+
+
 Page.get_by_role = _get_by_role_compat
 legacy.select_primary = select_primary
 legacy.scenario_generations = scenario_generations
 legacy.scenario_history = scenario_history
+legacy.scenario_wallet = scenario_wallet
 
 
 if __name__ == "__main__":
