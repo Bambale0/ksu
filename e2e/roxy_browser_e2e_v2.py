@@ -124,7 +124,10 @@ async def click_visible(locator) -> None:
 
 
 async def route(page: Page, name: str) -> None:
-    await click_visible(page.locator(f'[data-roxy-customer-route="{name}"]'))
+    if name == "home":
+        await click_visible(page.get_by_role("button", name=re.compile("ROXY — главная")))
+    else:
+        await click_visible(page.locator(f'[data-roxy-customer-route="{name}"]'))
     await expect(page).to_have_url(re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"), timeout=8000)
 
 

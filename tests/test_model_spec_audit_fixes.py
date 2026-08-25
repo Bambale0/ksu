@@ -32,6 +32,7 @@ def test_seedance20_return_last_frame_is_public_and_preserved_for_provider() -> 
             provider,
             {
                 "prompt": "camera follows the subject",
+                "first_frame_url": "https://example.com/first.png",
                 "duration": 5,
                 "resolution": "720p",
                 "aspect_ratio": "16:9",
@@ -78,8 +79,8 @@ def test_veo_31_resolution_and_duration_are_public_billed_and_provider_validated
         normalize_kie_veo_input({**params, "resolution": "1440p"})
 
 
-def test_seedance20_frame_and_multimodal_modes_are_mutually_exclusive_everywhere() -> None:
-    invalid = {
+def test_seedance20_frame_and_multimodal_modes_normalize_to_reference_mode() -> None:
+    params = {
         "prompt": "keep the subject consistent",
         "first_frame_url": "https://cdn.example/first.png",
         "reference_image_urls": ["https://cdn.example/ref.png"],
@@ -88,11 +89,14 @@ def test_seedance20_frame_and_multimodal_modes_are_mutually_exclusive_everywhere
         "aspect_ratio": "16:9",
     }
 
-    with pytest.raises(InvalidModelParametersError, match="mutually exclusive"):
-        ModelCatalog.prepare("seedance-2.0", invalid)
+    _spec, clean, _cost, seconds, _unit = ModelCatalog.prepare("seedance-2.0", params)
+    assert seconds == 5
+    assert clean["reference_image_urls"] == ["https://cdn.example/ref.png"]
+    assert "first_frame_url" not in clean
 
-    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
-        normalize_kie_video_input("bytedance/seedance-2", invalid)
+    payload = normalize_kie_video_input("bytedance/seedance-2", params)
+    assert payload["reference_image_urls"] == ["https://cdn.example/ref.png"]
+    assert "first_frame_url" not in payload
 
 
 def test_grok_i2v_task_reference_preserves_exact_current_contract() -> None:
