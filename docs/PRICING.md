@@ -13,6 +13,7 @@ This is the compact human-readable generation tariff reference. Runtime authorit
 | Nano Banana 2 Lite | 25 ROX |
 | Seedream 4.5 Edit | 20 ROX |
 | Seedream 5 Pro | 20 ROX |
+| Suno V5.5 audio | 25 ROX |
 | Seedance 2.0 | 40 ROX/s |
 | Seedance 2.5 | 60 ROX/s |
 | Kling 2.5 Turbo Pro · T2V | 30 ROX/s |
@@ -31,7 +32,7 @@ This is the compact human-readable generation tariff reference. Runtime authorit
 
 Public denomination: **1 ROX = 1 RUB**.
 
-Image models use flat billing. Video models use per-second billing unless a concrete model contract specifies otherwise. Tier-aware models resolve the tier first and then calculate total cost.
+Image and audio models use flat billing. Video models use per-second billing unless a concrete model contract specifies otherwise. Tier-aware models resolve the tier first and then calculate total cost.
 
 Kling 2.5 Turbo Pro supports only 5- or 10-second clips in the current Kie callable contract. Kling AI Avatar uses the real input-audio duration for billing (1–300 seconds); `billing_seconds` is ROXY accounting metadata and is not sent to Kie as a fake provider duration parameter.
 

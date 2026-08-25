@@ -84,6 +84,38 @@ def _sanitize_trend_card(card: dict[str, object], generation: Generation) -> dic
     return card
 
 
+async def _updated_feed_card(
+    session: SessionDep,
+    generation: Generation,
+    *,
+    user: CurrentUserDep,
+    surface: Literal["feed", "profile"],
+) -> dict[str, object]:
+    card = await FeedService.to_card(
+        session,
+        generation,
+        viewer_user_id=user.id,
+        surface=surface,
+    )
+    return _sanitize_trend_card(card, generation)
+
+
+async def _updated_feed_card_by_id(
+    session: SessionDep,
+    generation_id: uuid.UUID,
+    *,
+    user: CurrentUserDep,
+    surface: Literal["feed", "profile"],
+) -> tuple[Generation, dict[str, object]]:
+    generation = await FeedService.assert_surface_visible(
+        session,
+        generation_id,
+        surface=surface,
+    )
+    card = await _updated_feed_card(session, generation, user=user, surface=surface)
+    return generation, card
+
+
 @router.get("/feed")
 async def feed(
     user: CurrentUserDep,
@@ -114,16 +146,14 @@ async def feed_item(
     surface: Literal["feed", "profile"] = Query(default="feed"),
 ) -> dict[str, object]:
     try:
-        generation = await FeedService.assert_surface_visible(session, generation_id, surface=surface)
-        if surface == "feed":
-            card = await FeedService.get_feed_generation_card(
-                session, generation_id=generation_id, viewer_user_id=user.id
-            )
-        else:
-            card = await FeedService.get_profile_generation_card(
-                session, generation_id=generation_id, viewer_user_id=user.id
-            )
-        return _sanitize_trend_card(card, generation)
+        generation, card = await _updated_feed_card_by_id(
+            session,
+            generation_id,
+            user=user,
+            surface=surface,
+        )
+        del generation
+        return card
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
 
@@ -164,6 +194,7 @@ async def profile_feed(
         "items": cards,
         "limit": limit,
         "offset": offset,
+        "has_more": len(cards) == limit,
     }
 
 
@@ -187,10 +218,7 @@ async def publish(
         )
         await session.commit()
         surface = "feed" if generation.publication_scope == "feed" else "profile"
-        card = await FeedService.to_card(
-            session, generation, viewer_user_id=user.id, surface=surface
-        )
-        card = _sanitize_trend_card(card, generation)
+        card = await _updated_feed_card(session, generation, user=user, surface=surface)
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
     action_telemetry.track(
@@ -205,6 +233,7 @@ async def publish(
             payload.publication_scope == "feed" and generation.publication_scope == "profile"
         ),
         "item": card,
+        "feed_item": card,
         "share": FeedService.share_payload(generation, user.telegram_id),
     }
 
@@ -245,10 +274,17 @@ async def like(
         result = await FeedService.like_feed_generation(
             session, generation_id=generation_id, user_id=user.id, surface=payload.surface
         )
+        generation, card = await _updated_feed_card_by_id(
+            session,
+            generation_id,
+            user=user,
+            surface=payload.surface,
+        )
         await session.commit()
+        del generation
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    return {"id": str(generation_id), "surface": payload.surface, **result}
+    return {"id": str(generation_id), "surface": payload.surface, **result, "item": card, "feed_item": card}
 
 
 @router.delete("/feed/{generation_id}/like")
@@ -262,10 +298,17 @@ async def unlike(
         result = await FeedService.unlike_feed_generation(
             session, generation_id=generation_id, user_id=user.id, surface=surface
         )
+        generation, card = await _updated_feed_card_by_id(
+            session,
+            generation_id,
+            user=user,
+            surface=surface,
+        )
         await session.commit()
+        del generation
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    return {"id": str(generation_id), "surface": surface, **result}
+    return {"id": str(generation_id), "surface": surface, **result, "item": card, "feed_item": card}
 
 
 @router.post("/feed/{generation_id}/share")
@@ -285,8 +328,12 @@ async def share(
         author = await session.get(User, generation.user_id)
         if author is None:
             raise FeedNotFoundError("Publication author not found")
+        card = await _updated_feed_card(session, generation, user=user, surface=payload.surface)
         link = _direct_mini_app_link(
             FeedService.post_deep_link(generation.id, str(author.telegram_id))
+        )
+        remix_link = _direct_mini_app_link(
+            FeedService.remix_deep_link(generation.id, str(author.telegram_id))
         )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
@@ -301,7 +348,12 @@ async def share(
         "id": str(generation_id),
         "shares_count": shares_count,
         "link": link,
+        "post_link": link,
+        "repeat_link": remix_link,
+        "remix_link": remix_link,
         "share": FeedService.share_payload(generation, author.telegram_id),
+        "item": card,
+        "feed_item": card,
     }
 
 
@@ -348,6 +400,11 @@ async def add_comment(
         "surface": comment.surface,
         "text": comment.text,
         "created_at": comment.created_at.isoformat(),
+        "author": {
+            "id": str(user.id),
+            "username": user.username,
+            "display_name": user.first_name or user.username or "Вы",
+        },
     }
 
 
@@ -372,6 +429,12 @@ async def remix(
             remix_author_id=user.id,
             surface=payload.surface,
         )
+        source_card = await _updated_feed_card(
+            session,
+            source,
+            user=user,
+            surface=payload.surface,
+        )
     except InsufficientBalanceError as exc:
         raise HTTPException(status_code=409, detail="Insufficient credits") from exc
     except (FeedError, FeedNotFoundError) as exc:
@@ -381,6 +444,9 @@ async def remix(
         "status": generation.status,
         "source_feed_gen_id": str(generation.source_feed_gen_id),
         "action_type": generation.action_type,
+        "source_item": source_card,
+        "item": source_card,
+        "feed_item": source_card,
     }
 
 

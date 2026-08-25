@@ -13,7 +13,7 @@ from app.db.models import User, Wallet
 from app.db.session import SessionFactory
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import CreatedPayment
-from app.services.card_payments import CardPaymentService
+from app.services.card_payments import CardPackage, CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.referrals import ReferralService
 
@@ -68,7 +68,18 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
         "card_packages_json",
         '{"p300":{"credits":"300","prices":{"RUB":"326.1"}}}',
     )
+    monkeypatch.setattr(settings, "card_offer_id", "offer-bonus")
     seen: dict[str, object] = {}
+
+    async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
+        return {
+            "items": [
+                {
+                    "id": "product-bonus",
+                    "offers": [{"id": "offer-bonus", "isDynamicPrice": True}],
+                }
+            ]
+        }
 
     async def fake_create_invoice(
         self: CardCheckoutClient,
@@ -81,6 +92,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
     ) -> CreatedPayment:
         seen["invoice"] = {
             "email": email,
+            "offer_id": offer_id,
             "currency": currency,
             "amount": amount,
             "payment_provider": payment_provider,
@@ -100,6 +112,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
     ) -> None:
         seen["referral_basis"] = payment_amount
 
+    monkeypatch.setattr(CardCheckoutClient, "get_products", fake_get_products)
     monkeypatch.setattr(CardCheckoutClient, "create_invoice", fake_create_invoice)
     monkeypatch.setattr(ReferralService, "accrue_from_payment", fake_accrue_from_payment)
 
@@ -119,6 +132,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
 
         assert seen["invoice"] == {
             "email": "buyer@example.com",
+            "offer_id": "offer-bonus",
             "currency": "RUB",
             "amount": Decimal("326.1"),
             "payment_provider": None,
@@ -139,6 +153,52 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
         assert wallet is not None
         assert wallet.balance == Decimal("350.00")
         assert seen["referral_basis"] == Decimal("300")
+
+
+@pytest.mark.asyncio
+async def test_lava_product_id_is_resolved_to_dynamic_offer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "card_offer_id", "product-1")
+
+    async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
+        return {
+            "items": [
+                {
+                    "id": "product-1",
+                    "offers": [
+                        {"id": "static-offer", "name": "Fixed 100 ROX"},
+                        {"id": "dynamic-offer", "isDynamicPrice": True},
+                    ],
+                }
+            ]
+        }
+
+    monkeypatch.setattr(CardCheckoutClient, "get_products", fake_get_products)
+    client = CardCheckoutClient("api-key", "https://example.invalid")
+    try:
+        resolved = await CardPackageCatalog.resolve_invoice_offer(
+            client,
+            CardPackage(
+                package_id="p100",
+                credits=Decimal("100"),
+                prices={"RUB": Decimal("108.7")},
+            ),
+        )
+    finally:
+        await client.aclose()
+
+    assert resolved.offer_id == "dynamic-offer"
+    assert resolved.source == "product_dynamic_offer"
+
+
+def test_card_checkout_response_accepts_lava_payment_url_aliases() -> None:
+    data = CardCheckoutClient._unwrap(
+        {"data": {"contractId": "contract-1", "redirectUrl": "https://pay.example/1"}}
+    )
+
+    assert CardCheckoutClient.extract_invoice_id(data) == "contract-1"
+    assert CardCheckoutClient.extract_payment_url(data) == "https://pay.example/1"
 
 
 def test_top_up_bonus_catalog_matches_public_promo() -> None:

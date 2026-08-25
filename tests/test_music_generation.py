@@ -30,6 +30,7 @@ def test_music_model_is_first_class_audio_contract() -> None:
     assert model["operation"] == "text_to_music"
     assert model["media_type"] == "audio"
     assert model["price_mode"] == "flat"
+    assert model["price_rox"] == "25.00"
     fields = {item["name"] for item in model["ui_schema"]["fields"]}
     assert {
         "prompt",
@@ -46,6 +47,21 @@ def test_music_model_is_first_class_audio_contract() -> None:
         "personaModel",
         "duration",
     } <= fields
+    by_name = {item["name"]: item for item in model["ui_schema"]["fields"]}
+    assert by_name["prompt"]["placeholder"].startswith("Опиши музыку")
+    assert by_name["title"]["label"] == "Название (опционально)"
+    assert by_name["styleWeight"]["label"] == "Сила стиля"
+    assert by_name["weirdnessConstraint"]["label"] == "Странность"
+    assert by_name["audioWeight"]["label"] == "Баланс вокал / музыка"
+    assert by_name["negativeTags"]["label"] == "Исключить теги"
+    assert model["ui_schema"]["defaults"] == {
+        "customMode": False,
+        "instrumental": False,
+        "vocalGender": "f",
+        "styleWeight": 0.7,
+        "weirdnessConstraint": 0.3,
+        "audioWeight": 0.6,
+    }
     assert model["required_fields"] == []
 
 
@@ -68,7 +84,7 @@ def test_simple_music_mode_is_bounded_and_drops_custom_only_fields() -> None:
         "customMode": False,
         "instrumental": False,
     }
-    assert cost > Decimal("0")
+    assert cost == Decimal("25.00")
 
     MusicGenerationService.prepare({"prompt": "x" * 500, "customMode": False})
     with pytest.raises(MusicGenerationError, match="500"):
@@ -99,6 +115,18 @@ def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> No
     assert clean["personaId"] == "persona_123"
     assert clean["personaModel"] == "style_persona"
     assert clean["duration"] == 212
+
+    untitled, _cost = MusicGenerationService.prepare(
+        {
+            "prompt": "lyrics",
+            "customMode": True,
+            "instrumental": False,
+            "style": "pop, female vocal",
+            "vocalGender": "женский",
+        }
+    )
+    assert untitled["vocalGender"] == "f"
+    assert "title" not in untitled
 
     with pytest.raises(MusicGenerationError, match="стиль"):
         MusicGenerationService.prepare(
@@ -135,19 +163,18 @@ def test_custom_music_mode_requires_terms_and_validates_advanced_weights() -> No
         )
 
 
-def test_custom_instrumental_music_can_omit_prompt() -> None:
+def test_custom_instrumental_music_can_omit_prompt_and_title() -> None:
     clean, _cost = MusicGenerationService.prepare(
         {
             "customMode": True,
             "instrumental": True,
             "style": "minimal ambient piano",
-            "title": "Focus Room",
             "duration": 180,
         }
     )
     assert "prompt" not in clean
+    assert "title" not in clean
     assert clean["style"] == "minimal ambient piano"
-    assert clean["title"] == "Focus Room"
     assert clean["duration"] == 180
 
 
@@ -178,7 +205,7 @@ async def test_active_admin_music_generation_is_free(monkeypatch: pytest.MonkeyP
         wallet = await session.get(Wallet, user.id)
         assert generation.cost_rox == Decimal("0.00")
         assert generation.parameters["_admin_free_generation"] is True
-        assert Decimal(generation.parameters["_quoted_cost_rox"]) > Decimal("0")
+        assert Decimal(generation.parameters["_quoted_cost_rox"]) == Decimal("25.00")
         assert wallet is not None
         assert wallet.balance == Decimal("0.00")
 
@@ -189,6 +216,7 @@ async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None
     music = [item for item in catalog["models"] if item["id"] == MUSIC_MODEL_ID]
     assert len(music) == 1
     assert music[0]["media_type"] == "audio"
+    assert music[0]["price_rox"] == "25.00"
 
     quote = await quote_generation(
         CreateGenerationRequest(
@@ -201,7 +229,8 @@ async def test_public_generation_catalog_and_quote_expose_music_in_rox() -> None
     )
     assert quote["model_id"] == MUSIC_MODEL_ID
     assert quote["price_mode"] == "flat"
-    assert Decimal(quote["cost_rox"]) > 0
+    assert quote["cost_rox"] == "25.00"
+    assert quote["unit_price_rox"] == "25.00"
     assert quote["cost_rox"] == quote["cost_rub"]
 
 
