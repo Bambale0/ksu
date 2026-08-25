@@ -28,6 +28,87 @@
 .services-launcher > span:last-child { display: grid; gap: 1px; text-align: left; }
 .services-launcher strong { font-size: 13px; line-height: 1.1; }
 .services-launcher small { font-size: 9px; line-height: 1.1; color: rgba(255,255,255,.78); }
+
+.service-shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.service-shortcut {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 80px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 6px 10px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 19px;
+  color: #fff;
+  background: rgba(18,17,27,.74);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.service-shortcut:active { transform: scale(.975); }
+.service-shortcut:focus-visible { outline: 2px solid #a56cff; outline-offset: 2px; }
+.service-shortcut:disabled { opacity: .58; cursor: default; transform: none; }
+.service-shortcut-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  color: #b47aff;
+  background: rgba(155,92,255,.16);
+}
+.service-shortcut-title {
+  max-width: 100%;
+  overflow: hidden;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.service-shortcut-pinterest {
+  border-color: rgba(180,122,255,.34);
+  background: linear-gradient(145deg, rgba(155,92,255,.13), rgba(18,17,27,.78));
+}
+.service-shortcut-pinterest .service-shortcut-icon {
+  color: #d8b8ff;
+  background: linear-gradient(135deg, rgba(155,92,255,.28), rgba(255,95,183,.15));
+}
+.service-shortcut-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  max-width: calc(100% - 14px);
+  overflow: hidden;
+  padding: 3px 5px;
+  border: 1px solid rgba(203,169,255,.2);
+  border-radius: 999px;
+  color: #d7bcff;
+  background: rgba(155,92,255,.13);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.service-status {
+  margin-top: 12px;
+  color: #8f8c99;
+  font-size: 11px;
+  text-align: center;
+}
+
 .services-grid { display: grid; gap: 14px; }
 .service-card {
   overflow: hidden;
@@ -87,7 +168,7 @@
 }
 .service-primary-button:disabled { opacity: .46; cursor: not-allowed; filter: saturate(.6); }
 .service-primary-button strong { font-size: 12px; color: rgba(255,255,255,.82); }
-.service-error { padding: 12px 14px; border: 1px solid rgba(255,95,120,.28); border-radius: 14px; background: rgba(255,95,120,.08); color: #ffb6c4; font-size: 12px; }
+.service-error { margin-top: 12px; padding: 12px 14px; border: 1px solid rgba(255,95,120,.28); border-radius: 14px; background: rgba(255,95,120,.08); color: #ffb6c4; font-size: 12px; }
 .pinterest-flow-stack { display: grid; gap: 14px; padding-bottom: 24px; }
 .pinterest-service-preview { min-height: 150px; border-radius: 20px; border: 1px solid rgba(255,255,255,.08); }
 .pinterest-service-preview img { min-height: 150px; max-height: 260px; }
@@ -125,4 +206,5 @@
 @media (prefers-reduced-motion: no-preference) {
   .services-launcher { transition: transform .16s ease, box-shadow .16s ease; }
   .services-launcher:active { transform: scale(.97); }
+  .service-shortcut { transition: transform .14s ease, border-color .14s ease, background-color .14s ease; }
 }
