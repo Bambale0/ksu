@@ -104,9 +104,23 @@ async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
     return results
 
 
+async def scenario_history(page: Page, report: legacy.Report) -> None:
+    await select_primary(page, "history")
+    main = page.locator("main")
+    await expect(main).to_contain_text(re.compile("Veo 3.1|Suno|Nano Banana|succeeded|Готово", re.I), timeout=10000)
+    generation_card = page.get_by_role("button", name=re.compile("Veo|Suno|Nano Banana", re.I)).first
+    if await generation_card.count() and await generation_card.is_visible():
+        await generation_card.click()
+        report.controls_seen.add("history:open-card")
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(100)
+    report.ok("history generated items")
+
+
 Page.get_by_role = _get_by_role_compat
 legacy.select_primary = select_primary
 legacy.scenario_generations = scenario_generations
+legacy.scenario_history = scenario_history
 
 
 if __name__ == "__main__":
