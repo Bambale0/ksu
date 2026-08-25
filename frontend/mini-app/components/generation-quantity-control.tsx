@@ -7,10 +7,19 @@ import { api } from "@/lib/api";
 
 const DEFAULT_MAX_GENERATION_QUANTITY = 6;
 
+type PublishDetail = {
+  id: string;
+  surface: "feed" | "profile";
+};
+
 declare global {
   interface Window {
     __roxyGenerationQuantity?: number;
     __roxyMaxGenerationQuantity?: number;
+  }
+
+  interface WindowEventMap {
+    "roxy:published": CustomEvent<PublishDetail>;
   }
 }
 
@@ -26,11 +35,42 @@ function coerceQuantity(value: unknown, maxQuantity = DEFAULT_MAX_GENERATION_QUA
   return Math.min(maxQuantity, Math.max(1, Math.trunc(numeric)));
 }
 
+function requestUrl(input: RequestInfo | URL): string {
+  return typeof input === "string" || input instanceof URL ? String(input) : input.url;
+}
+
+function requestMethod(input: RequestInfo | URL, init?: RequestInit): string {
+  return String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+}
+
 function targetGenerationRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
-  const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
-  const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
-  if (method !== "POST") return false;
+  const url = requestUrl(input);
+  if (requestMethod(input, init) !== "POST") return false;
   return url.endsWith("/api/v1/generations") || url.endsWith("/api/v1/generations/quote");
+}
+
+function publishedGenerationId(input: RequestInfo | URL, init?: RequestInit): string | null {
+  if (requestMethod(input, init) !== "POST") return null;
+  const match = /\/api\/v1\/feed\/([^/]+)\/publish(?:\?|$)/.exec(requestUrl(input));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function publishedSurface(payload: any): "feed" | "profile" {
+  return payload?.publication_scope === "profile" || payload?.item?.publication_scope === "profile" ? "profile" : "feed";
+}
+
+function emitPublished(response: Response, fallbackId: string) {
+  void response.clone().json()
+    .then((payload) => {
+      window.dispatchEvent(new CustomEvent<PublishDetail>("roxy:published", {
+        detail: { id: payload?.item?.id || fallbackId, surface: publishedSurface(payload) },
+      }));
+    })
+    .catch(() => {
+      window.dispatchEvent(new CustomEvent<PublishDetail>("roxy:published", {
+        detail: { id: fallbackId, surface: "feed" },
+      }));
+    });
 }
 
 function withQuantity(init: RequestInit | undefined, quantity: number, maxQuantity: number): RequestInit | undefined {
@@ -76,7 +116,9 @@ export function GenerationQuantityControl() {
         if (!active) return;
         setMaxQuantity(coerceMaxQuantity(payload.max_generation_quantity));
       })
-      .catch(() => setMaxQuantity(DEFAULT_MAX_GENERATION_QUANTITY));
+      .catch(() => {
+        if (active) setMaxQuantity(DEFAULT_MAX_GENERATION_QUANTITY);
+      });
     return () => { active = false; };
   }, []);
 
@@ -93,14 +135,18 @@ export function GenerationQuantityControl() {
 
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
-    window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const patchedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const publishId = publishedGenerationId(input, init);
       const nextInit = targetGenerationRequest(input, init)
         ? withQuantity(init, quantityRef.current, maxQuantityRef.current)
         : init;
-      return originalFetch(input, nextInit);
+      const response = await originalFetch(input, nextInit);
+      if (publishId && response.ok) emitPublished(response, publishId);
+      return response;
     }) as typeof window.fetch;
+    window.fetch = patchedFetch;
     return () => {
-      window.fetch = originalFetch;
+      if (window.fetch === patchedFetch) window.fetch = originalFetch;
     };
   }, []);
 
