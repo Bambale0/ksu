@@ -103,7 +103,7 @@ export default function PromptToolsPage() {
       let task: PromptToolTask;
       if (mode === "video") {
         if (!videoUrl) throw new Error("Загрузите видео");
-        task = await api.buildVideoPrompt({ video_url: videoUrl, instruction: text.trim(), duration_seconds: duration });
+        task = await api.buildVideoPrompt({ video_url: videoUrl, instruction: text.trim() });
       } else {
         if (!text.trim() && !imageUrl) throw new Error("Добавьте фото или описание");
         task = await api.buildPrompt({
@@ -164,7 +164,7 @@ export default function PromptToolsPage() {
           </label>
         ) : null}
 
-        {mode === "video" || mode === "seedance" ? (
+        {mode === "seedance" ? (
           <div className="field">
             <span className="label">Длительность целевой сцены</span>
             <div className="segmented scrollable">
