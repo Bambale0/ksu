@@ -13,6 +13,7 @@ import "./keyboard-ux.css";
 import "./standalone-tools.css";
 import "./action-polish.css";
 import "./services.css";
+import "./suno-audio.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
