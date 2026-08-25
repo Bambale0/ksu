@@ -75,6 +75,7 @@ async function installTelegram(page, startParam = '') {
 
 async function mockApp(page) {
   const feedItemCalls = [];
+  const profileFeedCalls = [];
   let remixCalls = 0;
 
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
@@ -115,15 +116,18 @@ async function mockApp(page) {
       return json({ id: generationId, shares_count: 1, link: 'https://t.me/roxy_aicreativebot?startapp=feed_link' });
     }
 
-    if (/^\/api\/v1\/profiles\/[^/]+\/feed$/.test(path)) {
-      return json({ author: { display_name: 'Creator 777' }, items: [feedCard()] });
+    const profileMatch = path.match(/^\/api\/v1\/profiles\/([^/]+)\/feed$/);
+    if (profileMatch) {
+      const referralCode = decodeURIComponent(profileMatch[1]);
+      profileFeedCalls.push(referralCode);
+      return json({ author: { username: `creator${referralCode}`, display_name: `Creator ${referralCode}`, referral_code: referralCode }, items: [feedCard({ authorCode: referralCode })] });
     }
 
     if (method === 'OPTIONS') return route.continue();
     return json({ items: [] });
   });
 
-  return { feedItemCalls, remixCalls: () => remixCalls };
+  return { feedItemCalls, profileFeedCalls, remixCalls: () => remixCalls };
 }
 
 async function openWithPayload(page, query, telegramPayload = '') {
@@ -204,4 +208,46 @@ test('remix startapp opens work in remix mode but still waits for explicit Repea
   expect(audit.remixCalls()).toBe(0);
   await page.getByRole('button', { name: /Повторить эту работу/ }).click();
   await expect.poll(() => audit.remixCalls()).toBe(1);
+});
+
+test('profile startapp opens an author profile directly', async ({ page }) => {
+  const audit = await openWithPayload(page, '?startapp=profile_777');
+
+  await expect(page.getByText('Профиль ROXY')).toBeVisible();
+  await expect(page.getByText('Creator 777')).toBeVisible();
+  await expect(page.locator('[data-profile-startapp-posts]')).toBeVisible();
+  expect(audit.profileFeedCalls).toEqual(['777']);
+  expect(audit.feedItemCalls).toEqual([]);
+});
+
+test('profile startapp with matching ref opens the same author profile', async ({ page }) => {
+  const audit = await openWithPayload(page, '?startapp=profile_777_ref_777');
+
+  await expect(page.getByText('Creator 777')).toBeVisible();
+  expect(audit.profileFeedCalls).toEqual(['777']);
+  expect(audit.feedItemCalls).toEqual([]);
+});
+
+test('legacy posts startapp opens a matching author profile', async ({ page }) => {
+  const audit = await openWithPayload(page, '?startapp=posts_777_ref_777');
+
+  await expect(page.getByText('Creator 777')).toBeVisible();
+  expect(audit.profileFeedCalls).toEqual(['777']);
+  expect(audit.feedItemCalls).toEqual([]);
+});
+
+test('mismatched profile startapp is ignored instead of opening another author', async ({ page }) => {
+  const audit = await openWithPayload(page, '?startapp=profile_777_ref_999');
+
+  await expect(page.getByText('Что создаём?')).toBeVisible();
+  expect(audit.profileFeedCalls).toEqual([]);
+  expect(audit.feedItemCalls).toEqual([]);
+});
+
+test('mismatched legacy posts startapp is ignored instead of opening another author', async ({ page }) => {
+  const audit = await openWithPayload(page, '?startapp=posts_777_ref_999');
+
+  await expect(page.getByText('Что создаём?')).toBeVisible();
+  expect(audit.profileFeedCalls).toEqual([]);
+  expect(audit.feedItemCalls).toEqual([]);
 });
