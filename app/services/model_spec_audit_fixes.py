@@ -145,7 +145,6 @@ def install_model_spec_audit_fixes() -> None:
             "bytedance/seedance-2-mini",
         }:
             return_last = source.get("return_last_frame", _MISSING)
-            frame_mode = bool(source.get("first_frame_url") or source.get("last_frame_url"))
             reference_mode = bool(
                 source.get("reference_image_urls")
                 or source.get("reference_video_urls")
@@ -155,13 +154,12 @@ def install_model_spec_audit_fixes() -> None:
                 source.pop("first_frame_url", None)
                 source.pop("last_frame_url", None)
                 source.pop("first_frame", None)
-                frame_mode = False
             if return_last is not _MISSING and not isinstance(return_last, bool):
                 raise video_contracts.KieVideoContractError(
                     "Seedance return_last_frame must be boolean"
                 )
             normalized = previous_normalize(model, source)
-            if frame_mode and return_last is not _MISSING:
+            if not reference_mode and return_last is not _MISSING:
                 normalized["return_last_frame"] = return_last
             return normalized
 
