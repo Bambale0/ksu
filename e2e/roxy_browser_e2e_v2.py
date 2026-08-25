@@ -42,6 +42,21 @@ async def close_current_result_dialog(page: Page) -> None:
         await page.wait_for_timeout(100)
 
 
+async def select_prompt_friendly_model(page: Page, media: str) -> None:
+    # The video tab can default to Kling Avatar, which correctly requires avatar
+    # and voice files. The browser smoke test is prompt-only, so use a text/video
+    # model explicitly instead of depending on whichever card was active last.
+    if media == "video":
+        veo = page.locator("button").filter(has_text=re.compile(r"\bVeo\b", re.I)).first
+        await expect(veo).to_be_visible(timeout=8000)
+        await veo.click()
+        return
+    if media == "audio":
+        suno = page.locator("button").filter(has_text=re.compile(r"Suno|Музыка", re.I)).first
+        if await suno.count() and await suno.is_visible():
+            await suno.click()
+
+
 async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
     results: list[dict] = []
     for media, prompt in (
@@ -60,6 +75,7 @@ async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
             label = {"image": "Фото", "video": "Видео", "audio": "Музыка"}[media]
             await legacy.click_visible(page.get_by_role("button", name=label))
         await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
+        await select_prompt_friendly_model(page, media)
         result = await legacy.fill_builder_and_generate(page, prompt)
         results.append(result)
         report.controls_seen.update({f"create:{media}", f"generate:{media}"})
