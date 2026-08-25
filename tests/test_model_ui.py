@@ -71,7 +71,7 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
         "seedance-2.0-mini": list(range(4, 16)),
         "seedance-2.5": list(range(4, 31)),
         "kling-3.0": list(range(3, 16)),
-        "gemini-omni-video": [4],
+        "gemini-omni-video": [4, 6, 8, 10],
         "grok-video-t2v": [6],
         "grok-video-i2v": [6],
         "grok-video-1.5": [8],
