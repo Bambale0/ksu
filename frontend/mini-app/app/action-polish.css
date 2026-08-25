@@ -99,6 +99,35 @@
   box-shadow: 0 0 18px rgba(139, 83, 255, .12);
 }
 
+/* Preview rows use CSS pseudo icons. Hide legacy inline SVGs so labels stay centered vertically. */
+.preview-actions :where(.primary, .secondary) > svg {
+  display: none !important;
+}
+
+.preview-actions :where(.primary, .secondary) {
+  display: flex;
+  align-items: center;
+  align-content: center;
+  min-width: 0;
+  white-space: normal;
+}
+
+.preview-actions > a.primary:first-child,
+.preview-actions > button.secondary:nth-of-type(n+2),
+.preview-actions > button.primary:not(:first-child) {
+  justify-content: flex-start;
+}
+
+.preview-actions > button.secondary:first-of-type {
+  justify-content: center;
+  padding-right: 46px;
+}
+
+.preview-actions :where(.primary, .secondary)::before,
+.preview-actions :where(.primary, .secondary)::after {
+  z-index: 1;
+}
+
 @media (max-width: 430px) {
   :where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary, button.ghost.wide, .publish-success-actions .ghost) {
     min-height: 40px;
