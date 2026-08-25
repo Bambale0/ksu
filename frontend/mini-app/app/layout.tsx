@@ -11,6 +11,7 @@ import "./reference-memory.css";
 import "./generation-actions.css";
 import "./keyboard-ux.css";
 import "./standalone-tools.css";
+import "./action-polish.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
