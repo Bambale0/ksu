@@ -1,0 +1,109 @@
+/* Shared compact premium action language for ROXY Mini App.
+   Scoped to Mini App roots only; Admin Console and backend assets are untouched. */
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary, button.ghost.wide, .publish-success-actions .ghost) {
+  min-height: 42px;
+  border-radius: 14px;
+  padding: 0 16px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  line-height: 1.1;
+  letter-spacing: -0.014em;
+  font-size: 14px;
+  font-weight: 820;
+  text-decoration: none;
+  transition:
+    border-color .18s ease,
+    background .18s ease,
+    box-shadow .18s ease,
+    filter .18s ease,
+    transform .18s ease;
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary, button.ghost.wide, .publish-success-actions .ghost):active {
+  transform: translateY(1px) scale(.992);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) .primary {
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: linear-gradient(105deg, #8655ff 0%, #b951f0 48%, #f254a7 100%);
+  color: #fff;
+  box-shadow:
+    0 12px 28px rgba(178, 78, 255, .22),
+    inset 0 1px 0 rgba(255, 255, 255, .20);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) .primary:hover,
+:where(.roxy-app, .generation-action-app, .publish-success) .primary:focus-visible {
+  filter: brightness(1.045);
+  box-shadow:
+    0 14px 32px rgba(205, 78, 255, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) .secondary,
+:where(.roxy-app, .generation-action-app, .publish-success) :where(button.ghost.wide, .publish-success-actions .ghost) {
+  border: 1px solid rgba(165, 91, 255, .46);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .014)),
+    rgba(10, 9, 16, .76);
+  color: rgba(255, 255, 255, .92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .045),
+    0 0 0 1px rgba(143, 83, 255, .035);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) .secondary:hover,
+:where(.roxy-app, .generation-action-app, .publish-success) .secondary:focus-visible,
+:where(.roxy-app, .generation-action-app, .publish-success) :where(button.ghost.wide, .publish-success-actions .ghost):hover,
+:where(.roxy-app, .generation-action-app, .publish-success) :where(button.ghost.wide, .publish-success-actions .ghost):focus-visible {
+  border-color: rgba(191, 108, 255, .68);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .02)),
+    rgba(18, 14, 28, .86);
+  box-shadow:
+    0 0 22px rgba(139, 83, 255, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .055);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary).wide,
+:where(.roxy-app, .generation-action-app, .publish-success) button.ghost.wide {
+  width: 100%;
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary):disabled,
+:where(.roxy-app, .generation-action-app, .publish-success) button:disabled {
+  opacity: .52;
+  transform: none;
+  filter: saturate(.8);
+}
+
+/* Row-action variants that appear across result, publish, generation and wallet flows. */
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.publish-success-actions, .action-form, .action-summary, .panel) :where(.primary, .secondary, button.ghost.wide) {
+  min-height: 44px;
+  border-radius: 15px;
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.segmented button, .family-tabs button) {
+  border-color: rgba(155, 92, 255, .26);
+  background: rgba(255, 255, 255, .026);
+}
+
+:where(.roxy-app, .generation-action-app, .publish-success) :where(.segmented button.active, .family-tabs button.active) {
+  border-color: rgba(190, 112, 255, .56);
+  background: linear-gradient(120deg, rgba(139, 83, 255, .36), rgba(242, 84, 167, .16));
+  box-shadow: 0 0 18px rgba(139, 83, 255, .12);
+}
+
+@media (max-width: 430px) {
+  :where(.roxy-app, .generation-action-app, .publish-success) :where(.primary, .secondary, button.ghost.wide, .publish-success-actions .ghost) {
+    min-height: 40px;
+    border-radius: 13px;
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+}
