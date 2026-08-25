@@ -95,12 +95,18 @@ async def _send_quick_menu(message: Message) -> None:
     )
 
 
-async def _send_main_menu(message: Message, user, session: AsyncSession) -> None:  # type: ignore[no-untyped-def]
+async def _send_main_menu(
+    message: Message,
+    user,
+    session: AsyncSession,
+    *,
+    start_payload_value: str | None = None,
+) -> None:  # type: ignore[no-untyped-def]
     await message.answer(
         "<b>ROXY ✨</b>\n"
         "<b>Создавай. Вдохновляй.</b>\n\n"
         "👇<b>Нажми, чтобы открыть ROXY</b>",
-        reply_markup=main_menu(),
+        reply_markup=main_menu(start_payload=start_payload_value),
         parse_mode="HTML",
     )
 
@@ -133,7 +139,8 @@ async def start(
     if message.from_user is None:
         return
     await state.clear()
-    link = _start_link(message.text)
+    payload = start_payload(message.text)
+    link = parse_feed_deep_link(payload)
     user = await UserService.get_or_create(
         session,
         message.from_user,
@@ -141,8 +148,7 @@ async def start(
     )
     await session.flush()
     if not await OnboardingService.is_complete(session, user.id):
-        payload = start_payload(message.text)
-        if link is not None and link.action != "ref" and payload:
+        if payload:
             await state.update_data(pending_start_payload=payload)
         body = settings.onboarding_body.strip()
         text = settings.onboarding_title.strip() or "Добро пожаловать в ROXY"
@@ -161,7 +167,7 @@ async def start(
             redis=redis,
         ):
             return
-    await _send_main_menu(message, user, session)
+    await _send_main_menu(message, user, session, start_payload_value=payload if link else None)
 
 
 @router.message(F.text == QUICK_MENU_TEXT)
@@ -208,7 +214,12 @@ async def onboarding_complete(
                 redis=redis,
             ):
                 return
-        await _send_main_menu(callback.message, user, session)
+        await _send_main_menu(
+            callback.message,
+            user,
+            session,
+            start_payload_value=payload if link else None,
+        )
 
 
 @router.message(Command("balance"))
