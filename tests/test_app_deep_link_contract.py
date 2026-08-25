@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from app.api.deps import _validated_startapp_inviter
-from app.bot.keyboards import app_launcher_menu, main_menu
+from app.bot.keyboards import app_launcher_menu, main_menu_with_start_payload
 from app.core.config import settings
 
 
@@ -39,7 +39,7 @@ def test_referral_launcher_url_matches_banano_tanyapi_contract(monkeypatch: pyte
 def test_main_menu_carries_referral_payload_into_web_app_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
 
-    query = parse_qs(urlparse(_single_web_app_url(main_menu(start_payload="ref_42"))).query)
+    query = parse_qs(urlparse(_single_web_app_url(main_menu_with_start_payload("ref_42"))).query)
 
     assert query["start_payload"] == ["ref_42"]
     assert query["startapp"] == ["ref_42"]
