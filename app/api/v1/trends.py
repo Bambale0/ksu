@@ -11,6 +11,7 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.model_catalog import InvalidModelParametersError, UnknownModelError
+from app.services.pinterest_flow_contract import is_pinterest_trend
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
@@ -33,6 +34,18 @@ def _domain_error(exc: Exception) -> HTTPException:
 
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
+
+
+def _is_pinterest_view(item: dict[str, Any]) -> bool:
+    return is_pinterest_trend(
+        str(item.get("title") or ""),
+        {"tags": item.get("tags") or []},
+    )
+
+
+def _reject_pinterest(item: dict[str, Any]) -> None:
+    if _is_pinterest_view(item):
+        raise LookupError("Pinterest Flow is available in Services")
 
 
 async def _customer_price(
@@ -66,9 +79,10 @@ async def list_trends(
 ) -> dict[str, object]:
     try:
         payload = await TrendService.list_public(session, limit=limit, media_type=media_type)
+        generic_items = [dict(item) for item in payload.get("items", []) if not _is_pinterest_view(dict(item))]
         items = [
-            await _customer_price(session, user_id=user.id, item=dict(item))
-            for item in payload.get("items", [])
+            await _customer_price(session, user_id=user.id, item=item)
+            for item in generic_items
         ]
         return {**payload, "items": items}
     except Exception as exc:
@@ -83,6 +97,7 @@ async def get_trend(
 ) -> dict[str, object]:
     try:
         item = await TrendService.get_public(session, trend_id=trend_id)
+        _reject_pinterest(item)
         return await _customer_price(session, user_id=user.id, item=item)
     except Exception as exc:
         raise _domain_error(exc) from exc
@@ -97,6 +112,8 @@ async def run_trend(
     redis: RedisDep,
 ) -> dict[str, object]:
     try:
+        item = await TrendService.get_public(session, trend_id=trend_id)
+        _reject_pinterest(item)
         generation, trend_meta = await TrendService.run(
             session,
             redis,
