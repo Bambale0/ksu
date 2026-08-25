@@ -10,7 +10,7 @@ from app.bot.keyboards import (
     QUICK_MENU_TEXT,
     back_menu,
     balance_menu,
-    main_menu,
+    main_menu_with_start_payload,
     onboarding_menu,
     quick_menu,
 )
@@ -106,7 +106,7 @@ async def _send_main_menu(
         "<b>ROXY ✨</b>\n"
         "<b>Создавай. Вдохновляй.</b>\n\n"
         "👇<b>Нажми, чтобы открыть ROXY</b>",
-        reply_markup=main_menu(start_payload=start_payload_value),
+        reply_markup=main_menu_with_start_payload(start_payload_value),
         parse_mode="HTML",
     )
 
