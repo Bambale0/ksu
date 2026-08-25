@@ -7,6 +7,7 @@ from app.services.kie_video_contracts import (
     normalize_kie_veo_input,
     normalize_kie_video_input,
 )
+from app.services.seedance_reference_modes import enforce_seedance_reference_mode
 
 
 def test_wan_t2v_uses_provider_ratio_field() -> None:
@@ -113,21 +114,23 @@ def test_seedance_scenarios_and_reference_limits() -> None:
             },
         )
 
-    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
-        normalize_kie_video_input(
-            "bytedance/seedance-2",
-            {
-                "prompt": "x",
-                "first_frame_url": "https://example.com/first.png",
-                "last_frame_url": "https://example.com/last.png",
-                "reference_image_urls": ["https://example.com/ref.png"],
-                "reference_video_urls": ["https://example.com/ref.mp4"],
-                "reference_audio_urls": ["https://example.com/ref.wav"],
-                "duration": 10,
-                "resolution": "720p",
-                "aspect_ratio": "16:9",
-            },
-        )
+    hybrid = normalize_kie_video_input(
+        "bytedance/seedance-2",
+        {
+            "prompt": "x",
+            "first_frame_url": "https://example.com/first.png",
+            "last_frame_url": "https://example.com/last.png",
+            "reference_image_urls": ["https://example.com/ref.png"],
+            "reference_video_urls": ["https://example.com/ref.mp4"],
+            "reference_audio_urls": ["https://example.com/ref.wav"],
+            "duration": 10,
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert hybrid["first_frame_url"].endswith("first.png")
+    assert hybrid["reference_image_urls"] == ["https://example.com/ref.png"]
+    enforce_seedance_reference_mode("bytedance/seedance-2", hybrid)
 
     references = normalize_kie_video_input(
         "bytedance/seedance-2",
@@ -155,7 +158,7 @@ def test_seedance_scenarios_and_reference_limits() -> None:
             },
         )
 
-    with pytest.raises(KieVideoContractError):
+    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
         normalize_kie_video_input(
             "bytedance/seedance-2-5",
             {
@@ -165,6 +168,15 @@ def test_seedance_scenarios_and_reference_limits() -> None:
                 "duration": 10,
                 "resolution": "720p",
                 "aspect_ratio": "16:9",
+            },
+        )
+
+    with pytest.raises(KieVideoContractError, match="mutually exclusive"):
+        enforce_seedance_reference_mode(
+            "bytedance/seedance-2-5",
+            {
+                "first_frame_url": "https://example.com/first.png",
+                "reference_image_urls": ["https://example.com/ref.png"],
             },
         )
 
