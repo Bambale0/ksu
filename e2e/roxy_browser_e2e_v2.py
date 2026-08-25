@@ -30,6 +30,18 @@ async def select_primary(page: Page, route: str) -> None:
         await expect(page).to_have_url(re.compile(rf"[?&]route={re.escape(route)}(?:&|$)"), timeout=8000)
 
 
+async def close_current_result_dialog(page: Page) -> None:
+    # The current React result dialog renders an aria-label="Закрыть" backdrop.
+    # Playwright's normal click can be intercepted by the preview card, so close
+    # it through keyboard first and fall back to a DOM click on the backdrop.
+    await page.keyboard.press("Escape")
+    await page.wait_for_timeout(100)
+    backdrop = page.locator('button[aria-label="Закрыть"].overlay-backdrop:visible').first
+    if await backdrop.count():
+        await backdrop.evaluate("element => element.click()")
+        await page.wait_for_timeout(100)
+
+
 async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
     results: list[dict] = []
     for media, prompt in (
@@ -65,9 +77,7 @@ async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
             await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
             report.controls_seen.add("result:reuse")
         else:
-            close = page.get_by_role("button", name="Закрыть")
-            if await close.count() and await close.first.is_visible():
-                await legacy.click_visible(close)
+            await close_current_result_dialog(page)
             await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
             report.controls_seen.add("result:close-dialog")
     report.ok("image + video + music generation through real API/DB/Redis/worker + fake Kie")
