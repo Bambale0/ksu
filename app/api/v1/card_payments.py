@@ -12,6 +12,7 @@ from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
+from app.services.payment_email import validate_billing_email
 from app.services.payments import PaymentIdempotencyConflict, UnknownPaymentPackageError
 
 router = APIRouter(prefix="/payments/card", tags=["payments"])
@@ -86,6 +87,10 @@ async def checkout(
         request_key = str(uuid.UUID(idempotency_key))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Idempotency-Key must be a UUID") from exc
+    try:
+        billing_email = validate_billing_email(payload.billing_email)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await AbuseProtectionService.payment_rate(redis, user.id)
     try:
@@ -94,7 +99,7 @@ async def checkout(
             user_id=user.id,
             package_id=payload.package_id,
             currency=payload.currency,
-            billing_email=payload.billing_email,
+            billing_email=billing_email,
             request_key=request_key,
         )
     except UnknownPaymentPackageError as exc:
