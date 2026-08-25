@@ -99,7 +99,7 @@ class Settings(BaseSettings):
         return _generation_pricing_with_defaults(value)
 
     music_generation_model: str = "V5_5"
-    music_generation_price_rox: Decimal = Decimal("100")
+    music_generation_price_rox: Decimal = Decimal("25")
 
     generation_worker_poll_seconds: int = 5
     generation_outbox_lease_seconds: int = 90
