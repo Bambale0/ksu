@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from functools import partial
+from pathlib import Path
 from typing import BinaryIO
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
@@ -17,16 +18,56 @@ from app.services.references import ReferenceService
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 ALLOWED_MEDIA_PREFIXES = ("image/", "video/", "audio/")
+OCTET_STREAM_TYPES = {"", "application/octet-stream", "binary/octet-stream"}
+FALLBACK_MEDIA_TYPES_BY_EXTENSION = {
+    ".aac": "audio/aac",
+    ".aif": "audio/aiff",
+    ".aiff": "audio/aiff",
+    ".flac": "audio/flac",
+    ".gif": "image/gif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".m4a": "audio/mp4",
+    ".m4v": "video/x-m4v",
+    ".mov": "video/quicktime",
+    ".mp3": "audio/mpeg",
+    ".mp4": "video/mp4",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
+    ".ogg": "audio/ogg",
+    ".ogv": "video/ogg",
+    ".png": "image/png",
+    ".wav": "audio/wav",
+    ".webm": "video/webm",
+    ".webp": "image/webp",
+}
 
 
 def _upload_size(file: UploadFile) -> int:
-    if file.size is not None:
-        return int(file.size)
     current = file.file.tell()
-    file.file.seek(0, 2)
-    size = file.file.tell()
-    file.file.seek(current)
-    return int(size)
+    try:
+        file.file.seek(0, 2)
+        return int(file.file.tell())
+    finally:
+        file.file.seek(current)
+
+
+def _fallback_content_type(filename: str | None) -> str | None:
+    suffix = Path(filename or "").suffix.lower()
+    return FALLBACK_MEDIA_TYPES_BY_EXTENSION.get(suffix)
+
+
+def _upload_content_type(file: UploadFile) -> str:
+    declared = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if declared.startswith(ALLOWED_MEDIA_PREFIXES):
+        return declared
+    if declared in OCTET_STREAM_TYPES:
+        fallback = _fallback_content_type(file.filename)
+        if fallback:
+            return fallback
+    return declared or "application/octet-stream"
 
 
 def _sha256_stream(stream: BinaryIO) -> str:
@@ -92,7 +133,7 @@ async def upload_to_kie(
     the generation worker so saved references remain reusable indefinitely.
     """
 
-    content_type = (file.content_type or "application/octet-stream").lower()
+    content_type = _upload_content_type(file)
     if not content_type.startswith(ALLOWED_MEDIA_PREFIXES):
         raise HTTPException(status_code=415, detail="Only image, video and audio files are allowed")
 
