@@ -15,6 +15,7 @@ from app.db.models import (
     User,
 )
 from app.db.payment_models import ReferralRewardReversal
+from app.services.feed_links import mini_app_deep_link, referral_payload
 
 
 class PartnerWithdrawalError(ValueError):
@@ -260,7 +261,4 @@ class PartnerService:
 
     @staticmethod
     def referral_link(telegram_id: int) -> str | None:
-        username = settings.bot_username.strip().lstrip("@")
-        if not username:
-            return None
-        return f"https://t.me/{username}?start=ref_{telegram_id}"
+        return mini_app_deep_link(referral_payload(telegram_id))
