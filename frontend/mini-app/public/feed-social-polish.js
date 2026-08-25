@@ -380,6 +380,10 @@
 
   const observer = new MutationObserver(() => {
     if (state.rendering) return;
+    if (isFeedRoute()) {
+      const host = screen();
+      if (host?.classList.contains("roxy-social-feed-screen")) return;
+    }
     window.requestAnimationFrame(boot);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
