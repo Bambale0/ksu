@@ -133,7 +133,7 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
     FeedStaticStorage.ensure_root()
     async with SessionFactory() as session:
         stmt = (
-            select(Generation)
+            select(Generation.id)
             .where(
                 Generation.status == "succeeded",
                 Generation.publication_scope.in_(("feed", "profile")),
@@ -143,10 +143,14 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
         )
         if limit is not None:
             stmt = stmt.limit(max(1, limit))
-        generations = list((await session.scalars(stmt)).all())
-        for generation in generations:
-            generation_id = generation.id
+        generation_ids = list((await session.scalars(stmt)).all())
+        for generation_id in generation_ids:
             stats.scanned += 1
+            generation = await session.get(Generation, generation_id)
+            if generation is None or generation.status != "succeeded":
+                stats.failed += 1
+                print(f"feed-static backfill skipped missing generation={generation_id}")
+                continue
             try:
                 changed = await _persist_generation(session, generation)
             except Exception as exc:
