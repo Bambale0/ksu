@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -11,15 +10,18 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.model_catalog import InvalidModelParametersError, UnknownModelError
-from app.services.pinterest_flow_contract import is_pinterest_trend
-from app.services.trends import TrendRecipeError, TrendService
+from app.services.pinterest_flow import PinterestFlowError, PinterestFlowService
+from app.services.trends import TrendRecipeError
 from app.services.wallet import InsufficientBalanceError
 
-router = APIRouter(prefix="/trends", tags=["trends"])
+router = APIRouter(prefix="/services/pinterest", tags=["services", "pinterest"])
 
 
-class RunTrendRequest(BaseModel):
-    reference_urls: list[str] = Field(default_factory=list, max_length=16)
+class RunPinterestFlowRequest(BaseModel):
+    reference_urls: list[str] = Field(min_length=2, max_length=7)
+    height_cm: int = Field(ge=120, le=230)
+    weight_kg: int = Field(ge=30, le=250)
+    confirmed: bool
 
 
 def _domain_error(exc: Exception) -> HTTPException:
@@ -27,39 +29,18 @@ def _domain_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, InsufficientBalanceError):
         return HTTPException(status_code=409, detail="Insufficient credits")
-    if isinstance(exc, (TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
+    if isinstance(exc, (PinterestFlowError, TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
         return HTTPException(status_code=422, detail=str(exc))
-    return HTTPException(status_code=500, detail="Trend operation failed")
+    return HTTPException(status_code=500, detail="Pinterest Flow operation failed")
 
 
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
 
-def _is_pinterest_view(item: dict[str, Any]) -> bool:
-    return is_pinterest_trend(
-        str(item.get("title") or ""),
-        {"tags": item.get("tags") or []},
-    )
-
-
-def _reject_pinterest(item: dict[str, Any]) -> None:
-    if _is_pinterest_view(item):
-        raise LookupError("Pinterest Flow is available in Services")
-
-
-async def _customer_price(
-    session: SessionDep,
-    *,
-    user_id: uuid.UUID,
-    item: dict[str, Any],
-) -> dict[str, Any]:
+async def _customer_price(session: SessionDep, *, user_id: uuid.UUID, item: dict) -> dict:
     retail = Decimal(str(item.get("cost_credits") or "0"))
-    decision = await BillingAccessService.decision(
-        session,
-        user_id=user_id,
-        retail_cost=retail,
-    )
+    decision = await BillingAccessService.decision(session, user_id=user_id, retail_cost=retail)
     view = dict(item)
     view["retail_cost_credits"] = _amount(decision.retail_cost)
     view["retail_cost_rox"] = _amount(decision.retail_cost)
@@ -67,59 +48,58 @@ async def _customer_price(
     view["cost_credits"] = _amount(decision.effective_cost)
     view["cost_rox"] = _amount(decision.effective_cost)
     view["cost_rub"] = _amount(InternalCreditService.rubles_for(decision.effective_cost))
+    view["service"] = "pinterest"
     return view
 
 
 @router.get("")
-async def list_trends(
+async def list_pinterest_services(
     user: CurrentUserDep,
     session: SessionDep,
-    limit: int = Query(default=50, ge=1, le=100),
-    media_type: Literal["image", "video"] | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=50),
 ) -> dict[str, object]:
     try:
-        payload = await TrendService.list_public(session, limit=limit, media_type=media_type)
-        generic_items = [dict(item) for item in payload.get("items", []) if not _is_pinterest_view(dict(item))]
+        payload = await PinterestFlowService.list_public(session, limit=limit)
         items = [
-            await _customer_price(session, user_id=user.id, item=item)
-            for item in generic_items
+            await _customer_price(session, user_id=user.id, item=dict(item))
+            for item in payload.get("items", [])
         ]
-        return {**payload, "items": items}
+        return {"items": items}
     except Exception as exc:
         raise _domain_error(exc) from exc
 
 
 @router.get("/{trend_id}")
-async def get_trend(
+async def get_pinterest_service(
     trend_id: uuid.UUID,
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
     try:
-        item = await TrendService.get_public(session, trend_id=trend_id)
-        _reject_pinterest(item)
+        item = await PinterestFlowService.get_public(session, trend_id=trend_id)
         return await _customer_price(session, user_id=user.id, item=item)
     except Exception as exc:
         raise _domain_error(exc) from exc
 
 
 @router.post("/{trend_id}/run", status_code=status.HTTP_202_ACCEPTED)
-async def run_trend(
+async def run_pinterest_service(
     trend_id: uuid.UUID,
-    payload: RunTrendRequest,
+    payload: RunPinterestFlowRequest,
     user: CurrentUserDep,
     session: SessionDep,
     redis: RedisDep,
 ) -> dict[str, object]:
     try:
-        item = await TrendService.get_public(session, trend_id=trend_id)
-        _reject_pinterest(item)
-        generation, trend_meta = await TrendService.run(
+        generation, meta = await PinterestFlowService.run(
             session,
             redis,
             user_id=user.id,
             trend_id=trend_id,
             reference_urls=payload.reference_urls,
+            height_cm=payload.height_cm,
+            weight_kg=payload.weight_kg,
+            confirmed=payload.confirmed,
         )
     except Exception as exc:
         await session.rollback()
@@ -136,5 +116,5 @@ async def run_trend(
         "retail_cost_rox": str(params.get("_retail_cost_rox") or generation.cost_rox),
         "admin_free": bool(params.get("_admin_free", False)),
         "result_url": generation.result_url,
-        **trend_meta,
+        **meta,
     }
