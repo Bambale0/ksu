@@ -19,13 +19,28 @@ QUICK_VIDEO_PROMPT_TEXT = "🎬 Prompt видео"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
+def _ref_code_from_start_payload(start_payload: str) -> str | None:
+    payload = start_payload.strip()
+    if payload.casefold().startswith("ref_"):
+        code = payload[4:].strip()
+        return code or None
+    return None
+
+
 def _mini_app_url(route: str | None = None, *, start_payload: str | None = None) -> str:
     base = f"{settings.public_base_url.rstrip('/')}/mini-app/"
     query: dict[str, str] = {}
     if route:
         query["route"] = route
-    if start_payload:
-        query["start_payload"] = start_payload
+    payload = str(start_payload or "").strip()
+    if payload:
+        # Telegram exposes Main Mini App payload as start_param/startapp.
+        # Keep the product-owned start_payload for the Next app and add the
+        # Banano-compatible aliases that make referral opening deterministic.
+        query["start_payload"] = payload
+        query["startapp"] = payload
+        if ref_code := _ref_code_from_start_payload(payload):
+            query["ref"] = ref_code.upper()
     if not query:
         return base
     return f"{base}?{urlencode(query)}"
@@ -163,6 +178,6 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu() -> InlineKeyboardMarkup:
+def main_menu(*, start_payload: str | None = None) -> InlineKeyboardMarkup:
     """Compatibility alias for older imports; customer UX opens the Mini App catalog."""
-    return app_launcher_menu(route="catalog")
+    return app_launcher_menu(route="catalog", start_payload=start_payload)
