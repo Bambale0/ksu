@@ -15,6 +15,7 @@ import "./action-polish.css";
 import "./services.css";
 import "./suno-audio.css";
 import "./feed-social.css";
+import "./feed-social-interactions.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
