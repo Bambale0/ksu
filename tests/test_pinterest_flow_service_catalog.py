@@ -27,10 +27,9 @@ async def test_pinterest_catalog_filters_generic_trends(monkeypatch) -> None:  #
         is_active=True,
         created_at=now,
     )
-    scalars = AsyncMock()
-    scalars.return_value.all.return_value = [generic, pinterest]
+    scalar_result = SimpleNamespace(all=lambda: [generic, pinterest])
     session = AsyncMock()
-    session.scalars = scalars
+    session.scalars = AsyncMock(return_value=scalar_result)
 
     public_view = AsyncMock(return_value={"id": "pinterest", "sort_order": 1, "created_at": now.isoformat()})
     monkeypatch.setattr(TrendService, "public_view", public_view)
