@@ -55,7 +55,7 @@ test('video prompt mode has no duration picker and submits gallery video without
 
   await page.goto('/mini-app/prompt-tools/?mode=video');
   await expect(page.getByText('Создание prompt')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Видео' })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'Видео', exact: true })).toHaveClass(/active/);
   await expect(page.getByText('Длительность целевой сцены')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '5 сек' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '10 сек' })).toHaveCount(0);
@@ -84,7 +84,7 @@ test('Seedance prompt mode still shows duration picker', async ({ page }) => {
   await page.goto('/mini-app/prompt-tools/?mode=seedance');
   await expect(page.getByText('Создание prompt')).toBeVisible();
   await expect(page.getByText('Длительность целевой сцены')).toBeVisible();
-  await expect(page.getByRole('button', { name: '5 сек' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '10 сек' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '15 сек' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '5 сек', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '10 сек', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '15 сек', exact: true })).toBeVisible();
 });
