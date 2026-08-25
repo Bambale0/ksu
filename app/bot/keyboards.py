@@ -32,14 +32,14 @@ def _mini_app_url(route: str | None = None, *, start_payload: str | None = None)
     query: dict[str, str] = {}
     if route:
         query["route"] = route
-    payload = str(start_payload or "").strip()
-    if payload:
+    start_payload = str(start_payload or "").strip()
+    if start_payload:
         # Telegram exposes Main Mini App payload as start_param/startapp.
         # Keep the product-owned start_payload for the Next app and add the
         # Banano-compatible aliases that make referral opening deterministic.
-        query["start_payload"] = payload
-        query["startapp"] = payload
-        if ref_code := _ref_code_from_start_payload(payload):
+        query["start_payload"] = start_payload
+        query["startapp"] = start_payload
+        if ref_code := _ref_code_from_start_payload(start_payload):
             query["ref"] = ref_code.upper()
     if not query:
         return base
