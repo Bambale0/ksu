@@ -26,6 +26,10 @@ MUSIC_FAMILY = "suno"
 MUSIC_OPERATION = "text_to_music"
 MUSIC_MEDIA_TYPE = "audio"
 MAX_MUSIC_GENERATION_QUANTITY = 6
+MUSIC_SIMPLE_PROMPT_LIMIT = 500
+MUSIC_CUSTOM_PROMPT_LIMIT = 5000
+MUSIC_STYLE_LIMIT = 1000
+MUSIC_TITLE_LIMIT = 80
 
 _MUSIC_FIELDS = (
     "prompt",
@@ -60,6 +64,7 @@ def _field(
     minimum: float | None = None,
     maximum: float | None = None,
     step: float | None = None,
+    suffix: str = "",
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "name": name,
@@ -78,7 +83,30 @@ def _field(
         result["max"] = maximum
     if step is not None:
         result["step"] = step
+    if suffix:
+        result["suffix"] = suffix
     return result
+
+
+def _normalize_vocal_gender(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().lower()
+    aliases = {
+        "m": "m",
+        "male": "m",
+        "man": "m",
+        "м": "m",
+        "мужской": "m",
+        "мужчина": "m",
+        "f": "f",
+        "female": "f",
+        "woman": "f",
+        "ж": "f",
+        "женский": "f",
+        "женщина": "f",
+    }
+    return aliases.get(normalized)
 
 
 class MusicGenerationError(ValueError):
@@ -99,44 +127,37 @@ class MusicGenerationService:
         fields = [
             _field(
                 "prompt",
-                "Идея / текст песни",
+                "Промпт / текст песни",
                 "textarea",
                 "prompt",
-                placeholder="Опиши настроение, сюжет, жанр или вставь текст песни",
-            ),
-            _field("customMode", "Расширенный режим", "toggle", "output"),
-            _field("instrumental", "Без вокала", "toggle", "output"),
-            _field(
-                "style",
-                "Стиль музыки",
-                "textarea",
-                "output",
-                placeholder="Например: cinematic synthwave, female vocal, 120 BPM",
+                placeholder="Опиши музыку — стиль, жанр, настроение. В режиме «Свой текст» вставь [Verse] / [Chorus].",
             ),
             _field(
                 "title",
-                "Название",
+                "Название (опционально)",
                 "text",
-                "output",
-                placeholder="До 80 символов",
+                "prompt",
+                placeholder="Например: Lo-fi для занятий",
             ),
+            _field("customMode", "Свой текст", "toggle", "mode"),
+            _field("instrumental", "Инструментал", "toggle", "mode"),
             _field(
-                "negativeTags",
-                "Исключить стили",
-                "text",
-                "advanced",
-                placeholder="Например: heavy metal, aggressive drums",
+                "style",
+                "Стиль / жанр / настроение",
+                "textarea",
+                "mode",
+                placeholder="Например: cinematic synthwave, female vocal, 120 BPM",
             ),
             _field(
                 "vocalGender",
-                "Вокал",
+                "Голос",
                 "combobox",
-                "advanced",
+                "mode",
                 suggestions=["m", "f"],
             ),
             _field(
                 "styleWeight",
-                "Вес стиля",
+                "Сила стиля",
                 "number",
                 "advanced",
                 minimum=0,
@@ -145,7 +166,7 @@ class MusicGenerationService:
             ),
             _field(
                 "weirdnessConstraint",
-                "Экспериментальность",
+                "Странность",
                 "number",
                 "advanced",
                 minimum=0,
@@ -154,12 +175,27 @@ class MusicGenerationService:
             ),
             _field(
                 "audioWeight",
-                "Вес аудио",
+                "Баланс вокал / музыка",
                 "number",
                 "advanced",
                 minimum=0,
                 maximum=1,
                 step=0.05,
+            ),
+            _field(
+                "negativeTags",
+                "Исключить теги",
+                "text",
+                "advanced",
+                placeholder="Например: heavy metal, screamo",
+            ),
+            _field(
+                "duration",
+                "Длительность (только V5.5), сек.",
+                "number",
+                "advanced",
+                minimum=1,
+                step=1,
             ),
             _field(
                 "personaId",
@@ -174,14 +210,6 @@ class MusicGenerationService:
                 "text",
                 "advanced",
                 placeholder="Например: style_persona",
-            ),
-            _field(
-                "duration",
-                "Длительность (только V5.5), сек.",
-                "number",
-                "advanced",
-                minimum=1,
-                step=1,
             ),
         ]
         return {
@@ -208,19 +236,28 @@ class MusicGenerationService:
             "ui_schema": {
                 "version": 1,
                 "groups": [
-                    {"id": "prompt", "title": "Идея"},
-                    {"id": "output", "title": "Музыка"},
-                    {"id": "advanced", "title": "Дополнительно", "collapsible": True},
+                    {"id": "prompt", "title": "Промпт"},
+                    {"id": "mode", "title": "Режим"},
+                    {"id": "advanced", "title": "Расширенные настройки", "collapsible": True},
                 ],
                 "fields": fields,
-                "defaults": {"customMode": False, "instrumental": False},
+                "defaults": {
+                    "customMode": False,
+                    "instrumental": False,
+                    "vocalGender": "f",
+                    "styleWeight": 0.7,
+                    "weirdnessConstraint": 0.3,
+                    "audioWeight": 0.6,
+                },
                 "summary_fields": [
                     "customMode",
                     "instrumental",
                     "style",
                     "title",
                     "vocalGender",
-                    "personaId",
+                    "styleWeight",
+                    "weirdnessConstraint",
+                    "audioWeight",
                     "duration",
                 ],
             },
@@ -241,8 +278,8 @@ class MusicGenerationService:
         if custom_mode:
             if not instrumental and not text:
                 raise MusicGenerationError("Для песни с вокалом в Custom Mode нужен текст / промпт")
-            if len(text) > 5000:
-                raise MusicGenerationError("Промпт длиннее 5000 символов")
+            if len(text) > MUSIC_CUSTOM_PROMPT_LIMIT:
+                raise MusicGenerationError(f"Промпт длиннее {MUSIC_CUSTOM_PROMPT_LIMIT} символов")
             if text:
                 raw["prompt"] = text
             else:
@@ -250,8 +287,8 @@ class MusicGenerationService:
         else:
             if not text:
                 raise MusicGenerationError("Опишите музыку или добавьте текст песни")
-            if len(text) > 3000:
-                raise MusicGenerationError("Промпт длиннее 3000 символов")
+            if len(text) > MUSIC_SIMPLE_PROMPT_LIMIT:
+                raise MusicGenerationError(f"Промпт длиннее {MUSIC_SIMPLE_PROMPT_LIMIT} символов")
             raw["prompt"] = text
 
         if custom_mode:
@@ -259,14 +296,15 @@ class MusicGenerationService:
             title = str(raw.get("title") or "").strip()
             if not style:
                 raise MusicGenerationError("В расширенном режиме укажите стиль музыки")
-            if not title:
-                raise MusicGenerationError("В расширенном режиме укажите название")
-            if len(style) > 1000:
-                raise MusicGenerationError("Стиль длиннее 1000 символов")
-            if len(title) > 80:
-                raise MusicGenerationError("Название длиннее 80 символов")
+            if len(style) > MUSIC_STYLE_LIMIT:
+                raise MusicGenerationError(f"Стиль длиннее {MUSIC_STYLE_LIMIT} символов")
+            if len(title) > MUSIC_TITLE_LIMIT:
+                raise MusicGenerationError(f"Название длиннее {MUSIC_TITLE_LIMIT} символов")
             raw["style"] = style
-            raw["title"] = title
+            if title:
+                raw["title"] = title
+            else:
+                raw.pop("title", None)
         else:
             # Kie Simple Mode requires prompt only; all custom-only options stay empty.
             for key in (
@@ -283,10 +321,12 @@ class MusicGenerationService:
             ):
                 raw.pop(key, None)
 
-        gender = raw.get("vocalGender")
-        if gender not in (None, "", "m", "f"):
+        gender = _normalize_vocal_gender(raw.get("vocalGender"))
+        if raw.get("vocalGender") not in (None, "") and not gender:
             raise MusicGenerationError("vocalGender должен быть m или f")
-        if gender == "":
+        if gender:
+            raw["vocalGender"] = gender
+        else:
             raw.pop("vocalGender", None)
 
         for key in ("styleWeight", "weirdnessConstraint", "audioWeight"):
