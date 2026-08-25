@@ -90,9 +90,11 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert not (styles_dir / "feed-social-interactions.css").exists()
     assert "<SingleFeedSurfaceGuard />" in page
     assert 'currentRoute() === "feed"' in guard
-    assert 'replaceRoute("catalog")' in guard
+    assert "roxy-hybrid-feed-screen" in guard
+    assert "roxy-feed-tiktok-preview" in guard
     assert 'feedButtons.length > 1' in guard
     assert 'setButtonLabel(duplicate, "Каталог")' in guard
+    assert "Do not redirect Feed away" in guard
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
