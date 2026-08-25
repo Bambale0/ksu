@@ -49,21 +49,16 @@ GROK_VIDEO_RATIOS = ["16:9", "9:16", "1:1", "2:3", "3:2"]
 # model pages: examples are used where the page exposes only an example value;
 # documented ranges are expanded for user-facing select controls.
 KIE_DURATION_OPTIONS: dict[str, list[int]] = {
-    # Wan 2.7 docs examples expose a 5-second duration; video-edit uses 0/auto.
     "wan-2.7-t2v": [5],
     "wan-2.7-i2v": [5],
     "wan-2.7-r2v": [5],
     "wan-2.7-video-edit": [0],
-    # Seedance 2.x examples use 15s; expose the user-requested short choices.
     "seedance-2.0": [5, 10, 15],
     "seedance-2.0-fast": [5, 10, 15],
     "seedance-2.0-mini": [5, 10, 15],
     "seedance-2.5": [5, 10, 15],
-    # Seedance 1.5 Pro docs example uses 8s.
     "seedance-1.5-pro": [8],
-    # Kling 3.0 docs state a 3-15s range.
     "kling-3.0": list(range(3, 16)),
-    # KIE Grok/Gemini pages expose fixed example durations in their payloads.
     "grok-video-t2v": [6],
     "grok-video-i2v": [6],
     "grok-video-1.5": [8],
@@ -178,6 +173,50 @@ def _make_reference_fields_optional(schema: dict[str, Any]) -> None:
         _patch_field(schema, name, required=False)
 
 
+def _patch_seedance_multiref_schema(schema: dict[str, Any], model_id: str) -> None:
+    image_limit = 30 if model_id == "seedance-2.5" else 9
+    video_limit = 10 if model_id == "seedance-2.5" else 3
+    audio_limit = 10 if model_id == "seedance-2.5" else 3
+    _patch_field(
+        schema,
+        "reference_image_urls",
+        label="Фото-референсы",
+        control="files",
+        max_items=image_limit,
+        max_size_mb=30,
+    )
+    _patch_field(
+        schema,
+        "reference_video_urls",
+        label="Видео-референсы",
+        control="files",
+        max_items=video_limit,
+        max_size_mb=200,
+    )
+    _patch_field(
+        schema,
+        "reference_audio_urls",
+        label="Аудио-референсы",
+        control="files",
+        max_items=audio_limit,
+        max_size_mb=15,
+    )
+
+    scenario = schema.get("scenario")
+    if not isinstance(scenario, dict):
+        return
+    for item in scenario.get("items", []):
+        if str(item.get("id") or "") == "first_frame":
+            item["title"] = "Фото-референсы"
+            item["visible_fields"] = ["reference_image_urls"]
+            item["clear_fields"] = [
+                "first_frame_url",
+                "last_frame_url",
+                "reference_video_urls",
+                "reference_audio_urls",
+            ]
+
+
 def _apply_model_contract(schema: dict[str, Any], model_id: str) -> None:
     for field_name, suggestions in MODEL_FIELD_SUGGESTIONS.get(model_id, {}).items():
         _patch_field(schema, field_name, suggestions=suggestions)
@@ -202,6 +241,8 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
     schema = deepcopy(build_model_ui_schema(model))
     model_id = str(model["id"])
     _apply_model_contract(schema, model_id)
+    if model_id in SEEDANCE_MODELS:
+        _patch_seedance_multiref_schema(schema, model_id)
 
     if model_id in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS:
         # These public cards are automatic product entries: without refs the

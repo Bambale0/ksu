@@ -43,9 +43,10 @@ def test_mode_specific_inputs_are_required_by_the_contract() -> None:
     seedance = build_public_model_ui_schema(models["seedance-2.0"])
     seedance_modes = {item["id"]: item for item in seedance["scenario"]["items"]}
     seedance_fields = {field["name"]: field for field in seedance["fields"]}
-    assert seedance_modes["first_frame"]["title"] == "Референс"
-    assert seedance_fields["first_frame_url"]["label"] == "Референс"
-    assert seedance_modes["first_frame"]["required_fields"] == ["first_frame_url"]
+    assert seedance_modes["first_frame"]["title"] == "Фото-референсы"
+    assert seedance_fields["reference_image_urls"]["label"] == "Фото-референсы"
+    assert seedance_fields["reference_image_urls"]["control"] == "files"
+    assert seedance_modes["first_frame"]["required_fields"] == ["reference_image_urls"]
     assert seedance_modes["first_last"]["required_fields"] == [
         "first_frame_url",
         "last_frame_url",
@@ -62,18 +63,18 @@ def test_video_duration_fields_use_model_specific_kie_options() -> None:
     expected_options = {
         "wan-2.7-t2v": [5],
         "wan-2.7-i2v": [5],
-        "wan-2.7-video-edit": [0, *range(2, 11)],
-        "wan-2.7-r2v": list(range(2, 11)),
+        "wan-2.7-video-edit": [0],
+        "wan-2.7-r2v": [5],
         "seedance-1.5-pro": [8],
-        "seedance-2.0": list(range(4, 16)),
-        "seedance-2.0-fast": list(range(4, 16)),
-        "seedance-2.0-mini": list(range(4, 16)),
-        "seedance-2.5": list(range(4, 31)),
+        "seedance-2.0": [5, 10, 15],
+        "seedance-2.0-fast": [5, 10, 15],
+        "seedance-2.0-mini": [5, 10, 15],
+        "seedance-2.5": [5, 10, 15],
         "kling-3.0": list(range(3, 16)),
-        "gemini-omni-video": [4, 6, 8, 10],
-        "grok-video-t2v": list(range(1, 31)),
-        "grok-video-i2v": list(range(1, 31)),
-        "grok-video-1.5": list(range(1, 16)),
+        "gemini-omni-video": [4],
+        "grok-video-t2v": [6],
+        "grok-video-i2v": [6],
+        "grok-video-1.5": [8],
     }
 
     for model_id, options in expected_options.items():
