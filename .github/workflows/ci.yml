@@ -108,6 +108,7 @@ jobs:
           tests/test_generation_batches.py
           tests/test_batch_recovery.py
           tests/test_music_generation.py
+          tests/test_kie_provider_contract_parity.py
 
       - name: Prompt and trend services
         run: pytest -q tests/test_prompt_tools.py tests/test_trends_service.py
