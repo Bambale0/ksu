@@ -29,10 +29,13 @@ def test_customer_app_has_one_next_react_source() -> None:
 
 def test_generated_static_directory_contains_no_customer_source() -> None:
     files = sorted(path.name for path in GENERATED.iterdir() if path.is_file())
-    assert files == ["README.md"]
+    assert files == ["README.md", "release.json"]
     readme = _read(GENERATED / "README.md")
     assert "frontend/mini-app" in readme
     assert "Do not add customer UI source files" in readme
+    release = json.loads(_read(GENERATED / "release.json"))
+    assert sorted(release) == ["sha"]
+    assert isinstance(release["sha"], str)
 
 
 def test_docker_build_replaces_generated_directory_with_next_export() -> None:
