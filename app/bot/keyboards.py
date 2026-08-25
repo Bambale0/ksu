@@ -178,6 +178,11 @@ def onboarding_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu(*, start_payload: str | None = None) -> InlineKeyboardMarkup:
-    """Compatibility alias for older imports; customer UX opens the Mini App catalog."""
+def main_menu_with_start_payload(start_payload: str | None = None) -> InlineKeyboardMarkup:
+    """Open the Mini App catalog while preserving a Telegram start payload."""
     return app_launcher_menu(route="catalog", start_payload=start_payload)
+
+
+def main_menu() -> InlineKeyboardMarkup:
+    """Compatibility alias for older imports; customer UX opens the Mini App catalog."""
+    return app_launcher_menu(route="catalog")
