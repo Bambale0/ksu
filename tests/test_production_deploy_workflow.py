@@ -15,7 +15,7 @@ def test_production_deploy_waits_for_exact_main_green_sha() -> None:
     for token in (
         'workflows: ["CI"]',
         "github.event.workflow_run.conclusion == 'success'",
-        'required=("CI" "Admin Console" "Batch Generation")',
+        'required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")',
         "head_sha=${DEPLOY_SHA}",
         "/git/ref/heads/main",
         "superseded=true",
