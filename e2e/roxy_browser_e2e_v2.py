@@ -50,6 +50,10 @@ async def select_prompt_friendly_model(page: Page, media: str) -> None:
         veo = page.get_by_role("button", name=re.compile("Veo", re.I)).first
         await expect(veo).to_be_visible(timeout=8000)
         await veo.click()
+        variant = page.get_by_role("button", name=re.compile(r"Veo\s*3\.1", re.I)).first
+        await expect(variant).to_be_visible(timeout=8000)
+        await variant.click()
+        await expect(page.get_by_role("heading", name=re.compile("Veo", re.I))).to_be_visible(timeout=8000)
         return
     if media == "audio":
         suno = page.get_by_role("button", name=re.compile("Suno|Музыка", re.I)).first
