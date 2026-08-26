@@ -100,6 +100,7 @@ async def _persist_reference_metadata(
         setattr(reference, "audio_codec", probe.audio_codec)
         setattr(reference, "probe_status", probe.status)
     await session.commit()
+    await session.refresh(reference)
 
 
 def _metadata_view(reference: object) -> dict[str, object | None]:
