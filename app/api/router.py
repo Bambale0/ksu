@@ -10,7 +10,6 @@ from app.api.v1 import (
     admin_operations,
     admin_payments,
     admin_users,
-    batches,
     card_payments,
     creator_partnership,
     discovery,
@@ -51,7 +50,6 @@ api_router.include_router(feed_reference_media.router)
 api_router.include_router(trends.router)
 api_router.include_router(prompt_tools.router)
 api_router.include_router(reference_presets.router)
-api_router.include_router(batches.router)
 api_router.include_router(media.router)
 api_router.include_router(card_payments.router)
 api_router.include_router(payments.router)
