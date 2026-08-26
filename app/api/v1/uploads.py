@@ -100,6 +100,12 @@ async def _persist_reference_metadata(
         setattr(reference, "audio_codec", probe.audio_codec)
         setattr(reference, "probe_status", probe.status)
     await session.commit()
+    # updated_at is server-side onupdate: after the UPDATE the ORM marks the
+    # attribute expired even with expire_on_commit=False. Reading it later
+    # (public_view / _metadata_view) fires a synchronous lazy refresh outside
+    # the async greenlet -> sqlalchemy.exc.MissingGreenlet -> HTTP 500.
+    # Re-select the row here while we still own the event loop.
+    await session.refresh(reference)
 
 
 def _metadata_view(reference: object) -> dict[str, object | None]:
