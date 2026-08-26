@@ -41,8 +41,8 @@ class ProviderMediaTransport:
     API and worker processes are allowed to have separate local filesystems. If a
     stable ROXY URL resolves to a missing local file in the worker, the worker
     re-fetches that exact product-owned path from PUBLIC_BASE_URL and then uploads
-    the recovered bytes to Kie. The recovery URL is always rebuilt from trusted
-    configuration; user-controlled hosts and redirects are never followed.
+    the recovered bytes to Kie. Recovery is allowed only for the configured ROXY
+    host; user-controlled hosts and redirects are never followed.
     """
 
     @staticmethod
@@ -86,10 +86,13 @@ class ProviderMediaTransport:
         if base.scheme != "https" or not base.netloc:
             return None
         source = urlsplit(value)
-        path = source.path or (value if value.startswith("/") else "")
-        if not path.startswith("/"):
+        if source.scheme != "https" or not source.netloc:
             return None
-        return urlunsplit((base.scheme, base.netloc, path, "", ""))
+        if source.netloc.lower() != base.netloc.lower():
+            return None
+        if not source.path.startswith("/"):
+            return None
+        return urlunsplit((base.scheme, base.netloc, source.path, "", ""))
 
     @staticmethod
     def _recovery_client() -> httpx.AsyncClient:
