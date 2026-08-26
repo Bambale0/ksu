@@ -42,10 +42,10 @@ def _caption(card: dict[str, object]) -> str:
         f"💎 {card.get('cost_credits')} кр. · ≈ {card.get('cost_rub')} ₽",
     ]
     if min_refs:
-        lines.append(f"🖼 Нужно референсов: от {min_refs}")
+        lines.append(f"🖼 Нужно примеров: от {min_refs}")
     if card.get("media_type") == "video" and card.get("billing_seconds"):
         lines.append(f"⏱ {card.get('billing_seconds')} сек.")
-    lines.extend(["", "🔒 Prompt и настройки шаблона скрыты"])
+    lines.extend(["", "🔒 Описание и настройки скрыты"])
     return "\n".join(line for line in lines if line is not None)[:1024]
 
 

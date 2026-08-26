@@ -71,14 +71,14 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="🎟 Промо", callback_data="admin:promos"),
-                InlineKeyboardButton(text="🧾 Промпты", callback_data="admin:prompts"),
+                InlineKeyboardButton(text="🧾 Описания", callback_data="admin:prompts"),
             ],
             [
                 InlineKeyboardButton(text="📣 Рассылка", callback_data="admin:broadcast"),
-                InlineKeyboardButton(text="⚙️ Runtime", callback_data="admin:runtime"),
+                InlineKeyboardButton(text="⚙️ Настройки", callback_data="admin:runtime"),
             ],
-            [InlineKeyboardButton(text="🧠 AI admin", callback_data="admin:ai")],
-            [InlineKeyboardButton(text="🌐 Web console", callback_data="admin:web")],
+            [InlineKeyboardButton(text="🧠 AI-помощник", callback_data="admin:ai")],
+            [InlineKeyboardButton(text="🌐 Веб-админка", callback_data="admin:web")],
             [InlineKeyboardButton(text="⬅️ В главное меню", callback_data="nav:main")],
         ]
     )
@@ -140,12 +140,12 @@ def _fmt_summary(data: dict[str, object]) -> str:
     withdrawals = data["withdrawals"]
     payments = data["payments"]
     return (
-        "📊 Admin summary\n\n"
+        "📊 Сводка админки\n\n"
         f"Пользователи: {users['active']} активных / {users['total']} всего\n"
-        f"Генерации: {generations['active']} активных, {generations['failed']} failed\n"
-        f"Support: {support['open']} открытых\n"
+        f"Генерации: {generations['active']} активных, {generations['failed']} не получилось\n"
+        f"Поддержка: {support['open']} открытых\n"
         f"Выплаты: {withdrawals['pending_or_processing']} в очереди\n"
-        f"Платежи: {payments['succeeded']} succeeded, {payments['amount']} {payments.get('currency', '')}\n"
+        f"Платежи: {payments['succeeded']} успешных, {payments['amount']} {payments.get('currency', '')}\n"
         f"Начислено кредитов: {payments['credits']}"
     )
 
@@ -163,7 +163,7 @@ async def admin_console(message: Message, session: AsyncSession, state: FSMConte
         return
     await state.clear()
     await message.answer(
-        "🛡 Админ-контур\n\nВсе write-действия проходят через общий policy/audit/idempotency слой.",
+        "🛡 Админка\n\nВсе важные действия подтверждаются и попадают в журнал.",
         reply_markup=_main_keyboard(),
     )
 
@@ -173,7 +173,7 @@ async def admin_home(callback: CallbackQuery, session: AsyncSession, state: FSMC
     if await _require_callback_admin(callback, session, state) is None:
         return
     await state.clear()
-    await _send_or_edit(callback, "🛡 Админ-контур", _main_keyboard())
+    await _send_or_edit(callback, "🛡 Админка", _main_keyboard())
 
 
 @router.callback_query(F.data == "admin:web")
@@ -188,7 +188,7 @@ async def admin_web(callback: CallbackQuery, session: AsyncSession, state: FSMCo
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🛡 Открыть web admin",
+                    text="🛡 Открыть веб-админку",
                     web_app=WebAppInfo(url=url),
                 )
             ],
@@ -197,7 +197,7 @@ async def admin_web(callback: CallbackQuery, session: AsyncSession, state: FSMCo
     )
     await _send_or_edit(
         callback,
-        "Web admin использует отдельную admin-сессию и MFA; Telegram-кнопка не является авторизацией.",
+        "Веб-админка откроется с отдельной защищённой сессией.",
         keyboard,
     )
 
@@ -230,7 +230,7 @@ async def admin_finance(callback: CallbackQuery, session: AsyncSession, state: F
         + ("\n".join(payment_lines) or "—")
         + "\n\nВыплаты:\n"
         + ("\n".join(withdrawal_lines) or "—")
-        + f"\n\nWallet tx: {data['wallet']['transactions']}, net credits: {data['wallet']['net_credits']}"
+        + f"\n\nОпераций баланса: {data['wallet']['transactions']}, чистое начисление: {data['wallet']['net_credits']}"
     )
     await _send_or_edit(callback, text[:3900], _back_admin())
 
@@ -648,7 +648,7 @@ async def admin_pricing_publish_start(callback: CallbackQuery, session: AsyncSes
     await state.set_state(AdminStates.pricing_json)
     await _send_or_edit(
         callback,
-        "Отправьте JSON с секциями packages/image_prices/video_prices/partner_exchange/prompt_costs/video_prompt_costs/generation_pricing.",
+        "Отправьте файл настроек тарифов в JSON. Нужны разделы с пакетами, ценами, партнёрским курсом и правилами списаний.",
         _back_admin(),
     )
 
@@ -710,7 +710,7 @@ async def admin_prompts(callback: CallbackQuery, session: AsyncSession, state: F
         return
     data = await AdminContentService.list_prompts(session, admin=admin, status="pending", limit=10)
     rows = data["items"]
-    text = "🧾 Pending prompts\n\n" + (
+    text = "🧾 Описания на проверке\n\n" + (
         "\n\n".join(
             f"{idx + 1}. {item['title']}\n{item['prompt'][:250]}" for idx, item in enumerate(rows)
         )
@@ -721,11 +721,11 @@ async def admin_prompts(callback: CallbackQuery, session: AsyncSession, state: F
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=f"{idx + 1}: approve",
+                    text=f"{idx + 1}: одобрить",
                     callback_data=f"admin:prompt:{item['id']}:approve",
                 ),
                 InlineKeyboardButton(
-                    text=f"{idx + 1}: reject",
+                    text=f"{idx + 1}: отклонить",
                     callback_data=f"admin:prompt:{item['id']}:reject",
                 ),
             ]
@@ -860,15 +860,15 @@ async def admin_runtime(callback: CallbackQuery, session: AsyncSession, state: F
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"Subscription required: {'ON' if required else 'OFF'}",
+                    text=f"Обязательная подписка: {'включена' if required else 'выключена'}",
                     callback_data=f"admin:runtime:subscription:{0 if required else 1}",
                 )
             ],
-            [InlineKeyboardButton(text="♻️ Reload pricing", callback_data="admin:runtime:reload")],
+            [InlineKeyboardButton(text="♻️ Обновить тарифы", callback_data="admin:runtime:reload")],
             [InlineKeyboardButton(text="⬅️ Админ", callback_data="admin:home")],
         ]
     )
-    await _send_or_edit(callback, "⚙️ Runtime settings", keyboard)
+    await _send_or_edit(callback, "⚙️ Настройки приложения", keyboard)
 
 
 @router.callback_query(F.data.startswith("admin:runtime:subscription:"))

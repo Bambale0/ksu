@@ -19,7 +19,7 @@ function bindScreen(screen: HTMLElement) {
   if (!toggle) return;
 
   const scenes = Array.from(screen.querySelectorAll<HTMLElement>(".field"))
-    .find((field) => labelText(field.querySelector(".label")) === "Кадры multi-shot");
+    .find((field) => labelText(field.querySelector(".label")) === "Кадры по сценам");
   if (!scenes) return;
 
   const raw = scenes.querySelector<HTMLTextAreaElement>("textarea.control");

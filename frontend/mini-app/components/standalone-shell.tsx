@@ -54,7 +54,7 @@ export function StandaloneShell({
           aria-label="ROXY — главная"
         >
           <span className="roxy-mark" aria-hidden="true"><span>RX</span></span>
-          <span className="brand-copy"><strong>ROXY</strong><small>AI CREATIVE STUDIO</small></span>
+          <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
         <button
           className="balance-button"

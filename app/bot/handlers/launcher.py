@@ -95,13 +95,13 @@ async def _send_launcher(message: Message, *, route: str, payload: str | None) -
     await message.answer(
         "<b>Добро пожаловать в ROXY ✨</b>\n\n"
         "Создавайте изображения, видео и музыку.\n"
-        "А ещё ROXY умеет делать готовые prompt по фото, видео или описанию.\n"
+        "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
         "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
-        "или напишите задумку, а ROXY соберёт подробный prompt.\n\n"
+        "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
         "<b>Бонусы:</b>\n"
         "🎁 50 ROX — сразу после регистрации\n"
         "🎁 +30 ROX — за друга после его первой генерации\n\n"
-        "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в Mini App.\n"
+        "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
         f"{_support_line()}",
         reply_markup=app_launcher_menu(route=route, start_payload=payload),
         parse_mode="HTML",
@@ -161,7 +161,7 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
     if handle:
         await message.answer(
             "Поддержка ROXY всегда рядом.\n\n"
-            f"Напишите {handle} — поможем с оплатой, балансом, генерациями, prompt и публикациями.",
+            f"Напишите {handle} — поможем с оплатой, балансом, созданием работ, описаниями и публикациями.",
             reply_markup=quick_menu(),
         )
         return
@@ -184,7 +184,7 @@ async def retired_prompt_shortcut(message: Message, session: AsyncSession, state
     await session.commit()
     await message.answer("Меню обновлено: снизу только меню и поддержка.", reply_markup=quick_menu())
     await message.answer(
-        "Prompt-инструменты открываются внутри ROXY или кнопками ниже.",
+        "Инструменты для описаний открываются внутри ROXY или кнопками ниже.",
         reply_markup=prompt_tools_menu(),
     )
 

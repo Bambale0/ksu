@@ -14,10 +14,10 @@ router = Router(name="prompt-tools")
 async def _open(message: Message, session: AsyncSession) -> None:
     await UserService.get_or_create(session, message.from_user)
     await message.answer(
-        "🧠 <b>AI-инструменты</b>\n\n"
-        "🖼 <b>Промпт по фото</b> — композиция, стиль, свет, цвета, ракурс и детали.\n"
-        "✨ <b>Улучшить промпт</b> — цельный RU/EN промпт из идеи и, при желании, референса.\n\n"
-        "Стоимость показывается до запуска и берётся с сервера.",
+        "🧠 <b>Инструменты ROXY</b>\n\n"
+        "🖼 <b>Описание по фото</b> — композиция, стиль, свет, цвета, ракурс и детали.\n"
+        "✨ <b>Улучшить описание</b> — цельный текст из идеи и, при желании, примера.\n\n"
+        "Стоимость покажем перед запуском.",
         reply_markup=prompt_tools_menu(),
     )
 

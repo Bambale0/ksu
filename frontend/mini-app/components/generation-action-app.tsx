@@ -139,12 +139,12 @@ function visibleFields(model: ActionModel | null, action: string, values: Record
 }
 
 function defaultPromptLabel(action: string): { title: string; placeholder: string; copy: string } {
-  if (action === "remix") return { title: "Что изменить?", placeholder: "Например: сделай вечерний свет и красное платье", copy: "Исходное изображение уже закреплено как референс." };
+  if (action === "remix") return { title: "Что изменить?", placeholder: "Например: сделай вечерний свет и красное платье", copy: "Исходная работа уже добавлена как пример." };
   if (action === "edit") return { title: "Как изменить образ?", placeholder: "Опиши только нужное изменение", copy: "ROXY сохранит лицо, позу, композицию и остальные детали максимально неизменными." };
-  if (action === "animate") return { title: "Как оживить кадр?", placeholder: "Например: плавный поворот головы, лёгкое движение камеры", copy: "Картинка автоматически станет первым кадром video I2V." };
-  if (action === "new_prompt") return { title: "Новый промпт", placeholder: "Опиши новый результат", copy: "Модель и совместимые параметры сохранены, текст начинается с чистого поля." };
-  if (action === "parameters") return { title: "Промпт", placeholder: "Промпт", copy: "Промпт сохранён. Измени нужные параметры ниже и запусти новый вариант." };
-  return { title: "Промпт", placeholder: "Промпт", copy: "Промпт и совместимые настройки перенесены из выбранной работы." };
+  if (action === "animate") return { title: "Как оживить кадр?", placeholder: "Например: плавный поворот головы, лёгкое движение камеры", copy: "ROXY возьмёт эту картинку за начало видео." };
+  if (action === "new_prompt") return { title: "Новое описание", placeholder: "Опиши новый результат", copy: "Настройки сохранены, а описание можно написать с нуля." };
+  if (action === "parameters") return { title: "Описание", placeholder: "Описание работы", copy: "Описание сохранено. Измените нужные настройки и запустите новый вариант." };
+  return { title: "Описание", placeholder: "Описание работы", copy: "Описание и подходящие настройки перенесены из выбранной работы." };
 }
 
 function money(value?: string | null): string {
@@ -242,7 +242,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
   const formError = useMemo(() => {
     if (!context || actionId === "publish") return "";
     if (!model) return "Выберите модель";
-    if ((SOURCE_ACTIONS.has(actionId) || actionId === "new_prompt") && !prompt.trim()) return "Добавьте промпт";
+    if ((SOURCE_ACTIONS.has(actionId) || actionId === "new_prompt") && !prompt.trim()) return "Добавьте описание";
     for (const field of fields) {
       const value = parameters[field.name];
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
@@ -373,18 +373,18 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
     <main className="main-shell"><section className="screen generation-action-screen">
       <div className="action-source panel">
         <div className="action-source-media">{source && mediaType === "video" ? <video src={source} controls playsInline /> : source && mediaType === "audio" ? <audio src={source} controls /> : source ? <img src={source} alt="Исходная генерация" /> : <span><Icon name="image"/></span>}</div>
-        <div><span className="kicker">Исходная работа</span><h1>{context.generation.model_title || "ROXY generation"}</h1><p className="muted">{context.action.label} · связь с исходником сохранится в истории</p></div>
+        <div><span className="kicker">Исходная работа</span><h1>{context.generation.model_title || "Работа ROXY"}</h1><p className="muted">{context.action.label} · связь с исходной работой сохранится в истории</p></div>
       </div>
 
       {actionId === "publish" ? <div className="action-grid">
-        <div className="panel"><span className="kicker">Публикация</span><h2>Куда опубликовать?</h2><div className="segmented"><button type="button" className={scope === "profile" ? "active" : ""} onClick={() => setScope("profile")}>В профиль</button><button type="button" className={scope === "feed" ? "active" : ""} onClick={() => setScope("feed")}>Лента + профиль</button></div><label className="toggle-row"><span><strong>Показать промпт</strong><small>По умолчанию промпт скрыт</small></span><input type="checkbox" checked={promptVisible} onChange={(event) => setPromptVisible(event.target.checked)}/><i/></label><p className="muted">Референсы остаются скрытыми.</p></div>
+        <div className="panel"><span className="kicker">Публикация</span><h2>Куда опубликовать?</h2><div className="segmented"><button type="button" className={scope === "profile" ? "active" : ""} onClick={() => setScope("profile")}>В профиль</button><button type="button" className={scope === "feed" ? "active" : ""} onClick={() => setScope("feed")}>Лента + профиль</button></div><label className="toggle-row"><span><strong>Показать описание</strong><small>По умолчанию описание скрыто</small></span><input type="checkbox" checked={promptVisible} onChange={(event) => setPromptVisible(event.target.checked)}/><i/></label><p className="muted">Примеры остаются скрытыми.</p></div>
         <aside className="panel create-summary"><span className="kicker">Готово</span><h2>{scope === "feed" ? "Публичная лента" : "Профиль"}</h2><button className="primary wide" type="button" disabled={submitting} onClick={() => void publish()}>{submitting ? "Публикую…" : "Опубликовать"}</button></aside>
       </div> : <div className="action-grid">
         <div className="action-form">
           {context.candidate_models.length > 1 && <div className="panel"><label className="label">Модель</label><select className="control" value={modelId} onChange={(event) => chooseModel(event.target.value)}>{context.candidate_models.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>}
           <div className="panel"><span className="kicker">{context.action.label}</span><h2>{promptMeta.title}</h2><p className="muted">{promptMeta.copy}</p>{actionId === "edit" && Boolean(context.edit_presets?.length) && <div className="segmented scrollable action-presets">{context.edit_presets?.map((preset) => <button type="button" key={preset.id} className={editKind === preset.id ? "active" : ""} onClick={() => setEditKind(preset.id)}>{preset.label}</button>)}</div>}<textarea className="control textarea action-prompt" value={prompt} placeholder={promptMeta.placeholder} onChange={(event) => setPrompt(event.target.value)} /></div>
 
-          {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить параметры" : "Параметры модели"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
+          {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить настройки" : "Настройки работы"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
           {model?.ui_schema?.billing_seconds && <div className="panel"><label className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={model.ui_schema.billing_seconds.min || 1} max={model.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></div>}
         </div>
         <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(generationId)}>Отмена</button></aside>
@@ -412,7 +412,7 @@ function serializeParameters(fields: UiField[], values: Record<string, unknown>)
     const value = result[field.name];
     if (typeof value === "string" && value.trim()) {
       try { result[field.name] = JSON.parse(value); }
-      catch { throw new Error(`Исправьте JSON в «${field.label}»`); }
+      catch { throw new Error(`Проверьте поле «${field.label}»`); }
     }
   }
   return result;

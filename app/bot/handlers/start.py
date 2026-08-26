@@ -263,7 +263,7 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
             "👥 Партнёры ROXY\n\n"
             f"🎁 {settings.start_balance_rox} ROX — при регистрации, сразу в баланс\n"
             f"👤 +{settings.invite_bonus_rox} ROX — за приглашённого, сразу в баланс\n"
-            f"🔁 +{settings.prompt_repeat_bonus_rox} ROX — за повтор промпта, сразу в баланс\n\n"
+            f"🔁 +{settings.prompt_repeat_bonus_rox} ROX — за повтор работы, сразу в баланс\n\n"
             f"💰 {settings.referral_first_percent}% — заработок с пополнений 1-й линии\n"
             f"💰 {settings.referral_second_percent}% — заработок с пополнений 2-й линии\n"
             f"Доступно: {partner['available']} ₽\n"

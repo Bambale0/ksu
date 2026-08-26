@@ -14,8 +14,8 @@ BACK_TEXT = "⬅️ Назад"
 PRIMARY_PAYMENT_TEXT = "💳 Оплата картой"
 OPEN_APP_TEXT = "🚀 Открыть ROXY"
 QUICK_MENU_TEXT = "🏠 Меню"
-QUICK_PROMPT_TEXT = "✨ Prompt фото/текст"
-QUICK_VIDEO_PROMPT_TEXT = "🎬 Prompt видео"
+QUICK_PROMPT_TEXT = "✨ Описание для фото"
+QUICK_VIDEO_PROMPT_TEXT = "🎬 Описание для видео"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
 
 
@@ -142,19 +142,19 @@ def prompt_tools_menu() -> InlineKeyboardMarkup:
             [
                 [
                     InlineKeyboardButton(
-                        text="✨ Prompt по фото/описанию",
+                        text="✨ Описание по фото или идее",
                         web_app=WebAppInfo(url=_prompt_tool_url("image")),
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🎬 Prompt по видео",
+                        text="🎬 Описание по видео",
                         web_app=WebAppInfo(url=_prompt_tool_url("video")),
                     )
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🎞 Prompt для Seedance",
+                        text="🎞 Сценарий для видео",
                         web_app=WebAppInfo(url=_prompt_tool_url("seedance")),
                     )
                 ],

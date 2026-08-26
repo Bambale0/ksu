@@ -21,7 +21,7 @@ type KlingElement = {
 type VideoRef = { url: string; start?: number; ends?: number };
 
 const STRUCTURED_LABELS: Record<string, StructuredKind> = {
-  "Кадры multi-shot": "multi_prompt",
+  "Кадры по сценам": "multi_prompt",
   "Element references": "kling_elements",
   "Видео-референс": "video_list",
   "Gemini Omni audio IDs": "audio_ids",
@@ -76,7 +76,7 @@ function StructuredEditor({ textarea, kind }: { textarea: HTMLTextAreaElement; k
   if (kind === "multi_prompt") {
     const shots = parseJson<Shot[]>(value, []).filter((item) => item && typeof item === "object");
     return <div className="structured-editor" data-structured-kind={kind}>
-      <p className="muted">Каждый кадр — отдельный prompt и длительность. Сумма должна совпадать с общей длительностью Kling.</p>
+      <p className="muted">Опишите каждый кадр и задайте длительность. Общая сумма должна совпадать с длиной видео.</p>
       {shots.map((shot, index) => <div className="structured-row" key={index}>
         <textarea className="control textarea" value={shot.prompt || ""} placeholder={`Сцена ${index + 1}`} onChange={(event) => commit(shots.map((current, i) => i === index ? { ...current, prompt: event.target.value } : current))}/>
         <div className="structured-row-grid">
@@ -98,7 +98,7 @@ function StructuredEditor({ textarea, kind }: { textarea: HTMLTextAreaElement; k
       } finally { setUploading(false); }
     };
     return <div className="structured-editor" data-structured-kind={kind}>
-      <p className="muted">Gemini Omni принимает максимум одно видео. Можно загрузить файл и указать используемый фрагмент.</p>
+      <p className="muted">Загрузите одно видео и укажите нужный фрагмент.</p>
       {videos.map((video, index) => <div className="structured-row" key={index}>
         <input className="control" value={video.url || ""} placeholder="https://..." onChange={(event) => commit(videos.map((current, i) => i === index ? { ...current, url: event.target.value } : current))}/>
         <label className="upload-control"><span>{uploading ? "Загружаю…" : "Загрузить видео"}</span><input type="file" accept="video/*" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadVideo(file, index); }}/></label>

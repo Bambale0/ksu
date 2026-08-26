@@ -131,7 +131,7 @@ export function CatalogFeatureHub() {
       {
         id: "create-video",
         title: "Создать видео",
-        copy: "Видео-генерация, I2V и анимация кадров",
+        copy: "Ролики из описания, фото или готового кадра",
         icon: "video",
         badge: "Создать",
         route: "create",
@@ -140,7 +140,7 @@ export function CatalogFeatureHub() {
       {
         id: "create-audio",
         title: "Создать музыку",
-        copy: "Suno и аудио-инструменты ROXY",
+        copy: "Песни и аудио для ваших идей",
         icon: "music",
         badge: "Создать",
         route: "create",
@@ -148,7 +148,7 @@ export function CatalogFeatureHub() {
       },
       {
         id: "prompt-image",
-        title: "Prompt фото / описание",
+        title: "Описание по фото",
         copy: "Разобрать фото или усилить идею перед генерацией",
         icon: "spark",
         href: "/mini-app/prompt-tools/?mode=image",
@@ -156,7 +156,7 @@ export function CatalogFeatureHub() {
       },
       {
         id: "prompt-video",
-        title: "Prompt по видео",
+        title: "Описание по видео",
         copy: "Камера, движение, сцена и динамика ролика",
         icon: "video",
         href: "/mini-app/prompt-tools/?mode=video",
@@ -164,8 +164,8 @@ export function CatalogFeatureHub() {
       },
       {
         id: "prompt-seedance",
-        title: "Prompt для Seedance",
-        copy: "Готовая структура сцены, камеры и negative prompt",
+        title: "Сценарий для видео",
+        copy: "Сцена, камера, движение и детали в готовой структуре",
         icon: "spark",
         href: "/mini-app/prompt-tools/?mode=seedance",
         price: price(imageTool),

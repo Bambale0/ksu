@@ -37,10 +37,10 @@ async function waitForTask(id: string): Promise<PromptToolTask> {
   for (let attempt = 0; attempt < 90; attempt += 1) {
     const task = await api.promptToolTask(id);
     if (task.status === "succeeded") return task;
-    if (task.status === "failed") throw new Error(task.error || "Не удалось создать prompt");
+    if (task.status === "failed") throw new Error(task.error || "Не удалось подготовить описание");
     await new Promise((resolve) => window.setTimeout(resolve, 2000));
   }
-  throw new Error("Prompt ещё готовится. Откройте историю инструмента чуть позже.");
+  throw new Error("Описание ещё готовится. Откройте историю инструмента чуть позже.");
 }
 
 export default function PromptToolsPage() {
@@ -116,32 +116,32 @@ export default function PromptToolsPage() {
       const done = await waitForTask(task.id);
       setResult(done.result || {});
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось создать prompt");
+      setError(reason instanceof Error ? reason.message : "Не удалось подготовить описание");
     } finally {
       setBusy(false);
     }
   };
 
   const resultEntries = result ? [
-    ["Prompt RU", result.prompt_ru],
-    ["Prompt EN", result.prompt_en],
+    ["Описание RU", result.prompt_ru],
+    ["Описание EN", result.prompt_en],
     ["Камера", result.camera],
     ["Динамика", result.motion],
-    ["Negative prompt", result.negative_prompt],
+    ["Что исключить", result.negative_prompt],
     ["Анализ", result.summary || result.generation_notes],
   ].filter((item): item is [string, string] => Boolean(item[1])) : [];
 
   return (
     <StandaloneShell
-      kicker="Prompt tools"
-      title="Создание prompt"
-      copy="Фото, видео и Seedance работают внутри общей ROXY-навигации и используют серверные цены и контракты."
+      kicker="Описания"
+      title="Подготовить описание"
+      copy="Загрузите фото или видео, добавьте идею, а ROXY соберёт текст для запуска."
     >
       <div className="panel tool-panel">
-        <div className="segmented scrollable" aria-label="Режим prompt tools">
+        <div className="segmented scrollable" aria-label="Режим описания">
           <button type="button" className={mode === "image" ? "active" : ""} onClick={() => selectMode("image")}>Фото / описание</button>
           <button type="button" className={mode === "video" ? "active" : ""} onClick={() => selectMode("video")}>Видео</button>
-          <button type="button" className={mode === "seedance" ? "active" : ""} onClick={() => selectMode("seedance")}>Seedance</button>
+          <button type="button" className={mode === "seedance" ? "active" : ""} onClick={() => selectMode("seedance")}>Сценарий</button>
         </div>
         <div className="section-title"><div><span className="kicker">Стоимость</span><h2>{modePrice}</h2></div></div>
 
@@ -176,7 +176,7 @@ export default function PromptToolsPage() {
         ) : null}
 
         {error ? <div className="action-error" role="alert">{error}</div> : null}
-        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>{busy ? "Готовлю prompt…" : "Создать prompt"}</button>
+        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>{busy ? "Готовлю описание…" : "Подготовить описание"}</button>
       </div>
 
       {resultEntries.length ? (

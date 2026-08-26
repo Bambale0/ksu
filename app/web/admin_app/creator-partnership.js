@@ -55,8 +55,21 @@
     return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(number);
   }
 
+  function statusLabel(status) {
+    const labels = {
+      active: "Активно",
+      paused: "На паузе",
+      ended: "Завершено",
+      pending: "На рассмотрении",
+      approved: "Одобрено",
+      rejected: "Отклонено",
+    };
+    const normalized = String(status ?? "").toLowerCase();
+    return labels[normalized] || status || "—";
+  }
+
   function badge(status) {
-    return el("span", `badge ${status || "unknown"}`, status || "—");
+    return el("span", `badge ${status || "unknown"}`, statusLabel(status));
   }
 
   function field(label, input) {
@@ -90,7 +103,7 @@
       state.token = result.token;
       if (result.mfa_setup_required) {
         state.token = null;
-        throw new Error("Сначала настрой MFA в основной админке.");
+        throw new Error("Сначала настройте второй фактор в основной админке.");
       }
       state.me = await api("/api/v1/admin/auth/me");
       if (!state.me.permissions?.includes("partners.read") && !state.me.permissions?.includes("*")) {
@@ -276,7 +289,7 @@
     if (monthly == null) return;
     const terms = window.prompt("Условия", item.terms_summary);
     if (terms == null) return;
-    const status = window.prompt("Статус: active / paused / ended", item.status);
+    const status = window.prompt("Статус: активно / пауза / завершено", item.status);
     if (!status) return;
     const reason = window.prompt("Причина изменения", "Изменение условий") || "Изменение условий";
     if (!window.confirm("Подтвердить изменение соглашения?")) return;
@@ -294,7 +307,7 @@
   }
 
   async function stepUp() {
-    const otp = window.prompt("Fresh MFA code for sensitive grant");
+    const otp = window.prompt("Свежий код подтверждения");
     if (!otp) return false;
     try {
       await api("/api/v1/admin/auth/step-up", {
@@ -304,7 +317,7 @@
       });
       return true;
     } catch (error) {
-      toast(error.message || "Step-up не пройден");
+      toast(error.message || "Подтверждение не пройдено");
       return false;
     }
   }

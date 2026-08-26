@@ -55,7 +55,7 @@ async def _callback_admin(
     if admin is None:
         if state is not None:
             await state.clear()
-        await callback.answer("Нет admin-доступа", show_alert=True)
+        await callback.answer("Нет админ-доступа", show_alert=True)
     return admin
 
 
@@ -64,12 +64,12 @@ async def admin_tools(message: Message, session: AsyncSession, state: FSMContext
     if await _message_admin(message, session, state) is None:
         return
     await message.answer(
-        "🧰 Дополнительные admin tools\n\n"
-        "• /admin_export — CSV/XLSX финансы\n"
-        "• /admin_promo CODE — lookup + activate/deactivate\n"
+        "🧰 Дополнительные инструменты админки\n\n"
+        "• /admin_export — выгрузка финансов CSV/XLSX\n"
+        "• /admin_promo CODE — найти, включить или отключить промокод\n"
         "• /admin_withdrawal UUID — детали выплаты\n"
-        "• /admin_prompt UUID — prompt moderation\n"
-        "• /admin_generation UUID — privileged operation preview",
+        "• /admin_prompt UUID — модерация описания\n"
+        "• /admin_generation UUID — детали операции генерации",
         reply_markup=_back(),
     )
 
@@ -272,15 +272,15 @@ async def admin_prompt_detail(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Approve",
+                    text="Одобрить",
                     callback_data=f"adminx:prompt:{item['id']}:approve",
                 ),
                 InlineKeyboardButton(
-                    text="Reject",
+                    text="Отклонить",
                     callback_data=f"adminx:prompt:{item['id']}:reject",
                 ),
                 InlineKeyboardButton(
-                    text="Deactivate",
+                    text="Снять с публикации",
                     callback_data=f"adminx:prompt:{item['id']}:deactivate",
                 ),
             ],
@@ -288,7 +288,7 @@ async def admin_prompt_detail(
         ]
     )
     await message.answer(
-        f"🧾 {item['title']}\nStatus: {item['status']} / active={item['is_active']}\n\n"
+        f"🧾 {item['title']}\nСтатус: {item['status']} / активно={item['is_active']}\n\n"
         f"{item['prompt'][:3000]}",
         reply_markup=keyboard,
     )
@@ -320,7 +320,7 @@ async def admin_prompt_action(
         await session.rollback()
         await callback.answer(str(exc)[:180], show_alert=True)
         return
-    await callback.answer(f"{result['status']} · replay={replayed}", show_alert=True)
+    await callback.answer(f"Готово: {result['status']} · повтор={replayed}", show_alert=True)
 
 
 @router.message(Command("admin_generation"))
@@ -352,14 +352,14 @@ async def admin_generation_preview(
         for event in item["timeline"][-10:]
     )
     await message.answer(
-        "🔬 Privileged generation preview\n\n"
+        "🔬 Детали операции генерации\n\n"
         f"ID: {item['id']}\n"
-        f"User: {item['user_id']}\n"
-        f"Model/provider: {item['parameters'].get('_model_id') or '—'} / {item['provider']}\n"
-        f"Status: {item['status']}\n"
-        f"Cost: {item['cost_credits']} cr\n"
-        f"Prompt: {item['prompt'][:1500]}\n"
-        f"Error: {item['error'] or '—'}\n\n"
-        f"Timeline:\n{timeline or '—'}",
+        f"Пользователь: {item['user_id']}\n"
+        f"Модель/провайдер: {item['parameters'].get('_model_id') or '—'} / {item['provider']}\n"
+        f"Статус: {item['status']}\n"
+        f"Стоимость: {item['cost_credits']} кр.\n"
+        f"Описание: {item['prompt'][:1500]}\n"
+        f"Ошибка: {item['error'] or '—'}\n\n"
+        f"История:\n{timeline or '—'}",
         reply_markup=_back(),
     )
