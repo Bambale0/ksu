@@ -30,6 +30,34 @@ async def robust_route(page: Page, name: str) -> None:
     await expect(page.locator(ready).first).to_be_visible(timeout=10000)
 
 
+async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) -> None:
+    await page.goto(
+        f"{suite.legacy.BASE_URL}/mini-app/?route=home",
+        wait_until="domcontentloaded",
+    )
+    await expect(page).to_have_title(re.compile("ROXY"))
+    await expect(page.locator('[data-roxy-customer-route="home"]')).to_have_count(2, timeout=8000)
+    for route in ("home", "catalog", "create", "history", "profile"):
+        await robust_route(page, route)
+        report.controls_seen.add(f"primary:{route}")
+
+    await robust_route(page, "catalog")
+    prompt = page.locator('[data-catalog-feature="prompt-image"]:visible').first
+    await expect(prompt).to_be_visible(timeout=10000)
+    await prompt.click()
+    await expect(page).to_have_url(
+        re.compile(r"/mini-app/prompt-tools/(?:\?|$)"),
+        timeout=7000,
+    )
+    await page.go_back()
+    await expect(page).to_have_url(
+        re.compile(r"[?&]route=catalog(?:&|$)"),
+        timeout=7000,
+    )
+    report.controls_seen.add("catalog:prompt-tools/back")
+    report.ok("boot + canonical navigation + Back")
+
+
 async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
     balance = page.locator("#balance")
@@ -158,6 +186,8 @@ async def inventory_visible_controls(page: Page, report: suite.legacy.Report) ->
 
 suite.select_primary = robust_route
 suite.legacy.select_primary = robust_route
+suite.scenario_boot_and_navigation = scenario_boot_and_navigation
+suite.legacy.scenario_boot_and_navigation = scenario_boot_and_navigation
 suite.scenario_wallet = scenario_wallet
 suite.legacy.scenario_wallet = scenario_wallet
 suite.scenario_profile_support_partner = scenario_profile_support_partner

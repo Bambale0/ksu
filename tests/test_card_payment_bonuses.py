@@ -210,11 +210,20 @@ def test_top_up_bonus_catalog_matches_public_promo() -> None:
     assert TopUpBonusService.bonus_for(5000) == Decimal("500")
 
 
-def test_wallet_bonus_badges_are_loaded_in_mini_app() -> None:
+def test_wallet_bonus_badges_are_backend_driven_in_mini_app() -> None:
     layout = (FRONTEND / "app" / "layout.tsx").read_text(encoding="utf-8")
+    page = (FRONTEND / "app" / "page.tsx").read_text(encoding="utf-8")
     css = (FRONTEND / "app" / "wallet-bonuses.css").read_text(encoding="utf-8")
+    wallet = (FRONTEND / "components" / "wallet-parity.tsx").read_text(encoding="utf-8")
 
     assert 'import "./wallet-bonuses.css";' in layout
+    assert 'import { WalletParity } from "@/components/wallet-parity";' in page
+    assert "<WalletParity />" in page
+    assert 'customerRequest<PackageCatalog>("/api/v1/payments/card/packages")' in wallet
+    assert "bonus_credits" in wallet
+    assert "package-bonus-live" in wallet
+    assert ".package-bonus-live" in css
+    assert ":nth-child(" not in css
     for token in (
         "+50 ROX 🎁",
         "+100 ROX 🎁",
@@ -222,6 +231,4 @@ def test_wallet_bonus_badges_are_loaded_in_mini_app() -> None:
         "+200 ROX 🎁",
         "+500 ROX 🎁",
     ):
-        assert token in css
-    assert ".package-grid .package:nth-child(2)::after" in css
-    assert ".package-grid .package:nth-child(6)::after" in css
+        assert token not in css
