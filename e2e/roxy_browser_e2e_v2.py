@@ -118,21 +118,20 @@ async def scenario_history(page: Page, report: legacy.Report) -> None:
 
 
 async def scenario_wallet(page: Page, report: legacy.Report) -> None:
+    # Wallet is a sheet opened from the balance control, not a canonical route.
+    # Navigating directly to ?route=wallet correctly falls back to Home because
+    # wallet is not part of the Route union.
     await page.goto(f"{legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
-    wallet_entry = page.get_by_role("button", name=re.compile("Баланс|ROX", re.I)).first
-    if await wallet_entry.count() and await wallet_entry.is_visible():
-        await wallet_entry.click()
-        await expect(page).to_have_url(re.compile(r"[?&]route=wallet(?:&|$)"), timeout=8000)
-    else:
-        await page.goto(f"{legacy.BASE_URL}/mini-app/?route=wallet", wait_until="domcontentloaded")
-    main = page.locator("main")
-    await expect(main).to_contain_text(re.compile("Баланс|Оплат|ROX|Lava|Crypto", re.I), timeout=10000)
-    for method in ("lava", "crypto"):
-        tab = page.locator(f'[data-checkout-method="{method}"]')
-        if await tab.count() and await tab.first.is_visible():
-            await tab.first.click()
-            report.controls_seen.add(f"wallet:method:{method}")
-    report.ok("wallet route and checkout controls")
+    balance = page.locator("#balance")
+    await expect(balance).to_be_visible(timeout=10000)
+    await balance.click()
+    sheet = page.locator(".sheet").first
+    await expect(sheet).to_be_visible(timeout=8000)
+    await expect(sheet).to_contain_text(re.compile("Баланс|Пополн|ROX", re.I), timeout=10000)
+    package = sheet.locator(".package").first
+    await expect(package).to_be_visible(timeout=8000)
+    report.controls_seen.update({"wallet:open", "wallet:package"})
+    report.ok("wallet sheet and checkout controls")
 
 
 Page.get_by_role = _get_by_role_compat
