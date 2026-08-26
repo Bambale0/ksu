@@ -17,9 +17,16 @@ from app.core.observability import (
 from app.db.session import engine
 from app.services.generation_worker import GenerationWorkerService
 from app.services.generations import GenerationService
+from app.services.notification_events import register_notification_events
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "generation-worker"
+
+# Kie callbacks normally finish through the API process, but stale-task recovery
+# can also transition a generation to succeeded/failed inside this worker. Register
+# the same SQLAlchemy notification bridge here so recovered generations still get
+# their durable Telegram delivery row.
+register_notification_events()
 
 
 async def _event(redis: Redis, name: str) -> None:
