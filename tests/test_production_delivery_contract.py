@@ -32,3 +32,23 @@ def test_production_deploy_verifies_exact_mini_app_sha() -> None:
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow
     assert "Production is healthy and Mini App serves" in workflow
+
+
+def test_generation_worker_registers_durable_notification_events() -> None:
+    worker = (ROOT / "app" / "workers" / "generation.py").read_text(encoding="utf-8")
+
+    assert "from app.services.notification_events import register_notification_events" in worker
+    assert "register_notification_events()" in worker
+
+
+def test_generation_success_never_marks_text_only_media_fallback_as_delivered() -> None:
+    worker = (ROOT / "app" / "workers" / "notifications.py").read_text(encoding="utf-8")
+    transport = (ROOT / "app" / "services" / "telegram_generation_media.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "send_generation_result_media(" in worker
+    assert "generation_notification_media_fallback" not in worker
+    assert "return await bot.send_message(chat_id=chat_id, text=text" not in transport
+    assert "FSInputFile" in transport
+    assert "send_document" in transport
