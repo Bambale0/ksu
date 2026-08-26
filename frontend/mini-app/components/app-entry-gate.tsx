@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { initTelegram, telegram } from "@/lib/telegram";
+import { getStartParamFallback, initTelegram } from "@/lib/telegram";
 import { FeedStartApp } from "./feed-startapp-app";
 import { GenerationActionGate } from "./generation-action-app";
 import { ProfileStartApp } from "./profile-startapp-app";
@@ -15,17 +15,8 @@ type Target =
   | { kind: "post" | "remix"; generationId: string; referralCode: string }
   | { kind: "profile"; referralCode: string };
 
-function startPayload(): string {
-  const url = new URL(window.location.href);
-  return url.searchParams.get("start_payload")
-    || url.searchParams.get("startapp")
-    || url.searchParams.get("tgWebAppStartParam")
-    || telegram()?.initDataUnsafe?.start_param
-    || "";
-}
-
 function parseTarget(): Target | null {
-  const payload = startPayload();
+  const payload = getStartParamFallback();
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
     return { kind: "post", generationId: match[1], referralCode: match[2] };
