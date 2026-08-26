@@ -99,7 +99,7 @@ def test_creator_partnership_is_backend_owned_not_bound_to_deleted_legacy_ui() -
 def test_creator_admin_console_is_real_privileged_surface() -> None:
     html = _read("app/web/admin_app/creator-partnership.html")
     js = _read("app/web/admin_app/creator-partnership.js")
-    assert "Creator Partnerships" in html
+    assert "Партнёрские условия" in html
     assert "/api/v1/admin/auth/login" in js
     assert "/api/v1/admin/creator-partnership/applications" in js
     assert "/api/v1/admin/creator-partnership/agreements" in js
