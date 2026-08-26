@@ -81,7 +81,7 @@ test('early tgWebAppData and tgWebAppStartParam authenticate before SDK initData
   expect(request.headers['x-telegram-start-param']).toBe('ref_888');
 });
 
-test('signed Telegram start_param wins over conflicting URL fallbacks', async ({ page }) => {
+test('SDK parsed start_param wins over conflicting URL fallbacks', async ({ page }) => {
   await installTelegram(page, { startParam: 'ref_111' });
   const requests = await mockCoreApi(page);
 
@@ -90,6 +90,20 @@ test('signed Telegram start_param wins over conflicting URL fallbacks', async ({
 
   const request = await firstRequest(requests, '/api/v1/me');
   expect(request.headers['x-telegram-start-param']).toBe('ref_111');
+});
+
+test('signed initData start_param wins while initDataUnsafe is still incomplete', async ({ page }) => {
+  await installTelegram(page, {
+    initData: 'query_id=e2e&start_param=ref_444&hash=test',
+    startParam: '',
+  });
+  const requests = await mockCoreApi(page);
+
+  await page.goto('/mini-app/?route=home&start_payload=ref_222&startapp=ref_333');
+  await expect(page.locator('.home-screen')).toBeVisible();
+
+  const request = await firstRequest(requests, '/api/v1/me');
+  expect(request.headers['x-telegram-start-param']).toBe('ref_444');
 });
 
 test('product start_payload wins over generic startapp when Telegram has no signed start_param', async ({ page }) => {
