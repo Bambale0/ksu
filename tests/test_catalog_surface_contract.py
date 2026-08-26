@@ -31,9 +31,9 @@ def test_catalog_exposes_bot_tools_and_admin_published_trends() -> None:
         "Фото-модели",
         "Видео-модели",
         "Музыка",
-        "Prompt фото / описание",
-        "Prompt по видео",
-        "Prompt для Seedance",
+        "Описание по фото",
+        "Описание по видео",
+        "Сценарий для видео",
         "Пакетная обработка",
     ):
         assert token in catalog
