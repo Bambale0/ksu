@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import textwrap
 from pathlib import Path
 
 from app.core.runtime_services import APPLICATION_SERVICES, OPERATIONAL_WORKERS
@@ -35,6 +37,13 @@ def _bash_array(name: str) -> tuple[str, ...]:
     )
 
 
+def _remote_deploy_script() -> str:
+    marker = "<<'REMOTE'\n"
+    start = DEPLOY.index(marker) + len(marker)
+    end = DEPLOY.index("\n          REMOTE", start)
+    return textwrap.dedent(DEPLOY[start:end])
+
+
 def test_all_application_services_share_one_release_image() -> None:
     assert APPLICATION_SERVICES[0] == "app"
     assert OPERATIONAL_WORKERS == APPLICATION_SERVICES[1:]
@@ -49,6 +58,17 @@ def test_deploy_recreates_every_application_service() -> None:
     assert 'docker compose up -d --force-recreate --remove-orphans "${runtime_services[@]}"' in DEPLOY
     assert 'actual_image_id="$(docker inspect "${container_id}" --format \'{{.Image}}\')"' in DEPLOY
     assert 'actual_image_id}" != "${expected_image_id}' in DEPLOY
+
+
+def test_remote_production_script_is_valid_bash() -> None:
+    result = subprocess.run(
+        ["bash", "-n"],
+        input=_remote_deploy_script(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_workers_without_native_heartbeat_use_runtime_wrapper() -> None:
