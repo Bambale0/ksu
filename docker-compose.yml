@@ -25,6 +25,7 @@ services:
       retries: 10
 
   app:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -42,6 +43,7 @@ services:
       uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   generation-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -57,6 +59,7 @@ services:
     command: python -m app.workers.generation
 
   media-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -71,6 +74,7 @@ services:
     command: python -m app.workers.media
 
   payment-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -83,6 +87,7 @@ services:
     command: python -m app.workers.payments
 
   notification-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -94,9 +99,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.notifications
+    command:
+      - python
+      - -m
+      - app.workers.heartbeat_runner
+      - notification-worker
+      - app.workers.notifications
 
   admin-campaign-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -108,9 +119,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.admin_campaigns
+    command:
+      - python
+      - -m
+      - app.workers.heartbeat_runner
+      - admin-campaign-worker
+      - app.workers.admin_campaigns
 
   prompt-tool-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -125,6 +142,7 @@ services:
     command: python -m app.workers.prompt_tools
 
   creator-partnership-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
     env_file: .env
     volumes:
@@ -136,7 +154,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.creator_partnership
+    command:
+      - python
+      - -m
+      - app.workers.heartbeat_runner
+      - creator-partnership-worker
+      - app.workers.creator_partnership
 
   backup-worker:
     image: postgres:17-alpine
