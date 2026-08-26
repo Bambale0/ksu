@@ -227,9 +227,6 @@ async def _generation_for_notification(
 ) -> Generation | None:
     if notification.kind not in _GENERATION_NOTIFICATION_KINDS:
         return None
-    # Generation notifications use Generation.id as Notification.id, which gives
-    # the durable outbox a stable domain reference. Older queued rows with random
-    # notification UUIDs deliberately fall back to the generic text sender.
     generation = await session.get(Generation, notification.id)
     if generation is None or generation.user_id != notification.user_id:
         return None
@@ -254,13 +251,7 @@ async def _upload_video_from_server(
     text: str,
     keyboard: InlineKeyboardMarkup | None,
 ):
-    """Fetch a provider video on our server and upload it to Telegram as multipart.
-
-    Telegram only guarantees 20 MB when it fetches media from an HTTP URL, while
-    multipart bot uploads support up to 50 MB. Provider URLs also occasionally
-    expose a MIME type or redirect chain Telegram refuses to fetch. Downloading
-    through the existing SSRF-hardened media fetcher closes both gaps.
-    """
+    """Download the generated source and upload the local file to Telegram."""
 
     downloaded = None
     try:
@@ -296,9 +287,9 @@ async def _upload_video_from_server(
                 caption=text,
                 reply_markup=keyboard,
             )
-    except Exception as exc:  # noqa: BLE001 - final text fallback remains available
+    except Exception as exc:  # noqa: BLE001 - URL/text fallback remains available
         logger.info(
-            "generation_notification_video_upload_fallback_failed",
+            "generation_notification_video_upload_failed",
             extra={"generation_id": str(generation.id), "error": str(exc)},
         )
         return None
@@ -322,8 +313,25 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
     media_type = _generation_media_type(generation)
-    try:
-        if media_type == "video":
+
+    if media_type == "video":
+        # Video delivery is source-first: the worker downloads the provider result
+        # and uploads the actual file to Telegram. This mirrors the expected photo
+        # UX and avoids relying on Telegram being able to fetch a provider URL.
+        uploaded = await _upload_video_from_server(
+            bot,
+            chat_id=chat_id,
+            generation=generation,
+            result_url=result_url,
+            text=text,
+            keyboard=keyboard,
+        )
+        if uploaded is not None:
+            return uploaded
+
+        # Keep a last-resort URL attempt only for cases where our downloader cannot
+        # reach the provider or the file exceeds the cloud Bot API multipart limit.
+        try:
             return await bot.send_video(
                 chat_id=chat_id,
                 video=result_url,
@@ -331,6 +339,14 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
                 reply_markup=keyboard,
                 supports_streaming=True,
             )
+        except TelegramAPIError as exc:
+            logger.info(
+                "generation_notification_video_url_fallback_failed",
+                extra={"generation_id": str(generation.id), "error": str(exc)},
+            )
+            return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+
+    try:
         if media_type == "audio":
             return await bot.send_audio(
                 chat_id=chat_id,
@@ -348,24 +364,6 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
         logger.info(
             "generation_notification_media_url_failed",
             extra={"generation_id": str(generation.id), "media_type": media_type, "error": str(exc)},
-        )
-        if media_type == "video":
-            uploaded = await _upload_video_from_server(
-                bot,
-                chat_id=chat_id,
-                generation=generation,
-                result_url=result_url,
-                text=text,
-                keyboard=keyboard,
-            )
-            if uploaded is not None:
-                return uploaded
-
-        # Never lose the completion notification if Telegram still rejects the
-        # original media. The original URL and Mini App remain available.
-        logger.info(
-            "generation_notification_media_text_fallback",
-            extra={"generation_id": str(generation.id), "media_type": media_type},
         )
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
@@ -415,8 +413,6 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             generation.telegram_notification_sent_at is not None
             or generation.telegram_notification_status == "sent"
         ):
-            # Normal duplicate callbacks/outbox re-enqueues are suppressed at the
-            # generation row in addition to the unique notification delivery row.
             await NotificationDeliveryService.mark_sent(
                 session,
                 delivery,
