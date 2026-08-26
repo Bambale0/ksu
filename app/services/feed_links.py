@@ -15,7 +15,6 @@ _POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE
 _LEGACY_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$", re.IGNORECASE)
 _PROFILE_RE = re.compile(r"^profile_(\d+)(?:_ref_(\d+))?$", re.IGNORECASE)
 _REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
-_MAIN_MINI_APP_SHORT_NAME_MARKERS = {"", "app", "main", "default"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +29,10 @@ def _code(value: int | str) -> str:
     return str(value).strip().upper()
 
 
+def _clean_bot_username(value: str | None) -> str:
+    return str(value or "").strip().lstrip("@")
+
+
 def referral_payload(telegram_id: int | str) -> str:
     return f"ref_{_code(telegram_id)}"
 
@@ -41,8 +44,6 @@ def post_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | Non
 
 
 def profile_payload(telegram_id: int | str) -> str:
-    # Match banano_kling:tanyapi exactly: profile target and referral attribution
-    # travel together in one signed Telegram start_param.
     code = _code(telegram_id)
     return f"profile_{code}_ref_{code}"
 
@@ -63,41 +64,33 @@ def task_payload(task_id: uuid.UUID | str) -> str:
     return f"task_{str(task_id).strip()}"
 
 
-def _mini_app_short_name() -> str:
-    return settings.telegram_mini_app_short_name.strip().strip("/")
+def mini_app_deep_link(
+    payload: str | None,
+    *,
+    fallback_url: str | None = None,
+    bot_username: str | None = None,
+) -> str | None:
+    """Build the Main Mini App link exactly like banano_kling:tanyapi.
 
-
-def _mini_app_base(username: str) -> str:
-    """Build the Main Mini App URL unless a real Direct Mini App short name is set."""
-
-    short_name = _mini_app_short_name()
-    if short_name.casefold() in _MAIN_MINI_APP_SHORT_NAME_MARKERS:
-        return f"https://t.me/{username}"
-    return f"https://t.me/{username}/{quote(short_name, safe='')}"
-
-
-def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
-    """Build a Telegram Mini App URL with a startapp payload.
-
-    Main Mini App links use ``https://t.me/<bot>?startapp=...``. Only a real
-    BotFather Direct Mini App short name may become a path segment. ``app`` is
-    ROXY's historical deployment placeholder and must not be treated as one.
+    ROXY has one canonical Main Mini App. ``startapp`` therefore lives directly
+    on the bot username: ``https://t.me/<bot>?startapp=<payload>``. A Direct Mini
+    App short-name path is a different Telegram product and is intentionally not
+    inferred from deployment configuration.
     """
 
-    username = settings.bot_username.strip().lstrip("@")
+    username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:
         return fallback_url
-    base = _mini_app_base(username)
     param = str(payload or "").strip()
     if not param:
-        return f"{base}?startapp"
-    return f"{base}?startapp={quote(param, safe='_-')}"
+        return f"https://t.me/{username}?startapp"
+    return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
 
 
-def bot_start_link(payload: str | None) -> str | None:
-    """Compatibility link for legacy bot /start surfaces; new UI uses startapp."""
+def bot_start_link(payload: str | None, *, bot_username: str | None = None) -> str | None:
+    """Compatibility link for legacy bot /start surfaces."""
 
-    username = settings.bot_username.strip().lstrip("@")
+    username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:
         return None
     param = str(payload or "").strip()
