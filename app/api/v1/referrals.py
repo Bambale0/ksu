@@ -75,6 +75,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     withdrawable_rox = InternalCreditService.credits_for(accounting["available"])
     pending_rox = InternalCreditService.credits_for(accounting["pending_rewards"])
     partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
+    referral_link = PartnerService.referral_link(user.telegram_id)
+    referral_mini_app_link = PartnerService.referral_mini_app_link(user.telegram_id)
 
     prompts_created = int(
         (
@@ -123,7 +125,12 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
-        "referral_link": PartnerService.referral_link(user.telegram_id),
+        # Canonical share/copy link follows banano_kling:tanyapi: open the bot with
+        # /start first, then the bot opens ROXY via its WebApp button and preserves
+        # the referral payload. This avoids BOT_INVALID on Telegram Main Mini App links.
+        "referral_link": referral_link,
+        "referral_bot_link": referral_link,
+        "referral_mini_app_link": referral_mini_app_link,
         "partner_chat_url": _partner_chat_url(),
         # Canonical wallet field. Bonuses, purchased top-ups and converted partner
         # earnings all land in this one ROX balance.
