@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -18,12 +18,14 @@ from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
+from app.services.media_assets import MediaIngestService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
 
 logger = logging.getLogger(__name__)
 
 _GENERATION_NOTIFICATION_KINDS = {"generation_succeeded", "generation_failed"}
+_TELEGRAM_MULTIPART_MAX_BYTES = 50 * 1024 * 1024
 
 
 def _notification_text(notification: Notification) -> str:
@@ -243,6 +245,68 @@ def _sync_generation_delivery(generation: Generation | None, delivery: Notificat
         generation.telegram_message_id = delivery.external_message_id
 
 
+async def _upload_video_from_server(
+    bot: Bot,
+    *,
+    chat_id: int,
+    generation: Generation,
+    result_url: str,
+    text: str,
+    keyboard: InlineKeyboardMarkup | None,
+):
+    """Fetch a provider video on our server and upload it to Telegram as multipart.
+
+    Telegram only guarantees 20 MB when it fetches media from an HTTP URL, while
+    multipart bot uploads support up to 50 MB. Provider URLs also occasionally
+    expose a MIME type or redirect chain Telegram refuses to fetch. Downloading
+    through the existing SSRF-hardened media fetcher closes both gaps.
+    """
+
+    downloaded = None
+    try:
+        downloaded = await MediaIngestService._download(result_url)  # noqa: SLF001
+        if downloaded.size_bytes > _TELEGRAM_MULTIPART_MAX_BYTES:
+            logger.info(
+                "generation_notification_video_too_large_for_telegram",
+                extra={
+                    "generation_id": str(generation.id),
+                    "size_bytes": downloaded.size_bytes,
+                },
+            )
+            return None
+
+        suffix = downloaded.suffix if downloaded.suffix and downloaded.suffix != ".bin" else ".mp4"
+        filename = f"roxy-{generation.id}{suffix}"
+        try:
+            return await bot.send_video(
+                chat_id=chat_id,
+                video=FSInputFile(downloaded.path, filename=filename),
+                caption=text,
+                reply_markup=keyboard,
+                supports_streaming=True,
+            )
+        except TelegramAPIError as exc:
+            logger.info(
+                "generation_notification_video_document_fallback",
+                extra={"generation_id": str(generation.id), "error": str(exc)},
+            )
+            return await bot.send_document(
+                chat_id=chat_id,
+                document=FSInputFile(downloaded.path, filename=filename),
+                caption=text,
+                reply_markup=keyboard,
+            )
+    except Exception as exc:  # noqa: BLE001 - final text fallback remains available
+        logger.info(
+            "generation_notification_video_upload_fallback_failed",
+            extra={"generation_id": str(generation.id), "error": str(exc)},
+        )
+        return None
+    finally:
+        if downloaded is not None:
+            downloaded.path.unlink(missing_ok=True)
+
+
 async def _send_generation_success(  # type: ignore[no-untyped-def]
     bot: Bot,
     *,
@@ -281,13 +345,27 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
             reply_markup=keyboard,
         )
     except TelegramAPIError as exc:
-        # Telegram's cloud Bot API has tighter URL/file limits than generation
-        # providers. If inline media cannot be fetched or decoded, do not lose the
-        # completion notification: send the same message with the original URL and
-        # Mini App buttons. The durable outbox still records this as delivered.
         logger.info(
-            "generation_notification_media_fallback",
+            "generation_notification_media_url_failed",
             extra={"generation_id": str(generation.id), "media_type": media_type, "error": str(exc)},
+        )
+        if media_type == "video":
+            uploaded = await _upload_video_from_server(
+                bot,
+                chat_id=chat_id,
+                generation=generation,
+                result_url=result_url,
+                text=text,
+                keyboard=keyboard,
+            )
+            if uploaded is not None:
+                return uploaded
+
+        # Never lose the completion notification if Telegram still rejects the
+        # original media. The original URL and Mini App remain available.
+        logger.info(
+            "generation_notification_media_text_fallback",
+            extra={"generation_id": str(generation.id), "media_type": media_type},
         )
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
