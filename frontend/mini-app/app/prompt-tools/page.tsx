@@ -165,7 +165,7 @@ export default function PromptToolsPage() {
     <StandaloneShell
       kicker="Промпты"
       title="Промпт по фото / видео"
-      copy="Загрузите референс, при желании уточните задачу — ROXY разберёт визуал, движение и камеру и соберёт готовый промпт."
+      copy="Подготовить описание можно по фото или видео: загрузите референс, при желании уточните задачу — ROXY разберёт визуал, движение и камеру и соберёт готовый промпт."
     >
       <div className="panel tool-panel">
         <div className="segmented scrollable" aria-label="Режим промпта">
