@@ -5,8 +5,8 @@
   overflow: hidden;
 }
 
-.package-grid .package::after {
-  display: none;
+.package-bonus-live {
+  display: inline-flex;
   width: fit-content;
   margin-top: 1px;
   padding: 3px 7px;
@@ -20,13 +20,19 @@
   letter-spacing: .01em;
 }
 
-.package-grid .package:nth-child(2)::after { content: "+50 ROX 🎁"; display: inline-flex; }
-.package-grid .package:nth-child(3)::after { content: "+100 ROX 🎁"; display: inline-flex; }
-.package-grid .package:nth-child(4)::after { content: "+150 ROX 🎁"; display: inline-flex; }
-.package-grid .package:nth-child(5)::after { content: "+200 ROX 🎁"; display: inline-flex; }
-.package-grid .package:nth-child(6)::after { content: "+500 ROX 🎁"; display: inline-flex; }
-
-.package-grid .package.active::after {
+.package.active .package-bonus-live {
   border-color: rgba(255, 95, 183, .55);
   background: linear-gradient(120deg, rgba(155, 92, 255, .42), rgba(255, 95, 183, .34));
+}
+
+.wallet-parity-link {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 4px;
+}
+
+.wallet-parity-link small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
