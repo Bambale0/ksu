@@ -99,7 +99,15 @@ export function getStartParamFallback(): string {
   const direct = String(telegram()?.initDataUnsafe?.start_param || "").trim();
   if (direct) return direct;
 
-  // 2. Snapshot captured before telegram-web-app.js can rewrite launch params.
+  // 2. Telegram SDK raw launch param when available.
+  const sdkValue = String(telegram()?.initParams?.tgWebAppStartParam || "").trim();
+  if (sdkValue) return sdkValue;
+
+  // 3. Signed tgWebAppData is authoritative before product-owned URL aliases.
+  const signedStart = String(paramsFromRaw(getInitDataFallback()).get("start_param") || "").trim();
+  if (signedStart) return signedStart;
+
+  // 4. Snapshot captured before telegram-web-app.js can rewrite launch params.
   // KSU's explicit start_payload alias has priority over the generic startapp
   // compatibility query when both are present in a product-owned launcher URL.
   const snapshot = window.__ROXY_INITIAL_LAUNCH__;
@@ -107,14 +115,6 @@ export function getStartParamFallback(): string {
     const value = launchParamFrom(raw, URL_START_PARAM_NAMES);
     if (value) return value;
   }
-
-  // 3. Telegram SDK raw init params.
-  const sdkValue = String(telegram()?.initParams?.tgWebAppStartParam || "").trim();
-  if (sdkValue) return sdkValue;
-
-  // 4. Signed tgWebAppData may already be available even when SDK parsing is late.
-  const signedStart = String(paramsFromRaw(getInitDataFallback()).get("start_param") || "").trim();
-  if (signedStart) return signedStart;
 
   // 5. Persisted launch-param snapshots survive client-side navigation/remounts.
   // They contain only the routing payload, never Telegram auth initData.
