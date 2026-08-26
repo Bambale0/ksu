@@ -127,11 +127,13 @@ BOT_USERNAME=KsuBot
 TELEGRAM_MINI_APP_SHORT_NAME=app
 ```
 
-The API then returns:
+`app` is the historical ROXY marker for the bot's **Main Mini App**, not a BotFather Direct Mini App short name. The API therefore returns:
 
 ```text
-https://t.me/KsuBot/app?startapp=ref_<telegram_id>
+https://t.me/KsuBot?startapp=ref_<telegram_id>
 ```
+
+Only a real Direct Mini App short name configured in BotFather should produce `https://t.me/KsuBot/<short_name>?startapp=...`.
 
 When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
 
