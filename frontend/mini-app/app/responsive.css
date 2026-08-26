@@ -1,0 +1,792 @@
+/* Device layout layer for Telegram Mini App.
+   Loaded last so it can normalize every customer surface without duplicating
+   component-specific markup. Phone remains compact; tablet uses available
+   canvas; iOS safe areas stay respected in Telegram and normal WebKit. */
+
+:root {
+  --tg-safe-top: env(safe-area-inset-top, 0px);
+  --tg-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tg-safe-left: env(safe-area-inset-left, 0px);
+  --tg-safe-right: env(safe-area-inset-right, 0px);
+  --roxy-content-max: 1180px;
+  --roxy-page-gutter: clamp(14px, 3vw, 32px);
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100svh;
+  min-height: 100dvh;
+  overscroll-behavior-x: none;
+}
+
+img,
+video,
+audio,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+.roxy-app,
+.generation-action-app,
+.publish-success {
+  width: 100%;
+  max-width: 100%;
+}
+
+.main-shell {
+  width: min(100%, var(--roxy-content-max));
+  margin-inline: auto;
+}
+
+.screen,
+.generation-action-screen,
+.standalone-screen,
+.publish-success {
+  min-width: 0;
+}
+
+.screen {
+  padding-left: max(var(--roxy-page-gutter), var(--tg-safe-left));
+  padding-right: max(var(--roxy-page-gutter), var(--tg-safe-right));
+}
+
+.topbar {
+  padding-left: max(var(--roxy-page-gutter), var(--tg-safe-left));
+  padding-right: max(var(--roxy-page-gutter), var(--tg-safe-right));
+}
+
+.screen-head,
+.section-title,
+.panel,
+.create-layout,
+.create-controls,
+.create-summary,
+.form-stack,
+.field,
+.profile-copy,
+.history-card > div,
+.model-card > div,
+.family-card > div,
+.variant-row > span:nth-child(2),
+.tool-panel,
+.tool-result,
+.structured-row {
+  min-width: 0;
+}
+
+.screen-head h1,
+.screen-head h2,
+.section-title h2,
+.profile-copy h1,
+.preview-copy h2,
+.action-source h1,
+.tool-result-card,
+.prompt-copy,
+.transaction,
+.transaction span,
+.model-card strong,
+.model-card small,
+.family-card strong,
+.family-card small,
+.history-card strong,
+.history-card small,
+.variant-row strong,
+.variant-row small {
+  overflow-wrap: anywhere;
+}
+
+.segmented.scrollable,
+.saved-reference-row,
+.format-grid,
+.promo-slider {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+
+.control,
+.wallet-input,
+textarea,
+input,
+select {
+  max-width: 100%;
+  font-size: max(16px, 1em);
+}
+
+/* Avoid iOS zoom for editable controls while preserving compact visual labels. */
+.label,
+.kicker,
+small {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Touch targets: never shrink primary interactions below Apple's practical 44px target. */
+@media (hover: none), (pointer: coarse) {
+  :where(.primary, .secondary, button.ghost.wide, .publish-success-actions .ghost),
+  .bottom-nav button,
+  .segmented button,
+  .profile-tabs button,
+  .icon-button,
+  .action-back,
+  .preview-close,
+  .package,
+  .variant-row,
+  .model-card,
+  .family-card,
+  .upload-control,
+  .saved-reference-pick,
+  .structured-actions button {
+    min-height: 44px;
+  }
+}
+
+/* Small iPhones: protect header, lists, forms and fixed navigation from squeezing. */
+@media (max-width: 390px) {
+  :root {
+    --roxy-page-gutter: 10px;
+  }
+
+  .topbar {
+    gap: 8px;
+    min-height: calc(58px + var(--tg-safe-top));
+    padding-top: calc(7px + var(--tg-safe-top));
+    padding-bottom: 7px;
+  }
+
+  .roxy-mark {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 12px 12px 15px 15px;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .brand-copy strong {
+    font-size: 14px;
+  }
+
+  .brand-copy small {
+    display: none;
+  }
+
+  .balance-button {
+    min-width: 84px;
+    max-width: 124px;
+    min-height: 42px;
+    padding: 6px 9px;
+    border-radius: 14px;
+  }
+
+  .balance-button strong {
+    max-width: 105px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  .screen {
+    padding-top: 12px;
+    padding-bottom: 26px;
+  }
+
+  .screen-head {
+    margin-bottom: 14px;
+  }
+
+  .screen-head h1 {
+    font-size: clamp(26px, 9vw, 34px);
+  }
+
+  .section-title {
+    align-items: center;
+    margin-top: 19px;
+  }
+
+  .section-title h2 {
+    font-size: 18px;
+  }
+
+  .format-card {
+    flex-basis: min(78vw, 226px);
+  }
+
+  .model-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .model-icon,
+  .format-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .price-pill {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-hero {
+    grid-template-columns: 58px minmax(0, 1fr) 40px;
+    gap: 9px;
+    padding: 13px;
+  }
+
+  .avatar {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    font-size: 22px;
+  }
+
+  .profile-copy h1 {
+    font-size: 19px;
+  }
+
+  .profile-copy p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .profile-stats {
+    gap: 5px;
+  }
+
+  .profile-stats div {
+    min-height: 54px;
+    padding: 7px;
+  }
+
+  .history-card {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .history-card > .media-placeholder,
+  .history-card > img,
+  .history-card > video {
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+  }
+
+  .history-card .status {
+    grid-column: 2;
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
+  }
+
+  .variant-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .variant-badge {
+    grid-column: 2;
+    width: auto;
+    min-width: 42px;
+    max-width: 100%;
+    justify-self: start;
+    padding-inline: 8px;
+  }
+
+  .package-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction {
+    align-items: flex-start;
+  }
+
+  .transaction > span {
+    max-width: 46%;
+    text-align: right;
+  }
+
+  .preview-copy {
+    padding: 14px 12px;
+  }
+
+  .preview-copy > .panel {
+    padding-inline: 12px !important;
+  }
+
+  .preview-copy > .panel .toggle-row > span {
+    grid-template-columns: 24px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+
+  .preview-copy > .panel .toggle-row strong,
+  .preview-copy > .panel .toggle-row small {
+    max-width: none;
+  }
+
+  .preview-actions :where(.primary, .secondary) {
+    min-height: 44px;
+  }
+
+  .sheet {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .tool-file-chip,
+  .structured-actions {
+    align-items: flex-start;
+  }
+
+  .structured-actions {
+    flex-direction: column;
+  }
+
+  .structured-actions > * {
+    width: 100%;
+  }
+
+  .bottom-nav {
+    left: max(6px, var(--tg-safe-left));
+    right: max(6px, var(--tg-safe-right));
+    bottom: max(6px, var(--tg-safe-bottom));
+    width: min(calc(100% - 12px), 620px);
+    min-height: 70px;
+    padding: 6px;
+    border-radius: 21px;
+  }
+
+  .bottom-nav button {
+    min-height: 50px;
+    padding-inline: 1px;
+  }
+
+  .bottom-nav button small {
+    font-size: 9px;
+  }
+
+  .bottom-nav button.central {
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+    transform: translateY(-12px);
+  }
+
+  .bottom-nav button.central > span {
+    width: 56px;
+    height: 56px;
+    border-radius: 20px;
+  }
+}
+
+/* Modern iPhones and regular portrait phones. */
+@media (min-width: 391px) and (max-width: 767px) {
+  :root {
+    --roxy-page-gutter: 14px;
+  }
+
+  .screen {
+    padding-top: 16px;
+  }
+
+  .model-card,
+  .family-card {
+    min-height: 88px;
+  }
+
+  .preview-card {
+    width: min(100%, 680px);
+  }
+}
+
+/* Tablets: use the canvas instead of keeping phone carousels and edge-to-edge sheets. */
+@media (min-width: 768px) {
+  :root {
+    --roxy-page-gutter: clamp(22px, 3vw, 34px);
+  }
+
+  .roxy-app {
+    padding-bottom: calc(104px + var(--tg-safe-bottom));
+  }
+
+  .screen {
+    padding-top: 24px;
+    padding-bottom: 42px;
+  }
+
+  .topbar {
+    min-height: calc(68px + var(--tg-safe-top));
+  }
+
+  .brand-copy strong {
+    font-size: 16px;
+  }
+
+  .brand-copy small {
+    display: block;
+    font-size: 9px;
+  }
+
+  .balance-button {
+    min-width: 112px;
+    min-height: 46px;
+  }
+
+  .screen-head {
+    margin-bottom: 22px;
+  }
+
+  .screen-head h1 {
+    font-size: clamp(34px, 4.8vw, 48px);
+  }
+
+  .screen-head p,
+  .screen-head::after {
+    max-width: 760px;
+    font-size: 14px;
+  }
+
+  .format-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    overflow: visible;
+    scroll-snap-type: none;
+    padding: 0;
+    margin-inline: 0;
+  }
+
+  .format-card {
+    flex: none;
+    width: auto;
+    min-height: 148px;
+    padding: 16px;
+  }
+
+  .promo-slider {
+    grid-auto-columns: min(76%, 720px);
+    gap: 14px;
+  }
+
+  .promo-slide,
+  .promo-carousel {
+    border-radius: 28px;
+  }
+
+  .model-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 11px;
+  }
+
+  .family-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .media-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .create-layout {
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+    gap: 14px;
+  }
+
+  .create-summary {
+    top: calc(84px + var(--tg-safe-top));
+  }
+
+  .profile-hero {
+    grid-template-columns: 88px minmax(0, 1fr) 46px;
+    gap: 16px;
+    padding: 21px;
+  }
+
+  .avatar {
+    width: 88px;
+    height: 88px;
+    border-radius: 28px;
+  }
+
+  .profile-copy h1 {
+    font-size: 27px;
+  }
+
+  .profile-stats div {
+    min-height: 66px;
+    padding: 11px;
+  }
+
+  .profile-stats strong {
+    font-size: 20px;
+  }
+
+  .sheet-overlay {
+    place-items: center;
+    padding:
+      max(24px, var(--tg-safe-top))
+      max(24px, var(--tg-safe-right))
+      max(24px, var(--tg-safe-bottom))
+      max(24px, var(--tg-safe-left));
+  }
+
+  .sheet {
+    width: min(calc(100% - 48px), 760px);
+    max-height: min(86dvh, 900px);
+    padding: 12px 20px 24px;
+    border: 1px solid var(--border);
+    border-radius: 28px;
+  }
+
+  .bottom-sheet {
+    width: min(680px, 100%);
+    max-height: min(80dvh, 820px);
+    border-radius: 26px;
+    padding: 18px;
+  }
+
+  .preview-card {
+    width: min(calc(100% - 40px), 840px);
+    max-height: min(90dvh, 920px);
+    border-radius: 28px;
+  }
+
+  .preview-copy {
+    padding: 20px;
+  }
+
+  .preview-actions {
+    gap: 10px;
+  }
+
+  .onboarding-card {
+    width: min(100%, 520px);
+    padding: 36px 28px;
+  }
+
+  .tool-grid {
+    gap: 16px;
+  }
+
+  .tool-panel,
+  .tool-result-card,
+  .structured-row {
+    padding: 16px;
+  }
+
+  .tool-upload-preview img,
+  .tool-upload-preview video {
+    max-height: 440px;
+    object-fit: contain;
+  }
+
+  .action-source {
+    grid-template-columns: 156px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .action-source-media {
+    width: 156px;
+    height: 156px;
+  }
+
+  .action-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+  }
+
+  .action-summary {
+    top: calc(84px + var(--tg-safe-top));
+  }
+
+  .bottom-nav {
+    width: min(calc(100% - 40px), 680px);
+    min-height: 78px;
+    bottom: max(14px, var(--tg-safe-bottom));
+    padding: 8px 10px;
+  }
+
+  .bottom-nav button small {
+    font-size: 10px;
+  }
+
+  .bottom-nav button.central {
+    transform: translateY(-15px);
+  }
+}
+
+/* Large iPads and tablet landscape: increase information density without desktop-sized gaps. */
+@media (min-width: 1024px) {
+  .model-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .family-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .media-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .history-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .create-layout {
+    grid-template-columns: minmax(0, 1.55fr) minmax(330px, .65fr);
+    gap: 18px;
+  }
+
+  .action-grid {
+    grid-template-columns: minmax(0, 1fr) 350px;
+  }
+
+  .package-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1180px) {
+  .media-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* iPhone landscape / short Telegram viewport: preserve vertical working area. */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --roxy-page-gutter: 14px;
+  }
+
+  .roxy-app {
+    padding-bottom: calc(72px + var(--tg-safe-bottom));
+  }
+
+  .topbar {
+    min-height: calc(50px + var(--tg-safe-top));
+    padding-top: calc(5px + var(--tg-safe-top));
+    padding-bottom: 5px;
+  }
+
+  .roxy-mark {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+    border-radius: 11px 11px 14px 14px;
+  }
+
+  .brand-copy small {
+    display: none;
+  }
+
+  .balance-button {
+    min-height: 40px;
+  }
+
+  .screen {
+    padding-top: 10px;
+    padding-bottom: 18px;
+  }
+
+  .screen-head {
+    margin-bottom: 12px;
+  }
+
+  .screen-head h1 {
+    font-size: clamp(25px, 5vw, 32px);
+  }
+
+  .promo-slider,
+  .promo-carousel {
+    max-height: 210px;
+  }
+
+  .bottom-nav {
+    min-height: 62px;
+    bottom: max(4px, var(--tg-safe-bottom));
+    padding: 4px 7px;
+    border-radius: 18px;
+  }
+
+  .bottom-nav button {
+    min-height: 48px;
+    gap: 1px;
+  }
+
+  .bottom-nav button small {
+    font-size: 8.5px;
+  }
+
+  .bottom-nav button.central {
+    width: 46px;
+    height: 46px;
+    min-height: 46px;
+    transform: translateY(-8px);
+  }
+
+  .bottom-nav button.central > span {
+    width: 50px;
+    height: 50px;
+    border-radius: 18px;
+  }
+
+  .overlay {
+    padding-top: max(6px, var(--tg-safe-top));
+    padding-bottom: max(6px, var(--tg-safe-bottom));
+  }
+
+  .preview-card,
+  .sheet,
+  .bottom-sheet {
+    max-height: calc(100dvh - 12px);
+  }
+
+  .sheet-overlay {
+    padding: 6px max(12px, var(--tg-safe-right)) 6px max(12px, var(--tg-safe-left));
+  }
+
+  .sheet {
+    width: min(calc(100% - 24px), 760px);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+  }
+
+  .preview-media {
+    min-height: 160px;
+  }
+
+  .preview-media img,
+  .preview-media video {
+    max-height: 48dvh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-slider,
+  .segmented.scrollable,
+  .saved-reference-row {
+    scroll-behavior: auto;
+  }
+}
