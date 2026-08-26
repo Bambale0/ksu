@@ -340,8 +340,8 @@ async function runFeed(page, check) {
 
 async function runCatalog(page, check) {
   if (check === 'shell') {
-    await expect(page.getByText('Все инструменты ROXY')).toBeVisible();
-    await expect(page.locator('[data-catalog-feature]')).toHaveCount(7);
+    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(11);
     await expect(page.getByText('Prompt фото / описание')).toBeVisible();
     await expect(page.getByText('Prompt по видео').first()).toBeVisible();
     await expect(page.getByText('Prompt для Seedance')).toBeVisible();
@@ -366,11 +366,13 @@ async function runCatalog(page, check) {
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.getByText('Seedance 2.5')).toBeVisible();
   } else if (check === 'image-trend') {
-    await page.locator('.model-card').filter({ hasText: 'Неоновый портрет' }).click();
-    await expect(page.locator('.preview-card')).toBeVisible();
+    await page.locator("[data-trend-launch='true']", { hasText: 'Неоновый портрет' }).click();
+    await expect(page).toHaveURL(/\/mini-app\/trend\/\?id=trend_portrait/);
+    await expect(page.getByRole('button', { name: /Сгенерировать/ })).toBeVisible();
   } else if (check === 'video-trend') {
-    await page.locator('.model-card').filter({ hasText: 'Короткий клип' }).click();
-    await expect(page.locator('.preview-card')).toBeVisible();
+    await page.locator("[data-trend-launch='true']", { hasText: 'Короткий клип' }).click();
+    await expect(page).toHaveURL(/\/mini-app\/trend\/\?id=trend_video/);
+    await expect(page.getByRole('button', { name: /Сгенерировать/ })).toBeVisible();
   } else if (check === 'create-nano') {
     await page.locator('.model-card').filter({ hasText: 'Nano Banana' }).last().click();
     await page.locator('.variant-row').first().click();
