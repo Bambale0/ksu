@@ -113,9 +113,16 @@ async def _download_original(
             if not path.is_file() or path.stat().st_size <= 0:
                 raise RuntimeError("Durable generation media is empty")
             return path
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - provider source is the secondary recovery path
             path.unlink(missing_ok=True)
-            raise
+            logger.warning(
+                "generation_notification_durable_media_read_failed",
+                extra={
+                    "generation_id": str(generation.id),
+                    "asset_id": str(ready_asset.id),
+                    "error": str(exc),
+                },
+            )
 
     if media_type == "audio":
         downloaded_audio = await MusicMediaIngestService._download(result_url)
