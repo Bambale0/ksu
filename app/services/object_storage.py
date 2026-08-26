@@ -76,6 +76,23 @@ class ObjectStorage:
 
         return await asyncio.to_thread(_upload)
 
+    async def download_file(
+        self,
+        path: Path,
+        *,
+        key: str,
+        bucket: str | None = None,
+    ) -> None:
+        def _download() -> None:
+            self._client.download_file(
+                bucket or self.bucket,
+                key,
+                str(path),
+                Config=self._transfer,
+            )
+
+        await asyncio.to_thread(_download)
+
     def presign_get(
         self,
         *,
