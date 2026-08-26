@@ -45,7 +45,6 @@ def _onboarding_gate_applies(request: Request) -> bool:
     if any(_path_is_under(path, prefix) for prefix in safe_prefixes):
         return False
 
-    # Recovery/reversal actions must stay possible after an onboarding version bump.
     if path.endswith("/cancel") or path.endswith("/history/restore"):
         return False
     return path.startswith("/api/v1/")
@@ -55,11 +54,12 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Validate referral attribution carried by Telegram-signed ``start_param``.
+    """Validate referral attribution carried by Telegram launch data.
 
-    Plain referral links are allowed directly. Post/remix/profile links are
-    additionally bound to the public author they claim to represent so changing
-    the numeric suffix cannot steal attribution.
+    The signed ``start_param`` is authoritative. When old/slow Telegram clients
+    omit it from parsed initData, the Mini App forwards the original
+    ``tgWebAppStartParam`` captured before the SDK rewrites the URL, matching the
+    proven banano_kling:tanyapi recovery path.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -104,6 +104,7 @@ async def get_current_user(
     request: Request,
     session: SessionDep,
     x_telegram_init_data: Annotated[str | None, Header()] = None,
+    x_telegram_start_param: Annotated[str | None, Header()] = None,
 ) -> User:
     if not settings.bot_token:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bot is not configured")
@@ -126,10 +127,10 @@ async def get_current_user(
         username=web_user.username,
         language_code=web_user.language_code,
     )
-    inviter_telegram_id = await _validated_startapp_inviter(
-        session,
-        getattr(init_data, "start_param", None),
-    )
+    signed_start_param = str(getattr(init_data, "start_param", None) or "").strip()
+    fallback_start_param = str(x_telegram_start_param or "").strip()
+    resolved_start_param = signed_start_param or fallback_start_param or None
+    inviter_telegram_id = await _validated_startapp_inviter(session, resolved_start_param)
     user = await UserService.get_or_create(
         session,
         tg_user,
@@ -146,9 +147,6 @@ async def get_current_user(
                 "version": settings.onboarding_version.strip() or "1",
             },
         )
-    # Carry the authenticated principal on this SQLAlchemy session so shared
-    # quote/model preflight code can read only this user's trusted reference
-    # metadata without changing every service method signature.
     session.info["current_user_id"] = user.id
     return user
 
@@ -160,12 +158,18 @@ async def get_optional_current_user(
     request: Request,
     session: SessionDep,
     x_telegram_init_data: Annotated[str | None, Header()] = None,
+    x_telegram_start_param: Annotated[str | None, Header()] = None,
 ) -> User | None:
     """Authenticate signed Mini App requests while preserving public read previews."""
 
     if not x_telegram_init_data:
         return None
-    return await get_current_user(request, session, x_telegram_init_data)
+    return await get_current_user(
+        request,
+        session,
+        x_telegram_init_data,
+        x_telegram_start_param,
+    )
 
 
 OptionalCurrentUserDep = Annotated[User | None, Depends(get_optional_current_user)]
