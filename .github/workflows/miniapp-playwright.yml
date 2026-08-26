@@ -19,7 +19,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
@@ -35,10 +35,17 @@ jobs:
         run: npm install --no-save @playwright/test@1.56.1
       - name: Install Playwright browsers
         working-directory: frontend/mini-app
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
       - name: Run 300-scenario Mini App audit
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium
+      - name: Run iPhone/iPad WebKit responsive audit
+        working-directory: frontend/mini-app
+        run: >-
+          npx playwright test
+          e2e/responsive-device-surfaces.spec.mjs
+          e2e/responsive-deep-surfaces.spec.mjs
+          --project=webkit-mobile
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

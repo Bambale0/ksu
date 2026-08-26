@@ -6,6 +6,14 @@ export default {
   workers: process.env.CI ? 2 : undefined,
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
+    {
+      name: 'webkit-mobile',
+      use: {
+        browserName: 'webkit',
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
   ],
   use: {
     baseURL: 'http://127.0.0.1:3017',

@@ -71,15 +71,25 @@ export function initTelegram(): TelegramWebApp | null {
   return tg;
 }
 
+function safeAreaValue(value: number | undefined, envName: string): string {
+  const numeric = Number(value ?? 0);
+  const pixels = Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
+  // Telegram and WebKit do not always report identical insets. Keep whichever
+  // one is larger so a notch/home indicator can never be covered.
+  return `max(${pixels}px, env(${envName}, 0px))`;
+}
+
 export function syncSafeArea(tg = telegram()): void {
   if (!tg || typeof document === "undefined") return;
   const content = tg.contentSafeAreaInset ?? tg.safeAreaInset ?? {};
   const root = document.documentElement;
-  root.style.setProperty("--tg-safe-top", `${Number(content.top ?? 0)}px`);
-  root.style.setProperty("--tg-safe-bottom", `${Number(content.bottom ?? 0)}px`);
-  root.style.setProperty("--tg-safe-left", `${Number(content.left ?? 0)}px`);
-  root.style.setProperty("--tg-safe-right", `${Number(content.right ?? 0)}px`);
-  if (tg.viewportStableHeight) root.style.setProperty("--tg-stable-height", `${tg.viewportStableHeight}px`);
+  root.style.setProperty("--tg-safe-top", safeAreaValue(content.top, "safe-area-inset-top"));
+  root.style.setProperty("--tg-safe-bottom", safeAreaValue(content.bottom, "safe-area-inset-bottom"));
+  root.style.setProperty("--tg-safe-left", safeAreaValue(content.left, "safe-area-inset-left"));
+  root.style.setProperty("--tg-safe-right", safeAreaValue(content.right, "safe-area-inset-right"));
+  if (tg.viewportStableHeight && Number.isFinite(tg.viewportStableHeight)) {
+    root.style.setProperty("--tg-stable-height", `${Math.max(1, tg.viewportStableHeight)}px`);
+  }
 }
 
 export function haptic(style: "light" | "medium" | "heavy" = "light"): void {
