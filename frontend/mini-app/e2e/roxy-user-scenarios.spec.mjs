@@ -110,9 +110,9 @@ const trends = [
   { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', cost_rox: '60.00', model: { title: 'Seedance 2.5' } },
 ];
 const promptTools = [
-  { id: 'image_analysis', title: 'Prompt по фото', model: 'gemini-2.5-pro', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
-  { id: 'prompt_builder', title: 'Prompt по описанию', model: 'gpt-5-5', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
-  { id: 'video_prompt', title: 'Prompt по видео', model: 'gemini-2.5-pro', enabled: true, cost_credits: '30.00', retail_cost_credits: '30.00', cost_rub: '30.00' },
+  { id: 'image_analysis', title: 'Описание по фото', model: 'gemini-2.5-pro', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
+  { id: 'prompt_builder', title: 'Описание по идее', model: 'gpt-5-5', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },
+  { id: 'video_prompt', title: 'Описание по видео', model: 'gemini-2.5-pro', enabled: true, cost_credits: '30.00', retail_cost_credits: '30.00', cost_rub: '30.00' },
 ];
 const savedReferences = [
   {
@@ -271,14 +271,14 @@ async function runHome(page, check) {
     await expect(page.locator('.format-card')).toHaveCount(3);
   } else if (check === 'create-image') {
     await page.locator('.format-card').filter({ hasText: 'Фото' }).click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'create-video') {
     await page.locator('.format-card').filter({ hasText: 'Видео' }).click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
     await expect(page.getByText('Seedance').first()).toBeVisible();
   } else if (check === 'create-audio') {
     await page.locator('.format-card').filter({ hasText: 'Музыка' }).click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'catalog') {
     await bottomButton(page, 'Каталог').click();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
@@ -334,7 +334,7 @@ async function runFeed(page, check) {
     await expect(page.getByText('Повтор запущен: queued')).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   }
 }
 
@@ -342,9 +342,9 @@ async function runCatalog(page, check) {
   if (check === 'shell') {
     await expect(page.getByText('Все фичи ROXY')).toBeVisible();
     await expect(page.locator('[data-catalog-feature]')).toHaveCount(11);
-    await expect(page.getByText('Prompt фото / описание')).toBeVisible();
-    await expect(page.getByText('Prompt по видео').first()).toBeVisible();
-    await expect(page.getByText('Prompt для Seedance')).toBeVisible();
+    await expect(page.getByText('Описание по фото')).toBeVisible();
+    await expect(page.getByText('Описание по видео').first()).toBeVisible();
+    await expect(page.getByText('Сценарий для видео')).toBeVisible();
     await expect(page.getByText('Пакетная обработка')).toBeVisible();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
     await expect(page.getByText('Полный каталог')).toBeVisible();
@@ -376,18 +376,18 @@ async function runCatalog(page, check) {
   } else if (check === 'create-nano') {
     await page.locator('.model-card').filter({ hasText: 'Nano Banana' }).last().click();
     await page.locator('.variant-row').first().click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
     await expect(page.getByText('Nano Banana 2').first()).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   }
 }
 
 async function runCreate(page, check) {
   const prompt = page.locator('textarea.control').first();
   if (check === 'fresh') {
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
     await expect(prompt).toHaveValue('');
   } else if (check === 'prompt') {
     await prompt.fill('Лис в неоновом городе');
@@ -458,14 +458,14 @@ async function runPartners(page, check) {
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'copy-profile') {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.getByRole('button', { name: 'Скопировать ссылку на профиль' }).click();
+    await page.getByRole('button', { name: 'Скопировать профиль' }).click();
     await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } else if (check === 'profile') {
     await bottomButton(page, 'Профиль').click();
     await expect(page.getByText('QA').first()).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   }
 }
 
@@ -499,10 +499,10 @@ async function runProfile(page, check) {
     await expect(page.getByText('Выберите пакет')).toBeVisible();
   } else if (check === 'profile-link') {
     await bottomButton(page, 'Партнёры').click();
-    await expect(page.getByRole('button', { name: 'Скопировать ссылку на профиль' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Скопировать профиль' })).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
-    await expect(page.getByText('Новая генерация')).toBeVisible();
+    await expect(page.getByText('Новая работа')).toBeVisible();
   }
 }
 
