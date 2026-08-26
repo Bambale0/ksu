@@ -834,7 +834,7 @@ function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () =>
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
-  const menu: Array<[Route, IconName, string]> = [["home", "home", "Студия"], ["feed", "heart", "Лента"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["history", "history", "История"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
+  const menu: Array<[Route, IconName, string]> = [["home", "home", "Студия"], ["feed", "heart", "Лента"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
   return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label]) => <button type="button" key={key} data-roxy-customer-route={key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
 }
 
