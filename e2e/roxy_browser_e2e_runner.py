@@ -10,9 +10,10 @@ from e2e import roxy_browser_e2e_v2 as suite
 
 async def robust_route(page: Page, name: str) -> None:
     target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
-    if await target.count():
+    try:
+        await expect(target).to_be_visible(timeout=10000)
         await target.click()
-    else:
+    except Exception:
         await page.goto(
             f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
             wait_until="domcontentloaded",
@@ -21,6 +22,12 @@ async def robust_route(page: Page, name: str) -> None:
         re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"),
         timeout=8000,
     )
+    ready = {
+        "home": ".home-screen",
+        "create": ".create-screen",
+        "profile": ".profile-screen",
+    }.get(name, "main .screen")
+    await expect(page.locator(ready).first).to_be_visible(timeout=10000)
 
 
 async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
@@ -110,8 +117,7 @@ async def scenario_profile_support_partner(page: Page, report: suite.legacy.Repo
 
 async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None:
     for route in ("feed", "catalog", "create", "history", "profile", "partners"):
-        await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route={route}", wait_until="domcontentloaded")
-        await expect(page).to_have_url(re.compile(rf"[?&]route={re.escape(route)}(?:&|$)"), timeout=8000)
+        await robust_route(page, route)
         await expect(page.locator("main")).to_be_visible(timeout=10000)
         assert (await page.locator("main").inner_text()).strip(), f"route {route} rendered empty"
         report.controls_seen.add(f"route:{route}")
@@ -128,8 +134,7 @@ async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None
 
 async def inventory_visible_controls(page: Page, report: suite.legacy.Report) -> None:
     for route in ("home", "feed", "catalog", "create", "history", "profile", "partners"):
-        await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route={route}", wait_until="domcontentloaded")
-        await expect(page.locator("main")).to_be_visible(timeout=10000)
+        await robust_route(page, route)
         controls = await page.locator("button:visible").evaluate_all(
             """nodes => nodes.map((node) => ({
               id: node.id || '', text: (node.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 100),
