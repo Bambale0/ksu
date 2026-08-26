@@ -3,6 +3,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.observability import worker_health
+from app.core.runtime_services import OPERATIONAL_WORKERS
 from app.db.session import SessionFactory
 
 router = APIRouter(prefix="/health", tags=["health"])
@@ -56,9 +57,8 @@ async def telegram_contract(request: Request) -> dict[str, object]:
 @router.get("/operational")
 async def operational(request: Request) -> dict[str, object]:
     workers = [
-        await worker_health(request.app.state.redis, "generation-worker"),
-        await worker_health(request.app.state.redis, "payment-worker"),
-        await worker_health(request.app.state.redis, "media-worker"),
+        await worker_health(request.app.state.redis, worker)
+        for worker in OPERATIONAL_WORKERS
     ]
     if not all(bool(item["up"]) for item in workers):
         raise HTTPException(
