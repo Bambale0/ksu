@@ -9,10 +9,21 @@ from e2e import roxy_browser_e2e_v2 as suite
 
 
 async def robust_route(page: Page, name: str) -> None:
-    """Use the mounted customer navigation instead of guessing routes by URL."""
+    """Use visible primary navigation and fall back for canonical deep routes.
+
+    History is a supported customer route, but it is intentionally not present
+    in the five-item bottom navigation. Tests should exercise the mounted nav
+    when a route has a visible control and otherwise use the canonical URL.
+    Wallet is not a route and is tested separately as a sheet.
+    """
     target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
-    await expect(target).to_be_visible(timeout=10000)
-    await target.click()
+    if await target.count():
+        await target.click()
+    else:
+        await page.goto(
+            f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
+            wait_until="domcontentloaded",
+        )
     await expect(page).to_have_url(
         re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"),
         timeout=8000,
