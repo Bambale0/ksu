@@ -15,6 +15,8 @@ _POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE
 _LEGACY_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$", re.IGNORECASE)
 _PROFILE_RE = re.compile(r"^profile_(\d+)(?:_ref_(\d+))?$", re.IGNORECASE)
 _REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
+_MAIN_MINI_APP_SHORT_NAME_MARKERS = {"", "app", "main", "default"}
+
 
 @dataclass(frozen=True, slots=True)
 class FeedDeepLink:
@@ -66,10 +68,10 @@ def _mini_app_short_name() -> str:
 
 
 def _mini_app_base(username: str) -> str:
-    """Build the Telegram Direct Mini App base URL."""
+    """Build the Main Mini App URL unless a real Direct Mini App short name is set."""
 
     short_name = _mini_app_short_name()
-    if not short_name:
+    if short_name.casefold() in _MAIN_MINI_APP_SHORT_NAME_MARKERS:
         return f"https://t.me/{username}"
     return f"https://t.me/{username}/{quote(short_name, safe='')}"
 
@@ -77,9 +79,9 @@ def _mini_app_base(username: str) -> str:
 def mini_app_deep_link(payload: str | None, *, fallback_url: str | None = None) -> str | None:
     """Build a Telegram Mini App URL with a startapp payload.
 
-    Telegram Direct Mini App links must include the BotFather short name:
-    ``https://t.me/<bot>/<short_name>?startapp=...``. Without that path segment,
-    Telegram may open only the bot profile/card instead of the Mini App.
+    Main Mini App links use ``https://t.me/<bot>?startapp=...``. Only a real
+    BotFather Direct Mini App short name may become a path segment. ``app`` is
+    ROXY's historical deployment placeholder and must not be treated as one.
     """
 
     username = settings.bot_username.strip().lstrip("@")
