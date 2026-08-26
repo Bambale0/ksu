@@ -45,6 +45,7 @@ def _onboarding_gate_applies(request: Request) -> bool:
     if any(_path_is_under(path, prefix) for prefix in safe_prefixes):
         return False
 
+    # Recovery/reversal actions must stay possible after an onboarding version bump.
     if path.endswith("/cancel") or path.endswith("/history/restore"):
         return False
     return path.startswith("/api/v1/")
@@ -54,12 +55,12 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Validate referral attribution carried by Telegram launch data.
+    """Validate referral attribution carried by a Telegram Mini App launch.
 
-    The signed ``start_param`` is authoritative. When old/slow Telegram clients
-    omit it from parsed initData, the Mini App forwards the original
-    ``tgWebAppStartParam`` captured before the SDK rewrites the URL, matching the
-    proven banano_kling:tanyapi recovery path.
+    Telegram-signed ``start_param`` is authoritative. The recovered header is
+    accepted only after the request's signed initData authenticates the Telegram
+    user. Post/remix/profile payloads are additionally bound to their public
+    author so changing the numeric suffix cannot steal attribution.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -147,6 +148,9 @@ async def get_current_user(
                 "version": settings.onboarding_version.strip() or "1",
             },
         )
+    # Carry the authenticated principal on this SQLAlchemy session so shared
+    # quote/model preflight code can read only this user's trusted reference
+    # metadata without changing every service method signature.
     session.info["current_user_id"] = user.id
     return user
 
