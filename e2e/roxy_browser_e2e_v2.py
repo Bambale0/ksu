@@ -63,15 +63,15 @@ async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
         ("audio", "ROXY E2E synthwave instrumental with a bright melodic hook"),
     ):
         await select_primary(page, "create")
-        card = page.locator(f'[data-roxy-media="{media}"]')
-        if await card.count():
-            await expect(card).to_be_visible(timeout=8000)
-            if media == "audio":
-                await expect(card).to_be_enabled(timeout=10000)
-            await card.click()
-        else:
-            label = {"image": "Фото", "video": "Видео", "audio": "Музыка"}[media]
-            await legacy.click_visible(page.get_by_role("button", name=label))
+        await expect(page.locator(".create-screen")).to_be_visible(timeout=10000)
+        label = {"image": "Фото", "video": "Видео", "audio": "Музыка"}[media]
+        media_button = page.locator(".family-tabs button:visible").filter(
+            has_text=re.compile(rf"^{re.escape(label)}$")
+        ).first
+        await expect(media_button).to_be_visible(timeout=10000)
+        if media == "audio":
+            await expect(media_button).to_be_enabled(timeout=10000)
+        await media_button.click()
         await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
         await select_prompt_friendly_model(page, media)
         result = await legacy.fill_builder_and_generate(page, prompt)
