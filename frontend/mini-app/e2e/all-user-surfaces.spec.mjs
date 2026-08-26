@@ -183,15 +183,15 @@ async function assertViewport(page, { back = true } = {}) {
 
 const surfaces = [
   { id: 'home', url: '/mini-app/?route=home', ready: '.home-screen' },
-  { id: 'feed', url: '/mini-app/?route=feed', ready: '.screen-head >> text=Работы сообщества' },
-  { id: 'catalog', url: '/mini-app/?route=catalog', ready: '.screen-head >> text=Тренды и модели' },
+  { id: 'feed', url: '/mini-app/?route=feed', ready: '.screen-head >> text=Лента вдохновения' },
+  { id: 'catalog', url: '/mini-app/?route=catalog', ready: '.screen-head >> text=Выбирай, что хочется создать' },
   { id: 'create', url: '/mini-app/?route=create', ready: '.create-screen' },
-  { id: 'history', url: '/mini-app/?route=history', ready: '.screen-head >> text=Все генерации' },
+  { id: 'history', url: '/mini-app/?route=history', ready: '.screen-head >> text=Твои работы' },
   { id: 'profile', url: '/mini-app/?route=profile', ready: '.profile-screen' },
-  { id: 'partners', url: '/mini-app/?route=partners', ready: '.screen-head >> text=Кабинет автора' },
+  { id: 'partners', url: '/mini-app/?route=partners', ready: '.screen-head >> text=Партнёрская программа' },
   { id: 'generation-action', url: '/mini-app/?route=generation-action&generation=gen_1&action=remix', ready: '.generation-action-screen' },
-  { id: 'prompt-tools', url: '/mini-app/prompt-tools/?mode=image', ready: 'text=Создание prompt' },
-  { id: 'batch', url: '/mini-app/batch/', ready: 'text=Пакетная обработка' },
+  { id: 'prompt-tools', url: '/mini-app/prompt-tools/?mode=image', ready: 'text=Собери красивое описание' },
+  { id: 'batch', url: '/mini-app/batch/', ready: 'text=Создать сразу несколько' },
 ];
 
 for (const viewport of viewports) {
