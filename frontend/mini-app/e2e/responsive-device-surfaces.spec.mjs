@@ -125,14 +125,10 @@ async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 
 }
 
 async function expectNoHorizontalOverflow(page) {
-  await expect.poll(() => page.evaluate(() => ({
-    doc: document.documentElement.scrollWidth,
-    body: document.body.scrollWidth,
-    viewport: window.innerWidth,
-  }))).toMatchObject({
-    doc: await page.evaluate(() => window.innerWidth),
-    body: await page.evaluate(() => window.innerWidth),
-  });
+  await expect.poll(() => page.evaluate(() => {
+    const viewport = window.innerWidth;
+    return document.documentElement.scrollWidth <= viewport + 1 && document.body.scrollWidth <= viewport + 1;
+  })).toBe(true);
 }
 
 const devices = [
@@ -178,12 +174,14 @@ test('Telegram safe area keeps native iPhone env fallback', async ({ page }) => 
   await page.setViewportSize({ width: 393, height: 852 });
   await mockRoxy(page, { safeArea: { top: 24, bottom: 34, left: 0, right: 0 } });
   await page.goto('/mini-app/?route=home');
-  const vars = await page.evaluate(() => ({
+  await expect(page.locator('.roxy-app')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({
     top: document.documentElement.style.getPropertyValue('--tg-safe-top'),
     bottom: document.documentElement.style.getPropertyValue('--tg-safe-bottom'),
-  }));
-  expect(vars.top).toContain('env(safe-area-inset-top');
-  expect(vars.bottom).toContain('env(safe-area-inset-bottom');
+  }))).toEqual({
+    top: 'max(24px, env(safe-area-inset-top, 0px))',
+    bottom: 'max(34px, env(safe-area-inset-bottom, 0px))',
+  });
 });
 
 test('tablet home uses tablet grid instead of phone carousel', async ({ page }) => {
@@ -200,6 +198,7 @@ test('landscape iPhone keeps navigation compact', async ({ page }) => {
   await page.setViewportSize({ width: 852, height: 393 });
   await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
+  await expect(page.locator('.roxy-app')).toBeVisible();
   const navBox = await page.locator('.bottom-nav').boundingBox();
   expect(navBox).not.toBeNull();
   expect(navBox.height).toBeLessThanOrEqual(68);
@@ -209,6 +208,7 @@ test('tablet wallet becomes a contained modal and stays inside viewport', async 
   await page.setViewportSize({ width: 834, height: 1194 });
   await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
+  await expect(page.locator('.roxy-app')).toBeVisible();
   await page.locator('.balance-button').click();
   const sheet = page.locator('.sheet');
   await expect(sheet).toBeVisible();
