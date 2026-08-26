@@ -15,7 +15,7 @@ from app.db.models import (
     User,
 )
 from app.db.payment_models import ReferralRewardReversal
-from app.services.feed_links import mini_app_deep_link, referral_payload
+from app.services.feed_links import bot_start_link, mini_app_deep_link, referral_payload
 
 
 class PartnerWithdrawalError(ValueError):
@@ -261,4 +261,18 @@ class PartnerService:
 
     @staticmethod
     def referral_link(telegram_id: int) -> str | None:
+        """Reliable public referral link: open bot first, then launch ROXY in-app.
+
+        This matches banano_kling:tanyapi: Telegram Main Mini App deep links can be
+        flaky or unavailable for some bot configurations, while /start payloads are
+        accepted by every Telegram client and the bot preserves the payload into the
+        WebApp button.
+        """
+
+        return bot_start_link(referral_payload(telegram_id))
+
+    @staticmethod
+    def referral_mini_app_link(telegram_id: int) -> str | None:
+        """Secondary Mini App URL kept for diagnostics and BotFather setups that support it."""
+
         return mini_app_deep_link(referral_payload(telegram_id))
