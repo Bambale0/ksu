@@ -151,6 +151,10 @@ function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
+function userFieldLabel(field: UiField): string {
+  return field.name === "prompt" || field.label === "Промпт" ? "Описание" : field.label;
+}
+
 function visibleFields(model: GenerationModel, draft: Draft): UiField[] {
   const fields = model.ui_schema?.fields || [];
   const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario);
@@ -187,9 +191,10 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
   const errors: string[] = [];
   for (const field of visibleFields(model, draft)) {
     const value = draft.values[field.name];
-    if (field.required && isEmpty(value)) errors.push(`Заполните «${field.label}»`);
+    const label = userFieldLabel(field);
+    if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
     if (field.control === "json" && !isEmpty(value)) {
-      try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${field.label}»`); }
+      try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
   }
   const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario) as any;
@@ -644,14 +649,15 @@ function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: {
 }
 
 function DynamicField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
+  const label = userFieldLabel(field);
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {
     const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
-    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ""; void onUpload(files); }}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
+    return <div className="field"><label className="label">{label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ""; void onUpload(files); }}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
   }
-  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
-  if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
-  return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><div className="input-with-suffix"><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} placeholder={field.placeholder || ""} value={value == null ? "" : String(value)} onChange={(e) => onChange(field.control === "number" ? (e.target.value ? Number(e.target.value) : null) : e.target.value)}/>{field.suffix && <span>{field.suffix}</span>}</div></label>;
+  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
+  if (field.suggestions?.length) return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
+  return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><div className="input-with-suffix"><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} placeholder={field.placeholder || ""} value={value == null ? "" : String(value)} onChange={(e) => onChange(field.control === "number" ? (e.target.value ? Number(e.target.value) : null) : e.target.value)}/>{field.suffix && <span>{field.suffix}</span>}</div></label>;
 }
 
 function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {

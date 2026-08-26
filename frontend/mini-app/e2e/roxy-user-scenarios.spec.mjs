@@ -192,6 +192,7 @@ async function mockRoxy(page) {
     if (path === '/api/v1/generations' && method === 'POST') return json(route, { id: 'gen_new', status: 'queued', cost_rox: '25.00' });
     if (path === '/api/v1/generations') return json(route, { items: [generation], has_more: false, next_before: null });
     if (path.endsWith('/recreate')) return json(route, { model_id: 'nano-banana-2', prompt: 'Портрет в неоне', input_url: null, billing_seconds: null, parameters: { resolution: '1K', reference_images: [savedImage] } });
+    if (path.includes('/remix')) return json(route, { id: 'gen_remix', status: 'queued' });
     if (path.startsWith('/api/v1/generations/')) return json(route, path.endsWith('/gen_new') ? { ...generation, id: 'gen_new', status: 'queued', result_url: null, result_urls: [], media: [] } : generation);
 
     if (path === '/api/v1/feed') return json(route, { items: [feedCard] });
@@ -202,7 +203,6 @@ async function mockRoxy(page) {
     if (path.includes('/share')) return json(route, { id: 'feed_1', shares_count: 4, link: 'https://t.me/roxy_aicreativebot?start=feed_1' });
     if (path.includes('/comments') && method === 'POST') return json(route, { id: 'comment_new', generation_id: 'feed_1', surface: 'feed', text: 'Круто', created_at: '2026-08-21T09:00:00Z', author: { display_name: 'QA' } });
     if (path.includes('/comments')) return json(route, { items: [{ id: 'comment_1', generation_id: 'feed_1', surface: 'feed', text: 'Отличная работа', created_at: '2026-08-21T08:50:00Z', author: { display_name: 'User' } }] });
-    if (path.includes('/remix')) return json(route, { id: 'gen_remix', status: 'queued' });
 
     if (path === '/api/v1/trends') return json(route, { items: trends });
     if (path.includes('/api/v1/trends/') && path.endsWith('/run')) return json(route, { id: 'trend_run', status: 'queued', cost_rox: '25.00' });
@@ -284,7 +284,7 @@ async function runHome(page, check) {
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
   } else if (check === 'history') {
     await page.getByRole('button', { name: 'Все' }).last().click();
-    await expect(page.getByText('Все генерации')).toBeVisible();
+    await expect(page.getByText('Все работы')).toBeVisible();
   } else if (check === 'partners') {
     await page.locator('.promo-slide').first().click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
@@ -331,7 +331,7 @@ async function runFeed(page, check) {
   } else if (check === 'remix') {
     await openFeedPreview(page);
     await page.getByRole('button', { name: 'Повторить' }).click();
-    await expect(page.getByText('Повтор запущен: queued')).toBeVisible();
+    await expect(page.getByText('Повтор запущен')).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
@@ -406,7 +406,7 @@ async function runCreate(page, check) {
     await expect(page.getByText('ROXY Music').first()).toBeVisible();
   } else if (check === 'validation') {
     await expect(page.getByRole('button', { name: /^Создать/ }).last()).toBeDisabled();
-    await expect(page.getByText(/Заполните «Промпт»/)).toBeVisible();
+    await expect(page.getByText(/Заполните «Описание»/)).toBeVisible();
   } else if (check === 'submit') {
     await prompt.fill('Портрет для обложки');
     const submit = page.getByRole('button', { name: /Создать · 25 ROX/ });
@@ -441,7 +441,7 @@ async function runPartners(page, check) {
     await expect(page.getByText('https://t.me/roxy_aicreativebot?start=ref_777')).toBeVisible();
   } else if (check === 'copy-referral') {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.getByRole('button', { name: 'Скопировать реф-ссылку' }).click();
+    await page.getByRole('button', { name: 'Скопировать ссылку' }).click();
     await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } else if (check === 'stats') {
     await expect(page.getByText('2').first()).toBeVisible();
