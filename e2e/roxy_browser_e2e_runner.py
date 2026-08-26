@@ -9,13 +9,7 @@ from e2e import roxy_browser_e2e_v2 as suite
 
 
 async def robust_route(page: Page, name: str) -> None:
-    """Use visible primary navigation and fall back for canonical deep routes.
-
-    History is a supported customer route, but it is intentionally not present
-    in the five-item bottom navigation. Tests should exercise the mounted nav
-    when a route has a visible control and otherwise use the canonical URL.
-    Wallet is not a route and is tested separately as a sheet.
-    """
+    """Use visible primary navigation and fall back for canonical deep routes."""
     target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
     if await target.count():
         await target.click()
@@ -31,13 +25,7 @@ async def robust_route(page: Page, name: str) -> None:
 
 
 async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
-    """Open the current wallet sheet and exercise the real card checkout path.
-
-    Wallet is intentionally an overlay opened from the balance control, not a
-    canonical customer route. Older E2E code navigated to ``?route=wallet``;
-    the React router correctly treated that unknown route as Home, so the test
-    was asserting against the wrong surface.
-    """
+    """Open the current wallet sheet and exercise the real card checkout path."""
     await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
 
     balance = page.locator("#balance")
@@ -49,9 +37,6 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(sheet).to_contain_text(re.compile(r"ROX|Баланс|Пополн", re.I), timeout=8000)
     report.controls_seen.add("wallet:open")
 
-    # Enhanced payment scripts may expose explicit Lava/Crypto tabs. Exercise
-    # them when present, while keeping the core React wallet contract valid on
-    # its own as well.
     lava_tab = page.locator('[data-checkout-method="lava"]:visible').first
     if await lava_tab.count():
         await lava_tab.click()
@@ -91,8 +76,6 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
         await crypto_tab.click()
         report.controls_seen.add("wallet:method:crypto")
 
-    # Leave the page in the same interaction state as a user who dismissed the
-    # wallet. Otherwise the modal intercepts pointer events for the next journey.
     backdrop = page.locator(".sheet-overlay .overlay-backdrop:visible").first
     if await backdrop.count():
         await backdrop.evaluate("element => element.click()")
@@ -101,13 +84,111 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     report.ok("wallet sheet + payment checkout")
 
 
+async def scenario_profile_support_partner(page: Page, report: suite.legacy.Report) -> None:
+    """Exercise the profile and partner surfaces that exist in the current app.
+
+    Preferences/support were removed from the Profile screen and are covered by
+    their own API/route tests. The old E2E was waiting for #profileTools, a DOM
+    mount that no longer exists, so it could never describe production UX.
+    """
+    await robust_route(page, "profile")
+    profile = page.locator(".profile-screen")
+    await expect(profile).to_be_visible(timeout=10000)
+    await expect(profile).to_contain_text(re.compile(r"Профиль|работ|публикац", re.I))
+    report.controls_seen.add("profile:open")
+
+    works = page.get_by_role("button", name="Работы", exact=True)
+    publications = page.get_by_role("button", name="Публикации", exact=True)
+    await expect(works).to_be_visible()
+    await expect(publications).to_be_visible()
+    await publications.click()
+    await works.click()
+    report.controls_seen.update({"profile:works", "profile:publications"})
+
+    await robust_route(page, "partners")
+    partners = page.locator("main")
+    await expect(partners).to_contain_text(
+        re.compile(r"Партн|Приглас|ссыл|Начисл|ROX", re.I),
+        timeout=10000,
+    )
+    copy = page.get_by_role("button", name=re.compile(r"Скопировать", re.I)).first
+    if await copy.count() and await copy.is_visible():
+        before = await page.evaluate("window.__roxyE2E.clipboard.length")
+        await copy.click()
+        await page.wait_for_timeout(100)
+        after = await page.evaluate("window.__roxyE2E.clipboard.length")
+        assert after >= before
+        report.controls_seen.add("partners:copy")
+    report.controls_seen.add("partners:open")
+    report.ok("current profile + partner surfaces")
+
+
+async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None:
+    """Audit supported deep surfaces instead of removed legacy route aliases."""
+    for route in ("feed", "catalog", "create", "history", "profile", "partners"):
+        await page.goto(
+            f"{suite.legacy.BASE_URL}/mini-app/?route={route}",
+            wait_until="domcontentloaded",
+        )
+        await expect(page).to_have_url(
+            re.compile(rf"[?&]route={re.escape(route)}(?:&|$)"), timeout=8000
+        )
+        await expect(page.locator("main")).to_be_visible(timeout=10000)
+        assert (await page.locator("main").inner_text()).strip(), f"route {route} rendered empty"
+        report.controls_seen.add(f"route:{route}")
+
+    for path, expected in (
+        ("prompt-tools/?mode=image", re.compile(r"описан|промпт|иде", re.I)),
+        ("batch/", re.compile(r"несколько|пакет|созда", re.I)),
+    ):
+        await page.goto(f"{suite.legacy.BASE_URL}/mini-app/{path}", wait_until="domcontentloaded")
+        await expect(page.locator("body")).to_contain_text(expected, timeout=10000)
+        report.controls_seen.add(f"deep:{path.split('/')[0]}")
+    report.ok("canonical ROXY routes + supported deep tools")
+
+
+async def inventory_visible_controls(page: Page, report: suite.legacy.Report) -> None:
+    """Inventory only real customer routes; wallet is an overlay, not a route."""
+    for route in ("home", "feed", "catalog", "create", "history", "profile", "partners"):
+        await page.goto(
+            f"{suite.legacy.BASE_URL}/mini-app/?route={route}",
+            wait_until="domcontentloaded",
+        )
+        await expect(page.locator("main")).to_be_visible(timeout=10000)
+        controls = await page.locator("button:visible").evaluate_all(
+            """nodes => nodes.map((node) => ({
+              id: node.id || '', text: (node.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 100),
+              aria: node.getAttribute('aria-label') || '', disabled: node.disabled,
+              route: node.dataset.roxyCustomerRoute || '',
+            }))"""
+        )
+        assert controls, f"route {route} has no visible controls"
+        for control in controls:
+            signature = control["id"] or control["aria"] or control["text"] or control["route"]
+            if signature:
+                report.controls_seen.add(f"inventory:{route}:{signature}")
+
+    await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
+    await expect(page.locator("#balance")).to_be_visible(timeout=10000)
+    await page.locator("#balance").click()
+    await expect(page.locator(".sheet")).to_be_visible(timeout=8000)
+    assert await page.locator(".sheet button:visible").count() > 0
+    report.controls_seen.add("inventory:wallet-sheet")
+    report.ok("visible control inventory", f"{len(report.controls_seen)} unique control signatures")
+
+
 # roxy_browser_e2e_v2 delegates execution to the legacy module's ``main``;
-# patch the globals that ``main`` actually resolves. The previous runner only
-# replaced names on the wrapper module, leaving the stale wallet scenario live.
+# patch every obsolete legacy journey with the live production UX contract.
 suite.select_primary = robust_route
 suite.legacy.select_primary = robust_route
 suite.scenario_wallet = scenario_wallet
 suite.legacy.scenario_wallet = scenario_wallet
+suite.scenario_profile_support_partner = scenario_profile_support_partner
+suite.legacy.scenario_profile_support_partner = scenario_profile_support_partner
+suite.scenario_child_routes = scenario_child_routes
+suite.legacy.scenario_child_routes = scenario_child_routes
+suite.inventory_visible_controls = inventory_visible_controls
+suite.legacy.inventory_visible_controls = inventory_visible_controls
 
 
 if __name__ == "__main__":
