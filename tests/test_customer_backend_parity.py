@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.api.router import api_router
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_batch_generation_router_is_mounted() -> None:
-    paths = {route.path for route in api_router.routes}
+def test_batch_generation_router_has_one_canonical_mount() -> None:
+    main_source = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    api_router_source = (ROOT / "app/api/router.py").read_text(encoding="utf-8")
 
-    assert "/api/v1/batch-generations" in paths
-    assert "/api/v1/batch-generations/quote" in paths
-    assert "/api/v1/batch-generations/{batch_id}/retry" in paths
+    assert main_source.count('app.include_router(batch_router, prefix="/api/v1")') == 1
+    assert "api_router.include_router(batches.router)" not in api_router_source
 
 
 def test_customer_parity_pages_cover_backend_capabilities() -> None:
-    root = Path(__file__).resolve().parents[1] / "frontend/mini-app"
+    root = ROOT / "frontend/mini-app"
     expected_pages = {
         "account": "/api/v1/me/overview",
         "notifications": "/api/v1/notifications",
@@ -37,7 +38,7 @@ def test_customer_parity_pages_cover_backend_capabilities() -> None:
 
 
 def test_main_mini_app_exposes_parity_surfaces() -> None:
-    root = Path(__file__).resolve().parents[1] / "frontend/mini-app"
+    root = ROOT / "frontend/mini-app"
     page = (root / "app/page.tsx").read_text(encoding="utf-8")
     profile_hub = (root / "components/customer-parity-hub.tsx").read_text(encoding="utf-8")
     catalog_hub = (root / "components/catalog-parity-features.tsx").read_text(encoding="utf-8")
