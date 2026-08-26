@@ -64,8 +64,20 @@ def test_main_mini_app_exposes_parity_surfaces() -> None:
     ):
         assert path in profile_hub or path in catalog_hub
 
-    assert "/api/v1/discovery/home" in profile_hub
-    assert "data-cms-discovery" in profile_hub
+
+def test_project_promo_assets_remain_canonical() -> None:
+    root = ROOT / "frontend/mini-app"
+    social_app = (root / "components/roxy-social-app.tsx").read_text(encoding="utf-8")
+    parity_hub = (root / "components/customer-parity-hub.tsx").read_text(encoding="utf-8")
+
+    assert 'promo/roxy-promo-1.webp' in social_app
+    assert 'promo/roxy-promo-2.webp' in social_app
+    assert 'className="promo-carousel"' in social_app
+    assert 'className="promo-carousel-slide"' in social_app
+
+    assert '.promo-carousel' not in parity_hub
+    assert 'data-cms-discovery' not in parity_hub
+    assert 'style.display = "none"' not in parity_hub
 
 
 def test_wallet_bonus_badges_follow_backend_catalog() -> None:
