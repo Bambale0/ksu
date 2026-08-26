@@ -82,7 +82,7 @@ test('video prompt uses gallery video and renders tanyapi cinematic analysis', a
 
   await page.getByRole('button', { name: 'Создать промпт' }).click();
   await expect(page.getByText('Готовый кинематографичный промпт')).toBeVisible();
-  await expect(page.getByText('Плавный dolly-in')).toBeVisible();
+  await expect(page.getByText('Плавный dolly-in', { exact: true })).toBeVisible();
   await expect(page.getByText('• Камера приближается')).toBeVisible();
   await expect(page.getByText('Мягкий контровой свет')).toBeVisible();
   await expect(page.getByText('Тихий городской фон')).toBeVisible();
