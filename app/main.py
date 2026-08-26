@@ -67,7 +67,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
             if settings.is_production and not app.state.bot_has_main_web_app:
                 logger.warning(
-                    "Telegram Main Mini App is not enabled for @%s; ?startapp links will not open until BotFather Configure Mini App is enabled",
+                    "Telegram Main Mini App is not enabled for @%s; "
+                    "?startapp links will not open until BotFather Configure Mini App is enabled",
                     settings.bot_username or "unknown",
                 )
         except Exception:
@@ -134,6 +135,8 @@ mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
 mimetypes.add_type("image/webp", ".webp")
 
+# Production Nginx can serve these paths directly. StaticFiles keeps local and
+# reverse-proxy-less deployments on the same product-owned URL contract.
 app.mount(
     FeedStaticStorage.public_prefix(),
     StaticFiles(directory=FeedStaticStorage.ensure_root()),
