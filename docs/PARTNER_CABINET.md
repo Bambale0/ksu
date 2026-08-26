@@ -1,6 +1,6 @@
 # Partner cabinet and withdrawal workflow
 
-**Status:** synchronized with current runtime on 2026-08-20.
+**Status:** synchronized with current runtime on 2026-08-26.
 
 The partner cabinet lives inside the existing Profile shell. Referral reward percentages remain server settings (30% first line / 5% second line by default); the browser never computes partner earnings, decides referral admission or determines withdrawal eligibility.
 
@@ -31,7 +31,7 @@ The cabinet shows:
 
 ## Registration-time referral admission
 
-Referral attachment happens only while a **new Telegram user** is created. Existing accounts are not re-parented by a later `/start` payload.
+Referral attachment happens only while a **new Telegram user** is created. Existing accounts are not re-parented by a later `/start` or Mini App launch payload.
 
 The server serializes admission for one inviter with `SELECT ... FOR UPDATE` on the inviter row, then evaluates the current accepted `ReferralRelation` count. This prevents concurrent registrations from each seeing the same pre-limit count and both earning a bonus.
 
@@ -118,30 +118,46 @@ Security boundary:
 
 If payout rails are later fixed to a concrete scheme, replace the generic string with a typed provider-specific schema/migration instead of browser-only validation.
 
-## Referral link
+## Referral link — tanyapi parity
 
-Configure:
-
-```dotenv
-BOT_USERNAME=KsuBot
-TELEGRAM_MINI_APP_SHORT_NAME=app
-```
-
-`app` is the historical ROXY marker for the bot's **Main Mini App**, not a BotFather Direct Mini App short name. The API therefore returns:
+ROXY uses the same Main Mini App contract as `banano_kling:tanyapi`:
 
 ```text
-https://t.me/KsuBot?startapp=ref_<telegram_id>
+https://t.me/<actual_bot_username>?startapp=ref_<telegram_id>
 ```
 
-Only a real Direct Mini App short name configured in BotFather should produce `https://t.me/KsuBot/<short_name>?startapp=...`.
+There is **no Direct Mini App short-name path** in the referral URL. `TELEGRAM_MINI_APP_SHORT_NAME` is not used to build referral/feed/profile/remix links.
 
-When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
+The backend synchronizes `BOT_USERNAME` with Telegram `getMe()` at startup so a stale environment value cannot produce links for the wrong bot.
+
+Telegram must also have the bot's **Main Mini App enabled in @BotFather**:
+
+```text
+/mybots
+→ select the production bot
+→ Bot Settings
+→ Configure Mini App
+→ Enable Mini App
+→ URL: <PUBLIC_BASE_URL>/mini-app/
+```
+
+Without this BotFather setting Telegram does not set `bot_has_main_app`; `https://t.me/<bot>?startapp=...` cannot open the Main Mini App and Telegram clients may return `BOT_INVALID`.
+
+### Launch payload recovery
+
+The Mini App follows the proven `tanyapi` flow:
+
+1. before `telegram-web-app.js` loads, ROXY snapshots the initial URL hash/search;
+2. it reads `initDataUnsafe.start_param`, `tgWebAppStartParam`, the early snapshot, current launch params and signed `initData`;
+3. the recovered value is sent as `X-Telegram-Start-Param` together with signed `X-Telegram-Init-Data`;
+4. the backend prefers Telegram's signed `start_param` and uses the recovered fallback only when the signed field is absent;
+5. referral attribution is resolved before `UserService.get_or_create`, so a new user is attached atomically on the first authenticated Mini App request.
 
 Copy uses `navigator.clipboard` with the legacy hidden-textarea fallback. Share uses Telegram's `https://t.me/share/url` route from a direct user click.
 
 ## Mini App
 
-`partner.js` mounts into the existing `#partnerPreview` target inside Profile. It does not add another bottom-navigation tab.
+The partner surface lives inside the existing ROXY profile/account UI. It does not add another bottom-navigation tab.
 
 The browser:
 
