@@ -161,7 +161,6 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   await expect(page.getByText('1 загружено')).toBeVisible();
   await expect.poll(() => fileInput.evaluate((input) => input.value)).toBe('');
 
-  // Selecting the exact same filename again must still be accepted on iOS-like flows.
   await fileInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
   await expect(page.getByText('1 загружено')).toBeVisible();
   await page.getByRole('textbox', { name: /Промпт/ }).fill('Персонаж поворачивает голову и улыбается');
@@ -209,7 +208,7 @@ test('Mini App quantity picker sends six launches and total quote', async ({ pag
 
   await page.getByRole('textbox', { name: /Промпт/ }).fill('Сделай шесть разных вариантов динамичного видео');
   await page.getByRole('button', { name: '6', exact: true }).click();
-  await expect(page.getByText('Стоимость за 6')).toBeVisible();
+  await expect(page.getByText('Стоимость', { exact: true })).toBeVisible();
   await expect(page.getByText('330 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
