@@ -17,7 +17,9 @@ class GenerationModerationState(TimestampMixin, Base):
     )
     state: Mapped[str] = mapped_column(String(24), default="visible", nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
-    moderated_by_admin_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_accounts.id", ondelete="RESTRICT"), nullable=False
+    # ``None`` means the creator has marked a publication 18+ and it is waiting
+    # in the moderation queue. Once an admin decides, the actor/timestamp are set.
+    moderated_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="RESTRICT"), nullable=True
     )
     moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
