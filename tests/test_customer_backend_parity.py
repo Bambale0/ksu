@@ -28,7 +28,7 @@ def test_customer_parity_pages_cover_backend_capabilities() -> None:
         "creator-partnership": "/api/v1/creator-partnership",
         "presets": "/api/v1/presets",
         "payments": "/api/v1/payments/card/packages",
-        "downloads": "/api/v1/media/",
+        "downloads": "download_url",
     }
 
     for page, api_marker in expected_pages.items():
