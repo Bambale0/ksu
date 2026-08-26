@@ -28,6 +28,17 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+const launchSnapshot = `
+(() => {
+  try {
+    const snapshot = { hash: window.location.hash || "", search: window.location.search || "" };
+    window.__ROXY_INITIAL_LAUNCH__ = snapshot;
+    window.sessionStorage?.setItem("__roxy_initial_hash", snapshot.hash);
+    window.sessionStorage?.setItem("__roxy_initial_search", snapshot.search);
+  } catch {}
+})();
+`;
+
 const draftSchemaReset = `
 (() => {
   try {
@@ -47,6 +58,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="ru">
       <body>
+        <Script id="roxy-launch-snapshot" strategy="beforeInteractive">{launchSnapshot}</Script>
         {telegramSdkEnabled ? <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" /> : null}
         <Script id="roxy-draft-schema-reset" strategy="beforeInteractive">{draftSchemaReset}</Script>
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
