@@ -190,7 +190,7 @@ const surfaces = [
   { id: 'profile', url: '/mini-app/?route=profile', ready: '.profile-screen' },
   { id: 'partners', url: '/mini-app/?route=partners', ready: '.screen-head >> text=Кабинет автора' },
   { id: 'generation-action', url: '/mini-app/?route=generation-action&generation=gen_1&action=remix', ready: '.generation-action-screen' },
-  { id: 'prompt-tools', url: '/mini-app/prompt-tools/?mode=image', ready: 'text=Подготовить описание' },
+  { id: 'prompt-tools', url: '/mini-app/prompt-tools/?mode=image', ready: 'text=Промпт по фото / видео' },
   { id: 'batch', url: '/mini-app/batch/', ready: 'text=Пакетная обработка' },
 ];
 
