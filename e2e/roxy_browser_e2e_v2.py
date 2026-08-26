@@ -15,7 +15,7 @@ _REUSE_PATTERN = "Повторить / изменить|Использовать
 def _get_by_role_compat(self, role, *args, **kwargs):
     name = kwargs.get("name")
     if role == "button" and isinstance(name, re.Pattern) and name.pattern == _REUSE_PATTERN:
-        return self.locator("button").filter(has_text=re.compile("Повторить|Использовать настройки"))
+        return self.locator("button").filter(has_text=re.compile("Повторить|Использовать настройки|Создать похожее"))
     return _ORIGINAL_GET_BY_ROLE(self, role, *args, **kwargs)
 
 
@@ -31,9 +31,6 @@ async def select_primary(page: Page, route: str) -> None:
 
 
 async def close_current_result_dialog(page: Page) -> None:
-    # The current React result dialog renders an aria-label="Закрыть" backdrop.
-    # Playwright's normal click can be intercepted by the preview card, so close
-    # it through keyboard first and fall back to a DOM click on the backdrop.
     await page.keyboard.press("Escape")
     await page.wait_for_timeout(100)
     backdrop = page.locator('button[aria-label="Закрыть"].overlay-backdrop:visible').first
@@ -43,9 +40,6 @@ async def close_current_result_dialog(page: Page) -> None:
 
 
 async def select_prompt_friendly_model(page: Page, media: str) -> None:
-    # The video tab can default to Kling Avatar, which correctly requires avatar
-    # and voice files. The browser smoke test is prompt-only, so use a text/video
-    # model explicitly instead of depending on whichever card was active last.
     if media == "video":
         veo = page.get_by_role("button", name=re.compile("Veo", re.I)).first
         await expect(veo).to_be_visible(timeout=8000)
@@ -91,7 +85,7 @@ async def scenario_generations(page: Page, report: legacy.Report) -> list[dict]:
             after = await page.evaluate("window.__roxyE2E.opened.length")
             assert after > before
             report.controls_seen.add("result:share")
-        reuse = page.locator("button").filter(has_text=re.compile("Повторить|Использовать настройки"))
+        reuse = page.locator("button").filter(has_text=re.compile("Повторить|Использовать настройки|Создать похожее"))
         if await reuse.count() and await reuse.first.is_visible():
             await reuse.first.click()
             await expect(page.locator("#builderView, .create-screen")).to_be_visible(timeout=8000)
@@ -118,21 +112,18 @@ async def scenario_history(page: Page, report: legacy.Report) -> None:
 
 
 async def scenario_wallet(page: Page, report: legacy.Report) -> None:
+    # Wallet is a sheet opened from the balance control, not a canonical route.
     await page.goto(f"{legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
-    wallet_entry = page.get_by_role("button", name=re.compile("Баланс|ROX", re.I)).first
-    if await wallet_entry.count() and await wallet_entry.is_visible():
-        await wallet_entry.click()
-        await expect(page).to_have_url(re.compile(r"[?&]route=wallet(?:&|$)"), timeout=8000)
-    else:
-        await page.goto(f"{legacy.BASE_URL}/mini-app/?route=wallet", wait_until="domcontentloaded")
-    main = page.locator("main")
-    await expect(main).to_contain_text(re.compile("Баланс|Оплат|ROX|Lava|Crypto", re.I), timeout=10000)
-    for method in ("lava", "crypto"):
-        tab = page.locator(f'[data-checkout-method="{method}"]')
-        if await tab.count() and await tab.first.is_visible():
-            await tab.first.click()
-            report.controls_seen.add(f"wallet:method:{method}")
-    report.ok("wallet route and checkout controls")
+    balance = page.locator("#balance")
+    await expect(balance).to_be_visible(timeout=10000)
+    await balance.click()
+    sheet = page.locator(".sheet").first
+    await expect(sheet).to_be_visible(timeout=8000)
+    await expect(sheet).to_contain_text(re.compile("Баланс|Пополн|ROX", re.I), timeout=10000)
+    package = sheet.locator(".package").first
+    await expect(package).to_be_visible(timeout=8000)
+    report.controls_seen.update({"wallet:open", "wallet:package"})
+    report.ok("wallet sheet and checkout controls")
 
 
 Page.get_by_role = _get_by_role_compat
