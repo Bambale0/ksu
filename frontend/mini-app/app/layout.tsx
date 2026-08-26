@@ -33,8 +33,21 @@ const launchSnapshot = `
   try {
     const snapshot = { hash: window.location.hash || "", search: window.location.search || "" };
     window.__ROXY_INITIAL_LAUNCH__ = snapshot;
-    window.sessionStorage?.setItem("__roxy_initial_hash", snapshot.hash);
-    window.sessionStorage?.setItem("__roxy_initial_search", snapshot.search);
+
+    const routingOnly = (raw) => {
+      const source = new URLSearchParams(String(raw || "").replace(/^[?#]/, ""));
+      const safe = new URLSearchParams();
+      for (const name of ["tgWebAppStartParam", "start_payload", "startapp", "start", "ref"]) {
+        const value = source.get(name);
+        if (value) safe.set(name, value);
+      }
+      return safe.toString();
+    };
+
+    // Keep Telegram auth initData in page memory only. Session storage receives
+    // only non-secret routing payloads needed after client-side navigation.
+    window.sessionStorage?.setItem("__roxy_initial_hash", routingOnly(snapshot.hash));
+    window.sessionStorage?.setItem("__roxy_initial_search", routingOnly(snapshot.search));
   } catch {}
 })();
 `;
