@@ -51,10 +51,23 @@ def test_frontend_preserves_startapp_and_init_data_before_telegram_sdk() -> None
     assert "tgWebAppStartParam" in telegram
     assert "tgWebAppData" in telegram
     assert "getInitDataFallback" in telegram
+    assert "recoveredInitData = getInitDataFallback()" in telegram
+    assert "tg.initData = recoveredInitData" in telegram
     assert "initDataUnsafe?.start_param" in telegram
     assert 'headers["X-Telegram-Init-Data"]' in telegram
     assert 'headers["X-Telegram-Start-Param"]' in telegram
     assert "__roxy_tg_init_data" not in telegram
+
+
+def test_launch_snapshot_never_persists_telegram_auth_init_data() -> None:
+    layout = _source("frontend/mini-app/app/layout.tsx")
+
+    assert "const routingOnly" in layout
+    assert 'setItem("__roxy_initial_hash", routingOnly(snapshot.hash))' in layout
+    assert 'setItem("__roxy_initial_search", routingOnly(snapshot.search))' in layout
+    assert 'setItem("__roxy_initial_hash", snapshot.hash)' not in layout
+    assert 'setItem("__roxy_initial_search", snapshot.search)' not in layout
+    assert '"tgWebAppData"' not in layout
 
 
 def test_product_owned_start_payload_precedes_generic_startapp_fallback() -> None:
