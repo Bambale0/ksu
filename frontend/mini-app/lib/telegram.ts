@@ -41,13 +41,11 @@ declare global {
   interface Window {
     Telegram?: { WebApp?: TelegramWebApp };
     __ROXY_INITIAL_LAUNCH__?: { hash?: string; search?: string };
-    __ROXY_TG_INIT_DATA__?: string;
   }
 }
 
 const INITIAL_HASH_KEY = "__roxy_initial_hash";
 const INITIAL_SEARCH_KEY = "__roxy_initial_search";
-const INIT_DATA_STORAGE_KEY = "__roxy_tg_init_data";
 const URL_START_PARAM_NAMES = ["tgWebAppStartParam", "start_payload", "startapp"];
 
 export function telegram(): TelegramWebApp | null {
@@ -70,46 +68,28 @@ function launchParamFrom(raw: string, names: string[]): string {
   return "";
 }
 
-function persistInitData(value: string): string {
-  const initData = String(value || "").trim();
-  if (!initData || typeof window === "undefined") return initData;
-  try {
-    window.__ROXY_TG_INIT_DATA__ = initData;
-    window.sessionStorage.setItem(INIT_DATA_STORAGE_KEY, initData);
-  } catch {
-    // Storage can be unavailable in restrictive WebViews.
-  }
-  return initData;
-}
-
 export function getInitDataFallback(): string {
   if (typeof window === "undefined") return "";
 
-  // Telegram may expose tgWebAppData in the launch URL before telegram-web-app.js
-  // has initialized window.Telegram.WebApp.initData. Prefer the early snapshot so
-  // auth is available for the very first API request on slow WebViews/VPNs.
+  // Prefer Telegram SDK's canonical initData whenever it is ready.
+  const sdkValue = String(telegram()?.initData || "").trim();
+  if (sdkValue) return sdkValue;
+
+  // On a cold WebView start tgWebAppData can exist in the original launch URL
+  // before telegram-web-app.js has populated WebApp.initData. Keep this fallback
+  // in page memory only; auth payloads are intentionally not persisted to storage.
   const snapshot = window.__ROXY_INITIAL_LAUNCH__;
   for (const raw of [snapshot?.hash || "", snapshot?.search || ""]) {
     const value = launchParamFrom(raw, ["tgWebAppData"]);
-    if (value) return persistInitData(value);
+    if (value) return value;
   }
 
   for (const raw of [window.location.hash, window.location.search]) {
     const value = launchParamFrom(raw, ["tgWebAppData"]);
-    if (value) return persistInitData(value);
+    if (value) return value;
   }
 
-  const sdkValue = String(telegram()?.initData || "").trim();
-  if (sdkValue) return persistInitData(sdkValue);
-
-  const windowValue = String(window.__ROXY_TG_INIT_DATA__ || "").trim();
-  if (windowValue) return windowValue;
-
-  try {
-    return String(window.sessionStorage.getItem(INIT_DATA_STORAGE_KEY) || "").trim();
-  } catch {
-    return "";
-  }
+  return "";
 }
 
 export function getStartParamFallback(): string {
@@ -136,7 +116,8 @@ export function getStartParamFallback(): string {
   const signedStart = String(paramsFromRaw(getInitDataFallback()).get("start_param") || "").trim();
   if (signedStart) return signedStart;
 
-  // 5. Persisted early snapshots survive client-side navigation/remounts.
+  // 5. Persisted launch-param snapshots survive client-side navigation/remounts.
+  // They contain only the routing payload, never Telegram auth initData.
   for (const key of [INITIAL_HASH_KEY, INITIAL_SEARCH_KEY]) {
     try {
       const raw = window.sessionStorage.getItem(key) || "";
@@ -190,6 +171,8 @@ export function initTelegram(): TelegramWebApp | null {
 function safeAreaValue(value: number | undefined, envName: string): string {
   const numeric = Number(value ?? 0);
   const pixels = Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
+  // Telegram and WebKit do not always report identical insets. Keep whichever
+  // one is larger so a notch/home indicator can never be covered.
   return `max(${pixels}px, env(${envName}, 0px))`;
 }
 
