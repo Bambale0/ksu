@@ -77,7 +77,7 @@ export function CustomerParityHub() {
         if (promo && slides.length) {
           promo.dataset.cmsReplaced = "true";
           for (const child of Array.from(promo.children)) {
-            if (!(child instanceof HTMLElement) || child.dataset.customerParityHost !== "discovery") child.style.display = "none";
+            if (child instanceof HTMLElement && child.dataset.customerParityHost !== "discovery") child.style.display = "none";
           }
           next.push({ kind: "discovery", node: ensureHost(promo, "discovery") });
         }
