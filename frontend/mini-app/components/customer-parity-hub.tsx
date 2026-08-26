@@ -12,6 +12,7 @@ type Overview = {
   support?: { statuses?: Record<string, number> };
   social?: { following?: number; followers?: number };
   partner?: { available_rub?: string; pending_rub?: string };
+  payments?: { total?: number };
 };
 type DiscoverySlide = {
   id: string;
@@ -93,20 +94,25 @@ export function CustomerParityHub() {
   const openSupport = Number(overview?.support?.statuses?.open || 0);
   const following = Number(overview?.social?.following || 0);
   const partnerAvailable = Number(overview?.partner?.available_rub || 0);
+  const paymentCount = Number(overview?.payments?.total || 0);
 
   return <>{hosts.map((host) => createPortal(
-    host.kind === "profile" ? <QuickPanel title="Аккаунт и сервисы" copy="Настройки, уведомления, поддержка, промокоды, пресеты и социальные функции." actions={[
+    host.kind === "profile" ? <QuickPanel title="Аккаунт и сервисы" copy="Баланс, настройки, уведомления, поддержка, файлы, пресеты и социальные функции." actions={[
       ["Аккаунт", "/mini-app/account/", "Все функции"],
+      ["Пополнения", "/mini-app/payments/", paymentCount ? `${paymentCount}` : ""],
       ["Уведомления", "/mini-app/notifications/", unread ? `${unread} новых` : ""],
       ["Поддержка", "/mini-app/support/", openSupport ? `${openSupport} открыто` : ""],
       ["Настройки", "/mini-app/settings/", ""],
       ["Подписки", "/mini-app/subscriptions/", following ? `${following}` : ""],
+      ["Пресеты", "/mini-app/presets/", ""],
+      ["Скачать", "/mini-app/downloads/", ""],
       ["Промокод", "/mini-app/promocodes/", ""],
     ]} /> : host.kind === "partners" ? <QuickPanel title="Управление доходом" copy="Доступный партнёрский баланс можно вывести или перевести в ROX. Creator-программа живёт отдельно от реферальных начислений." actions={[
       ["Выплаты и ROX", "/mini-app/partner-wallet/", partnerAvailable ? `${compactNumber(partnerAvailable)} ₽` : ""],
       ["Creator-партнёрство", "/mini-app/creator-partnership/", "Заявка"],
-    ]} /> : host.kind === "history" ? <QuickPanel title="Управление работами" copy="Backend умеет больше обычного просмотра истории: действия с результатом, скрытие и восстановление." actions={[
+    ]} /> : host.kind === "history" ? <QuickPanel title="Управление работами" copy="Backend умеет больше обычного просмотра истории: действия с результатом, скачивание, скрытие и восстановление." actions={[
       ["Действия с работами", "/mini-app/actions/", "Edit · Animate · Repeat"],
+      ["Скачать файлы", "/mini-app/downloads/", "Оригиналы"],
       ["Скрытые работы", "/mini-app/history-manager/", "Архив"],
     ]} /> : <DiscoveryCarousel slides={slides} />,
     host.node,
@@ -124,8 +130,11 @@ function QuickPanel({ title, copy, actions }: { title: string; copy: string; act
 function DiscoveryCarousel({ slides }: { slides: DiscoverySlide[] }) {
   const items = useMemo(() => slides.slice(0, 8), [slides]);
   return <div data-cms-discovery style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(260px, 82%)", gap: 12, overflowX: "auto", scrollSnapType: "x mandatory" }}>
-    {items.map((slide) => <button key={slide.id} type="button" onClick={() => slide.action.type === "trends" ? open("/mini-app/?route=catalog") : open(routePath(slide.action.target))} style={{ minHeight: 180, borderRadius: 24, padding: 20, textAlign: "left", scrollSnapAlign: "start", position: "relative", overflow: "hidden", border: "1px solid rgba(177,92,255,.28)", background: slide.image_url ? `linear-gradient(180deg, rgba(10,8,16,.28), rgba(10,8,16,.92)), url(${JSON.stringify(slide.image_url).slice(1,-1)}) center/cover` : "rgba(14,12,20,.92)", color: "inherit" }}>
-      <span className="kicker">{slide.eyebrow || "ROXY"}</span><h2 style={{ margin: "8px 0" }}>{slide.title}</h2><p className="muted">{slide.body}</p><strong>{slide.cta || "Открыть"} →</strong>
-    </button>)}
+    {items.map((slide) => {
+      const backgroundImage = slide.image_url ? `linear-gradient(180deg, rgba(10,8,16,.28), rgba(10,8,16,.92)), url("${slide.image_url.replaceAll('"', "%22")}")` : undefined;
+      return <button key={slide.id} type="button" onClick={() => slide.action.type === "trends" ? open("/mini-app/?route=catalog") : open(routePath(slide.action.target))} style={{ minHeight: 180, borderRadius: 24, padding: 20, textAlign: "left", scrollSnapAlign: "start", position: "relative", overflow: "hidden", border: "1px solid rgba(177,92,255,.28)", backgroundColor: "rgba(14,12,20,.92)", backgroundImage, backgroundPosition: "center", backgroundSize: "cover", color: "inherit" }}>
+        <span className="kicker">{slide.eyebrow || "ROXY"}</span><h2 style={{ margin: "8px 0" }}>{slide.title}</h2><p className="muted">{slide.body}</p><strong>{slide.cta || "Открыть"} →</strong>
+      </button>;
+    })}
   </div>;
 }
