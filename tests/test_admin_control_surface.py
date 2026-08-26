@@ -64,7 +64,7 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert '"X-Request-Id"' in js
     assert "/api/v1/admin/auth/step-up" in js
     assert "/api/v1/admin/auth/me" in js
-    assert "Server did not confirm active admin role" in js
+    assert "Доступ администратора не подтверждён" in js
 
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
