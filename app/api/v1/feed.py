@@ -58,7 +58,7 @@ def _http_error(exc: Exception) -> HTTPException:
 
 
 def _direct_mini_app_link(link: str | None) -> str | None:
-    """Turn a verified bot start payload into a direct Main Mini App link."""
+    """Turn a verified bot start payload into a direct Mini App link."""
 
     if not link:
         return None

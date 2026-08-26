@@ -12,7 +12,6 @@ from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.admin_content_models import GenerationModerationState
 from app.db.feed_models import FeedComment, FeedRemixEvent
 from app.db.media_models import MediaAsset
@@ -20,6 +19,12 @@ from app.db.models import Generation, User
 from app.db.social_models import GenerationLike
 from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
+from app.services.feed_links import (
+    mini_app_deep_link,
+    post_payload,
+    profile_payload,
+    remix_payload,
+)
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.reference_resolver import (
     PUBLIC_IMAGE_REFERENCE_FIELDS,
@@ -789,16 +794,9 @@ class FeedService:
             surface="feed",
         )
 
-    @staticmethod
-    def _bot_username() -> str:
-        return settings.bot_username.strip().lstrip("@")
-
     @classmethod
     def post_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
-        username = cls._bot_username()
-        if not username:
-            return None
-        return f"https://t.me/{username}?start=feed_{generation_id}_ref_{author_referral_code}"
+        return mini_app_deep_link(post_payload(generation_id, author_referral_code))
 
     @classmethod
     def share_payload(cls, generation: Generation, author_telegram_id: int) -> dict[str, object]:
@@ -810,8 +808,7 @@ class FeedService:
         into any messenger.
         """
 
-        raw_link = cls.post_deep_link(generation.id, str(author_telegram_id))
-        link = raw_link.replace("?start=", "?startapp=", 1) if raw_link else None
+        link = cls.post_deep_link(generation.id, str(author_telegram_id))
         share_text = f"Посмотри мою работу в ROXY ✨\n{link}" if link else "Посмотри мою работу в ROXY ✨"
         share_url = None
         if link:
@@ -828,17 +825,11 @@ class FeedService:
 
     @classmethod
     def profile_deep_link(cls, author_referral_code: str) -> str | None:
-        username = cls._bot_username()
-        if not username:
-            return None
-        return f"https://t.me/{username}?start=posts_{author_referral_code}_ref_{author_referral_code}"
+        return mini_app_deep_link(profile_payload(author_referral_code))
 
     @classmethod
     def remix_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
-        username = cls._bot_username()
-        if not username:
-            return None
-        return f"https://t.me/{username}?start=remix_{generation_id}_ref_{author_referral_code}"
+        return mini_app_deep_link(remix_payload(generation_id, author_referral_code))
 
     @staticmethod
     async def author_by_referral_code(session: AsyncSession, referral_code: str) -> User:

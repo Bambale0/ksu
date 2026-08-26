@@ -49,13 +49,13 @@ def test_remix_deep_link_is_distinct_action() -> None:
     assert link.generation_id == generation_id
 
 
-def test_partner_referral_link_opens_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_partner_referral_link_opens_direct_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
 
     link = PartnerService.referral_link(123456)
 
-    assert link == "https://t.me/RoxyExampleBot?startapp=ref_123456"
+    assert link == "https://t.me/RoxyExampleBot/app?startapp=ref_123456"
     assert "?start=" not in link
     parsed = parse_feed_deep_link(link.rsplit("startapp=", 1)[1])
     assert parsed is not None
@@ -91,35 +91,35 @@ def test_referral_payloads_round_trip_for_share_surfaces() -> None:
     assert remix.referral_telegram_id == 123456
 
 
-def test_all_generated_social_links_open_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_all_generated_social_links_open_direct_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
     generation_id = uuid.uuid4()
 
     assert PartnerService.referral_link(123456) == (
-        "https://t.me/RoxyExampleBot?startapp=ref_123456"
+        "https://t.me/RoxyExampleBot/app?startapp=ref_123456"
     )
     assert FeedService.post_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=feed_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot/app?startapp=feed_{generation_id}_ref_123456"
     )
     assert FeedService.profile_deep_link("123456") == (
-        "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
+        "https://t.me/RoxyExampleBot/app?startapp=profile_123456_ref_123456"
     )
     assert FeedService.remix_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=remix_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot/app?startapp=remix_{generation_id}_ref_123456"
     )
 
 
-def test_main_mini_app_placeholder_short_names_do_not_become_paths(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_empty_mini_app_short_name_falls_back_to_main_link(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
-    for short_name in ("", "app", "main", "default", "/app/"):
+    for short_name in ("", "/"):
         monkeypatch.setattr(settings, "telegram_mini_app_short_name", short_name)
         assert mini_app_deep_link("ref_123456") == (
             "https://t.me/RoxyExampleBot?startapp=ref_123456"
         )
 
 
-def test_direct_mini_app_short_name_is_used_only_when_real(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_direct_mini_app_short_name_is_used(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "roxy")
 

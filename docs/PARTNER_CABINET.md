@@ -124,12 +124,13 @@ Configure:
 
 ```dotenv
 BOT_USERNAME=KsuBot
+TELEGRAM_MINI_APP_SHORT_NAME=app
 ```
 
 The API then returns:
 
 ```text
-https://t.me/KsuBot?start=ref_<telegram_id>
+https://t.me/KsuBot/app?startapp=ref_<telegram_id>
 ```
 
 When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
