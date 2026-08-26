@@ -75,6 +75,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     withdrawable_rox = InternalCreditService.credits_for(accounting["available"])
     pending_rox = InternalCreditService.credits_for(accounting["pending_rewards"])
     partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
+    referral_link = PartnerService.referral_link(user.telegram_id)
+    referral_mini_app_link = PartnerService.referral_mini_app_link(user.telegram_id)
 
     prompts_created = int(
         (
@@ -123,7 +125,12 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
-        "referral_link": PartnerService.referral_link(user.telegram_id),
+        # Canonical share/copy link follows banano_kling:tanyapi: open the bot with
+        # /start first, then the bot opens ROXY via its WebApp button and preserves
+        # the referral payload. This avoids BOT_INVALID on Telegram Main Mini App links.
+        "referral_link": referral_link,
+        "referral_bot_link": referral_link,
+        "referral_mini_app_link": referral_mini_app_link,
         "partner_chat_url": _partner_chat_url(),
         # Canonical wallet field. Bonuses, purchased top-ups and converted partner
         # earnings all land in this one ROX balance.
@@ -219,11 +226,6 @@ async def rewards(
                 "net_amount": str(
                     max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
                 ),
-                "net_amount_rox": str(
-                    InternalCreditService.credits_for(
-                        max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
-                    )
-                ),
                 "status": reward.status,
                 "created_at": reward.created_at.isoformat(),
             }
@@ -232,48 +234,6 @@ async def rewards(
         "limit": limit,
         "offset": offset,
     }
-
-
-@router.get("/wallet-transfers")
-async def wallet_transfers(
-    user: CurrentUserDep,
-    session: SessionDep,
-    limit: int = Query(default=30, ge=1, le=100),
-    offset: int = Query(default=0, ge=0, le=100_000),
-) -> dict[str, object]:
-    rows = list(
-        (
-            await session.scalars(
-                select(PartnerWalletTransfer)
-                .where(PartnerWalletTransfer.user_id == user.id)
-                .order_by(PartnerWalletTransfer.created_at.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).all()
-    )
-    return {"items": [_transfer_view(item) for item in rows], "limit": limit, "offset": offset}
-
-
-@router.post("/wallet-transfers", status_code=201)
-async def create_wallet_transfer(
-    payload: CreateWalletTransferRequest,
-    user: CurrentUserDep,
-    session: SessionDep,
-) -> dict[str, object]:
-    try:
-        item = await PartnerWalletTransferService.transfer(
-            session,
-            user_id=user.id,
-            amount=payload.amount,
-            idempotency_key=payload.idempotency_key,
-        )
-    except PartnerWalletTransferInsufficientFunds as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except PartnerWalletTransferError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await session.commit()
-    return _transfer_view(item)
 
 
 @router.get("/withdrawals")
@@ -285,49 +245,47 @@ async def withdrawals(
 ) -> dict[str, object]:
     rows = list(
         (
-            await session.scalars(
+            await session.execute(
                 select(PartnerWithdrawal)
                 .where(PartnerWithdrawal.user_id == user.id)
                 .order_by(PartnerWithdrawal.created_at.desc())
                 .offset(offset)
                 .limit(limit)
             )
-        ).all()
+        ).scalars()
     )
-    return {"items": [_withdrawal_view(item) for item in rows], "limit": limit, "offset": offset}
+    return {
+        "items": [_withdrawal_view(item) for item in rows],
+        "limit": limit,
+        "offset": offset,
+    }
 
 
-@router.post("/withdrawals", status_code=201)
+@router.post("/withdrawals")
 async def create_withdrawal(
-    payload: CreateWithdrawalRequest,
+    data: CreateWithdrawalRequest,
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
     try:
-        # Use the same user row lock as wallet conversion so a partner cannot spend
-        # the same RUB concurrently on a card payout and on ROX conversion.
-        await PartnerWalletTransferService.assert_available(
+        withdrawal = await PartnerService.create_withdrawal(
             session,
             user_id=user.id,
-            amount=payload.amount,
-            lock=True,
+            amount=data.amount,
+            requisites=data.requisites,
         )
-        item = await PartnerService.create_withdrawal(
-            session,
-            user_id=user.id,
-            amount=payload.amount,
-            requisites=payload.requisites,
-        )
-    except PartnerWalletTransferInsufficientFunds as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except PartnerInsufficientFunds as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await session.commit()
     except PartnerWithdrawalBelowMinimum as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (PartnerWithdrawalError, PartnerWalletTransferError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await session.commit()
-    return _withdrawal_view(item)
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PartnerInsufficientFunds as exc:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PartnerWithdrawalError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"item": _withdrawal_view(withdrawal)}
 
 
 @router.post("/withdrawals/{withdrawal_id}/cancel")
@@ -342,9 +300,59 @@ async def cancel_withdrawal(
             user_id=user.id,
             withdrawal_id=withdrawal_id,
         )
+        await session.commit()
     except LookupError as exc:
+        await session.rollback()
         raise HTTPException(status_code=404, detail="Withdrawal not found") from exc
     except PartnerWithdrawalError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": _withdrawal_view(item)}
+
+
+@router.post("/wallet-transfer")
+async def create_wallet_transfer(
+    data: CreateWalletTransferRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    try:
+        item = await PartnerWalletTransferService.create_transfer(
+            session,
+            user_id=user.id,
+            amount=data.amount,
+            idempotency_key=data.idempotency_key,
+        )
+        await session.commit()
+    except PartnerWalletTransferInsufficientFunds as exc:
+        await session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await session.commit()
-    return _withdrawal_view(item)
+    except PartnerWalletTransferError as exc:
+        await session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"item": _transfer_view(item)}
+
+
+@router.get("/wallet-transfers")
+async def wallet_transfers(
+    user: CurrentUserDep,
+    session: SessionDep,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, object]:
+    rows = list(
+        (
+            await session.execute(
+                select(PartnerWalletTransfer)
+                .where(PartnerWalletTransfer.user_id == user.id)
+                .order_by(PartnerWalletTransfer.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).scalars()
+    )
+    return {
+        "items": [_transfer_view(item) for item in rows],
+        "limit": limit,
+        "offset": offset,
+    }
