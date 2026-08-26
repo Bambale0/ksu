@@ -88,7 +88,7 @@ export default function TrendPage() {
     <StandaloneShell
       kicker="Тренд"
       title={trend?.title || (loading ? "Загружаю сценарий" : "Тренд")}
-      copy={trend?.description || "Готовый сценарий ROXY с серверным промптов и настройками."}
+      copy={trend?.description || "Готовый сценарий ROXY с описанием и настройками."}
     >
       {trend ? (
         <div className="tool-grid">

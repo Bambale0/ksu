@@ -102,6 +102,31 @@ function dateLabel(value?: string): string {
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
+function statusLabel(value?: string | null): string {
+  const labels: Record<string, string> = {
+    queued: "В очереди",
+    submitting: "Запускается",
+    generating: "Создаётся",
+    retry: "Повторяем",
+    succeeded: "Готово",
+    failed: "Не получилось",
+    canceled: "Отменено",
+  };
+  return value ? labels[value] || "В работе" : "В работе";
+}
+
+function transactionLabel(value?: string | null): string {
+  const labels: Record<string, string> = {
+    purchase: "Пополнение",
+    payment: "Пополнение",
+    generation: "Создание",
+    refund: "Возврат",
+    bonus: "Бонус",
+    adjustment: "Корректировка",
+  };
+  return value ? labels[value] || "Операция" : "Операция";
+}
+
 function displayName(me: Me | null): string {
   if (!me) return "ROXY Creator";
   return [me.first_name, me.last_name].filter(Boolean).join(" ") || me.username || "ROXY Creator";
@@ -124,6 +149,10 @@ function createDefaultDraft(model: GenerationModel): Draft {
 
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+function userFieldLabel(field: UiField): string {
+  return field.name === "prompt" || field.label === "Промпт" ? "Описание" : field.label;
 }
 
 function visibleFields(model: GenerationModel, draft: Draft): UiField[] {
@@ -162,9 +191,10 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
   const errors: string[] = [];
   for (const field of visibleFields(model, draft)) {
     const value = draft.values[field.name];
-    if (field.required && isEmpty(value)) errors.push(`Заполните «${field.label}»`);
+    const label = userFieldLabel(field);
+    if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
     if (field.control === "json" && !isEmpty(value)) {
-      try { JSON.parse(String(value)); } catch { errors.push(`Исправьте JSON в «${field.label}»`); }
+      try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
   }
   const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario) as any;
@@ -323,7 +353,7 @@ export function RoxyApp() {
       <header className="topbar">
         <button className="brand" type="button" onClick={() => navigate("home")} aria-label="ROXY — главная">
           <RoxyMark />
-          <span className="brand-copy"><strong>ROXY</strong><small>AI CREATIVE STUDIO</small></span>
+          <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
         <button className="balance-button" type="button" onClick={() => setWalletOpen(true)}>
           <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
@@ -352,7 +382,7 @@ function Splash() {
   return (
     <div className="splash" role="status" aria-label="ROXY загружается">
       <div className="splash-orbit"><span/><RoxyMark large /></div>
-      <strong>ROXY</strong><small>AI CREATIVE STUDIO</small>
+      <strong>ROXY</strong><small>Студия творчества</small>
       <div className="splash-progress"><i /></div>
     </div>
   );
@@ -402,7 +432,7 @@ function CatalogScreen({ models, families, feed, onCreate, onPreview }: { models
   const filtered = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   return (
     <section className="screen">
-      <ScreenHead kicker="Каталог" title="Модели и идеи" copy="Каталог строится из backend-возможностей. Никаких хардкодных настроек модели на клиенте." />
+      <ScreenHead kicker="Каталог" title="Модели и идеи" copy="Выберите формат под задачу или вдохновитесь работами сообщества." />
       <div className="segmented scrollable">
         {(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}
       </div>
@@ -507,7 +537,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
 
   const submit = async () => {
     if (!selected || !draft || errors.length || !quote || submitting) return;
-    if (!telegram()?.initData) { showToast("Откройте Mini App через Telegram-бота"); return; }
+    if (!telegram()?.initData) { showToast("Откройте ROXY через Telegram-бота"); return; }
     setSubmitting(true);
     try {
       const created = await api.create(buildPayload(selected, draft));
@@ -546,7 +576,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
 
   return (
     <section className="screen create-screen">
-      <ScreenHead kicker="Создание" title="Настрой генерацию" copy="Поля ниже приходят из ui_schema выбранной модели. Неподдерживаемые параметры не показываются." />
+      <ScreenHead kicker="Создание" title="Новая работа" copy="Опишите идею, добавьте примеры и выберите подходящий формат." />
       <div className="create-layout">
         <div className="create-controls">
           <div className="panel">
@@ -619,23 +649,24 @@ function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: {
 }
 
 function DynamicField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
+  const label = userFieldLabel(field);
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {
     const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
-    return <div className="field"><label className="label">{field.label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ""; void onUpload(files); }}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
+    return <div className="field"><label className="label">{label}{field.required ? " *" : ""}</label><label className="upload-control"><Icon name="upload"/><span>{urls.length ? `${urls.length} загружено` : "Выбрать файл"}</span><input type="file" multiple={field.control === "files"} accept={field.accept || "image/*,video/*,audio/*"} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ""; void onUpload(files); }}/></label>{urls.length > 0 && <div className="upload-list">{urls.map((url, i) => <button type="button" key={`${url}-${i}`} onClick={() => onChange(field.control === "files" ? urls.filter((_, index) => index !== i) : "")}>{new URL(url, window.location.href).pathname.split("/").pop() || `Файл ${i + 1}`} ×</button>)}</div>}</div>;
   }
-  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
-  if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
-  return <label className="field"><span className="label">{field.label}{field.required ? " *" : ""}</span><div className="input-with-suffix"><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} placeholder={field.placeholder || ""} value={value == null ? "" : String(value)} onChange={(e) => onChange(field.control === "number" ? (e.target.value ? Number(e.target.value) : null) : e.target.value)}/>{field.suffix && <span>{field.suffix}</span>}</div></label>;
+  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><textarea className="control textarea" placeholder={field.placeholder || ""} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2)} onChange={(e) => onChange(e.target.value)}/></label>;
+  if (field.suggestions?.length) return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><select className="control" value={value == null ? "" : String(value)} onChange={(e) => onChange(e.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
+  return <label className="field"><span className="label">{label}{field.required ? " *" : ""}</span><div className="input-with-suffix"><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} placeholder={field.placeholder || ""} value={value == null ? "" : String(value)} onChange={(e) => onChange(field.control === "number" ? (e.target.value ? Number(e.target.value) : null) : e.target.value)}/>{field.suffix && <span>{field.suffix}</span>}</div></label>;
 }
 
 function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {
-  return <section className="screen"><ScreenHead kicker="История" title="Все генерации" copy="Готовые результаты, активные задачи и ошибки — в одном месте."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "AI генерация"}</strong><small>{dateLabel(item.created_at)} · {item.status}</small>{item.error && <p>{item.error}</p>}</div><span className={`status ${item.status}`}>{item.status}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
+  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {statusLabel(item.status)}</small>{item.error && <p>Не получилось создать работу. Попробуйте ещё раз или измените описание.</p>}</div><span className={`status ${item.status}`}>{statusLabel(item.status)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
 }
 
 function ProfileScreen({ me, avatar, tab, setTab, works, publications, onPreview, onWallet }: { me: Me | null; avatar: string; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: FeedCard[]; onPreview: (item: Generation | FeedCard, surface: "private" | "feed") => void; onWallet: () => void }) {
   const likes = publications.reduce((sum, item) => sum + Number(item.likes_count || 0), 0);
-  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "ROXY creator"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет." onClick={(item) => onPreview(item, "feed")} reactions/>}</section>;
+  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет." onClick={(item) => onPreview(item, "feed")} reactions/>}</section>;
 }
 
 function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, reactions = false }: { items: T[]; empty: string; onClick: (item: T) => void; reactions?: boolean }) {
@@ -646,7 +677,7 @@ function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, rea
 function MediaThumb({ item }: { item: Generation | FeedCard }) {
   const url = mediaUrl(item);
   const type = mediaType(item);
-  if (!url) return <span className="media-placeholder"><Icon name={type === "video" ? "video" : type === "audio" ? "music" : "image"}/><small>{item.status || "Нет превью"}</small></span>;
+  if (!url) return <span className="media-placeholder"><Icon name={type === "video" ? "video" : type === "audio" ? "music" : "image"}/><small>{statusLabel(item.status)}</small></span>;
   if (type === "video") return <video src={url} muted playsInline preload="metadata"/>;
   if (type === "audio") return <span className="media-placeholder audio"><Icon name="music"/><small>Аудио</small></span>;
   return <img src={url} alt="" loading="lazy"/>;
@@ -662,7 +693,7 @@ function Preview({ item, surface, onClose, onPublished, showToast }: { item: Gen
     catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось опубликовать"); }
     finally { setPublishing(false); }
   };
-  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : "Публикация"}</span><h2>{modelOf(item)?.title || "ROXY generation"}</h2><p className="muted">{dateLabel(item.created_at)}</p>{surface === "private" && item.prompt && !item.prompt_hidden && <p className="prompt-copy">{item.prompt}</p>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{surface === "private" && item.status === "succeeded" && <button className="secondary" type="button" disabled={publishing} onClick={() => void publish()}>{publishing ? "Публикую…" : "В профиль"}</button>}</div></div></div></div>;
+  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : "Публикация"}</span><h2>{modelOf(item)?.title || "Работа ROXY"}</h2><p className="muted">{dateLabel(item.created_at)}</p>{surface === "private" && item.prompt && !item.prompt_hidden && <p className="prompt-copy">{item.prompt}</p>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{surface === "private" && item.status === "succeeded" && <button className="secondary" type="button" disabled={publishing} onClick={() => void publish()}>{publishing ? "Публикую…" : "В профиль"}</button>}</div></div></div></div>;
 }
 
 function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onClose: () => void; onRefresh: () => Promise<Me>; showToast: (message: string) => void }) {
@@ -687,12 +718,12 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
     } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось создать платёж"); }
     finally { setPaying(false); }
   };
-  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Wallet</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices[currency] || 0)} {currency}</small></button>)}</div><div className="segmented providers"><button type="button" className="active">Оплата картой</button></div><div className="segmented scrollable">{(["RUB", "USD", "EUR"] as const).filter((item) => Object.values(packages).some((pack) => pack.prices[item])).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div><input className="wallet-input" type="email" inputMode="email" autoComplete="email" placeholder="Email для чека" value={email} onChange={(event) => setEmail(event.target.value)} /><button className="primary wide" type="button" disabled={!selected || !email.trim() || paying} onClick={() => void pay()}>{paying ? "Создаю платёж…" : "Перейти к оплате"}</button><SectionTitle kicker="Операции" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{tx.kind}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
+  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices[currency] || 0)} {currency}</small></button>)}</div><div className="segmented providers"><button type="button" className="active">Оплата картой</button></div><div className="segmented scrollable">{(["RUB", "USD", "EUR"] as const).filter((item) => Object.values(packages).some((pack) => pack.prices[item])).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div><input className="wallet-input" type="email" inputMode="email" autoComplete="email" placeholder="Email для чека" value={email} onChange={(event) => setEmail(event.target.value)} /><button className="primary wide" type="button" disabled={!selected || !email.trim() || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
 }
 
 function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  return <div className="overlay onboarding-overlay" role="dialog" aria-modal="true"><div className="onboarding-card"><RoxyMark large/><span className="kicker">Добро пожаловать</span><h1>{data.title || "ROXY"}</h1><p>{data.body || "AI Creative Studio для генерации фото, видео и музыки."}</p><div className="onboarding-links">{data.rules_url && <a href={data.rules_url} target="_blank" rel="noreferrer">Правила</a>}{data.privacy_url && <a href={data.privacy_url} target="_blank" rel="noreferrer">Конфиденциальность</a>}</div><button className="primary wide" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onDone(); } finally { setBusy(false); } }}>{busy ? "Открываю…" : "Открыть ROXY"}</button></div></div>;
+  return <div className="overlay onboarding-overlay" role="dialog" aria-modal="true"><div className="onboarding-card"><RoxyMark large/><span className="kicker">Добро пожаловать</span><h1>{data.title || "ROXY"}</h1><p>{data.body || "Студия для создания фото, видео и музыки."}</p><div className="onboarding-links">{data.rules_url && <a href={data.rules_url} target="_blank" rel="noreferrer">Правила</a>}{data.privacy_url && <a href={data.privacy_url} target="_blank" rel="noreferrer">Конфиденциальность</a>}</div><button className="primary wide" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onDone(); } finally { setBusy(false); } }}>{busy ? "Открываю…" : "Открыть ROXY"}</button></div></div>;
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {

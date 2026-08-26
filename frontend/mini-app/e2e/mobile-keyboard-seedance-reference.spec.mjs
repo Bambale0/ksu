@@ -137,7 +137,7 @@ test('prompt focus hides fixed bottom navigation on a touch-first mobile context
     await mockRoxy(page);
     await page.goto('/mini-app/?route=create');
 
-    const prompt = page.getByRole('textbox', { name: /Промпт/ });
+    const prompt = page.getByRole('textbox', { name: /Описание/ });
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
     await expect(nav).toBeVisible();
     await prompt.focus();
@@ -164,7 +164,7 @@ test('Seedance reference upload survives retry and is sent as first_frame_url', 
   // Selecting the exact same filename again must still be accepted on iOS-like flows.
   await fileInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
   await expect(page.getByText('1 загружено')).toBeVisible();
-  await page.getByRole('textbox', { name: /Промпт/ }).fill('Персонаж поворачивает голову и улыбается');
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Персонаж поворачивает голову и улыбается');
   await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
@@ -186,7 +186,7 @@ test('Seedance multimodal reference mode sends reference_image_urls without fram
   const imageInput = page.locator('input[type="file"]').first();
   await imageInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
   await expect(page.getByText('1 загружено')).toBeVisible();
-  await page.getByRole('textbox', { name: /Промпт/ }).fill('Собери видео по визуальному референсу, без первого кадра');
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Собери видео по визуальному референсу, без первого кадра');
   await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
@@ -207,7 +207,7 @@ test('Mini App quantity picker sends six launches and total quote', async ({ pag
   await mockRoxy(page);
   await page.goto('/mini-app/?route=create');
 
-  await page.getByRole('textbox', { name: /Промпт/ }).fill('Сделай шесть разных вариантов динамичного видео');
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Сделай шесть разных вариантов динамичного видео');
   await page.getByRole('button', { name: '6', exact: true }).click();
   await expect(page.getByText('Стоимость за 6')).toBeVisible();
   await expect(page.getByText('330 ROX', { exact: true })).toBeVisible();

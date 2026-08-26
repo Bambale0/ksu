@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>ROXY · Creator Partnerships</title>
+  <title>ROXY · Партнёры</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/admin-app/creator-partnership.css">
 </head>
@@ -11,18 +11,18 @@
   <main class="cp-shell">
     <header class="cp-head">
       <div>
-        <span class="kicker">ROXY ADMIN</span>
-        <h1>Creator Partnerships</h1>
-        <p>Индивидуальные условия авторов и каналов. Не реферальные 30% / 5%.</p>
+        <span class="kicker">ROXY</span>
+        <h1>Партнёрские условия</h1>
+        <p>Заявки авторов и каналов, персональные условия и начисления.</p>
       </div>
       <a href="/admin-app/" class="secondary">← Основная админка</a>
     </header>
 
     <section id="authPanel" class="panel auth-panel">
       <h2>Вход администратора</h2>
-      <p>Открой страницу через Telegram. Если MFA включена, введи 6-значный код.</p>
+      <p>Откройте страницу через Telegram. Если включена дополнительная защита, введите 6-значный код.</p>
       <form id="loginForm">
-        <input id="loginOtp" inputmode="numeric" maxlength="6" placeholder="MFA-код · если требуется">
+        <input id="loginOtp" inputmode="numeric" maxlength="6" placeholder="Код подтверждения · если требуется">
         <button type="submit">Войти</button>
       </form>
       <div id="authMessage" class="message" role="status"></div>
@@ -37,7 +37,7 @@
 
       <section class="panel">
         <div class="panel-head">
-          <div><span class="kicker">APPLICATIONS</span><h2>Заявки</h2></div>
+          <div><span class="kicker">Заявки</span><h2>Заявки</h2></div>
           <select id="statusFilter">
             <option value="">Все</option>
             <option value="pending">На рассмотрении</option>
@@ -50,7 +50,7 @@
 
       <section class="panel">
         <div class="panel-head">
-          <div><span class="kicker">AGREEMENTS</span><h2>Соглашения</h2></div>
+          <div><span class="kicker">Соглашения</span><h2>Соглашения</h2></div>
         </div>
         <div id="agreements" class="cards"></div>
       </section>

@@ -35,23 +35,23 @@
     ["withdrawals", "Выводы", "↗", "withdrawals.read"],
     ["promos", "Промокоды", "%", "promocodes.read"],
     ["referrals", "Рефералы", "⌘", "referrals.read"],
-    ["security", "Security / Audit", "⌁", ["security.read", "audit.read"]],
+    ["security", "Безопасность", "⌁", ["security.read", "audit.read"]],
     ["admins", "Администраторы", "♙", "admins.read"],
     ["sessions", "Мои сессии", "◷", null],
   ];
 
   const TITLES = {
-    dashboard: ["OPERATIONS", "Обзор"],
-    users: ["USERS", "Пользователи"],
-    generations: ["AI JOBS", "Генерации"],
-    payments: ["FINANCE", "Платежи"],
-    support: ["SUPPORT", "Обращения"],
-    withdrawals: ["PARTNERS", "Выводы партнёров"],
-    promos: ["GROWTH", "Промокоды"],
-    referrals: ["PARTNERS", "Реферальные начисления"],
-    security: ["SECURITY", "Audit и безопасность"],
-    admins: ["ACCESS", "Администраторы"],
-    sessions: ["SECURITY", "Мои сессии"],
+    dashboard: ["Обзор", "Обзор"],
+    users: ["Пользователи", "Пользователи"],
+    generations: ["Работы", "Генерации"],
+    payments: ["Финансы", "Платежи"],
+    support: ["Поддержка", "Обращения"],
+    withdrawals: ["Партнёры", "Выводы партнёров"],
+    promos: ["Рост", "Промокоды"],
+    referrals: ["Партнёры", "Реферальные начисления"],
+    security: ["Безопасность", "Журнал и доступ"],
+    admins: ["Доступ", "Администраторы"],
+    sessions: ["Безопасность", "Мои сессии"],
   };
 
   function el(tag, className = "", text = "") {
@@ -144,7 +144,42 @@
     if (["success", "succeeded", "paid", "resolved", "active", "completed", "available"].includes(normalized)) tone = "ok";
     if (["pending", "processing", "queued", "generating", "in_progress", "retry", "creating"].includes(normalized)) tone = "warn";
     if (["failed", "fail", "rejected", "canceled", "cancelled", "blocked", "inactive", "reversed"].includes(normalized)) tone = "danger";
-    return el("span", `badge ${tone}`, value ?? "—");
+    return el("span", `badge ${tone}`, statusLabel(value));
+  }
+
+  function statusLabel(value) {
+    const labels = {
+      success: "Успешно",
+      succeeded: "Успешно",
+      paid: "Выплачено",
+      resolved: "Решено",
+      active: "Активно",
+      completed: "Готово",
+      available: "Доступно",
+      pending: "Ожидает",
+      processing: "В обработке",
+      queued: "В очереди",
+      generating: "Создаётся",
+      submitting: "Запускается",
+      in_progress: "В работе",
+      retry: "Повтор",
+      creating: "Создаётся",
+      failed: "Не получилось",
+      fail: "Не получилось",
+      rejected: "Отклонено",
+      canceled: "Отменено",
+      cancelled: "Отменено",
+      blocked: "Заблокировано",
+      inactive: "Отключено",
+      reversed: "Возвращено",
+      refunded: "Возвращено",
+      open: "Открыто",
+      closed: "Закрыто",
+      current: "Текущая",
+      system: "Система",
+    };
+    const normalized = String(value ?? "").toLowerCase();
+    return labels[normalized] || value || "—";
   }
 
   function formatDate(value) {
@@ -360,11 +395,11 @@
     const otp = dom.stepUpOtp.value.trim();
     const recovery = dom.stepUpRecovery.value.trim();
     if (!otp && !recovery) {
-      setMessage(dom.stepUpMessage, "Введите OTP или recovery code", "error");
+      setMessage(dom.stepUpMessage, "Введите код подтверждения или резервный код", "error");
       return;
     }
     dom.stepUpVerify.disabled = true;
-    setMessage(dom.stepUpMessage, "Проверяем MFA…");
+    setMessage(dom.stepUpMessage, "Проверяем код…");
     try {
       const payload = {};
       if (otp) payload.otp = otp;
@@ -375,13 +410,13 @@
       if (state.me) state.me.step_up_until = result.step_up_until;
       dom.stepUpOtp.value = "";
       dom.stepUpRecovery.value = "";
-      setMessage(dom.stepUpMessage, "MFA подтверждена", "ok");
+      setMessage(dom.stepUpMessage, "Код подтверждён", "ok");
       dom.stepConfirm.hidden = false;
       dom.stepUpVerify.hidden = true;
       dom.stepUpExecute.hidden = false;
       dom.stepUpExecute.focus();
     } catch (error) {
-      setMessage(dom.stepUpMessage, error.message || "MFA не подтверждена", "error");
+      setMessage(dom.stepUpMessage, error.message || "Код не подтверждён", "error");
       notify("error");
     } finally {
       dom.stepUpVerify.disabled = false;
@@ -465,9 +500,9 @@
     const grid = el("div", "metric-grid");
     grid.append(
       metric("Пользователи", formatNumber(data.users?.total, 0), `${formatNumber(data.users?.active, 0)} активных`),
-      metric("Активные генерации", formatNumber(data.generations?.active, 0), `${formatNumber(data.generations?.failed, 0)} failed`),
-      metric("Support", formatNumber(data.support?.open, 0), "открытых тикетов"),
-      metric("Выводы", formatNumber(data.withdrawals?.pending_or_processing, 0), "pending / processing"),
+      metric("Активные работы", formatNumber(data.generations?.active, 0), `${formatNumber(data.generations?.failed, 0)} не получилось`),
+      metric("Поддержка", formatNumber(data.support?.open, 0), "открытых обращений"),
+      metric("Выводы", formatNumber(data.withdrawals?.pending_or_processing, 0), "ожидают обработки"),
       metric("Успешные платежи", formatNumber(data.payments?.succeeded, 0), `${formatNumber(data.payments?.rub)} ₽`),
       metric("Продано кредитов", formatNumber(data.payments?.credits), "успешные платежи"),
     );
@@ -475,10 +510,10 @@
 
     const links = el("div", "card-list");
     [
-      ["Пользователи", "Поиск, история, статусы, wallet", "users", "users.read"],
+      ["Пользователи", "Поиск, история, статусы, баланс", "users", "users.read"],
       ["Поддержка", "Очередь обращений и ответы", "support", "support.read"],
-      ["Платежи", "Provider status, reconcile, refunds", "payments", "payments.read"],
-      ["Security", "Audit, сессии, auth anomalies", "security", ["security.read", "audit.read"]],
+      ["Платежи", "Проверка, сверка и возвраты", "payments", "payments.read"],
+      ["Безопасность", "Сессии и события входа", "security", ["security.read", "audit.read"]],
     ].forEach(([title, copy, view, permission]) => {
       if (!hasPermission(permission)) return;
       const card = el("div", "list-card");
@@ -559,10 +594,10 @@
 
     const info = el("div", "panel-body");
     info.appendChild(kvRows([
-      ["ID", user.id], ["Telegram", user.telegram_id], ["Username", user.username ? `@${user.username}` : "—"],
-      ["Имя", [user.first_name, user.last_name].filter(Boolean).join(" ")], ["Статус", user.is_active ? "active" : "inactive"],
+      ["ID", user.id], ["Telegram", user.telegram_id], ["Имя пользователя", user.username ? `@${user.username}` : "—"],
+      ["Имя", [user.first_name, user.last_name].filter(Boolean).join(" ")], ["Статус", statusLabel(user.is_active ? "active" : "inactive")],
       ["Баланс", `${formatNumber(user.balance_credits)} кр. · ${formatNumber(user.balance_rub)} ₽`],
-      ["Генерации", user.stats?.generations], ["Платежи", user.stats?.payments], ["Support", user.stats?.support_tickets], ["Admin", user.is_admin ? "да" : "нет"],
+      ["Генерации", user.stats?.generations], ["Платежи", user.stats?.payments], ["Обращения", user.stats?.support_tickets], ["Админ", user.is_admin ? "да" : "нет"],
     ]));
     const eventList = el("div", "event-list panel-body");
     for (const event of history.items || []) {
@@ -582,16 +617,16 @@
     if (filters.user_id) params.set("user_id", filters.user_id);
     const data = await api(`/api/v1/admin/generations?${params}`);
     const filter = makeFilter([
-      { name: "status", value: filters.status || "", options: [["", "Все статусы"], ["queued", "queued"], ["submitting", "submitting"], ["generating", "generating"], ["succeeded", "succeeded"], ["failed", "failed"], ["retry", "retry"]] },
+      { name: "status", value: filters.status || "", options: [["", "Все статусы"], ["queued", "В очереди"], ["submitting", "Запускается"], ["generating", "Создаётся"], ["succeeded", "Успешно"], ["failed", "Не получилось"], ["retry", "Повтор"]] },
       { name: "user_id", placeholder: "User UUID", grow: true, value: filters.user_id || "" },
     ], renderGenerations);
     const cols = [
       ["Задача", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.model_id || row.kind), el("small", "mono", row.id), el("small", "", String(row.prompt || "").slice(0, 110))); return c; }],
       ["Статус", (row) => statusBadge(row.status)],
       ["Стоимость", (row) => `${formatNumber(row.cost_credits)} кр.`],
-      ["Provider", (row) => { const c = el("div", "cell-main"); c.append(el("span", "", row.provider || "—"), el("small", "mono", row.external_id || "")); return c; }],
+      ["Провайдер", (row) => { const c = el("div", "cell-main"); c.append(el("span", "", row.provider || "—"), el("small", "mono", row.external_id || "")); return c; }],
       ["Создан", (row) => formatDate(row.created_at)],
-      ["", (row) => hasPermission("generations.manage") && row.provider === "kie" && row.external_id ? actionsCell(button("Reconcile", "table-action", async () => { try { await api(`/api/v1/admin/generations/${row.id}/reconcile`, { method: "POST" }); toast("Generation reconciled"); await renderGenerations(filters); } catch (error) { toast(error.message); } })) : ""],
+      ["", (row) => hasPermission("generations.manage") && row.provider === "kie" && row.external_id ? actionsCell(button("Сверить", "table-action", async () => { try { await api(`/api/v1/admin/generations/${row.id}/reconcile`, { method: "POST" }); toast("Работа сверена"); await renderGenerations(filters); } catch (error) { toast(error.message); } })) : ""],
     ];
     dom.adminView.replaceChildren(panel("Генерации", table(cols, data.items || []), filter));
   }
@@ -603,7 +638,7 @@
     if (filters.user_id) params.set("user_id", filters.user_id);
     const data = await api(`/api/v1/admin/payments?${params}`);
     const filter = makeFilter([
-      { name: "status", value: filters.status || "", options: [["", "Все статусы"], ["creating", "creating"], ["pending", "pending"], ["succeeded", "succeeded"], ["failed", "failed"], ["canceled", "canceled"], ["refunded", "refunded"]] },
+      { name: "status", value: filters.status || "", options: [["", "Все статусы"], ["creating", "Создаётся"], ["pending", "Ожидает"], ["succeeded", "Успешно"], ["failed", "Не получилось"], ["canceled", "Отменено"], ["refunded", "Возвращено"]] },
       { name: "provider", value: filters.provider || "", options: [["", "Все провайдеры"], ["cryptobot", "Crypto Pay"], ["tbank", "T-Bank"], ["yookassa", "YooKassa"]] },
       { name: "user_id", placeholder: "User UUID", grow: true, value: filters.user_id || "" },
     ], renderPayments);
@@ -615,8 +650,8 @@
       ["", (row) => {
         const cell = actionsCell();
         if (hasPermission("users.wallet.adjust")) {
-          cell.appendChild(button("Reconcile", "table-action", () => openStepUp("Reconcile платёж у провайдера", async () => { await api(`/api/v1/admin/payments/${row.id}/reconcile`, { method: "POST" }); })));
-          if (row.status === "succeeded") cell.appendChild(button("Refund", "table-action dangerous", () => openForm({
+          cell.appendChild(button("Сверить", "table-action", () => openStepUp("Сверить платёж", async () => { await api(`/api/v1/admin/payments/${row.id}/reconcile`, { method: "POST" }); })));
+          if (row.status === "succeeded") cell.appendChild(button("Вернуть", "table-action dangerous", () => openForm({
             title: "Запрос возврата",
             fields: [{ name: "amount", label: `Сумма (${row.currency})`, type: "number", step: "0.01" }, { name: "reason", label: "Причина", type: "textarea", maxLength: 250 }],
             submitLabel: "К step-up",
@@ -639,7 +674,7 @@
     const params = new URLSearchParams({ limit: "50" });
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/support/tickets?${params}`);
-    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["open", "open"], ["in_progress", "in_progress"], ["resolved", "resolved"], ["closed", "closed"]] }], renderSupport);
+    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]] }], renderSupport);
     const cols = [
       ["Тикет", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.topic), el("small", "mono", row.id), el("small", "", `user ${row.user_id}`)); return c; }],
       ["Статус", (row) => statusBadge(row.status)],
@@ -661,7 +696,7 @@
       })));
       controls.appendChild(button("Изменить статус", "table-action", () => openForm({
         title: "Статус обращения",
-        fields: [{ name: "status", label: "Статус", type: "select", options: [["open", "open"], ["in_progress", "in_progress"], ["resolved", "resolved"], ["closed", "closed"]], value: ticket.status }],
+        fields: [{ name: "status", label: "Статус", type: "select", options: [["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]], value: ticket.status }],
         onSubmit: async ({ status }) => { await api(`/api/v1/admin/support/tickets/${ticketId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); await renderSupportDetail(ticketId); },
       })));
     }
@@ -673,14 +708,14 @@
       card.append(head, el("p", "", message.body));
       thread.appendChild(card);
     }
-    dom.adminView.replaceChildren(controls, panel(`${ticket.topic} · ${ticket.status}`, thread));
+    dom.adminView.replaceChildren(controls, panel(`${ticket.topic} · ${statusLabel(ticket.status)}`, thread));
   }
 
   async function renderWithdrawals(filters = {}) {
     const params = new URLSearchParams({ limit: "50" });
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/withdrawals?${params}`);
-    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["pending", "pending"], ["processing", "processing"], ["paid", "paid"], ["rejected", "rejected"], ["canceled", "canceled"]] }], renderWithdrawals);
+    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["pending", "Ожидает"], ["processing", "В обработке"], ["paid", "Выплачено"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] }], renderWithdrawals);
     const cols = [
       ["Заявка", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", `${formatNumber(row.amount)} ₽`), el("small", "mono", row.id), el("small", "", `user ${row.user_id}`)); return c; }],
       ["Статус", (row) => statusBadge(row.status)],
@@ -691,7 +726,7 @@
         return actionsCell(button("Сменить статус", "table-action", () => openForm({
           title: "Обработать вывод",
           fields: [
-            { name: "status", label: "Новый статус", type: "select", options: row.status === "pending" ? [["processing", "processing"], ["rejected", "rejected"], ["canceled", "canceled"]] : [["paid", "paid"], ["rejected", "rejected"], ["canceled", "canceled"]] },
+            { name: "status", label: "Новый статус", type: "select", options: row.status === "pending" ? [["processing", "В обработке"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] : [["paid", "Выплачено"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] },
             { name: "reason", label: "Причина / комментарий", type: "textarea", maxLength: 500 },
           ],
           submitLabel: "К step-up",
@@ -744,7 +779,7 @@
     const data = await api(`/api/v1/admin/referrals/rewards?${params}`);
     const filter = makeFilter([
       { name: "partner_user_id", placeholder: "Partner user UUID", grow: true, value: filters.partner_user_id || "" },
-      { name: "status", value: filters.status || "", options: [["", "Все"], ["available", "available"], ["pending", "pending"], ["reversed", "reversed"]] },
+      { name: "status", value: filters.status || "", options: [["", "Все"], ["available", "Доступно"], ["pending", "Ожидает"], ["reversed", "Возвращено"]] },
     ], renderReferrals);
     const cols = [
       ["Партнёр", (row) => el("span", "mono", row.partner_user_id)],
@@ -767,30 +802,30 @@
     if (overview) {
       const grid = el("div", "security-grid");
       grid.append(
-        metric("Активные admin sessions", overview.active_sessions),
-        metric("Failed auth · 24h", overview.failed_or_denied_auth_events_24h),
-        metric("Locked admins", overview.locked_admins),
-        metric("Без MFA", overview.active_admins_without_mfa),
+        metric("Активные сессии", overview.active_sessions),
+        metric("Ошибки входа за 24 часа", overview.failed_or_denied_auth_events_24h),
+        metric("Заблокированные админы", overview.locked_admins),
+        metric("Без дополнительной защиты", overview.active_admins_without_mfa),
       );
       dom.adminView.appendChild(grid);
     }
     if (sessions) {
       const cols = [
-        ["Session", (row) => el("span", "mono", row.id)], ["Admin", (row) => el("span", "mono", row.admin_id)],
-        ["Последняя активность", (row) => formatDate(row.last_seen_at)], ["MFA", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
-        ["Step-up", (row) => formatDate(row.step_up_until)],
-        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Revoke", "table-action dangerous", async () => { try { await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE" }); await renderSecurity(); } catch (error) { toast(error.message); } })) : ""],
+        ["Сессия", (row) => el("span", "mono", row.id)], ["Админ", (row) => el("span", "mono", row.admin_id)],
+        ["Последняя активность", (row) => formatDate(row.last_seen_at)], ["Защита", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
+        ["Подтверждение до", (row) => formatDate(row.step_up_until)],
+        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Отозвать", "table-action dangerous", async () => { try { await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE" }); await renderSecurity(); } catch (error) { toast(error.message); } })) : ""],
       ];
       dom.adminView.appendChild(panel("Активные сессии", table(cols, sessions.items || [])));
     }
     if (audit) {
       const cols = [
         ["Событие", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.action), el("small", "mono", row.id)); return c; }],
-        ["Outcome", (row) => statusBadge(row.outcome)], ["Resource", (row) => `${row.resource_type || "—"} ${row.resource_id || ""}`],
-        ["Admin", (row) => el("span", "mono", row.admin_id || "system")], ["Integrity", (row) => statusBadge(row.integrity_valid ? "success" : "failed")],
-        ["Время", (row) => formatDate(row.created_at)], ["Metadata", (row) => el("pre", "audit-meta", jsonText(row.metadata))],
+        ["Итог", (row) => statusBadge(row.outcome)], ["Объект", (row) => `${row.resource_type || "—"} ${row.resource_id || ""}`],
+        ["Админ", (row) => el("span", "mono", row.admin_id || "Система")], ["Проверка", (row) => statusBadge(row.integrity_valid ? "success" : "failed")],
+        ["Время", (row) => formatDate(row.created_at)], ["Детали", (row) => el("pre", "audit-meta", jsonText(row.metadata))],
       ];
-      dom.adminView.appendChild(panel("Audit log", table(cols, audit.items || [])));
+      dom.adminView.appendChild(panel("Журнал действий", table(cols, audit.items || [])));
     }
   }
 
@@ -802,7 +837,7 @@
         { name: "telegram_id", label: "Telegram ID", type: "number" },
         { name: "role", label: "Роль", type: "select", options: Object.keys(roles.roles || {}).map((role) => [role, role]) },
       ],
-      submitLabel: "К step-up",
+      submitLabel: "К подтверждению",
       onSubmit: async ({ telegram_id, role }) => {
         dom.formDialog.close();
         openStepUp(`Создать администратора ${telegram_id} с ролью ${role}`, async () => {
@@ -813,7 +848,7 @@
     })) : null;
     const cols = [
       ["Администратор", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.username ? `@${row.username}` : String(row.telegram_id)), el("small", "mono", row.id)); return c; }],
-      ["Роль", (row) => statusBadge(row.role)], ["MFA", (row) => statusBadge(row.mfa_enabled ? "active" : "inactive")],
+      ["Роль", (row) => statusBadge(row.role)], ["Защита", (row) => statusBadge(row.mfa_enabled ? "active" : "inactive")],
       ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")], ["Последний вход", (row) => formatDate(row.last_login_at)],
       ["", (row) => hasPermission("admins.manage") && state.me?.role === "owner" ? actionsCell(button("Изменить", "table-action", () => openForm({
         title: "Изменить администратора",
@@ -822,10 +857,10 @@
           { name: "is_active", label: "Активен", type: "checkbox", value: row.is_active },
           { name: "reason", label: "Причина", type: "textarea", maxLength: 500 },
         ],
-        submitLabel: "К step-up",
+        submitLabel: "К подтверждению",
         onSubmit: async ({ role, is_active, reason }) => {
           dom.formDialog.close();
-          openStepUp(`Изменить admin ${row.id}: role=${role}, active=${is_active}`, async () => {
+          openStepUp(`Изменить администратора ${row.id}: роль ${role}, активен ${is_active ? "да" : "нет"}`, async () => {
             await api(`/api/v1/admin/admins/${row.id}`, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, permission_overrides: row.permission_overrides || {} }) });
           });
           return false;
@@ -838,13 +873,13 @@
   async function renderSessions() {
     const data = await api("/api/v1/admin/auth/sessions");
     const cols = [
-      ["Session", (row) => { const c = el("div", "cell-main"); c.append(el("span", "mono", row.id), row.current ? statusBadge("current") : el("span")); return c; }],
+      ["Сессия", (row) => { const c = el("div", "cell-main"); c.append(el("span", "mono", row.id), row.current ? statusBadge("current") : el("span")); return c; }],
       ["Создана", (row) => formatDate(row.created_at)], ["Последняя активность", (row) => formatDate(row.last_seen_at)],
-      ["Истекает", (row) => formatDate(row.expires_at)], ["MFA", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
-      ["Step-up", (row) => formatDate(row.step_up_until)],
+      ["Истекает", (row) => formatDate(row.expires_at)], ["Защита", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
+      ["Подтверждение до", (row) => formatDate(row.step_up_until)],
       ["", (row) => !row.revoked ? actionsCell(button(row.current ? "Завершить текущую" : "Отозвать", "table-action dangerous", async () => { try { await api(`/api/v1/admin/auth/sessions/${row.id}`, { method: "DELETE" }); if (row.current) clearSession("Сессия завершена"); else await renderSessions(); } catch (error) { toast(error.message); } })) : ""],
     ];
-    dom.adminView.replaceChildren(panel("Мои admin-сессии", table(cols, data.sessions || [])));
+    dom.adminView.replaceChildren(panel("Мои сессии", table(cols, data.sessions || [])));
   }
 
   async function login(event = null) {
@@ -869,10 +904,10 @@
         await beginMfaSetup();
         return;
       }
-      if (!result.mfa_verified) throw new Error("MFA verification required");
+      if (!result.mfa_verified) throw new Error("Подтверждение не пройдено");
       await enterConsole();
     } catch (error) {
-      setMessage(dom.loginMessage, error.status === 401 ? "Неверный OTP / recovery code" : (error.message || "Вход не выполнен"), "error");
+      setMessage(dom.loginMessage, error.status === 401 ? "Неверный код подтверждения или резервный код" : (error.message || "Вход не выполнен"), "error");
       state.token = null;
       notify("error");
     } finally {
@@ -902,7 +937,7 @@
       dom.recoveryDialog.showModal();
       await loadMe();
     } catch (error) {
-      setMessage(dom.mfaSetupMessage, error.message || "Не удалось подтвердить MFA", "error");
+      setMessage(dom.mfaSetupMessage, error.message || "Не удалось подтвердить код", "error");
     } finally {
       dom.mfaConfirmButton.disabled = false;
     }
@@ -961,6 +996,6 @@
   tg?.ready?.();
   tg?.expand?.();
   if (!tg?.initData) {
-    setMessage(dom.loginMessage, "Для админ-доступа нужен запуск из Telegram Mini App.", "error");
+    setMessage(dom.loginMessage, "Откройте админку внутри Telegram.", "error");
   }
 })();

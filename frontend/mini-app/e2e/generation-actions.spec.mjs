@@ -197,7 +197,7 @@ test('Repeat restores the previous prompt and compatible settings explicitly', a
   await openAction(page, 'repeat');
   await expect(page.getByRole('textbox')).toHaveValue('Портрет в неоновом свете');
   await expect(page.getByLabel('Качество')).toHaveValue('1K');
-  await expect(page.getByText('Промпт и совместимые настройки перенесены из выбранной работы.')).toBeVisible();
+  await expect(page.getByText('Описание и подходящие настройки перенесены из выбранной работы.')).toBeVisible();
 });
 
 test('Edit exposes focused presets while keeping the source result fixed', async ({ page }) => {

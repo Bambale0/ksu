@@ -19,7 +19,7 @@ def test_admin_console_is_separate_static_app_and_bot_launcher_is_not_auth() -> 
     assert 'AdminAccount.is_active.is_(True)' in bot
     assert 'WebAppInfo(url=url)' in bot
     assert '"/admin-app/"' in bot or '/admin-app/' in bot
-    assert "admin-сесси" in bot and "MFA" in bot
+    assert "Веб-админка откроется с отдельной защищённой сессией." in bot
     assert "dispatcher.include_router(admin.router)" in dispatcher
 
 
@@ -73,7 +73,7 @@ def test_sensitive_actions_require_separate_step_up_and_execute_click() -> None:
 
     assert 'id="stepUpVerify"' in html
     assert 'id="stepUpExecute"' in html
-    assert "Подтвердить MFA" in html
+    assert "Подтвердить код" in html
     assert "Выполнить действие" in html
     assert "state.pendingSensitive" in js
     assert "verifyStepUp" in js

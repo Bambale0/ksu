@@ -40,7 +40,7 @@ async def generation_start(
     await state.set_state(GenerationFlow.waiting_prompt)
     if callback.message:
         await callback.message.answer(
-            "Отправь промпт для генерации. Цена рассчитывается сервером по выбранной модели.",
+            "Опиши, что нужно создать. Стоимость покажем перед запуском.",
             reply_markup=back_menu(),
         )
 
@@ -53,7 +53,7 @@ async def generation_prompt(
     redis: Redis,
 ) -> None:
     if message.from_user is None or not message.text:
-        await message.answer("Нужен текстовый промпт.", reply_markup=back_menu())
+        await message.answer("Нужно текстовое описание.", reply_markup=back_menu())
         return
     user = await UserService.get_or_create(session, message.from_user)
     if not await OnboardingService.is_complete(session, user.id):
@@ -79,14 +79,14 @@ async def generation_prompt(
         return
     except ResourcePolicyError as exc:
         await message.answer(
-            f"Сейчас нельзя запустить ещё одну генерацию: {exc}. "
+            f"Сейчас нельзя запустить ещё одну работу: {exc}. "
             f"Повтори примерно через {exc.retry_after} сек.",
             reply_markup=back_menu(),
         )
         return
     except InvalidModelParametersError as exc:
         await message.answer(
-            f"Параметры генерации не приняты: {exc}",
+            f"Проверьте описание и настройки: {exc}",
             reply_markup=back_menu(),
         )
         return

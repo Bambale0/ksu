@@ -96,9 +96,9 @@ export function CatalogCapabilities() {
       { id: "create-image", title: "Фото-модели", copy: "Все модели и режимы для изображений", icon: "image", media: "image" },
       { id: "create-video", title: "Видео-модели", copy: "Все модели и режимы для видео", icon: "video", media: "video" },
       { id: "create-audio", title: "Музыка", copy: "Аудио-модели ROXY", icon: "music", media: "audio" },
-      { id: "prompt-image", title: "Prompt фото / описание", copy: "Разобрать фото или улучшить идею", icon: "spark", href: "/mini-app/prompt-tools/?mode=image", price: price(imageTool) },
-      { id: "prompt-video", title: "Prompt по видео", copy: "Разбор ролика, камера и динамика", icon: "video", href: "/mini-app/prompt-tools/?mode=video", price: price(videoTool) },
-      { id: "prompt-seedance", title: "Prompt для Seedance", copy: "Сцена, камера, движение и negative prompt", icon: "spark", href: "/mini-app/prompt-tools/?mode=seedance", price: price(imageTool) },
+      { id: "prompt-image", title: "Описание по фото", copy: "Разобрать фото или улучшить идею", icon: "spark", href: "/mini-app/prompt-tools/?mode=image", price: price(imageTool) },
+      { id: "prompt-video", title: "Описание по видео", copy: "Разбор ролика, камера и динамика", icon: "video", href: "/mini-app/prompt-tools/?mode=video", price: price(videoTool) },
+      { id: "prompt-seedance", title: "Сценарий для видео", copy: "Сцена, камера, движение и детали", icon: "spark", href: "/mini-app/prompt-tools/?mode=seedance", price: price(imageTool) },
       { id: "batch", title: "Пакетная обработка", copy: "Несколько генераций одной задачей", icon: "catalog", href: "/mini-app/batch/" },
     ];
   }, [tools]);

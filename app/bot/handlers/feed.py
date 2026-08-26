@@ -85,7 +85,7 @@ def _caption(card: dict[str, Any], comments: list[dict[str, Any]] | None = None)
         trimmed = prompt if len(prompt) <= 460 else prompt[:457] + "…"
         lines.extend(["", trimmed])
     elif card.get("prompt_hidden"):
-        lines.extend(["", "🔒 Prompt скрыт"])
+        lines.extend(["", "🔒 Описание скрыто"])
     lines.extend(
         [
             "",
@@ -508,7 +508,7 @@ async def feed_remix(
         return
     user = await UserService.get_or_create(session, callback.from_user)
     try:
-        generation = await FeedService.remix(
+        await FeedService.remix(
             session,
             redis,
             source_generation_id=generation_id,
@@ -521,11 +521,11 @@ async def feed_remix(
     except (FeedError, FeedNotFoundError) as exc:
         await callback.answer(str(exc), show_alert=True)
         return
-    await callback.answer("Remix запущен")
+    await callback.answer("Повтор запущен")
     if isinstance(callback.message, Message):
         await callback.message.answer(
-            f"⏳ Повтор запущен: {generation.id}\n"
-            "Prompt исходной работы не передавался клиенту.",
+            "⏳ Повтор запущен.\n"
+            "ROXY взяла описание из исходной работы.",
             reply_markup=back_menu(),
         )
 
@@ -798,7 +798,7 @@ async def handle_deep_link(
                 )
                 return True
         try:
-            generation = await FeedService.remix(
+            await FeedService.remix(
                 session,
                 redis,
                 source_generation_id=link.generation_id,
@@ -815,8 +815,8 @@ async def handle_deep_link(
             await message.answer(f"Повтор не запущен: {exc}", reply_markup=back_menu())
             return True
         await message.answer(
-            f"⏳ Remix запущен: {generation.id}\n"
-            "Исходный prompt восстановлен сервером и не передавался в deep link.",
+            "⏳ Повтор запущен.\n"
+            "ROXY взяла описание из исходной работы.",
             reply_markup=back_menu(),
         )
         return True

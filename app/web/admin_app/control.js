@@ -11,19 +11,19 @@
   };
 
   const VIEWS = [
-    ["overview", "Обзор", "CONTROL"],
-    ["users", "Пользователи", "USERS"],
-    ["payments", "Платежи", "FINANCE"],
-    ["operations", "Операции", "OPERATIONS"],
-    ["support", "Поддержка", "SUPPORT"],
-    ["pricing", "Тарифы", "PRICING"],
-    ["cms", "CMS", "CONTENT"],
-    ["campaigns", "Рассылки", "NOTIFICATIONS"],
-    ["promos", "Промо", "PROMOS"],
-    ["content", "Модерация", "MODERATION"],
-    ["runtime", "Runtime", "RUNTIME"],
-    ["partners", "Партнёры", "PARTNERS"],
-    ["exports", "Экспорт", "EXPORT"],
+    ["overview", "Обзор", "Обзор"],
+    ["users", "Пользователи", "Пользователи"],
+    ["payments", "Платежи", "Финансы"],
+    ["operations", "Операции", "Работы"],
+    ["support", "Поддержка", "Поддержка"],
+    ["pricing", "Тарифы", "Тарифы"],
+    ["cms", "Контент", "Контент"],
+    ["campaigns", "Рассылки", "Уведомления"],
+    ["promos", "Промо", "Промо"],
+    ["content", "Модерация", "Модерация"],
+    ["runtime", "Настройки", "Настройки"],
+    ["partners", "Партнёры", "Партнёры"],
+    ["exports", "Экспорт", "Экспорт"],
   ];
 
   const dom = {};
@@ -74,6 +74,32 @@
     return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString("ru-RU");
   }
 
+  function statusLabel(value) {
+    const labels = {
+      active: "Активен",
+      inactive: "Отключён",
+      blocked: "Заблокирован",
+      pending: "Ожидает",
+      processing: "В обработке",
+      queued: "В очереди",
+      generating: "Создаётся",
+      succeeded: "Успешно",
+      failed: "Не получилось",
+      paid: "Выплачено",
+      rejected: "Отклонено",
+      canceled: "Отменено",
+      open: "Открыто",
+      in_progress: "В работе",
+      resolved: "Решено",
+      closed: "Закрыто",
+      visible: "Видно",
+      blurred: "Скрыто частично",
+      removed: "Убрано",
+    };
+    const normalized = String(value ?? "").toLowerCase();
+    return labels[normalized] || value || "—";
+  }
+
   function randomId(prefix = "web") {
     const value = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     return `${prefix}:${value}`;
@@ -84,7 +110,7 @@
     headers.set("Accept", options.accept || "application/json");
     headers.set("X-Request-Id", options.requestId || randomId("control-request"));
     if (options.auth !== false) {
-      if (!state.token) throw new Error("Admin session is not authenticated");
+      if (!state.token) throw new Error("Сессия администратора не подтверждена");
       headers.set("Authorization", `Bearer ${state.token}`);
     }
     if (options.telegram && tg?.initData) headers.set("X-Telegram-Init-Data", tg.initData);
@@ -142,8 +168,8 @@
   }
 
   async function stepUp(label) {
-    if (!tg?.initData) throw new Error("Fresh Telegram initData is required for MFA step-up");
-    if (state.stepReject) state.stepReject(new Error("Previous step-up was replaced"));
+    if (!tg?.initData) throw new Error("Откройте раздел внутри Telegram и повторите подтверждение");
+    if (state.stepReject) state.stepReject(new Error("Предыдущее подтверждение заменено"));
     dom.controlStepDescription.textContent = label;
     dom.controlStepOtp.value = "";
     dom.controlStepRecovery.value = "";
@@ -160,7 +186,7 @@
     const otp = dom.controlStepOtp.value.trim();
     const recovery = dom.controlStepRecovery.value.trim();
     if (!otp && !recovery) {
-      setMessage(dom.controlStepMessage, "Введите OTP или recovery code", "error");
+      setMessage(dom.controlStepMessage, "Введите код подтверждения или резервный код", "error");
       return;
     }
     dom.controlStepVerify.disabled = true;
@@ -180,7 +206,7 @@
       state.stepReject = null;
       resolve?.(result);
     } catch (error) {
-      setMessage(dom.controlStepMessage, error.message || "MFA step-up failed", "error");
+      setMessage(dom.controlStepMessage, error.message || "Код не подтверждён", "error");
     } finally {
       dom.controlStepVerify.disabled = false;
     }
@@ -191,7 +217,7 @@
     const reject = state.stepReject;
     state.stepResolve = null;
     state.stepReject = null;
-    reject?.(new Error("Step-up cancelled"));
+    reject?.(new Error("Подтверждение отменено"));
   }
 
   async function mutate(path, options = {}) {
@@ -396,11 +422,11 @@
     const grid = node("div", "control-grid");
     const metrics = [
       ["Пользователи", `${data.users?.active ?? 0} / ${data.users?.total ?? 0}`],
-      ["Генерации", `${data.generations?.active ?? 0} active · ${data.generations?.failed ?? 0} failed`],
-      ["Support", `${data.support?.open ?? 0} open`],
-      ["Withdrawals", `${data.withdrawals?.pending_or_processing ?? 0} pending/processing`],
-      ["Payments", `${data.payments?.succeeded ?? 0} succeeded`],
-      ["Credits sold", String(data.payments?.credits ?? 0)],
+      ["Работы", `${data.generations?.active ?? 0} в работе · ${data.generations?.failed ?? 0} не получилось`],
+      ["Поддержка", `${data.support?.open ?? 0} открыто`],
+      ["Выводы", `${data.withdrawals?.pending_or_processing ?? 0} в обработке`],
+      ["Платежи", `${data.payments?.succeeded ?? 0} успешно`],
+      ["Продано ROX", String(data.payments?.credits ?? 0)],
     ];
     for (const [title, value] of metrics) grid.appendChild(card(title, node("strong", "metric-value", value)));
     dom.controlView.replaceChildren(grid);
@@ -419,13 +445,13 @@
     const filter = node("div", "control-form-inline");
     filter.append(field("Поиск", search), searchButton);
     const userTable = table(
-      ["User", "Telegram", "Balance", "Status", "Actions"],
+      ["Пользователь", "Telegram", "Баланс", "Статус", "Действия"],
       data.items || [],
       (row) => {
         const actionRow = actions(
-          button(row.is_active ? "Block" : "Unblock", "table-action dangerous", () => {
+          button(row.is_active ? "Заблокировать" : "Разблокировать", "table-action dangerous", () => {
             openForm({
-              title: row.is_active ? "Block user" : "Unblock user",
+              title: row.is_active ? "Заблокировать пользователя" : "Разблокировать пользователя",
               fields: [{ name: "reason", label: "Причина", type: "textarea", maxLength: 500 }],
               onSubmit: async ({ reason }) => {
                 await mutate(`/api/v1/admin/control/users/${row.id}/${row.is_active ? "block" : "unblock"}`, {
@@ -437,18 +463,18 @@
               },
             });
           }),
-          button("Balance", "table-action", () => {
+          button("Баланс", "table-action", () => {
             openForm({
-              title: "Balance adjustment",
+              title: "Изменить баланс",
               fields: [
-                { name: "amount", label: "Credits (+/-)", type: "number", step: "0.01" },
+                { name: "amount", label: "ROX (+/-)", type: "number", step: "0.01" },
                 { name: "reason", label: "Причина", type: "textarea", maxLength: 500 },
               ],
               onSubmit: async ({ amount, reason }) => {
                 await mutate(`/api/v1/admin/control/users/${row.id}/balance`, {
                   body: { amount, reason },
                   sensitive: true,
-                  label: `Изменить баланс ${row.id} на ${amount} credits?`,
+                  label: `Изменить баланс ${row.id} на ${amount} ROX?`,
                 });
                 toast("Баланс обновлён", "ok");
                 await renderUsers(query);
@@ -456,7 +482,7 @@
             });
           }),
         );
-        return [row.username ? `@${row.username}\n${row.id}` : row.id, row.telegram_id, row.balance_credits, row.is_active ? "active" : "blocked", actionRow];
+        return [row.username ? `@${row.username}\n${row.id}` : row.id, row.telegram_id, row.balance_credits, row.is_active ? "Активен" : "Заблокирован", actionRow];
       },
     );
     dom.controlView.replaceChildren(card(`Пользователи · ${data.total ?? 0}`, userTable, filter));
@@ -465,29 +491,29 @@
   async function renderPayments() {
     const data = await api("/api/v1/admin/control/payments?limit=100");
     const paymentTable = table(
-      ["Payment", "Provider", "Amount", "Credits", "Status", "Actions"],
+      ["Платёж", "Провайдер", "Сумма", "ROX", "Статус", "Действия"],
       data.items || [],
       (row) => [
         row.id,
         row.provider,
         `${row.amount} ${row.currency}`,
         row.credits,
-        row.status,
+        statusLabel(row.status),
         actions(
-          button("Recheck", "table-action", async () => {
+          button("Проверить", "table-action", async () => {
             try {
               await mutate(`/api/v1/admin/control/payments/${row.id}/recheck`, { confirm: false });
-              toast("Recheck completed", "ok");
+              toast("Проверка завершена", "ok");
               await renderPayments();
             } catch (error) { toast(error.message, "error"); }
           }),
-          button("Reprocess", "table-action dangerous", async () => {
+          button("Повторить", "table-action dangerous", async () => {
             try {
               await mutate(`/api/v1/admin/control/payments/${row.id}/reprocess`, {
                 sensitive: true,
-                label: `Reprocess payment ${row.id}?`,
+                label: `Повторить обработку платежа ${row.id}?`,
               });
-              toast("Reprocess completed", "ok");
+              toast("Повтор выполнен", "ok");
               await renderPayments();
             } catch (error) { toast(error.message, "error"); }
           }),
@@ -500,70 +526,70 @@
   async function renderOperations() {
     const data = await api("/api/v1/admin/control/operations?limit=100");
     const operationTable = table(
-      ["Operation", "Model", "Status", "Cost", "Created", "Actions"],
+      ["Работа", "Модель", "Статус", "Стоимость", "Создана", "Действия"],
       data.items || [],
       (row) => [
         row.id,
         row.parameters?._model_id || row.provider || "—",
-        row.status,
+        statusLabel(row.status),
         row.cost_credits,
         formatDate(row.created_at),
         actions(
-          button("Preview", "table-action", async () => {
+          button("Детали", "table-action", async () => {
             try {
               const detail = await api(`/api/v1/admin/control/operations/${row.id}`);
               openForm({
-                title: `Operation ${row.id}`,
-                fields: [{ name: "preview", label: "Redacted detail", type: "textarea", value: json(detail), required: false }],
+                title: `Работа ${row.id}`,
+                fields: [{ name: "preview", label: "Детали", type: "textarea", value: json(detail), required: false }],
                 submitLabel: "Закрыть",
                 onSubmit: async () => true,
               });
             } catch (error) { toast(error.message, "error"); }
           }),
-          button("Replay", "table-action", async () => {
+          button("Повторить", "table-action", async () => {
             try {
               await mutate(`/api/v1/admin/control/operations/${row.id}/replay`, {
                 sensitive: true,
-                label: `Replay operation ${row.id} without double charge?`,
+                label: `Повторить работу ${row.id} без повторного списания?`,
               });
-              toast("Child operation queued", "ok");
+              toast("Повтор поставлен в очередь", "ok");
               await renderOperations();
             } catch (error) { toast(error.message, "error"); }
           }),
-          button("Refund", "table-action dangerous", () => openForm({
-            title: `Refund ${row.id}`,
+          button("Вернуть", "table-action dangerous", () => openForm({
+            title: `Возврат ${row.id}`,
             fields: [{ name: "reason", label: "Причина", type: "textarea", maxLength: 500 }],
             onSubmit: async ({ reason }) => {
               await mutate(`/api/v1/admin/control/operations/${row.id}/refund`, {
                 body: { reason },
                 sensitive: true,
-                label: `Refund operation ${row.id}?`,
+                label: `Вернуть оплату по операции ${row.id}?`,
               });
-              toast("Refund command completed", "ok");
+              toast("Возврат выполнен", "ok");
               await renderOperations();
             },
           })),
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("Generation operations", operationTable));
+    dom.controlView.replaceChildren(card("Операции генерации", operationTable));
   }
 
   async function renderSupport() {
     const data = await api("/api/v1/admin/control/tickets?limit=100");
     const ticketTable = table(
-      ["Ticket", "Topic", "Status", "Priority", "Assigned", "Actions"],
+      ["Обращение", "Тема", "Статус", "Приоритет", "Ответственный", "Действия"],
       data.items || [],
       (row) => [
         row.id,
         row.topic,
-        row.status,
+        statusLabel(row.status),
         row.priority,
         row.assigned_admin_id || "—",
-        actions(button("Open", "table-action", () => void renderTicket(row.id))),
+        actions(button("Открыть", "table-action", () => void renderTicket(row.id))),
       ],
     );
-    dom.controlView.replaceChildren(card("Support tickets", ticketTable));
+    dom.controlView.replaceChildren(card("Обращения в поддержку", ticketTable));
   }
 
   async function renderTicket(ticketId) {
@@ -574,16 +600,16 @@
       for (const message of ticket.messages || []) {
         const item = node("article", "list-card");
         item.append(
-          node("strong", "", message.is_admin ? "Admin" : "User"),
+          node("strong", "", message.is_admin ? "Администратор" : "Пользователь"),
           node("p", "", message.body),
           node("small", "muted", formatDate(message.created_at)),
         );
         messageList.appendChild(item);
       }
       const controls = actions(
-        button("Assign", "table-action", () => openForm({
-          title: "Assign ticket",
-          fields: [{ name: "assigned_admin_id", label: "Admin UUID (empty = unassign)", required: false }],
+        button("Назначить", "table-action", () => openForm({
+          title: "Назначить обращение",
+          fields: [{ name: "assigned_admin_id", label: "ID администратора (пусто = снять назначение)", required: false }],
           onSubmit: async ({ assigned_admin_id }) => {
             await mutate(`/api/v1/admin/control/tickets/${ticketId}/assign`, {
               body: { assigned_admin_id: assigned_admin_id || null },
@@ -826,19 +852,19 @@
       api("/api/v1/admin/trends"),
     ]);
     const promptTable = table(
-      ["Prompt", "Status", "Actions"],
+      ["Описание", "Статус", "Действия"],
       prompts.items || [],
       (row) => [
         `${row.title}\n${row.prompt.slice(0, 300)}`,
-        row.status,
+        statusLabel(row.status),
         actions(
-          ...["approve", "reject", "deactivate"].map((action) => button(action, action === "reject" ? "table-action dangerous" : "table-action", () => openForm({
-            title: `${action} prompt`,
-            fields: [{ name: "reason", label: "Reason", type: "textarea", maxLength: 1000 }],
+          ...["approve", "reject", "deactivate"].map((action) => button(action === "approve" ? "Одобрить" : action === "reject" ? "Отклонить" : "Отключить", action === "reject" ? "table-action dangerous" : "table-action", () => openForm({
+            title: action === "approve" ? "Одобрить описание" : action === "reject" ? "Отклонить описание" : "Отключить описание",
+            fields: [{ name: "reason", label: "Причина", type: "textarea", maxLength: 1000 }],
             onSubmit: async ({ reason }) => {
               await mutate(`/api/v1/admin/prompts/${row.id}/moderate`, {
                 body: { action, reason },
-                label: `${action} prompt ${row.id}?`,
+                label: `${action === "approve" ? "Одобрить" : action === "reject" ? "Отклонить" : "Отключить"} описание ${row.id}?`,
               });
               await renderContent();
             },
@@ -846,48 +872,48 @@
         ),
       ],
     );
-    const trendCreate = button("Create trend", "primary", () => openForm({
-      title: "Create trend",
+    const trendCreate = button("Создать тренд", "primary", () => openForm({
+      title: "Создать тренд",
       fields: [
-        { name: "title", label: "Title" },
-        { name: "payload", label: "Payload JSON", type: "textarea", value: "{}" },
+        { name: "title", label: "Название" },
+        { name: "payload", label: "Настройки", type: "textarea", value: "{}" },
       ],
       onSubmit: async ({ title, payload }) => {
         await mutate("/api/v1/admin/trends", {
           body: { title, payload: JSON.parse(payload || "{}") },
-          label: `Create trend ${title}?`,
+          label: `Создать тренд ${title}?`,
         });
         await renderContent();
       },
     }));
     const trendTable = table(
-      ["Trend", "Status", "Actions"],
+      ["Тренд", "Статус", "Действия"],
       trends.items || [],
-      (row) => [row.title, row.is_active ? "active" : "inactive", actions(button("Remove", "table-action dangerous", async () => {
+      (row) => [row.title, row.is_active ? "Активен" : "Отключён", actions(button("Удалить", "table-action dangerous", async () => {
         try {
-          await mutate(`/api/v1/admin/trends/${row.id}`, { method: "DELETE", label: `Remove trend ${row.title}?` });
+          await mutate(`/api/v1/admin/trends/${row.id}`, { method: "DELETE", label: `Удалить тренд ${row.title}?` });
           await renderContent();
         } catch (error) { toast(error.message, "error"); }
       }))],
     );
     const feedForm = node("div", "stack");
-    const generation = input("text", "", "Generation UUID");
-    const stateSelect = select([["visible", "visible"], ["blurred", "blurred"], ["removed", "removed"]], "blurred");
-    const reason = textarea("", "Moderation reason");
-    feedForm.append(field("Generation UUID", generation), field("State", stateSelect), field("Reason", reason));
-    feedForm.appendChild(button("Apply feed moderation", "primary", async () => {
+    const generation = input("text", "", "UUID работы");
+    const stateSelect = select([["visible", "Видно"], ["blurred", "Скрыто частично"], ["removed", "Убрано"]], "blurred");
+    const reason = textarea("", "Причина модерации");
+    feedForm.append(field("UUID работы", generation), field("Состояние", stateSelect), field("Причина", reason));
+    feedForm.appendChild(button("Применить модерацию", "primary", async () => {
       try {
         await mutate(`/api/v1/admin/feed/${generation.value.trim()}/moderation`, {
           body: { state: stateSelect.value, reason: reason.value },
-          label: `Set generation ${generation.value.trim()} to ${stateSelect.value}?`,
+          label: `Изменить видимость работы ${generation.value.trim()} на «${statusLabel(stateSelect.value)}»?`,
         });
-        toast("Feed moderation saved", "ok");
+        toast("Модерация сохранена", "ok");
       } catch (error) { toast(error.message, "error"); }
     }));
     dom.controlView.replaceChildren(
-      card("Prompt moderation", promptTable),
-      card("Trends", trendTable, actions(trendCreate)),
-      card("Feed moderation", feedForm),
+      card("Модерация описаний", promptTable),
+      card("Тренды", trendTable, actions(trendCreate)),
+      card("Модерация ленты", feedForm),
     );
   }
 
@@ -896,26 +922,26 @@
     const subscription = Boolean(data.subscription_required?.enabled);
     const body = pre(data);
     const controls = actions(
-      button(`Subscription required: ${subscription ? "ON" : "OFF"}`, "table-action", async () => {
+      button(`Обязательная подписка: ${subscription ? "включена" : "выключена"}`, "table-action", async () => {
         try {
           await mutate("/api/v1/admin/runtime/subscription-required", {
             body: { enabled: !subscription },
-            label: `Set subscription_required=${!subscription}?`,
+            label: `${!subscription ? "Включить" : "Выключить"} обязательную подписку?`,
           });
           await renderRuntime();
         } catch (error) { toast(error.message, "error"); }
       }),
-      button("Reload pricing", "table-action", async () => {
+      button("Обновить тарифы", "table-action", async () => {
         try {
           await mutate("/api/v1/admin/runtime/reload", {
-            label: "Reload runtime pricing from latest published TariffVersion?",
+            label: "Обновить тарифы из последней опубликованной версии?",
           });
-          toast("Runtime reloaded", "ok");
+          toast("Тарифы обновлены", "ok");
           await renderRuntime();
         } catch (error) { toast(error.message, "error"); }
       }),
     );
-    dom.controlView.replaceChildren(card("Runtime settings", body, controls));
+    dom.controlView.replaceChildren(card("Настройки приложения", body, controls));
   }
 
   async function renderPartners() {
@@ -931,18 +957,18 @@
         row.id,
         row.user_id,
         row.amount,
-        row.status,
-        actions(button("Change state", "table-action", () => openForm({
-          title: `Withdrawal ${row.id}`,
+        statusLabel(row.status),
+        actions(button("Изменить статус", "table-action", () => openForm({
+          title: `Выплата ${row.id}`,
           fields: [
-            { name: "status", label: "Target status", type: "select", options: [["processing", "processing"], ["paid", "paid"], ["rejected", "rejected"], ["canceled", "canceled"]] },
-            { name: "reason", label: "Reason", type: "textarea", maxLength: 500 },
+            { name: "status", label: "Новый статус", type: "select", options: [["processing", "В обработке"], ["paid", "Выплачено"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] },
+            { name: "reason", label: "Причина", type: "textarea", maxLength: 500 },
           ],
           onSubmit: async ({ status, reason }) => {
             await mutate(`/api/v1/admin/partners/withdrawals/${row.id}/state`, {
               body: { status, reason },
               sensitive: true,
-              label: `Move withdrawal ${row.id} to ${status}?`,
+              label: `Перевести выплату ${row.id} в статус «${statusLabel(status)}»?`,
             });
             await renderPartners();
           },
@@ -976,7 +1002,7 @@
   async function login(event) {
     event.preventDefault();
     if (!tg?.initData) {
-      setMessage(dom.controlLoginMessage, "Откройте control page из Telegram Mini App: signed initData отсутствует.", "error");
+      setMessage(dom.controlLoginMessage, "Откройте рабочий контур внутри Telegram.", "error");
       return;
     }
     const payload = {};
@@ -984,7 +1010,7 @@
     const recovery = dom.controlRecovery.value.trim();
     if (otp) payload.otp = otp;
     if (recovery) payload.recovery_code = recovery;
-    setMessage(dom.controlLoginMessage, "Проверяем admin identity…");
+    setMessage(dom.controlLoginMessage, "Проверяем доступ…");
     try {
       const result = await api("/api/v1/admin/auth/login", {
         method: "POST",
@@ -997,17 +1023,17 @@
         state.token = null;
         setMessage(
           dom.controlLoginMessage,
-          "Первичная настройка MFA выполняется в основной admin console. После настройки вернитесь сюда.",
+          "Сначала настройте дополнительную защиту в основной админке. После настройки вернитесь сюда.",
           "error",
         );
         return;
       }
-      if (!result.mfa_verified) throw new Error("MFA verification required");
+      if (!result.mfa_verified) throw new Error("Подтверждение не пройдено");
       state.me = await api("/api/v1/admin/auth/me");
-      if (!state.me.is_active || !state.me.role) throw new Error("Server did not confirm active admin role");
+      if (!state.me.is_active || !state.me.role) throw new Error("Доступ администратора не подтверждён");
       dom.controlIdentity.replaceChildren(
         node("strong", "", state.me.username ? `@${state.me.username}` : String(state.me.telegram_id)),
-        node("small", "", `${state.me.role} · server confirmed`),
+        node("small", "", `${state.me.role} · доступ подтверждён`),
       );
       dom.controlAuth.hidden = true;
       dom.controlShell.hidden = false;
@@ -1017,7 +1043,7 @@
     } catch (error) {
       state.token = null;
       state.me = null;
-      setMessage(dom.controlLoginMessage, error.message || "Login failed", "error");
+      setMessage(dom.controlLoginMessage, error.message || "Вход не выполнен", "error");
     }
   }
 
@@ -1044,6 +1070,6 @@
   tg?.ready?.();
   tg?.expand?.();
   if (!tg?.initData) {
-    setMessage(dom.controlLoginMessage, "Для admin control нужен запуск из Telegram Mini App.", "error");
+    setMessage(dom.controlLoginMessage, "Откройте рабочий контур внутри Telegram.", "error");
   }
 })();

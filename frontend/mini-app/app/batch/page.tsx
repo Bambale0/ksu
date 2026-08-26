@@ -63,6 +63,18 @@ function money(value?: string | number | null): string {
   return Number.isFinite(number) ? number.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : String(value);
 }
 
+function statusLabel(value?: string | null): string {
+  const labels: Record<string, string> = {
+    queued: "В очереди",
+    running: "Создаётся",
+    succeeded: "Готово",
+    failed: "Не получилось",
+    partial: "Частично готово",
+    canceled: "Отменено",
+  };
+  return value ? labels[value] || "В работе" : "В работе";
+}
+
 function batchFields(model: CatalogModel | null): UiField[] {
   if (!model) return [];
   return (model.ui_schema?.fields || []).filter((field) => (
@@ -149,7 +161,7 @@ export default function BatchPage() {
     if (!selected) return "Выберите модель";
     if (files.length < 2 || files.length > 20) return "Добавьте от 2 до 20 изображений";
     const promptField = selected.ui_schema?.fields?.find((field) => field.name === "prompt");
-    if (promptField?.required && !prompt.trim()) return "Добавьте prompt";
+    if (promptField?.required && !prompt.trim()) return "Добавьте описание";
     for (const field of fields) {
       const value = parameters[field.name];
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
@@ -233,10 +245,10 @@ export default function BatchPage() {
   };
 
   return (
-    <StandaloneShell kicker="Batch" title="Пакетная обработка" copy="2–20 изображений, один prompt и те же динамические настройки модели, что и в обычной генерации.">
+    <StandaloneShell kicker="Пакет" title="Пакетная обработка" copy="Загрузите 2–20 изображений, добавьте одно описание и запустите их одной задачей.">
       <div className="panel tool-panel">
         <label className="field"><span className="label">Модель</span><select className="control" value={modelId} onChange={(event) => chooseModel(event.target.value)}>{models.map((model) => <option key={model.id} value={model.id}>{model.title} · {money(model.price_rox)} ROX</option>)}</select></label>
-        <label className="field"><span className="label">Prompt</span><textarea className="control textarea" value={prompt} onChange={(event) => { setPrompt(event.target.value); setQuote(null); }} placeholder="Что изменить в каждом изображении?"/></label>
+        <label className="field"><span className="label">Описание</span><textarea className="control textarea" value={prompt} onChange={(event) => { setPrompt(event.target.value); setQuote(null); }} placeholder="Что изменить в каждом изображении?"/></label>
 
         {fields.length ? <div className="form-stack">{fields.map((field) => <DynamicBatchField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => { setParameters((current) => ({ ...current, [field.name]: value })); setQuote(null); }}/>)}</div> : null}
 
@@ -253,10 +265,10 @@ export default function BatchPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">История</span><h2>Последние пакеты</h2></div><button type="button" onClick={() => void loadJobs()}>Обновить</button></div>
         <div className="tool-grid">{jobs.length ? jobs.map((job) => <article className="tool-result-card" key={job.id}>
-          <div className="section-title"><div><span className="kicker">{job.model_id}</span><h2>{job.succeeded_count}/{job.input_count} готово</h2></div><span className={`status ${job.status}`}>{job.status}</span></div>
+          <div className="section-title"><div><span className="kicker">{job.model_id}</span><h2>{job.succeeded_count}/{job.input_count} готово</h2></div><span className={`status ${job.status}`}>{statusLabel(job.status)}</span></div>
           <div className="tool-progress"><i style={{ width: `${Math.max(0, Math.min(100, Number(job.progress_percent) || 0))}%` }}/></div>
           <div className="profile-stats"><div><strong>{job.succeeded_count}</strong><span>успешно</span></div><div><strong>{job.failed_count}</strong><span>ошибок</span></div><div><strong>{job.admin_free ? "0" : money(job.total_charged_credits)}</strong><span>ROX</span></div></div>
-          {job.items?.length ? <div className="media-grid">{job.items.map((item) => <div className="media-tile" key={item.ordinal}>{item.generation.result_url ? <img src={item.generation.result_url} alt={`Результат ${item.ordinal + 1}`}/> : <span className="media-placeholder"><small>{item.generation.error || item.generation.status}</small></span>}</div>)}</div> : null}
+          {job.items?.length ? <div className="media-grid">{job.items.map((item) => <div className="media-tile" key={item.ordinal}>{item.generation.result_url ? <img src={item.generation.result_url} alt={`Результат ${item.ordinal + 1}`}/> : <span className="media-placeholder"><small>{item.generation.error ? "Не получилось" : statusLabel(item.generation.status)}</small></span>}</div>)}</div> : null}
           {job.failed_count > 0 && !["running", "queued"].includes(job.status) ? <button className="secondary wide" type="button" disabled={busy} onClick={() => void retry(job)}>Повторить ошибки</button> : null}
         </article>) : <p className="muted">Пакетов пока нет.</p>}</div>
       </div>
