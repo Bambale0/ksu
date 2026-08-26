@@ -21,7 +21,14 @@ export default function GenerationActionsPage() {
   }, []);
 
   const loadActions = async (id: string) => {
-    if (actions[id]) { setActions((current) => ({ ...current, [id]: [] })); return; }
+    if (Object.prototype.hasOwnProperty.call(actions, id)) {
+      setActions((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
     setBusy(id); setError("");
     try {
       const payload = await customerRequest<{ actions: ActionItem[] }>(`/api/v1/generations/${encodeURIComponent(id)}/actions`);
@@ -46,16 +53,17 @@ export default function GenerationActionsPage() {
         <div className="transaction-list">
           {items.length ? items.map((item) => {
             const model = typeof item.model === "object" ? item.model?.title : String(item.model || "ROXY");
-            const available = actions[item.id];
+            const expanded = Object.prototype.hasOwnProperty.call(actions, item.id);
+            const available = actions[item.id] || [];
             return <div className="transaction" key={item.id} style={{ alignItems: "flex-start" }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <strong>{model || "ROXY"}</strong>
                 <small>{dateTime(item.created_at)} · {item.status}</small>
                 {item.prompt && !item.prompt_hidden ? <small>{item.prompt.slice(0, 140)}</small> : null}
-                {available?.length ? <div className="tool-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>{available.map((action) => <button className={action.id === "publish" ? "secondary" : "primary"} type="button" key={action.id} onClick={() => openAction(item.id, action.id)}>{action.label || action.id}</button>)}</div> : null}
-                {available && !available.length ? <small>Для этой работы дополнительных действий нет.</small> : null}
+                {expanded && available.length ? <div className="tool-actions" style={{ marginTop: 10, flexWrap: "wrap" }}>{available.map((action) => <button className={action.id === "publish" ? "secondary" : "primary"} type="button" key={action.id} onClick={() => openAction(item.id, action.id)}>{action.label || action.id}</button>)}</div> : null}
+                {expanded && !available.length ? <small>Для этой работы дополнительных действий нет.</small> : null}
               </div>
-              <button type="button" disabled={busy === item.id} onClick={() => void loadActions(item.id)}>{busy === item.id ? "…" : available ? "Свернуть" : "Действия"}</button>
+              <button type="button" disabled={busy === item.id} onClick={() => void loadActions(item.id)}>{busy === item.id ? "…" : expanded ? "Свернуть" : "Действия"}</button>
             </div>;
           }) : <p className="muted">Готовых работ пока нет.</p>}
         </div>
