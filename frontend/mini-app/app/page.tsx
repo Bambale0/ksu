@@ -10,6 +10,7 @@ import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { SingleFeedSurfaceGuard } from "@/components/single-feed-surface-guard";
 import { UniversalBackButton } from "@/components/universal-back-button";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
+import { WalletParity } from "@/components/wallet-parity";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
 
 export default function Page() {
@@ -22,6 +23,7 @@ export default function Page() {
       <CatalogFeatureHub />
       <CatalogParityFeatures />
       <CustomerParityHub />
+      <WalletParity />
       <GenerationQuantityControl />
       <UploadInputResetGuard />
       <PostPublishSharePrompt />
