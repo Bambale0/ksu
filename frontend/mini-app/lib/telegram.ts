@@ -16,6 +16,7 @@ type HapticFeedback = {
 export type TelegramWebApp = {
   initData?: string;
   initDataUnsafe?: { user?: TelegramUser; start_param?: string };
+  initParams?: { tgWebAppStartParam?: string };
   colorScheme?: "light" | "dark";
   viewportStableHeight?: number;
   safeAreaInset?: { top?: number; bottom?: number; left?: number; right?: number };
@@ -39,18 +40,86 @@ export type TelegramWebApp = {
 declare global {
   interface Window {
     Telegram?: { WebApp?: TelegramWebApp };
+    __ROXY_INITIAL_LAUNCH__?: { hash?: string; search?: string };
   }
 }
+
+const INITIAL_HASH_KEY = "__roxy_initial_hash";
+const INITIAL_SEARCH_KEY = "__roxy_initial_search";
 
 export function telegram(): TelegramWebApp | null {
   if (typeof window === "undefined") return null;
   return window.Telegram?.WebApp ?? null;
 }
 
+function paramsFromRaw(raw: string): URLSearchParams {
+  const value = String(raw || "").trim();
+  if (!value) return new URLSearchParams();
+  return new URLSearchParams(value.startsWith("#") || value.startsWith("?") ? value.slice(1) : value);
+}
+
+function launchParamFrom(raw: string, names: string[]): string {
+  const params = paramsFromRaw(raw);
+  for (const name of names) {
+    const value = String(params.get(name) || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+export function getStartParamFallback(): string {
+  if (typeof window === "undefined") return "";
+
+  // 1. Telegram's canonical parsed value.
+  const direct = String(telegram()?.initDataUnsafe?.start_param || "").trim();
+  if (direct) return direct;
+
+  // 2. Snapshot captured before telegram-web-app.js can rewrite launch params.
+  const snapshot = window.__ROXY_INITIAL_LAUNCH__;
+  for (const raw of [snapshot?.hash || "", snapshot?.search || ""]) {
+    const value = launchParamFrom(raw, ["tgWebAppStartParam", "startapp", "start_payload"]);
+    if (value) return value;
+  }
+
+  // 3. Telegram SDK raw init params.
+  const sdkValue = String(telegram()?.initParams?.tgWebAppStartParam || "").trim();
+  if (sdkValue) return sdkValue;
+
+  // 4. Persisted early snapshots survive client-side navigation/remounts.
+  for (const key of [INITIAL_HASH_KEY, INITIAL_SEARCH_KEY]) {
+    try {
+      const raw = window.sessionStorage.getItem(key) || "";
+      const value = launchParamFrom(raw, ["tgWebAppStartParam", "startapp", "start_payload"]);
+      if (value) return value;
+    } catch {
+      // Storage can be unavailable in restrictive WebViews.
+    }
+  }
+
+  // 5. Current URL fallback. Keep KSU's product-owned start_payload alias too.
+  for (const raw of [window.location.hash, window.location.search]) {
+    const value = launchParamFrom(raw, ["tgWebAppStartParam", "startapp", "start_payload"]);
+    if (value) return value;
+  }
+
+  // 6. Signed initData itself may still contain start_param even when SDK parsing is late.
+  const initDataStart = String(paramsFromRaw(telegram()?.initData || "").get("start_param") || "").trim();
+  if (initDataStart) return initDataStart;
+
+  // 7. Compatibility with WebAppInfo launcher URLs and manual QA links.
+  const search = paramsFromRaw(window.location.search);
+  const start = String(search.get("start") || "").trim();
+  if (start.startsWith("ref_")) return start;
+  const ref = String(search.get("ref") || "").trim().toUpperCase();
+  return ref ? `ref_${ref}` : "";
+}
+
 export function telegramHeaders(json = false): HeadersInit {
   const headers: Record<string, string> = { Accept: "application/json" };
   const initData = telegram()?.initData;
   if (initData) headers["X-Telegram-Init-Data"] = initData;
+  const startParam = getStartParamFallback();
+  if (startParam) headers["X-Telegram-Start-Param"] = startParam;
   if (json) headers["Content-Type"] = "application/json";
   return headers;
 }
@@ -74,8 +143,6 @@ export function initTelegram(): TelegramWebApp | null {
 function safeAreaValue(value: number | undefined, envName: string): string {
   const numeric = Number(value ?? 0);
   const pixels = Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
-  // Telegram and WebKit do not always report identical insets. Keep whichever
-  // one is larger so a notch/home indicator can never be covered.
   return `max(${pixels}px, env(${envName}, 0px))`;
 }
 
