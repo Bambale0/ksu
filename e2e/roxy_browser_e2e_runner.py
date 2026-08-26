@@ -59,7 +59,9 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(email).to_be_visible(timeout=8000)
     await email.fill("e2e@example.com")
 
-    pay = page.get_by_role("button", name=re.compile(r"Перейти к оплате|Создать оплату", re.I)).filter(visible=True).first
+    pay = page.locator("button:visible").filter(
+        has_text=re.compile(r"Перейти к оплате|Создать оплату", re.I)
+    ).first
     await expect(pay).to_be_enabled(timeout=8000)
     async with page.expect_response(
         lambda response: "/api/v1/payments/card/checkout" in response.url
