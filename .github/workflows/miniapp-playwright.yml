@@ -7,6 +7,10 @@ on:
     paths:
       - 'frontend/mini-app/**'
       - '.github/workflows/miniapp-playwright.yml'
+      - 'docker-compose.yml'
+      - 'app/core/runtime_services.py'
+      - 'app/workers/heartbeat_runner.py'
+      - '.github/workflows/deploy-production.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e:
+  miniapp-e2e:
+    name: miniapp-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
