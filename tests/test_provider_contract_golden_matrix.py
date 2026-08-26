@@ -24,6 +24,11 @@ VIDEO_LIST_FIELDS = {"video_urls", "reference_video_urls", "reference_video"}
 VIDEO_SINGLE_FIELDS = {"video_url", "first_clip_url"}
 AUDIO_LIST_FIELDS = {"reference_audio_urls"}
 AUDIO_SINGLE_FIELDS = {"audio_url", "driving_audio_url", "reference_voice"}
+PROVIDER_DROPPED_FIELDS = {
+    "seedance-2.0": {"return_last_frame"},
+    "seedance-2.0-fast": {"return_last_frame"},
+    "seedance-2.0-mini": {"return_last_frame"},
+}
 
 
 def _registered_models() -> list[dict[str, Any]]:
@@ -187,7 +192,8 @@ def test_every_callable_model_has_a_normalizable_golden_payload(model: dict[str,
         assert seconds is not None and seconds > 0
 
     normalized = _normalize_provider_payload(model, clean)
-    assert set(clean) <= set(normalized), (model["id"], set(clean) - set(normalized))
+    dropped = PROVIDER_DROPPED_FIELDS.get(model["id"], set())
+    assert set(clean) - dropped <= set(normalized), (model["id"], set(clean) - dropped - set(normalized))
 
 
 @pytest.mark.parametrize(
@@ -206,7 +212,8 @@ def test_historical_provider_specs_stay_normalizable_for_recovery(model: dict[st
         assert parameters.get(required) not in (None, "", []), (spec.id, required)
     ModelCatalog._validate_model_rules(spec, parameters)
     normalized = _normalize_provider_payload(model, parameters)
-    assert set(parameters) <= set(normalized), (model["id"], set(parameters) - set(normalized))
+    dropped = PROVIDER_DROPPED_FIELDS.get(model["id"], set())
+    assert set(parameters) - dropped <= set(normalized), (model["id"], set(parameters) - dropped - set(normalized))
 
 
 def test_suno_has_a_golden_payload_entry() -> None:

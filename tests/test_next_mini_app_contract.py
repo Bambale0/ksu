@@ -29,10 +29,15 @@ def test_customer_app_has_one_next_react_source() -> None:
 
 def test_generated_static_directory_contains_no_customer_source() -> None:
     files = sorted(path.name for path in GENERATED.iterdir() if path.is_file())
-    assert files == ["README.md"]
+    assert set(files) <= {"README.md", "release.json"}
+    assert "README.md" in files
     readme = _read(GENERATED / "README.md")
     assert "frontend/mini-app" in readme
     assert "Do not add customer UI source files" in readme
+    if "release.json" in files:
+        release = json.loads(_read(GENERATED / "release.json"))
+        assert sorted(release) == ["sha"]
+        assert isinstance(release["sha"], str)
 
 
 def test_docker_build_replaces_generated_directory_with_next_export() -> None:
@@ -54,6 +59,7 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
     app = _read(FRONTEND / "components" / "roxy-app.tsx")
     for token in (
         '"home"',
+        '"feed"',
         '"catalog"',
         '"create"',
         '"history"',
@@ -67,7 +73,31 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
         "Публикации",
     ):
         assert token in app
-    assert "Лента" not in app
+
+
+def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
+    layout = _read(FRONTEND / "app" / "layout.tsx")
+    page = _read(FRONTEND / "app" / "page.tsx")
+    guard = _read(FRONTEND / "components" / "single-feed-surface-guard.tsx")
+    public_dir = FRONTEND / "public"
+    styles_dir = FRONTEND / "app"
+
+    assert "feed-social-polish.js" not in layout
+    assert "feed-social.css" not in layout
+    assert "feed-social-interactions.css" not in layout
+    assert not (public_dir / "feed-social-polish.js").exists()
+    assert not (styles_dir / "feed-social.css").exists()
+    assert not (styles_dir / "feed-social-interactions.css").exists()
+    assert "<SingleFeedSurfaceGuard />" in page
+    assert 'currentRoute() === "feed"' in guard
+    assert "Лента" in guard
+    assert "roxy-hybrid-feed-screen" in guard
+    assert "roxy-feed-tiktok-preview" in guard
+    assert 'feedButtons.length > 1' in guard
+    assert 'setButtonLabel(duplicate, "Каталог")' in guard
+    assert "Do not redirect Feed away" in guard
+    assert "aspect-ratio: 3 / 4" in guard
+    assert "object-fit: contain" in guard
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:

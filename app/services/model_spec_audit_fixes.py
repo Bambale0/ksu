@@ -65,22 +65,21 @@ def install_model_spec_audit_fixes() -> None:
 
     @staticmethod
     def audited_rules(spec: Any, clean: dict[str, Any]) -> None:
-        previous_rules(spec, clean)
-
         if spec.id in seedance20_ids:
-            frame_mode = bool(clean.get("first_frame_url") or clean.get("last_frame_url"))
             reference_mode = bool(
                 clean.get("reference_image_urls")
                 or clean.get("reference_video_urls")
                 or clean.get("reference_audio_urls")
             )
-            if frame_mode and reference_mode:
-                raise catalog.InvalidModelParametersError(
-                    "Seedance first/last-frame mode and multimodal reference mode are mutually exclusive"
-                )
+            if reference_mode:
+                clean.pop("first_frame_url", None)
+                clean.pop("last_frame_url", None)
+                clean.pop("first_frame", None)
             value = clean.get("return_last_frame")
             if value is not None and not isinstance(value, bool):
                 raise catalog.InvalidModelParametersError("Seedance return_last_frame must be boolean")
+
+        previous_rules(spec, clean)
 
         if spec.id in {"grok-video-t2v", "grok-video-i2v"}:
             mode = str(clean.get("mode") or "normal")
@@ -152,16 +151,17 @@ def install_model_spec_audit_fixes() -> None:
                 or source.get("reference_video_urls")
                 or source.get("reference_audio_urls")
             )
-            if frame_mode and reference_mode:
-                raise video_contracts.KieVideoContractError(
-                    "Seedance first/last-frame mode and multimodal reference mode are mutually exclusive"
-                )
+            if reference_mode:
+                source.pop("first_frame_url", None)
+                source.pop("last_frame_url", None)
+                source.pop("first_frame", None)
+                frame_mode = False
             if return_last is not _MISSING and not isinstance(return_last, bool):
                 raise video_contracts.KieVideoContractError(
                     "Seedance return_last_frame must be boolean"
                 )
             normalized = previous_normalize(model, source)
-            if return_last is not _MISSING:
+            if frame_mode and return_last is not _MISSING:
                 normalized["return_last_frame"] = return_last
             return normalized
 

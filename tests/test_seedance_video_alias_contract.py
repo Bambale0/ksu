@@ -202,6 +202,6 @@ def test_seedance_reference_mode_ui_appends_images_instead_of_replacing() -> Non
     assert fields["reference_image_urls"]["max_items"] >= 3
 
     scenarios = {item["id"]: item for item in schema["scenario"]["items"]}
-    assert scenarios["first_frame"]["title"] == "Фото-референсы"
-    assert scenarios["first_frame"]["visible_fields"] == ["reference_image_urls"]
-    assert scenarios["first_frame"]["required_fields"] == ["reference_image_urls"]
+    assert scenarios["first_frame"]["title"] == "Референс"
+    assert scenarios["first_frame"]["visible_fields"] == ["first_frame_url"]
+    assert scenarios["first_frame"]["required_fields"] == ["first_frame_url"]

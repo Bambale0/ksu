@@ -213,18 +213,15 @@ export function CatalogFeatureHub() {
   return createPortal(
     <section className="catalog-feature-hub" aria-label="Фичи ROXY">
       <style>{`
-        .roxy-catalog-feature-mode > .screen-head,
-        .roxy-catalog-feature-mode > .segmented,
-        .roxy-catalog-feature-mode > .section-title,
-        .roxy-catalog-feature-mode > .model-grid {
-          display: none !important;
-        }
         .catalog-feature-hub {
           display: grid;
           gap: 18px;
           margin: 18px 0 26px;
+          max-width: 100%;
+          min-width: 0;
         }
         .catalog-feature-hero {
+          min-width: 0;
           padding: 22px;
           border-radius: 28px;
           border: 1px solid rgba(177, 92, 255, 0.28);
@@ -247,6 +244,7 @@ export function CatalogFeatureHub() {
         .catalog-feature-section {
           display: grid;
           gap: 12px;
+          min-width: 0;
         }
         .catalog-feature-section-title {
           display: flex;
@@ -262,12 +260,15 @@ export function CatalogFeatureHub() {
         }
         .catalog-feature-grid {
           display: grid;
+          grid-template-columns: minmax(0, 1fr);
           gap: 12px;
+          min-width: 0;
         }
         .catalog-feature-card {
           width: 100%;
+          min-width: 0;
           display: grid;
-          grid-template-columns: auto 1fr auto;
+          grid-template-columns: auto minmax(0, 1fr) auto;
           align-items: center;
           gap: 14px;
           padding: 18px;
@@ -285,11 +286,13 @@ export function CatalogFeatureHub() {
         }
         .catalog-feature-card strong {
           display: block;
+          overflow-wrap: anywhere;
           font-size: 19px;
           line-height: 1.05;
         }
         .catalog-feature-card small {
           display: block;
+          overflow-wrap: anywhere;
           margin-top: 7px;
           color: var(--muted);
           font-size: 13px;
@@ -315,6 +318,28 @@ export function CatalogFeatureHub() {
           font-weight: 800;
           font-size: 12px;
           white-space: nowrap;
+        }
+        @media (max-width: 360px) {
+          .catalog-feature-hero {
+            padding: 18px;
+            border-radius: 22px;
+          }
+          .catalog-feature-card {
+            grid-template-columns: 46px minmax(0, 1fr);
+            gap: 10px;
+            padding: 14px;
+            border-radius: 20px;
+          }
+          .catalog-feature-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 15px;
+          }
+          .catalog-feature-pill {
+            grid-column: 2;
+            justify-self: start;
+            white-space: normal;
+          }
         }
       `}</style>
 

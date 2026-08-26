@@ -68,11 +68,11 @@ def test_generation_provider_uses_generation_context_for_submit_payload() -> Non
     assert payload == {
         "resolution": "1K",
         "prompt": "source prompt",
-        "image_url": "/uploads/refs/image/u/2026/08/input.png",
+        "image_urls": ["/uploads/refs/image/u/2026/08/input.png"],
     }
 
 
-def test_generation_provider_preserves_explicit_reference_payload() -> None:
+def test_generation_provider_normalizes_seedance_hybrid_reference_payload() -> None:
     generation = _generation(
         input_url="/uploads/refs/image/u/2026/08/input.png",
         parameters={
@@ -84,8 +84,8 @@ def test_generation_provider_preserves_explicit_reference_payload() -> None:
 
     payload = GenerationProviderService._input_for(generation)
 
-    assert payload["first_frame_url"] == "/uploads/refs/image/u/2026/08/first.png"
     assert payload["reference_video_urls"] == ["/uploads/refs/video/u/2026/08/motion.mp4"]
+    assert "first_frame_url" not in payload
     assert "image_url" not in payload
 
 

@@ -5,7 +5,7 @@ from app.services.model_ui_contract import build_public_model_ui_schema
 
 def test_global_kie_upload_limit_covers_largest_public_model_reference() -> None:
     largest_public_bytes = 0
-    largest_field = ""
+    largest_fields: list[str] = []
 
     for model in ModelCatalog.list():
         schema = build_public_model_ui_schema(model)
@@ -16,8 +16,10 @@ def test_global_kie_upload_limit_covers_largest_public_model_reference() -> None
             size_bytes = int(max_size_mb) * 1024 * 1024
             if size_bytes > largest_public_bytes:
                 largest_public_bytes = size_bytes
-                largest_field = f"{model['id']}.{field['name']}"
+                largest_fields = [f"{model['id']}.{field['name']}"]
+            elif size_bytes == largest_public_bytes:
+                largest_fields.append(f"{model['id']}.{field['name']}")
 
     assert largest_public_bytes == 200 * 1024 * 1024
-    assert largest_field == "seedance-2.5.reference_video_urls"
+    assert "seedance-2.0.reference_video_urls" in largest_fields
     assert settings.kie_upload_max_bytes >= largest_public_bytes
