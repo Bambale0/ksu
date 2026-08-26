@@ -58,7 +58,7 @@ test('Kling multi-shot and elements use guided controls without placebo fields',
   await mock(page, 'kling');
   await page.goto('/mini-app/?route=create');
 
-  const sceneField = page.locator('.field', { hasText: 'Кадры multi-shot' }).first();
+  const sceneField = page.locator('.field', { hasText: 'Кадры по сценам' }).first();
   const scenes = sceneField.locator('[data-structured-kind="multi_prompt"]');
   const elements = page.locator('[data-structured-kind="kling_elements"]');
   await expect(elements).toBeVisible();

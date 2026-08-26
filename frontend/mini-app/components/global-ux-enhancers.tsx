@@ -21,11 +21,16 @@ type KlingElement = {
 type VideoRef = { url: string; start?: number; ends?: number };
 
 const STRUCTURED_LABELS: Record<string, StructuredKind> = {
+  "Кадры multi-shot": "multi_prompt",
   "Кадры по сценам": "multi_prompt",
   "Element references": "kling_elements",
   "Видео-референс": "video_list",
   "Gemini Omni audio IDs": "audio_ids",
   "Character IDs": "character_ids",
+};
+
+const DISPLAY_LABELS: Record<string, string> = {
+  "Кадры multi-shot": "Кадры по сценам",
 };
 
 function setNativeTextareaValue(textarea: HTMLTextAreaElement, value: string) {
@@ -166,9 +171,13 @@ export function GlobalUxEnhancers() {
     const scan = () => {
       const next: Host[] = [];
       for (const field of Array.from(document.querySelectorAll<HTMLElement>(".field"))) {
-        const label = field.querySelector<HTMLElement>(".label")?.textContent?.replace(/\s+\*$/, "").trim() || "";
+        const labelElement = field.querySelector<HTMLElement>(".label");
+        const label = labelElement?.textContent?.replace(/\s+\*$/, "").trim() || "";
         const kind = STRUCTURED_LABELS[label];
         if (!kind) continue;
+        if (labelElement && DISPLAY_LABELS[label]) {
+          labelElement.textContent = labelElement.textContent?.replace(label, DISPLAY_LABELS[label]) || DISPLAY_LABELS[label];
+        }
         const textarea = field.querySelector<HTMLTextAreaElement>("textarea.control");
         if (!textarea) continue;
         textarea.classList.add("structured-json-source");

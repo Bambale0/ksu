@@ -13,13 +13,17 @@ function labelText(element: Element | null | undefined): string {
   return element?.textContent?.replace(/\s+\*$/, "").trim() || "";
 }
 
+function isScenesLabel(value: string): boolean {
+  return value === "Кадры по сценам" || value === "Кадры multi-shot";
+}
+
 function bindScreen(screen: HTMLElement) {
   const toggle = Array.from(screen.querySelectorAll<HTMLInputElement>(".toggle-row input[type='checkbox']"))
     .find((input) => labelText(input.closest(".toggle-row")?.querySelector("strong")) === "Multi-shot");
   if (!toggle) return;
 
   const scenes = Array.from(screen.querySelectorAll<HTMLElement>(".field"))
-    .find((field) => labelText(field.querySelector(".label")) === "Кадры по сценам");
+    .find((field) => isScenesLabel(labelText(field.querySelector(".label"))));
   if (!scenes) return;
 
   const raw = scenes.querySelector<HTMLTextAreaElement>("textarea.control");
