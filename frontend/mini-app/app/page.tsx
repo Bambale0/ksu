@@ -1,6 +1,7 @@
 import { AppEntryGate } from "@/components/app-entry-gate";
 import { BalanceAnchorGuard } from "@/components/balance-anchor-guard";
 import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
+import { CatalogParityFeatures } from "@/components/catalog-parity-features";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
@@ -19,6 +20,7 @@ export default function Page() {
       <AppEntryGate />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
+      <CatalogParityFeatures />
       <CustomerParityHub />
       <GenerationQuantityControl />
       <UploadInputResetGuard />
