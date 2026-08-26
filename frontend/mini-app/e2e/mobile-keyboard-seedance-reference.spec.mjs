@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const referenceUrl = 'https://cdn.roxy.local/reference.png';
+const videoReferenceUrl = 'https://cdn.roxy.local/reference.mov';
 
 const seedance = {
   id: 'seedance-2.0',
@@ -29,7 +30,7 @@ const seedance = {
       { name: 'first_frame_url', label: 'Референс', control: 'file', group: 'references', accept: 'image/*', max_items: 1 },
       { name: 'last_frame_url', label: 'Последний кадр', control: 'file', group: 'references', accept: 'image/*', max_items: 1 },
       { name: 'reference_image_urls', label: 'Изображения', control: 'files', group: 'references', accept: 'image/*', max_items: 8 },
-      { name: 'reference_video_urls', label: 'Видео', control: 'files', group: 'references', accept: 'video/*', max_items: 3 },
+      { name: 'reference_video_urls', label: 'Видео', control: 'files', group: 'references', accept: 'video/*', max_items: 3, max_size_mb: 200 },
       { name: 'reference_audio_urls', label: 'Аудио', control: 'files', group: 'references', accept: 'audio/*', max_items: 3 },
       { name: 'duration', label: 'Длительность', control: 'combobox', group: 'output', suggestions: [5, 10, 15] },
       { name: 'resolution', label: 'Качество', control: 'combobox', group: 'output', suggestions: ['480p', '720p'] },
@@ -109,7 +110,13 @@ async function mockRoxy(page) {
         cost_rub: money(55 * quantity),
       });
     }
-    if (path === '/api/v1/uploads/kie') return json(route, { url: referenceUrl, name: 'reference.png', mime_type: 'image/png', size: 4, replayed: false }, 201);
+    if (path === '/api/v1/uploads/kie') {
+      const body = route.request().postDataBuffer()?.toString('latin1') || '';
+      const video = body.includes('reference.MOV');
+      return json(route, video
+        ? { url: videoReferenceUrl, name: 'reference.MOV', mime_type: 'video/quicktime', size: 9, replayed: false }
+        : { url: referenceUrl, name: 'reference.png', mime_type: 'image/png', size: 4, replayed: false }, 201);
+    }
     if (path === '/api/v1/references') return json(route, { items: [] });
     if (path === '/api/v1/generations' && method === 'POST') {
       const payload = route.request().postDataJSON();
@@ -200,6 +207,38 @@ test('Seedance multimodal reference mode sends reference_image_urls without fram
   expect(payload.parameters.last_frame_url).toBeUndefined();
   expect(payload.parameters.reference_video_urls).toBeUndefined();
   expect(payload.parameters.reference_audio_urls).toBeUndefined();
+});
+
+test('Seedance multimodal mode uploads an iOS MOV video and sends reference_video_urls', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockRoxy(page);
+  await page.goto('/mini-app/?route=create');
+
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const videoField = page.locator('.field').filter({ hasText: 'Видео' });
+  const videoInput = videoField.locator('input[type="file"]');
+  await expect(videoInput).toHaveAttribute('accept', 'video/*');
+  await videoInput.setInputFiles({
+    name: 'reference.MOV',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('mov-bytes'),
+  });
+  await expect(videoField.getByText('1 загружено')).toBeVisible();
+  await expect.poll(() => videoInput.evaluate((input) => input.value)).toBe('');
+
+  await page.getByRole('textbox', { name: /Промпт/ }).fill('Возьми движение и атмосферу из видео-референса');
+  await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
+
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
+  const request = await submitted;
+  const payload = request.postDataJSON();
+  expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.parameters.reference_video_urls).toEqual([videoReferenceUrl]);
+  expect(payload.parameters.reference_image_urls).toBeUndefined();
+  expect(payload.parameters.reference_audio_urls).toBeUndefined();
+  expect(payload.parameters.first_frame_url).toBeUndefined();
+  expect(payload.parameters.last_frame_url).toBeUndefined();
 });
 
 test('Mini App quantity picker sends six launches and total quote', async ({ page }) => {
