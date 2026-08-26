@@ -91,6 +91,13 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
         await crypto_tab.click()
         report.controls_seen.add("wallet:method:crypto")
 
+    # Leave the page in the same interaction state as a user who dismissed the
+    # wallet. Otherwise the modal intercepts pointer events for the next journey.
+    backdrop = page.locator(".sheet-overlay .overlay-backdrop:visible").first
+    if await backdrop.count():
+        await backdrop.evaluate("element => element.click()")
+    await expect(page.locator(".sheet-overlay")).to_have_count(0, timeout=8000)
+
     report.ok("wallet sheet + payment checkout")
 
 
