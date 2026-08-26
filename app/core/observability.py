@@ -133,6 +133,9 @@ DISTRIBUTED_EVENT_NAMES = (
     "media_ingest_processed",
     "media_reconcile_failure",
     "media_worker_loop_error",
+    "creator_partnership_grant_success",
+    "creator_partnership_grant_failure",
+    "creator_partnership_worker_loop_error",
 )
 
 _tracer_provider: TracerProvider | None = None
