@@ -8,9 +8,9 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
 
 from app.core.config import settings
+from app.core.observability import RESOURCE_POLICY_EVENTS, refresh_snapshot_metrics
 from app.db.session import SessionFactory
 from app.services.abuse_protection import ResourcePolicyError
-from app.core.observability import RESOURCE_POLICY_EVENTS, refresh_snapshot_metrics
 
 router = APIRouter(tags=["metrics"])
 
@@ -18,6 +18,11 @@ router = APIRouter(tags=["metrics"])
 def _authorize(authorization: str | None) -> None:
     expected = settings.metrics_bearer_token
     if not expected:
+        if settings.is_production:
+            raise HTTPException(
+                status_code=503,
+                detail="Metrics authorization is not configured",
+            )
         return
     scheme, _, token = (authorization or "").partition(" ")
     if scheme.lower() != "bearer" or not token or not hmac.compare_digest(token, expected):

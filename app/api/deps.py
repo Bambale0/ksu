@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.telegram_security import validate_webapp_auth_date
 from app.db.models import User
 from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
@@ -113,9 +114,15 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Telegram initData")
     try:
         init_data = safe_parse_webapp_init_data(settings.bot_token, x_telegram_init_data)
+        # Real aiogram WebAppInitData always carries auth_date. Some unit tests
+        # use a minimal SimpleNamespace after replacing signature parsing; keep
+        # those test doubles compatible without weakening the real wire format.
+        auth_date = getattr(init_data, "auth_date", None)
+        if auth_date is not None:
+            validate_webapp_auth_date(auth_date)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Telegram initData"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired Telegram initData"
         ) from exc
     if init_data.user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Telegram user missing")

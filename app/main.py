@@ -35,8 +35,18 @@ register_notification_events()
 logger = logging.getLogger(__name__)
 
 
+def _validate_production_security_configuration() -> None:
+    if not settings.is_production:
+        return
+    if settings.telegram_webhook_url and not settings.telegram_webhook_secret:
+        raise RuntimeError(
+            "TELEGRAM_WEBHOOK_SECRET is required when Telegram webhook delivery is enabled in production"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _validate_production_security_configuration()
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.redis = redis
     app.state.bot = None
