@@ -54,9 +54,9 @@ test('video prompt mode has no duration picker and submits gallery video without
   const calls = await mockPromptTools(page);
 
   await page.goto('/mini-app/prompt-tools/?mode=video');
-  await expect(page.getByText('Создание prompt')).toBeVisible();
+  await expect(page.getByText('Собери красивое описание')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Видео', exact: true })).toHaveClass(/active/);
-  await expect(page.getByText('Длительность целевой сцены')).toHaveCount(0);
+  await expect(page.getByText('Длительность сцены')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '5 сек' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '10 сек' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '15 сек' })).toHaveCount(0);
@@ -69,7 +69,7 @@ test('video prompt mode has no duration picker and submits gallery video without
   });
   await expect(page.getByText('Видео загружено · заменить')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Создать prompt' }).click();
+  await page.getByRole('button', { name: 'Подготовить описание' }).click();
   await expect(page.getByText('Готовый video prompt')).toBeVisible();
   expect(calls.videoPrompt).toEqual({
     video_url: 'https://cdn.roxy.test/gallery.mov',
@@ -82,8 +82,8 @@ test('Seedance prompt mode still shows duration picker', async ({ page }) => {
   await mockPromptTools(page);
 
   await page.goto('/mini-app/prompt-tools/?mode=seedance');
-  await expect(page.getByText('Создание prompt')).toBeVisible();
-  await expect(page.getByText('Длительность целевой сцены')).toBeVisible();
+  await expect(page.getByText('Собери красивое описание')).toBeVisible();
+  await expect(page.getByText('Длительность сцены')).toBeVisible();
   await expect(page.getByRole('button', { name: '5 сек', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '10 сек', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '15 сек', exact: true })).toBeVisible();
