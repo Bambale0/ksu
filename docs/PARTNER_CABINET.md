@@ -141,17 +141,20 @@ Telegram must also have the bot's **Main Mini App enabled in @BotFather**:
 → URL: <PUBLIC_BASE_URL>/mini-app/
 ```
 
-Without this BotFather setting Telegram does not set `bot_has_main_app`; `https://t.me/<bot>?startapp=...` cannot open the Main Mini App and Telegram clients may return `BOT_INVALID`.
+Without this BotFather setting Telegram reports `has_main_web_app=false`; `https://t.me/<bot>?startapp=...` cannot open the Main Mini App and Telegram clients may return `BOT_INVALID`.
+
+Runtime diagnostics are available at `GET /health/telegram`. It exposes the resolved bot username, `main_mini_app_enabled` and the expected Main Mini App link template without exposing the bot token.
 
 ### Launch payload recovery
 
 The Mini App follows the proven `tanyapi` flow:
 
 1. before `telegram-web-app.js` loads, ROXY snapshots the initial URL hash/search;
-2. it reads `initDataUnsafe.start_param`, `tgWebAppStartParam`, the early snapshot, current launch params and signed `initData`;
-3. the recovered value is sent as `X-Telegram-Start-Param` together with signed `X-Telegram-Init-Data`;
-4. the backend prefers Telegram's signed `start_param` and uses the recovered fallback only when the signed field is absent;
-5. referral attribution is resolved before `UserService.get_or_create`, so a new user is attached atomically on the first authenticated Mini App request.
+2. it prefers Telegram SDK `initData`/`start_param`, then recovers `tgWebAppData` and `tgWebAppStartParam` from the early launch snapshot if the SDK is not ready yet;
+3. Telegram auth `initData` is kept in page memory only and is **not** persisted to local/session storage;
+4. the recovered launch value is sent as `X-Telegram-Start-Param` together with `X-Telegram-Init-Data`;
+5. the backend validates signed `initData` first, prefers its signed `start_param`, and only then considers the recovered routing header;
+6. referral attribution is resolved before `UserService.get_or_create`, so a new user is attached atomically on the first authenticated Mini App request.
 
 Copy uses `navigator.clipboard` with the legacy hidden-textarea fallback. Share uses Telegram's `https://t.me/share/url` route from a direct user click.
 
