@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import type { ReactNode } from "react";
+import { FriendlyCopyGuard } from "@/components/friendly-copy-guard";
 import "./globals.css";
 import "./loader.css";
 import "./catalog.css";
@@ -15,7 +16,7 @@ import "./action-polish.css";
 
 export const metadata: Metadata = {
   title: "ROXY · AI Creative Studio",
-  description: "ROXY AI Creative Studio",
+  description: "Создавай фото, видео и музыку вместе с ROXY",
   applicationName: "ROXY",
 };
 
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         <Script src="/mini-app/rox-price-only.js" strategy="afterInteractive" />
         <Script src="/mini-app/keyboard-reference-ux.js" strategy="afterInteractive" />
+        <FriendlyCopyGuard />
         {children}
       </body>
     </html>
