@@ -58,6 +58,8 @@ const COPY = new Map<string, string>([
   ["ROXY creator", "Автор ROXY"],
   ["Публикаций пока нет. Открой работу и нажми “В профиль” или “В ленту + профиль”.", "Здесь пока пусто. Открой любимую работу и поделись ею в профиле или ленте."],
   ["Готовых работ пока нет.", "Твои готовые работы появятся здесь."],
+  ["Публичные работы автора", "Работы автора"],
+  ["В профиле пока нет публичных работ.", "Автор пока ничего не опубликовал."],
 
   ["Кабинет автора", "Партнёрская программа"],
   ["Реферальная ссылка, профиль, приглашения, бонусы и выплаты из backend referral/partner контура.", "Приглашай друзей, следи за бонусами и получай выплаты в одном месте."],
@@ -110,7 +112,21 @@ const COPY = new Map<string, string>([
   ["Модель и совместимые параметры сохранены, текст начинается с чистого поля.", "Стиль и настройки сохранили, а описание можно придумать заново."],
   ["Промпт сохранён. Измени нужные параметры ниже и запусти новый вариант.", "Идея сохранена. Измени то, что хочется, и создай новый вариант."],
   ["Промпт и совместимые настройки перенесены из выбранной работы.", "Идея и подходящие настройки уже перенесены из этой работы."],
+  ["Изменить параметры", "Что изменить"],
+  ["Параметры модели", "Дополнительные настройки"],
+  ["Проверьте параметры", "Проверь настройки"],
+  ["Новая версия", "Новый вариант"],
   ["Загружаю действие…", "Готовлю всё нужное…"],
+
+  ["Добавляйте ID по одному. ROXY соберёт массив автоматически.", "Добавляй по одному — ROXY всё соберёт сама."],
+  ["Каждый кадр — отдельный prompt и длительность. Сумма должна совпадать с общей длительностью Kling.", "Опиши каждую сцену и её длительность — ROXY соберёт всё в один ролик."],
+  ["Gemini Omni принимает максимум одно видео. Можно загрузить файл и указать используемый фрагмент.", "Добавь одно видео и при желании выбери нужный фрагмент."],
+  ["До 3 элементов. Для каждого: одно видео или 2–4 изображения; дополнительно можно прикрепить одно аудио.", "Добавь до трёх героев или объектов и прикрепи фото, видео или аудио для каждого."],
+
+  ["Референсы не нужны — сценарий можно запустить сразу.", "Дополнительные фото не нужны — можно создавать сразу."],
+  ["Готовый сценарий ROXY с серверным промптов и настройками.", "Готовая идея ROXY — добавь свои фото и запускай."],
+  ["ROXY model", "ROXY"],
+  ["Добавить референсы", "Добавить фото"],
 
   ["Открываю ссылку…", "Открываю ROXY…"],
 ]);
@@ -134,9 +150,13 @@ const STATUS = new Map<string, string>([
   ["canceled", "Отменено"],
 ]);
 
-function friendlyText(value: string): string {
-  const direct = COPY.get(value.trim());
-  if (direct) return value.replace(value.trim(), direct);
+function directCopy(value: string): string {
+  const trimmed = value.trim();
+  const direct = COPY.get(trimmed);
+  return direct ? value.replace(trimmed, direct) : value;
+}
+
+function statusCopy(value: string): string {
   let next = value;
   for (const [status, label] of STATUS) {
     next = next.replace(new RegExp(`\\b${status}\\b`, "gi"), label);
@@ -150,7 +170,14 @@ function shouldSkip(node: Node): boolean {
   return Boolean(parent.closest("script, style, code, pre, textarea, [data-roxy-copy-skip]"));
 }
 
-function normalize(root: ParentNode) {
+function shouldTranslateStatus(node: Text): boolean {
+  const parent = node.parentElement;
+  if (!parent) return false;
+  if (parent.classList.contains("status")) return true;
+  return parent.tagName === "SMALL" && Boolean(parent.closest(".history-card"));
+}
+
+function normalize(root: Node) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   let node = walker.nextNode();
@@ -160,11 +187,16 @@ function normalize(root: ParentNode) {
   }
   for (const textNode of textNodes) {
     const current = textNode.nodeValue || "";
-    const next = friendlyText(current);
+    let next = directCopy(current);
+    if (shouldTranslateStatus(textNode)) next = statusCopy(next);
     if (next !== current) textNode.nodeValue = next;
   }
 
-  for (const input of Array.from(root.querySelectorAll?.<HTMLInputElement | HTMLTextAreaElement>("input[placeholder], textarea[placeholder]") || [])) {
+  const queryRoot = root.nodeType === Node.ELEMENT_NODE || root.nodeType === Node.DOCUMENT_NODE || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE
+    ? root as ParentNode
+    : root.parentNode as ParentNode | null;
+  if (!queryRoot) return;
+  for (const input of Array.from(queryRoot.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[placeholder], textarea[placeholder]"))) {
     const placeholder = input.getAttribute("placeholder") || "";
     const next = PLACEHOLDERS.get(placeholder);
     if (next) input.setAttribute("placeholder", next);
@@ -181,7 +213,7 @@ export function FriendlyCopyGuard() {
         for (const record of records) {
           if (record.type === "characterData" && record.target.parentNode) normalize(record.target.parentNode);
           for (const added of Array.from(record.addedNodes)) {
-            if (added.nodeType === Node.ELEMENT_NODE || added.nodeType === Node.DOCUMENT_FRAGMENT_NODE) normalize(added as ParentNode);
+            if (added.nodeType === Node.ELEMENT_NODE || added.nodeType === Node.DOCUMENT_FRAGMENT_NODE || added.nodeType === Node.TEXT_NODE) normalize(added);
           }
         }
       });
