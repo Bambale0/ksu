@@ -26,12 +26,13 @@ export default function AccountPage() {
   const load = async () => {
     setError("");
     try { setOverview(await customerRequest<Overview>("/api/v1/me/overview")); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить профиль" ); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить профиль"); }
   };
 
   useEffect(() => { void load(); }, []);
 
   const items: HubItem[] = [
+    { title: "Пополнения и статусы", copy: "Пакеты, бонусные ROX и проверка незавершённых оплат", href: "/mini-app/payments/", badge: overview?.payments.total ? `${overview.payments.total}` : undefined },
     { title: "Уведомления", copy: "Результаты, платежи, промокоды и важные события", href: "/mini-app/notifications/", badge: overview?.notifications.unread ? `${overview.notifications.unread} новых` : undefined },
     { title: "Поддержка", copy: "Создать обращение или продолжить диалог", href: "/mini-app/support/", badge: overview?.support.statuses?.open ? `${overview.support.statuses.open} открыто` : undefined },
     { title: "Настройки", copy: "Язык, уведомления и видимость профиля", href: "/mini-app/settings/" },
@@ -40,6 +41,7 @@ export default function AccountPage() {
     { title: "Подписки", copy: "Авторы и отдельная лента их работ", href: "/mini-app/subscriptions/", badge: overview?.social.following ? `${overview.social.following}` : undefined },
     { title: "Управление историей", copy: "Скрыть работу или восстановить её", href: "/mini-app/history-manager/" },
     { title: "Действия с работами", copy: "Повторить, изменить, оживить или сменить параметры", href: "/mini-app/actions/" },
+    { title: "Скачать результаты", copy: "Оригинальные файлы из собственного хранилища ROXY", href: "/mini-app/downloads/" },
     { title: "Партнёрский доход", copy: "Вывод денег и перевод партнёрского баланса в ROX", href: "/mini-app/partner-wallet/", badge: Number(overview?.partner.available_rub || 0) > 0 ? `${compactNumber(overview?.partner.available_rub)} ₽` : undefined },
     { title: "Creator-партнёрство", copy: "Заявка на индивидуальные условия для авторов", href: "/mini-app/creator-partnership/" },
   ];
@@ -57,11 +59,10 @@ export default function AccountPage() {
 
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Возможности</span><h2>Аккаунт и сервисы</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
-        <div className="catalog-feature-grid">
-          {items.map((item) => <button className="catalog-feature-card" type="button" key={item.href} onClick={() => window.location.assign(item.href)}>
-            <span className="catalog-feature-icon" aria-hidden="true">RX</span>
-            <span><strong>{item.title}</strong><small>{item.copy}</small></span>
-            <span className="catalog-feature-pill">{item.badge || "Открыть"}</span>
+        <div className="tool-grid">
+          {items.map((item) => <button className="tool-result-card" type="button" key={item.href} onClick={() => window.location.assign(item.href)} style={{ textAlign: "left", width: "100%" }}>
+            <div className="section-title"><div><span className="kicker">ROXY</span><h2>{item.title}</h2></div>{item.badge ? <span className="status succeeded">{item.badge}</span> : null}</div>
+            <p className="muted">{item.copy}</p>
           </button>)}
         </div>
       </div>
