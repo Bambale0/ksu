@@ -13,11 +13,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml ./
+COPY constraints/runtime.txt ./constraints/runtime.txt
 COPY app ./app
 COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./
-RUN pip install --no-cache-dir . && rm -rf ./app/web/mini_app
+RUN pip install --no-cache-dir -c constraints/runtime.txt . \
+    && pip check \
+    && rm -rf ./app/web/mini_app
 COPY --from=miniapp /src/frontend/mini-app/out ./app/web/mini_app
 RUN printf '{"sha":"%s"}\n' "${MINI_APP_RELEASE_SHA}" > ./app/web/mini_app/release.json
 EXPOSE 8000
