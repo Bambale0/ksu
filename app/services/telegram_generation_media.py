@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -137,12 +137,12 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
 ):
     """Deliver generated media without silently degrading to text-only.
 
-    Telegram first gets a normal remote-URL send for the fast path. If the Bot
-    API cannot fetch or decode that URL, the worker uploads the original bytes
-    itself. Ready durable media in object storage is preferred so an expired
-    provider URL cannot break a later notification retry. If Telegram cannot
-    render the locally uploaded original as native photo/video/audio, the exact
-    file is sent as a document instead of pretending delivery succeeded.
+    Telegram first gets a normal remote-URL send for the fast path. A media
+    validation/fetch rejection triggers a server-side original download and
+    direct upload. Network errors, rate limits and recipient errors are not
+    misclassified as media-format failures and escape immediately to the durable
+    notification outbox. Ready durable media in object storage is preferred so
+    an expired provider URL cannot break a later retry.
     """
 
     asset = await _ready_asset(session, generation)
@@ -164,9 +164,7 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
             caption=caption,
             reply_markup=reply_markup,
         )
-    except (TelegramForbiddenError, TelegramRetryAfter):
-        raise
-    except TelegramAPIError as exc:
+    except TelegramBadRequest as exc:
         logger.info(
             "generation_notification_remote_media_failed",
             extra={
@@ -195,9 +193,7 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
                 caption=caption,
                 reply_markup=reply_markup,
             )
-        except (TelegramForbiddenError, TelegramRetryAfter):
-            raise
-        except TelegramAPIError as exc:
+        except TelegramBadRequest as exc:
             logger.info(
                 "generation_notification_native_upload_failed",
                 extra={
