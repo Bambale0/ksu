@@ -155,6 +155,14 @@ export function telegramHeaders(json = false): HeadersInit {
 export function initTelegram(): TelegramWebApp | null {
   const tg = telegram();
   if (!tg) return null;
+
+  // Telegram can expose tgWebAppData in the initial WebView URL before its SDK
+  // populates WebApp.initData. Hydrate that already-present, still-untrusted value
+  // into the in-memory SDK object so existing authenticated bootstrap gates do not
+  // skip the first API request. The backend remains the signature authority.
+  const recoveredInitData = getInitDataFallback();
+  if (!String(tg.initData || "").trim() && recoveredInitData) tg.initData = recoveredInitData;
+
   tg.ready?.();
   tg.expand?.();
   try {
