@@ -175,8 +175,8 @@ export function GenerationQuantityControl() {
 
   return createPortal(
     <div className="panel generation-quantity-panel">
-      <label className="label">Количество запусков</label>
-      <div className="segmented scrollable" aria-label="Количество запусков">
+      <label className="label">Сколько вариантов?</label>
+      <div className="segmented scrollable" aria-label="Количество вариантов">
         {Array.from({ length: maxQuantity }, (_, index) => index + 1).map((count) => (
           <button
             key={count}
@@ -192,7 +192,7 @@ export function GenerationQuantityControl() {
           </button>
         ))}
       </div>
-      <p className="muted">{quantity > 1 ? `Стоимость за ${quantity}` : "Один запуск"}. Каждый запуск создаёт отдельную работу.</p>
+      <p className="muted">{quantity > 1 ? `Создадим ${quantity} вариантов` : "Создадим один вариант"}. Каждый результат сохранится отдельно.</p>
     </div>,
     host,
   );
