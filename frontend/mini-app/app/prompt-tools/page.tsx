@@ -7,7 +7,6 @@ import { api } from "@/lib/api";
 import type { PromptToolCatalogItem, PromptToolTask } from "@/lib/types";
 
 type Mode = "image" | "video" | "seedance";
-type PromptResult = Record<string, unknown>;
 
 const SEEDANCE_PRICES: Record<5 | 10 | 15, number> = {
   5: 30,
@@ -43,28 +42,14 @@ function promptToolError(reason: unknown, fallback: string): string {
   return raw;
 }
 
-function resultText(result: PromptResult, ...keys: string[]): string {
-  for (const key of keys) {
-    const value = result[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "";
-}
-
-function resultList(result: PromptResult, key: string): string[] {
-  const value = result[key];
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item || "").trim()).filter(Boolean);
-}
-
 async function waitForTask(id: string): Promise<PromptToolTask> {
   for (let attempt = 0; attempt < 90; attempt += 1) {
     const task = await api.promptToolTask(id);
     if (task.status === "succeeded") return task;
-    if (task.status === "failed") throw new Error(promptToolError(task.error, "Не удалось подготовить промпт"));
+    if (task.status === "failed") throw new Error(promptToolError(task.error, "Не удалось подготовить описание"));
     await new Promise((resolve) => window.setTimeout(resolve, 2000));
   }
-  throw new Error("Промпт ещё готовится. Откройте этот инструмент чуть позже.");
+  throw new Error("Описание ещё готовится. Откройте историю инструмента чуть позже.");
 }
 
 export default function PromptToolsPage() {
@@ -76,7 +61,7 @@ export default function PromptToolsPage() {
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<PromptResult | null>(null);
+  const [result, setResult] = useState<Record<string, string> | null>(null);
   const [tools, setTools] = useState<PromptToolCatalogItem[]>([]);
 
   useEffect(() => {
@@ -138,51 +123,40 @@ export default function PromptToolsPage() {
         });
       }
       const done = await waitForTask(task.id);
-      setResult((done.result || {}) as PromptResult);
+      setResult(done.result || {});
     } catch (reason) {
-      setError(promptToolError(reason, "Не удалось подготовить промпт"));
+      setError(promptToolError(reason, "Не удалось подготовить описание"));
     } finally {
       setBusy(false);
     }
   };
 
-  const timeline = result ? resultList(result, "timeline_ru") : [];
-  const details = result ? resultList(result, "key_details") : [];
-  const resultEntries: Array<[string, string]> = result ? [
-    ["Промпт RU", resultText(result, "prompt_ru")],
-    ["Промпт EN", resultText(result, "prompt_en")],
-    ["Камера", resultText(result, "camera_movement_ru", "camera")],
-    ["Динамика", timeline.length ? timeline.map((item) => `• ${item}`).join("\n") : resultText(result, "motion")],
-    ["Стиль", resultText(result, "visual_style_ru")],
-    ["Звук", resultText(result, "audio_notes_ru")],
-    ["Ключевые детали", details.length ? details.map((item) => `• ${item}`).join("\n") : ""],
-    ["Рекомендация", resultText(result, "model_hint")],
-    ["Что исключить", resultText(result, "negative_prompt")],
-    ["Анализ", resultText(result, "summary", "generation_notes")],
+  const resultEntries = result ? [
+    ["Описание RU", result.prompt_ru],
+    ["Описание EN", result.prompt_en],
+    ["Камера", result.camera],
+    ["Динамика", result.motion],
+    ["Что исключить", result.negative_prompt],
+    ["Анализ", result.summary || result.generation_notes],
   ].filter((item): item is [string, string] => Boolean(item[1])) : [];
 
   return (
     <StandaloneShell
-      kicker="Промпты"
-      title="Промпт по фото / видео"
-      copy="Подготовить описание можно по фото или видео: загрузите референс, при желании уточните задачу — ROXY разберёт визуал, движение и камеру и соберёт готовый промпт."
+      kicker="Описания"
+      title="Подготовить описание"
+      copy="Загрузите фото или видео, добавьте идею, а ROXY соберёт текст для запуска."
     >
       <div className="panel tool-panel">
-        <div className="segmented scrollable" aria-label="Режим промпта">
-          <button type="button" className={mode === "image" ? "active" : ""} onClick={() => selectMode("image")}>Фото</button>
+        <div className="segmented scrollable" aria-label="Режим описания">
+          <button type="button" className={mode === "image" ? "active" : ""} onClick={() => selectMode("image")}>Фото / описание</button>
           <button type="button" className={mode === "video" ? "active" : ""} onClick={() => selectMode("video")}>Видео</button>
           <button type="button" className={mode === "seedance" ? "active" : ""} onClick={() => selectMode("seedance")}>Сценарий</button>
         </div>
         <div className="section-title"><div><span className="kicker">Стоимость</span><h2>{modePrice}</h2></div></div>
 
         <label className="field">
-          <span className="label">{mode === "video" ? "Что важно сохранить" : "Уточнение"}</span>
-          <textarea
-            className="control textarea"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={mode === "video" ? "Например: особенно точно передай движение камеры и финальный кадр" : "Необязательно: что особенно важно сохранить из фото"}
-          />
+          <span className="label">{mode === "video" ? "Инструкция" : "Описание идеи"}</span>
+          <textarea className="control textarea" value={text} onChange={(event) => setText(event.target.value)} placeholder={mode === "video" ? "Что важно извлечь из ролика?" : "Опишите сцену, стиль и желаемый результат"} />
         </label>
 
         {mode === "image" ? (
@@ -211,7 +185,7 @@ export default function PromptToolsPage() {
         ) : null}
 
         {error ? <div className="action-error" role="alert">{error}</div> : null}
-        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>{busy ? "Анализирую…" : "Создать промпт"}</button>
+        <button className="primary wide" type="button" disabled={busy || uploading} onClick={() => void submit()}>{busy ? "Готовлю описание…" : "Подготовить описание"}</button>
       </div>
 
       {resultEntries.length ? (
