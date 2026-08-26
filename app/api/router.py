@@ -7,6 +7,7 @@ from app.api.v1 import (
     admin_capabilities,
     admin_control,
     admin_creator_partnership,
+    admin_feed_moderation,
     admin_operations,
     admin_payments,
     admin_users,
@@ -14,6 +15,7 @@ from app.api.v1 import (
     creator_partnership,
     discovery,
     feed,
+    feed_adult,
     feed_reference_media,
     generation_action_contexts,
     generation_actions,
@@ -46,6 +48,7 @@ api_router.include_router(generation_action_contexts.router)
 api_router.include_router(generation_history.router)
 api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
+api_router.include_router(feed_adult.router)
 api_router.include_router(feed_reference_media.router)
 api_router.include_router(trends.router)
 api_router.include_router(prompt_tools.router)
@@ -66,3 +69,4 @@ api_router.include_router(admin_audit.router)
 api_router.include_router(admin_capabilities.router)
 api_router.include_router(admin_control.router)
 api_router.include_router(admin_creator_partnership.router)
+api_router.include_router(admin_feed_moderation.router)
