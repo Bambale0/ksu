@@ -48,13 +48,21 @@ export function WalletParity() {
         if (!sheet || !packages.length) return;
         const buttons = Array.from(sheet.querySelectorAll<HTMLElement>(".package-grid .package"));
         buttons.forEach((button, index) => {
-          button.querySelector(".package-bonus-live")?.remove();
+          const existing = button.querySelector<HTMLElement>(".package-bonus-live");
           const item = packages[index];
           const bonus = Number(item?.bonus_credits || 0);
-          if (!item || !(bonus > 0)) return;
+          if (!item || !(bonus > 0)) {
+            existing?.remove();
+            return;
+          }
+          const text = `+${compactNumber(bonus)} ROX 🎁`;
+          if (existing) {
+            if (existing.textContent !== text) existing.textContent = text;
+            return;
+          }
           const badge = document.createElement("span");
           badge.className = "package-bonus-live";
-          badge.textContent = `+${compactNumber(bonus)} ROX 🎁`;
+          badge.textContent = text;
           button.appendChild(badge);
         });
       });
