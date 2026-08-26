@@ -7,7 +7,9 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
+import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
@@ -35,6 +37,12 @@ class ProviderMediaTransport:
     Like ``banano_kling:tanyapi``, local images that providers commonly reject
     (WEBP/GIF/etc.) are normalized to a cached PNG transport artifact. The saved
     reference itself remains untouched and keeps its original stable ROXY URL.
+
+    API and worker processes are allowed to have separate local filesystems. If a
+    stable ROXY URL resolves to a missing local file in the worker, the worker
+    re-fetches that exact product-owned path from PUBLIC_BASE_URL and then uploads
+    the recovered bytes to Kie. Recovery is allowed only for the configured ROXY
+    host; user-controlled hosts and redirects are never followed.
     """
 
     @staticmethod
@@ -69,6 +77,84 @@ class ProviderMediaTransport:
                     break
                 digest.update(chunk)
         return digest.hexdigest()
+
+    @classmethod
+    def _canonical_owned_url(cls, value: str) -> str | None:
+        if cls._local_path(value) is None:
+            return None
+        base = urlsplit(settings.public_base_url.strip())
+        if base.scheme != "https" or not base.netloc:
+            return None
+        source = urlsplit(value)
+        if source.scheme != "https" or not source.netloc:
+            return None
+        if source.netloc.lower() != base.netloc.lower():
+            return None
+        if not source.path.startswith("/"):
+            return None
+        return urlunsplit((base.scheme, base.netloc, source.path, "", ""))
+
+    @staticmethod
+    def _recovery_client() -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(connect=8.0, read=120.0, write=10.0, pool=8.0),
+        )
+
+    @classmethod
+    async def _recover_owned_media(cls, value: str, expected_path: Path) -> Path:
+        recovery_url = cls._canonical_owned_url(value)
+        if recovery_url is None:
+            raise ProviderMediaTransportPermanentError(
+                "Stored provider input is unavailable on this worker"
+            )
+
+        suffix = expected_path.suffix[:16] if expected_path.suffix else ".bin"
+        handle = tempfile.NamedTemporaryFile(
+            prefix=".roxy-provider-recovery-",
+            suffix=suffix,
+            delete=False,
+        )
+        temp_path = Path(handle.name)
+        handle.close()
+        total = 0
+        try:
+            async with cls._recovery_client() as client:
+                async with client.stream("GET", recovery_url, headers={"Accept": "*/*"}) as response:
+                    response.raise_for_status()
+                    content_length = response.headers.get("content-length")
+                    if content_length:
+                        try:
+                            declared_size = int(content_length)
+                        except ValueError:
+                            declared_size = 0
+                        if declared_size > settings.kie_upload_max_bytes:
+                            raise ProviderMediaTransportPermanentError(
+                                "Stored provider input exceeds the provider upload limit"
+                            )
+                    with temp_path.open("wb") as output:
+                        async for chunk in response.aiter_bytes(1024 * 1024):
+                            if not chunk:
+                                continue
+                            total += len(chunk)
+                            if total > settings.kie_upload_max_bytes:
+                                raise ProviderMediaTransportPermanentError(
+                                    "Stored provider input exceeds the provider upload limit"
+                                )
+                            output.write(chunk)
+            if total <= 0:
+                raise ProviderMediaTransportPermanentError(
+                    "Stored provider input is empty"
+                )
+            return temp_path
+        except ProviderMediaTransportPermanentError:
+            temp_path.unlink(missing_ok=True)
+            raise
+        except (httpx.HTTPError, OSError) as exc:
+            temp_path.unlink(missing_ok=True)
+            raise ProviderMediaTransportError(
+                "Stored provider input could not be recovered from ROXY storage"
+            ) from exc
 
     @classmethod
     def _normalize_image_sync(cls, path: Path) -> Path:
@@ -143,23 +229,28 @@ class ProviderMediaTransport:
                     cached = cache.get(value)
                     if cached:
                         return cached
+
+                    recovered_path: Path | None = None
                     if not path.is_file() or path.stat().st_size <= 0:
-                        raise ProviderMediaTransportPermanentError(
-                            f"Stored provider input is missing: {value}"
-                        )
-                    provider_path = await cls._provider_safe_path(path)
+                        recovered_path = await cls._recover_owned_media(value, path)
+                        path = recovered_path
                     try:
-                        with provider_path.open("rb") as stream:
-                            uploaded = await client.upload_stream(
-                                file_name=provider_path.name,
-                                content_type=cls._content_type(provider_path),
-                                stream=stream,
-                                upload_path="ksu/runtime-inputs",
-                            )
-                    except KieProviderError as exc:
-                        raise ProviderMediaTransportError(
-                            f"Provider media upload failed: {exc}"
-                        ) from exc
+                        provider_path = await cls._provider_safe_path(path)
+                        try:
+                            with provider_path.open("rb") as stream:
+                                uploaded = await client.upload_stream(
+                                    file_name=provider_path.name,
+                                    content_type=cls._content_type(provider_path),
+                                    stream=stream,
+                                    upload_path="ksu/runtime-inputs",
+                                )
+                        except KieProviderError as exc:
+                            raise ProviderMediaTransportError(
+                                f"Provider media upload failed: {exc}"
+                            ) from exc
+                    finally:
+                        if recovered_path is not None:
+                            recovered_path.unlink(missing_ok=True)
                     cache[value] = uploaded.url
                     return uploaded.url
                 if isinstance(value, list):

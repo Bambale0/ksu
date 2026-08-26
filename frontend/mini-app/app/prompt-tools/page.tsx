@@ -33,11 +33,20 @@ function price(tool?: PromptToolCatalogItem): string {
   return formatRox(effective);
 }
 
+function promptToolError(reason: unknown, fallback: string): string {
+  const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+  if (!raw) return fallback;
+  if (/stored provider input|provider media upload|kie_api_key|\/uploads\/refs\/|https?:\/\//i.test(raw)) {
+    return "Не удалось обработать файл. Загрузите его ещё раз и повторите.";
+  }
+  return raw;
+}
+
 async function waitForTask(id: string): Promise<PromptToolTask> {
   for (let attempt = 0; attempt < 90; attempt += 1) {
     const task = await api.promptToolTask(id);
     if (task.status === "succeeded") return task;
-    if (task.status === "failed") throw new Error(task.error || "Не удалось подготовить описание");
+    if (task.status === "failed") throw new Error(promptToolError(task.error, "Не удалось подготовить описание"));
     await new Promise((resolve) => window.setTimeout(resolve, 2000));
   }
   throw new Error("Описание ещё готовится. Откройте историю инструмента чуть позже.");
@@ -88,7 +97,7 @@ export default function PromptToolsPage() {
       if (kind === "image") setImageUrl(uploaded.url);
       else setVideoUrl(uploaded.url);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл");
+      setError(promptToolError(reason, "Не удалось загрузить файл"));
     } finally {
       setUploading(false);
     }
@@ -116,7 +125,7 @@ export default function PromptToolsPage() {
       const done = await waitForTask(task.id);
       setResult(done.result || {});
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось подготовить описание");
+      setError(promptToolError(reason, "Не удалось подготовить описание"));
     } finally {
       setBusy(false);
     }
