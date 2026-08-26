@@ -18,12 +18,14 @@ The `generations` row mirrors Telegram delivery state for operations/support:
 
 On provider callback or reconciliation success the normal generation transaction stores the result and queues the notification. The independent notification worker can therefore deliver the result even when the user already closed the Mini App.
 
-For a successful generation the worker tries to send the first generated asset as native Telegram photo/video/audio and adds a compact caption containing status, model, result count and charged ROX. The message can include:
+For a successful generation the worker delivers the first generated asset as native Telegram photo/video/audio and adds a compact caption containing status, model, result count and charged ROX. The message can include:
 
 - `📥 Скачать оригинал` — the generated result URL when one exists;
 - `🚀 Открыть в ROXY` — a private-chat Web App button to `/mini-app/?route=history&generation=<generation_id>`.
 
-If Telegram cannot fetch/decode the provider media URL under Bot API media limits, delivery degrades to a normal text message with the same result/open buttons instead of losing the completion notification.
+Media delivery is deliberately stronger than a text notification. The worker first tries the fastest Bot API path using a remote HTTPS URL. If Telegram cannot fetch or decode that URL, KSU downloads the original bytes server-side and uploads the file directly to Telegram. When the durable media worker has already copied the result to object storage, that copy is preferred over the provider URL so later notification retries do not depend on an expiring provider asset.
+
+If Telegram cannot render a locally uploaded original as native photo/video/audio, KSU sends the exact file as a Telegram document. A media error is **not** converted into a text-only success: if both native upload and document upload fail, the exception reaches the durable outbox and the delivery remains retryable instead of being incorrectly marked `sent`.
 
 Failure notifications contain a short user-facing reason category and explicitly state the ROX refund when the failed generation was charged. Raw provider exception text is not exposed as customer copy.
 
