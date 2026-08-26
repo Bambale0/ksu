@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.services.media_assets import MediaIngestService
+from app.services.music_media import MusicMediaIngestService
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ async def _send_native(  # type: ignore[no-untyped-def]
 async def _download_original(
     *,
     generation: Generation,
+    media_type: str,
     result_url: str,
     ready_asset: MediaAsset | None,
     storage: ObjectStorage | None,
@@ -115,6 +117,9 @@ async def _download_original(
             path.unlink(missing_ok=True)
             raise
 
+    if media_type == "audio":
+        downloaded_audio = await MusicMediaIngestService._download(result_url)
+        return downloaded_audio.path
     downloaded = await MediaIngestService._download(result_url)
     return downloaded.path
 
@@ -174,6 +179,7 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
 
     path = await _download_original(
         generation=generation,
+        media_type=media_type,
         result_url=result_url,
         ready_asset=asset,
         storage=storage,
