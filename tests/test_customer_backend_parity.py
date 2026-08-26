@@ -45,6 +45,7 @@ def test_main_mini_app_exposes_parity_surfaces() -> None:
 
     assert "<CustomerParityHub />" in page
     assert "<CatalogParityFeatures />" in page
+    assert "<WalletParity />" in page
 
     for path in (
         "/mini-app/account/",
@@ -65,3 +66,16 @@ def test_main_mini_app_exposes_parity_surfaces() -> None:
 
     assert "/api/v1/discovery/home" in profile_hub
     assert "data-cms-discovery" in profile_hub
+
+
+def test_wallet_bonus_badges_follow_backend_catalog() -> None:
+    root = ROOT / "frontend/mini-app"
+    component = (root / "components/wallet-parity.tsx").read_text(encoding="utf-8")
+    styles = (root / "app/wallet-bonuses.css").read_text(encoding="utf-8")
+
+    assert "/api/v1/payments/card/packages" in component
+    assert "bonus_credits" in component
+    assert "package-bonus-live" in component
+    assert "/mini-app/payments/" in component
+    assert ":nth-child" not in styles
+    assert 'content: "+' not in styles
