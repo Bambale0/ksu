@@ -508,7 +508,7 @@ async def feed_remix(
         return
     user = await UserService.get_or_create(session, callback.from_user)
     try:
-        generation = await FeedService.remix(
+        await FeedService.remix(
             session,
             redis,
             source_generation_id=generation_id,
@@ -798,7 +798,7 @@ async def handle_deep_link(
                 )
                 return True
         try:
-            generation = await FeedService.remix(
+            await FeedService.remix(
                 session,
                 redis,
                 source_generation_id=link.generation_id,
