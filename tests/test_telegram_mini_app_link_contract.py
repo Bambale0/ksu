@@ -7,9 +7,8 @@ from app.services.feed_links import bot_start_link, mini_app_deep_link, post_pay
 from app.services.partner import PartnerService
 
 
-def test_app_placeholder_uses_main_mini_app_link(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_tanyapi_main_mini_app_link_contract(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "roxy_aicreativebot")
-    monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
     generation_id = uuid.UUID("9de02c55-341a-4fd2-9143-af627bef4173")
 
     assert mini_app_deep_link("ref_339795159") == (
@@ -38,10 +37,17 @@ def test_production_partner_referral_uses_tanyapi_bot_link(monkeypatch) -> None:
     )
 
 
-def test_real_direct_mini_app_short_name_keeps_path_segment(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_deployment_short_name_never_changes_main_mini_app_link(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "roxy_aicreativebot")
-    monkeypatch.setattr(settings, "telegram_mini_app_short_name", "studio")
+    for short_name in ("", "app", "main", "studio", "/roxy/"):
+        monkeypatch.setattr(settings, "telegram_mini_app_short_name", short_name)
+        assert mini_app_deep_link("ref_339795159") == (
+            "https://t.me/roxy_aicreativebot?startapp=ref_339795159"
+        )
 
-    assert mini_app_deep_link("ref_339795159") == (
-        "https://t.me/roxy_aicreativebot/studio?startapp=ref_339795159"
+
+def test_live_bot_username_can_override_stale_environment(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(settings, "bot_username", "StaleConfiguredBot")
+    assert mini_app_deep_link("ref_339795159", bot_username="RealTelegramBot") == (
+        "https://t.me/RealTelegramBot?startapp=ref_339795159"
     )

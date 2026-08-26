@@ -49,13 +49,19 @@ def test_main_menu_carries_referral_payload_into_web_app_url(monkeypatch: pytest
 def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     root = Path(__file__).resolve().parents[1]
     entry = (root / "frontend/mini-app/components/app-entry-gate.tsx").read_text(encoding="utf-8")
+    telegram = (root / "frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
     profile = (root / "frontend/mini-app/components/profile-startapp-app.tsx").read_text(encoding="utf-8")
     post = (root / "frontend/mini-app/components/feed-startapp-app.tsx").read_text(encoding="utf-8")
 
-    assert 'initDataUnsafe?.start_param' in entry
-    assert 'searchParams.get("tgWebAppStartParam")' in entry
-    assert 'searchParams.get("start_payload")' in entry
-    assert entry.index('searchParams.get("start_payload")') < entry.index("initDataUnsafe?.start_param")
+    # Launch-param parsing is centralized so entry routing and API attribution
+    # consume the same tanyapi-style recovery order instead of drifting apart.
+    assert "getStartParamFallback" in entry
+    assert "const payload = getStartParamFallback();" in entry
+    assert "initDataUnsafe?.start_param" in telegram
+    assert "tgWebAppStartParam" in telegram
+    assert '"start_payload"' in telegram
+    assert "__ROXY_INITIAL_LAUNCH__" in telegram
+
     assert "feed_" in entry
     assert "remix_" in entry
     assert "posts_" in entry
