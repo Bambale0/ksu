@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,7 @@ from app.db.models import (
     User,
 )
 from app.db.payment_models import ReferralRewardReversal
-from app.services.feed_links import bot_start_link, mini_app_deep_link, referral_payload
+from app.services.feed_links import mini_app_deep_link, referral_payload
 
 
 class PartnerWithdrawalError(ValueError):
@@ -269,7 +270,11 @@ class PartnerService:
         WebApp button.
         """
 
-        return bot_start_link(referral_payload(telegram_id))
+        username = settings.bot_username.strip().lstrip("@")
+        if not username:
+            return None
+        payload = referral_payload(telegram_id)
+        return f"https://t.me/{username}?start={quote(payload, safe='_-')}"
 
     @staticmethod
     def referral_mini_app_link(telegram_id: int) -> str | None:
