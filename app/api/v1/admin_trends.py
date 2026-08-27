@@ -83,9 +83,10 @@ async def web_admin_trend_update(
             "social.moderate",
             confirmed=_confirmed(confirmation),
         )
-        title, recipe = await TrendService.validate_recipe(
+        title = payload.title.strip()
+        recipe = await TrendService.validate_recipe(
             session,
-            title=payload.title,
+            title=title,
             payload=payload.payload,
         )
 
