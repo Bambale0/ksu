@@ -179,11 +179,11 @@ export default function PromptToolsPage() {
       copy="Загрузите референс, при желании уточните задачу — ROXY разберёт визуал, движение и камеру и соберёт готовый промпт."
     >
       <div className="panel tool-panel">
-        <div className="segmented scrollable" role="tablist" aria-label="Режим промпта">
+        <div className="segmented scrollable" role="group" aria-label="Режим промпта">
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === "image"}
+            aria-label="Фото"
+            aria-pressed={mode === "image"}
             className={mode === "image" ? "active" : ""}
             onClick={() => selectMode("image")}
           >
@@ -191,8 +191,8 @@ export default function PromptToolsPage() {
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === "video"}
+            aria-label="Видео"
+            aria-pressed={mode === "video"}
             className={mode === "video" ? "active" : ""}
             onClick={() => selectMode("video")}
           >
@@ -200,8 +200,8 @@ export default function PromptToolsPage() {
           </button>
           <button
             type="button"
-            role="tab"
-            aria-selected={mode === "seedance"}
+            aria-label="Сценарий"
+            aria-pressed={mode === "seedance"}
             className={mode === "seedance" ? "active" : ""}
             onClick={() => selectMode("seedance")}
           >
