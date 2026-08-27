@@ -113,7 +113,7 @@ export default function PaymentsPage() {
         <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div>
         {selected ? <div className="profile-stats"><div><strong>{compactNumber(selected.credits)}</strong><span>базовые ROX</span></div><div><strong>+{compactNumber(selected.bonus_credits)}</strong><span>бонус</span></div><div><strong>{compactNumber(selected.total_credits)}</strong><span>итого ROX</span></div></div> : null}
         <div className="form-stack">
-          <label className="field"><span className="label">Email для чека</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
+          <label className="field"><span className="label">Email для чека</span><input className="control" type="text" inputMode="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
           <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || !email.trim()} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${currency}` : "Пакет недоступен"}</button>
         </div>
       </div>
