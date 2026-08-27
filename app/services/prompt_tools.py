@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 PromptToolName = Literal["image_analysis", "prompt_builder", "video_prompt"]
 
 _TOOL_MODEL = {
-    "image_analysis": "gemini-2.5-pro",
+    "image_analysis": "gpt-5-4",
     "prompt_builder": "gpt-5-5",
-    "video_prompt": "gemini-2.5-pro",
+    "video_prompt": "gpt-5-5",
 }
 _TOOL_TITLE = {
     "image_analysis": "Prompt по фото",
