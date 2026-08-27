@@ -29,7 +29,7 @@ function price(tool?: PromptToolCatalogItem): string {
   if (!tool) return "—";
   const retail = Number(tool.retail_cost_credits ?? tool.cost_credits ?? 0);
   const effective = Number(tool.cost_credits ?? retail);
-  if (tool.admin_free && retail > 0) return `Для вас бесплатно · пользователям ${formatRox(retail)}`;
+  if (tool.admin_free && retail > 0) return formatRox(retail);
   if (effective <= 0) return "Бесплатно";
   return formatRox(effective);
 }
@@ -69,7 +69,7 @@ async function waitForTask(id: string): Promise<PromptToolTask> {
 
 export default function PromptToolsPage() {
   const [mode, setMode] = useState<Mode>("image");
-  const [text, setText] = useState("");
+  const [textByMode, setTextByMode] = useState<Record<Mode, string>>({ image: "", video: "", seedance: "" });
   const [duration, setDuration] = useState<5 | 10 | 15>(5);
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
@@ -85,6 +85,7 @@ export default function PromptToolsPage() {
   }, []);
 
   const toolById = useMemo(() => new Map(tools.map((item) => [item.id, item])), [tools]);
+  const text = textByMode[mode];
   const modePrice = mode === "seedance"
     ? formatRox(SEEDANCE_PRICES[duration])
     : mode === "video"
@@ -102,6 +103,10 @@ export default function PromptToolsPage() {
     const url = new URL(window.location.href);
     url.searchParams.set("mode", next);
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
+  const updateText = (value: string) => {
+    setTextByMode((current) => ({ ...current, [mode]: value }));
   };
 
   const upload = async (file: File, kind: "image" | "video") => {
@@ -186,7 +191,7 @@ export default function PromptToolsPage() {
           <textarea
             className="control textarea"
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => updateText(event.target.value)}
             placeholder={mode === "video" ? "Например: особенно точно передай движение камеры и финальный кадр" : "Необязательно: что особенно важно сохранить из фото"}
           />
         </label>
