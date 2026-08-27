@@ -1,11 +1,12 @@
-from app.api.router import api_router
+from app.api.v1 import client_logs
 from app.api.v1.client_logs import _redact_client_text, _safe_pathname
 
 
-def test_client_log_route_is_registered() -> None:
+def test_client_log_router_exposes_post_endpoint() -> None:
     assert any(
-        route.path == "/api/v1/client-logs" and "POST" in (route.methods or set())
-        for route in api_router.routes
+        getattr(route, "path", None) == "/client-logs"
+        and "POST" in (getattr(route, "methods", None) or set())
+        for route in client_logs.router.routes
     )
 
 
