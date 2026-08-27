@@ -10,7 +10,9 @@ def install_model_spec_admin_pricing_audit() -> None:
 
     The admin tariff API supports by_mode/by_resolution. Validate those tier
     keys against the same public ui_schema used by the Mini App so a published
-    tariff cannot silently target impossible provider values.
+    tariff cannot silently target impossible provider values. Dedicated flat
+    products such as Suno have no selectable pricing tiers and are handled by
+    the base tariff validator.
     """
 
     global _INSTALLED
@@ -32,6 +34,10 @@ def install_model_spec_admin_pricing_audit() -> None:
 
         for model_id, override in pricing.items():
             if not isinstance(override, dict):
+                continue
+            if str(model_id) == admin_pricing.MUSIC_MODEL_ID:
+                # Suno is a dedicated flat-priced generation service. The base
+                # validator already rejects per-second/tier pricing for it.
                 continue
             spec = ModelCatalog.get(str(model_id))
             schema = build_public_model_ui_schema(spec.public_dict())

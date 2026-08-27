@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.db.admin_models import AdminTrend
+from app.db.models import AdminAccount
+from app.services.admin_commands import AdminCommandLedger
+from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
-from app.services.model_catalog import InvalidModelParametersError, UnknownModelError
+from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
@@ -21,9 +26,19 @@ class RunTrendRequest(BaseModel):
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
 
 
+class InlineTrendWriteRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+
+
 def _domain_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
     if isinstance(exc, LookupError):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, AdminPolicyError):
+        return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, InsufficientBalanceError):
         return HTTPException(status_code=409, detail="Insufficient credits")
     if isinstance(exc, (TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
@@ -33,6 +48,31 @@ def _domain_error(exc: Exception) -> HTTPException:
 
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
+
+
+def _command_key(value: str | None) -> str:
+    key = str(value or "").strip() or f"inline-trend:{uuid.uuid4()}"
+    if len(key) > 160:
+        raise HTTPException(status_code=400, detail="Invalid Idempotency-Key")
+    return key
+
+
+def _request_id(request: Request) -> str:
+    value = str(request.headers.get("X-Request-Id") or "").strip()
+    return value[:96] if value else f"mini-app:{uuid.uuid4()}"
+
+
+async def _inline_admin(session: SessionDep, *, user_id: uuid.UUID) -> AdminAccount:
+    account = await session.scalar(
+        select(AdminAccount).where(
+            AdminAccount.user_id == user_id,
+            AdminAccount.is_active.is_(True),
+        )
+    )
+    if account is None:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    AdminPolicy.authorize_action(account, "social.moderate", confirmed=True)
+    return account
 
 
 async def _customer_price(
@@ -72,6 +112,189 @@ async def list_trends(
         ]
         return {**payload, "items": items}
     except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.get("/manage")
+async def inline_admin_trend_list(
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, Any]:
+    try:
+        await _inline_admin(session, user_id=user.id)
+        rows = list(
+            (
+                await session.scalars(
+                    select(AdminTrend).order_by(AdminTrend.created_at.desc())
+                )
+            ).all()
+        )
+        models = [spec.public_dict() for spec in SPECS if spec.media_type in {"image", "video"}]
+        models.sort(key=lambda item: (str(item["media_type"]), str(item["family"]), str(item["title"])))
+        return {
+            "items": [TrendService.admin_view(item) for item in rows],
+            "models": models,
+            "limits": {"max_references": 16, "max_tags": 20},
+        }
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.post("/manage")
+async def inline_admin_trend_create(
+    payload: InlineTrendWriteRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        account = await _inline_admin(session, user_id=user.id)
+        title = payload.title.strip()
+        recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
+        trend_id = uuid.uuid4()
+
+        async def operation() -> dict[str, Any]:
+            item = AdminTrend(
+                id=trend_id,
+                title=title,
+                payload=recipe,
+                is_active=payload.is_active,
+                created_by_admin_id=account.id,
+            )
+            session.add(item)
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_command_key(idempotency_key),
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={"operation": "trend.create.inline", "title": title, "payload": recipe},
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.patch("/manage/{trend_id}")
+async def inline_admin_trend_update(
+    trend_id: uuid.UUID,
+    payload: InlineTrendWriteRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        account = await _inline_admin(session, user_id=user.id)
+        title = payload.title.strip()
+        recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
+
+        async def operation() -> dict[str, Any]:
+            item = await session.scalar(
+                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
+            )
+            if item is None:
+                raise LookupError("Trend not found")
+            item.title = title
+            item.payload = recipe
+            item.is_active = payload.is_active
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_command_key(idempotency_key),
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={"operation": "trend.update.inline", "title": title, "payload": recipe, "is_active": payload.is_active},
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.delete("/manage/{trend_id}")
+async def inline_admin_trend_deactivate(
+    trend_id: uuid.UUID,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        account = await _inline_admin(session, user_id=user.id)
+
+        async def operation() -> dict[str, Any]:
+            item = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update())
+            if item is None:
+                raise LookupError("Trend not found")
+            item.is_active = False
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_command_key(idempotency_key),
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={"operation": "trend.deactivate.inline"},
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.post("/manage/{trend_id}/activate")
+async def inline_admin_trend_activate(
+    trend_id: uuid.UUID,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        account = await _inline_admin(session, user_id=user.id)
+
+        async def operation() -> dict[str, Any]:
+            item = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update())
+            if item is None:
+                raise LookupError("Trend not found")
+            item.is_active = True
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_command_key(idempotency_key),
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={"operation": "trend.activate.inline"},
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
         raise _domain_error(exc) from exc
 
 

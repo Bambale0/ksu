@@ -3,19 +3,15 @@
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { openTelegramShare } from "@/lib/telegram";
 import type { FeedSurface } from "@/lib/types";
 
 type PublishedPrompt = {
   id: string;
   surface: FeedSurface;
-  copied?: boolean;
+  shared?: boolean;
+  error?: string;
 };
-
-async function copyText(value: string | null | undefined): Promise<boolean> {
-  if (!value || typeof navigator === "undefined" || !navigator.clipboard) return false;
-  await navigator.clipboard.writeText(value);
-  return true;
-}
 
 export function PostPublishSharePrompt() {
   const [published, setPublished] = useState<PublishedPrompt | null>(null);
@@ -33,10 +29,18 @@ export function PostPublishSharePrompt() {
 
   const share = async () => {
     setBusy(true);
+    setPublished((current) => current ? { ...current, error: undefined } : current);
     try {
       const result = await api.share(published.id, published.surface);
-      const copied = await copyText(result.link);
-      setPublished((current) => current ? { ...current, copied } : current);
+      if (!result.link) throw new Error("Не удалось получить ссылку на публикацию");
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(result.link)}&text=${encodeURIComponent("Смотри, что сделали в ROXY ✨")}`;
+      openTelegramShare(shareUrl);
+      setPublished((current) => current ? { ...current, shared: true } : current);
+    } catch (reason) {
+      setPublished((current) => current ? {
+        ...current,
+        error: reason instanceof Error ? reason.message : "Не удалось поделиться публикацией",
+      } : current);
     } finally {
       setBusy(false);
     }
@@ -44,7 +48,7 @@ export function PostPublishSharePrompt() {
 
   return (
     <div className="toast post-publish-share-prompt" role="status">
-      <span>{published.copied ? "Ссылка скопирована" : "Работа опубликована"}</span>
+      <span>{published.error || (published.shared ? "Открываю отправку в Telegram" : "Работа опубликована")}</span>
       <button type="button" disabled={busy} onClick={() => void share()}>
         {busy ? "Готовлю…" : "Поделиться"}
       </button>

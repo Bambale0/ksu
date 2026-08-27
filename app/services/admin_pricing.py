@@ -27,6 +27,8 @@ ALLOWED_TARIFF_SECTIONS = frozenset(
         "generation_pricing",
     }
 )
+MUSIC_MODEL_ID = "suno-v5.5"
+_BASE_MUSIC_GENERATION_PRICE_ROX = Decimal(settings.music_generation_price_rox)
 
 
 class TariffValidationError(ValueError):
@@ -68,10 +70,17 @@ def _validate_generation_pricing(value: Any) -> None:
         raise TariffValidationError("generation_pricing must be an object")
 
     for model_id, override in value.items():
-        try:
-            spec = ModelCatalog.get(str(model_id))
-        except UnknownModelError as exc:
-            raise TariffValidationError(f"Unknown generation model: {model_id}") from exc
+        normalized_model_id = str(model_id)
+        if normalized_model_id == MUSIC_MODEL_ID:
+            price_mode = "flat"
+            known_fields: set[str] = set()
+        else:
+            try:
+                spec = ModelCatalog.get(normalized_model_id)
+            except UnknownModelError as exc:
+                raise TariffValidationError(f"Unknown generation model: {model_id}") from exc
+            price_mode = spec.price_mode
+            known_fields = set(spec.known_fields)
 
         path = f"generation_pricing.{model_id}"
         if not isinstance(override, dict):
@@ -85,7 +94,7 @@ def _validate_generation_pricing(value: Any) -> None:
                 f"Unknown generation pricing keys at {path}: {', '.join(unknown)}"
             )
 
-        price_key = "per_second" if spec.price_mode == "per_second" else "flat"
+        price_key = "per_second" if price_mode == "per_second" else "flat"
         if price_key not in override:
             raise TariffValidationError(f"{path} requires base {price_key} price")
         _positive_price(override[price_key], path=f"{path}.{price_key}")
@@ -97,7 +106,7 @@ def _validate_generation_pricing(value: Any) -> None:
             tiers = override.get(tier_key)
             if tiers is None:
                 continue
-            if parameter_key not in spec.known_fields:
+            if parameter_key not in known_fields:
                 raise TariffValidationError(
                     f"{path} cannot use {tier_key}: model has no {parameter_key} parameter"
                 )
@@ -123,14 +132,28 @@ def _default_generation_pricing() -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _music_price_from_generation_pricing(merged: dict[str, Any]) -> Decimal:
+    override = merged.get(MUSIC_MODEL_ID)
+    if isinstance(override, dict):
+        value = override.get("flat")
+    else:
+        value = override
+    if value is None:
+        return _BASE_MUSIC_GENERATION_PRICE_ROX
+    return Decimal(str(value))
+
+
 def _activate_generation_pricing(payload: dict[str, Any] | None) -> dict[str, Any]:
-    """Apply a published tariff over code defaults to the live quote/catalog runtime."""
+    """Apply a published tariff over code defaults to every live pricing surface."""
 
     merged = _default_generation_pricing()
     section = (payload or {}).get("generation_pricing")
     if isinstance(section, dict):
         merged.update(section)
     settings.generation_pricing_json = json.dumps(merged, separators=(",", ":"), sort_keys=True)
+    # Music uses its dedicated generation service, but its retail price is owned
+    # by the same published admin tariff as every image/video model.
+    settings.music_generation_price_rox = _music_price_from_generation_pricing(merged)
     return merged
 
 
@@ -213,7 +236,7 @@ class AdminPricingService:
 
     @staticmethod
     async def hydrate_runtime(session: AsyncSession) -> dict[str, Any]:
-        """Restore the latest published generation tariff after a process restart."""
+        """Restore the latest published generation tariff from PostgreSQL."""
 
         item = await session.scalar(
             select(TariffVersion)

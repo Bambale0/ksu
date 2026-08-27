@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { copyToClipboard } from "@/lib/telegram";
 import type { FeedCard, FeedSurface } from "@/lib/types";
 import { Icon } from "./icons";
 import { StandaloneShell } from "./standalone-shell";
@@ -69,10 +70,12 @@ export function FeedStartApp({
 
   const copyLink = async () => {
     if (!card || !validReferral) return;
+    setError("");
     try {
       const result = await api.share(card.id, surface);
       if (!result.link) throw new Error("Ссылка недоступна");
-      await navigator.clipboard.writeText(result.link);
+      const copied = await copyToClipboard(result.link);
+      if (!copied) throw new Error("Не удалось скопировать ссылку");
       setNotice("Ссылка на работу скопирована");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось скопировать ссылку");
