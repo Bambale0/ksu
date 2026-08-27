@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/admin-app/trends.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="/admin-app/trends.js" defer></script>
+  <script src="/admin-app/admin-navigation.js" defer></script>
 </head>
 <body>
   <div class="admin-auth" id="trendAuth">
@@ -23,14 +24,14 @@
         <button class="primary" type="submit">Войти</button>
       </form>
       <div class="form-message" id="trendLoginMessage" role="status" aria-live="polite"></div>
-      <a class="table-action trend-back-link" href="/admin-app/">← Основная админка</a>
+      <a class="table-action trend-back-link" data-preserve-launch href="/admin-app/">← Основная админка</a>
     </section>
   </div>
 
   <div class="trend-shell" id="trendShell" hidden>
     <header class="topbar trend-topbar">
       <div class="trend-heading">
-        <a class="table-action" href="/admin-app/">← Админка</a>
+        <a class="table-action" data-preserve-launch href="/admin-app/">← Админка</a>
         <div><span class="eyebrow">Контент ROXY</span><h1>Тренды</h1></div>
       </div>
       <div class="topbar-actions">
