@@ -3,21 +3,7 @@ name: ROXY Release Gate
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/mini-app/**"
-      - "Dockerfile"
-      - "scripts/check_roxy_release.py"
-      - "tests/test_next_mini_app_contract.py"
-      - "docs/ROXY_DESIGN_SYSTEM.md"
-      - ".github/workflows/roxy-release-gate.yml"
   pull_request:
-    paths:
-      - "frontend/mini-app/**"
-      - "Dockerfile"
-      - "scripts/check_roxy_release.py"
-      - "tests/test_next_mini_app_contract.py"
-      - "docs/ROXY_DESIGN_SYSTEM.md"
-      - ".github/workflows/roxy-release-gate.yml"
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  contract:
+  release-gate:
+    name: release-gate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -47,7 +34,7 @@ jobs:
 
       - name: Install Mini App dependencies
         working-directory: frontend/mini-app
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck
         working-directory: frontend/mini-app

@@ -70,7 +70,15 @@ def test_creator_worker_is_deployed_and_periodic() -> None:
     config = _read("app/core/config.py")
     env = _read(".env.example")
     assert "creator-partnership-worker:" in compose
-    assert "python -m app.workers.creator_partnership" in compose
+    # The hourly grant loop now runs through the shared heartbeat wrapper so it
+    # stays observable between hourly grant passes while preserving the same
+    # underlying worker module.
+    creator_block = compose.split("  creator-partnership-worker:\n", 1)[1].split(
+        "\n  backup-worker:", 1
+    )[0]
+    assert "app.workers.heartbeat_runner" in creator_block
+    assert "creator-partnership-worker" in creator_block
+    assert "app.workers.creator_partnership" in creator_block
     assert "CreatorPartnershipService.grant_due_current_period" in worker
     assert "creator_partnership_grant_interval_seconds" in worker
     assert "creator_partnership_grant_interval_seconds: int = 3600" in config

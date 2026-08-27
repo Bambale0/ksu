@@ -23,7 +23,7 @@ jobs:
        github.event.workflow_run.event == 'push') ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     environment: production
 
     steps:
@@ -36,37 +36,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           api_header=(
             -H "Authorization: Bearer ${GH_TOKEN}"
             -H "Accept: application/vnd.github+json"
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
-
           main_sha="$(curl -fsSL "${api_header[@]}" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" | jq -r '.object.sha')"
-
           if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
             deploy_sha="${WORKFLOW_SHA}"
           else
             deploy_sha="${main_sha}"
           fi
-
           if [[ -z "${deploy_sha}" || "${deploy_sha}" == "null" ]]; then
             echo "Unable to resolve deployment SHA" >&2
             exit 1
           fi
-
           if [[ "${deploy_sha}" != "${main_sha}" ]]; then
             echo "Target ${deploy_sha} is no longer main HEAD (${main_sha}); skipping stale deployment."
             echo "superseded=true" >> "${GITHUB_OUTPUT}"
           else
             echo "superseded=false" >> "${GITHUB_OUTPUT}"
           fi
-
           echo "sha=${deploy_sha}" >> "${GITHUB_OUTPUT}"
 
-      - name: Wait for all required main checks
+      - name: Wait for complete release gate
         if: steps.target.outputs.superseded != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,23 +68,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")
-          deadline=$((SECONDS + 900))
-
+          required=(
+            "CI"
+            "Admin Console"
+            "Batch Generation"
+            "Mini App Playwright E2E"
+            "ROXY E2E"
+            "ROXY Release Gate"
+          )
+          deadline=$((SECONDS + 1500))
           api_header=(
             -H "Authorization: Bearer ${GH_TOKEN}"
             -H "Accept: application/vnd.github+json"
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
-
           while (( SECONDS < deadline )); do
             payload="$(curl -fsSL "${api_header[@]}" \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${DEPLOY_SHA}&event=push&per_page=100")"
-
             waiting=0
             failed=0
-
             for workflow in "${required[@]}"; do
               status="$(jq -r --arg name "${workflow}" '
                 [.workflow_runs[] | select(.name == $name)]
@@ -104,30 +100,24 @@ jobs:
                 | last
                 | .conclusion // ""
               ' <<<"${payload}")"
-
               echo "${workflow}: status=${status} conclusion=${conclusion:-pending}"
-
               if [[ "${status}" == "completed" && "${conclusion}" != "success" ]]; then
                 failed=1
               elif [[ "${status}" != "completed" ]]; then
                 waiting=1
               fi
             done
-
             if (( failed )); then
               echo "A required production gate failed for ${DEPLOY_SHA}." >&2
               exit 1
             fi
-
             if (( waiting == 0 )); then
-              echo "All production gates are green for ${DEPLOY_SHA}."
+              echo "Complete release gate is green for ${DEPLOY_SHA}."
               exit 0
             fi
-
             sleep 10
           done
-
-          echo "Timed out waiting for required production gates." >&2
+          echo "Timed out waiting for complete production release gate." >&2
           exit 1
 
       - name: Validate deployment secrets
@@ -143,25 +133,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           missing=()
           [[ -n "${DEPLOY_HOST}" ]] || missing+=(DEPLOY_HOST)
           [[ -n "${DEPLOY_USER}" ]] || missing+=(DEPLOY_USER)
           [[ -n "${DEPLOY_PATH}" ]] || missing+=(DEPLOY_PATH)
           [[ -n "${DEPLOY_SSH_KEY}" ]] || missing+=(DEPLOY_SSH_KEY)
           [[ -n "${DEPLOY_KNOWN_HOSTS}" ]] || missing+=(DEPLOY_KNOWN_HOSTS)
-
           if (( ${#missing[@]} )); then
             printf '::error::Production deploy is not configured. Missing Actions secrets: %s\n' "${missing[*]}"
             exit 1
           fi
-
           port="${DEPLOY_PORT:-22}"
           if ! [[ "${port}" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
             echo "DEPLOY_PORT must be a valid TCP port." >&2
             exit 1
           fi
-
           echo "configured=true" >> "${GITHUB_OUTPUT}"
           echo "port=${port}" >> "${GITHUB_OUTPUT}"
 
@@ -189,7 +175,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           ssh \
             -i "${HOME}/.ssh/ksu_deploy" \
             -p "${DEPLOY_PORT}" \
@@ -200,23 +185,22 @@ jobs:
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "remote_script=\"/tmp/ksu-deploy-${DEPLOY_SHA}.sh\"; cat > \"\${remote_script}\"; DEPLOY_SHA='${DEPLOY_SHA}' DEPLOY_PATH='${DEPLOY_PATH}' bash \"\${remote_script}\"; status=\$?; rm -f \"\${remote_script}\"; exit \"\${status}\"" <<'REMOTE'
           set -Eeuo pipefail
-
           cd "${DEPLOY_PATH}"
           test -d .git
           test -f docker-compose.yml
           test -f .env
 
-          build_services=(
+          application_services=(
             app
             generation-worker
             media-worker
             payment-worker
+            notification-worker
+            admin-campaign-worker
+            prompt-tool-worker
             creator-partnership-worker
           )
-          runtime_services=(
-            "${build_services[@]}"
-            backup-worker
-          )
+          runtime_services=("${application_services[@]}" backup-worker)
 
           diagnostics() {
             code=$?
@@ -230,12 +214,13 @@ jobs:
           echo "Deploying ${DEPLOY_SHA} into ${DEPLOY_PATH}"
           previous_sha="$(git rev-parse HEAD)"
           echo "Previous SHA: ${previous_sha}"
-
           git fetch --prune origin main
           git cat-file -e "${DEPLOY_SHA}^{commit}"
           git reset --hard "${DEPLOY_SHA}"
           test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
+          export KSU_IMAGE_TAG="${DEPLOY_SHA}"
+          expected_image_name="ksu-app:${KSU_IMAGE_TAG}"
           printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
           install -d -m 755 static/uploads/feed static/uploads/refs
 
@@ -263,9 +248,35 @@ jobs:
             rm -f "${old_backup}" "${old_backup}.sha256"
           done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
 
-          docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}" </dev/null
+          # Build one immutable application image for the exact release SHA.
+          docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" app </dev/null
+          expected_image_id="$(docker image inspect "${expected_image_name}" --format '{{.Id}}')"
+          test -n "${expected_image_id}"
+          echo "Release image: ${expected_image_name} (${expected_image_id})"
+
           docker compose run --rm app alembic upgrade head </dev/null
-          docker compose up -d --remove-orphans "${runtime_services[@]}" </dev/null
+          docker compose up -d --force-recreate --remove-orphans "${runtime_services[@]}" </dev/null
+
+          # A green deploy requires every Python service to run the exact same
+          # immutable image. This closes the old-worker/new-app split-brain case.
+          for service in "${application_services[@]}"; do
+            container_id="$(docker compose ps -q "${service}")"
+            if [[ -z "${container_id}" ]]; then
+              echo "${service} has no running container" >&2
+              exit 1
+            fi
+            running="$(docker inspect "${container_id}" --format '{{.State.Running}}')"
+            actual_image_id="$(docker inspect "${container_id}" --format '{{.Image}}')"
+            if [[ "${running}" != "true" ]]; then
+              echo "${service} is not running" >&2
+              exit 1
+            fi
+            if [[ "${actual_image_id}" != "${expected_image_id}" ]]; then
+              echo "${service} image mismatch: expected ${expected_image_id}, got ${actual_image_id}" >&2
+              exit 1
+            fi
+            echo "${service}: running exact release image"
+          done
 
           backup_worker_running=0
           for _ in $(seq 1 30); do
@@ -293,7 +304,7 @@ jobs:
           test "${ready}" -eq 1
 
           operational=0
-          for _ in $(seq 1 60); do
+          for _ in $(seq 1 90); do
             if curl -fsS "${app_base}/health/operational" >/dev/null 2>&1; then
               operational=1
               break
@@ -304,7 +315,6 @@ jobs:
 
           curl -fsS "${app_base}/health/live" >/dev/null
           curl -fsSI "${app_base}/mini-app/" >/dev/null
-
           expected_release="{\"sha\":\"${DEPLOY_SHA}\"}"
           actual_release="$(curl -fsS "${app_base}/mini-app/release.json")"
           if [[ "${actual_release}" != "${expected_release}" ]]; then
@@ -312,13 +322,21 @@ jobs:
             exit 1
           fi
 
-          # Existing saved refs and public/profile rows may still point at
-          # provider URLs from releases before the durable media contracts.
-          # Localize them after health is established, matching tanyapi.
-          docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
-          docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
+          run_backfill() {
+            label="$1"
+            module="$2"
+            output="$(docker compose exec -T app python -m "${module}" 2>&1)"
+            printf '%s\n' "${output}"
+            if grep -Eq 'failed=[1-9][0-9]*' <<<"${output}"; then
+              echo "${label} completed with unresolved legacy rows; release remains healthy but maintenance is partial." >&2
+            else
+              echo "${label} completed without reported failures."
+            fi
+          }
+          run_backfill "Reference static backfill" scripts.backfill_reference_static
+          run_backfill "Feed static backfill" scripts.backfill_feed_static
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; reference/feed static backfills completed; backup-worker is running."
+          echo "Production is healthy; every Python service runs ${DEPLOY_SHA}; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -337,11 +355,13 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
-            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`"
+            echo "- required workflows: CI, Admin Console, Batch Generation, Mini App Playwright E2E, ROXY E2E, ROXY Release Gate"
+            echo "- immutable application image: required for app + every Python worker"
+            echo "- per-container image ID verification: required"
+            echo "- all-worker operational heartbeat gate: required"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- backup-worker running check: required"
-            echo "- reference static backfill after health gate: required"
-            echo "- feed static backfill after health gate: required"
+            echo "- legacy media backfills: reported separately when partial"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
