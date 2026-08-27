@@ -39,10 +39,12 @@ jobs:
       - name: Run 300-scenario Mini App audit
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium
-      - name: Run iPhone/iPad WebKit responsive audit
+      - name: Run iPhone/iPad WebKit responsive and crash audit
         working-directory: frontend/mini-app
         run: >-
           npx playwright test
+          e2e/client-error-reporting.spec.mjs
+          e2e/video-mode-selector-parity.spec.mjs
           e2e/responsive-device-surfaces.spec.mjs
           e2e/responsive-deep-surfaces.spec.mjs
           --project=webkit-mobile

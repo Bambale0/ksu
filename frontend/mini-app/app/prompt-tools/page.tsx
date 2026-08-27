@@ -179,10 +179,34 @@ export default function PromptToolsPage() {
       copy="Загрузите референс, при желании уточните задачу — ROXY разберёт визуал, движение и камеру и соберёт готовый промпт."
     >
       <div className="panel tool-panel">
-        <div className="segmented scrollable" aria-label="Режим промпта">
-          <button type="button" className={mode === "image" ? "active" : ""} onClick={() => selectMode("image")}>Фото</button>
-          <button type="button" className={mode === "video" ? "active" : ""} onClick={() => selectMode("video")}>Видео</button>
-          <button type="button" className={mode === "seedance" ? "active" : ""} onClick={() => selectMode("seedance")}>Сценарий</button>
+        <div className="segmented scrollable" role="group" aria-label="Режим промпта">
+          <button
+            type="button"
+            aria-label="Фото"
+            aria-pressed={mode === "image"}
+            className={mode === "image" ? "active" : ""}
+            onClick={() => selectMode("image")}
+          >
+            {mode === "image" ? "✅ " : ""}🖼️ Фото
+          </button>
+          <button
+            type="button"
+            aria-label="Видео"
+            aria-pressed={mode === "video"}
+            className={mode === "video" ? "active" : ""}
+            onClick={() => selectMode("video")}
+          >
+            {mode === "video" ? "✅ " : ""}🎬 Видео
+          </button>
+          <button
+            type="button"
+            aria-label="Сценарий"
+            aria-pressed={mode === "seedance"}
+            className={mode === "seedance" ? "active" : ""}
+            onClick={() => selectMode("seedance")}
+          >
+            {mode === "seedance" ? "✅ " : ""}📝 Сценарий
+          </button>
         </div>
         <div className="section-title"><div><span className="kicker">Стоимость</span><h2>{modePrice}</h2></div></div>
 
