@@ -16,7 +16,7 @@ def test_inline_trend_admin_is_mounted_in_customer_mini_app() -> None:
     assert "<InlineTrendAdmin />" in page
     assert "me.is_admin" in component
     assert 'node.textContent?.trim() === "Готовые сценарии"' in component
-    assert "＋ Добавить" in component
+    assert "<span>＋</span> Добавить" in component
     assert "＋ Новый тренд" in component
     assert "Редактировать" in component
     assert "Дублировать" in component
