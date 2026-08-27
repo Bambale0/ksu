@@ -1,46 +1,46 @@
 # KSU / ROXY
 
-Production Telegram AI content platform: Telegram bot + ROXY Mini App + FastAPI backend + PostgreSQL/Redis workers + Kie generation pipeline + payments + privileged admin console + verified PostgreSQL backup operations.
+Production Telegram AI content platform: Telegram bot + ROXY Next.js Mini App + FastAPI backend + PostgreSQL/Redis workers + AI generation providers + payments + privileged admin operations.
 
-**Documentation status:** synchronized with the production code baseline on **2026-08-20**. Start with [`docs/README.md`](docs/README.md).
+**Documentation baseline:** **2026-08-27**. Start with [`docs/README.md`](docs/README.md) and [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 
 ## Current product
 
-### User Mini App
+### ROXY customer Mini App
 
-- `/mini-app/` is the ROXY user product.
-- Primary customer navigation: Create, Prompts, My ROX, Earn, Profile, with additional Studio/history/discovery surfaces mounted inside the same shell.
-- Create opens a media-first chooser and then independent **Photo** or **Video** generation flows. Selecting Video no longer routes through the home screen.
-- Model/product cards feed the existing dynamic builder. The backend `ui_schema` remains the source of truth for fields, scenarios, validation hints and billing duration.
-- Quote: `POST /api/v1/generations/quote`.
-- Create: `POST /api/v1/generations` with signed Telegram `initData`.
-- Local media upload: `POST /api/v1/uploads/kie`; provider credentials never reach the browser.
-- Product-owned media ingestion, result polling, history/reuse, wallet, profile, referrals, creator/partner flows, feed/trends and prompt tools are implemented in the same product shell.
+`/mini-app/` is the customer product. Primary navigation is:
 
-### Generation catalog
+```text
+Студия · Лента · Каталог · Создать · Партнёры · Профиль
+```
 
-Current backend families include Nano Banana, Seedream, GPT Image, WAN, Seedance, Kling, Veo, Grok and Gemini variants implemented in `ModelCatalog`.
+Current product contracts:
 
-WAN 2.7 includes both video generation/editing and a photo generation/editing product backed by Kie `wan/2-7-image`.
+- **Лента** — full-screen TikTok-style vertical feed with `Для вас` / `Подписки`, likes, comments, sharing, author navigation and Repeat/remix actions.
+- A hidden public prompt can remain repeatable: Repeat restores prompt/settings on the server and does not reveal them to another user.
+- Publication/referral/profile deep links use a Direct Mini App link only with a real BotFather short name. Otherwise the supported fallback is `t.me/<bot>?start=<payload>`; ROXY does not invent `/app`.
+- **Каталог** is the discovery/capability surface. Model-family sheets show an explicit backend-supplied price for each model variant.
+- **Создать** is schema-driven from `GET /api/v1/generations/models`; clients do not hardcode provider parameter matrices.
+- Ordinary new Create starts clean. History/feed Repeat are explicit server-owned restore flows.
+- Curated **Тренды** use hidden validated recipes and the normal generation/quote/billing/outbox path.
+- Active admins can manage Trends inline next to **Готовые сценарии**: create, durable preview upload, edit, duplicate, hide and restore. Backend separately verifies `AdminAccount` + `social.moderate`.
+- History, reusable references, profile publication, wallet, partner/referral and prompt tools live in the same product shell.
 
-Current Kling coverage includes:
+## Model catalog and pricing
 
-- Kling 2.5 Turbo Pro Text to Video (`kling/v2-5-turbo-text-to-video-pro`);
-- Kling 2.5 Turbo Pro Image to Video (`kling/v2-5-turbo-image-to-video-pro`), including the current optional tail frame;
-- Kling AI Avatar Standard (`kling/ai-avatar-standard`);
-- Kling AI Avatar Pro (`kling/ai-avatar-pro`).
+Current backend families include maintained image, video and music products such as Nano Banana, Seedream, GPT Image, WAN, Seedance, Kling, Veo, Grok, Gemini and music/Suno variants.
 
-These are implemented from the current Kie callable contracts rather than copied from the historical Tanya payloads. Avatar billing uses ROXY `billing_seconds` for the source-audio duration and does not send a fake provider `duration` field. See `docs/KLING_25_AVATAR_CONTRACT.md`.
-
-The runtime model catalog is authoritative:
+Authoritative catalog:
 
 ```text
 GET /api/v1/generations/models
 ```
 
-Do not hardcode provider parameter matrices in clients. The Mini App consumes the returned model metadata and `ui_schema`.
+Authoritative quote:
 
-### ROX and generation pricing
+```text
+POST /api/v1/generations/quote
+```
 
 Public denomination:
 
@@ -48,113 +48,114 @@ Public denomination:
 1 ROX = 1 RUB
 ```
 
-Generation billing is server-side:
+Generation billing is server-owned. Models may use flat, per-second or parameter-tier pricing. The latest published Admin Tariffs `generation_pricing` version is persisted in PostgreSQL and synchronized by API workers before model/quote/create pricing decisions. Displayed variant price, quote and wallet debit use the same pricing resolver. Music/Suno participates in this same pricing contour.
 
-```text
-flat image:       cost_rox = flat_price_rox
-per-second video: cost_rox = unit_price_rox × billing_seconds
-```
+Do not treat a README price example as billing truth; use the live catalog + latest published tariff.
 
-Current public pricing baseline:
+## Feed/publication contract
 
-| Product | Public price |
-| --- | ---: |
-| Nano Banana PRO | 25 ROX |
-| WAN 2.7 photo | 20 ROX |
-| GPT Image 2 | 20 ROX |
-| Nano Banana 2 | 25 ROX |
-| Nano Banana 2 Lite | 25 ROX |
-| Seedream 4.5 | 20 ROX |
-| Seedream 5 Pro | 20 ROX |
-| Seedance 2.0 | 40 ROX/s |
-| Seedance 2.5 | 60 ROX/s |
-| Kling 2.5 Turbo Pro T2V / I2V | 30 / 30 ROX/s |
-| Kling AI Avatar Standard / Pro | 20 / 30 ROX/s |
-| Kling 3.0 | 30 ROX/s |
-| Veo 3.1 | 35 ROX/s |
-| Grok | 15 ROX/s |
-| Grok Imagine 1.5 | 30 ROX/s |
-| Gemini Omni | from 30 ROX/s |
-| Kling Motion 2.6 720p / 1080p | 20 / 30 ROX/s |
-| Kling Motion 3.0 720p / 1080p | 60 / 80 ROX/s |
+Publication state is stored on the generation domain; feed is not a second task system.
 
-Exact model IDs and live values come from the backend catalog and published pricing overrides. If a model has multiple variants, the server resolves the applicable model/parameter price tier before both quote and debit.
+- `private` — unpublished;
+- `profile` — profile-visible;
+- `feed` — profile-visible and eligible for public discovery.
 
-### Live admin pricing
+Cross-user interactions re-authorize the requested feed/profile surface server-side. Prompt visibility is independent from allowed Repeat. Share endpoints return a usable Telegram link even when no Direct Mini App short name is configured.
 
-`/admin-app/` is the separate privileged operations console. The Admin Tariffs contour can publish `generation_pricing` overrides.
+See [`docs/FEED_DOMAIN.md`](docs/FEED_DOMAIN.md).
 
-Important guarantees:
+## Curated Trends
 
-- published generation pricing becomes effective in runtime without a client deploy;
-- quote and actual wallet debit use the same pricing resolver;
-- the most recent published pricing is restored from PostgreSQL after application restart;
-- invalid model IDs, incompatible price modes and unsupported tier parameters are rejected;
-- publish requires `pricing.manage`, explicit confirmation and fresh MFA step-up according to the admin security policy.
+Public trend recipes keep the model prompt/provider parameters server-side. Customers receive only safe presentation/model/price/reference metadata and cannot override the curated model or hidden prompt.
 
-See `docs/ADMIN_CONSOLE.md`, `docs/ADMIN_RUNBOOK.md` and `docs/GENERATION_MINI_APP.md`.
+Admin management is available through both:
 
-### Promo slides / assets
+- inline ROXY Mini App controls for an active Telegram-authenticated admin;
+- `/admin-app/trends.html` under the separate privileged admin session.
 
-The ROXY home promo carousel uses repository-owned user-supplied artwork. Runtime sources:
+Both use the same `AdminTrend` store and validated recipe model. Preview uploads are persisted under ROXY ownership rather than depending on expiring provider URLs.
 
-```text
-app/web/mini_app/roxy-partner-referrals-slide-source.webp
-app/web/mini_app/roxy-creator-rewards-slide-source.webp
-```
-
-Documentation mirrors are stored under `docs/assets/roxy-promo/`. The approved compositions must be preserved exactly: no generative redraw, restyling, re-typesetting or crop. The carousel uses contain-style rendering and no visual filter/transform processing.
+See [`docs/TRENDS.md`](docs/TRENDS.md).
 
 ## Generation reliability
 
-- Kie Market unified task API + `recordInfo` reconciliation.
-- Kie callback HMAC verification.
-- PostgreSQL **transactional outbox** for durable generation submission.
-- `generation-worker` uses leased rows and `FOR UPDATE SKIP LOCKED`.
-- Redis wake-up is latency optimization; PostgreSQL is durable work state.
-- Recovery for stale submission/generation states and idempotent refunds on unrecoverable provider failure.
-- Successful results create durable media ingest work; `media-worker` copies bounded HTTPS sources into private product-owned S3-compatible storage.
-- Deterministic storage keys make retries converge safely.
-
-## PostgreSQL backup operations
-
-- Production deploy creates a **pre-migration** PostgreSQL custom-format archive before Alembic.
-- The pre-deploy archive must be non-empty, parse successfully through `pg_restore --list` and receive a SHA-256 sidecar before migration continues.
-- `backup-worker` runs from `postgres:17-alpine` with a private `db_backups` volume.
-- Periodic archives default to every 3 hours, newest 16 retained, with backup-on-start enabled.
-- A periodic archive is published only after custom-format validation and checksum generation; failed attempts retry after 60 seconds until success.
-- Dump files are created with private permissions (`umask 077`).
-- Production deploy explicitly starts/verifies `backup-worker`; customer app startup does not wait for a long backup to complete.
-- Local Docker-volume retention is **not** off-host disaster recovery. Encrypted off-host copies/snapshots and restore drills remain mandatory operations work.
-- Database dumps are not sent through Telegram/chat by this implementation.
-
-See `docs/DATABASE_BACKUPS.md` and `docs/GITHUB_PRODUCTION_DEPLOY.md`.
+- durable PostgreSQL transactional generation outbox;
+- leased worker processing and recovery/reconciliation;
+- Redis used for latency/coordination/resource controls, not as the durable generation ledger;
+- monotonic terminal generation states and idempotent refunds;
+- ambiguous provider submission states are reconciled rather than blindly duplicated;
+- product-owned result/reference media paths preferred over temporary provider URLs;
+- controlled hard timeouts/recovery for abandoned provider work.
 
 ## Payments and economy
 
-- **1 ROX = 1 RUB**.
-- 50 ROX welcome bonus.
-- 30 ROX inviter bonus.
-- 5 ROX paid prompt-repeat reward to the original author; no self-reward.
-- Referral top-up rewards: 30% level 1, 5% level 2.
-- Minimum partner withdrawal: 3,000 ROX.
-- Internal spend ROX and withdrawable partner earnings remain separate accounting domains.
-- Payment intents are idempotent and provider reconciliation is durable.
-- Supported provider integrations include Crypto Pay, T-Bank and YooKassa code paths documented in the payment/runbook docs.
+- **1 ROX = 1 RUB**;
+- welcome/referral/partner reward accounting is server-owned;
+- internal spend balance and withdrawable partner earnings remain separate accounting domains;
+- payment intent creation is idempotent;
+- provider reconciliation/refund state is durable;
+- supported payment code paths are documented for Crypto Pay, T-Bank and YooKassa.
 
-## Admin/security
+See `docs/WALLET_PAYMENTS.md`, `docs/PRIMARY_CARD_CHECKOUT.md` and the operations runbook.
 
-The repository ships a protected visual admin application at `/admin-app/` plus the privileged API/security contour:
+## Admin / security
+
+`/admin-app/` is the separate privileged operations console:
 
 - separate admin identities/sessions;
 - deny-by-default RBAC;
-- TOTP MFA and recovery codes;
-- fresh step-up for high-impact actions;
+- TOTP MFA/recovery and fresh step-up for sensitive actions;
 - audit trail;
-- user/support/generation/payment/withdrawal/promo/referral/security operations;
-- live tariff publishing and rollback workflow.
+- users, generations, payments, support, partners, promos/referrals, pricing and security operations.
 
-The admin bearer token is held in memory by the client and is not persisted to browser storage.
+Inline Trend management in `/mini-app/` is a convenience surface only. `me.is_admin` controls visibility; every write is authorized again on the backend.
+
+Published generation tariffs are money-adjacent audited configuration. See [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) and `docs/ADMIN_RUNBOOK.md`.
+
+## Release and system audit
+
+The Mini App release gate contains:
+
+```text
+300 existing isolated user scenarios
++150 additional system-risk scenarios across 5 viewport classes
+=450 named matrix scenarios
+```
+
+The same Chromium Playwright invocation also runs focused specs, so the raw runner test count is greater than 450. A separate iPhone/iPad WebKit responsive audit remains mandatory.
+
+The +150 risk matrix covers:
+
+- cross-user feed Repeat/share/privacy/comments;
+- inline Trend admin authorization and CRUD;
+- dynamic backend/admin pricing presentation;
+- generation/quote/history/reference restoration;
+- referral/profile link fallback;
+- publication, wallet/payment and navigation integrity.
+
+See [`docs/SYSTEM_AUDIT_2026-08-27.md`](docs/SYSTEM_AUDIT_2026-08-27.md).
+
+Other release gates include full backend CI/regression, ROXY real-browser E2E, Admin Console, Batch Generation and ROXY Release Gate.
+
+## Exact-SHA production deployment
+
+Production deploys an exact tested `main` SHA and verifies health plus:
+
+```text
+GET /mini-app/release.json
+```
+
+The returned release SHA must equal the GitHub deploy SHA. A merge without a successful exact-SHA production deploy is not considered a completed rollout.
+
+## PostgreSQL backup operations
+
+- pre-migration production archive before Alembic;
+- archive validation through `pg_restore --list` plus checksum;
+- periodic `backup-worker` with private Docker volume retention;
+- deployment verifies backup worker startup;
+- local retained dumps are not a substitute for encrypted off-host disaster recovery and restore drills.
+
+See `docs/DATABASE_BACKUPS.md` and `docs/GITHUB_PRODUCTION_DEPLOY.md`.
 
 ## Stack
 
@@ -163,48 +164,12 @@ The admin bearer token is held in memory by the client and is not persisted to b
 - PostgreSQL 17 + async SQLAlchemy 2
 - Redis 7.4
 - Alembic
+- Next.js customer Mini App
+- separate static Admin Console
 - private S3-compatible object storage
-- vanilla HTML/CSS/JavaScript Telegram Mini Apps
 - Prometheus + optional OpenTelemetry
-- GitHub Actions CI / production deploy workflow
-
-## Runtime topology
-
-```text
-Telegram / browser
-        |
-        v
- HTTPS reverse proxy
-        |
-        v
- FastAPI app :8000 --------------------> PostgreSQL
-    |                                      |-- business state
-    |                                      |-- generation outbox
-    |                                      |-- published tariffs/admin audit
-    |                                      |-- media/payment/history/referral state
-    |
-    +--> Redis --------------------------> limits / FSM / wake / telemetry
-    |          |
-    |          +--> generation-worker --------> Kie.ai
-    |          +--> media-worker -------------> private object storage
-    |          +--> payment-worker -----------> payment providers
-    |
-    +--> /mini-app/   ROXY customer UI
-    +--> /admin-app/  privileged operator UI
-
- backup-worker --------------------------> PostgreSQL
-       |
-       +---------------------------------> private db_backups volume
-```
-
-## Observability
-
-- `GET /metrics` exposes Prometheus metrics (protect it with `METRICS_BEARER_TOKEN` when configured).
-- `GET /health/operational` reports operational readiness/worker health.
-- OpenTelemetry traces are exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when configured.
-- Production alert rules live in `ops/prometheus-alerts.yml`.
-- Detailed metrics, worker heartbeat and high-cardinality guidance are in `docs/OBSERVABILITY.md`.
-- Database backup freshness/restore drills are operational checks documented in `docs/DATABASE_BACKUPS.md`.
+- Playwright Chromium + mobile WebKit acceptance
+- GitHub Actions exact-SHA production deploy
 
 ## Local development
 
@@ -213,85 +178,49 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Useful endpoints:
-
-```text
-GET    /health/live
-GET    /health/ready
-GET    /health/operational
-GET    /metrics
-GET    /mini-app/
-GET    /admin-app/
-GET    /api/v1/generations/models
-POST   /api/v1/generations/quote
-POST   /api/v1/generations
-GET    /api/v1/generations
-GET    /api/v1/generations/{generation_id}
-POST   /api/v1/uploads/kie
-GET    /api/v1/payments/packages
-POST   /api/v1/payments
-```
-
-Swagger/ReDoc are disabled in production.
-
-## Core production configuration
-
-Start from `.env.example`. Key groups:
-
-```dotenv
-APP_ENV=production
-PUBLIC_BASE_URL=https://api.example.com
-DATABASE_URL=postgresql+asyncpg://...
-REDIS_URL=redis://...
-BOT_TOKEN=...
-TELEGRAM_WEBHOOK_SECRET=...
-
-DB_BACKUP_INTERVAL_SECONDS=10800
-DB_BACKUP_RETENTION_COUNT=16
-DB_BACKUP_ON_START=true
-
-INTERNAL_CREDIT_RUB=1
-KIE_API_KEY=...
-KIE_UPLOAD_BASE_URL=...
-KIE_WEBHOOK_HMAC_KEY=...
-GENERATION_PRICING_JSON={}
-
-METRICS_BEARER_TOKEN=...
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=...
-
-ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
-ADMIN_REQUIRE_MFA=true
-```
-
-`KIE_UPLOAD_BASE_URL` controls the configured Kie upload base used by the server-side upload integration; it is not exposed as a provider credential to the Mini App.
-
-A published admin tariff can override generation pricing at runtime; `GENERATION_PRICING_JSON` is therefore not the only production pricing source. See the admin runbook before changing pricing manually in environment configuration.
-
-## Migrations / CI
+Core checks:
 
 ```bash
 alembic upgrade head
 ruff check .
 python -m compileall -q app tests
 pytest -q
+npm run typecheck --prefix frontend/mini-app
+npm run build --prefix frontend/mini-app
 ```
 
-CI also syntax-checks Mini App/Admin JavaScript and executes focused ROXY/admin/generation/operations contracts before full regression.
+Useful endpoints:
+
+```text
+GET  /health/live
+GET  /health/ready
+GET  /health/operational
+GET  /metrics
+GET  /mini-app/
+GET  /mini-app/release.json
+GET  /admin-app/
+GET  /api/v1/generations/models
+POST /api/v1/generations/quote
+POST /api/v1/generations
+GET  /api/v1/trends
+GET  /api/v1/feed
+```
+
+Swagger/ReDoc are disabled in production.
 
 ## Documentation
 
-Canonical documentation and operations references:
+Canonical entry points:
 
 - `docs/README.md`
+- `docs/CURRENT_STATE.md`
+- `docs/SYSTEM_AUDIT_2026-08-27.md`
 - `docs/API_REFERENCE.md`
+- `docs/FEED_DOMAIN.md`
+- `docs/TRENDS.md`
+- `docs/ADMIN_CONSOLE.md`
 - `docs/OPERATIONS_RUNBOOK.md`
 - `docs/GITHUB_PRODUCTION_DEPLOY.md`
-- `docs/DATABASE_BACKUPS.md`
-- `docs/GENERATION_MINI_APP.md`
-- `docs/KLING_25_AVATAR_CONTRACT.md`
-- `docs/ADMIN_SECURITY.md`
-- `docs/ADMIN_RUNBOOK.md`
-- `docs/OBSERVABILITY.md`
 - `docs/ROXY_RELEASE_ACCEPTANCE.md`
 
-Historical `parity-*` files are implementation records, not current pricing/model/navigation/operations authority.
+Historical `parity-*` files are implementation records, not current navigation/pricing/feed/trend authority.
