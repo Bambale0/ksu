@@ -148,6 +148,7 @@ class AdminPromoService:
                 raise LookupError("Promo code not found")
             promo.is_active = is_active
             await session.flush()
+            await session.refresh(promo)
             return AdminPromoService._view(promo)
 
         return await AdminCommandLedger.execute(
