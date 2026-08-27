@@ -61,7 +61,7 @@ export function CatalogParityFeatures() {
       <h2>Сервисы ROXY</h2>
       <p className="muted">Функции аккаунта, сообщества, платежей и готовых работ, которые уже поддерживаются backend.</p>
       <div className="tool-grid">
-        {FEATURES.map(([title, copy, href]) => <button className="tool-result-card" type="button" key={href} onClick={() => window.location.assign(href)} style={{ width: "100%", textAlign: "left" }}>
+        {FEATURES.map(([title, copy, href]) => <button className="tool-result-card roxy-service-card" type="button" key={href} onClick={() => window.location.assign(href)} style={{ width: "100%", textAlign: "left" }}>
           <strong>{title}</strong><small>{copy}</small>
         </button>)}
       </div>
