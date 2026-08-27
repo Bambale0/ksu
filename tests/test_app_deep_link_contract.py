@@ -52,6 +52,8 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     telegram = (root / "frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
     profile = (root / "frontend/mini-app/components/profile-startapp-app.tsx").read_text(encoding="utf-8")
     post = (root / "frontend/mini-app/components/feed-startapp-app.tsx").read_text(encoding="utf-8")
+    social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
+    types = (root / "frontend/mini-app/lib/types.ts").read_text(encoding="utf-8")
 
     # Launch-param parsing is centralized so entry routing and API attribution
     # consume the same tanyapi-style recovery order instead of drifting apart.
@@ -79,3 +81,8 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert 'api.feedItem(generationId, "profile")' in post
     assert "api.remix(card.id, surface)" in post
     assert "api.share(card.id, surface)" in post
+
+    assert "profile_link?: string" in types
+    assert "stats?.profile_link" in social
+    assert "Скопировать ссылку на профиль" in social
+    assert "Профиль автора" in social

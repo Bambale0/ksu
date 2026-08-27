@@ -101,6 +101,9 @@ def test_all_generated_social_links_use_direct_mini_app_short_name(monkeypatch) 
     assert PartnerService.referral_mini_app_link(123456) == (
         "https://t.me/RoxyExampleBot/studio?startapp=ref_123456"
     )
+    assert PartnerService.profile_link(123456) == (
+        "https://t.me/RoxyExampleBot/studio?startapp=profile_123456_ref_123456"
+    )
     assert FeedService.post_deep_link(generation_id, "123456") == (
         f"https://t.me/RoxyExampleBot/studio?startapp=feed_{generation_id}_ref_123456"
     )
