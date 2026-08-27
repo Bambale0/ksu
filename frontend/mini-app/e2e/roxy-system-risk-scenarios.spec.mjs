@@ -100,6 +100,12 @@ async function mockSystem(page, { admin = false } = {}) {
   const state = { managed: [{ ...managedTrend, payload: { ...managedTrend.payload } }] };
 
   await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        async writeText(value) { window.__copiedText = String(value); },
+      },
+    });
     window.Telegram = {
       WebApp: {
         initData: 'query_id=system_audit&user=%7B%22id%22%3A777%7D&hash=test',
@@ -279,8 +285,12 @@ const cases = [
     const dialog = await openTrendAdmin(page);
     await dialog.getByRole('button', { name: /Новый тренд/ }).click();
     const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+    const title = form.getByLabel('Название');
+    const validity = await title.evaluate((node) => ({ valid: node.checkValidity(), valueMissing: node.validity.valueMissing }));
+    expect(validity).toEqual({ valid: false, valueMissing: true });
     await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
-    await expect(form.getByRole('alert')).toContainText('Добавьте название');
+    await expect(title).toBeFocused();
+    await expect(form).toBeVisible();
   } },
   { name: 'trend-admin-preview-upload', route: 'catalog', admin: true, run: async (page) => {
     const dialog = await openTrendAdmin(page);
@@ -359,7 +369,9 @@ const cases = [
 
   // Partner links, publication and wallet/payment surfaces.
   { name: 'partner-referral-start-fallback', route: 'partners', run: async (page) => {
-    await expect(page.getByText('https://t.me/roxy_aicreativebot?start=ref_777')).toBeVisible();
+    await page.getByRole('button', { name: 'Скопировать реферальную ссылку' }).click();
+    await expect.poll(() => page.evaluate(() => window.__copiedText || '')).toBe('https://t.me/roxy_aicreativebot?start=ref_777');
+    await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } },
   { name: 'partner-profile-start-fallback', route: 'partners', run: async (page) => {
     await expect(page.getByText('https://t.me/roxy_aicreativebot?start=profile_777_ref_777')).toBeVisible();
