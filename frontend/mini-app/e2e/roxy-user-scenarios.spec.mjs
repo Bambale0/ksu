@@ -255,6 +255,15 @@ async function openFeedPreview(page) {
   await expect(page.locator('.preview-card')).toBeVisible();
 }
 
+async function openTikTokDetails(page) {
+  const surface = page.locator('.tiktok-feed-surface');
+  await expect(surface).toBeVisible();
+  await surface.getByRole('button', { name: 'Ещё', exact: true }).click();
+  const details = page.getByRole('dialog', { name: 'Действия с работой' });
+  await expect(details).toBeVisible();
+  return details;
+}
+
 async function openPrivatePreview(page) {
   await page.locator('.media-tile').first().click();
   await expect(page.locator('.preview-card')).toBeVisible();
@@ -297,45 +306,56 @@ async function runHome(page, check) {
     await expect(page.getByText('QA').first()).toBeVisible();
   } else if (check === 'feed') {
     await bottomButton(page, 'Лента').click();
-    await expect(page.getByText('Работы сообщества')).toBeVisible();
+    await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
+    await expect(page.locator('.tiktok-feed-card')).toHaveCount(1);
   }
 }
 
 async function runFeed(page, check) {
+  const surface = page.locator('.tiktok-feed-surface');
   if (check === 'shell') {
-    await expect(page.getByText('Работы сообщества')).toBeVisible();
-    await expect(page.locator('.media-tile')).toHaveCount(1);
+    await expect(surface).toBeVisible();
+    await expect(surface.locator('.tiktok-feed-card')).toHaveCount(1);
+    await expect(surface.getByRole('tab', { name: 'Для вас' })).toHaveAttribute('aria-selected', 'true');
+    await expect(surface.getByRole('tab', { name: 'Подписки' })).toBeVisible();
   } else if (check === 'top-day') {
-    await page.getByRole('button', { name: 'Топ дня' }).click();
-    await expect(page.getByRole('button', { name: 'Топ дня' })).toHaveClass(/active/);
+    const button = surface.locator('.tiktok-feed-sort').getByRole('button', { name: 'Топ дня' });
+    await button.click();
+    await expect(button).toHaveClass(/active/);
   } else if (check === 'top') {
-    await page.getByRole('button', { name: 'Топ', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Топ', exact: true })).toHaveClass(/active/);
+    const button = surface.locator('.tiktok-feed-sort').getByRole('button', { name: 'Топ', exact: true });
+    await button.click();
+    await expect(button).toHaveClass(/active/);
   } else if (check === 'refresh') {
-    await page.getByRole('button', { name: 'Обновить' }).click();
-    await expect(page.locator('.media-tile')).toHaveCount(1);
+    await surface.getByRole('button', { name: 'Обновить ленту' }).click();
+    await expect(surface.locator('.tiktok-feed-card')).toHaveCount(1);
   } else if (check === 'preview') {
-    await openFeedPreview(page);
-    await expect(page.getByText('Портрет в неоне')).toBeVisible();
+    const details = await openTikTokDetails(page);
+    await expect(details.getByText('Портрет в неоне')).toBeVisible();
+    await expect(details.getByRole('button', { name: 'Открыть результат' })).toBeVisible();
   } else if (check === 'like') {
-    await openFeedPreview(page);
-    await page.getByRole('button', { name: /Лайк · 12/ }).click();
-    await expect(page.getByRole('button', { name: /Лайк есть · 13/ })).toBeVisible();
+    const button = surface.getByRole('button', { name: 'Лайк' });
+    await expect(button.locator('small')).toHaveText('12');
+    await button.click();
+    await expect(button).toHaveClass(/liked/);
+    await expect(button.locator('small')).toHaveText('13');
   } else if (check === 'share') {
-    await openFeedPreview(page);
-    await page.getByRole('button', { name: /Поделиться · 3/ }).click();
-    await expect(page.getByRole('button', { name: /Поделиться · 4/ })).toBeVisible();
+    const button = surface.getByRole('button', { name: 'Поделиться' });
+    await expect(button.locator('small')).toHaveText('3');
+    await button.click();
+    await expect(button.locator('small')).toHaveText('4');
   } else if (check === 'comments') {
-    await openFeedPreview(page);
-    await page.getByRole('button', { name: /Комментарии · 2/ }).click();
-    await expect(page.getByText('Отличная работа')).toBeVisible();
+    await surface.getByRole('button', { name: 'Комментарии' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Комментарии' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Отличная работа')).toBeVisible();
   } else if (check === 'remix') {
-    await openFeedPreview(page);
-    await page.getByRole('button', { name: 'Повторить' }).click();
-    await expect(page.getByText('Повтор запущен')).toBeVisible();
+    await surface.getByRole('button', { name: 'Повторить' }).click();
+    await expect(page.getByText(/Повтор запущен/)).toBeVisible();
   } else if (check === 'create') {
     await bottomButton(page, 'Создать').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
+    await expect(surface).toHaveCount(0);
   }
 }
 

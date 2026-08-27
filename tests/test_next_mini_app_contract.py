@@ -78,7 +78,7 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
 def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     layout = _read(FRONTEND / "app" / "layout.tsx")
     page = _read(FRONTEND / "app" / "page.tsx")
-    guard = _read(FRONTEND / "components" / "single-feed-surface-guard.tsx")
+    feed = _read(FRONTEND / "components" / "tiktok-feed-surface.tsx")
     public_dir = FRONTEND / "public"
     styles_dir = FRONTEND / "app"
 
@@ -88,16 +88,20 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert not (public_dir / "feed-social-polish.js").exists()
     assert not (styles_dir / "feed-social.css").exists()
     assert not (styles_dir / "feed-social-interactions.css").exists()
-    assert "<SingleFeedSurfaceGuard />" in page
-    assert 'currentRoute() === "feed"' in guard
-    assert "Лента" in guard
-    assert "roxy-hybrid-feed-screen" in guard
-    assert "roxy-feed-tiktok-preview" in guard
-    assert 'feedButtons.length > 1' in guard
-    assert 'setButtonLabel(duplicate, "Каталог")' in guard
-    assert "Do not redirect Feed away" in guard
-    assert "aspect-ratio: 3 / 4" in guard
-    assert "object-fit: contain" in guard
+    assert "<CatalogFeatureHub />" in page
+    assert "<TikTokFeedSurface />" in page
+    assert "SingleFeedSurfaceGuard" not in page
+    assert 'searchParams.get("route") === "feed"' in feed
+    assert 'label === "Лента"' in feed
+    assert 'className="tiktok-feed-surface"' in feed
+    assert 'className="tiktok-feed-scroll"' in feed
+    assert "scroll-snap-type: y mandatory" in feed
+    assert "scroll-snap-align: start" in feed
+    assert "scroll-snap-stop: always" in feed
+    assert "IntersectionObserver" in feed
+    assert "roxy-hybrid-feed-screen" not in feed
+    assert "aspect-ratio: 3 / 4" not in feed
+    assert "object-fit: contain" in feed
 
 
 def test_first_frame_is_new_react_splash_and_legacy_home_is_absent() -> None:
