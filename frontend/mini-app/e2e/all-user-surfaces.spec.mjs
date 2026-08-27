@@ -176,9 +176,9 @@ async function mockApi(page, { onboarding = false, bootDelay = 0 } = {}) {
   await page.route('https://cdn.roxy.test/**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlVfFsAAAAASUVORK5CYII=', 'base64') }));
 }
 
-async function assertViewport(page, { back = true } = {}) {
+async function assertViewport(page) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-  if (back) await expect(page.locator('[data-roxy-back-button]')).toBeVisible();
+  await expect(page.locator('[data-roxy-back-button]')).toHaveCount(0);
 }
 
 const surfaces = [

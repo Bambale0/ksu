@@ -4,13 +4,21 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { initTelegram, syncSafeArea } from "@/lib/telegram";
-import { UniversalBackButton } from "./universal-back-button";
+import { haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
 function compact(value: unknown): string {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(number);
+}
+
+function returnFromStandalone() {
+  haptic("light");
+  if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
+    window.history.back();
+    return;
+  }
+  window.location.assign("/mini-app/?route=catalog");
 }
 
 export function StandaloneShell({
@@ -29,8 +37,11 @@ export function StandaloneShell({
   useEffect(() => {
     const tg = initTelegram();
     const safe = () => syncSafeArea(tg);
+    const back = () => returnFromStandalone();
     tg?.ready?.();
     tg?.expand?.();
+    tg?.BackButton?.show?.();
+    tg?.BackButton?.onClick?.(back);
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
@@ -38,6 +49,8 @@ export function StandaloneShell({
       void api.me().then((me) => setBalance(me.balance_rox)).catch(() => setBalance(null));
     }
     return () => {
+      tg?.BackButton?.offClick?.(back);
+      tg?.BackButton?.hide?.();
       tg?.offEvent?.("safeAreaChanged", safe);
       tg?.offEvent?.("contentSafeAreaChanged", safe);
       tg?.offEvent?.("viewportChanged", safe);
@@ -67,7 +80,6 @@ export function StandaloneShell({
 
       <main className="main-shell">
         <section className="screen standalone-screen">
-          <UniversalBackButton />
           <header className="screen-head">
             <span className="kicker">{kicker}</span>
             <h1>{title}</h1>

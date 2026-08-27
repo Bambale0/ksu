@@ -98,7 +98,7 @@ async function mockRoxy(page) {
     const method = route.request().method();
     if (path === '/api/v1/me') return json(route, { id: 'user_1', telegram_id: 777, first_name: 'QA', balance_rox: '500.00' });
     if (path === '/api/v1/onboarding') return json(route, { enabled: false, completed: true });
-    if (path === '/api/v1/generations/models') return json(route, { models: [seedance], families: [family], max_generation_quantity: 6 });
+    if (path === '/api/v1/generations/models') return json(route, { models: [seedance], families: [family], max_generation_quantity: 4 });
     if (path === '/api/v1/generations/quote') {
       const payload = route.request().postDataJSON();
       const quantity = Number(payload.quantity || 1);
@@ -202,21 +202,21 @@ test('Seedance multimodal reference mode sends reference_image_urls without fram
   expect(payload.parameters.reference_audio_urls).toBeUndefined();
 });
 
-test('Mini App quantity picker sends six launches and total quote', async ({ page }) => {
+test('Mini App quantity picker sends four launches and total quote', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockRoxy(page);
   await page.goto('/mini-app/?route=create');
 
-  await page.getByRole('textbox', { name: /Описание/ }).fill('Сделай шесть разных вариантов динамичного видео');
-  await page.getByRole('button', { name: '6', exact: true }).click();
-  await expect(page.getByText('Стоимость за 6')).toBeVisible();
-  await expect(page.getByText('330 ROX', { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Сделай четыре разных варианта динамичного видео');
+  await page.getByRole('button', { name: '4', exact: true }).click();
+  await expect(page.getByText('Стоимость за 4')).toBeVisible();
+  await expect(page.getByText('220 ROX', { exact: true })).toBeVisible();
 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
-  await page.getByRole('button', { name: /Создать · 330 ROX/ }).click();
+  await page.getByRole('button', { name: /Создать · 220 ROX/ }).click();
   const request = await submitted;
   const payload = request.postDataJSON();
   expect(payload.model_id).toBe('seedance-2.0');
-  expect(payload.quantity).toBe(6);
-  expect(payload.prompt).toBe('Сделай шесть разных вариантов динамичного видео');
+  expect(payload.quantity).toBe(4);
+  expect(payload.prompt).toBe('Сделай четыре разных варианта динамичного видео');
 });

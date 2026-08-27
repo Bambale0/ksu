@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 
 import { api } from "@/lib/api";
 
-const DEFAULT_MAX_GENERATION_QUANTITY = 6;
+const DEFAULT_MAX_GENERATION_QUANTITY = 4;
 
 type PublishDetail = {
   id: string;

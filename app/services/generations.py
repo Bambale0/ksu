@@ -20,7 +20,7 @@ from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
-MAX_GENERATION_QUANTITY = 6
+MAX_GENERATION_QUANTITY = 4
 
 
 class GenerationService:
