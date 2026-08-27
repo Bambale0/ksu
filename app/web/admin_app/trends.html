@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>Ксю · Тренды ROXY</title>
+  <link rel="stylesheet" href="/admin-app/admin.css">
+  <link rel="stylesheet" href="/admin-app/trends.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/admin-app/trends.js" defer></script>
+</head>
+<body>
+  <div class="admin-auth" id="trendAuth">
+    <section class="auth-card" aria-labelledby="trendAuthTitle">
+      <div class="brand-mark" aria-hidden="true">К</div>
+      <span class="eyebrow">Ксю · ROXY</span>
+      <h1 id="trendAuthTitle">Управление трендами</h1>
+      <p class="muted">Создание и публикация готовых сценариев ROXY доступны администраторам с правом модерации.</p>
+      <form id="trendLogin" class="stack">
+        <label class="field"><span>Код подтверждения</span><input id="trendOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456"></label>
+        <label class="field"><span>Резервный код</span><input id="trendRecovery" autocomplete="off" maxlength="128" placeholder="Можно использовать вместо кода"></label>
+        <button class="primary" type="submit">Войти</button>
+      </form>
+      <div class="form-message" id="trendLoginMessage" role="status" aria-live="polite"></div>
+      <a class="table-action trend-back-link" href="/admin-app/">← Основная админка</a>
+    </section>
+  </div>
+
+  <div class="trend-shell" id="trendShell" hidden>
+    <header class="topbar trend-topbar">
+      <div class="trend-heading">
+        <a class="table-action" href="/admin-app/">← Админка</a>
+        <div><span class="eyebrow">Контент ROXY</span><h1>Тренды</h1></div>
+      </div>
+      <div class="topbar-actions">
+        <span class="status-dot"><i></i><span id="trendIdentity">Доступ подтверждён</span></span>
+        <button class="icon-button" id="trendRefresh" type="button" aria-label="Обновить">↻</button>
+        <button class="ghost danger-text" id="trendLogout" type="button">Выйти</button>
+      </div>
+    </header>
+
+    <main class="trend-workspace">
+      <section class="panel trend-editor">
+        <div class="panel-head">
+          <div><span class="eyebrow" id="trendFormKicker">Новый тренд</span><h2 id="trendFormTitle">Добавить тренд</h2></div>
+          <button class="ghost" id="trendReset" type="button">Очистить</button>
+        </div>
+        <form id="trendForm" class="trend-form">
+          <input id="trendId" type="hidden">
+          <div class="trend-form-grid">
+            <label class="field trend-span-2"><span>Название</span><input id="trendTitle" maxlength="80" required placeholder="Например: Киношный пролёт камеры"><small>Так тренд увидит пользователь.</small></label>
+            <label class="field trend-span-2"><span>Описание</span><textarea id="trendDescription" maxlength="240" placeholder="Коротко объясните, какой результат получится"></textarea></label>
+            <label class="field trend-span-2"><span>Превью</span><input id="trendPreviewUrl" type="url" required placeholder="https://.../preview.jpg или .mp4"><small>Публичный HTTPS URL изображения или видео.</small></label>
+            <label class="field"><span>Модель</span><select id="trendModel" required><option value="">Загрузка моделей…</option></select></label>
+            <div class="trend-model-info" id="trendModelInfo">Выберите модель — ROXY покажет её возможности.</div>
+            <label class="field trend-span-2"><span>Скрытый prompt</span><textarea id="trendPrompt" maxlength="8000" required placeholder="Промпт, который будет запускаться при выборе тренда"></textarea><small>Пользователь его не видит. ROXY подставляет его автоматически.</small></label>
+            <label class="field"><span>Референс пользователя</span><select id="trendInputMode"><option value="none">Не нужен</option><option value="image">Нужно фото</option></select></label>
+            <div class="trend-reference-fields" id="trendReferenceFields">
+              <label class="field"><span>Минимум фото</span><input id="trendMinReferences" type="number" min="0" max="16" value="0"></label>
+              <label class="field"><span>Максимум фото</span><input id="trendMaxReferences" type="number" min="0" max="16" value="0"></label>
+            </div>
+            <label class="field"><span>Биллинг, секунд</span><input id="trendBillingSeconds" type="number" min="1" max="600" placeholder="Авто"><small>Для видео можно оставить пустым, если duration задан в настройках.</small></label>
+            <label class="field"><span>Приоритет</span><input id="trendSortOrder" type="number" min="-100000" max="100000" value="0"><small>Чем больше число, тем выше тренд.</small></label>
+            <label class="field trend-span-2"><span>Теги</span><input id="trendTags" maxlength="500" placeholder="fashion, reels, cinematic"><small>До 20 тегов через запятую.</small></label>
+            <details class="trend-advanced trend-span-2">
+              <summary>Дополнительные настройки модели</summary>
+              <label class="field"><span>Parameters JSON</span><textarea id="trendParameters" spellcheck="false">{}</textarea><small id="trendKnownFields">Необязательно. Здесь можно задать duration, aspect_ratio, resolution и другие параметры выбранной модели.</small></label>
+            </details>
+            <label class="trend-active-row trend-span-2" id="trendActiveRow" hidden><input id="trendActive" type="checkbox" checked><span>Тренд активен и виден пользователям</span></label>
+          </div>
+
+          <div class="trend-preview" id="trendPreview">
+            <div class="trend-preview-empty">Превью появится здесь</div>
+          </div>
+          <div class="form-message" id="trendFormMessage" role="status" aria-live="polite"></div>
+          <div class="trend-submit-row">
+            <button class="primary" id="trendSubmit" type="submit">Опубликовать тренд</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel trend-list-panel">
+        <div class="panel-head trend-list-head">
+          <div><span class="eyebrow">Каталог</span><h2>Текущие тренды</h2></div>
+          <div class="filter-bar">
+            <input class="grow" id="trendSearch" type="search" placeholder="Поиск по названию или модели">
+            <select id="trendStatusFilter"><option value="all">Все</option><option value="active">Активные</option><option value="inactive">Скрытые</option></select>
+          </div>
+        </div>
+        <div class="trend-list" id="trendList" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="trendToast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
