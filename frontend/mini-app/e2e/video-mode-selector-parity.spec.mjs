@@ -18,6 +18,7 @@ async function mockPromptToolsApi(page) {
     const url = new URL(route.request().url());
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.pathname === '/api/v1/me') return json({ id: 'mode-user', telegram_id: 999, first_name: 'Mode Test', balance_rox: '100.00', is_admin: false, billing_mode: 'wallet' });
+    if (url.pathname === '/api/v1/prompt-tools') return json({ items: [] });
     return json({ items: [] });
   });
 }
@@ -26,7 +27,7 @@ test('photo and video tabs use the same active-state contract', async ({ page })
   await mockPromptToolsApi(page);
   await page.goto('/mini-app/prompt-tools');
 
-  const tabs = page.getByRole('tablist', { name: 'Тип prompt tool' });
+  const tabs = page.getByRole('tablist', { name: 'Режим промпта' });
   const photo = tabs.getByRole('tab', { name: /Фото/ });
   const video = tabs.getByRole('tab', { name: /Видео/ });
 
@@ -41,4 +42,5 @@ test('photo and video tabs use the same active-state contract', async ({ page })
   await expect(video).toContainText('✅');
   await expect(photo).toHaveAttribute('aria-selected', 'false');
   await expect(photo).not.toContainText('✅');
+  await expect(page).toHaveURL(/mode=video/);
 });
