@@ -28,6 +28,7 @@ DEFAULT_GENERATION_PRICING_JSON = (
     '"kling-motion-3.0":{"per_second":60,"by_mode":{"720p":60,"1080p":80}}'
     '}'
 )
+MIN_PUBLIC_UPLOAD_BYTES = 200 * 1024 * 1024
 
 
 def _generation_pricing_with_defaults(value: object) -> str:
@@ -205,9 +206,18 @@ class Settings(BaseSettings):
     kie_base_url: str = "https://api.kie.ai"
     kie_upload_base_url: str = "https://kieai.redpandaai.co"
     # Must be at least as large as the biggest per-model upload advertised in
-    # ui_schema. Seedance 2.5 currently accepts reference videos up to 200 MB.
-    kie_upload_max_bytes: int = 200 * 1024 * 1024
+    # ui_schema. Seedance reference video currently accepts up to 200 MB.
+    kie_upload_max_bytes: int = MIN_PUBLIC_UPLOAD_BYTES
     kie_webhook_hmac_key: str = ""
+
+    @field_validator("kie_upload_max_bytes", mode="before")
+    @classmethod
+    def enforce_public_upload_contract(cls, value: object) -> int:
+        try:
+            configured = int(value) if value is not None else MIN_PUBLIC_UPLOAD_BYTES
+        except (TypeError, ValueError) as exc:
+            raise ValueError("KIE_UPLOAD_MAX_BYTES must be an integer") from exc
+        return max(configured, MIN_PUBLIC_UPLOAD_BYTES)
 
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
