@@ -1,21 +1,38 @@
 # Feed domain
 
-## Mapping from the existing KSU model
+**Status:** current runtime contract on **2026-08-27**.
 
 The feed is a public presentation and interaction domain over the existing `Generation` aggregate. It is not a second generation/task system.
+
+## Current Mini App surface
+
+`Лента` is a full-screen TikTok-style vertical `scroll-snap` surface. The current customer experience includes:
+
+- `Для вас` and `Подписки` tabs;
+- autoplay/pause behavior for visible video cards;
+- likes and unlike;
+- comments;
+- Telegram share;
+- author/profile navigation;
+- server-owned Repeat/remix actions;
+- details/actions sheet without exposing hidden source data.
+
+The older Pinterest/grid feed is not the production feed contract.
+
+## Mapping from the existing KSU model
 
 | Feed concept | KSU source of truth |
 | --- | --- |
 | post / task | `Generation` UUID |
 | author | `Generation.user_id -> User` |
-| public author/referral code | existing `User.telegram_id` (`ref_<telegram_id>`) |
-| profile | `User` + existing profile/social services |
-| output media | ready `MediaAsset` owned by KSU |
+| public author/referral identity | existing Telegram/user referral identity |
+| profile | `User` + profile/social services |
+| output media | ready product-owned `MediaAsset` where available |
 | private history state | `GenerationHistoryState`; independent from publication |
-| likes | existing `GenerationLike` composite primary key |
-| moderation blur/remove | existing `GenerationModerationState` |
+| likes | `GenerationLike` |
+| moderation blur/remove | `GenerationModerationState` |
 | comments | `FeedComment`, explicitly scoped to `feed` or `profile` |
-| derivative/remix ledger | `FeedRemixEvent` + lineage on `Generation` |
+| derivative/remix ledger | `FeedRemixEvent` + generation lineage |
 
 ## Publication state
 
@@ -25,22 +42,31 @@ The feed is a public presentation and interaction domain over the existing `Gene
 - `profile`: visible on the author profile only;
 - `feed`: visible on the author profile and eligible for public discovery.
 
-`is_public_feed` and `is_profile_visible` are query projections kept consistent by the feed service.
+`is_public_feed` and `is_profile_visible` are query projections kept consistent by the feed service. Public discovery and profile discovery are separate queries; profile-only publication must not depend on public feed membership.
 
-Public discovery and profile discovery are deliberately separate repository queries. Profile queries never filter only by `is_public_feed`.
+After a successful feed publication the Mini App offers sharing immediately.
 
-## Derivatives
+## Hidden prompt vs Repeat
 
-A derivative has `source_feed_gen_id != NULL`.
+Prompt visibility and repeatability are separate contracts.
 
-- it cannot be published back to the public feed;
-- the prompt-library publication guard rejects it;
-- its feed/profile card always returns an empty `prompt`;
-- reference arrays are empty;
-- `prompt_actions_allowed` is false;
-- remix restores the source prompt and safe model parameters server-side, then creates a new `Generation` with `source_feed_gen_id`, `parent_generation_id` and `action_type=remix`.
+For an ordinary public source generation:
 
-The source prompt is never accepted from the client during remix.
+- the feed DTO may return `prompt: ""` because the author has hidden the prompt;
+- `prompt_actions_allowed` can still be true;
+- another user may receive **Повторить**;
+- the server restores the original prompt and safe settings internally;
+- the source prompt is never sent to or accepted back from the repeating client.
+
+Therefore **hidden prompt does not imply disabled Repeat**. Tests must verify that a foreign user's hidden-prompt publication can be repeated without the prompt appearing in the public DTO/UI.
+
+Curated trends and restricted derivative records use stricter rules and may deliberately return `prompt_actions_allowed=false`.
+
+## Derivatives / remix
+
+A remix/derivative carries lineage (`source_feed_gen_id`, `parent_generation_id`, action type). The server owns source prompt/settings restoration and does not accept a source prompt from the browser.
+
+Restricted derivatives cannot be republished as if they were an unrelated original source. Their feed/profile DTOs continue to protect prompt/reference data according to the derivative policy.
 
 ## Surface authorization
 
@@ -49,7 +75,7 @@ Every interaction receives or derives a surface:
 - `feed`: the item must currently be a valid public-feed publication;
 - `profile`: the item must currently be profile-visible (`feed` or `profile` scope).
 
-Like, unlike, share, comment and remix revalidate this on the server. A UUID alone does not grant access.
+Like, unlike, share, comment and repeat/remix revalidate access on the server. A UUID alone is not authorization.
 
 ## Sorting
 
@@ -57,38 +83,42 @@ Like, unlike, share, comment and remix revalidate this on the server. A UUID alo
 - `top_day`: 24-hour window, then score;
 - `top`: global score.
 
-Current score:
+Current score remains derived from engagement (`likes`, weighted shares and remixes) by the feed service. Clients do not calculate ranking truth.
 
-`likes + shares * 5 + remixes * 7`
+## Share/deep-link contract
 
-## Deep links
+A publication share endpoint returns a usable Telegram link for the specific work. Link generation follows the shared Mini App link contract:
 
-The existing Telegram ID referral code is reused:
+1. use a Telegram Direct Mini App `startapp` link only when a real BotFather Mini App short name is configured;
+2. otherwise fall back to a bot start link carrying the same payload, for example `https://t.me/<bot>?start=feed_<id>...`;
+3. never synthesize a default `/app` short name.
 
-- `feed_<generation_uuid>_ref_<telegram_id>`;
-- `posts_<telegram_id>_ref_<telegram_id>`;
-- `remix_<generation_uuid>_ref_<telegram_id>`.
+This fallback also applies to profile/referral links. The Mini App share action opens Telegram share when available and uses a WebView-safe copy fallback when needed.
 
-A post deep link tries the public card first and then the profile card, so profile-only posts do not depend on public discovery. `remix_*` executes the server-side remix flow instead of only rendering a preview.
+Legacy payload families remain supported as required by existing links, including feed/post/profile/remix payloads. Deep-link resolution must always preserve authorization and hidden-prompt rules.
 
 ## Media
 
-Publication requires at least one ready KSU-owned `MediaAsset`. Cards prefer product-owned presigned media. A provider HTTPS result URL is retained only as a legacy delivery fallback when object-storage delivery cannot be constructed.
+New publication paths prefer product-owned durable media. Cards use product-owned view URLs where available; historical provider HTTPS URLs may remain a compatibility fallback for legacy records while migration/repair tooling localizes usable media.
 
 ## Compatibility boundaries
 
 - private history hiding does not unpublish a work;
-- the existing owner-only history/social endpoints are retained;
-- feed APIs are separate and surface-aware;
-- existing `GenerationLike` is reused instead of creating `feed_generation_likes`.
+- existing owner-only history/social endpoints are retained;
+- feed APIs are surface-aware;
+- likes stay idempotent;
+- share counting is intentionally an accepted-action counter rather than an idempotent like state;
+- prompt hiding must not accidentally disable legitimate cross-user Repeat;
+- a share link must not depend on a configured Direct Mini App short name.
 
 ## Known compromises
 
-1. **Referral code:** KSU has no separate stable public referral-code column. Feed deep links reuse the existing `User.telegram_id` referral code so there is one referral identity system.
-2. **Author photo:** the current user/profile schema has no authoritative avatar URL, therefore feed cards return `author_photo_url: null` rather than inventing or caching Telegram profile photos.
-3. **Input references:** output media is durably owned by KSU, but historical input references are still stored as generation URLs/parameters. Remix restores them server-side, yet a future input-media ingest layer would improve long-term reproducibility.
-4. **Preview/thumbnail:** no separate thumbnail pipeline is introduced in this port; `preview_url` is currently the first ready result view.
-5. **Share counting:** shares are an explicit counter and are intentionally not idempotent; each accepted share action increments it. Likes remain idempotent.
-6. **Comment anti-spam:** comments are whitespace-normalized, length-limited, HTML-escaped and surface-authorized. A dedicated per-user comment rate limiter is not introduced in this slice.
-7. **Adult classification:** the feed enforces `is_adult_content` by preventing public discovery (a feed publish request is downgraded to profile), but this port does not introduce a new NSFW classifier. The flag must be set by the existing/future moderation pipeline.
-8. **Prompt library:** KSU currently has an admin prompt-library/moderation contour but no user-facing "publish this generation as prompt" write path. The derivative guard exists in the shared feed domain and is tested; any future prompt publisher must call it before persistence.
+1. **Author photo:** the current user/profile schema does not require an authoritative durable Telegram avatar; a card may return no photo rather than invent one.
+2. **Historical input references:** older generation inputs may still contain URL-form references. Server-side repeat/remix restores safe values, while current reusable-reference/media paths are moving toward product ownership.
+3. **Preview/thumbnail:** there is no independent thumbnail pipeline for every historical record; the first usable result/view may serve as preview.
+4. **Comment anti-spam:** comments are normalized/length-limited/surface-authorized; resource controls remain server-owned.
+5. **Adult classification:** public feed eligibility respects existing moderation/adult flags; this domain does not invent a separate classifier.
+
+## Release acceptance
+
+The system-risk browser matrix explicitly covers foreign-user hidden-prompt Repeat, sharing, like/unlike, comments, subscription tab behavior and prompt non-disclosure across five viewport classes. Mobile WebKit remains a separate required responsive audit.
