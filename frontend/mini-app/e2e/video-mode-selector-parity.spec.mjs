@@ -23,24 +23,24 @@ async function mockPromptToolsApi(page) {
   });
 }
 
-test('photo and video tabs use the same active-state contract', async ({ page }) => {
+test('photo and video buttons use the same checked active-state contract', async ({ page }) => {
   await mockPromptToolsApi(page);
   await page.goto('/mini-app/prompt-tools');
 
-  const tabs = page.getByRole('tablist', { name: 'Режим промпта' });
-  const photo = tabs.getByRole('tab', { name: /Фото/ });
-  const video = tabs.getByRole('tab', { name: /Видео/ });
+  const group = page.getByRole('group', { name: 'Режим промпта' });
+  const photo = group.getByRole('button', { name: 'Фото', exact: true });
+  const video = group.getByRole('button', { name: 'Видео', exact: true });
 
-  await expect(photo).toHaveAttribute('aria-selected', 'true');
+  await expect(photo).toHaveAttribute('aria-pressed', 'true');
   await expect(photo).toContainText('✅');
-  await expect(video).toHaveAttribute('aria-selected', 'false');
+  await expect(video).toHaveAttribute('aria-pressed', 'false');
   await expect(video).not.toContainText('✅');
 
   await video.click();
 
-  await expect(video).toHaveAttribute('aria-selected', 'true');
+  await expect(video).toHaveAttribute('aria-pressed', 'true');
   await expect(video).toContainText('✅');
-  await expect(photo).toHaveAttribute('aria-selected', 'false');
+  await expect(photo).toHaveAttribute('aria-pressed', 'false');
   await expect(photo).not.toContainText('✅');
   await expect(page).toHaveURL(/mode=video/);
 });
