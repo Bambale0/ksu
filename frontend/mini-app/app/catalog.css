@@ -29,3 +29,47 @@
   border-color: rgba(208, 151, 255, .58);
   box-shadow: 0 0 24px rgba(171, 84, 255, .16);
 }
+
+/* Model family sheets are shared by every image, video and music family. Make
+   retail price a first-class part of model selection instead of a tiny tag. */
+.variant-row > .price-pill {
+  grid-column: auto;
+  min-width: 82px;
+  padding: 7px 9px 8px;
+  border: 1px solid rgba(183, 132, 255, .24);
+  border-radius: 12px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  background: linear-gradient(145deg, rgba(155, 92, 255, .16), rgba(255, 95, 183, .06));
+  color: #d7a4ff;
+  -webkit-text-fill-color: #d7a4ff;
+  font-size: 12px;
+  line-height: 1.1;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.variant-row > .price-pill::before {
+  content: "Цена";
+  color: #8f899c;
+  -webkit-text-fill-color: #8f899c;
+  font-size: 7px;
+  line-height: 1;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 390px) {
+  .variant-row {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .variant-row > .price-pill {
+    min-width: 72px;
+    padding-inline: 7px;
+    font-size: 11px;
+  }
+}
