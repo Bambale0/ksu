@@ -20,6 +20,7 @@ from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
+from app.services.telegram_generation_media import send_generation_result_media
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +247,7 @@ def _sync_generation_delivery(generation: Generation | None, delivery: Notificat
 async def _send_generation_success(  # type: ignore[no-untyped-def]
     bot: Bot,
     *,
+    session: AsyncSession,
     chat_id: int,
     generation: Generation,
     action_context_ids: dict[str, uuid.UUID] | None = None,
@@ -257,44 +259,22 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
     if not result_url:
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
-    media_type = _generation_media_type(generation)
-    try:
-        if media_type == "video":
-            return await bot.send_video(
-                chat_id=chat_id,
-                video=result_url,
-                caption=text,
-                reply_markup=keyboard,
-                supports_streaming=True,
-            )
-        if media_type == "audio":
-            return await bot.send_audio(
-                chat_id=chat_id,
-                audio=result_url,
-                caption=text,
-                reply_markup=keyboard,
-            )
-        return await bot.send_photo(
-            chat_id=chat_id,
-            photo=result_url,
-            caption=text,
-            reply_markup=keyboard,
-        )
-    except TelegramAPIError as exc:
-        # Telegram's cloud Bot API has tighter URL/file limits than generation
-        # providers. If inline media cannot be fetched or decoded, do not lose the
-        # completion notification: send the same message with the original URL and
-        # Mini App buttons. The durable outbox still records this as delivered.
-        logger.info(
-            "generation_notification_media_fallback",
-            extra={"generation_id": str(generation.id), "media_type": media_type, "error": str(exc)},
-        )
-        return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+    return await send_generation_result_media(
+        bot,
+        session=session,
+        chat_id=chat_id,
+        generation=generation,
+        media_type=_generation_media_type(generation),
+        result_url=result_url,
+        caption=text,
+        reply_markup=keyboard,
+    )
 
 
 async def _send_generation_notification(  # type: ignore[no-untyped-def]
     bot: Bot,
     *,
+    session: AsyncSession,
     chat_id: int,
     notification: Notification,
     generation: Generation,
@@ -303,6 +283,7 @@ async def _send_generation_notification(  # type: ignore[no-untyped-def]
     if notification.kind == "generation_succeeded" and generation.status == "succeeded":
         return await _send_generation_success(
             bot,
+            session=session,
             chat_id=chat_id,
             generation=generation,
             action_context_ids=action_context_ids,
@@ -395,6 +376,7 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             if generation is not None:
                 message = await _send_generation_notification(
                     bot,
+                    session=session,
                     chat_id=user.telegram_id,
                     notification=notification,
                     generation=generation,
