@@ -126,8 +126,9 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
-        # Canonical share/copy link opens ROXY directly via Telegram's Mini App
-        # short-name path and preserves the referral payload in startapp.
+        # Canonical share/copy link opens ROXY with a safe Telegram payload:
+        # Direct Mini App when BotFather short name is configured, otherwise
+        # bot /start fallback that preserves the payload into the WebApp button.
         "referral_link": referral_link,
         "referral_bot_link": referral_link,
         "referral_mini_app_link": referral_mini_app_link,

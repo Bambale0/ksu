@@ -30,6 +30,7 @@ async def test_telegram_health_reports_main_mini_app_enabled(monkeypatch: pytest
         "bot_username": "roxy_aicreativebot",
         "mini_app_short_name": "app",
         "direct_mini_app_link_template": "https://t.me/roxy_aicreativebot/app?startapp=<payload>",
+        "bot_start_link_template": "https://t.me/roxy_aicreativebot?start=<payload>",
         "main_mini_app_enabled": True,
         "main_mini_app_link_template": "https://t.me/roxy_aicreativebot?startapp=<payload>",
     }
@@ -53,6 +54,9 @@ async def test_telegram_health_accepts_direct_mini_app_when_main_app_disabled(mo
     assert payload["direct_mini_app_link_template"] == (
         "https://t.me/roxy_aicreativebot/app?startapp=<payload>"
     )
+    assert payload["bot_start_link_template"] == (
+        "https://t.me/roxy_aicreativebot?start=<payload>"
+    )
     assert payload["main_mini_app_enabled"] is False
     assert payload["main_mini_app_link_template"] == (
         "https://t.me/roxy_aicreativebot?startapp=<payload>"
@@ -73,6 +77,9 @@ async def test_telegram_health_surfaces_missing_direct_mini_app_short_name(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "misconfigured"
+    assert payload["status"] == "ok"
     assert payload["mini_app_short_name"] is None
     assert payload["direct_mini_app_link_template"] is None
+    assert payload["bot_start_link_template"] == (
+        "https://t.me/roxy_aicreativebot?start=<payload>"
+    )

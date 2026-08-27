@@ -15,7 +15,7 @@ from app.db.models import (
     User,
 )
 from app.db.payment_models import ReferralRewardReversal
-from app.services.feed_links import mini_app_deep_link, profile_payload, referral_payload
+from app.services.feed_links import bot_start_link, mini_app_deep_link, profile_payload, referral_payload
 
 
 class PartnerWithdrawalError(ValueError):
@@ -263,24 +263,19 @@ class PartnerService:
     def referral_link(telegram_id: int) -> str | None:
         """Canonical public referral link: open ROXY Mini App directly."""
 
-        username = settings.bot_username.strip().lstrip("@")
-        if not username:
-            return None
         payload = referral_payload(telegram_id)
-        return mini_app_deep_link(
-            payload,
-            fallback_url=f"https://t.me/{username}?start={payload}",
-        )
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     @staticmethod
     def referral_mini_app_link(telegram_id: int) -> str | None:
         """Secondary Mini App URL kept for diagnostics and BotFather setups that support it."""
 
-        return mini_app_deep_link(referral_payload(telegram_id))
+        payload = referral_payload(telegram_id)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     @staticmethod
     def profile_link(telegram_id: int) -> str | None:
         """Public author profile link with referral attribution preserved."""
 
         payload = profile_payload(telegram_id)
-        return mini_app_deep_link(payload)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))

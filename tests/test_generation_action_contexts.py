@@ -214,6 +214,7 @@ async def test_publish_share_payload_contract(monkeypatch: pytest.MonkeyPatch) -
         assert set(share) == {"link", "share_url", "share_text", "copy_link"}
         assert share["copy_link"] == share["link"]
         assert share["link"]
-        assert "startapp=feed_" in share["link"]
+        assert "feed_" in share["link"]
+        assert "app?startapp" not in share["link"]
         assert share["share_url"].startswith("https://t.me/share/url?url=")
         assert share["share_text"].endswith(share["link"])
