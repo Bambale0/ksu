@@ -46,6 +46,8 @@ def _request_id(request: Request) -> str:
 
 
 def _domain_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
     if isinstance(exc, LookupError):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, AdminPolicyError):
