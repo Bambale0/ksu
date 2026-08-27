@@ -247,6 +247,8 @@ export type PartnerStats = {
   second_line_percent?: string;
   referral_payload?: string;
   referral_link?: string;
+  profile_link?: string;
+  author_profile_link?: string;
   partner_chat_url?: string | null;
   rox_balance?: string;
   welcome_bonus_rox?: string;

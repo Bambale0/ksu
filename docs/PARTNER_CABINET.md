@@ -130,11 +130,12 @@ TELEGRAM_MINI_APP_SHORT_NAME=app
 ROXY public partner links use Telegram Direct Mini App links:
 
 ```text
+profile_link / author_profile_link     https://t.me/KsuBot/app?startapp=profile_<telegram_id>_ref_<telegram_id>
 referral_link / referral_mini_app_link https://t.me/KsuBot/app?startapp=ref_<telegram_id>
 legacy fallback                        https://t.me/KsuBot?start=ref_<telegram_id>
 ```
 
-The canonical partner share/copy link opens ROXY directly and passes `ref_<telegram_id>` through `startapp`. The backend still accepts legacy `/start ref_<telegram_id>` links and can fall back to them when `TELEGRAM_MINI_APP_SHORT_NAME` is not configured.
+The primary author-facing share link is `profile_link`: it opens the public author profile with their works and subscription button, while preserving referral attribution. `referral_link` remains the plain invite link for registration-only sharing. The backend still accepts legacy `/start ref_<telegram_id>` links and can fall back to them when `TELEGRAM_MINI_APP_SHORT_NAME` is not configured.
 
 When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
 

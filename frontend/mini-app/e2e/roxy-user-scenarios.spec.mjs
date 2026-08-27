@@ -214,7 +214,8 @@ async function mockRoxy(page) {
     if (path === '/api/v1/uploads/kie') return json(route, { url: savedImage, name: 'saved.png', mime_type: 'image/png', size: 68, replayed: true, reference: savedReferences[0] }, 201);
 
     if (path === '/api/v1/referrals/stats') return json(route, {
-      referral_link: 'https://t.me/roxy_aicreativebot?start=ref_777',
+      referral_link: 'https://t.me/roxy_aicreativebot/app?startapp=ref_777',
+      profile_link: 'https://t.me/roxy_aicreativebot/app?startapp=profile_777_ref_777',
       first_line: 2,
       second_line: 1,
       partner_balance_rub: '1200.00',
@@ -438,10 +439,10 @@ async function runPartners(page, check) {
   if (check === 'shell') {
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'referral-link') {
-    await expect(page.getByText('https://t.me/roxy_aicreativebot?start=ref_777')).toBeVisible();
+    await expect(page.getByText('https://t.me/roxy_aicreativebot/app?startapp=profile_777_ref_777')).toBeVisible();
   } else if (check === 'copy-referral') {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.getByRole('button', { name: 'Скопировать ссылку' }).click();
+    await page.getByRole('button', { name: 'Скопировать реферальную ссылку' }).click();
     await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } else if (check === 'stats') {
     await expect(page.getByText('2').first()).toBeVisible();
