@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 from fastapi import APIRouter
@@ -33,6 +34,14 @@ class ClientErrorReport(BaseModel):
     digest: str | None = Field(default=None, max_length=256)
 
 
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(tgWebAppData|x-telegram-init-data|initData)\s*[:=]\s*([^\s\"']+)"
+)
+_TELEGRAM_INIT_FIELD_RE = re.compile(
+    r"(?i)(^|[?&#\s])(query_id|auth_date|hash|signature|user)=([^&#\s]+)"
+)
+
+
 def _safe_pathname(value: str) -> str:
     """Keep only the path; Telegram auth/start payloads must never enter logs."""
 
@@ -40,6 +49,18 @@ def _safe_pathname(value: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return path[:256] or "/mini-app/"
+
+
+def _redact_client_text(value: str | None) -> str:
+    """Remove Telegram auth material from untrusted browser diagnostics."""
+
+    text = str(value or "")
+    text = _SENSITIVE_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=<redacted>", text)
+    text = _TELEGRAM_INIT_FIELD_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}=<redacted>",
+        text,
+    )
+    return text
 
 
 @router.post("")
@@ -62,9 +83,9 @@ async def record_client_error(
         payload.viewport_height,
         payload.device_pixel_ratio,
         payload.digest or "",
-        payload.message,
-        payload.stack or "",
-        payload.component_stack or "",
+        _redact_client_text(payload.message),
+        _redact_client_text(payload.stack),
+        _redact_client_text(payload.component_stack),
         payload.user_agent,
     )
     return {"accepted": True}
