@@ -1,14 +1,14 @@
 # KSU API reference
 
-**Status:** current backend on 2026-08-12.
+**Status:** current backend contract on **2026-08-27**.
 
-This is an operational route/auth map. `/docs` and `/redoc` are available only outside production.
+This is the maintained operational route/auth map. `/docs` and `/redoc` are disabled in production.
 
 ## Authentication classes
 
 ### Public
 
-No product identity required. Examples: health probes, generation model catalog/quote and credit package catalog.
+No product identity required. Examples: health probes and read-only model/package metadata where the route is explicitly public.
 
 ### Telegram user
 
@@ -16,120 +16,164 @@ No product identity required. Examples: health probes, generation model catalog/
 X-Telegram-Init-Data: <Telegram.WebApp.initData>
 ```
 
-The backend validates signed Telegram WebApp data with `BOT_TOKEN`, resolves the user and rejects inactive users. `initDataUnsafe` is never an authentication source.
+The backend validates signed Telegram WebApp data with `BOT_TOKEN`, resolves the product user and rejects inactive users. `initDataUnsafe` is presentation data only and is never an authentication source.
 
-### Admin
+Telegram start/deep-link payload may additionally arrive through the supported start-param header/launch contract; payload never substitutes for signed user authentication.
+
+### Privileged Admin Console
 
 ```http
 Authorization: Bearer <opaque-admin-session-token>
 ```
 
-Admin login/enrollment/step-up also requires fresh Telegram `initData`. Sensitive financial mutations require fresh MFA step-up.
+Admin login/enrollment/step-up starts from fresh signed Telegram data and then uses the separate server-created admin session. Sensitive operations require the appropriate permission plus confirmation/fresh MFA step-up.
 
-## Resource-consumption response contract
+### Inline Trend admin
 
-Expensive user/provider operations are protected by distributed Redis limits plus database admission checks.
+`/api/v1/trends/manage*` deliberately uses the customer Mini App Telegram-auth channel, then separately resolves an active linked `AdminAccount` and authorizes `social.moderate` on the server. `me.is_admin` only controls UI visibility.
 
-Quota/circuit response:
-
-```http
-HTTP/1.1 429 Too Many Requests
-Retry-After: 27
-Content-Type: application/json
-
-{
-  "detail": "Generation rate limit exceeded",
-  "code": "resource_limit_exceeded",
-  "retry_after": 27
-}
-```
-
-If `ABUSE_FAIL_CLOSED=true` and Redis cannot verify an expensive operation:
-
-```http
-HTTP/1.1 503 Service Unavailable
-Retry-After: 5
-
-{
-  "detail": "Resource protection store is unavailable",
-  "code": "protection_backend_unavailable",
-  "retry_after": 5
-}
-```
-
-Clients should respect `Retry-After`; do not immediately retry in a tight loop.
-
-## Health and Mini App
+## Health / release
 
 ```text
 GET /health/live
 GET /health/ready
 GET /health/operational
+GET /metrics
 GET /mini-app/
+GET /mini-app/release.json
+GET /admin-app/
 ```
 
-`/health/operational` verifies generation, media and payment worker heartbeats. `/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
+Production deployment validates operational health and requires `/mini-app/release.json` to match the exact GitHub deploy SHA.
 
-## User/profile
+## User/profile/history/references
 
 ```text
-GET /api/v1/me
-GET /api/v1/me/transactions
+GET    /api/v1/me
+GET    /api/v1/me/transactions
+GET    /api/v1/generations
+GET    /api/v1/generations/{generation_id}
+GET    /api/v1/generations/{generation_id}/recreate
+DELETE /api/v1/generations/{generation_id}/history
+POST   /api/v1/generations/{generation_id}/history/restore
+GET    /api/v1/references
+POST   /api/v1/references/touch
+DELETE /api/v1/references/{reference_id}
+POST   /api/v1/uploads/kie
+```
+
+**Auth:** Telegram user unless the individual read-only route documents otherwise.
+
+`/uploads/kie` is a compatibility route name. Current reusable uploads are persisted under ROXY/product ownership before being used as durable references; clients must not interpret the route name as permission to store temporary provider URLs as product truth.
+
+## Generation catalog / quote / create
+
+```text
+GET  /api/v1/generations/models
+POST /api/v1/generations/quote
+POST /api/v1/generations
+```
+
+The catalog returns model identity, family/presentation metadata, supported fields/scenarios, `ui_schema` and public pricing metadata. The customer UI must derive model controls and variant price display from this response.
+
+Pricing contract:
+
+- the latest published Admin Tariffs `generation_pricing` version in PostgreSQL is the canonical operator override;
+- API workers synchronize the current version before catalog/quote/create pricing decisions;
+- flat, per-second and supported parameter tiers use the shared server resolver;
+- image/video/music/Suno products participate in the same pricing contour;
+- quote and actual debit must agree.
+
+Generation creation atomically commits generation state + wallet debit + PostgreSQL outbox. Redis is coordination/latency state, not the durable work ledger.
+
+Before debit the backend enforces resource/admission limits. Worker submission additionally respects provider/global rate and circuit state. Ambiguous provider acceptance is reconciled rather than blindly resubmitted.
+
+## Feed / publication / social
+
+```text
+GET    /api/v1/feed
+GET    /api/v1/profiles/{user_id}/feed
+POST   /api/v1/feed/{generation_id}/like
+DELETE /api/v1/feed/{generation_id}/like
+GET    /api/v1/feed/{generation_id}/comments
+POST   /api/v1/feed/{generation_id}/comments
+POST   /api/v1/feed/{generation_id}/share
+POST   /api/v1/feed/{generation_id}/remix
+```
+
+Publication/profile action routes live in the generation/feed domain and are surface-authorized server-side.
+
+Current contract:
+
+- a public feed DTO may hide `prompt` while still allowing a legitimate cross-user Repeat/remix action;
+- server restores protected source prompt/settings internally;
+- client never supplies the trusted source prompt for repeat/remix;
+- feed/profile surface access is revalidated for like/share/comment/repeat actions.
+
+Share endpoints return a usable publication link. Link generation uses a Direct Mini App short name only when explicitly configured; otherwise it returns a `t.me/<bot>?start=<payload>` fallback. It must never synthesize `/app`.
+
+See `FEED_DOMAIN.md` and `POST_GENERATION_ACTIONS.md`.
+
+## Curated Trends
+
+### Customer
+
+```text
+GET  /api/v1/trends
+GET  /api/v1/trends/{trend_id}
+POST /api/v1/trends/{trend_id}/run
+```
+
+Public DTOs never expose the curated prompt/provider parameters. A trend run accepts only permitted customer reference input; model/prompt/settings/price are server-owned.
+
+### Inline admin in ROXY
+
+```text
+GET    /api/v1/trends/manage
+POST   /api/v1/trends/manage
+PATCH  /api/v1/trends/manage/{trend_id}
+DELETE /api/v1/trends/manage/{trend_id}
+POST   /api/v1/trends/manage/{trend_id}/activate
+```
+
+**Auth:** signed Telegram user + active linked `AdminAccount` + server-side `social.moderate` authorization.
+
+Writes use validated recipes and `AdminCommandLedger` idempotency/audit semantics.
+
+### Privileged Admin Console
+
+The separate `/api/v1/admin/trends*` / admin-content paths use the privileged Admin Console auth/session boundary. Both admin surfaces mutate the same curated Trend store.
+
+## Referrals / partner links
+
+```text
+GET /api/v1/referrals/stats
+GET /api/v1/referrals/invitations
+GET /api/v1/referrals/rewards
 ```
 
 **Auth:** Telegram user.
 
-## Generations
+`referral_link` and profile/publication links follow the shared Telegram link contract: real Direct Mini App short name when configured; otherwise bot `/start` payload fallback.
+
+## Wallet / payments
+
+Package/checkout and payment-history routes are server-authoritative. The browser never invents an amount or marks a payment paid locally.
+
+Representative routes:
 
 ```text
-GET    /api/v1/generations/models                   public
-POST   /api/v1/generations/quote                    public
-POST   /api/v1/generations                          Telegram user
-GET    /api/v1/generations                          Telegram user
-GET    /api/v1/generations/{generation_id}          Telegram user
-GET    /api/v1/generations/{generation_id}/recreate Telegram user
-DELETE /api/v1/generations/{generation_id}/history Telegram user
-POST   /api/v1/generations/{generation_id}/history/restore Telegram user
-POST   /api/v1/uploads/kie                          Telegram user
+GET  /api/v1/payments/packages
+GET  /api/v1/payments/card/packages
+POST /api/v1/payments
+POST /api/v1/payments/card/checkout
+GET  /api/v1/payments
+GET  /api/v1/payments/{payment_id}
 ```
 
-Generation creation atomically commits generation + wallet debit + PostgreSQL transactional outbox. Redis wake-up is not durable generation state.
+Mutating payment intents require the route's Telegram auth/idempotency contract. Provider reconciliation remains server/worker owned.
 
-Before any debit, `POST /api/v1/generations` enforces:
-
-- per-user generation request rate;
-- configured maximum active generations (`queued/retry/submitting/generating`);
-- optional UTC daily credit-spend ceiling.
-
-The active/daily admission decision locks the product user row until the generation/wallet/outbox transaction commits, preventing concurrent requests from racing through the active-task cap.
-
-`generation-worker` additionally applies a global Kie submission rate and Kie availability circuit breaker. When throttled/open, the outbox item is released with delay instead of being marked failed/refunded.
-
-### Generation result storage
-
-Kie result URLs are temporary provider sources. On successful Kie completion, the same PostgreSQL transaction that marks the generation succeeded also creates one `MediaAsset` + durable `MediaIngestJob` per provider result URL.
-
-`media-worker` copies these results into the configured private S3-compatible bucket. Generation detail/history then prefer short-lived product-owned presigned URLs. Until an owned asset is ready, the provider URL remains a compatibility fallback.
-
-Generation detail/history adds:
-
-```json
-{
-  "result_storage": "owned | provider",
-  "media": [
-    {
-      "id": "uuid",
-      "url": "short-lived-presigned-view-url",
-      "download_url": "/api/v1/media/<uuid>/download",
-      "content_type": "image/png",
-      "size_bytes": 12345,
-      "ordinal": 0
-    }
-  ]
-}
-```
-
-Presigned URLs are temporary capabilities and must not be stored as permanent media identifiers.
+Important payment states include creating/unknown/pending/succeeded/refund/expired/failed families. On uncertain provider creation, clients preserve the same intent/idempotency key and reload server state instead of generating a second invoice.
 
 ## Media assets
 
@@ -138,200 +182,24 @@ GET /api/v1/media/{asset_id}
 GET /api/v1/media/{asset_id}/download
 ```
 
-**Auth:** Telegram user owning the asset.
+Owned media is private and user/surface authorized. View/download URLs are short-lived capabilities; they are not permanent database identifiers.
 
-`GET /api/v1/media/{asset_id}` returns non-secret metadata and readiness state. Foreign/missing assets return 404 to avoid cross-user enumeration.
+## Prompt tools / promo / support
 
-`GET /api/v1/media/{asset_id}/download` requires a ready owned asset and returns a redirect to a short-lived presigned S3 `GetObject` URL with attachment `Content-Disposition`. A pending/failed asset returns 409; missing storage configuration returns 503.
-
-The underlying bucket stays private; this route does not proxy the object bytes through FastAPI.
-
-## Uploads
-
-### `POST /api/v1/uploads/kie`
-
-**Auth:** Telegram user.
-
-In addition to MIME allowlist and `KIE_UPLOAD_MAX_BYTES`, the endpoint enforces:
-
-- uploads per user/minute;
-- uploaded bytes per user/day.
-
-If Starlette does not expose multipart size metadata, the server measures the already-spooled file so chunked clients do not bypass byte accounting. Production reverse proxy must still enforce its own request-body ceiling before application parsing.
-
-## Wallet and payments
-
-The Wallet Mini App treats backend package/payment state as authoritative. The client never submits arbitrary RUB or credit amounts and never marks a payment successful locally.
-
-### `GET /api/v1/payments/packages`
-
-**Auth:** public.
-
-Returns the server-defined package catalog and `internal_credit_rub` conversion rate. Example shape:
-
-```json
-{
-  "internal_credit_rub": "10",
-  "packages": {
-    "starter": {
-      "amount": "300.00",
-      "currency": "RUB",
-      "credits": "30.00",
-      "rox": "30.00"
-    }
-  }
-}
-```
-
-`amount` and `credits` are output-only for the user client. Checkout sends only the selected package identifier and provider.
-
-### `GET /api/v1/payments?limit=20`
-
-**Auth:** Telegram user.
-
-Returns the authenticated user's newest payments only, newest first. This is also the Wallet recovery source after a Mini App reload/reopen: the client finds the newest nonterminal payment from server state instead of persisting financial truth in browser storage.
-
-Each item includes:
+Representative Telegram-user endpoints include:
 
 ```text
-id
-status
-provider
-package_id
-amount
-currency
-credits / rox
-payment_url
-created_at
-updated_at
+GET  /api/v1/prompt-tools
+POST /api/v1/promocodes/redeem
+POST /api/v1/support/tickets
+GET  /api/v1/support/tickets
 ```
 
-Foreign-user payments are never returned.
-
-### `POST /api/v1/payments`
-
-**Auth:** Telegram user.
-
-Required headers:
-
-```http
-X-Telegram-Init-Data: <signed Telegram data>
-Idempotency-Key: <UUID>
-Content-Type: application/json
-```
-
-Body:
-
-```json
-{
-  "provider": "cryptobot | tbank | yookassa",
-  "package_id": "starter"
-}
-```
-
-Before external invoice creation the endpoint also applies a per-user payment-creation rate limit. Payment idempotency remains authoritative: retrying the same intent with the same UUID returns the same local payment; reusing the key for a different intent returns 409.
-
-The client should keep one UUID for one package/provider checkout attempt across transient retries. A network/provider uncertainty is not a reason to generate another invoice.
-
-### `GET /api/v1/payments/{payment_id}`
-
-**Auth:** Telegram user owning the payment. Returns current local payment state/payment URL.
-
-Important states:
-
-```text
-creating
-creation_unknown
-pending
-succeeded
-partially_refunded
-refunded
-refund_review
-canceled
-expired
-failed
-```
-
-`payment-worker` periodically reconciles nonterminal/unknown provider state. Wallet polling is only a presentation refresh; it does not perform settlement logic itself.
-
-### Mini App checkout behavior
-
-Wallet uses the current Telegram Mini Apps link APIs when available:
-
-- Telegram-hosted (`t.me` / `telegram.me`) provider links: `openTelegramLink`;
-- normal HTTPS provider links: `openLink`;
-- ordinary browser fallback: new secure browser tab/window.
-
-On Mini App `activated`, Wallet refreshes payment history and current server status. After `succeeded`, it refreshes `/api/v1/me` and `/api/v1/me/transactions` before showing the new balance.
-
-If payment creation returns an upstream `502`, the client preserves the current idempotency intent and immediately reloads `GET /api/v1/payments`; it does not create a second invoice. `429` responses must honor `Retry-After`.
-
-## Provider reconciliation
-
-### Crypto Pay
-
-- creation recovery via `getInvoices` and local UUID stored in `payload`;
-- signed `invoice_paid` webhook completes payment;
-- no merchant invoice-refund operation is invented.
-
-### T-Bank
-
-- `/v2/Init`, `/v2/CheckOrder`, `/v2/GetState`;
-- signed notification state mapping;
-- full `REFUNDED/REVERSED` creates idempotent local reversal;
-- partial reversal without safe authoritative amount enters `refund_review`;
-- admin full refund uses `/v2/Cancel` without `Amount`.
-
-### YooKassa
-
-- create uses local payment UUID as provider `Idempotence-Key` and metadata;
-- webhook is a signal, then payment is re-fetched;
-- cumulative provider `refunded_amount` drives partial/full local reversal;
-- admin refund uses `/v3/refunds` with UUID `Idempotence-Key`.
-
-## Refund/reversal accounting
-
-Provider-confirmed reversal creates immutable `payment_reversals`. Credits and referral rewards are reversed proportionally and idempotently. A refund may produce negative product-credit balance if purchased credits were already spent; normal user spending still rejects insufficient balance.
-
-## Admin payment lifecycle
-
-```text
-POST /api/v1/admin/payments/{payment_id}/reconcile
-POST /api/v1/admin/payments/{payment_id}/refund
-```
-
-**Auth:** privileged financial permission + fresh MFA step-up.
-
-Refund initiation matrix:
-
-```text
-YooKassa: partial + full
-T-Bank:   full original payment only
-Crypto Pay: unsupported
-```
-
-## Promo/referral/support
-
-```text
-POST /api/v1/promocodes/redeem       Telegram user
-GET  /api/v1/referrals/stats         Telegram user
-POST /api/v1/support/tickets         Telegram user
-GET  /api/v1/support/tickets         Telegram user
-```
-
-## Webhooks
-
-```text
-POST /webhooks/telegram
-POST /webhooks/kie
-POST /webhooks/payments/cryptobot
-POST /webhooks/payments/tbank
-POST /webhooks/payments/yookassa
-```
-
-Provider/Telegram webhook trust boundaries remain signature/secret/provider-authoritative checks; user-facing resource-limit counters are not substitutes for webhook authenticity.
+Resource-consuming tools share the server's rate/admission protections.
 
 ## Admin API groups
+
+Representative privileged groups:
 
 ```text
 /api/v1/admin/auth/*
@@ -343,28 +211,53 @@ Provider/Telegram webhook trust boundaries remain signature/secret/provider-auth
 /api/v1/admin/withdrawals/*
 /api/v1/admin/promocodes/*
 /api/v1/admin/referrals/*
+/api/v1/admin/tariffs*
+/api/v1/admin/trends*
 /api/v1/admin/roles
 /api/v1/admin/admins/*
 /api/v1/admin/audit
 /api/v1/admin/security/*
 ```
 
-See `ADMIN_SECURITY.md`.
+See `ADMIN_CONSOLE.md`, `ADMIN_SECURITY.md` and `ADMIN_CAPABILITY_MATRIX.md`.
+
+## Webhooks
+
+```text
+POST /webhooks/telegram
+POST /webhooks/kie
+POST /webhooks/payments/cryptobot
+POST /webhooks/payments/tbank
+POST /webhooks/payments/yookassa
+```
+
+Webhook authenticity uses provider/Telegram signature/secret contracts. User rate-limit/auth mechanisms are not substitutes for webhook verification.
+
+## Resource-protection response contract
+
+Resource/admission limits may return:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: <seconds>
+```
+
+If configured fail-closed protection state cannot be verified, protected expensive operations may return `503` with `Retry-After`. Clients must respect the retry window and not tight-loop.
 
 ## Common HTTP classes
 
 ```text
-400 invalid request/idempotency header
-401 invalid user/admin authentication
-403 forbidden or invalid webhook signature
-404 resource not found
+400 invalid request/idempotency/header
+401 invalid Telegram/admin authentication
+403 permission/webhook/signature boundary
+404 resource not found or intentionally non-enumerable
 409 idempotency/state/unsupported-operation conflict
 413 upload too large
 415 unsupported media type
-422 model/refund validation error
-429 resource quota/circuit/admin rate limit
+422 model/recipe/parameter validation
+429 quota/rate/admission limit
 502 upstream provider operation failure
 503 service/config/protection-store unavailable
 ```
 
-For 429/anti-abuse 503, read and honor `Retry-After`.
+When a route returns `Retry-After`, honor it.
