@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -262,19 +261,16 @@ class PartnerService:
 
     @staticmethod
     def referral_link(telegram_id: int) -> str | None:
-        """Reliable public referral link: open bot first, then launch ROXY in-app.
-
-        This matches banano_kling:tanyapi: Telegram Main Mini App deep links can be
-        flaky or unavailable for some bot configurations, while /start payloads are
-        accepted by every Telegram client and the bot preserves the payload into the
-        WebApp button.
-        """
+        """Canonical public referral link: open ROXY Mini App directly."""
 
         username = settings.bot_username.strip().lstrip("@")
         if not username:
             return None
         payload = referral_payload(telegram_id)
-        return f"https://t.me/{username}?start={quote(payload, safe='_-')}"
+        return mini_app_deep_link(
+            payload,
+            fallback_url=f"https://t.me/{username}?start={payload}",
+        )
 
     @staticmethod
     def referral_mini_app_link(telegram_id: int) -> str | None:
