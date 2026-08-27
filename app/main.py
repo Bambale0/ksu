@@ -23,6 +23,7 @@ from app.core.http_observability import RequestObservabilityMiddleware
 from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.core.observability import configure_telemetry, shutdown_telemetry
+from app.core.pricing_runtime_sync import PricingRuntimeSyncMiddleware
 from app.db.session import SessionFactory, engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
 from app.services.admin_pricing import AdminPricingService
@@ -116,6 +117,7 @@ app = FastAPI(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestObservabilityMiddleware)
+app.add_middleware(PricingRuntimeSyncMiddleware)
 configure_telemetry(app)
 
 
