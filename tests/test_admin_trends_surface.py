@@ -14,6 +14,8 @@ def test_admin_console_exposes_trend_manager() -> None:
     workflow = _read(ROOT / ".github" / "workflows" / "admin-console.yml")
 
     assert 'href="/admin-app/trends.html"' in index
+    assert 'data-preserve-launch' in index
+    assert 'data-preserve-launch' in html
     assert 'id="trendForm"' in html
     assert 'id="trendModel"' in html
     assert 'id="trendPrompt"' in html
@@ -23,7 +25,9 @@ def test_admin_console_exposes_trend_manager() -> None:
     assert 'id="trendList"' in html
     assert (ADMIN / "trends.css").is_file()
     assert (ADMIN / "trends.js").is_file()
+    assert (ADMIN / "admin-navigation.js").is_file()
     assert "node --check app/web/admin_app/trends.js" in workflow
+    assert "node --check app/web/admin_app/admin-navigation.js" in workflow
 
 
 def test_trend_manager_uses_admin_auth_and_server_owned_crud() -> None:
@@ -77,5 +81,5 @@ def test_admin_trend_backend_exposes_dynamic_model_options_and_editing() -> None
     # Creation/deactivation already exist in the hardened admin-capabilities API;
     # the new manager UI must reuse them rather than creating an unguarded path.
     assert '@router.get("/trends")' in capabilities
-    assert '@router.post("/trends", status_code=201)' in capabilities
+    assert '@router.post("/trends", status_code=status.HTTP_201_CREATED)' in capabilities
     assert '@router.delete("/trends/{trend_id}")' in capabilities
