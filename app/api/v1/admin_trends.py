@@ -57,6 +57,22 @@ def _domain_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=409, detail=str(exc))
 
 
+@router.get("")
+async def web_admin_trend_list(
+    context: AdminSocialDep,
+    session: SessionDep,
+) -> dict[str, Any]:
+    del context
+    rows = list(
+        (
+            await session.scalars(
+                select(AdminTrend).order_by(AdminTrend.created_at.desc())
+            )
+        ).all()
+    )
+    return {"items": [TrendService.admin_view(item) for item in rows]}
+
+
 @router.get("/options")
 async def web_admin_trend_options(context: AdminSocialDep) -> dict[str, Any]:
     del context
@@ -67,6 +83,59 @@ async def web_admin_trend_options(context: AdminSocialDep) -> dict[str, Any]:
         "input_modes": ["none", "image"],
         "limits": {"max_references": 16, "max_tags": 20},
     }
+
+
+@router.post("")
+async def web_admin_trend_create(
+    payload: TrendUpdateRequest,
+    request: Request,
+    context: AdminSocialDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    try:
+        AdminPolicy.authorize_action(
+            context.account,
+            "social.moderate",
+            confirmed=_confirmed(confirmation),
+        )
+        title = payload.title.strip()
+        recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
+        trend_id = uuid.uuid4()
+
+        async def operation() -> dict[str, Any]:
+            item = AdminTrend(
+                id=trend_id,
+                title=title,
+                payload=recipe,
+                is_active=payload.is_active,
+                created_by_admin_id=context.account.id,
+            )
+            session.add(item)
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_require_idempotency(idempotency_key),
+            admin_user_id=context.account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={
+                "operation": "trend.create",
+                "title": title,
+                "payload": recipe,
+                "is_active": payload.is_active,
+            },
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
 
 
 @router.patch("/{trend_id}")
@@ -117,6 +186,49 @@ async def web_admin_trend_update(
                 "payload": recipe,
                 "is_active": payload.is_active,
             },
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.delete("/{trend_id}")
+async def web_admin_trend_deactivate(
+    trend_id: uuid.UUID,
+    request: Request,
+    context: AdminSocialDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    try:
+        AdminPolicy.authorize_action(
+            context.account,
+            "social.moderate",
+            confirmed=_confirmed(confirmation),
+        )
+
+        async def operation() -> dict[str, Any]:
+            item = await session.scalar(
+                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
+            )
+            if item is None:
+                raise LookupError("Trend not found")
+            item.is_active = False
+            await session.flush()
+            return TrendService.admin_view(item)
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_require_idempotency(idempotency_key),
+            admin_user_id=context.account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={"operation": "trend.deactivate"},
             operation=operation,
         )
         await session.commit()
