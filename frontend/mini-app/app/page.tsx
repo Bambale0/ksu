@@ -8,7 +8,7 @@ import { GenerationQuantityControl } from "@/components/generation-quantity-cont
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
-import { SingleFeedSurfaceGuard } from "@/components/single-feed-surface-guard";
+import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
 import { WalletParity } from "@/components/wallet-parity";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
@@ -17,8 +17,8 @@ export default function Page() {
   return (
     <ReferenceMemoryProvider>
       <ClientErrorReporter />
-      <SingleFeedSurfaceGuard />
       <AppEntryGate />
+      <TikTokFeedSurface />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
       <CatalogParityFeatures />
