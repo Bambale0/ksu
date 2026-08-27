@@ -6,6 +6,7 @@ import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
+import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
@@ -29,6 +30,7 @@ export default function Page() {
       <PostPublishSharePrompt />
       <GlobalUxEnhancers />
       <KlingMultishotGuard />
+      <InlineTrendAdmin />
     </ReferenceMemoryProvider>
   );
 }
