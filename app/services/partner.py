@@ -15,7 +15,7 @@ from app.db.models import (
     User,
 )
 from app.db.payment_models import ReferralRewardReversal
-from app.services.feed_links import mini_app_deep_link, referral_payload
+from app.services.feed_links import mini_app_deep_link, profile_payload, referral_payload
 
 
 class PartnerWithdrawalError(ValueError):
@@ -277,3 +277,10 @@ class PartnerService:
         """Secondary Mini App URL kept for diagnostics and BotFather setups that support it."""
 
         return mini_app_deep_link(referral_payload(telegram_id))
+
+    @staticmethod
+    def profile_link(telegram_id: int) -> str | None:
+        """Public author profile link with referral attribution preserved."""
+
+        payload = profile_payload(telegram_id)
+        return mini_app_deep_link(payload)

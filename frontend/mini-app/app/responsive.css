@@ -243,7 +243,7 @@ small {
   }
 
   .profile-hero {
-    grid-template-columns: 58px minmax(0, 1fr) 40px;
+    grid-template-columns: 58px minmax(0, 1fr) auto;
     gap: 9px;
     padding: 13px;
   }
@@ -517,7 +517,7 @@ small {
   }
 
   .profile-hero {
-    grid-template-columns: 88px minmax(0, 1fr) 46px;
+    grid-template-columns: 88px minmax(0, 1fr) auto;
     gap: 16px;
     padding: 21px;
   }

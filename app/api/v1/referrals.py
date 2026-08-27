@@ -77,6 +77,7 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
     referral_link = PartnerService.referral_link(user.telegram_id)
     referral_mini_app_link = PartnerService.referral_mini_app_link(user.telegram_id)
+    profile_link = PartnerService.profile_link(user.telegram_id)
 
     prompts_created = int(
         (
@@ -130,6 +131,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "referral_link": referral_link,
         "referral_bot_link": referral_link,
         "referral_mini_app_link": referral_mini_app_link,
+        "profile_link": profile_link,
+        "author_profile_link": profile_link,
         "partner_chat_url": _partner_chat_url(),
         # Canonical wallet field. Bonuses, purchased top-ups and converted partner
         # earnings all land in this one ROX balance.

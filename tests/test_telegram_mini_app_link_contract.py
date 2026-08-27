@@ -35,6 +35,9 @@ def test_production_partner_referral_opens_direct_mini_app(monkeypatch) -> None:
     assert PartnerService.referral_mini_app_link(339795159) == (
         "https://t.me/roxy_aicreativebot/app?startapp=ref_339795159"
     )
+    assert PartnerService.profile_link(339795159) == (
+        "https://t.me/roxy_aicreativebot/app?startapp=profile_339795159_ref_339795159"
+    )
 
 
 def test_missing_short_name_falls_back_to_legacy_bot_link_when_provided(monkeypatch) -> None:  # type: ignore[no-untyped-def]
