@@ -22,3 +22,4 @@ jobs:
         run: |
           node --check app/web/admin_app/admin.js
           node --check app/web/admin_app/control.js
+          node --check app/web/admin_app/trends.js
