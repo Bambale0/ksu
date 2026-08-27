@@ -9,6 +9,7 @@ from app.api.v1 import (
     admin_creator_partnership,
     admin_operations,
     admin_payments,
+    admin_trends,
     admin_users,
     card_payments,
     creator_partnership,
@@ -64,5 +65,6 @@ api_router.include_router(admin_payments.router)
 api_router.include_router(admin_accounts.router)
 api_router.include_router(admin_audit.router)
 api_router.include_router(admin_capabilities.router)
+api_router.include_router(admin_trends.router)
 api_router.include_router(admin_control.router)
 api_router.include_router(admin_creator_partnership.router)
