@@ -22,18 +22,26 @@ The system prompts deliberately do not copy the old uncensored legacy image-anal
 
 ## Pricing
 
-There is no hard-coded product price in this epic. Tools are enabled only when the latest published `TariffVersion.payload.prompt_costs` contains a positive credit amount:
+Prompt по описанию and Prompt по фото have fixed public product prices:
+
+```json
+{
+  "prompt_builder": "1.00",
+  "image_analysis": "1.00"
+}
+```
+
+These two prices are not overridden by the latest published `TariffVersion.payload.prompt_costs`; this keeps customer-facing billing stable even when model/provider routing changes. Prompt по видео keeps the tariff/default pricing path:
 
 ```json
 {
   "prompt_costs": {
-    "image_analysis": "2.00",
-    "prompt_builder": "3.00"
+    "video_prompt": "30.00"
   }
 }
 ```
 
-The values above are examples only, not deployment defaults. If a tool has no published price it is returned as `enabled=false` and task creation fails closed with HTTP 503.
+The video value above is an example/default. If a tool has no resolved positive price it is returned as `enabled=false` and task creation fails closed with HTTP 503.
 
 The normal internal-credit conversion is used for the RUB preview, so the existing rule `1 internal credit = 10 RUB` remains authoritative.
 

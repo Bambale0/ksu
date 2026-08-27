@@ -37,10 +37,11 @@ _TOOL_TITLE = {
     "video_prompt": "Prompt по видео",
 }
 _DEFAULT_COSTS = {
-    "image_analysis": Decimal("15.00"),
-    "prompt_builder": Decimal("10.00"),
+    "image_analysis": Decimal("1.00"),
+    "prompt_builder": Decimal("1.00"),
     "video_prompt": Decimal("30.00"),
 }
+_FIXED_COST_TOOLS = {"image_analysis", "prompt_builder"}
 _ALLOWED_DURATIONS = {5, 10, 15}
 _TASK_NAMESPACE = uuid.UUID("b9346c9a-31c2-4de6-b2dd-0c76c359dd7f")
 
@@ -84,6 +85,8 @@ class PromptToolPricingService:
         if not isinstance(raw, dict):
             return result
         for tool in _TOOL_MODEL:
+            if tool in _FIXED_COST_TOOLS:
+                continue
             value = raw.get(tool)
             if isinstance(value, dict):
                 value = value.get("credits")

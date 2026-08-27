@@ -30,7 +30,7 @@ async function mockPromptTools(page, { uploadUrl = 'https://cdn.roxy.test/galler
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', balance_rox: '150.00' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/prompt-tools') return json({ items: [
-      { id: 'prompt_builder', enabled: true, cost_credits: '10.00' },
+      { id: 'prompt_builder', enabled: true, cost_credits: '1.00' },
       { id: 'video_prompt', enabled: true, cost_credits: '30.00', model: 'gpt-5-5' },
     ] });
     if (path === '/api/v1/uploads/kie') {

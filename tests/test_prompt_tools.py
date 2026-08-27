@@ -110,8 +110,10 @@ async def test_prompt_tool_create_is_idempotent_and_charges_once(monkeypatch: py
         assert replayed_first is False
         assert replayed_second is True
         assert first.id == second.id
+        assert Decimal(first.cost_credits) == Decimal("1.00")
+        assert first.input_payload["_retail_cost_credits"] == "1.00"
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("30.00")
+        assert Decimal(wallet.balance) == Decimal("39.00")
         outboxes = list(
             (
                 await session.scalars(
@@ -223,16 +225,17 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
             },
             idempotency_key=f"video-prompt-{uuid.uuid4()}",
         )
+        task_id = task.id
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
         assert Decimal(wallet_after_charge.balance) == Decimal("10.00")
 
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None
-        assert claimed.task_id == task.id
+        assert claimed.task_id == task_id
         await PromptToolProcessor.process(session, AsyncMock(), claimed)
 
-        refreshed = await session.get(PromptToolTask, task.id)
+        refreshed = await session.get(PromptToolTask, task_id)
         assert refreshed is not None
         assert refreshed.status == "succeeded"
         assert refreshed.result_payload["camera"] == "slow dolly in"
@@ -269,9 +272,11 @@ async def test_terminal_provider_failure_refunds_user(
             idempotency_key=f"prompt-failure-{uuid.uuid4()}",
         )
         task_id = task.id
+        assert Decimal(task.cost_credits) == Decimal("1.00")
+        assert task.input_payload["_retail_cost_credits"] == "1.00"
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
-        assert Decimal(wallet_after_charge.balance) == Decimal("25.00")
+        assert Decimal(wallet_after_charge.balance) == Decimal("39.00")
 
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None

@@ -6,8 +6,8 @@ Default public ROX prices:
 
 | Tool | Price |
 | --- | ---: |
-| Prompt по описанию | 10 ROX |
-| Prompt по фото | 15 ROX |
+| Prompt по описанию | 1 ROX |
+| Prompt по фото | 1 ROX |
 | Prompt по видео | 30 ROX |
 
-Admins can still get an effective zero charge through admin billing access, but the catalog exposes `retail_cost_credits` so the Mini App can show the public user price.
+Prompt по описанию and Prompt по фото are fixed product prices and are not overridden by Admin Tariffs `prompt_costs`; this keeps the customer price stable across model/provider routing changes. Admins can still get an effective zero charge through admin billing access, but the catalog exposes `retail_cost_credits` so the Mini App can show the public user price.
