@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.api.v1.generations import CreateGenerationRequest, MAX_REQUEST_QUANTITY
+from app.services.music_generation import MAX_MUSIC_GENERATION_QUANTITY
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,11 @@ def test_generation_quantity_allows_four() -> None:
 def test_generation_quantity_rejects_more_than_four() -> None:
     with pytest.raises(ValidationError):
         CreateGenerationRequest(model_id="seedance-2.0", quantity=5)
+
+
+def test_music_generation_quantity_cap_matches_global_cap() -> None:
+    assert MAX_MUSIC_GENERATION_QUANTITY == 4
+    assert MAX_MUSIC_GENERATION_QUANTITY == MAX_REQUEST_QUANTITY
 
 
 def test_mini_app_generation_quantity_fallback_is_four() -> None:
