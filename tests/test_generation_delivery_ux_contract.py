@@ -58,6 +58,7 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
     models = _read(ROOT / "app" / "db" / "models.py")
     migration = _read(ROOT / "alembic" / "versions" / "0028_generation_telegram_delivery.py")
     worker = _read(ROOT / "app" / "workers" / "notifications.py")
+    media = _read(ROOT / "app" / "services" / "telegram_generation_media.py")
 
     for token in (
         "telegram_notification_status",
@@ -67,8 +68,15 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
         assert token in models
         assert token in migration
         assert token in worker
-    assert "send_photo" in worker
-    assert "send_video" in worker
+
+    # The notification worker owns durable delivery state and delegates the
+    # media transport to one hardened service. That service must preserve the
+    # native photo/video/audio paths plus the exact-file document fallback.
+    assert "send_generation_result_media" in worker
+    assert "send_photo" in media
+    assert "send_video" in media
+    assert "send_audio" in media
+    assert "send_document" in media
     assert "🚀 Открыть в ROXY" in worker
     assert "📥 Скачать оригинал" in worker
 
