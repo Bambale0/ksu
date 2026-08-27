@@ -20,7 +20,7 @@ async function installTelegram(page) {
 }
 
 async function mockPromptTools(page, { uploadUrl = 'https://cdn.roxy.test/gallery.mov' } = {}) {
-  const calls = { imageAnalysis: null, videoPrompt: null, uploadHeaders: null };
+  const calls = { promptBuilder: null, imageAnalysis: null, videoPrompt: null, uploadHeaders: null };
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -30,7 +30,8 @@ async function mockPromptTools(page, { uploadUrl = 'https://cdn.roxy.test/galler
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', balance_rox: '150.00' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/prompt-tools') return json({ items: [
-      { id: 'prompt_builder', enabled: true, cost_credits: '1.00' },
+      { id: 'prompt_builder', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', admin_free: true },
+      { id: 'image_analysis', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', admin_free: true },
       { id: 'video_prompt', enabled: true, cost_credits: '30.00', model: 'gpt-5-5' },
     ] });
     if (path === '/api/v1/uploads/kie') {
@@ -39,6 +40,10 @@ async function mockPromptTools(page, { uploadUrl = 'https://cdn.roxy.test/galler
     }
     if (path === '/api/v1/prompt-tools/image-analysis') {
       calls.imageAnalysis = request.postDataJSON();
+      return json({ id: 'prompt_task', status: 'queued' }, 202);
+    }
+    if (path === '/api/v1/prompt-tools/prompt-builder') {
+      calls.promptBuilder = request.postDataJSON();
       return json({ id: 'prompt_task', status: 'queued' }, 202);
     }
     if (path === '/api/v1/prompt-tools/video-prompt') {
@@ -104,6 +109,8 @@ test('photo prompt uses dedicated image analysis endpoint', async ({ page }) => 
 
   await page.goto('/mini-app/prompt-tools/?mode=image');
   await expect(page.getByRole('button', { name: 'Фото', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('heading', { name: '1 ROX' })).toBeVisible();
+  await expect(page.getByText('Для вас бесплатно')).toHaveCount(0);
 
   await page.locator('textarea').fill('Сохрани свет и композицию');
   await page.locator("input[type='file']").setInputFiles({
@@ -121,6 +128,35 @@ test('photo prompt uses dedicated image analysis endpoint', async ({ page }) => 
     instruction: 'Сохрани свет и композицию',
   });
   expect(calls.videoPrompt).toBeNull();
+});
+
+test('photo prompt does not reuse Seedance scenario text after mode switch', async ({ page }) => {
+  await installTelegram(page);
+  const calls = await mockPromptTools(page, { uploadUrl: 'https://cdn.roxy.test/photo.png' });
+
+  await page.goto('/mini-app/prompt-tools/?mode=seedance');
+  await expect(page.getByRole('button', { name: 'Сценарий', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('heading', { name: '30 ROX' })).toBeVisible();
+  await page.locator('textarea').fill('Между ними малышка новорожденная');
+
+  await page.getByRole('button', { name: 'Фото', exact: true }).click();
+  await expect(page.locator('textarea')).toHaveValue('');
+  await expect(page.getByRole('heading', { name: '1 ROX' })).toBeVisible();
+
+  await page.locator("input[type='file']").setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('png-bytes'),
+  });
+  await expect(page.getByText('Фото загружено · заменить')).toBeVisible();
+  await page.getByRole('button', { name: 'Создать промпт' }).click();
+  await expect(page.getByText('Готовый кинематографичный промпт')).toBeVisible();
+
+  expect(calls.imageAnalysis).toEqual({
+    image_url: 'https://cdn.roxy.test/photo.png',
+    instruction: '',
+  });
+  expect(calls.promptBuilder).toBeNull();
 });
 
 test('Seedance prompt mode still shows duration picker', async ({ page }) => {
