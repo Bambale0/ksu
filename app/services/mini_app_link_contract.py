@@ -26,13 +26,16 @@ def install_mini_app_link_contract() -> None:
     from app.services.partner import PartnerService
 
     def post_deep_link(generation_id: uuid.UUID, author_referral_code: str) -> str | None:
-        return mini_app_deep_link(post_payload(generation_id, author_referral_code))
+        payload = post_payload(generation_id, author_referral_code)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     def profile_deep_link(author_referral_code: str) -> str | None:
-        return mini_app_deep_link(profile_payload(author_referral_code))
+        payload = profile_payload(author_referral_code)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     def remix_deep_link(generation_id: uuid.UUID, author_referral_code: str) -> str | None:
-        return mini_app_deep_link(remix_payload(generation_id, author_referral_code))
+        payload = remix_payload(generation_id, author_referral_code)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     def referral_link(telegram_id: int) -> str | None:
         payload = referral_payload(telegram_id)

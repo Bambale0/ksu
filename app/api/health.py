@@ -39,11 +39,11 @@ async def telegram_contract(request: Request) -> dict[str, object]:
     main_mini_app_enabled = bool(
         getattr(request.app.state, "bot_has_main_web_app", False)
     )
-    ready_for_direct_links = bool(username and short_name)
+    ready_for_public_links = bool(username)
     return {
         "status": (
             "ok"
-            if not configured or ready_for_direct_links
+            if not configured or ready_for_public_links
             else "misconfigured"
         ),
         "bot_configured": configured,
@@ -53,6 +53,9 @@ async def telegram_contract(request: Request) -> dict[str, object]:
             f"https://t.me/{username}/{short_name}?startapp=<payload>"
             if username and short_name
             else None
+        ),
+        "bot_start_link_template": (
+            f"https://t.me/{username}?start=<payload>" if username else None
         ),
         "main_mini_app_enabled": main_mini_app_enabled,
         "main_mini_app_link_template": (

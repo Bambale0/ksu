@@ -130,6 +130,25 @@ def test_short_name_setting_controls_direct_mini_app_path(monkeypatch) -> None: 
         )
 
 
+def test_generated_social_links_fall_back_to_bot_start_without_short_name(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
+    monkeypatch.setattr(settings, "telegram_mini_app_short_name", "")
+    generation_id = uuid.uuid4()
+
+    assert PartnerService.referral_link(123456) == (
+        "https://t.me/RoxyExampleBot?start=ref_123456"
+    )
+    assert PartnerService.profile_link(123456) == (
+        "https://t.me/RoxyExampleBot?start=profile_123456_ref_123456"
+    )
+    assert FeedService.post_deep_link(generation_id, "123456") == (
+        f"https://t.me/RoxyExampleBot?start=feed_{generation_id}_ref_123456"
+    )
+    assert FeedService.remix_deep_link(generation_id, "123456") == (
+        f"https://t.me/RoxyExampleBot?start=remix_{generation_id}_ref_123456"
+    )
+
+
 def test_mini_app_link_encodes_payload_like_tanyapi(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "roxy")

@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     bot_token: str = ""
     bot_username: str = ""
-    telegram_mini_app_short_name: str = "app"
+    telegram_mini_app_short_name: str = ""
     support_telegram_url: str = ""
     partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
