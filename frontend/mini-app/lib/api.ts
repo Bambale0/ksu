@@ -97,7 +97,7 @@ export const api = {
     form.append("file", file, file.name);
     return request<{ url: string; name?: string; mime_type?: string; size?: number }>("/api/v1/uploads/kie", { method: "POST", body: form });
   },
-  feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[] }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
+  feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
   profileFeed: (referralCode: string, offset = 0) => request<{ author?: Record<string, unknown>; items: FeedCard[] }>(`/api/v1/profiles/${encodeURIComponent(referralCode)}/feed?limit=24&offset=${offset}`),
   publish: (
