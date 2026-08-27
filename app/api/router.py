@@ -12,6 +12,7 @@ from app.api.v1 import (
     admin_trends,
     admin_users,
     card_payments,
+    client_logs,
     creator_partnership,
     discovery,
     feed,
@@ -57,6 +58,7 @@ api_router.include_router(payments.router)
 api_router.include_router(notifications.router)
 api_router.include_router(social.router)
 api_router.include_router(support.router)
+api_router.include_router(client_logs.router)
 api_router.include_router(uploads.router)
 api_router.include_router(admin_auth.router)
 api_router.include_router(admin_users.router)
