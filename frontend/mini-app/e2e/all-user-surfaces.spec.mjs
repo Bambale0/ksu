@@ -183,7 +183,7 @@ async function assertViewport(page) {
 
 const surfaces = [
   { id: 'home', url: '/mini-app/?route=home', ready: '.home-screen' },
-  { id: 'feed', url: '/mini-app/?route=feed', ready: '.screen-head >> text=Работы сообщества' },
+  { id: 'feed', url: '/mini-app/?route=feed', ready: '[data-testid="tiktok-feed"]' },
   { id: 'catalog', url: '/mini-app/?route=catalog', ready: '.screen-head >> text=Тренды и модели' },
   { id: 'create', url: '/mini-app/?route=create', ready: '.create-screen' },
   { id: 'history', url: '/mini-app/?route=history', ready: '.screen-head >> text=Все работы' },
