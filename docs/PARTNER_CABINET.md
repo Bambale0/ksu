@@ -127,16 +127,14 @@ BOT_USERNAME=KsuBot
 TELEGRAM_MINI_APP_SHORT_NAME=app
 ```
 
-ROXY follows the proven `banano_kling:tanyapi` partner contract:
+ROXY public partner links use Telegram Direct Mini App links:
 
 ```text
-referral_link / referral_bot_link      https://t.me/KsuBot?start=ref_<telegram_id>
-referral_mini_app_link                 https://t.me/KsuBot?startapp=ref_<telegram_id>
+referral_link / referral_mini_app_link https://t.me/KsuBot/app?startapp=ref_<telegram_id>
+legacy fallback                        https://t.me/KsuBot?start=ref_<telegram_id>
 ```
 
-The canonical partner share/copy link is the **bot** link. It opens `/start ref_<telegram_id>`, attaches the inviter on first registration, and then the bot renders the normal `🚀 Открыть ROXY` WebApp button with the same payload preserved into the Mini App URL. This avoids Telegram `BOT_INVALID` cases on Main Mini App deep links and matches `tanyapi` where the bot link is recommended for channels.
-
-`referral_mini_app_link` is kept only as a secondary diagnostic/Direct Mini App link for BotFather configurations that actually support it. It must not be the default partner copy/share URL.
+The canonical partner share/copy link opens ROXY directly and passes `ref_<telegram_id>` through `startapp`. The backend still accepts legacy `/start ref_<telegram_id>` links and can fall back to them when `TELEGRAM_MINI_APP_SHORT_NAME` is not configured.
 
 When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
 

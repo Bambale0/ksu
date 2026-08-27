@@ -33,6 +33,10 @@ def _clean_bot_username(value: str | None) -> str:
     return str(value or "").strip().lstrip("@")
 
 
+def _clean_mini_app_short_name(value: str | None) -> str:
+    return str(value or "").strip().strip("/")
+
+
 def referral_payload(telegram_id: int | str) -> str:
     return f"ref_{_code(telegram_id)}"
 
@@ -70,21 +74,18 @@ def mini_app_deep_link(
     fallback_url: str | None = None,
     bot_username: str | None = None,
 ) -> str | None:
-    """Build the Main Mini App link exactly like banano_kling:tanyapi.
-
-    ROXY has one canonical Main Mini App. ``startapp`` therefore lives directly
-    on the bot username: ``https://t.me/<bot>?startapp=<payload>``. A Direct Mini
-    App short-name path is a different Telegram product and is intentionally not
-    inferred from deployment configuration.
-    """
+    """Build a Telegram Direct Mini App link for public ROXY share surfaces."""
 
     username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:
         return fallback_url
+    short_name = _clean_mini_app_short_name(settings.telegram_mini_app_short_name)
+    if not short_name:
+        return fallback_url
     param = str(payload or "").strip()
     if not param:
-        return f"https://t.me/{username}?startapp"
-    return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
+        return f"https://t.me/{username}/{short_name}?startapp"
+    return f"https://t.me/{username}/{short_name}?startapp={quote(param, safe='_-')}"
 
 
 def bot_start_link(payload: str | None, *, bot_username: str | None = None) -> str | None:

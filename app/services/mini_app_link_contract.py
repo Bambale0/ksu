@@ -15,7 +15,7 @@ _INSTALLED = False
 
 
 def install_mini_app_link_contract() -> None:
-    """Make social links open ROXY and partner links use the proven bot path."""
+    """Make public social and referral links open ROXY Mini App directly."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -35,10 +35,8 @@ def install_mini_app_link_contract() -> None:
         return mini_app_deep_link(remix_payload(generation_id, author_referral_code))
 
     def referral_link(telegram_id: int) -> str | None:
-        # Matches banano_kling:tanyapi for public partner sharing: open the bot
-        # with /start first, then the bot launches the WebApp with payload
-        # preserved. This avoids BOT_INVALID on Telegram Main Mini App links.
-        return bot_start_link(referral_payload(telegram_id))
+        payload = referral_payload(telegram_id)
+        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
 
     FeedService.post_deep_link = staticmethod(post_deep_link)  # type: ignore[method-assign]
     FeedService.profile_deep_link = staticmethod(profile_deep_link)  # type: ignore[method-assign]
