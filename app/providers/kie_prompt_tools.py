@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+GPT_PROMPT_MAX_ATTEMPTS = 2
+
 
 class PromptToolProviderError(RuntimeError):
     pass
@@ -69,6 +71,13 @@ _PROMPT_PAIR_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
         },
     },
+}
+
+_RESPONSES_PROMPT_PAIR_FORMAT: dict[str, Any] = {
+    "type": "json_schema",
+    "name": "prompt_pair",
+    "strict": True,
+    "schema": _PROMPT_PAIR_SCHEMA["json_schema"]["schema"],
 }
 
 _VIDEO_PROMPT_SCHEMA: dict[str, Any] = {
@@ -178,26 +187,13 @@ class KiePromptToolsClient:
         # Kie documents GPT-5.5 Responses for text/image/file inputs, but does
         # not document input_audio on that endpoint. Gemini 2.5 Pro explicitly
         # accepts audio URLs through the same multimodal image_url content type.
-        # Use Gemini for audio and as a documented text/image fallback.
         if audio_url:
             return await self._build_prompt_with_gemini(
                 text=text,
                 image_url=image_url,
                 audio_url=audio_url,
             )
-        try:
-            return await self._build_prompt_with_gpt55(text=text, image_url=image_url)
-        except PromptToolProviderError as primary_exc:
-            try:
-                return await self._build_prompt_with_gemini(
-                    text=text,
-                    image_url=image_url,
-                    audio_url=None,
-                )
-            except PromptToolProviderError as fallback_exc:
-                raise PromptToolProviderError(
-                    f"Prompt builder providers failed: primary={primary_exc}; fallback={fallback_exc}"
-                ) from fallback_exc
+        return await self._build_prompt_with_gpt55(text=text, image_url=image_url)
 
     async def build_video_prompt(
         self,
@@ -249,7 +245,7 @@ class KiePromptToolsClient:
         content: list[dict[str, Any]] = [
             {
                 "type": "input_text",
-                "text": text.strip() or "Создай подробный prompt по изображению или описанию.",
+                "text": _gpt_prompt_builder_user_text(text),
             }
         ]
         if image_url:
@@ -262,19 +258,45 @@ class KiePromptToolsClient:
                 {"role": "user", "content": content},
             ],
             "reasoning": {"effort": "medium"},
+            "text": {"format": _RESPONSES_PROMPT_PAIR_FORMAT},
         }
-        try:
-            response = await self._client.post("/codex/v1/responses", json=body)
-            response.raise_for_status()
-            data = response.json()
-            payload = _prompt_pair(_parse_json_object(_responses_output_text(data)))
-            return PromptToolProviderResult(
-                model="gpt-5-5",
-                payload=payload,
-                credits_consumed=_credits(data),
-            )
-        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
-            raise PromptToolProviderError(f"GPT-5.5 prompt builder failed: {exc}") from exc
+        last_error: Exception | None = None
+        data: dict[str, Any] | None = None
+        for attempt in range(GPT_PROMPT_MAX_ATTEMPTS):
+            try:
+                response = await self._client.post("/codex/v1/responses", json=body)
+                response.raise_for_status()
+                data = response.json()
+                payload = _prompt_pair(_parse_json_object(_responses_output_text(data)))
+                return PromptToolProviderResult(
+                    model="gpt-5-5",
+                    payload=payload,
+                    credits_consumed=_credits(data),
+                )
+            except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+                last_error = exc
+                if attempt < GPT_PROMPT_MAX_ATTEMPTS - 1:
+                    retry_body = dict(body)
+                    retry_content = list(content)
+                    retry_content[0] = {
+                        **retry_content[0],
+                        "text": (
+                            f"{_gpt_prompt_builder_user_text(text)}\n\n"
+                            "Previous response was not valid for the required schema. "
+                            "Return only a JSON object with string fields prompt_ru and prompt_en."
+                        ),
+                    }
+                    retry_body["input"] = [
+                        body["input"][0],
+                        {"role": "user", "content": retry_content},
+                    ]
+                    body = retry_body
+                    continue
+                break
+        detail = str(last_error or "unknown error")
+        if data is not None:
+            detail = f"{detail}; response_status={data.get('status') or 'unknown'}"
+        raise PromptToolProviderError(f"GPT-5.5 prompt builder failed: {detail}") from last_error
 
     async def _build_prompt_with_gemini(
         self,
@@ -330,6 +352,15 @@ def _responses_output_text(data: dict[str, Any]) -> str:
     if isinstance(data.get("output_text"), str) and data["output_text"].strip():
         return str(data["output_text"])
     raise ValueError("Provider returned no output_text")
+
+
+def _gpt_prompt_builder_user_text(text: str) -> str:
+    clean = text.strip() or "Создай подробный prompt по изображению или описанию."
+    return (
+        f"{clean}\n\n"
+        "Return valid JSON only. The JSON object must contain exactly these string fields: "
+        "prompt_ru and prompt_en."
+    )
 
 
 def _prompt_pair(payload: dict[str, Any]) -> dict[str, str]:

@@ -19,8 +19,8 @@ async function installTelegram(page) {
   });
 }
 
-async function mockPromptTools(page) {
-  const calls = { videoPrompt: null, uploadHeaders: null };
+async function mockPromptTools(page, { uploadUrl = 'https://cdn.roxy.test/gallery.mov' } = {}) {
+  const calls = { imageAnalysis: null, videoPrompt: null, uploadHeaders: null };
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -35,7 +35,11 @@ async function mockPromptTools(page) {
     ] });
     if (path === '/api/v1/uploads/kie') {
       calls.uploadHeaders = request.headers();
-      return json({ url: 'https://cdn.roxy.test/gallery.mov', mime_type: 'video/quicktime', size: 9 }, 201);
+      return json({ url: uploadUrl, mime_type: uploadUrl.endsWith('.png') ? 'image/png' : 'video/quicktime', size: 9 }, 201);
+    }
+    if (path === '/api/v1/prompt-tools/image-analysis') {
+      calls.imageAnalysis = request.postDataJSON();
+      return json({ id: 'prompt_task', status: 'queued' }, 202);
     }
     if (path === '/api/v1/prompt-tools/video-prompt') {
       calls.videoPrompt = request.postDataJSON();
@@ -92,6 +96,31 @@ test('video prompt uses gallery video and renders tanyapi cinematic analysis', a
     video_url: 'https://cdn.roxy.test/gallery.mov',
     instruction: 'Вытащи динамику, камеру и финальный кадр',
   });
+});
+
+test('photo prompt uses dedicated image analysis endpoint', async ({ page }) => {
+  await installTelegram(page);
+  const calls = await mockPromptTools(page, { uploadUrl: 'https://cdn.roxy.test/photo.png' });
+
+  await page.goto('/mini-app/prompt-tools/?mode=image');
+  await expect(page.getByRole('button', { name: 'Фото', exact: true })).toHaveClass(/active/);
+
+  await page.locator('textarea').fill('Сохрани свет и композицию');
+  await page.locator("input[type='file']").setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('png-bytes'),
+  });
+  await expect(page.getByText('Фото загружено · заменить')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Создать промпт' }).click();
+  await expect(page.getByText('Готовый кинематографичный промпт')).toBeVisible();
+
+  expect(calls.imageAnalysis).toEqual({
+    image_url: 'https://cdn.roxy.test/photo.png',
+    instruction: 'Сохрани свет и композицию',
+  });
+  expect(calls.videoPrompt).toBeNull();
 });
 
 test('Seedance prompt mode still shows duration picker', async ({ page }) => {

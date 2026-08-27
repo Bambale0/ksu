@@ -89,7 +89,11 @@ export default function PromptToolsPage() {
     ? formatRox(SEEDANCE_PRICES[duration])
     : mode === "video"
       ? price(toolById.get("video_prompt"))
-      : price(toolById.get("prompt_builder") || toolById.get("image_analysis"));
+      : price(
+          imageUrl
+            ? toolById.get("image_analysis")
+            : toolById.get("prompt_builder") || toolById.get("image_analysis"),
+        );
 
   const selectMode = (next: Mode) => {
     setMode(next);
@@ -128,11 +132,13 @@ export default function PromptToolsPage() {
       if (mode === "video") {
         if (!videoUrl) throw new Error("Загрузите видео");
         task = await api.buildVideoPrompt({ video_url: videoUrl, instruction: text.trim() });
+      } else if (mode === "image" && imageUrl) {
+        task = await api.analyzeImagePrompt(imageUrl, text.trim());
       } else {
-        if (!text.trim() && !imageUrl) throw new Error("Добавьте фото или описание");
+        if (!text.trim()) throw new Error(mode === "seedance" ? "Опишите сцену" : "Добавьте фото или описание");
         task = await api.buildPrompt({
           text: text.trim(),
-          image_url: imageUrl || null,
+          image_url: null,
           purpose: mode === "seedance" ? "seedance" : "image",
           duration_seconds: mode === "seedance" ? duration : null,
         });

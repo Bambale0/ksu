@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const referenceUrl = 'https://cdn.roxy.local/reference.png';
+const secondReferenceUrl = 'https://cdn.roxy.local/reference-2.png';
 
 const seedance = {
   id: 'seedance-2.0',
@@ -109,7 +110,17 @@ async function mockRoxy(page) {
         cost_rub: money(55 * quantity),
       });
     }
-    if (path === '/api/v1/uploads/kie') return json(route, { url: referenceUrl, name: 'reference.png', mime_type: 'image/png', size: 4, replayed: false }, 201);
+    if (path === '/api/v1/uploads/kie') {
+      const body = (await route.request().postDataBuffer()).toString('utf8');
+      const second = body.includes('reference-2.png');
+      return json(route, {
+        url: second ? secondReferenceUrl : referenceUrl,
+        name: second ? 'reference-2.png' : 'reference.png',
+        mime_type: 'image/png',
+        size: 4,
+        replayed: false,
+      }, 201);
+    }
     if (path === '/api/v1/references') return json(route, { items: [] });
     if (path === '/api/v1/generations' && method === 'POST') {
       const payload = route.request().postDataJSON();
@@ -200,6 +211,32 @@ test('Seedance multimodal reference mode sends reference_image_urls without fram
   expect(payload.parameters.last_frame_url).toBeUndefined();
   expect(payload.parameters.reference_video_urls).toBeUndefined();
   expect(payload.parameters.reference_audio_urls).toBeUndefined();
+});
+
+test('Seedance multimodal reference mode sends multiple image references', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockRoxy(page);
+  await page.goto('/mini-app/?route=create');
+
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const imageInput = page.locator('input[type="file"]').first();
+  await imageInput.setInputFiles([
+    { name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) },
+    { name: 'reference-2.png', mimeType: 'image/png', buffer: Buffer.from([5, 6, 7, 8]) },
+  ]);
+  await expect(page.getByText('2 загружено')).toBeVisible();
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Собери видео по двум визуальным референсам');
+  await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
+
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
+  const request = await submitted;
+  const payload = request.postDataJSON();
+  expect(payload.model_id).toBe('seedance-2.0');
+  expect(payload.quantity).toBe(1);
+  expect(payload.parameters.reference_image_urls).toEqual([referenceUrl, secondReferenceUrl]);
+  expect(payload.parameters.first_frame_url).toBeUndefined();
+  expect(payload.parameters.last_frame_url).toBeUndefined();
 });
 
 test('Mini App quantity picker sends four launches and total quote', async ({ page }) => {
