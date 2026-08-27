@@ -59,14 +59,14 @@ def _field(
     group: str,
     *,
     required: bool = False,
-    placeholder: str | None = None,
+    placeholder: str = "",
     suggestions: list[str] | None = None,
     minimum: float | None = None,
     maximum: float | None = None,
     step: float | None = None,
-    visible_if: dict[str, Any] | None = None,
+    suffix: str = "",
 ) -> dict[str, Any]:
-    value: dict[str, Any] = {
+    result: dict[str, Any] = {
         "name": name,
         "label": label,
         "control": control,
@@ -74,27 +74,39 @@ def _field(
         "required": required,
     }
     if placeholder:
-        value["placeholder"] = placeholder
+        result["placeholder"] = placeholder
     if suggestions:
-        value["suggestions"] = suggestions
+        result["suggestions"] = suggestions
     if minimum is not None:
-        value["min"] = minimum
+        result["min"] = minimum
     if maximum is not None:
-        value["max"] = maximum
+        result["max"] = maximum
     if step is not None:
-        value["step"] = step
-    if visible_if:
-        value["visible_if"] = visible_if
-    return value
+        result["step"] = step
+    if suffix:
+        result["suffix"] = suffix
+    return result
 
 
-def _normalize_vocal_gender(value: Any) -> str | None:
-    normalized = str(value or "").strip().lower()
-    if normalized in {"m", "male", "м", "муж", "мужской"}:
-        return "m"
-    if normalized in {"f", "female", "ж", "жен", "женский"}:
-        return "f"
-    return None
+def _normalize_vocal_gender(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().lower()
+    aliases = {
+        "m": "m",
+        "male": "m",
+        "man": "m",
+        "м": "m",
+        "мужской": "m",
+        "мужчина": "m",
+        "f": "f",
+        "female": "f",
+        "woman": "f",
+        "ж": "f",
+        "женский": "f",
+        "женщина": "f",
+    }
+    return aliases.get(normalized)
 
 
 class MusicGenerationError(ValueError):
@@ -105,57 +117,48 @@ class MusicGenerationService:
     WAKE_KEY = "wake:generations"
 
     @staticmethod
-    def model_spec() -> dict[str, Any]:
+    def is_music_model(model_id: str) -> bool:
+        return model_id == MUSIC_MODEL_ID
+
+    @classmethod
+    def public_model(cls) -> dict[str, Any]:
+        price = Decimal(settings.music_generation_price_rox)
         provider_model = str(settings.music_generation_model)
-        price = Decimal(settings.music_generation_price_rox).quantize(Decimal("0.01"))
         fields = [
             _field(
                 "prompt",
-                "Опишите музыку",
+                "Промпт / текст песни",
                 "textarea",
                 "prompt",
-                placeholder="Например: атмосферный поп-трек с мягким женским вокалом",
-            ),
-            _field(
-                "customMode",
-                "Расширенный режим",
-                "toggle",
-                "mode",
-            ),
-            _field(
-                "instrumental",
-                "Инструментал",
-                "toggle",
-                "mode",
-                visible_if={"customMode": True},
-            ),
-            _field(
-                "style",
-                "Стиль музыки",
-                "text",
-                "mode",
-                placeholder="Например: indie pop, dreamy, 100 BPM",
-                visible_if={"customMode": True},
+                placeholder="Опиши музыку — стиль, жанр, настроение. В режиме «Свой текст» вставь [Verse] / [Chorus].",
             ),
             _field(
                 "title",
-                "Название трека",
+                "Название (опционально)",
                 "text",
+                "prompt",
+                placeholder="Например: Lo-fi для занятий",
+            ),
+            _field("customMode", "Свой текст", "toggle", "mode"),
+            _field("instrumental", "Инструментал", "toggle", "mode"),
+            _field(
+                "style",
+                "Стиль / жанр / настроение",
+                "textarea",
                 "mode",
-                placeholder="Необязательно",
-                visible_if={"customMode": True},
+                placeholder="Например: cinematic synthwave, female vocal, 120 BPM",
             ),
             _field(
                 "vocalGender",
-                "Вокал",
-                "segmented",
-                "advanced",
-                suggestions=["f", "m"],
+                "Голос",
+                "combobox",
+                "mode",
+                suggestions=["m", "f"],
             ),
             _field(
                 "styleWeight",
-                "Точность стиля",
-                "range",
+                "Сила стиля",
+                "number",
                 "advanced",
                 minimum=0,
                 maximum=1,
@@ -163,8 +166,8 @@ class MusicGenerationService:
             ),
             _field(
                 "weirdnessConstraint",
-                "Экспериментальность",
-                "range",
+                "Странность",
+                "number",
                 "advanced",
                 minimum=0,
                 maximum=1,
@@ -172,8 +175,8 @@ class MusicGenerationService:
             ),
             _field(
                 "audioWeight",
-                "Влияние аудио",
-                "range",
+                "Баланс вокал / музыка",
+                "number",
                 "advanced",
                 minimum=0,
                 maximum=1,
