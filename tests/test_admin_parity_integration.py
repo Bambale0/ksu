@@ -9,12 +9,13 @@ from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.db.admin_models import NotificationCampaignDelivery, SupportOutbox
-from app.db.models import AdminAccount, Generation, SupportTicket, User, Wallet
+from app.db.models import AdminAccount, Generation, PromoCode, SupportTicket, User, Wallet
 from app.db.reliability_models import GenerationOutbox
 from app.db.session import SessionFactory
 from app.main import app
 from app.services.admin_generation_operations import AdminGenerationOperationService
 from app.services.admin_notifications import AdminNotificationService
+from app.services.admin_promos import AdminPromoService
 from app.services.admin_support import AdminSupportService
 from app.services.internal_admin_security import calculate_signature
 from app.services.wallet import WalletService
@@ -158,6 +159,58 @@ async def test_signed_balance_adjustment_replays_same_idempotency_key_once(
         wallet = await session.get(Wallet, target_id)
         assert wallet is not None
         assert Decimal(wallet.balance) == Decimal("25.00")
+
+
+@pytest.mark.asyncio
+async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> None:
+    async with SessionFactory() as session:
+        admin_user = User(
+            telegram_id=random.randint(7_250_000_000_000, 7_299_999_999_999),
+            first_name="Promo admin",
+        )
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={},
+            is_active=True,
+            mfa_enabled=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        create_result, create_replayed = await AdminPromoService.create(
+            session,
+            admin=admin,
+            code=f"PROMO{random.randint(100_000, 999_999)}",
+            reward_credits=Decimal("7"),
+            max_uses=1,
+            expires_at=None,
+            idempotency_key=f"integration-promo-create:{uuid.uuid4()}",
+            request_id="promo-create-integration",
+            confirmed=True,
+        )
+        assert create_replayed is False
+
+        update_result, update_replayed = await AdminPromoService.set_active(
+            session,
+            admin=admin,
+            promo_id=uuid.UUID(create_result["id"]),
+            is_active=False,
+            idempotency_key=f"integration-promo-state:{uuid.uuid4()}",
+            request_id="promo-state-integration",
+            confirmed=True,
+        )
+        await session.commit()
+
+        assert update_replayed is False
+        assert update_result["is_active"] is False
+        assert update_result["updated_at"]
+
+        stored = await session.get(PromoCode, uuid.UUID(create_result["id"]))
+        assert stored is not None
+        assert stored.is_active is False
 
 
 @pytest.mark.asyncio
