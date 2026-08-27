@@ -1,20 +1,20 @@
 # Curated Trends
 
-Epic #41 ports the product contract of the `banano_kling:tanyapi` Trends surface into KSU without copying the legacy generation or billing implementation.
+**Status:** current runtime contract on **2026-08-27**.
+
+ROXY reuses the existing `AdminTrend` store for curated image/video scenarios. There is no parallel trend task or billing system: a trend is a validated, versioned recipe that ultimately creates a normal `Generation` through the standard generation service.
 
 ## Source of truth
 
-`admin_trends` remains the single curated-trend store. No second trend table is introduced. `AdminTrend.payload` is now treated as a validated versioned recipe rather than arbitrary JSON.
-
-A canonical payload has this shape:
+`AdminTrend.payload` is a validated recipe rather than arbitrary JSON. Canonical shape:
 
 ```json
 {
   "schema_version": 1,
   "description": "Short public description",
   "media_type": "image",
-  "preview_url": "https://cdn.example/trend.jpg",
-  "model_id": "nano-banana-pro",
+  "preview_url": "https://product-owned.example/trend.jpg",
+  "model_id": "nano-banana-2",
   "prompt": "private curated prompt",
   "parameters": {
     "aspect_ratio": "1:1",
@@ -30,60 +30,102 @@ A canonical payload has this shape:
 }
 ```
 
-Creation goes through the existing privileged admin content service. The recipe is normalized and validated against `ModelCatalog` and `GenerationService.prepare_request()` before persistence. Deactivation remains a soft delete.
+Recipes are normalized/validated against the current generation catalog and `GenerationService` contract before persistence. Hiding a trend is a soft deactivation.
 
-## Public API
+## Public customer API
 
 Authenticated product endpoints:
 
-- `GET /api/v1/trends`
-- `GET /api/v1/trends/{trend_id}`
-- `POST /api/v1/trends/{trend_id}/run`
-
-The run request accepts only:
-
-```json
-{"reference_urls": ["https://..."]}
+```text
+GET  /api/v1/trends
+GET  /api/v1/trends/{trend_id}
+POST /api/v1/trends/{trend_id}/run
 ```
 
-The browser cannot choose or override the model, prompt, provider settings, duration, price, aspect ratio, quality or other recipe fields. They are loaded server-side from the curated record. User reference URLs must be HTTP(S); browser-local `blob:` and `data:` URLs are rejected.
+The run request accepts customer references only. The browser cannot override the curated model, hidden prompt, provider parameters, billing duration, quality or pricing. Those fields are loaded server-side from the curated recipe.
 
-The public trend DTO exposes only presentation data, the safe model identity, authoritative current price, reference requirements, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
+The public trend DTO exposes presentation data, safe model identity, current server price, reference requirements and usage metadata. It returns `prompt_hidden=true` / `prompt_actions_allowed=false`; the hidden curated prompt/provider parameters are never serialized to the customer.
 
 ## One-tap generation
 
-`TrendService.run()` merges only the validated user reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Therefore trend jobs reuse KSU's existing:
+`TrendService.run()` merges validated customer reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Trend jobs therefore reuse:
 
 - model capability validation;
-- server-authoritative pricing and per-second billing;
-- abuse/admission controls;
+- server-authoritative flat/per-second/tiered pricing;
+- admission/rate controls;
 - wallet debit idempotency;
-- durable generation outbox;
-- worker/recovery/refund behavior.
+- durable PostgreSQL generation outbox;
+- provider worker/reconciliation/recovery;
+- media ingestion and refund behavior.
 
-Trend generation rows are marked `action_type=trend`.
+Trend generation rows use `action_type=trend`.
 
 ## Hidden-recipe boundary
 
-The normal owner history/detail endpoint deliberately returns an empty prompt and empty public settings for `action_type=trend`. `GET /api/v1/generations/{id}/recreate` returns HTTP 409 for those jobs. Repeating the job must go through the Trends catalog again.
+The owner generation/history API deliberately does not reveal the curated recipe for `action_type=trend`. Generic recreate is rejected for those jobs; repeating a trend goes through the Trends catalog again. This prevents history/recreate endpoints from becoming an alternate route to the hidden prompt.
 
-This prevents the generic history/recreate API from becoming an alternate route to the hidden curated recipe.
+## Mini App customer flow
 
-## Telegram and Mini App
+The current Trends surface lives inside the ROXY Mini App catalog under **Тренды → Готовые сценарии**. It is not a separate legacy `/trends.html` customer application.
 
-Telegram supports `/trends` and the compatibility alias `/prompts`. The carousel shows image/video previews, public copy, model, authoritative price and reference requirements. The repeat action opens `/mini-app/trends.html?trend=<uuid>`.
+Customers can:
 
-The Mini App Trends runner:
+- browse image/video curated scenarios;
+- see public copy, preview, model and authoritative current price;
+- open a trend runner;
+- upload only the references required by the recipe;
+- submit only allowed reference input to the trend-run endpoint;
+- receive the result through the normal generation/history delivery system.
 
-- lists and filters image/video trends;
-- uploads only the required user reference images through the existing Kie upload endpoint;
-- submits only `reference_urls` to the trend run endpoint;
-- polls the normal generation detail endpoint for the result;
-- never stores Telegram initData or reference URLs in browser storage;
-- builds dynamic content with DOM/textContent APIs rather than HTML injection.
+The customer UI never persists Telegram auth or hidden trend recipe fields in browser storage.
+
+## Inline admin flow (Tanya-style parity)
+
+An active admin sees `＋ Добавить` / `Управлять трендами` directly beside **Готовые сценарии** in the same customer Mini App. This reproduces the practical `banano_kling:tanyapi` workflow without copying its legacy auth/generation architecture.
+
+Supported actions:
+
+- create a trend;
+- upload image/video preview from device;
+- select a live model;
+- configure hidden prompt, input/ref requirements, duration, priority, tags and advanced model parameters;
+- edit or duplicate;
+- hide and restore.
+
+Preview uploads use the existing `/api/v1/uploads/kie` compatibility endpoint, which now persists reusable input under ROXY ownership. The historical route name does not mean the browser stores a temporary Kie provider URL.
+
+### Inline admin endpoints
+
+```text
+GET    /api/v1/trends/manage
+POST   /api/v1/trends/manage
+PATCH  /api/v1/trends/manage/{trend_id}
+DELETE /api/v1/trends/manage/{trend_id}
+POST   /api/v1/trends/manage/{trend_id}/activate
+```
+
+These endpoints use signed Telegram Mini App authentication, then separately resolve an active `AdminAccount` and authorize `social.moderate`. `me.is_admin` controls presentation only; it is not the mutation security boundary.
+
+Writes go through `TrendService.validate_recipe` and `AdminCommandLedger` for validation, auditability and idempotency.
+
+## Standalone Admin Console
+
+`/admin-app/trends.html` remains available for privileged operators using the separate admin-session/MFA boundary. It and the inline manager operate on the same `AdminTrend` rows. Do not add a second trend table or parallel recipe format.
 
 ## Compatibility and rollout
 
-Existing legacy `admin_trends` rows are not migrated automatically. Public listing skips active rows that cannot be normalized against the current recipe contract. Operators should recreate or update such entries through the validated admin path before relying on them in production.
+Legacy `AdminTrend` rows are not blindly trusted. Public listing skips rows that cannot be normalized against the current recipe/model contract. Operators should recreate/update incompatible records through one of the validated admin paths.
 
-No Alembic migration is required for this epic because the existing `admin_trends` table is reused.
+No new trend-specific Alembic table is required because the existing curated store is reused.
+
+## Acceptance
+
+Trend changes must preserve:
+
+- public hidden-prompt boundary;
+- server-owned model/price/recipe selection;
+- durable preview storage;
+- admin permission checks on every write;
+- ordinary-user absence of admin controls;
+- normal generation billing/outbox/recovery semantics;
+- Mini App Chromium and mobile WebKit release gates.
