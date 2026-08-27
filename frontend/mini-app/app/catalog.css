@@ -1,1 +1,27 @@
 /* Catalog remains a full discovery surface: feature hub, trends, filters and model families. */
+
+/* Keep ROXY catalog service cards inside the product palette instead of the
+   browser/Telegram default link blue. The accent is intentionally neon-lilac
+   so it matches the ROXY mark, active catalog tab and create control. */
+#roxy-backend-parity-features .tool-result-card {
+  color: #c98cff !important;
+  border-color: rgba(185, 116, 255, .30);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(173, 92, 255, .11), transparent 48%),
+    rgba(255, 255, 255, .025);
+}
+
+#roxy-backend-parity-features .tool-result-card strong {
+  color: #d7a4ff !important;
+  text-shadow: 0 0 14px rgba(185, 116, 255, .32);
+}
+
+#roxy-backend-parity-features .tool-result-card small {
+  color: #bd8cff !important;
+}
+
+#roxy-backend-parity-features .tool-result-card:active,
+#roxy-backend-parity-features .tool-result-card:focus-visible {
+  border-color: rgba(208, 151, 255, .58);
+  box-shadow: 0 0 24px rgba(171, 84, 255, .16);
+}
