@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, ReferralReward, WalletTransaction
+from app.db.models import ReferralRelation, ReferralReward
 from app.db.payment_models import ReferralRewardReversal
 
 
@@ -74,20 +74,11 @@ class ReferralService:
         if first_relation is None:
             return
 
-        # Referral income is denominated in withdrawable ROX/RUB. For a real
-        # successful top-up the wallet payment transaction records exactly how many
-        # public ROX were purchased, independent of provider currency. Since
-        # 1 ROX = 1 RUB this is the correct reward basis for RUB, USD, EUR and crypto
-        # checkouts alike. Fall back to payment_amount only for legacy/direct callers.
-        wallet_tx = await session.get(WalletTransaction, source_transaction_id)
+        # Callers own provider-specific normalization of the commissionable basis.
+        # In particular, card top-ups may credit gift ROX to the wallet that must not
+        # increase withdrawable referral income. Never infer the basis back from the
+        # wallet transaction, because that transaction contains all credited ROX.
         reward_basis = Decimal(payment_amount)
-        if (
-            wallet_tx is not None
-            and wallet_tx.user_id == source_user_id
-            and wallet_tx.kind == "payment"
-            and Decimal(wallet_tx.amount) > 0
-        ):
-            reward_basis = Decimal(wallet_tx.amount)
 
         await cls._create_reward(
             session,
