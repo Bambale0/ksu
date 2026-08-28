@@ -77,6 +77,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/publish-privacy.js" strategy="afterInteractive" />
         <Script src="/mini-app/rox-price-only.js" strategy="afterInteractive" />
         <Script src="/mini-app/keyboard-reference-ux.js" strategy="afterInteractive" />
+        <Script src="/mini-app/share-copy-ux.js" strategy="afterInteractive" />
         {children}
       </body>
     </html>
