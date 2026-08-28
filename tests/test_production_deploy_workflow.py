@@ -47,6 +47,7 @@ def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> Non
         "docker compose run --rm app alembic upgrade head",
         "generation-worker",
         "media-worker",
+        "prompt-tool-worker",
         "payment-worker",
         "creator-partnership-worker",
         "/health/live",

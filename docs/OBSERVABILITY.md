@@ -67,7 +67,7 @@ ksu_resource_policy_events_total{code}
 
 Do not add raw user IDs, Telegram IDs, payment IDs, generation IDs, media IDs, prompts, URLs or provider task IDs as Prometheus labels. Those are high-cardinality values and belong in logs/traces.
 
-The API process refreshes database/Redis snapshot gauges when Prometheus scrapes `/metrics`. Worker event counts live in Redis because `generation-worker`, `media-worker` and `payment-worker` are separate processes and do not share the API process' in-memory Prometheus registry.
+The API process refreshes database/Redis snapshot gauges when Prometheus scrapes `/metrics`. Worker event counts live in Redis because `generation-worker`, `media-worker`, `prompt-tool-worker` and `payment-worker` are separate processes and do not share the API process' in-memory Prometheus registry.
 
 ## Worker heartbeats
 
@@ -76,6 +76,7 @@ Redis keys:
 ```text
 observability:worker:generation-worker:heartbeat
 observability:worker:media-worker:heartbeat
+observability:worker:prompt-tool-worker:heartbeat
 observability:worker:payment-worker:heartbeat
 ```
 
@@ -110,6 +111,8 @@ generation_submit_failure
 generation_reconcile_failure
 generation_worker_loop_error
 media_ingest_processed
+music_audio_ingest_processed
+music_audio_worker_loop_error
 media_reconcile_failure
 media_worker_loop_error
 payment_reconcile_success
@@ -136,6 +139,7 @@ When enabled, logical service names are:
 ksu
 ksu.generation-worker
 ksu.media-worker
+ksu.prompt-tool-worker
 ksu.payment-worker
 ```
 

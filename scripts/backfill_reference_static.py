@@ -27,6 +27,7 @@ class BackfillStats:
     scanned: int = 0
     already_static: int = 0
     localized: int = 0
+    skipped_unavailable: int = 0
     failed: int = 0
 
 
@@ -153,6 +154,20 @@ async def _persist_reference(session, row: UserReference) -> bool:  # type: igno
         path.unlink(missing_ok=True)
 
 
+def _is_unavailable_source(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in {404, 410}
+    return isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            httpx.RemoteProtocolError,
+        ),
+    )
+
+
 async def backfill(*, limit: int | None = None, strict: bool = False) -> BackfillStats:
     stats = BackfillStats()
     ReferenceStaticStorage.ensure_root()
@@ -179,12 +194,30 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
                 changed = await _persist_reference(session, row)
             except (ReferenceStaticStorageError, UnsafeMediaSource, httpx.HTTPError) as exc:
                 await session.rollback()
+                if _is_unavailable_source(exc):
+                    stats.skipped_unavailable += 1
+                    print(
+                        "reference-static backfill skipped unavailable "
+                        f"reference={reference_id}: {exc}"
+                    )
+                    if strict:
+                        raise
+                    continue
                 stats.failed += 1
                 print(f"reference-static backfill failed reference={reference_id}: {exc}")
                 if strict:
                     raise
             except Exception as exc:
                 await session.rollback()
+                if _is_unavailable_source(exc):
+                    stats.skipped_unavailable += 1
+                    print(
+                        "reference-static backfill skipped unavailable "
+                        f"reference={reference_id}: {exc}"
+                    )
+                    if strict:
+                        raise
+                    continue
                 stats.failed += 1
                 print(f"reference-static backfill unexpected reference={reference_id}: {exc}")
                 if strict:
@@ -198,7 +231,8 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
     print(
         "reference-static backfill "
         f"scanned={stats.scanned} localized={stats.localized} "
-        f"already_static={stats.already_static} failed={stats.failed}"
+        f"already_static={stats.already_static} "
+        f"skipped_unavailable={stats.skipped_unavailable} failed={stats.failed}"
     )
     return stats
 

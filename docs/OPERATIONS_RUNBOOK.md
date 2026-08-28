@@ -78,9 +78,9 @@ cp .env.example .env   # only for first-time setup; fill secrets separately
 chmod 600 .env
 
 docker compose up -d postgres redis
-docker compose build app generation-worker media-worker payment-worker creator-partnership-worker
+docker compose build app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker
 docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker payment-worker creator-partnership-worker backup-worker
+docker compose up -d app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker backup-worker
 ```
 
 Never deploy from a feature branch. Never hard-code a historical Alembic revision as the deployment target.

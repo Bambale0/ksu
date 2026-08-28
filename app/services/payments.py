@@ -58,6 +58,16 @@ class PaymentService:
     TERMINAL_STATUSES = {"succeeded", "failed", "canceled", "expired", "refunded"}
 
     @staticmethod
+    def provider_configured(provider: str) -> bool:
+        if provider == "cryptobot":
+            return bool(settings.cryptopay_api_token)
+        if provider == "tbank":
+            return bool(settings.tbank_terminal_key and settings.tbank_password)
+        if provider == "yookassa":
+            return bool(settings.yookassa_shop_id and settings.yookassa_secret_key)
+        return False
+
+    @staticmethod
     def packages() -> dict[str, PaymentPackage]:
         try:
             raw = json.loads(settings.rox_packages_json or "{}")

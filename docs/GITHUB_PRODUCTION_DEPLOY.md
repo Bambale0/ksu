@@ -80,6 +80,7 @@ Application images built by the workflow:
 - `app`
 - `generation-worker`
 - `media-worker`
+- `prompt-tool-worker`
 - `payment-worker`
 - `creator-partnership-worker`
 
@@ -88,6 +89,7 @@ Runtime services explicitly started/recreated:
 - `app`
 - `generation-worker`
 - `media-worker`
+- `prompt-tool-worker`
 - `payment-worker`
 - `creator-partnership-worker`
 - `backup-worker`

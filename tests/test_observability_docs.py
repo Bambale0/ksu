@@ -22,8 +22,10 @@ def test_observability_runbook_documents_runtime_contract() -> None:
         "METRICS_BEARER_TOKEN",
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
         "ksu.generation-worker",
+        "ksu.prompt-tool-worker",
         "ksu.payment-worker",
         "ksu_generation_outbox_oldest_pending_seconds",
+        "observability:worker:prompt-tool-worker:heartbeat",
         "observability:worker:generation-worker:heartbeat",
         "high-cardinality",
     ):

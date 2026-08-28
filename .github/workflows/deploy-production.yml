@@ -210,6 +210,7 @@ jobs:
             app
             generation-worker
             media-worker
+            prompt-tool-worker
             payment-worker
             creator-partnership-worker
           )

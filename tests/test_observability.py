@@ -10,6 +10,7 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.core.logging import JsonFormatter, ObservabilityFilter
 from app.core.observability import (
+    DISTRIBUTED_EVENT_NAMES,
     DISTRIBUTED_EVENTS,
     heartbeat_key,
     record_distributed_event,
@@ -55,6 +56,11 @@ def test_json_log_contains_correlation_fields() -> None:
     assert "request_id" in payload
     assert "trace_id" in payload
     assert "span_id" in payload
+
+
+def test_media_worker_music_events_are_registered() -> None:
+    assert "music_audio_ingest_processed" in DISTRIBUTED_EVENT_NAMES
+    assert "music_audio_worker_loop_error" in DISTRIBUTED_EVENT_NAMES
 
 
 @pytest.mark.asyncio

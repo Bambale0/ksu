@@ -40,7 +40,7 @@ def test_readme_documents_current_runtime_surfaces() -> None:
 def test_operations_runbook_covers_every_compose_service_and_webhook() -> None:
     compose = _read("docker-compose.yml")
     runbook = _read("docs/OPERATIONS_RUNBOOK.md")
-    for service in ("postgres", "redis", "app", "generation-worker"):
+    for service in ("postgres", "redis", "app", "generation-worker", "prompt-tool-worker"):
         assert f"  {service}:" in compose
         assert service in runbook
     for route in (

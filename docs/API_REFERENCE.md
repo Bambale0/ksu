@@ -68,7 +68,7 @@ GET /health/operational
 GET /mini-app/
 ```
 
-`/health/operational` verifies generation, media and payment worker heartbeats. `/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
+`/health/operational` verifies generation, media, prompt-tool and payment worker heartbeats. `/mini-app/` itself is static/public; authenticated actions use Telegram `initData`.
 
 ## User/profile
 
