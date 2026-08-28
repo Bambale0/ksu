@@ -52,7 +52,8 @@ async function deleteTrend(id: string): Promise<void> {
 
 function price(trend: TrendItem): string {
   if (trend.admin_free || trend.cost_rox === "0.00" || trend.cost_rox === "0") return "Бесплатно";
-  const value = Number(trend.cost_rox || 0);
+  if (!trend.cost_rox) return "—";
+  const value = Number(trend.cost_rox);
   return Number.isFinite(value) ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ROX` : `${trend.cost_rox} ROX`;
 }
 
@@ -120,9 +121,10 @@ export function LiveTrendRail() {
         .live-trend-section .section-title h2 { margin:4px 0 0; font-size:25px; line-height:1; letter-spacing:-.04em; }
         .live-trend-rail { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(210px, 76vw); gap:12px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; padding:2px 2px 8px; scrollbar-width:none; }
         .live-trend-rail::-webkit-scrollbar { display:none; }
-        .live-trend-card { position:relative; min-height:280px; overflow:hidden; border:1px solid rgba(185,105,255,.28); border-radius:26px; background:#0b0910; color:#fff; text-align:left; scroll-snap-align:start; box-shadow:0 18px 42px rgba(0,0,0,.24); }
+        .live-trend-card { position:relative; min-height:280px; overflow:hidden; border:1px solid rgba(185,105,255,.28); border-radius:26px; background:#0b0910; color:#fff; scroll-snap-align:start; box-shadow:0 18px 42px rgba(0,0,0,.24); }
+        .live-trend-open { position:absolute; inset:0; width:100%; padding:0; border:0; background:transparent; color:inherit; text-align:left; }
         .live-trend-media { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#0b0910; }
-        .live-trend-card::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.04) 28%,rgba(4,3,7,.86) 100%); pointer-events:none; }
+        .live-trend-open::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.04) 28%,rgba(4,3,7,.86) 100%); pointer-events:none; }
         .live-trend-copy { position:absolute; z-index:2; left:15px; right:15px; bottom:15px; display:grid; gap:6px; }
         .live-trend-copy strong { font-size:18px; line-height:1.05; }
         .live-trend-copy small { color:rgba(255,255,255,.72); font-size:11px; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -138,34 +140,20 @@ export function LiveTrendRail() {
       {error ? <div className="inline-trend-error" role="alert">{error}</div> : null}
       {trends.length ? <div className="live-trend-rail">
         {trends.map((trend) => (
-          <button
-            className="live-trend-card"
-            type="button"
-            key={trend.id}
-            onClick={() => { haptic("light"); window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`); }}
-          >
-            {trend.preview_url ? trend.media_type === "video"
-              ? <video className="live-trend-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
-              : <img className="live-trend-media" src={trend.preview_url} alt="" loading="lazy" />
-              : null}
-            {isAdmin ? <span
-              className="live-trend-delete"
-              role="button"
-              tabIndex={0}
-              aria-label={`Удалить ${trend.title}`}
-              onClick={(event) => { event.preventDefault(); event.stopPropagation(); void remove(trend); }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault(); event.stopPropagation(); void remove(trend);
-                }
-              }}
-            >{busyId === trend.id ? "…" : "Удалить"}</span> : null}
-            <span className="live-trend-copy">
-              <strong>{trend.title}</strong>
-              {trend.description ? <small>{trend.description}</small> : null}
-              <span className="live-trend-meta"><span>{trend.model?.title || "ROXY"}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
-            </span>
-          </button>
+          <article className="live-trend-card" key={trend.id}>
+            <button className="live-trend-open" type="button" onClick={() => { haptic("light"); window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`); }}>
+              {trend.preview_url ? trend.media_type === "video"
+                ? <video className="live-trend-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
+                : <img className="live-trend-media" src={trend.preview_url} alt="" loading="lazy" />
+                : null}
+              <span className="live-trend-copy">
+                <strong>{trend.title}</strong>
+                {trend.description ? <small>{trend.description}</small> : null}
+                <span className="live-trend-meta"><span>{trend.model?.title || "ROXY"}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
+              </span>
+            </button>
+            {isAdmin ? <button className="live-trend-delete" type="button" aria-label={`Удалить ${trend.title}`} onClick={() => void remove(trend)}>{busyId === trend.id ? "…" : "Удалить"}</button> : null}
+          </article>
         ))}
       </div> : <div className="live-trend-empty">Новые сценарии скоро появятся здесь.</div>}
     </section>,
