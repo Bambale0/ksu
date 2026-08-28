@@ -9,15 +9,26 @@ from app.api.deps import _validated_startapp_inviter
 from app.api.v1.feed import _direct_mini_app_link
 from app.core.config import settings
 from app.services.feed import FeedService
+from app.services.feed_links import mini_app_deep_link
 
 
-def test_legacy_feed_bot_link_upgrades_to_tanyapi_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_feed_share_link_enters_bot_before_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "roxy_bot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
     generation_id = uuid.uuid4()
-    legacy = f"https://t.me/roxy_bot?start=feed_{generation_id}_ref_777"
-    direct = _direct_mini_app_link(legacy)
-    assert direct == f"https://t.me/roxy_bot?startapp=feed_{generation_id}_ref_777"
+    payload = f"feed_{generation_id}_ref_777"
+    bot_link = f"https://t.me/roxy_bot?start={payload}"
+
+    assert mini_app_deep_link(payload) == bot_link
+    assert _direct_mini_app_link(bot_link) == bot_link
+
+
+def test_non_feed_social_links_still_open_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(settings, "bot_username", "roxy_bot")
+    generation_id = uuid.uuid4()
+    payload = f"remix_{generation_id}_ref_777"
+
+    assert mini_app_deep_link(payload) == f"https://t.me/roxy_bot?startapp={payload}"
 
 
 @pytest.mark.asyncio
