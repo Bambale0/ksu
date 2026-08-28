@@ -90,7 +90,7 @@ def test_referral_payloads_round_trip_for_share_surfaces() -> None:
     assert remix.referral_telegram_id == 123456
 
 
-def test_all_generated_social_links_match_tanyapi_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_generated_social_links_use_bot_handoff_for_feed_only(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "studio")
     generation_id = uuid.uuid4()
@@ -105,7 +105,7 @@ def test_all_generated_social_links_match_tanyapi_main_mini_app(monkeypatch) -> 
         "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
     )
     assert FeedService.post_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=feed_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot?start=feed_{generation_id}_ref_123456"
     )
     assert FeedService.profile_deep_link("123456") == (
         "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
@@ -124,7 +124,7 @@ def test_short_name_setting_does_not_control_public_deep_link(monkeypatch) -> No
         )
 
 
-def test_generated_social_links_never_fall_back_to_bot_start_when_username_exists(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_only_feed_post_uses_bot_start_when_username_exists(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "")
     generation_id = uuid.uuid4()
@@ -136,7 +136,7 @@ def test_generated_social_links_never_fall_back_to_bot_start_when_username_exist
         "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
     )
     assert FeedService.post_deep_link(generation_id, "123456") == (
-        f"https://t.me/RoxyExampleBot?startapp=feed_{generation_id}_ref_123456"
+        f"https://t.me/RoxyExampleBot?start=feed_{generation_id}_ref_123456"
     )
     assert FeedService.remix_deep_link(generation_id, "123456") == (
         f"https://t.me/RoxyExampleBot?startapp=remix_{generation_id}_ref_123456"
