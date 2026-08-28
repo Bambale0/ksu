@@ -24,7 +24,7 @@ def test_mini_app_exposes_live_trends_and_admin_moderation_controls() -> None:
 
     assert "<LiveTrendRail />" in page
     assert "<FeedAdminModeration />" in page
-    assert "Готовые сценарии" in trends
+    assert "Актуальные тренды" in trends
     assert "autoPlay loop playsInline" in trends
     assert "Удалить" in trends
     assert 'apply("blurred")' in moderation
