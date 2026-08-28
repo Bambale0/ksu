@@ -4,10 +4,12 @@ import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
 import { CatalogParityFeatures } from "@/components/catalog-parity-features";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
+import { FeedAdminModeration } from "@/components/feed-admin-moderation";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
+import { LiveTrendRail } from "@/components/live-trend-rail";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
@@ -20,8 +22,10 @@ export default function Page() {
       <ClientErrorReporter />
       <AppEntryGate />
       <TikTokFeedSurface />
+      <FeedAdminModeration />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
+      <LiveTrendRail />
       <CatalogParityFeatures />
       <CustomerParityHub />
       <WalletParity />
