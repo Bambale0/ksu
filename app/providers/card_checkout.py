@@ -27,6 +27,7 @@ class CardCheckoutClient:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.webhook_key = webhook_key
+        self._products_cache: dict[str, Any] | None = None
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(30.0),
@@ -80,9 +81,19 @@ class CardCheckoutClient:
             self.validate_amount(currency, amount)
         if not offer_id:
             raise PaymentProviderError("Card checkout offer id is not configured")
+
+        # Lava's custom-price endpoint names this field offerId, but for products
+        # published as "Price on request via API" it must contain the *content /
+        # product id*, not a nested offer id. Older KSU resolver paths can still
+        # hand us a nested id after inspecting /api/v2/products, so enforce the
+        # upstream contract at the provider boundary before creating the invoice.
+        invoice_offer_id = offer_id
+        if amount is not None:
+            invoice_offer_id = await self._normalize_dynamic_content_id(offer_id)
+
         payload: dict[str, Any] = {
             "email": email,
-            "offerId": offer_id,
+            "offerId": invoice_offer_id,
             "currency": currency,
         }
         if amount is not None:
@@ -139,16 +150,20 @@ class CardCheckoutClient:
         return self._unwrap(raw)
 
     async def get_products(self) -> dict[str, Any]:
+        if self._products_cache is not None:
+            return self._products_cache
         try:
             response = await self._client.get(
                 "/api/v2/products",
                 headers=self._headers(),
+                params={"feedVisibility": "ALL"},
             )
             response.raise_for_status()
             raw = response.json()
         except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:1000].replace("\n", " ")
             raise PaymentProviderError(
-                f"Card checkout products lookup failed: HTTP {exc.response.status_code}"
+                f"Card checkout products lookup failed: HTTP {exc.response.status_code}: {body}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Card checkout transport failed") from exc
@@ -156,7 +171,63 @@ class CardCheckoutClient:
             raise PaymentProviderError("Card checkout returned invalid JSON") from exc
         if not isinstance(raw, dict):
             raise PaymentProviderError("Card checkout returned invalid products JSON")
+        self._products_cache = raw
         return raw
+
+    async def _normalize_dynamic_content_id(self, configured_id: str) -> str:
+        try:
+            payload = await self.get_products()
+        except PaymentProviderError:
+            # A configured content id is already the correct value for v3. If the
+            # catalog is temporarily unavailable, do not block invoice creation.
+            return configured_id
+
+        for product in self._products_from_payload(payload):
+            product_id = self._object_id(product, product_keys=True)
+            if not product_id:
+                continue
+            if product_id == configured_id:
+                return product_id
+            for offer in self._offers_from_product(product):
+                if self._object_id(offer, product_keys=False) == configured_id:
+                    return product_id
+        return configured_id
+
+    @staticmethod
+    def _products_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+        candidates: list[Any] = [payload.get("items"), payload.get("products")]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            candidates.extend([data.get("items"), data.get("products")])
+        elif isinstance(data, list):
+            candidates.append(data)
+        for candidate in candidates:
+            if isinstance(candidate, list):
+                return [item for item in candidate if isinstance(item, dict)]
+        return []
+
+    @staticmethod
+    def _offers_from_product(product: dict[str, Any]) -> list[dict[str, Any]]:
+        offers = product.get("offers")
+        if isinstance(offers, list):
+            return [offer for offer in offers if isinstance(offer, dict)]
+        offer = product.get("offer")
+        if isinstance(offer, dict):
+            return [offer]
+        return []
+
+    @staticmethod
+    def _object_id(item: dict[str, Any], *, product_keys: bool) -> str:
+        keys = ("id", "productId", "product_id") if product_keys else (
+            "id",
+            "offerId",
+            "offer_id",
+        )
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                return str(value)
+        return ""
 
     def verify_webhook_key(self, supplied: str | None) -> bool:
         if not self.webhook_key or not supplied:
