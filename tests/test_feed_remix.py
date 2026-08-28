@@ -18,6 +18,34 @@ def _telegram_id() -> int:
     return random.randint(9_000_000_000_000, 9_899_999_999_999)
 
 
+def test_remix_replaces_transient_provider_input_with_stable_feed_result() -> None:
+    generation_id = random.randint(1, 999999999)
+    stable_url = f"/uploads/feed/repeat-source-{generation_id}.png"
+    transient_url = "https://tempfile.redpandaai.co/kieai/11669496/ksu/user-uploads/source.jpg"
+    source = Generation(
+        kind="generate_or_edit",
+        status="succeeded",
+        prompt="server-only prompt",
+        result_url=stable_url,
+        cost_rox=Decimal("8.00"),
+        provider="kie",
+        parameters={
+            "_model_id": "nano-banana-2",
+            "_result_urls": [stable_url],
+            "image_input": [transient_url],
+            "aspect_ratio": "4:3",
+        },
+    )
+
+    parameters = FeedService._replace_transient_remix_references(
+        {"image_input": [transient_url], "aspect_ratio": "4:3"},
+        source=source,
+        media_type="image",
+    )
+
+    assert parameters == {"image_input": [stable_url], "aspect_ratio": "4:3"}
+
+
 @pytest.mark.asyncio
 async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     async with SessionFactory() as session:
@@ -26,6 +54,7 @@ async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch
         session.add_all([source_author, remix_author])
         await session.flush()
         provider_url = "https://example.invalid/source.png"
+        transient_input_url = "https://tempfile.redpandaai.co/kieai/11669496/ksu/user-uploads/source.jpg"
         source = Generation(
             user_id=source_author.id,
             kind="text_to_image",
@@ -38,7 +67,7 @@ async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch
             parameters={
                 "_model_id": "nano-banana-2",
                 "_billing_seconds": None,
-                "image_url": "https://example.invalid/reference.png",
+                "image_input": [transient_input_url],
             },
             publication_scope="feed",
             is_public_feed=True,
@@ -136,6 +165,8 @@ async def test_remix_restores_prompt_server_side_and_records_lineage(monkeypatch
         )
 
         assert captured["prompt"] == "server-only prompt"
+        assert captured["parameters"]["image_input"] == [local_url]
+        assert transient_input_url not in repr(captured["parameters"])
         assert captured["source_feed_gen_id"] == source.id
         assert captured["parent_generation_id"] == source.id
         assert captured["action_type"] == "remix"

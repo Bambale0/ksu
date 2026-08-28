@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from redis.asyncio import Redis
 from sqlalchemy import delete, exists, func, or_, select
@@ -27,11 +27,13 @@ from app.services.feed_links import (
     remix_payload,
 )
 from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.feed_static import FeedStaticStorage
 from app.services.reference_resolver import (
     PUBLIC_IMAGE_REFERENCE_FIELDS,
     PUBLIC_VIDEO_REFERENCE_FIELDS,
     ReferenceResolver,
 )
+from app.services.reference_static import ReferenceStaticStorage
 
 FeedSurface = Literal["feed", "profile"]
 FeedSort = Literal["recent", "top_day", "top"]
@@ -68,6 +70,12 @@ class FeedService:
     # to the shared resolver field set so feed cards and patches agree.
     REFERENCE_IMAGE_KEYS = PUBLIC_IMAGE_REFERENCE_FIELDS
     REFERENCE_VIDEO_KEYS = PUBLIC_VIDEO_REFERENCE_FIELDS
+    TRANSIENT_PROVIDER_HOSTS = frozenset(
+        {
+            "tempfile.redpandaai.co",
+            "tempfile.aiquickdraw.com",
+        }
+    )
 
     @staticmethod
     def _validate_surface(surface: str) -> FeedSurface:
@@ -108,6 +116,76 @@ class FeedService:
                 MediaAsset.bucket.is_not(None),
             )
         )
+
+    @classmethod
+    def _is_transient_provider_url(cls, value: Any) -> bool:
+        if not isinstance(value, str) or not value.strip():
+            return False
+        parsed = urlparse(value.strip())
+        host = parsed.netloc.lower()
+        if not host:
+            return False
+        return host in cls.TRANSIENT_PROVIDER_HOSTS or any(
+            host.endswith(f".{known}") for known in cls.TRANSIENT_PROVIDER_HOSTS
+        )
+
+    @staticmethod
+    def _is_stable_roxy_media_url(value: str | None) -> bool:
+        return ReferenceStaticStorage.is_local_url(value) or FeedStaticStorage.is_local_url(value)
+
+    @classmethod
+    def _remix_fallback_url(cls, source: Generation, *, media_type: str) -> str | None:
+        candidates: list[str] = []
+        result_urls = (source.parameters or {}).get("_result_urls")
+        if isinstance(result_urls, list):
+            candidates.extend(str(item) for item in result_urls if item)
+        if source.result_url:
+            candidates.append(str(source.result_url))
+
+        suffixes = (
+            (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            if media_type == "image"
+            else (".mp4", ".mov", ".webm")
+        )
+        for candidate in dict.fromkeys(candidates):
+            path = urlparse(candidate).path.lower()
+            if path.endswith(suffixes) and cls._is_stable_roxy_media_url(candidate):
+                return candidate
+        return None
+
+    @classmethod
+    def _replace_transient_remix_references(
+        cls,
+        parameters: dict[str, Any],
+        *,
+        source: Generation,
+        media_type: str,
+    ) -> dict[str, Any]:
+        fields = (
+            set(PUBLIC_IMAGE_REFERENCE_FIELDS)
+            if media_type == "image"
+            else set(PUBLIC_VIDEO_REFERENCE_FIELDS)
+        )
+        fallback = cls._remix_fallback_url(source, media_type=media_type)
+        clean = dict(parameters)
+        for key, value in list(clean.items()):
+            if key not in fields:
+                continue
+            if isinstance(value, list):
+                kept = [item for item in value if not cls._is_transient_provider_url(item)]
+                if len(kept) != len(value) and fallback and fallback not in kept:
+                    kept.append(fallback)
+                if kept:
+                    clean[key] = kept
+                else:
+                    clean.pop(key, None)
+                continue
+            if cls._is_transient_provider_url(value):
+                if fallback:
+                    clean[key] = fallback
+                else:
+                    clean.pop(key, None)
+        return clean
 
     @staticmethod
     async def _has_ready_media(session: AsyncSession, generation_id: uuid.UUID) -> bool:
@@ -749,6 +827,11 @@ class FeedService:
             for key, value in dict(source.parameters or {}).items()
             if not key.startswith("_") and key in allowed and key != "prompt"
         }
+        source_parameters = cls._replace_transient_remix_references(
+            source_parameters,
+            source=source,
+            media_type=spec.media_type,
+        )
         generation = await GenerationService.create(
             session,
             redis,
