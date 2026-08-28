@@ -25,3 +25,10 @@ def test_profile_user_id_survives_client_side_route_changes_without_duplicates()
     assert "new MutationObserver" in script
     assert 'profileCopy.querySelector(`[${MARK_ATTR}]`)' in script
     assert 'label.setAttribute(MARK_ATTR, "")' in script
+
+
+def test_profile_user_id_observer_does_not_mutate_the_same_text_forever() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+    assert "if (label.textContent !== text) label.textContent = text;" in script
+    assert 'if (label.getAttribute("aria-label") !== accessibleText)' in script
+    assert 'if (label.getAttribute("title") !== accessibleText)' in script
