@@ -78,10 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if settings.is_production and not app.state.bot_has_main_web_app:
                 logger.warning(
                     "Telegram Main Mini App is not enabled for @%s; "
-                    "legacy ?startapp links may open only the bot card. "
-                    "Direct links use TELEGRAM_MINI_APP_SHORT_NAME=%s",
+                    "public ?startapp links cannot open ROXY directly. "
+                    "Enable the Main Mini App in BotFather before publishing referral/share links.",
                     settings.bot_username or "unknown",
-                    settings.telegram_mini_app_short_name or "",
                 )
         except Exception:
             logger.exception("Unable to synchronize Telegram bot identity")
