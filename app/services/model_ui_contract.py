@@ -92,7 +92,7 @@ MODEL_FIELD_SUGGESTIONS: dict[str, dict[str, list[str]]] = {
     "wan-2.7-video-edit": {"aspect_ratio": WAN_VIDEO_RATIOS, "resolution": ["720p", "1080p"], "audio_setting": ["auto", "origin"]},
     "wan-2.7-r2v": {"aspect_ratio": WAN_VIDEO_RATIOS, "resolution": ["720p", "1080p"]},
     "seedance-1.5-pro": {"aspect_ratio": ["16:9", "9:16", "1:1"], "resolution": ["480p", "720p", "1080p"]},
-    "seedance-2.0": {"aspect_ratio": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"], "resolution": ["480p", "720p"]},
+    "seedance-2.0": {"aspect_ratio": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"], "resolution": ["480p", "720p", "1080p"]},
     "seedance-2.0-fast": {"aspect_ratio": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"], "resolution": ["480p", "720p"]},
     "seedance-2.0-mini": {"aspect_ratio": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"], "resolution": ["480p", "720p"]},
     "seedance-2.5": {"resolution": ["480p", "720p"], "aspect_ratio": ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"], "output_format": ["mp4", "mov"]},

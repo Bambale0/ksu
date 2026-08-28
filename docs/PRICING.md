@@ -1,6 +1,6 @@
 # ROXY generation pricing
 
-**Baseline date:** 2026-08-20.
+**Baseline date:** 2026-08-28.
 
 This is the compact human-readable generation tariff reference. Runtime authority remains the backend model catalog plus the latest published Admin Tariffs override. The customer Photo/Video picker is intentionally restricted to the maintained trend catalog in `TRENDING_MODEL_CATALOG.md`; historical model IDs are not new-work pricing targets.
 
@@ -14,12 +14,17 @@ This is the compact human-readable generation tariff reference. Runtime authorit
 | Seedream 4.5 Edit | 20 ROX |
 | Seedream 5 Pro | 20 ROX |
 | Suno V5.5 audio | 25 ROX |
-| Seedance 2.0 | 40 ROX/s |
-| Seedance 2.5 | 60 ROX/s |
-| Kling 2.5 Turbo Pro · T2V | 30 ROX/s |
-| Kling 2.5 Turbo Pro · I2V | 30 ROX/s |
-| Kling AI Avatar · Standard | 20 ROX/s |
-| Kling AI Avatar · Pro | 30 ROX/s |
+| Seedance 2.0 480p | 40 ROX/s |
+| Seedance 2.0 720p | 50 ROX/s |
+| Seedance 2.0 1080p | 60 ROX/s |
+| Seedance 2.5 480p | 50 ROX/s |
+| Seedance 2.5 720p | 60 ROX/s |
+| Seedance 2.5 1080p | 70 ROX/s |
+| Seedance 2.5 4K | 90 ROX/s, reserved until callable provider support is exposed |
+| Kling 2.5 Turbo Pro · 5s | 40 ROX |
+| Kling 2.5 Turbo Pro · 10s | 80 ROX |
+| Kling AI Avatar · Standard | 100 ROX/s |
+| Kling AI Avatar · Pro | 150 ROX/s |
 | Kling 3.0 | 30 ROX/s |
 | Veo 3.1 | 35 ROX/s |
 | Grok · Image to Video | 15 ROX/s |

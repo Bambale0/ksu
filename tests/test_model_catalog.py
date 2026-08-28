@@ -27,9 +27,9 @@ def test_video_price_is_calculated_per_second() -> None:
         {"prompt": "city at night", "duration": 5},
     )
     assert spec.price_mode == "per_second"
-    assert unit_price == Decimal("40")
+    assert unit_price == Decimal("50")
     assert seconds == 5
-    assert cost == Decimal("200.00")
+    assert cost == Decimal("250.00")
 
 
 def test_image_price_is_flat() -> None:

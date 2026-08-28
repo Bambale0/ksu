@@ -193,7 +193,12 @@ def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
                 "aspect_ratio",
                 {"16:9", "4:3", "1:1", "3:4", "9:16", "21:9", "adaptive"},
             )
-        _enum(payload, "resolution", {"480p", "720p"})
+        seedance_20_resolutions = (
+            {"480p", "720p", "1080p"}
+            if model == "bytedance/seedance-2"
+            else {"480p", "720p"}
+        )
+        _enum(payload, "resolution", seedance_20_resolutions)
 
         first = bool(payload.get("first_frame_url"))
         last = bool(payload.get("last_frame_url"))

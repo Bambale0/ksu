@@ -174,10 +174,10 @@ SPECS: tuple[ModelSpec, ...] = (
 
     # Seedance
     ModelSpec("seedance-1.5-pro", "Seedance 1.5 Pro", "seedance", "bytedance/seedance-1.5-pro", "video", "text_or_image_to_video", ("prompt", "input_urls", "aspect_ratio", "resolution", "duration", "fixed_lens", "generate_audio", "nsfw_checker"), ("prompt", "duration"), "per_second", Decimal("10"), 1, 30),
-    ModelSpec("seedance-2.0", "Seedance 2.0", "seedance", "bytedance/seedance-2", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("11"), 4, 15),
+    ModelSpec("seedance-2.0", "Seedance 2.0", "seedance", "bytedance/seedance-2", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("50"), 4, 15),
     ModelSpec("seedance-2.0-fast", "Seedance 2.0 Fast", "seedance", "bytedance/seedance-2-fast", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("9"), 4, 15),
     ModelSpec("seedance-2.0-mini", "Seedance 2.0 Mini", "seedance", "bytedance/seedance-2-mini", "video", "multimodal_video", SEEDANCE_FIELDS, ("prompt", "duration"), "per_second", Decimal("8"), 4, 15),
-    ModelSpec("seedance-2.5", "Seedance 2.5", "seedance", "bytedance/seedance-2-5", "video", "multimodal_video", SEEDANCE_25_FIELDS, ("prompt", "duration"), "per_second", Decimal("12"), 4, 30),
+    ModelSpec("seedance-2.5", "Seedance 2.5", "seedance", "bytedance/seedance-2-5", "video", "multimodal_video", SEEDANCE_25_FIELDS, ("prompt", "duration"), "per_second", Decimal("60"), 4, 30),
 
     # Kling 3.0 + Motion Control
     ModelSpec("kling-3.0", "Kling 3.0", "kling", "kling-3.0/video", "video", "text_or_image_to_video", KLING_3_FIELDS, ("duration",), "per_second", Decimal("15"), 3, 15, notes=("Single-shot supports up to first+last frame; multi-shot uses multi_prompt; up to three element references.",)),

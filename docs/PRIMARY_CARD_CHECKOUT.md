@@ -18,6 +18,10 @@ Provider code stored locally and exposed by our API:
 card
 ```
 
+The current upstream implementation is Lava Top (`CARD_API_BASE_URL=https://gate.lava.top`).
+This is an internal provider route: the Mini App and public API copy keep using
+the neutral card checkout name.
+
 Endpoints:
 
 ```text

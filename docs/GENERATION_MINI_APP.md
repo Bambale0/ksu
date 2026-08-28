@@ -85,9 +85,9 @@ Uploads go through `/api/v1/uploads/kie`; the provider API key remains server-si
 
 ROXY maps `seedance-2.5` to Kie `bytedance/seedance-2-5` and validates its provider-specific inputs **before quote/debit/provider submission**.
 
-The callable Kie input form checked on 2026-08-20 exposes:
+The callable Kie input form checked on 2026-08-28 exposes:
 
-- resolution: `480p`, `720p`;
+- resolution: `480p`, `720p`, `1080p`;
 - aspect ratio: `16:9`, `4:3`, `1:1`, `3:4`, `9:16`, `21:9`, `adaptive`;
 - output format: `mp4`, `mov`;
 - first frame / optional last frame;
@@ -99,7 +99,7 @@ ROXY currently accepts explicit **4–30 second** duration only. Provider auto-d
 
 Frame mode and multimodal reference mode are mutually exclusive. A last frame requires a first frame. The older `fixed_lens` field is removed from the Seedance 2.5 catalog and silently discarded from old saved drafts instead of being forwarded to Kie.
 
-Kie's marketing copy may describe broader model capabilities such as higher-resolution output, but ROXY follows the **currently callable input schema**. As of this synchronization, `1080p`/`4K` are not accepted for this Kie route and are rejected server-side rather than merely hidden in the UI.
+Kie's marketing copy may describe broader model capabilities such as native `4K`, but ROXY follows the **currently callable input schema**. As of this synchronization, `4K` is not accepted in the Seedance 2.5 callable JSON enum and is rejected server-side rather than merely hidden in the UI.
 
 Kie currently allows video reference files larger than ROXY's shared upload endpoint. ROXY therefore advertises/enforces its actual product upload ceiling (100 MB) until the common upload contract is intentionally raised and tested.
 
@@ -140,8 +140,17 @@ For parameter-aware models the server first resolves the applicable price tier, 
 | Nano Banana 2 Lite | 25 ROX |
 | Seedream 4.5 | 20 ROX |
 | Seedream 5 Pro | 20 ROX |
-| Seedance 2.0 | 40 ROX/s |
-| Seedance 2.5 | 60 ROX/s |
+| Seedance 2.0 — 480p | 40 ROX/s |
+| Seedance 2.0 — 720p | 50 ROX/s |
+| Seedance 2.0 — 1080p | 60 ROX/s |
+| Seedance 2.5 — 480p | 50 ROX/s |
+| Seedance 2.5 — 720p | 60 ROX/s |
+| Seedance 2.5 — 1080p | 70 ROX/s |
+| Seedance 2.5 — 4K | 90 ROX/s, reserved until callable provider support is exposed |
+| Kling 2.5 Turbo Pro — 5s | 40 ROX |
+| Kling 2.5 Turbo Pro — 10s | 80 ROX |
+| Kling AI Avatar Standard | 100 ROX/s |
+| Kling AI Avatar Pro | 150 ROX/s |
 | Kling 3.0 | 30 ROX/s |
 | Veo 3.1 | 35 ROX/s |
 | Grok | 15 ROX/s |

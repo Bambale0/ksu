@@ -8,10 +8,10 @@ ROXY implements these as current Kie models, not as a payload copy from the hist
 
 | ROXY model | Kie model | Billing baseline |
 | --- | --- | ---: |
-| `kling-2.5-turbo-pro-t2v` | `kling/v2-5-turbo-text-to-video-pro` | 30 ROX/s |
-| `kling-2.5-turbo-pro-i2v` | `kling/v2-5-turbo-image-to-video-pro` | 30 ROX/s |
-| `kling-avatar-standard` | `kling/ai-avatar-standard` | 20 ROX/s |
-| `kling-avatar-pro` | `kling/ai-avatar-pro` | 30 ROX/s |
+| `kling-2.5-turbo-pro-t2v` | `kling/v2-5-turbo-text-to-video-pro` | 40 ROX / 5s, 80 ROX / 10s |
+| `kling-2.5-turbo-pro-i2v` | `kling/v2-5-turbo-image-to-video-pro` | 40 ROX / 5s, 80 ROX / 10s |
+| `kling-avatar-standard` | `kling/ai-avatar-standard` | 100 ROX/s |
+| `kling-avatar-pro` | `kling/ai-avatar-pro` | 150 ROX/s |
 
 These are ROXY product tariffs, not claims about Kie wholesale pricing. Published Admin Tariffs remain authoritative and can override the baseline without a client deploy.
 

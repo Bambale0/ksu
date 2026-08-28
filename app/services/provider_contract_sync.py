@@ -186,7 +186,7 @@ def install_provider_contract_sync() -> None:
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = True
     ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("seedance-2.0", {})[
         "resolution"
-    ] = ["480p", "720p", "1080p", "4K"]
+    ] = ["480p", "720p", "1080p"]
     ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("seedance-2.0-fast", {})[
         "resolution"
     ] = ["480p", "720p"]

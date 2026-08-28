@@ -25,8 +25,12 @@ REQUESTED_BASE_PRICES = {
     "seedream-4.5-edit": ("flat", Decimal("20")),
     "seedream-5-pro-t2i": ("flat", Decimal("20")),
     "seedream-5-pro-i2i": ("flat", Decimal("20")),
-    "seedance-2.0": ("per_second", Decimal("40")),
+    "seedance-2.0": ("per_second", Decimal("50")),
     "seedance-2.5": ("per_second", Decimal("60")),
+    "kling-2.5-turbo-pro-t2v": ("per_second", Decimal("8")),
+    "kling-2.5-turbo-pro-i2v": ("per_second", Decimal("8")),
+    "kling-avatar-standard": ("per_second", Decimal("100")),
+    "kling-avatar-pro": ("per_second", Decimal("150")),
     "kling-3.0": ("per_second", Decimal("30")),
     "veo-3.1": ("per_second", Decimal("35")),
     "grok-video-i2v": ("per_second", Decimal("15")),
@@ -62,6 +66,29 @@ def test_kling_motion_prices_follow_selected_quality(monkeypatch: pytest.MonkeyP
     assert GenerationService._effective_unit_price(
         model_id="kling-motion-3.0", parameters={"mode": "1080p"}
     ) == Decimal("80")
+
+
+def test_seedance_prices_follow_selected_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "generation_pricing_json", DEFAULT_GENERATION_PRICING_JSON)
+
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.0", parameters={"resolution": "480p"}
+    ) == Decimal("40")
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.0", parameters={"resolution": "720p"}
+    ) == Decimal("50")
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.0", parameters={"resolution": "1080p"}
+    ) == Decimal("60")
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.5", parameters={"resolution": "480p"}
+    ) == Decimal("50")
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.5", parameters={"resolution": "720p"}
+    ) == Decimal("60")
+    assert GenerationService._effective_unit_price(
+        model_id="seedance-2.5", parameters={"resolution": "1080p"}
+    ) == Decimal("70")
 
 
 def test_wan_27_pro_is_a_real_photo_generation_and_edit_model() -> None:

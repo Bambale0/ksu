@@ -639,7 +639,7 @@
     const data = await api(`/api/v1/admin/payments?${params}`);
     const filter = makeFilter([
       { name: "status", value: filters.status || "", options: [["", "Все статусы"], ["creating", "Создаётся"], ["pending", "Ожидает"], ["succeeded", "Успешно"], ["failed", "Не получилось"], ["canceled", "Отменено"], ["refunded", "Возвращено"]] },
-      { name: "provider", value: filters.provider || "", options: [["", "Все провайдеры"], ["cryptobot", "Crypto Pay"], ["tbank", "T-Bank"], ["yookassa", "YooKassa"]] },
+      { name: "provider", value: filters.provider || "", options: [["", "Все провайдеры"], ["card", "Оплата картой"], ["cryptobot", "Crypto Pay"], ["tbank", "T-Bank"], ["yookassa", "YooKassa"]] },
       { name: "user_id", placeholder: "User UUID", grow: true, value: filters.user_id || "" },
     ], renderPayments);
     const cols = [

@@ -66,10 +66,11 @@ Current public pricing baseline:
 | Nano Banana 2 Lite | 25 ROX |
 | Seedream 4.5 | 20 ROX |
 | Seedream 5 Pro | 20 ROX |
-| Seedance 2.0 | 40 ROX/s |
-| Seedance 2.5 | 60 ROX/s |
-| Kling 2.5 Turbo Pro T2V / I2V | 30 / 30 ROX/s |
-| Kling AI Avatar Standard / Pro | 20 / 30 ROX/s |
+| Seedance 2.0 480p / 720p / 1080p | 40 / 50 / 60 ROX/s |
+| Seedance 2.5 480p / 720p / 1080p | 50 / 60 / 70 ROX/s |
+| Seedance 2.5 4K | 90 ROX/s, reserved until callable provider support is exposed |
+| Kling 2.5 Turbo Pro 5s / 10s | 40 / 80 ROX |
+| Kling AI Avatar Standard / Pro | 100 / 150 ROX/s |
 | Kling 3.0 | 30 ROX/s |
 | Veo 3.1 | 35 ROX/s |
 | Grok | 15 ROX/s |
@@ -140,7 +141,7 @@ See `docs/DATABASE_BACKUPS.md` and `docs/GITHUB_PRODUCTION_DEPLOY.md`.
 - Minimum partner withdrawal: 3,000 ROX.
 - Internal spend ROX and withdrawable partner earnings remain separate accounting domains.
 - Payment intents are idempotent and provider reconciliation is durable.
-- Supported provider integrations include Crypto Pay, T-Bank and YooKassa code paths documented in the payment/runbook docs.
+- The active customer checkout is the hosted card route backed by Lava Top and exposed publicly as `card` / “Оплата картой”; Crypto Pay, T-Bank and YooKassa code paths remain reserve integrations documented in the payment/runbook docs.
 
 ## Admin/security
 
