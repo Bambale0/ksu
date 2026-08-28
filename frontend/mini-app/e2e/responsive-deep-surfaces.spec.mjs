@@ -166,10 +166,11 @@ test('iPad onboarding stays centered and safe-area contained', async ({ page }) 
   await page.setViewportSize(viewport);
   await mockApp(page, { onboarding: true });
   await page.goto('/mini-app/?route=home');
-  const card = page.locator('.onboarding-card');
-  await expect(card).toBeVisible();
+  const onboarding = page.locator('.roxy-onboarding-v2');
+  await expect(onboarding).toBeVisible();
   await noOverflow(page);
-  const box = await card.boundingBox();
+  const shell = onboarding.locator('> div').first();
+  const box = await shell.boundingBox();
   expect(box).not.toBeNull();
   expect(box.width).toBeLessThanOrEqual(520);
   expect(box.x).toBeGreaterThan(100);
