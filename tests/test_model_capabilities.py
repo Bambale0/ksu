@@ -52,8 +52,8 @@ def test_hidden_auto_route_target_can_still_execute_from_router() -> None:
     assert cost > Decimal("0")
 
 
-def test_seedance_reference_and_frame_modes_are_mutually_exclusive() -> None:
-    with pytest.raises(InvalidModelParametersError, match="mutually exclusive"):
+def test_seedance_frame_inputs_are_rejected_before_billing() -> None:
+    with pytest.raises(InvalidModelParametersError, match="multimodal reference mode only"):
         ModelCatalog.prepare(
             "seedance-2.5",
             {
