@@ -12,6 +12,7 @@ type Package = {
   prices: Record<string, string>;
 };
 type PackageCatalog = {
+  configured?: boolean;
   packages: Record<string, Package>;
 };
 
@@ -29,14 +30,23 @@ function ensureHost(sheet: HTMLElement): HTMLElement {
 export function WalletParity() {
   const [catalog, setCatalog] = useState<PackageCatalog | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [cryptoAvailable, setCryptoAvailable] = useState(false);
 
   useEffect(() => {
-    void customerRequest<PackageCatalog>("/api/v1/payments/card/packages")
-      .then(setCatalog)
-      .catch(() => setCatalog(null));
+    void Promise.allSettled([
+      customerRequest<PackageCatalog>("/api/v1/payments/card/packages"),
+      customerRequest<PackageCatalog>("/api/v1/payments/crypto/packages"),
+    ]).then(([card, crypto]) => {
+      setCatalog(card.status === "fulfilled" ? card.value : null);
+      setCryptoAvailable(Boolean(
+        crypto.status === "fulfilled"
+        && crypto.value.configured
+        && Object.keys(crypto.value.packages || {}).length,
+      ));
+    });
   }, []);
 
-  const packages = useMemo(() => Object.values(catalog?.packages || {}), [catalog]);
+  const packages = useMemo(() => catalog?.packages || {}, [catalog]);
 
   useEffect(() => {
     let frame = 0;
@@ -45,11 +55,13 @@ export function WalletParity() {
       frame = requestAnimationFrame(() => {
         const sheet = document.querySelector<HTMLElement>(".sheet");
         setHost(sheet ? ensureHost(sheet) : null);
-        if (!sheet || !packages.length) return;
+        if (!sheet || !Object.keys(packages).length) return;
         const buttons = Array.from(sheet.querySelectorAll<HTMLElement>(".package-grid .package"));
+        const packageList = Object.values(packages);
         buttons.forEach((button, index) => {
           const existing = button.querySelector<HTMLElement>(".package-bonus-live");
-          const item = packages[index];
+          const packageId = String(button.dataset.packageId || "");
+          const item = packageId ? packages[packageId] : packageList[index];
           const bonus = Number(item?.bonus_credits || 0);
           if (!item || !(bonus > 0)) {
             existing?.remove();
@@ -76,8 +88,9 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
+      {cryptoAvailable ? <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить через CryptoBot</button> : null}
       <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/")}>Все пополнения и статусы</button>
-      <small>Бонусы и итоговые ROX берутся из текущих настроек оплаты.</small>
+      <small>Карта/СБП и CryptoBot используют серверные пакеты и бонусы ROX.</small>
     </div>,
     host,
   );

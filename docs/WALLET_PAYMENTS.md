@@ -79,6 +79,45 @@ Payment creation is protected by Redis payment-creation limits. On `429`, the Mi
 
 The client must not implement rapid automatic POST retries. Polling GETs are presentation refreshes, not payment creation.
 
+## CryptoBot / Crypto Pay
+
+CryptoBot is a first-class wallet payment method rather than a client-side redirect hack.
+It reuses the same server-owned ROX package catalog and top-up bonus rules as card checkout.
+The user chooses a package, ROXY creates a `currency_type=fiat`, `fiat=RUB` Crypto Pay
+invoice, and CryptoBot lets the user settle it with any asset enabled for the app.
+
+```text
+Wallet -> CryptoBot
+  -> POST /api/v1/payments/crypto/checkout
+  -> Crypto Pay createInvoice(payload=<local payment UUID>)
+  -> open mini_app_invoice_url / bot_invoice_url
+  -> invoice_paid webhook
+  -> HMAC-SHA256 verification over the raw request body
+  -> amount + fiat + invoice id verification
+  -> idempotent wallet credit
+```
+
+`createInvoice` has no provider-side idempotency key. ROXY therefore commits the local
+`Payment` + `PaymentRequest` before the external call. If the create response is lost,
+the durable payment enters `creation_unknown`; reconciliation searches Crypto Pay invoices
+by the local UUID stored in `payload` instead of blindly creating another invoice.
+
+Configuration is server-only:
+
+```text
+CRYPTOPAY_API_TOKEN=<Crypto Pay app token>
+CRYPTOPAY_BASE_URL=https://pay.crypt.bot
+```
+
+The webhook must be enabled for the Crypto Pay app in @CryptoBot and point to:
+
+```text
+<PUBLIC_BASE_URL>/webhooks/payments/cryptobot
+```
+
+No Crypto Pay token, signature key, or settlement decision is exposed to the Mini App.
+The UI only shows CryptoBot when the server reports the provider as configured.
+
 ## Provider navigation
 
 Telegram Mini App link APIs are used when available:
