@@ -6,7 +6,7 @@ import { StandaloneShell } from "@/components/standalone-shell";
 import { compactNumber, customerRequest } from "@/lib/customer-api";
 
 type Overview = {
-  account: { username?: string | null; first_name?: string | null; last_name?: string | null; created_at: string };
+  account: { id: string; username?: string | null; first_name?: string | null; last_name?: string | null; created_at: string };
   balance: { bonus_rox: string; withdrawable_rox: string; rub_accounting_equivalent: string };
   generations: { total: number; statuses: Record<string, number> };
   payments: { total: number; currencies: Record<string, { count: number; successful_count: number; successful_amount: string; credited_rox: string }> };
@@ -54,6 +54,10 @@ export default function AccountPage() {
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {overview ? <>
         <div className="profile-stats panel"><div><strong>{compactNumber(overview.balance.bonus_rox)} ROX</strong><span>баланс</span></div><div><strong>{overview.generations.total}</strong><span>генераций</span></div><div><strong>{overview.social.followers}</strong><span>подписчиков</span></div></div>
+        <div className="panel" aria-label="ID аккаунта" style={{ display: "grid", gap: 5 }}>
+          <span className="kicker">ID аккаунта</span>
+          <strong style={{ fontSize: 13, overflowWrap: "anywhere", userSelect: "text" }}>{overview.account.id}</strong>
+        </div>
         <div className="profile-stats panel"><div><strong>{statuses.succeeded || 0}</strong><span>готово</span></div><div><strong>{active}</strong><span>в работе</span></div><div><strong>{statuses.failed || 0}</strong><span>ошибок</span></div></div>
       </> : <div className="panel"><p className="muted">Загружаю профиль…</p></div>}
 
