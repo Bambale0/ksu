@@ -22,6 +22,7 @@ from app.api.v1 import (
     generation_actions,
     generation_history,
     generations,
+    inline_social_admin,
     me,
     media,
     notifications,
@@ -62,6 +63,7 @@ api_router.include_router(social.router)
 api_router.include_router(support.router)
 api_router.include_router(client_logs.router)
 api_router.include_router(uploads.router)
+api_router.include_router(inline_social_admin.router)
 api_router.include_router(admin_auth.router)
 api_router.include_router(admin_users.router)
 api_router.include_router(admin_operations.router)
