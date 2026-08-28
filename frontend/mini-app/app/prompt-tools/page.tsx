@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
+import { copyToClipboard, haptic, notify } from "@/lib/telegram";
 import type { PromptToolCatalogItem, PromptToolTask } from "@/lib/types";
 
 type Mode = "image" | "video" | "seedance";
@@ -57,6 +58,10 @@ function resultList(result: PromptResult, key: string): string[] {
   return value.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function isPromptEntry(label: string): boolean {
+  return label === "Промпт RU" || label === "Промпт EN";
+}
+
 async function waitForTask(id: string): Promise<PromptToolTask> {
   for (let attempt = 0; attempt < 90; attempt += 1) {
     const task = await api.promptToolTask(id);
@@ -78,6 +83,7 @@ export default function PromptToolsPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PromptResult | null>(null);
   const [tools, setTools] = useState<PromptToolCatalogItem[]>([]);
+  const [copiedLabel, setCopiedLabel] = useState("");
 
   useEffect(() => {
     setMode(initialMode());
@@ -100,6 +106,7 @@ export default function PromptToolsPage() {
     setMode(next);
     setError("");
     setResult(null);
+    setCopiedLabel("");
     const url = new URL(window.location.href);
     url.searchParams.set("mode", next);
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
@@ -132,6 +139,7 @@ export default function PromptToolsPage() {
     setBusy(true);
     setError("");
     setResult(null);
+    setCopiedLabel("");
     try {
       let task: PromptToolTask;
       if (mode === "video") {
@@ -155,6 +163,22 @@ export default function PromptToolsPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const copyPrompt = async (label: string, value: string) => {
+    const copied = await copyToClipboard(value);
+    if (!copied) {
+      notify("error");
+      setError("Не удалось скопировать промпт. Выделите текст вручную.");
+      return;
+    }
+    setError("");
+    setCopiedLabel(label);
+    notify("success");
+    haptic("light");
+    window.setTimeout(() => {
+      setCopiedLabel((current) => current === label ? "" : current);
+    }, 1800);
   };
 
   const timeline = result ? resultList(result, "timeline_ru") : [];
@@ -251,7 +275,24 @@ export default function PromptToolsPage() {
 
       {resultEntries.length ? (
         <div className="tool-result" aria-live="polite">
-          {resultEntries.map(([label, value]) => <div className="tool-result-card" key={label}><strong>{label}</strong><pre>{value}</pre></div>)}
+          {resultEntries.map(([label, value]) => (
+            <div className="tool-result-card" key={label}>
+              <div className="tool-result-card-head">
+                <strong>{label}</strong>
+                {isPromptEntry(label) ? (
+                  <button
+                    className="secondary tool-result-copy"
+                    type="button"
+                    aria-label={`Скопировать ${label}`}
+                    onClick={() => void copyPrompt(label, value)}
+                  >
+                    {copiedLabel === label ? "Скопировано ✓" : "Копировать"}
+                  </button>
+                ) : null}
+              </div>
+              <pre>{value}</pre>
+            </div>
+          ))}
         </div>
       ) : null}
     </StandaloneShell>
