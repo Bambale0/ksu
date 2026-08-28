@@ -66,7 +66,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"p300":{"credits":"300","prices":{"RUB":"326.1"}}}',
+        '{"p300":{"credits":"300","prices":{"RUB":"326.1"},"dynamic_amount":true}}',
     )
     monkeypatch.setattr(settings, "card_offer_id", "offer-bonus")
     seen: dict[str, object] = {}
@@ -153,6 +153,82 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
         assert wallet is not None
         assert wallet.balance == Decimal("350.00")
         assert seen["referral_basis"] == Decimal("300")
+
+
+@pytest.mark.asyncio
+async def test_fixed_price_card_package_omits_amount_on_invoice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lava rejects `amount` for fixed-price offers (HTTP 400 "is not dynamic price").
+
+    Regression: fixed-price card packages must create invoices without an amount,
+    otherwise every checkout fails with 502 upstream.
+    """
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"p300":{"credits":"300","prices":{"RUB":"326.1"}}}',
+    )
+    monkeypatch.setattr(settings, "card_offer_id", "offer-fixed")
+    seen: dict[str, object] = {}
+
+    async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
+        return {
+            "items": [
+                {
+                    "id": "product-fixed",
+                    "offers": [{"id": "offer-fixed", "name": "Fixed 300 ROX"}],
+                }
+            ]
+        }
+
+    async def fake_create_invoice(
+        self: CardCheckoutClient,
+        *,
+        email: str,
+        offer_id: str,
+        currency: str,
+        amount: Decimal | None,
+        payment_provider: str | None = None,
+    ) -> CreatedPayment:
+        seen["invoice"] = {
+            "email": email,
+            "offer_id": offer_id,
+            "currency": currency,
+            "amount": amount,
+            "payment_provider": payment_provider,
+        }
+        return CreatedPayment(
+            external_id="card-fixed-1",
+            payment_url="https://pay.example/fixed",
+            raw={"status": "pending"},
+        )
+
+    monkeypatch.setattr(CardCheckoutClient, "get_products", fake_get_products)
+    monkeypatch.setattr(CardCheckoutClient, "create_invoice", fake_create_invoice)
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="ROX Fixed")
+        session.add(user)
+        await session.commit()
+
+        payment = await CardPaymentService.create(
+            session,
+            user_id=user.id,
+            package_id="p300",
+            currency="RUB",
+            billing_email="buyer@example.com",
+            request_key=str(uuid.uuid4()),
+        )
+
+    assert seen["invoice"] == {
+        "email": "buyer@example.com",
+        "offer_id": "offer-fixed",
+        "currency": "RUB",
+        "amount": None,
+        "payment_provider": None,
+    }
+    assert Decimal(payment.amount) == Decimal("326.1")
 
 
 @pytest.mark.asyncio
