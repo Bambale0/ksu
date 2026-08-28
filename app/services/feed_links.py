@@ -70,13 +70,12 @@ def mini_app_deep_link(
     fallback_url: str | None = None,
     bot_username: str | None = None,
 ) -> str | None:
-    """Build the canonical Telegram Main Mini App link used by tanyapi.
+    """Build the canonical Telegram deep link for a product payload.
 
-    Public repeat, feed, profile and referral links must open ROXY immediately,
-    without landing in the bot chat first. Telegram's Main Mini App deep-link
-    syntax is ``https://t.me/<bot>?startapp=<payload>`` and does not depend on a
-    named Mini App short name. ``fallback_url`` is only used when the bot
-    username itself is unavailable.
+    Shared feed publications intentionally enter through the bot chat first so
+    the bot can deliver the linked work and offer an explicit Mini App button.
+    Repeat, profile and referral payloads continue to open ROXY immediately via
+    Telegram's Main Mini App ``startapp`` contract.
     """
 
     username = _clean_bot_username(bot_username or settings.bot_username)
@@ -85,11 +84,13 @@ def mini_app_deep_link(
     param = str(payload or "").strip()
     if not param:
         return f"https://t.me/{username}?startapp"
+    if param.casefold().startswith("feed_"):
+        return bot_start_link(param, bot_username=username) or fallback_url
     return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
 
 
 def bot_start_link(payload: str | None, *, bot_username: str | None = None) -> str | None:
-    """Compatibility link for legacy bot /start surfaces."""
+    """Build a Telegram bot ``/start`` link, including the feed handoff flow."""
 
     username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:
