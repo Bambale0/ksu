@@ -63,6 +63,44 @@ type VideoPromptBody = {
   duration_seconds?: 5 | 10 | 15 | null;
 };
 
+export type FeedRemixDraft = {
+  source_generation_id: string;
+  source_feed_gen_id: string;
+  surface: FeedSurface;
+  model_id: string;
+  effective_model_id: string;
+  model_title: string;
+  prompt: string;
+  prompt_hidden: boolean;
+  prompt_editable: boolean;
+  settings: Record<string, unknown>;
+  billing_seconds?: number | null;
+  reference_requirements: {
+    image_count: number;
+    video_count: number;
+    audio_count: number;
+    required: boolean;
+  };
+  preview_url?: string | null;
+  media?: Array<Record<string, unknown>>;
+};
+
+export type FeedRemixComposition = {
+  surface: FeedSurface;
+  prompt?: string | null;
+  reference_ids: string[];
+  confirm_own_references: boolean;
+};
+
+export type FeedRemixQuote = {
+  model_id: string;
+  cost_rox: string;
+  retail_cost_rox: string;
+  unit_price_rox: string;
+  billing_seconds?: number | null;
+  admin_free: boolean;
+};
+
 const publicPrivacyDefaults = { prompt_visible: false, references_visible: false };
 
 function normalizePublishOptions(options: Exclude<PublicationScope, "private"> | PublishOptions): PublishOptions {
@@ -81,6 +119,13 @@ function idempotencyKey(prefix: string): string {
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 }
 
+function beginFeedRemix(id: string, surface: FeedSurface): Promise<never> {
+  if (typeof window === "undefined") throw new Error("Повтор доступен только в приложении ROXY");
+  const target = `/mini-app/remix/?source=${encodeURIComponent(id)}&surface=${encodeURIComponent(surface)}`;
+  window.location.assign(target);
+  return new Promise<never>(() => undefined);
+}
+
 export const api = {
   me: () => request<Me>("/api/v1/me"),
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
@@ -95,7 +140,13 @@ export const api = {
   upload: (file: File) => {
     const form = new FormData();
     form.append("file", file, file.name);
-    return request<{ url: string; name?: string; mime_type?: string; size?: number }>("/api/v1/uploads/kie", { method: "POST", body: form });
+    return request<{
+      url: string;
+      name?: string;
+      mime_type?: string;
+      size?: number;
+      reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
+    }>("/api/v1/uploads/kie", { method: "POST", body: form });
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
@@ -133,9 +184,15 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ surface, text }),
   }),
-  remix: (id: string, surface: FeedSurface = "feed") => request<{ id: string; status: string; source_feed_gen_id?: string; action_type?: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix`, {
+  remix: (id: string, surface: FeedSurface = "feed") => beginFeedRemix(id, surface),
+  prepareRemix: (id: string, surface: FeedSurface = "feed") => request<FeedRemixDraft>(`/api/v1/feed/${encodeURIComponent(id)}/remix/prepare?surface=${encodeURIComponent(surface)}`),
+  quoteRemix: (id: string, body: FeedRemixComposition) => request<FeedRemixQuote>(`/api/v1/feed/${encodeURIComponent(id)}/remix/quote`, {
     method: "POST",
-    body: JSON.stringify({ surface }),
+    body: JSON.stringify(body),
+  }),
+  launchRemix: (id: string, body: FeedRemixComposition) => request<{ id: string; status: string; source_feed_gen_id: string; parent_generation_id: string; action_type: string; cost_rox: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix/launch`, {
+    method: "POST",
+    body: JSON.stringify(body),
   }),
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),

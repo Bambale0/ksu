@@ -55,6 +55,24 @@ function feedCard({ id = generationId, authorCode = '777' } = {}) {
   };
 }
 
+function remixDraft(surface = 'feed') {
+  return {
+    source_generation_id: generationId,
+    source_feed_gen_id: generationId,
+    surface,
+    model_id: 'nano-banana-2',
+    effective_model_id: 'nano-banana-2',
+    model_title: 'Nano Banana 2',
+    prompt: 'Edge prompt 777',
+    prompt_hidden: false,
+    prompt_editable: true,
+    settings: {},
+    reference_requirements: { image_count: 0, video_count: 0, audio_count: 0, required: false },
+    preview_url: image,
+    media: [{ url: image, content_type: 'image/png' }],
+  };
+}
+
 async function installTelegram(page, startParam = '') {
   await page.addInitScript(({ payload }) => {
     window.Telegram = {
@@ -76,6 +94,7 @@ async function installTelegram(page, startParam = '') {
 async function mockApp(page) {
   const feedItemCalls = [];
   const profileFeedCalls = [];
+  const prepareCalls = [];
   let remixCalls = 0;
 
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
@@ -107,9 +126,19 @@ async function mockApp(page) {
       return json({ detail: 'Unexpected feed id' }, 500);
     }
 
+    if (path === `/api/v1/feed/${generationId}/remix/prepare`) {
+      const surface = url.searchParams.get('surface') || 'feed';
+      prepareCalls.push(surface);
+      return json(remixDraft(surface));
+    }
+
+    if (path === `/api/v1/feed/${generationId}/remix/quote`) {
+      return json({ model_id: 'nano-banana-2', cost_rox: '25.00', retail_cost_rox: '25.00', unit_price_rox: '25.00', admin_free: false });
+    }
+
     if (path === `/api/v1/feed/${generationId}/remix`) {
       remixCalls += 1;
-      return json({ id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', status: 'queued', source_feed_gen_id: generationId, action_type: 'remix' }, 202);
+      return json({ detail: 'Open the repeat editor and add your own references before launch' }, 409);
     }
 
     if (path === `/api/v1/feed/${generationId}/share`) {
@@ -127,7 +156,7 @@ async function mockApp(page) {
     return json({ items: [] });
   });
 
-  return { feedItemCalls, profileFeedCalls, remixCalls: () => remixCalls };
+  return { feedItemCalls, profileFeedCalls, prepareCalls, remixCalls: () => remixCalls };
 }
 
 async function openWithPayload(page, query, telegramPayload = '') {
@@ -199,7 +228,7 @@ test('mismatched referral signature disables repeat and share actions', async ({
   expect(audit.remixCalls()).toBe(0);
 });
 
-test('remix startapp opens work in remix mode but still waits for explicit Repeat', async ({ page }) => {
+test('remix startapp opens work in remix mode and then opens the reference composer', async ({ page }) => {
   const payload = `remix_${generationId}_ref_777`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
@@ -207,7 +236,10 @@ test('remix startapp opens work in remix mode but still waits for explicit Repea
   await expect(page.getByRole('button', { name: /Повторить эту работу/ })).toBeEnabled();
   expect(audit.remixCalls()).toBe(0);
   await page.getByRole('button', { name: /Повторить эту работу/ }).click();
-  await expect.poll(() => audit.remixCalls()).toBe(1);
+  await expect(page).toHaveURL(new RegExp(`/mini-app/remix/\\?source=${generationId}&surface=feed`));
+  await expect.poll(() => audit.prepareCalls.length).toBe(1);
+  expect(audit.remixCalls()).toBe(0);
+  await expect(page.getByText(/Референсы исходной публикации не копируются/)).toBeVisible();
 });
 
 test('profile startapp opens an author profile directly', async ({ page }) => {

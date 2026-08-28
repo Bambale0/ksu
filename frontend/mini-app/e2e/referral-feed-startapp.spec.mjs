@@ -18,7 +18,7 @@ async function installTelegramStartParam(page, startParam) {
   }, { startParam });
 }
 
-async function installFeedRoutes(page, onRemix = () => {}) {
+async function installFeedRoutes(page, audit = {}) {
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
     status: 200,
     contentType: 'image/png',
@@ -46,30 +46,56 @@ async function installFeedRoutes(page, onRemix = () => {}) {
         surface: 'feed',
       }) });
     }
+    if (url.pathname === `/api/v1/feed/${generationId}/remix/prepare`) {
+      audit.prepareCalls = (audit.prepareCalls || 0) + 1;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        source_generation_id: generationId,
+        source_feed_gen_id: generationId,
+        surface: url.searchParams.get('surface') === 'profile' ? 'profile' : 'feed',
+        model_id: 'nano-banana-2',
+        effective_model_id: 'nano-banana-2',
+        model_title: 'Nano Banana 2',
+        prompt: 'Кинематографичный портрет',
+        prompt_hidden: false,
+        prompt_editable: true,
+        settings: {},
+        reference_requirements: { image_count: 0, video_count: 0, audio_count: 0, required: false },
+        preview_url: image,
+        media: [{ url: image, content_type: 'image/png' }],
+      }) });
+    }
+    if (url.pathname === `/api/v1/feed/${generationId}/remix/quote`) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        model_id: 'nano-banana-2', cost_rox: '25.00', retail_cost_rox: '25.00', unit_price_rox: '25.00', admin_free: false,
+      }) });
+    }
     if (url.pathname === `/api/v1/feed/${generationId}/remix`) {
-      onRemix();
-      return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({
-        id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', status: 'queued', source_feed_gen_id: generationId, action_type: 'remix',
+      audit.remixCalls = (audit.remixCalls || 0) + 1;
+      return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({
+        detail: 'Open the repeat editor and add your own references before launch',
       }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 }
 
-test('referral startapp opens the exact feed work and waits for explicit Repeat', async ({ page }) => {
-  let remixCalls = 0;
+test('referral startapp opens the exact feed work and sends Repeat to the composer', async ({ page }) => {
+  const audit = { remixCalls: 0, prepareCalls: 0 };
   await installTelegramStartParam(page, payload);
-  await installFeedRoutes(page, () => { remixCalls += 1; });
+  await installFeedRoutes(page, audit);
 
   await page.goto(`/mini-app/?tgWebAppStartParam=${encodeURIComponent(payload)}`);
   await expect(page.getByText('Лента ROXY')).toBeVisible();
   await expect(page.getByText('Creator')).toBeVisible();
   await expect(page.getByText('Кинематографичный портрет')).toBeVisible();
   await expect(page.getByRole('button', { name: /Повторить/ })).toBeVisible();
-  expect(remixCalls).toBe(0);
+  expect(audit.remixCalls).toBe(0);
 
   await page.getByRole('button', { name: /Повторить/ }).click();
-  await expect.poll(() => remixCalls).toBe(1);
+  await expect(page).toHaveURL(new RegExp(`/mini-app/remix/\\?source=${generationId}&surface=feed`));
+  await expect.poll(() => audit.prepareCalls).toBe(1);
+  expect(audit.remixCalls).toBe(0);
+  await expect(page.getByText(/Референсы исходной публикации не копируются/)).toBeVisible();
 });
 
 test('remix startapp opens the repeat screen for the exact work', async ({ page }) => {

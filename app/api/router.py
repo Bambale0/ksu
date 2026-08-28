@@ -17,6 +17,7 @@ from app.api.v1 import (
     discovery,
     feed,
     feed_reference_media,
+    feed_remix,
     generation_action_contexts,
     generation_actions,
     generation_history,
@@ -48,6 +49,7 @@ api_router.include_router(generation_action_contexts.router)
 api_router.include_router(generation_history.router)
 api_router.include_router(discovery.router)
 api_router.include_router(feed.router)
+api_router.include_router(feed_remix.router)
 api_router.include_router(feed_reference_media.router)
 api_router.include_router(trends.router)
 api_router.include_router(prompt_tools.router)
