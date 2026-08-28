@@ -33,10 +33,6 @@ def _clean_bot_username(value: str | None) -> str:
     return str(value or "").strip().lstrip("@")
 
 
-def _clean_mini_app_short_name(value: str | None) -> str:
-    return str(value or "").strip().strip("/")
-
-
 def referral_payload(telegram_id: int | str) -> str:
     return f"ref_{_code(telegram_id)}"
 
@@ -74,23 +70,22 @@ def mini_app_deep_link(
     fallback_url: str | None = None,
     bot_username: str | None = None,
 ) -> str | None:
-    """Build a Telegram Direct Mini App link for public ROXY share surfaces.
+    """Build the canonical Telegram Main Mini App link used by tanyapi.
 
-    If the bot has no configured Direct Mini App short name, preserve a usable
-    bot ``/start`` link instead of returning ``None``. This matters for share
-    endpoints that normalize an already-valid fallback link a second time.
+    Public repeat, feed, profile and referral links must open ROXY immediately,
+    without landing in the bot chat first. Telegram's Main Mini App deep-link
+    syntax is ``https://t.me/<bot>?startapp=<payload>`` and does not depend on a
+    named Mini App short name. ``fallback_url`` is only used when the bot
+    username itself is unavailable.
     """
 
     username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:
         return fallback_url
-    short_name = _clean_mini_app_short_name(settings.telegram_mini_app_short_name)
     param = str(payload or "").strip()
-    if not short_name:
-        return fallback_url or bot_start_link(param, bot_username=username)
     if not param:
-        return f"https://t.me/{username}/{short_name}?startapp"
-    return f"https://t.me/{username}/{short_name}?startapp={quote(param, safe='_-')}"
+        return f"https://t.me/{username}?startapp"
+    return f"https://t.me/{username}?startapp={quote(param, safe='_-')}"
 
 
 def bot_start_link(payload: str | None, *, bot_username: str | None = None) -> str | None:

@@ -4,21 +4,21 @@ const generationId = '11111111-2222-4333-8444-555555555555';
 const payload = `feed_${generationId}_ref_777`;
 const image = 'https://cdn.roxy.local/channel-work.png';
 
-test('referral startapp opens the exact feed work and waits for explicit Repeat', async ({ page }) => {
-  let remixCalls = 0;
-
-  await page.addInitScript(({ startParam }) => {
+async function installTelegramStartParam(page, startParam) {
+  await page.addInitScript(({ startParam: value }) => {
     window.Telegram = {
       WebApp: {
         initData: 'query_id=e2e&hash=test',
-        initDataUnsafe: { user: { id: 999, first_name: 'Guest' }, start_param: startParam },
+        initDataUnsafe: { user: { id: 999, first_name: 'Guest' }, start_param: value },
         ready() {}, expand() {}, onEvent() {}, offEvent() {},
         BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
         HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
       },
     };
-  }, { startParam: payload });
+  }, { startParam });
+}
 
+async function installFeedRoutes(page, onRemix = () => {}) {
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
     status: 200,
     contentType: 'image/png',
@@ -47,13 +47,19 @@ test('referral startapp opens the exact feed work and waits for explicit Repeat'
       }) });
     }
     if (url.pathname === `/api/v1/feed/${generationId}/remix`) {
-      remixCalls += 1;
+      onRemix();
       return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({
         id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', status: 'queued', source_feed_gen_id: generationId, action_type: 'remix',
       }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
+}
+
+test('referral startapp opens the exact feed work and waits for explicit Repeat', async ({ page }) => {
+  let remixCalls = 0;
+  await installTelegramStartParam(page, payload);
+  await installFeedRoutes(page, () => { remixCalls += 1; });
 
   await page.goto(`/mini-app/?tgWebAppStartParam=${encodeURIComponent(payload)}`);
   await expect(page.getByText('Лента ROXY')).toBeVisible();
@@ -64,4 +70,17 @@ test('referral startapp opens the exact feed work and waits for explicit Repeat'
 
   await page.getByRole('button', { name: /Повторить/ }).click();
   await expect.poll(() => remixCalls).toBe(1);
+});
+
+test('remix startapp opens the repeat screen for the exact work', async ({ page }) => {
+  const remixPayload = `remix_${generationId}_ref_777`;
+  await installTelegramStartParam(page, remixPayload);
+  await installFeedRoutes(page);
+
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(remixPayload)}`);
+
+  await expect(page.getByText('Remix ROXY')).toBeVisible();
+  await expect(page.getByText('Creator')).toBeVisible();
+  await expect(page.getByText('Кинематографичный портрет')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Повторить эту работу' })).toBeVisible();
 });

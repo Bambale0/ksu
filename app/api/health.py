@@ -26,11 +26,12 @@ async def ready(request: Request) -> dict[str, str]:
 
 @router.get("/telegram")
 async def telegram_contract(request: Request) -> dict[str, object]:
-    """Expose the non-secret Telegram contract needed by Mini App deep links.
+    """Expose the non-secret Telegram contract used by ROXY public deep links.
 
-    Direct Mini App links require the BotFather short-name path. We still expose
-    ``getMe().has_main_web_app`` because it helps diagnose older Main Mini App
-    links without exposing the bot token or relying on deployment logs.
+    ROXY follows the same Main Mini App contract as tanyapi: public links use
+    ``https://t.me/<bot>?startapp=<payload>`` so Telegram opens the Mini App
+    immediately. A named Mini App short-name path is exposed only as diagnostic
+    metadata and is not required to build referral, profile, feed or repeat URLs.
     """
 
     configured = bool(settings.bot_token)
@@ -40,6 +41,7 @@ async def telegram_contract(request: Request) -> dict[str, object]:
         getattr(request.app.state, "bot_has_main_web_app", False)
     )
     ready_for_public_links = bool(username)
+    main_template = f"https://t.me/{username}?startapp=<payload>" if username else None
     return {
         "status": (
             "ok"
@@ -49,7 +51,8 @@ async def telegram_contract(request: Request) -> dict[str, object]:
         "bot_configured": configured,
         "bot_username": username,
         "mini_app_short_name": short_name,
-        "direct_mini_app_link_template": (
+        "direct_mini_app_link_template": main_template,
+        "named_mini_app_link_template": (
             f"https://t.me/{username}/{short_name}?startapp=<payload>"
             if username and short_name
             else None
@@ -58,9 +61,7 @@ async def telegram_contract(request: Request) -> dict[str, object]:
             f"https://t.me/{username}?start=<payload>" if username else None
         ),
         "main_mini_app_enabled": main_mini_app_enabled,
-        "main_mini_app_link_template": (
-            f"https://t.me/{username}?startapp=<payload>" if username else None
-        ),
+        "main_mini_app_link_template": main_template,
     }
 
 
