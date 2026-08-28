@@ -29,7 +29,9 @@ class CardPackage:
     credits: Decimal
     prices: dict[str, Decimal]
     offer_id: str | None = None
-    dynamic_amount: bool = True
+    # Lava rejects `amount` for fixed-price offers (HTTP 400 "is not dynamic
+    # price"). Only explicitly dynamic/price-on-request packages may send it.
+    dynamic_amount: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,14 +109,27 @@ class CardPackageCatalog:
             if not prices:
                 continue
             offer_id = str(item.get("offer_id") or "").strip() or None
+            dynamic_amount = cls._coerce_bool(
+                item.get("dynamic_amount", item.get("is_dynamic", False))
+            )
             result[str(package_id)] = CardPackage(
                 package_id=str(package_id),
                 credits=credits,
                 prices=prices,
                 offer_id=offer_id,
-                dynamic_amount=True,
+                dynamic_amount=dynamic_amount,
             )
         return result
+
+    @staticmethod
+    def _coerce_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "y"}
+        return False
 
     @classmethod
     def package(cls, package_id: str) -> CardPackage:
@@ -333,6 +348,13 @@ class CardPaymentService:
     SUCCESS_STATUSES = frozenset({"success", "succeeded", "paid", "completed"})
     FAILED_STATUSES = frozenset({"failed", "cancelled", "canceled", "expired"})
     REFUNDED_STATUSES = frozenset({"refunded", "refund", "reversed"})
+    # When a package does not pin an offer id, resolve_invoice_offer may pick a
+    # dynamic-price offer from the provider catalog. Such resolutions still need
+    # `amount` sent, so they must be treated as dynamic even without an explicit
+    # package flag.
+    DYNAMIC_RESOLUTION_SOURCES = frozenset(
+        {"single_dynamic_offer", "product_dynamic_offer"}
+    )
 
     @staticmethod
     def provider_configured() -> bool:
@@ -474,7 +496,12 @@ class CardPaymentService:
                 email=email,
                 offer_id=offer.offer_id,
                 currency=currency,
-                amount=amount if package.dynamic_amount else None,
+                amount=(
+                    amount
+                    if package.dynamic_amount
+                    or offer.source in cls.DYNAMIC_RESOLUTION_SOURCES
+                    else None
+                ),
                 payment_provider=route,
             )
         except Exception as exc:

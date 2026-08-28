@@ -50,6 +50,19 @@ USD   5 ..    10_000
 EUR   5 ..    10_000
 ```
 
+`amount` is transmitted to the provider **only for price-on-request offers**. The current Lava Top
+contract rejects an explicit amount for fixed-price offers (`HTTP 400 "is not dynamic price"`), which
+previously failed every card checkout with `502` upstream when every package was treated as dynamic.
+Mark a package with `"dynamic_amount": true` only when its offer really supports custom prices:
+
+```text
+CARD_PACKAGES_JSON={"offers": {...}}                    # fixed-price offers, no amount is sent
+CARD_PACKAGES_JSON={"my-dyn": {"credits":"300","prices":{"RUB":"300"},"dynamic_amount":true}}
+```
+
+When a package does not pin an `offer_id` and resolution picks a single dynamic offer from the
+provider catalog, `amount` is still sent automatically.
+
 When `CARD_PACKAGES_JSON` is empty, legacy `ROX_PACKAGES_JSON` is exposed to this checkout only as RUB pricing. USD/EUR are unavailable until explicitly configured.
 
 Referral rewards on USD/EUR purchases use the purchased ROX accounting value as the RUB reward basis (`1 ROX = 1 RUB`) rather than pretending that the foreign-currency numeric payment amount is RUB.
