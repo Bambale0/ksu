@@ -60,10 +60,9 @@ export function FeedStartApp({
     setBusy(true);
     setError("");
     try {
-      const result = await api.remix(card.id, surface);
-      window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
+      await api.remix(card.id, surface);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось повторить работу");
+      setError(reason instanceof Error ? reason.message : "Не удалось открыть повтор работы");
       setBusy(false);
     }
   };
@@ -83,7 +82,7 @@ export function FeedStartApp({
   };
 
   return (
-    <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={model} copy={intent === "remix" ? "Открой работу и запусти свой вариант" : "Публичная работа автора ROXY"}>
+    <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={model} copy={intent === "remix" ? "Открой работу и собери свой вариант" : "Публичная работа автора ROXY"}>
       <div className="tool-grid">
         <div className="panel tool-panel">
           {media.url && media.type === "video" ? <video className="trend-preview" src={media.url} controls playsInline /> : null}
@@ -96,7 +95,7 @@ export function FeedStartApp({
           {notice ? <div role="status">{notice}</div> : null}
           {!card && !error ? <p className="muted">Открываю работу…</p> : null}
           <div className="tool-actions">
-            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Запускаю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
+            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Открываю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
             {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => void copyLink()}><Icon name="share" size={16} />Скопировать ссылку</button> : null}
             {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`profile_${referralCode}`)}`)}><Icon name="profile" size={16}/>Профиль автора</button> : null}
             <button className="secondary" type="button" onClick={() => window.location.assign("/mini-app/?route=feed")}>Открыть всю ленту</button>

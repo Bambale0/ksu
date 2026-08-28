@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Generation, User
 from app.services import action_telemetry
 from app.services.feed import (
@@ -19,7 +19,6 @@ from app.services.feed import (
     FeedService,
 )
 from app.services.feed_links import mini_app_deep_link
-from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(tags=["feed"])
 
@@ -408,46 +407,28 @@ async def add_comment(
     }
 
 
-@router.post("/feed/{generation_id}/remix", status_code=status.HTTP_202_ACCEPTED)
-async def remix(
+@router.post("/feed/{generation_id}/remix")
+async def remix_requires_composer(
     generation_id: uuid.UUID,
     payload: SurfaceRequest,
     user: CurrentUserDep,
     session: SessionDep,
-    redis: RedisDep,
 ) -> dict[str, object]:
+    """Block the pre-composer API so old clients cannot inherit author references."""
+
+    del user
     try:
         source = await FeedService.assert_surface_visible(
             session, generation_id, surface=payload.surface
         )
         if source.action_type == "trend":
             raise FeedError("Trend generations cannot be remixed")
-        generation = await FeedService.remix(
-            session,
-            redis,
-            source_generation_id=generation_id,
-            remix_author_id=user.id,
-            surface=payload.surface,
-        )
-        source_card = await _updated_feed_card(
-            session,
-            source,
-            user=user,
-            surface=payload.surface,
-        )
-    except InsufficientBalanceError as exc:
-        raise HTTPException(status_code=409, detail="Insufficient credits") from exc
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    return {
-        "id": str(generation.id),
-        "status": generation.status,
-        "source_feed_gen_id": str(generation.source_feed_gen_id),
-        "action_type": generation.action_type,
-        "source_item": source_card,
-        "item": source_card,
-        "feed_item": source_card,
-    }
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Open the repeat editor and add your own references before launch",
+    )
 
 
 @router.get("/feed/{generation_id}/link")
