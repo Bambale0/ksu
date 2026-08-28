@@ -61,7 +61,7 @@ async def test_registration_and_invite_create_rox_wallet_bonuses(
 
 
 @pytest.mark.asyncio
-async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
+async def test_referral_percent_uses_provider_normalized_commission_basis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
@@ -77,14 +77,14 @@ async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
             amount=Decimal("300"),
             kind="payment",
             reference_type="payment",
-            reference_id="foreign-currency-payment",
+            reference_id="normalized-payment",
             idempotency_key=f"test-payment:{buyer.id}",
         )
         await ReferralService.accrue_from_payment(
             session,
             source_user_id=buyer.id,
             source_transaction_id=payment_tx.id,
-            payment_amount=Decimal("6"),
+            payment_amount=Decimal("300"),
         )
         await session.commit()
 
