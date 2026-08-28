@@ -62,7 +62,6 @@ class CryptoBotPaymentService:
             raise UnknownPaymentPackageError(package_id)
 
         base_credits = Decimal(package.credits)
-        InternalCreditService.assert_rate(credits=base_credits, rubles=amount)
         bonus_credits = TopUpBonusService.bonus_for(base_credits)
         credited_credits = base_credits + bonus_credits
 

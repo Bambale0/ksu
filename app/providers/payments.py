@@ -24,6 +24,15 @@ def _money(amount: Decimal) -> str:
     return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+def _cryptopay_invoice_rows(body: dict[str, Any]) -> list[dict[str, Any]]:
+    result = body.get("result") or []
+    if isinstance(result, dict):
+        result = result.get("items") or result.get("invoices") or []
+    if not isinstance(result, list):
+        return []
+    return [dict(item) for item in result if isinstance(item, dict)]
+
+
 class CryptoPayClient:
     def __init__(self, token: str, base_url: str = "https://pay.crypt.bot") -> None:
         if not token:
@@ -82,7 +91,7 @@ class CryptoPayClient:
         body = response.json()
         if not body.get("ok"):
             raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
-        rows = body.get("result") or []
+        rows = _cryptopay_invoice_rows(body)
         return dict(rows[0]) if rows else None
 
     async def find_invoice_by_payload(self, local_id: str) -> dict[str, Any] | None:
@@ -93,7 +102,7 @@ class CryptoPayClient:
         body = response.json()
         if not body.get("ok"):
             raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
-        for item in body.get("result") or []:
+        for item in _cryptopay_invoice_rows(body):
             if str(item.get("payload") or "") == local_id:
                 return dict(item)
         return None

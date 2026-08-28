@@ -19,13 +19,28 @@ def _telegram_id() -> int:
 
 
 @pytest.mark.asyncio
+async def test_cryptobot_provider_packages_keep_card_rub_prices(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
+    )
+
+    packages = await CryptoBotPaymentService.provider_packages()
+
+    assert set(packages) == {"starter"}
+    assert packages["starter"].credits == Decimal("300")
+    assert packages["starter"].prices == {"RUB": Decimal("326.09"), "USD": Decimal("6")}
+
+
+@pytest.mark.asyncio
 async def test_cryptobot_checkout_reuses_card_packages_and_applies_topup_bonus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"300","prices":{"RUB":"300","USD":"6"}}}',
+        '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
     )
     monkeypatch.setattr(settings, "cryptopay_api_token", "test:token")
     calls: list[dict[str, str]] = []
@@ -79,7 +94,7 @@ async def test_cryptobot_checkout_reuses_card_packages_and_applies_topup_bonus(
 
         assert first.id == second.id
         assert first.provider == "cryptobot"
-        assert first.amount == Decimal("300")
+        assert first.amount == Decimal("326.09")
         assert first.currency == "RUB"
         assert first.rox_amount == Decimal("350")
         assert first.payload["base_credits"] == "300"
@@ -88,7 +103,7 @@ async def test_cryptobot_checkout_reuses_card_packages_and_applies_topup_bonus(
         assert calls == [
             {
                 "local_id": str(first.id),
-                "amount": "300",
+                "amount": "326.09",
                 "currency": "RUB",
                 "description": "Пополнение ROXY: 300 ROX",
             }
