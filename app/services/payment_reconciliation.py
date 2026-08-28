@@ -45,6 +45,18 @@ class PaymentReconciliationService:
 
         processed = 0
         for payment_id, provider in payments:
+            if provider == CardPaymentService.PROVIDER:
+                if not CardPaymentService.provider_configured():
+                    logger.debug(
+                        "Skipping card payment reconciliation because provider is not configured"
+                    )
+                    continue
+            elif not PaymentService.provider_configured(str(provider)):
+                logger.debug(
+                    "Skipping %s payment reconciliation because provider is not configured",
+                    provider,
+                )
+                continue
             async with SessionFactory() as session:
                 try:
                     if provider == CardPaymentService.PROVIDER:

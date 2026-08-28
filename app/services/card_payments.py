@@ -335,6 +335,10 @@ class CardPaymentService:
     REFUNDED_STATUSES = frozenset({"refunded", "refund", "reversed"})
 
     @staticmethod
+    def provider_configured() -> bool:
+        return bool(settings.card_api_key)
+
+    @staticmethod
     def _email(value: str) -> str:
         email = value.strip().lower()
         if (

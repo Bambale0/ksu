@@ -70,6 +70,7 @@ async def operational(request: Request) -> dict[str, object]:
         await worker_health(request.app.state.redis, "generation-worker"),
         await worker_health(request.app.state.redis, "payment-worker"),
         await worker_health(request.app.state.redis, "media-worker"),
+        await worker_health(request.app.state.redis, "prompt-tool-worker"),
     ]
     if not all(bool(item["up"]) for item in workers):
         raise HTTPException(

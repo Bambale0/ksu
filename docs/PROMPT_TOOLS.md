@@ -51,7 +51,7 @@ The normal internal-credit conversion is used for the RUB preview, so the existi
 
 `PromptToolOutbox` provides a durable lease/retry queue. Task creation, outbox creation and wallet debit are committed together. The API requires `Idempotency-Key`; KSU deterministically derives the task UUID from `(user_id, idempotency_key)`, so the same request cannot create a second debit.
 
-The dedicated `prompt-tools-worker`:
+The dedicated `prompt-tool-worker`:
 
 1. leases one outbox row with `FOR UPDATE SKIP LOCKED`;
 2. calls the server-owned provider adapter;
@@ -78,6 +78,8 @@ Image URLs must be HTTPS and obvious loopback/local hosts are rejected. The brow
 
 ## Deployment
 
-Apply Alembic migration `0017_prompt_tools`, then deploy the API/bot and start the `prompt-tools-worker` service included in `docker-compose.notifications.yml`.
+Apply Alembic migration `0017_prompt_tools`, then deploy the API/bot and start the `prompt-tool-worker` service included in the default `docker-compose.yml` runtime stack.
+
+The API and prompt worker must share `./static/uploads:/app/static/uploads`. Mini App photo/video uploads are stored as stable ROXY `/uploads/refs/...` URLs before provider execution; without the shared mount the API can accept an upload while the worker later fails the task because the stored reference is missing in its own container filesystem.
 
 The worker reuses the existing generation-worker poll/lease/max-attempt configuration until a dedicated operational tuning need appears; this avoids another set of environment variables before real workload data exists.

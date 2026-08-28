@@ -161,6 +161,8 @@ ksu_media_ingest_jobs{status}
 ksu_media_ingest_oldest_pending_seconds
 ksu_worker_up{worker="media-worker"}
 ksu_distributed_event_count{event="media_ingest_processed"}
+ksu_distributed_event_count{event="music_audio_ingest_processed"}
+ksu_distributed_event_count{event="music_audio_worker_loop_error"}
 ksu_distributed_event_count{event="media_reconcile_failure"}
 ksu_distributed_event_count{event="media_worker_loop_error"}
 ```
