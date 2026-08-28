@@ -46,6 +46,15 @@ def test_onboarding_progress_is_resumable_but_completion_stays_server_owned() ->
     assert 'window.location.replace(`/mini-app/?route=${target}`)' in component
 
 
+def test_first_entry_content_deep_links_survive_onboarding_completion() -> None:
+    component = COMPONENT.read_text(encoding="utf-8")
+
+    assert "getStartParamFallback" in component
+    assert "/^(feed_|remix_|profile_|posts_)/i" in component
+    assert "if (hasContentLaunchTarget())" in component
+    assert "window.location.reload()" in component
+
+
 def test_onboarding_uses_native_telegram_back_button_and_no_drawn_back_control() -> None:
     component = COMPONENT.read_text(encoding="utf-8")
 
