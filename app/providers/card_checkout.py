@@ -140,9 +140,13 @@ class CardCheckoutClient:
 
     async def get_products(self) -> dict[str, Any]:
         try:
+            # Dynamic-price products are hidden from the default Lava catalog.
+            # feedVisibility=ALL is required so a configured product ID can be
+            # resolved to its real nested offer ID before POST /api/v3/invoice.
             response = await self._client.get(
                 "/api/v2/products",
                 headers=self._headers(),
+                params={"feedVisibility": "ALL"},
             )
             response.raise_for_status()
             raw = response.json()
