@@ -51,6 +51,17 @@ def test_inline_trend_admin_supports_durable_preview_upload_and_full_recipe() ->
     assert "ReferenceStaticStorage.persist_stream" in uploads
 
 
+def test_inline_trend_admin_maps_billing_seconds_to_provider_duration() -> None:
+    component = _read(FRONTEND / "components" / "inline-trend-admin.tsx")
+
+    assert "function modelUsesProviderDuration" in component
+    assert 'model?.media_type === "video"' in component
+    assert 'model.known_fields?.includes("duration")' in component
+    assert 'model.required_fields?.includes("duration")' in component
+    assert "payload.billing_seconds = billingSeconds" in component
+    assert "parameters.duration = billingSeconds" in component
+
+
 def test_inline_trend_admin_backend_enforces_real_admin_permission() -> None:
     trends = _read(ROOT / "app" / "api" / "v1" / "trends.py")
 
