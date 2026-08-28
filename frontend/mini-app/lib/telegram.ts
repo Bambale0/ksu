@@ -156,6 +156,16 @@ export function initTelegram(): TelegramWebApp | null {
   const tg = telegram();
   if (!tg) return null;
 
+  // Telegram's documented root-screen contract is BackButton hidden: the client
+  // then owns the WebView close affordance. Always reset to that baseline first
+  // so a Back button shown by a previously mounted nested screen cannot leak into
+  // ROXY's main menu. Nested screens explicitly opt back in with BackButton.show().
+  try {
+    tg.BackButton?.hide?.();
+  } catch {
+    // Older clients may not expose the native BackButton API consistently.
+  }
+
   // Telegram can expose tgWebAppData in the initial WebView URL before its SDK
   // populates WebApp.initData. Hydrate that already-present, still-untrusted value
   // into the in-memory SDK object so existing authenticated bootstrap gates do not
