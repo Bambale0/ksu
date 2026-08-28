@@ -204,6 +204,23 @@ def _apply_seedance_reference_contract(
     image_refs = _collect_fields(parameters, SEEDANCE_GENERAL_IMAGE_REFERENCE_FIELDS)
     video_refs = _collect_fields(parameters, SEEDANCE_GENERAL_VIDEO_REFERENCE_FIELDS)
 
+    # Frame mode is disabled product-wide: Kie rejects Seedance 2.5 frame tasks
+    # with a non-adaptive ratio (422) and frame/reference mixing caused
+    # recurring submission failures. First/last frame inputs are folded into
+    # multimodal references so every request stays in reference mode.
+    image_refs = [
+        *image_refs,
+        *(
+            value
+            for value in (
+                normalized.get("first_frame_url"),
+                normalized.get("last_frame_url"),
+                normalized.get("first_frame"),
+            )
+            if _non_empty(value)
+        ),
+    ]
+
     # Seedance treats first/last frames and multimodal references as different
     # controls. Generic/legacy image/video fields are references, never frames.
     if image_refs:
@@ -217,33 +234,19 @@ def _apply_seedance_reference_contract(
             video_refs,
         )
 
-    # Historical clients used `first_frame`; preserve its temporal semantics only
-    # when the request has no explicit multimodal references.
-    reference_mode = any(
-        _non_empty(normalized.get(field))
-        for field in ("reference_image_urls", "reference_video_urls", "reference_audio_urls")
-    )
-    if not reference_mode and _non_empty(normalized.get("first_frame")) and not _non_empty(normalized.get("first_frame_url")):
-        normalized["first_frame_url"] = normalized.get("first_frame")
+    normalized.pop("first_frame_url", None)
+    normalized.pop("last_frame_url", None)
+    normalized.pop("first_frame", None)
 
     normalized = _drop_reference_fields_not_supported(spec, normalized)
-    explicit_media = any(
+    if input_url and not any(
         _non_empty(normalized.get(field))
         for field in (*SEEDANCE_EXACT_IMAGE_FIELDS, *SEEDANCE_EXACT_VIDEO_FIELDS)
-    )
-    if input_url and not explicit_media:
-        normalized.setdefault("first_frame_url", input_url)
-
-    # Kie docs make Seedance frame mode and multimodal reference mode mutually
-    # exclusive. If references are present, route to pure multimodal reference
-    # mode so backend validation and provider payloads stay documented.
-    if spec.id != "seedance-2.5" and any(
-        _non_empty(normalized.get(field))
-        for field in ("reference_image_urls", "reference_video_urls", "reference_audio_urls")
     ):
-        normalized.pop("first_frame_url", None)
-        normalized.pop("last_frame_url", None)
-        normalized.pop("first_frame", None)
+        normalized["reference_image_urls"] = _merge_urls(
+            normalized.get("reference_image_urls"),
+            [input_url],
+        )
     return normalized
 
 

@@ -204,6 +204,16 @@ async def _owned_generation(
     return generation
 
 
+_SEEDANCE_REUSE_REFERENCE_FIELDS: tuple[str, ...] = (
+    "reference_image_urls",
+    "reference_video_urls",
+    "reference_audio_urls",
+    "first_frame_url",
+    "last_frame_url",
+    "input_urls",
+)
+
+
 def _recreate_payload_for_generation(generation: Generation) -> dict[str, object]:
     if generation.action_type == "trend":
         raise HTTPException(
@@ -235,13 +245,26 @@ def _recreate_payload_for_generation(generation: Generation) -> dict[str, object
         for key, value in params.items()
         if not key.startswith("_") and key in allowed and key != "prompt"
     }
-    return {
+    input_url = generation.input_url
+    references_required = False
+    if spec.family == "seedance":
+        # Feed repeats must never silently reuse the parent's media inputs:
+        # reference/frame URLs belong to the original author's upload session
+        # and may be stale or broken. The user uploads their own references.
+        references_required = any(
+            clean.pop(name, None) for name in _SEEDANCE_REUSE_REFERENCE_FIELDS
+        )
+        input_url = None
+    payload: dict[str, object] = {
         "model_id": model_id,
         "prompt": generation.prompt,
-        "input_url": generation.input_url,
+        "input_url": input_url,
         "billing_seconds": params.get("_billing_seconds"),
         "parameters": clean,
     }
+    if references_required:
+        payload["references_required"] = True
+    return payload
 
 
 @router.get("/models")

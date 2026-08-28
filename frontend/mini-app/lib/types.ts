@@ -138,6 +138,7 @@ export type RecreateGenerationPayload = {
   input_url?: string | null;
   billing_seconds?: number | null;
   parameters: Record<string, unknown>;
+  references_required?: boolean;
 };
 
 export type FeedAuthor = {

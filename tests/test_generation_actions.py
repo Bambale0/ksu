@@ -151,7 +151,7 @@ def test_repeat_preserves_seedance25_reference_mode_without_inventing_first_fram
     assert "first_frame_url" not in parameters
 
 
-def test_repeat_preserves_seedance20_hybrid_frame_and_reference_mode() -> None:
+def test_repeat_of_legacy_hybrid_generation_stays_in_reference_mode() -> None:
     generation = _generation(media_type="video", model_id="seedance-2.0")
     generation.parameters = {
         **generation.parameters,
@@ -169,8 +169,10 @@ def test_repeat_preserves_seedance20_hybrid_frame_and_reference_mode() -> None:
         GenerationActionService.reusable_parameters(generation, target.id),
     )
 
-    assert parameters["first_frame_url"] == "https://cdn.example/first.png"
+    # Frame mode is disabled: the legacy frame field is dropped from the
+    # reusable parameters and the repeat stays in multimodal reference mode.
     assert parameters["reference_image_urls"] == ["https://cdn.example/subject.png"]
+    assert "first_frame_url" not in parameters
 
 
 def test_style_edit_prompt_changes_only_requested_focus() -> None:

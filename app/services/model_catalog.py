@@ -56,8 +56,6 @@ class ModelSpec:
 
 SEEDANCE_FIELDS = (
     "prompt",
-    "first_frame_url",
-    "last_frame_url",
     "reference_image_urls",
     "reference_video_urls",
     "reference_audio_urls",
@@ -71,8 +69,6 @@ SEEDANCE_FIELDS = (
 )
 SEEDANCE_25_FIELDS = (
     "prompt",
-    "first_frame_url",
-    "last_frame_url",
     "reference_image_urls",
     "reference_video_urls",
     "reference_audio_urls",
@@ -243,17 +239,13 @@ class ModelCatalog:
     @staticmethod
     def _validate_model_rules(spec: ModelSpec, clean: dict[str, Any]) -> None:
         if spec.family == "seedance" and spec.id != "seedance-1.5-pro":
-            frame_mode = bool(clean.get("first_frame_url") or clean.get("last_frame_url"))
-            reference_mode = bool(
-                clean.get("reference_image_urls")
-                or clean.get("reference_video_urls")
-                or clean.get("reference_audio_urls")
-            )
-            if clean.get("last_frame_url") and not clean.get("first_frame_url"):
-                raise InvalidModelParametersError("Seedance last frame requires a first frame")
-            if frame_mode and reference_mode:
+            # Frame mode is disabled product-wide: Kie rejects Seedance 2.5
+            # frame tasks with a non-adaptive ratio (422) and frame/reference
+            # mixing caused recurring submission failures. Multimodal
+            # reference mode is the only supported image-input scenario.
+            if clean.get("first_frame_url") or clean.get("last_frame_url"):
                 raise InvalidModelParametersError(
-                    "Seedance frame mode and multimodal reference mode are mutually exclusive"
+                    "Seedance supports multimodal reference mode only; frame mode is disabled"
                 )
 
         if spec.id == "seedance-1.5-pro":

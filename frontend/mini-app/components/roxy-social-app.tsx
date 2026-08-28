@@ -233,7 +233,9 @@ function hydrateReuseDraft(model: GenerationModel, payload: RecreateGenerationPa
   };
   return {
     values,
-    scenario: inferReuseScenario(model, values),
+    // Feed repeats do not carry the parent's references: the user uploads
+    // their own, so open the multireference scenario right away.
+    scenario: payload.references_required ? "references" : inferReuseScenario(model, values),
     billing_seconds: payload.billing_seconds ?? null,
     input_url: payload.input_url ?? null,
   };
@@ -512,9 +514,10 @@ export function RoxySocialApp() {
     localStorage.setItem(MODEL_KEY, model.id);
     const media = creationMedia(model);
     if (media) localStorage.setItem(MEDIA_FILTER_KEY, media);
+    if (payload.references_required) showToast("Загрузите свои референсы для повтора");
     setCreateLaunch({ nonce: ++createLaunchSeq.current, kind: "reuse", payload });
     navigate("create");
-  }, [models, navigate]);
+  }, [models, navigate, showToast]);
 
   useEffect(() => {
     const tg = telegram();
