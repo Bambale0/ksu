@@ -57,6 +57,12 @@ function price(trend: TrendItem): string {
   return Number.isFinite(value) ? `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ROX` : `${trend.cost_rox} ROX`;
 }
 
+function mediaLabel(trend: TrendItem): string {
+  if (trend.media_type === "video") return "Видео";
+  if (trend.media_type === "audio") return "Музыка";
+  return "Фото";
+}
+
 export function LiveTrendRail() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [trends, setTrends] = useState<TrendItem[]>([]);
@@ -114,7 +120,7 @@ export function LiveTrendRail() {
   if (!host) return null;
 
   return createPortal(
-    <section className="live-trend-section" aria-label="Готовые сценарии ROXY">
+    <section className="live-trend-section" aria-label="Живые тренды ROXY">
       <style>{`
         .live-trend-section { display:grid; gap:12px; margin:20px 0 24px; min-width:0; }
         .live-trend-section .section-title { display:flex; align-items:end; justify-content:space-between; gap:12px; }
@@ -135,7 +141,7 @@ export function LiveTrendRail() {
         @media (min-width:720px) { .live-trend-rail { grid-auto-columns:minmax(230px, 310px); } }
       `}</style>
       <div className="section-title">
-        <div><span className="kicker">Тренды</span><h2>Готовые сценарии</h2></div>
+        <div><span className="kicker">Тренды</span><h2>Актуальные тренды</h2></div>
       </div>
       {error ? <div className="inline-trend-error" role="alert">{error}</div> : null}
       {trends.length ? <div className="live-trend-rail">
@@ -149,7 +155,7 @@ export function LiveTrendRail() {
               <span className="live-trend-copy">
                 <strong>{trend.title}</strong>
                 {trend.description ? <small>{trend.description}</small> : null}
-                <span className="live-trend-meta"><span>{trend.model?.title || "ROXY"}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
+                <span className="live-trend-meta"><span>{mediaLabel(trend)}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
               </span>
             </button>
             {isAdmin ? <button className="live-trend-delete" type="button" aria-label={`Удалить ${trend.title}`} onClick={() => void remove(trend)}>{busyId === trend.id ? "…" : "Удалить"}</button> : null}
