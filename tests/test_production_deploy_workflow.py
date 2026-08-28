@@ -15,7 +15,12 @@ def test_production_deploy_waits_for_exact_main_green_sha() -> None:
     for token in (
         'workflows: ["CI"]',
         "github.event.workflow_run.conclusion == 'success'",
-        'required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")',
+        '"CI"',
+        '"Admin Console"',
+        '"Batch Generation"',
+        '"Mini App Playwright E2E"',
+        '"ROXY E2E"',
+        '"ROXY Release Gate"',
         "head_sha=${DEPLOY_SHA}",
         "/git/ref/heads/main",
         "superseded=true",
@@ -48,6 +53,9 @@ def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> Non
         "generation-worker",
         "media-worker",
         "payment-worker",
+        "notification-worker",
+        "admin-campaign-worker",
+        "prompt-tool-worker",
         "creator-partnership-worker",
         "/health/live",
         "/health/ready",
@@ -82,4 +90,4 @@ def test_production_deploy_proves_the_exact_mini_app_release() -> None:
     assert "expected_release=" in workflow
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow
-    assert "Production is healthy and Mini App serves" in workflow
+    assert "every Python service runs ${DEPLOY_SHA}" in workflow
