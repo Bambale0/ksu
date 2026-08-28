@@ -14,6 +14,7 @@ export type TelegramUser = {
 export type Me = {
   id: string;
   telegram_id: number;
+  profile_link?: string | null;
   username?: string | null;
   first_name?: string | null;
   last_name?: string | null;
