@@ -10,6 +10,7 @@ from app.bot.keyboards import (
     QUICK_MENU_TEXT,
     back_menu,
     balance_menu,
+    feed_work_menu,
     main_menu_with_start_payload,
     onboarding_menu,
     quick_menu,
@@ -37,6 +38,10 @@ def _parse_inviter(text: str | None) -> int | None:
     if link is None or link.action != "ref":
         return None
     return link.referral_telegram_id
+
+
+def _is_feed_handoff(link: FeedDeepLink | None) -> bool:
+    return bool(link is not None and link.action == "feed")
 
 
 async def _validated_inviter(
@@ -92,6 +97,13 @@ async def _send_quick_menu(message: Message) -> None:
     await message.answer(
         "Быстрый доступ ROXY",
         reply_markup=quick_menu(),
+    )
+
+
+async def _send_feed_handoff_button(message: Message, payload: str) -> None:
+    await message.answer(
+        "Открыть эту работу в ROXY 👇",
+        reply_markup=feed_work_menu(payload),
     )
 
 
@@ -157,7 +169,9 @@ async def start(
         await message.answer(text, reply_markup=onboarding_menu())
         return
 
-    await _send_quick_menu(message)
+    feed_handoff = _is_feed_handoff(link)
+    if not feed_handoff:
+        await _send_quick_menu(message)
     if link is not None and link.action != "ref":
         if await handle_deep_link(
             message,
@@ -166,6 +180,8 @@ async def start(
             session=session,
             redis=redis,
         ):
+            if feed_handoff and payload:
+                await _send_feed_handoff_button(message, payload)
             return
     await _send_main_menu(message, user, session, start_payload_value=payload if link else None)
 
@@ -204,7 +220,9 @@ async def onboarding_complete(
     await state.clear()
     link = parse_feed_deep_link(payload)
     if callback.message:
-        await _send_quick_menu(callback.message)
+        feed_handoff = _is_feed_handoff(link)
+        if not feed_handoff:
+            await _send_quick_menu(callback.message)
         if link is not None and link.action != "ref":
             if await handle_deep_link(
                 callback.message,
@@ -213,6 +231,8 @@ async def onboarding_complete(
                 session=session,
                 redis=redis,
             ):
+                if feed_handoff and payload:
+                    await _send_feed_handoff_button(callback.message, payload)
                 return
         await _send_main_menu(
             callback.message,
