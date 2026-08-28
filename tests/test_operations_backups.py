@@ -61,11 +61,14 @@ def test_compose_runs_isolated_backup_worker_with_dedicated_volume() -> None:
 
 def test_production_deploy_validates_predeploy_dump_and_starts_worker() -> None:
     workflow = _read(".github/workflows/deploy-production.yml")
-    assert "build_services=(" in workflow
-    assert "runtime_services=(" in workflow
+    assert "application_services=(" in workflow
+    assert 'runtime_services=("${application_services[@]}" backup-worker)' in workflow
     assert "backup-worker" in workflow
-    assert 'docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}"' in workflow
-    assert 'docker compose up -d --remove-orphans "${runtime_services[@]}"' in workflow
+    assert 'expected_image_name="ksu-app:${KSU_IMAGE_TAG}"' in workflow
+    assert 'docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" app' in workflow
+    assert 'docker compose up -d --force-recreate --remove-orphans "${runtime_services[@]}"' in workflow
+    assert 'for service in "${application_services[@]}"' in workflow
+    assert 'actual_image_id="$(docker inspect "${container_id}" --format \'{{.Image}}\')"' in workflow
     assert 'pg_restore --list < "${backup}"' in workflow
     assert 'sha256sum "${backup}" > "${backup}.sha256"' in workflow
     assert "backup_worker_running" in workflow
