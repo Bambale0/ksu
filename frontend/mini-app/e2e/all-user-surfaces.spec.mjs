@@ -218,7 +218,7 @@ for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     await mockApi(page, { onboarding: true });
     await page.goto('/mini-app/?route=home');
-    await expect(page.locator('.onboarding-card')).toBeVisible();
+    await expect(page.locator('.roxy-onboarding-v2')).toBeVisible();
     await assertViewport(page);
   });
 
