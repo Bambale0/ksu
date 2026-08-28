@@ -80,7 +80,7 @@ def test_seedance_old_generic_reference_fields_are_moved_to_exact_reference_arra
     assert "first_frame_url" not in result.parameters
 
 
-def test_first_frame_stays_a_frame_and_is_not_duplicated_as_reference() -> None:
+def test_first_frame_is_folded_into_references_not_kept_as_frame() -> None:
     result = resolve_model_request(
         "seedance-2.5",
         {
@@ -90,8 +90,9 @@ def test_first_frame_stays_a_frame_and_is_not_duplicated_as_reference() -> None:
         },
     )
 
-    assert result.parameters["first_frame_url"] == "https://cdn.example/frame.png"
-    assert "reference_image_urls" not in result.parameters
+    # Frame mode is disabled: the frame input becomes a multimodal reference.
+    assert result.parameters["reference_image_urls"] == ["https://cdn.example/frame.png"]
+    assert "first_frame_url" not in result.parameters
 
 
 def test_provider_input_does_not_shadow_explicit_multimodal_refs_with_legacy_input_url() -> None:

@@ -40,11 +40,10 @@ def test_all_seedance_reference_scenarios_are_explicitly_required() -> None:
         schema = build_public_model_ui_schema(ModelCatalog.get(model_id).public_dict())
         scenarios = {item["id"]: item for item in schema["scenario"]["items"]}
 
-        assert scenarios["first_frame"]["required_fields"] == ["first_frame_url"]
-        assert scenarios["first_last"]["required_fields"] == [
-            "first_frame_url",
-            "last_frame_url",
-        ]
+        # Frame mode is disabled product-wide; only text and multimodal
+        # reference scenarios remain for every Seedance model.
+        assert "first_frame" not in scenarios
+        assert "first_last" not in scenarios
         assert scenarios["references"]["required_any"] == [
             "reference_image_urls",
             "reference_video_urls",
@@ -52,7 +51,7 @@ def test_all_seedance_reference_scenarios_are_explicitly_required() -> None:
         ]
 
 
-def test_generation_provider_keeps_seedance_first_frame_url() -> None:
+def test_generation_provider_drops_seedance_first_frame_url() -> None:
     reference = "https://cdn.example/reference.png"
     generation = Generation(
         kind="multimodal_video",
@@ -70,7 +69,8 @@ def test_generation_provider_keeps_seedance_first_frame_url() -> None:
     )
 
     payload = GenerationProviderService._input_for(generation)
-    assert payload["first_frame_url"] == reference
+    # Frame mode is disabled: frame fields never reach the provider payload.
+    assert "first_frame_url" not in payload
     assert "image_url" not in payload
 
 
