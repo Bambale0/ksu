@@ -15,7 +15,7 @@ _INSTALLED = False
 
 
 def install_mini_app_link_contract() -> None:
-    """Make public social and referral links open ROXY Mini App directly."""
+    """Install public link routing: feed via bot handoff, other social links direct to ROXY."""
 
     global _INSTALLED
     if _INSTALLED:
