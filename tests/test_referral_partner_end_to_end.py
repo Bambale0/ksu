@@ -393,11 +393,13 @@ async def test_refund_invalidates_pending_payout_and_admin_analytics_are_net(
         )
         await session.commit()
 
+        withdrawal_id = withdrawal.id
+        admin_id = admin.id
         with pytest.raises(ValueError, match="no longer backed"):
             await AdminPartnerService.update_withdrawal(
                 session,
                 admin=admin,
-                withdrawal_id=withdrawal.id,
+                withdrawal_id=withdrawal_id,
                 status="processing",
                 reason="attempt after refund",
                 idempotency_key=f"admin-payout-{uuid.uuid4()}",
@@ -407,10 +409,12 @@ async def test_refund_invalidates_pending_payout_and_admin_analytics_are_net(
             )
         await session.rollback()
 
-        stored = await session.get(PartnerWithdrawal, withdrawal.id)
+        stored = await session.get(PartnerWithdrawal, withdrawal_id)
         assert stored is not None
         assert stored.status == "pending"
 
+        admin = await session.get(AdminAccount, admin_id)
+        assert admin is not None
         analytics = await AdminPartnerService.analytics(session, admin=admin)
         reversed_row = next(item for item in analytics["rewards"] if item["status"] == "reversed")
         assert Decimal(reversed_row["gross_amount"]) == Decimal("30.00")
