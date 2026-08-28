@@ -76,6 +76,20 @@ def app_launcher_menu(
     )
 
 
+def feed_work_menu(start_payload: str) -> InlineKeyboardMarkup:
+    """Open the exact shared feed publication inside the Mini App."""
+
+    payload = str(start_payload or "").strip()
+    if not settings.public_base_url or not payload:
+        button = InlineKeyboardButton(text="Открыть работу в ROXY", callback_data="app:unavailable")
+    else:
+        button = InlineKeyboardButton(
+            text="Открыть работу в ROXY",
+            web_app=WebAppInfo(url=_mini_app_url("feed", start_payload=payload)),
+        )
+    return InlineKeyboardMarkup(inline_keyboard=[[button]])
+
+
 def app_reply_menu() -> ReplyKeyboardMarkup:
     """Persistent Telegram bottom keyboard: only menu and support."""
     return ReplyKeyboardMarkup(
