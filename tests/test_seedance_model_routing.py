@@ -38,20 +38,41 @@ def test_seedance_20_reference_images_do_not_become_first_frame() -> None:
     assert "first_frame_url" not in routed.parameters
 
 
-def test_seedance_generic_input_url_becomes_first_frame_when_no_exact_media_fields() -> None:
+def test_seedance_generic_input_url_becomes_reference_image_when_no_exact_media_fields() -> None:
     routed = resolve_model_request(
         "seedance-2.5",
         {
             "prompt": "animate this frame",
             "duration": 5,
             "resolution": "720p",
-            "aspect_ratio": "16:9",
+            "aspect_ratio": "adaptive",
         },
         input_url="https://cdn.example/source.png",
     )
 
-    assert routed.parameters["first_frame_url"] == "https://cdn.example/source.png"
-    assert "reference_image_urls" not in routed.parameters
+    assert routed.parameters["reference_image_urls"] == ["https://cdn.example/source.png"]
+    assert "first_frame_url" not in routed.parameters
+
+
+def test_seedance_frame_inputs_are_routed_to_reference_mode() -> None:
+    routed = resolve_model_request(
+        "seedance-2.5",
+        {
+            "prompt": "use as reference",
+            "first_frame_url": "https://cdn.example/first.png",
+            "last_frame_url": "https://cdn.example/last.png",
+            "duration": 5,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+        },
+    )
+
+    assert routed.parameters["reference_image_urls"] == [
+        "https://cdn.example/first.png",
+        "https://cdn.example/last.png",
+    ]
+    assert "first_frame_url" not in routed.parameters
+    assert "last_frame_url" not in routed.parameters
 
 
 def test_seedance_explicit_reference_mode_wins_over_generic_input_url() -> None:
@@ -115,7 +136,11 @@ async def test_seedance_20_explicit_hybrid_uses_reference_mode_before_billing() 
     )
 
     assert spec.id == "seedance-2.0"
-    assert clean["reference_image_urls"] == ["https://cdn.example/subject.png"]
+    assert clean["reference_image_urls"] == [
+        "https://cdn.example/subject.png",
+        "https://cdn.example/first.png",
+        "https://cdn.example/last.png",
+    ]
     assert "first_frame_url" not in clean
     assert "last_frame_url" not in clean
     assert seconds == 10

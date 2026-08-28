@@ -182,8 +182,6 @@ def test_seedance_reference_mode_ui_appends_images_instead_of_replacing() -> Non
             "id": "seedance-2.0",
             "known_fields": [
                 "prompt",
-                "first_frame_url",
-                "last_frame_url",
                 "reference_image_urls",
                 "reference_video_urls",
                 "reference_audio_urls",
@@ -202,6 +200,9 @@ def test_seedance_reference_mode_ui_appends_images_instead_of_replacing() -> Non
     assert fields["reference_image_urls"]["max_items"] >= 3
 
     scenarios = {item["id"]: item for item in schema["scenario"]["items"]}
-    assert scenarios["first_frame"]["title"] == "Референс"
-    assert scenarios["first_frame"]["visible_fields"] == ["first_frame_url"]
-    assert scenarios["first_frame"]["required_fields"] == ["first_frame_url"]
+    assert scenarios["references"]["title"] == "Мультиреференсы"
+    assert scenarios["references"]["visible_fields"] == [
+        "reference_image_urls",
+        "reference_video_urls",
+        "reference_audio_urls",
+    ]

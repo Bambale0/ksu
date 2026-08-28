@@ -126,5 +126,8 @@ async def test_generation_pipeline_normalizes_seedance_hybrid_reference_mode() -
     )
 
     assert seconds == 5
-    assert clean["reference_image_urls"] == ["https://cdn.example/ref.png"]
+    assert clean["reference_image_urls"] == [
+        "https://cdn.example/ref.png",
+        "https://cdn.example/first.png",
+    ]
     assert "first_frame_url" not in clean

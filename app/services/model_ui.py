@@ -335,39 +335,20 @@ SEEDANCE_SCENARIOS = [
         "Текст",
         [],
         [
-            "first_frame_url",
-            "last_frame_url",
             "reference_image_urls",
             "reference_video_urls",
             "reference_audio_urls",
         ],
-    ),
-    _scenario(
-        "first_frame",
-        "Референс",
-        ["first_frame_url"],
-        [
-            "last_frame_url",
-            "reference_image_urls",
-            "reference_video_urls",
-            "reference_audio_urls",
-        ],
-    ),
-    _scenario(
-        "first_last",
-        "Первый + последний",
-        ["first_frame_url", "last_frame_url"],
-        ["reference_image_urls", "reference_video_urls", "reference_audio_urls"],
     ),
     _scenario(
         "references",
         "Мультиреференсы",
         ["reference_image_urls", "reference_video_urls", "reference_audio_urls"],
-        ["first_frame_url", "last_frame_url"],
+        [],
     ),
 ]
 
-SEEDANCE_FIELD_OVERRIDES = {"first_frame_url": {"label": "Референс"}}
+SEEDANCE_FIELD_OVERRIDES: dict[str, dict[str, Any]] = {}
 
 WAN_I2V_SCENARIOS = [
     _scenario(
