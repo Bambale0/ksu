@@ -17,6 +17,11 @@ function money(value?: string | null): string {
   return Number.isFinite(number) ? number.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : value;
 }
 
+function previewIsVideo(trend: TrendItem): boolean {
+  if (trend.media_type === "video") return true;
+  return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(trend.preview_url || "");
+}
+
 export default function TrendPage() {
   const [trend, setTrend] = useState<TrendItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,7 +97,10 @@ export default function TrendPage() {
     >
       {trend ? (
         <div className="tool-grid">
-          {trend.preview_url ? <img className="trend-preview" src={trend.preview_url} alt={trend.title} /> : null}
+          {trend.preview_url ? previewIsVideo(trend)
+            ? <video className="trend-preview" src={trend.preview_url} muted autoPlay loop playsInline controls preload="metadata" />
+            : <img className="trend-preview" src={trend.preview_url} alt={trend.title} />
+            : null}
           <div className="panel tool-panel">
             <div className="trend-meta">
               <span>{trend.model?.title || "ROXY model"}</span>

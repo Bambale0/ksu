@@ -6,11 +6,13 @@ from decimal import Decimal
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.models import (
     Generation,
     Notification,
     PartnerWithdrawal,
     Payment,
+    ReferralRelation,
     ReferralReward,
     SupportMessage,
     SupportTicket,
@@ -90,6 +92,43 @@ def _referral_source_name(session: Session, reward: ReferralReward) -> str:
     if source.username:
         return f"@{source.username}"
     return "Пользователь ROXY"
+
+
+def _referral_joined_name(session: Session, relation: ReferralRelation) -> str:
+    referred = session.get(User, relation.referred_user_id)
+    if referred is None:
+        return "Новый пользователь ROXY"
+    display_name = " ".join(
+        part for part in (referred.first_name, referred.last_name or "") if part
+    ).strip()
+    if display_name and referred.username:
+        return f"{display_name} (@{referred.username})"
+    if display_name:
+        return display_name
+    if referred.username:
+        return f"@{referred.username}"
+    return "Новый пользователь ROXY"
+
+
+def _add_referral_joined_notification(session: Session, relation: ReferralRelation) -> None:
+    referred_name = _referral_joined_name(session, relation)
+    bonus = Decimal(settings.invite_bonus_rox)
+    bonus_line = (
+        f"За приглашение начислено +{_money(bonus)} ROX.\n"
+        if bonus > 0
+        else ""
+    )
+    _add_notification(
+        session,
+        user_id=relation.inviter_user_id,
+        kind="referral_joined",
+        title="🎉 Новый реферал",
+        body=(
+            f"К вам присоединился: {referred_name}.\n"
+            f"{bonus_line}"
+            "Начисления с его пополнений будут приходить отдельными уведомлениями."
+        ),
+    )
 
 
 def _add_referral_reward_notification(session: Session, reward: ReferralReward) -> None:
@@ -183,7 +222,9 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
                 )
 
     for obj in list(session.new):
-        if isinstance(obj, ReferralReward):
+        if isinstance(obj, ReferralRelation):
+            _add_referral_joined_notification(session, obj)
+        elif isinstance(obj, ReferralReward):
             _add_referral_reward_notification(session, obj)
         elif isinstance(obj, SupportMessage) and obj.is_admin:
             ticket = session.get(SupportTicket, obj.ticket_id)
