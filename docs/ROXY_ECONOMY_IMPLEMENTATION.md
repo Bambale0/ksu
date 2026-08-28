@@ -84,8 +84,17 @@ Nano Banana 2              25 ROX
 Nano Banana 2 Lite         25 ROX
 Seedream 4.5               20 ROX
 Seedream 5 Pro             20 ROX
-Seedance 2.0               40 ROX/s
-Seedance 2.5               60 ROX/s
+Seedance 2.0 480p          40 ROX/s
+Seedance 2.0 720p          50 ROX/s
+Seedance 2.0 1080p         60 ROX/s
+Seedance 2.5 480p          50 ROX/s
+Seedance 2.5 720p          60 ROX/s
+Seedance 2.5 1080p         70 ROX/s
+Seedance 2.5 4K            90 ROX/s, reserved until callable provider support is exposed
+Kling 2.5 Turbo Pro 5s     40 ROX
+Kling 2.5 Turbo Pro 10s    80 ROX
+Kling AI Avatar Standard   100 ROX/s
+Kling AI Avatar Pro        150 ROX/s
 Kling 3.0                  30 ROX/s
 Veo 3.1                    35 ROX/s
 Grok                        15 ROX/s

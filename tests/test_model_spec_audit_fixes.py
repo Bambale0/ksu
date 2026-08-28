@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from app.services.kie_video_contracts import (
@@ -97,6 +99,22 @@ def test_seedance20_frame_and_multimodal_modes_normalize_to_reference_mode() -> 
     payload = normalize_kie_video_input("bytedance/seedance-2", params)
     assert payload["reference_image_urls"] == ["https://cdn.example/ref.png"]
     assert "first_frame_url" not in payload
+
+
+def test_seedance20_standard_accepts_1080p_provider_resolution() -> None:
+    params = {
+        "prompt": "cinematic city reveal",
+        "duration": 5,
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+    }
+
+    _spec, clean, _cost, _seconds, unit_price = ModelCatalog.prepare("seedance-2.0", params)
+    assert clean["resolution"] == "1080p"
+    assert unit_price == Decimal("60")
+
+    payload = normalize_kie_video_input("bytedance/seedance-2", clean)
+    assert payload["resolution"] == "1080p"
 
 
 def test_grok_i2v_task_reference_preserves_exact_current_contract() -> None:

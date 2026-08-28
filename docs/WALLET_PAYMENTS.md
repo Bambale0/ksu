@@ -9,9 +9,9 @@ Wallet is a presentation layer over the durable payment lifecycle. It does not c
 ```text
 Wallet
   |
-  +--> GET /api/v1/payments/packages / card packages
+  +--> GET /api/v1/payments/card/packages
   |
-  +--> choose configured payment method/package
+  +--> choose configured package/currency
   |
   +--> POST checkout with Idempotency-Key
   |
@@ -28,6 +28,10 @@ Wallet
 ```
 
 The client never invents settlement state or credits the balance optimistically.
+
+The active customer checkout is the hosted `card` route backed by Lava Top. Other
+payment providers remain reserve integrations and are not part of the current
+Mini App purchase path until they are explicitly enabled again.
 
 ## Server recovery after reload
 
