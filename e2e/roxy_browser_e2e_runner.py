@@ -64,31 +64,28 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(balance).to_be_visible(timeout=10000)
     await balance.click()
 
-    sheet = page.locator(".sheet").first
-    await expect(sheet).to_be_visible(timeout=8000)
-    await expect(sheet).to_contain_text(re.compile(r"ROX|Баланс|Пополн", re.I), timeout=8000)
-    report.controls_seen.add("wallet:open")
-
-    lava_tab = page.locator('[data-checkout-method="lava"]:visible').first
-    if await lava_tab.count():
-        await lava_tab.click()
-        report.controls_seen.add("wallet:method:lava")
+    await expect(page).to_have_url(re.compile(r"/mini-app/payments/?"), timeout=8000)
+    await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
+    lava_tab = page.get_by_role("button", name="Lava Top").first
+    await expect(lava_tab).to_have_class(re.compile(r"active"), timeout=8000)
+    report.controls_seen.add("wallet:payments-page")
+    report.controls_seen.add("wallet:method:lava")
 
     package = page.locator(
-        ".sheet .package:visible, .primary-card-package:visible, #paymentPackageGrid .payment-package:visible"
+        ".package-grid .package:visible, .primary-card-package:visible, #paymentPackageGrid .payment-package:visible"
     ).first
     await expect(package).to_be_visible(timeout=8000)
     await package.click()
     report.controls_seen.add("wallet:package")
 
     email = page.locator(
-        '.sheet input[inputmode="email"]:visible, .primary-card-section input[inputmode="email"]:visible'
+        'input[type="email"]:visible, input[inputmode="email"]:visible, .primary-card-section input[inputmode="email"]:visible'
     ).first
     await expect(email).to_be_visible(timeout=8000)
     await email.fill("e2e@example.com")
 
     pay = page.locator("button:visible").filter(
-        has_text=re.compile(r"Перейти к оплате|Создать оплату", re.I)
+        has_text=re.compile(r"Перейти к оплате|Создать оплату|через Lava Top", re.I)
     ).first
     await expect(pay).to_be_enabled(timeout=8000)
     async with page.expect_response(
@@ -101,16 +98,12 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     assert checkout_response.ok, f"card checkout: {checkout_response.status} {await checkout_response.text()}"
     report.controls_seen.add("wallet:card:checkout")
 
-    crypto_tab = page.locator('[data-checkout-method="crypto"]:visible').first
+    crypto_tab = page.get_by_role("button", name="CryptoBot").first
     if await crypto_tab.count():
         await crypto_tab.click()
         report.controls_seen.add("wallet:method:crypto")
 
-    backdrop = page.locator(".sheet-overlay .overlay-backdrop:visible").first
-    if await backdrop.count():
-        await backdrop.evaluate("element => element.click()")
-    await expect(page.locator(".sheet-overlay")).to_have_count(0, timeout=8000)
-    report.ok("wallet sheet + payment checkout")
+    report.ok("payments page + Lava Top checkout")
 
 
 async def scenario_profile_support_partner(page: Page, report: suite.legacy.Report) -> None:
@@ -178,9 +171,9 @@ async def inventory_visible_controls(page: Page, report: suite.legacy.Report) ->
     await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
     await expect(page.locator("#balance")).to_be_visible(timeout=10000)
     await page.locator("#balance").click()
-    await expect(page.locator(".sheet")).to_be_visible(timeout=8000)
-    assert await page.locator(".sheet button:visible").count() > 0
-    report.controls_seen.add("inventory:wallet-sheet")
+    await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
+    assert await page.locator("button:visible").count() > 0
+    report.controls_seen.add("inventory:payments-page")
     report.ok("visible control inventory", f"{len(report.controls_seen)} unique control signatures")
 
 

@@ -204,20 +204,13 @@ test('landscape iPhone keeps navigation compact', async ({ page }) => {
   expect(navBox.height).toBeLessThanOrEqual(68);
 });
 
-test('tablet wallet becomes a contained modal and stays inside viewport', async ({ page }) => {
+test('tablet balance button opens payments page inside viewport', async ({ page }) => {
   await page.setViewportSize({ width: 834, height: 1194 });
   await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
   await expect(page.locator('.roxy-app')).toBeVisible();
   await page.locator('.balance-button').click();
-  const sheet = page.locator('.sheet');
-  await expect(sheet).toBeVisible();
-  const box = await sheet.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box.width).toBeLessThanOrEqual(780);
-  expect(box.x).toBeGreaterThan(20);
-  expect(box.y).toBeGreaterThan(20);
-  expect(box.x + box.width).toBeLessThanOrEqual(814);
-  expect(box.y + box.height).toBeLessThanOrEqual(1174);
-  expect(await sheet.evaluate((node) => getComputedStyle(node).borderBottomWidth)).not.toBe('0px');
+  await expect(page).toHaveURL(/\/mini-app\/payments\//);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

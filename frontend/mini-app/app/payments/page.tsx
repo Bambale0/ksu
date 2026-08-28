@@ -46,10 +46,7 @@ type Payment = {
 const TERMINAL = new Set(["succeeded", "refunded", "partially_refunded", "failed", "canceled"]);
 
 function initialProvider(): Provider {
-  if (typeof window === "undefined") return "card";
-  return new URL(window.location.href).searchParams.get("provider") === "cryptobot"
-    ? "cryptobot"
-    : "card";
+  return "card";
 }
 
 export default function PaymentsPage() {
@@ -113,6 +110,7 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
+  const providerLabel = provider === "card" ? "Lava Top" : "CryptoBot";
   const supportedPayments = useMemo(
     () => payments.filter((item) => item.provider === "card" || item.provider === "cryptobot"),
     [payments],
@@ -190,7 +188,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="Выберите карту/СБП или CryptoBot. Сумма и бонусы берутся с сервера, а ROX начисляются только после подтверждённой оплаты."
+      copy="Основной способ оплаты — Lava Top. CryptoBot доступен как резервный вариант."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -198,13 +196,13 @@ export default function PaymentsPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
         <div className="segmented providers" aria-label="Способ оплаты">
-          {cardAvailable ? <button type="button" className={provider === "card" ? "active" : ""} onClick={() => setProvider("card")}>Карта / СБП</button> : null}
+          {cardAvailable ? <button type="button" className={provider === "card" ? "active" : ""} onClick={() => setProvider("card")}>Lava Top</button> : null}
           {cryptoAvailable ? <button type="button" className={provider === "cryptobot" ? "active" : ""} onClick={() => setProvider("cryptobot")}>CryptoBot</button> : null}
         </div>
 
         {!cardAvailable && !cryptoAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {(provider === "card" ? cardAvailable : cryptoAvailable) ? <>
-          <div className="section-title"><div><span className="kicker">{catalog?.label || "Оплата"}</span><h2>Выберите пакет</h2></div></div>
+          <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
             <strong>{compactNumber(item.total_credits || item.credits)} ROX</strong>
             <small>{Number(item.bonus_credits || 0) > 0 ? `${compactNumber(item.credits)} + ${compactNumber(item.bonus_credits)} бонус` : `${compactNumber(item.credits)} ROX`}</small>
@@ -217,7 +215,7 @@ export default function PaymentsPage() {
 
           <div className="form-stack">
             {provider === "card" ? <label className="field"><span className="label">Email для чека</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
-            <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : provider === "cryptobot" ? `Оплатить ${compactNumber(price)} RUB через CryptoBot` : price ? `Оплатить ${compactNumber(price)} ${currency}` : "Пакет недоступен"}</button>
+            <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : provider === "cryptobot" ? `Оплатить ${compactNumber(price)} RUB через CryptoBot` : price ? `Оплатить ${compactNumber(price)} ${currency} через Lava Top` : "Пакет недоступен"}</button>
           </div>
         </> : null}
       </div>
@@ -225,7 +223,7 @@ export default function PaymentsPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">История</span><h2>Пополнения</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
         <div className="transaction-list">{supportedPayments.length ? supportedPayments.map((payment) => <div className="transaction" key={payment.id}>
-          <div><strong>{compactNumber(payment.amount)} {payment.currency}</strong><small>{payment.provider === "cryptobot" ? "CryptoBot" : "Карта / СБП"} · {dateTime(payment.created_at)} · {payment.status}</small><small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}</small></div>
+          <div><strong>{compactNumber(payment.amount)} {payment.currency}</strong><small>{payment.provider === "cryptobot" ? "CryptoBot" : "Lava Top"} · {dateTime(payment.created_at)} · {payment.status}</small><small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}</small></div>
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {payment.payment_url && !TERMINAL.has(payment.status) ? <button type="button" onClick={() => { if (!openPaymentLink(payment.payment_url || "")) setError("Не удалось открыть платёжную ссылку"); }}>Оплатить</button> : null}
             {!TERMINAL.has(payment.status) ? <button type="button" disabled={busy === payment.id} onClick={() => void reconcile(payment)}>{busy === payment.id ? "…" : "Проверить статус"}</button> : <strong>{payment.status === "succeeded" ? "✓" : payment.status}</strong>}

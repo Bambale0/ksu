@@ -81,10 +81,10 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
   await expect(page.locator('.profile-screen')).toBeVisible();
 
   await page.locator('button.balance-button').click();
-  await expect(page.locator('.sheet')).toBeVisible();
-  await expect(page.getByText('+10 ROX 🎁')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Все пополнения и статусы' })).toBeVisible();
-  await expect(page.getByText('+50 ROX 🎁')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/mini-app\/payments\//);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
@@ -96,10 +96,9 @@ test('quick wallet exposes CryptoBot and crypto checkout needs no billing email'
   await expect(page.locator('.profile-screen')).toBeVisible();
 
   await page.locator('button.balance-button').click();
-  const cryptoEntry = page.getByRole('button', { name: 'Оплатить через CryptoBot' });
-  await expect(cryptoEntry).toBeVisible();
-  await cryptoEntry.click();
-  await expect(page).toHaveURL(/\/mini-app\/payments\/\?provider=cryptobot/);
+  await expect(page).toHaveURL(/\/mini-app\/payments\//);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await page.getByRole('button', { name: 'CryptoBot' }).click();
   await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
   await expect(page.getByText(/CryptoBot принимает TON/)).toBeVisible();
 
