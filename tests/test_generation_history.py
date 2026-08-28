@@ -238,6 +238,82 @@ async def test_recreate_payload_strips_provider_private_and_unknown_fields() -> 
         assert all(not key.startswith("_") for key in payload["parameters"])
 
 
+@pytest.mark.asyncio
+async def test_recreate_payload_of_seedance_parent_demands_fresh_references() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(25), first_name="Seedance Reuse")
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_video",
+            status="succeeded",
+            prompt="dance like in the reference",
+            input_url="https://example.invalid/first.png",
+            result_url="https://example.invalid/result.mp4",
+            cost_rox=Decimal("60"),
+            provider="kie",
+            external_id="task-secret",
+            parameters={
+                "_model_id": "seedance-2.0",
+                "_billing_mode": "per_second",
+                "_unit_price_rox": "11",
+                "reference_image_urls": ["https://example.invalid/stale-subject.png"],
+                "first_frame_url": "https://example.invalid/stale-first.png",
+                "resolution": "720p",
+                "aspect_ratio": "adaptive",
+            },
+        )
+        session.add(generation)
+        await session.commit()
+
+        payload = await recreate_generation_payload(generation.id, user, session)
+        assert payload["model_id"] == "seedance-2.0"
+        assert payload["references_required"] is True
+        assert payload["input_url"] is None
+        for name in (
+            "reference_image_urls",
+            "reference_video_urls",
+            "reference_audio_urls",
+            "first_frame_url",
+            "last_frame_url",
+            "input_urls",
+        ):
+            assert name not in payload["parameters"]
+        assert payload["parameters"]["resolution"] == "720p"
+        assert payload["parameters"]["aspect_ratio"] == "adaptive"
+
+
+@pytest.mark.asyncio
+async def test_recreate_payload_of_text_only_seedance_parent_has_no_reference_flag() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(26), first_name="Seedance Text")
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_video",
+            status="succeeded",
+            prompt="neon city flythrough",
+            result_url="https://example.invalid/result.mp4",
+            cost_rox=Decimal("55"),
+            provider="kie",
+            external_id="task-secret",
+            parameters={
+                "_model_id": "seedance-2.5",
+                "resolution": "720p",
+                "aspect_ratio": "adaptive",
+            },
+        )
+        session.add(generation)
+        await session.commit()
+
+        payload = await recreate_generation_payload(generation.id, user, session)
+        assert payload["model_id"] == "seedance-2.5"
+        assert "references_required" not in payload
+        assert payload["parameters"]["resolution"] == "720p"
+
+
 def test_react_mini_app_contains_live_result_history_flow() -> None:
     app = (ROOT / "frontend" / "mini-app" / "components" / "roxy-app.tsx").read_text(
         encoding="utf-8"
