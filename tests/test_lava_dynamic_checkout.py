@@ -10,7 +10,7 @@ from app.providers.card_checkout import CardCheckoutClient
 from app.services.card_payments import CardPackage, CardPackageCatalog
 
 
-CONFIGURED_OFFER_ID = "37a55999-8833-4655-8e34-51a3bfd3119d"
+CONFIGURED_OFFER_ID = "11111111-2222-4333-8444-555555555555"
 
 
 @pytest.mark.asyncio
