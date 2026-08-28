@@ -35,8 +35,11 @@ def test_billing_email_rejects_invalid_addresses(value: str) -> None:
 
 def test_card_checkout_validates_normalized_billing_email_before_service_call() -> None:
     source = CARD_API.read_text(encoding="utf-8")
-    assert "validate_billing_email" in source
-    assert "billing_email=validate_billing_email(payload.billing_email)" in source
+    validation = "billing_email = validate_billing_email(payload.billing_email)"
+    service_argument = "billing_email=billing_email"
+    assert validation in source
+    assert service_argument in source
+    assert source.index(validation) < source.index(service_argument)
 
 
 def test_payments_page_uses_webview_safe_email_keyboard_without_native_email_validation() -> None:
