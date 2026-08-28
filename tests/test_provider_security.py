@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import time
 
+import httpx
 import pytest
 
 from app.core.config import settings
@@ -22,6 +23,35 @@ async def test_cryptopay_webhook_signature() -> None:
     try:
         assert client.verify_webhook(body, signature)
         assert not client.verify_webhook(body + b" ", signature)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cryptopay_get_invoices_accepts_current_result_items_shape() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "result": {
+                    "items": [
+                        {"invoice_id": 42, "payload": "payment-42", "status": "paid"},
+                    ]
+                },
+            },
+        )
+
+    client = CryptoPayClient("12345:test-token", "https://example.invalid")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://example.invalid",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        invoice = await client.get_invoice("42")
+        assert invoice == {"invoice_id": 42, "payload": "payment-42", "status": "paid"}
+        assert await client.find_invoice_by_payload("payment-42") == invoice
     finally:
         await client.aclose()
 
