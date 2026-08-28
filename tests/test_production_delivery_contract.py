@@ -28,7 +28,11 @@ def test_production_deploy_verifies_exact_mini_app_sha() -> None:
     assert "app/web/mini_app/release.json" in workflow
     assert 'MINI_APP_RELEASE_SHA="${DEPLOY_SHA}"' in workflow
     assert "ARG MINI_APP_RELEASE_SHA=unknown" in dockerfile
+    assert 'curl -fsS "${app_base}/health/ready"' in workflow
+    assert 'curl -fsS "${app_base}/health/operational"' in workflow
+    assert 'curl -fsS "${app_base}/health/live"' in workflow
+    assert 'curl -fsSI "${app_base}/mini-app/"' in workflow
     assert "expected_release=" in workflow
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow
-    assert "Production is healthy and Mini App serves" in workflow
+    assert "every Python service runs ${DEPLOY_SHA}" in workflow
