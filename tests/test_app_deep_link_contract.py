@@ -84,5 +84,5 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
 
     assert "profile_link?: string" in types
     assert "stats?.profile_link" in social
-    assert "Скопировать ссылку на профиль" in social
+    assert "Поделиться профилем" in social
     assert "Профиль автора" in social
