@@ -236,7 +236,8 @@ for (const viewport of viewports) {
     await mockApi(page);
     await page.goto('/mini-app/?route=home');
     await page.locator('.balance-button').click();
-    await expect(page.locator('.sheet')).toBeVisible();
+    await expect(page).toHaveURL(/\/mini-app\/payments\//);
+    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
     await assertViewport(page);
   });
 }

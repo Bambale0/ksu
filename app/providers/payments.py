@@ -55,19 +55,29 @@ class CryptoPayClient:
         currency: str,
         description: str,
     ) -> CreatedPayment:
-        response = await self._client.post(
-            "/api/createInvoice",
-            json={
-                "currency_type": "fiat",
-                "fiat": currency,
-                "amount": _money(amount),
-                "payload": local_id,
-                "description": description[:1024],
-                "expires_in": 3600,
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
+        try:
+            response = await self._client.post(
+                "/api/createInvoice",
+                json={
+                    "currency_type": "fiat",
+                    "fiat": currency,
+                    "amount": _money(amount),
+                    "payload": local_id,
+                    "description": description[:1024],
+                    "expires_in": 3600,
+                },
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"Crypto Pay createInvoice failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("Crypto Pay transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("Crypto Pay returned invalid JSON") from exc
         if not body.get("ok"):
             raise PaymentProviderError(f"Crypto Pay createInvoice failed: {body!r}")
         invoice = body.get("result") or {}
@@ -83,12 +93,22 @@ class CryptoPayClient:
         return CreatedPayment(str(external_id), str(payment_url), body)
 
     async def get_invoice(self, external_id: str) -> dict[str, Any] | None:
-        response = await self._client.get(
-            "/api/getInvoices",
-            params={"invoice_ids": external_id, "count": 1},
-        )
-        response.raise_for_status()
-        body = response.json()
+        try:
+            response = await self._client.get(
+                "/api/getInvoices",
+                params={"invoice_ids": external_id, "count": 1},
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("Crypto Pay transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("Crypto Pay returned invalid JSON") from exc
         if not body.get("ok"):
             raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
         rows = _cryptopay_invoice_rows(body)
@@ -97,9 +117,19 @@ class CryptoPayClient:
     async def find_invoice_by_payload(self, local_id: str) -> dict[str, Any] | None:
         # Crypto Pay exposes no createInvoice idempotency key and no payload filter.
         # Scanning the latest invoice window is a recovery path for a lost create response.
-        response = await self._client.get("/api/getInvoices", params={"count": 1000, "offset": 0})
-        response.raise_for_status()
-        body = response.json()
+        try:
+            response = await self._client.get("/api/getInvoices", params={"count": 1000, "offset": 0})
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"Crypto Pay getInvoices failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("Crypto Pay transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("Crypto Pay returned invalid JSON") from exc
         if not body.get("ok"):
             raise PaymentProviderError(f"Crypto Pay getInvoices failed: {body!r}")
         for item in _cryptopay_invoice_rows(body):

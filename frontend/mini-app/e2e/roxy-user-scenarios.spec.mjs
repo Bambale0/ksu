@@ -300,7 +300,8 @@ async function runHome(page, check) {
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
-    await expect(page.getByText('Выберите пакет')).toBeVisible();
+    await expect(page).toHaveURL(/\/mini-app\/payments\//);
+    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile') {
     await bottomButton(page, 'Профиль').click();
     await expect(page.getByText('QA').first()).toBeVisible();
@@ -517,7 +518,8 @@ async function runProfile(page, check) {
     await expect(page.locator('textarea.control').first()).toHaveValue('Портрет в неоне');
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
-    await expect(page.getByText('Выберите пакет')).toBeVisible();
+    await expect(page).toHaveURL(/\/mini-app\/payments\//);
+    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile-link') {
     await bottomButton(page, 'Партнёры').click();
     await expect(page.getByRole('button', { name: 'Скопировать профиль' })).toBeVisible();

@@ -538,6 +538,7 @@ export function RoxySocialApp() {
 
   const tgUser = telegram()?.initDataUnsafe?.user;
   const avatar = tgUser?.photo_url || "";
+  const openPayments = () => window.location.assign("/mini-app/payments/");
 
   return (
     <div className="roxy-app">
@@ -546,7 +547,7 @@ export function RoxySocialApp() {
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button id="balance" className="balance-button" type="button" onClick={() => setWalletOpen(true)}>
+        <button id="balance" className="balance-button" type="button" onClick={openPayments}>
           <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
         </button>
       </header>
@@ -561,7 +562,7 @@ export function RoxySocialApp() {
         }} />}
         {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
+        {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
 

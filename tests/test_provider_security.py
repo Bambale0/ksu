@@ -2,13 +2,14 @@ import base64
 import hashlib
 import hmac
 import time
+from decimal import Decimal
 
 import httpx
 import pytest
 
 from app.core.config import settings
 from app.providers.kie import verify_kie_webhook
-from app.providers.payments import CryptoPayClient, make_tbank_token
+from app.providers.payments import CryptoPayClient, PaymentProviderError, make_tbank_token
 from app.services.payments import PaymentService
 
 
@@ -52,6 +53,32 @@ async def test_cryptopay_get_invoices_accepts_current_result_items_shape() -> No
         invoice = await client.get_invoice("42")
         assert invoice == {"invoice_id": 42, "payload": "payment-42", "status": "paid"}
         assert await client.find_invoice_by_payload("payment-42") == invoice
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cryptopay_create_invoice_wraps_blocked_method() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            423,
+            json={"ok": False, "error": {"code": 423, "name": "METHOD_BLOCKED"}},
+        )
+
+    client = CryptoPayClient("12345:test-token", "https://example.invalid")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://example.invalid",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(PaymentProviderError, match="HTTP 423"):
+            await client.create_payment(
+                local_id="payment-locked",
+                amount=Decimal("1086.96"),
+                currency="RUB",
+                description="ROXY",
+            )
     finally:
         await client.aclose()
 

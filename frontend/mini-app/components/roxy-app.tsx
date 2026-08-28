@@ -347,6 +347,7 @@ export function RoxyApp() {
 
   const tgUser = telegram()?.initDataUnsafe?.user;
   const avatar = tgUser?.photo_url || "";
+  const openPayments = () => window.location.assign("/mini-app/payments/");
 
   return (
     <div className="roxy-app">
@@ -355,7 +356,7 @@ export function RoxyApp() {
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button className="balance-button" type="button" onClick={() => setWalletOpen(true)}>
+        <button className="balance-button" type="button" onClick={openPayments}>
           <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
         </button>
       </header>
@@ -365,7 +366,7 @@ export function RoxyApp() {
         {route === "catalog" && <CatalogScreen models={models} families={families} feed={feed} onCreate={(model) => { localStorage.setItem(MODEL_KEY, model.id); navigate("create"); }} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
         {route === "create" && <CreateScreen models={models} families={families} me={me} onBalance={refreshMe} onCreated={(items) => { const list = Array.isArray(items) ? items : [items]; setRecent((current) => [...list, ...current.filter((x) => !list.some((item) => item.id === x.id))].slice(0, 12)); setPreviewSurface("private"); setPreview(list[0]); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "profile" && <ProfileScreen me={me} avatar={avatar} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={() => setWalletOpen(true)} />}
+        {route === "profile" && <ProfileScreen me={me} avatar={avatar} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} />}
       </main>
 
       <BottomNav route={route} onNavigate={navigate} />
