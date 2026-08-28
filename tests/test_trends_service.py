@@ -50,6 +50,28 @@ def _generation() -> SimpleNamespace:
     )
 
 
+def test_normalize_recipe_maps_billing_seconds_to_required_provider_duration() -> None:
+    recipe = TrendService.normalize_recipe(
+        "Video trend",
+        {
+            "description": "Seedance template",
+            "model_id": "seedance-2.0",
+            "prompt": "curated video template",
+            "preview_url": "https://cdn.example.invalid/trend.mp4",
+            "media_type": "video",
+            "input_mode": "none",
+            "billing_seconds": 5,
+            "parameters": {
+                "aspect_ratio": "adaptive",
+                "resolution": "720p",
+            },
+        },
+    )
+
+    assert recipe["billing_seconds"] == 5
+    assert recipe["parameters"]["duration"] == 5
+
+
 @pytest.mark.asyncio
 async def test_public_view_does_not_serialize_curated_prompt_or_settings() -> None:
     item = _item()

@@ -91,6 +91,13 @@ class TrendService:
         billing_seconds = int(billing_seconds_raw) if billing_seconds_raw not in (None, "") else None
         if billing_seconds is not None and billing_seconds <= 0:
             raise TrendRecipeError("billing_seconds must be positive")
+        if (
+            billing_seconds is not None
+            and spec.duration_field
+            and spec.duration_field in spec.required_fields
+            and parameters.get(spec.duration_field) in (None, "")
+        ):
+            parameters[spec.duration_field] = billing_seconds
         tags = payload.get("tags") or []
         if not isinstance(tags, list):
             raise TrendRecipeError("tags must be an array")

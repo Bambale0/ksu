@@ -40,6 +40,9 @@ type TrendAdminModel = {
   media_type?: string;
   known_fields?: string[];
   required_fields?: string[];
+  price_mode?: string;
+  min_seconds?: number | null;
+  max_seconds?: number | null;
   duration_field?: string | null;
 };
 
@@ -75,6 +78,14 @@ function emptyDraft(modelId = ""): Draft {
     parameters: "{}",
     isActive: true,
   };
+}
+
+function modelUsesProviderDuration(model?: TrendAdminModel | null): boolean {
+  return Boolean(
+    model?.media_type === "video"
+      && model.known_fields?.includes("duration")
+      && model.required_fields?.includes("duration"),
+  );
 }
 
 function draftFrom(item: TrendAdminItem, duplicate = false): Draft {
@@ -262,7 +273,15 @@ export function InlineTrendAdmin() {
       sort_order: Number(draft.sortOrder || 0),
       usage_count: Number(items.find((item) => item.id === editingId)?.payload?.usage_count || 0),
     };
-    if (billingSeconds !== null) payload.billing_seconds = billingSeconds;
+    if (billingSeconds !== null) {
+      payload.billing_seconds = billingSeconds;
+      if (
+        modelUsesProviderDuration(model)
+        && (parameters.duration === undefined || parameters.duration === null || parameters.duration === "")
+      ) {
+        parameters.duration = billingSeconds;
+      }
+    }
 
     setSaving(true);
     setError("");
