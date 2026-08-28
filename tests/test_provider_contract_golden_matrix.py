@@ -268,7 +268,7 @@ def test_p1_provider_capabilities_are_exposed_without_placebo_fields() -> None:
     models = {item["id"]: item for item in REGISTERED_MODELS}
 
     seedance = build_public_model_ui_schema(models["seedance-2.0"])
-    assert _field(seedance, "resolution")["suggestions"] == ["480p", "720p", "1080p", "4K"]
+    assert _field(seedance, "resolution")["suggestions"] == ["480p", "720p", "1080p"]
     assert "adaptive" not in _field(seedance, "aspect_ratio")["suggestions"]
     assert _field(seedance, "fixed_lens") is None
     assert _field(seedance, "return_last_frame") is not None
