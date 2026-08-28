@@ -29,7 +29,8 @@ async def test_telegram_health_reports_main_mini_app_enabled(monkeypatch: pytest
         "bot_configured": True,
         "bot_username": "roxy_aicreativebot",
         "mini_app_short_name": "app",
-        "direct_mini_app_link_template": "https://t.me/roxy_aicreativebot/app?startapp=<payload>",
+        "direct_mini_app_link_template": "https://t.me/roxy_aicreativebot?startapp=<payload>",
+        "named_mini_app_link_template": "https://t.me/roxy_aicreativebot/app?startapp=<payload>",
         "bot_start_link_template": "https://t.me/roxy_aicreativebot?start=<payload>",
         "main_mini_app_enabled": True,
         "main_mini_app_link_template": "https://t.me/roxy_aicreativebot?startapp=<payload>",
@@ -37,7 +38,7 @@ async def test_telegram_health_reports_main_mini_app_enabled(monkeypatch: pytest
 
 
 @pytest.mark.asyncio
-async def test_telegram_health_accepts_direct_mini_app_when_main_app_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_telegram_health_keeps_main_link_canonical_when_named_app_exists(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "bot_token", "test-token")
     monkeypatch.setattr(settings, "bot_username", "@roxy_aicreativebot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
@@ -52,6 +53,9 @@ async def test_telegram_health_accepts_direct_mini_app_when_main_app_disabled(mo
     assert payload["bot_username"] == "roxy_aicreativebot"
     assert payload["mini_app_short_name"] == "app"
     assert payload["direct_mini_app_link_template"] == (
+        "https://t.me/roxy_aicreativebot?startapp=<payload>"
+    )
+    assert payload["named_mini_app_link_template"] == (
         "https://t.me/roxy_aicreativebot/app?startapp=<payload>"
     )
     assert payload["bot_start_link_template"] == (
@@ -64,13 +68,13 @@ async def test_telegram_health_accepts_direct_mini_app_when_main_app_disabled(mo
 
 
 @pytest.mark.asyncio
-async def test_telegram_health_surfaces_missing_direct_mini_app_short_name(
+async def test_telegram_health_does_not_require_direct_mini_app_short_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "bot_token", "test-token")
     monkeypatch.setattr(settings, "bot_username", "@roxy_aicreativebot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "")
-    monkeypatch.setattr(app.state, "bot_has_main_web_app", False, raising=False)
+    monkeypatch.setattr(app.state, "bot_has_main_web_app", True, raising=False)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/health/telegram")
@@ -79,7 +83,10 @@ async def test_telegram_health_surfaces_missing_direct_mini_app_short_name(
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["mini_app_short_name"] is None
-    assert payload["direct_mini_app_link_template"] is None
+    assert payload["direct_mini_app_link_template"] == (
+        "https://t.me/roxy_aicreativebot?startapp=<payload>"
+    )
+    assert payload["named_mini_app_link_template"] is None
     assert payload["bot_start_link_template"] == (
         "https://t.me/roxy_aicreativebot?start=<payload>"
     )
