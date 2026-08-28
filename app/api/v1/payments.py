@@ -10,6 +10,8 @@ from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.credits import InternalCreditService
+from app.services.crypto_payments import CryptoBotPaymentService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import (
     PaymentIdempotencyConflict,
     PaymentService,
@@ -25,19 +27,31 @@ class CreatePaymentRequest(BaseModel):
     package_id: str = Field(min_length=1, max_length=64)
 
 
+class CryptoCheckoutRequest(BaseModel):
+    package_id: str = Field(min_length=1, max_length=64)
+
+
 def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
+    payload = payment.payload or {}
     return {
         "id": str(payment.id),
         "status": payment.status,
         "provider": payment.provider,
-        "package_id": str(payment.payload.get("package_id") or ""),
+        "label": (
+            CryptoBotPaymentService.PUBLIC_LABEL
+            if payment.provider == "cryptobot"
+            else payment.provider
+        ),
+        "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
         "credits": str(payment.rox_amount),
         "rox": str(payment.rox_amount),
+        "base_credits": str(payload.get("base_credits") or payment.rox_amount),
+        "bonus_credits": str(payload.get("bonus_credits") or "0"),
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
-        "payment_url": str(payment.payload.get("payment_url") or ""),
-        "idempotency_key": request_key or str(payment.payload.get("request_key") or ""),
+        "payment_url": str(payload.get("payment_url") or ""),
+        "idempotency_key": request_key or str(payload.get("request_key") or ""),
         "created_at": payment.created_at.isoformat(),
         "updated_at": payment.updated_at.isoformat(),
     }
@@ -57,6 +71,87 @@ async def list_packages() -> dict[str, object]:
             for package_id, package in PaymentService.packages().items()
         },
     }
+
+
+@router.get("/crypto/packages")
+async def list_crypto_packages() -> dict[str, object]:
+    packages = await CryptoBotPaymentService.provider_packages()
+    return {
+        "provider": CryptoBotPaymentService.PROVIDER,
+        "label": CryptoBotPaymentService.PUBLIC_LABEL,
+        "configured": CryptoBotPaymentService.provider_configured(),
+        "currencies": [CryptoBotPaymentService.CURRENCY],
+        "packages": {
+            package_id: {
+                "credits": str(package.credits),
+                "bonus_credits": str(TopUpBonusService.bonus_for(package.credits)),
+                "total_credits": str(TopUpBonusService.total_for(package.credits)),
+                "prices": {
+                    CryptoBotPaymentService.CURRENCY: str(
+                        package.prices[CryptoBotPaymentService.CURRENCY]
+                    )
+                },
+            }
+            for package_id, package in packages.items()
+        },
+    }
+
+
+@router.post("/crypto/checkout", status_code=201)
+async def create_crypto_payment(
+    payload: CryptoCheckoutRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    redis: RedisDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, str]:
+    if not idempotency_key:
+        raise HTTPException(status_code=400, detail="Idempotency-Key header is required")
+    try:
+        request_key = str(uuid.UUID(idempotency_key))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Idempotency-Key must be a UUID") from exc
+
+    await AbuseProtectionService.payment_rate(redis, user.id)
+    try:
+        payment = await CryptoBotPaymentService.create(
+            session,
+            user_id=user.id,
+            package_id=payload.package_id,
+            request_key=request_key,
+        )
+    except UnknownPaymentPackageError as exc:
+        raise HTTPException(status_code=404, detail="Этот пакет недоступен для CryptoBot") from exc
+    except PaymentIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PaymentProviderError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось открыть CryptoBot. Попробуйте ещё раз позже.",
+        ) from exc
+    return _payment_view(payment, request_key=request_key)
+
+
+@router.post("/crypto/{payment_id}/reconcile")
+async def reconcile_crypto_payment(
+    payment_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, str]:
+    payment = await session.get(Payment, payment_id)
+    if (
+        payment is None
+        or payment.user_id != user.id
+        or payment.provider != CryptoBotPaymentService.PROVIDER
+    ):
+        raise HTTPException(status_code=404, detail="Payment not found")
+    try:
+        payment = await PaymentService.reconcile(session, payment_id=payment.id)
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=502, detail="Не удалось обновить статус CryptoBot") from exc
+    return _payment_view(payment)
 
 
 @router.get("")
@@ -96,13 +191,21 @@ async def create_payment(
     await AbuseProtectionService.payment_rate(redis, user.id)
 
     try:
-        payment = await PaymentService.create(
-            session,
-            user_id=user.id,
-            provider=payload.provider,
-            package_id=payload.package_id,
-            request_key=request_key,
-        )
+        if payload.provider == "cryptobot":
+            payment = await CryptoBotPaymentService.create(
+                session,
+                user_id=user.id,
+                package_id=payload.package_id,
+                request_key=request_key,
+            )
+        else:
+            payment = await PaymentService.create(
+                session,
+                user_id=user.id,
+                provider=payload.provider,
+                package_id=payload.package_id,
+                request_key=request_key,
+            )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Unknown internal credit package") from exc
     except UnknownPaymentProviderError as exc:

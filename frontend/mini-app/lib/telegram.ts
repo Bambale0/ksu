@@ -231,6 +231,27 @@ export function openTelegramShare(url: string): void {
   openExternalLink(url);
 }
 
+export function openPaymentLink(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") return false;
+    const tg = telegram();
+    const host = parsed.hostname.toLowerCase();
+    if ((host === "t.me" || host === "telegram.me") && tg?.openTelegramLink) {
+      tg.openTelegramLink(parsed.toString());
+      return true;
+    }
+    if (tg?.openLink) {
+      tg.openLink(parsed.toString());
+      return true;
+    }
+    window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {

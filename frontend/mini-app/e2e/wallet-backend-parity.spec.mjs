@@ -20,7 +20,7 @@ async function mockApi(page) {
       WebApp: {
         initData: 'query_id=e2e&hash=test',
         initDataUnsafe: { user: { id: 777, first_name: 'QA', username: 'qa_user' } },
-        ready() {}, expand() {}, close() {}, onEvent() {}, offEvent() {}, openLink() {},
+        ready() {}, expand() {}, close() {}, onEvent() {}, offEvent() {}, openLink() {}, openTelegramLink() {},
         BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
         HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
       },
@@ -55,6 +55,21 @@ async function mockApi(page) {
         starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
       },
     });
+    if (path === '/api/v1/payments/crypto/packages') return json({
+      provider: 'cryptobot',
+      label: 'CryptoBot',
+      configured: true,
+      currencies: ['RUB'],
+      packages: {
+        starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
+      },
+    });
+    if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
+      id: 'crypto-payment-1',
+      status: 'pending',
+      provider: 'cryptobot',
+      payment_url: 'https://t.me/CryptoBot?start=invoice-test',
+    }, 201);
     return json({ items: [] });
   });
 }
@@ -71,4 +86,27 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
   await expect(page.getByRole('button', { name: 'Все пополнения и статусы' })).toBeVisible();
   await expect(page.getByText('+50 ROX 🎁')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+
+test('quick wallet exposes CryptoBot and crypto checkout needs no billing email', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/?route=profile');
+  await expect(page.locator('.profile-screen')).toBeVisible();
+
+  await page.locator('button.balance-button').click();
+  const cryptoEntry = page.getByRole('button', { name: 'Оплатить через CryptoBot' });
+  await expect(cryptoEntry).toBeVisible();
+  await cryptoEntry.click();
+  await expect(page).toHaveURL(/\/mini-app\/payments\/\?provider=cryptobot/);
+  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
+  await expect(page.getByText(/CryptoBot принимает TON/)).toBeVisible();
+
+  const checkout = page.waitForRequest((request) =>
+    request.url().includes('/api/v1/payments/crypto/checkout') && request.method() === 'POST'
+  );
+  await page.getByRole('button', { name: /Оплатить .* через CryptoBot/ }).click();
+  const request = await checkout;
+  expect(JSON.parse(request.postData() || '{}')).toEqual({ package_id: 'starter' });
 });
