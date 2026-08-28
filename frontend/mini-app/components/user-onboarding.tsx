@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { haptic, initTelegram, notify, openExternalLink } from "@/lib/telegram";
+import { getStartParamFallback, haptic, initTelegram, notify, openExternalLink } from "@/lib/telegram";
 import type { Me } from "@/lib/types";
 import styles from "./user-onboarding.module.css";
 
@@ -90,6 +90,19 @@ function creatorName(me: Me | null): string {
   return me?.first_name?.trim() || me?.username?.trim() || "креатор";
 }
 
+function formattedBalance(balance?: string | null): string {
+  const value = Number(balance);
+  return Number.isFinite(value) ? value.toLocaleString("ru-RU") : "50";
+}
+
+function hasContentLaunchTarget(): boolean {
+  try {
+    return /^(feed_|remix_|profile_|posts_)/i.test(getStartParamFallback());
+  } catch {
+    return false;
+  }
+}
+
 function FeatureVisual({ kind, balance }: { kind: Step["visual"]; balance?: string | null }) {
   if (kind === "welcome") {
     return <div className={`${styles.visual} ${styles.welcomeVisual}`} aria-hidden="true"><div className={styles.logoOrb}>R</div><div className={styles.sparkOne}>✦</div><div className={styles.sparkTwo}>✦</div><div className={styles.sparkThree}>✦</div></div>;
@@ -106,7 +119,7 @@ function FeatureVisual({ kind, balance }: { kind: Step["visual"]; balance?: stri
   if (kind === "social") {
     return <div className={`${styles.visual} ${styles.socialVisual}`} aria-hidden="true"><div className={styles.privacyCard}><span>●</span><div><strong>Приватно</strong><small>видите только вы</small></div></div><div className={styles.privacyCard}><span>◎</span><div><strong>Профиль</strong><small>ваша витрина</small></div></div><div className={styles.privacyCard}><span>✦</span><div><strong>Лента</strong><small>для всех</small></div></div></div>;
   }
-  return <div className={`${styles.visual} ${styles.roxVisual}`} aria-hidden="true"><span className={styles.roxLabel}>ROX</span><strong>{balance ? Number(balance).toLocaleString("ru-RU") : "50"}</strong><small>баланс</small></div>;
+  return <div className={`${styles.visual} ${styles.roxVisual}`} aria-hidden="true"><span className={styles.roxLabel}>ROX</span><strong>{formattedBalance(balance)}</strong><small>баланс</small></div>;
 }
 
 export function UserOnboardingGate() {
@@ -173,6 +186,10 @@ export function UserOnboardingGate() {
       clearSavedStep(version);
       notify("success");
       haptic("medium");
+      if (hasContentLaunchTarget()) {
+        window.location.reload();
+        return;
+      }
       window.location.replace(`/mini-app/?route=${target}`);
     } catch (reason) {
       notify("error");
