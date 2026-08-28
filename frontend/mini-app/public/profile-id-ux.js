@@ -35,7 +35,10 @@
     const id = currentUserId();
     if (!id) return false;
 
+    const text = `ID ${id}`;
+    const accessibleText = `Telegram ID ${id}`;
     let found = false;
+
     for (const profileCopy of document.querySelectorAll(".profile-screen .profile-copy")) {
       found = true;
       let label = profileCopy.querySelector(`[${MARK_ATTR}]`);
@@ -44,9 +47,9 @@
         label.setAttribute(MARK_ATTR, "");
         profileCopy.appendChild(label);
       }
-      label.textContent = `ID ${id}`;
-      label.setAttribute("aria-label", `Telegram ID ${id}`);
-      label.setAttribute("title", `Telegram ID ${id}`);
+      if (label.textContent !== text) label.textContent = text;
+      if (label.getAttribute("aria-label") !== accessibleText) label.setAttribute("aria-label", accessibleText);
+      if (label.getAttribute("title") !== accessibleText) label.setAttribute("title", accessibleText);
     }
     return found;
   };
