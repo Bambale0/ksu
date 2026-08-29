@@ -21,5 +21,7 @@ def test_telegram_share_exposes_direct_copy_link_action() -> None:
     assert "navigator.clipboard?.writeText" in script
     assert 'document.execCommand("copy")' in script
     assert "originalOpenTelegramLink(rawUrl)" in script
-    assert 'aria-label", "Поделиться работой"' in script
+    assert 'root.setAttribute("aria-label", title)' in script
+    assert 'return "Поделиться работой"' in script
+    assert 'return "Поделиться трендом"' in script
     assert "Ссылка скопирована ✓" in script
