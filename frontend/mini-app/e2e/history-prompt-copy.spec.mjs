@@ -76,7 +76,7 @@ test('history prompt copies on tap without opening the generation', async ({ pag
   await mockApp(page, failedGeneration());
   await page.goto('/mini-app/?route=history', { waitUntil: 'domcontentloaded' });
 
-  const copyPrompt = page.getByRole('button', { name: 'Скопировать промпт' });
+  const copyPrompt = page.getByRole('button', { name: 'Скопировать промпт', exact: true });
   await expect(copyPrompt).toContainText(prompt);
   await copyPrompt.click();
 
@@ -90,6 +90,6 @@ test('hidden history prompt is never exposed as a copy action', async ({ page })
   await mockApp(page, failedGeneration({ hidden: true }));
   await page.goto('/mini-app/?route=history', { waitUntil: 'domcontentloaded' });
 
-  await expect(page.getByRole('button', { name: 'Скопировать промпт' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Скопировать промпт', exact: true })).toHaveCount(0);
   await expect(page.getByText(prompt)).toHaveCount(0);
 });
