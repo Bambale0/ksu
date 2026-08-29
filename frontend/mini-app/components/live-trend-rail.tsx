@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { haptic, telegramHeaders } from "@/lib/telegram";
+import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem } from "@/lib/types";
 
 function catalogScreen(): HTMLElement | null {
@@ -155,7 +156,7 @@ export function LiveTrendRail() {
               <span className="live-trend-copy">
                 <strong>{trend.title}</strong>
                 {trend.description ? <small>{trend.description}</small> : null}
-                <span className="live-trend-meta"><span>{mediaLabel(trend)}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
+                <span className="live-trend-meta"><span>{trendUsageLabel(trend.usage_count)}</span><span>{mediaLabel(trend)}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
               </span>
             </button>
             {isAdmin ? <button className="live-trend-delete" type="button" aria-label={`Удалить ${trend.title}`} onClick={() => void remove(trend)}>{busyId === trend.id ? "…" : "Удалить"}</button> : null}
