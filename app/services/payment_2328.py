@@ -36,7 +36,11 @@ class Payment2328Service:
 
     @staticmethod
     def provider_configured() -> bool:
-        return bool(payment_2328_settings.project_uuid and payment_2328_settings.api_key)
+        return bool(
+            payment_2328_settings.project_uuid
+            and payment_2328_settings.api_key
+            and settings.webhook_url("webhooks/payments/2328")
+        )
 
     @classmethod
     async def provider_packages(cls) -> dict[str, CardPackage]:
