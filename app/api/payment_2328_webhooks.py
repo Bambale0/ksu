@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,8 +30,6 @@ async def payment_2328_webhook(request: Request) -> dict[str, bool]:
     order_id = str(payload.get("order_id") or "")
     if not order_id:
         raise HTTPException(status_code=400, detail="Missing order_id")
-
-    import uuid
 
     try:
         payment_id = uuid.UUID(order_id)
