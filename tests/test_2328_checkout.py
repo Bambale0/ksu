@@ -175,6 +175,8 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
         assert first.payload["base_credits"] == "300"
         assert first.payload["bonus_credits"] == "50"
         assert first.payload["payment_url"].startswith("https://go.2328.io/")
+        assert first.created_at.isoformat()
+        assert first.updated_at.isoformat()
         assert calls == [
             {
                 "local_id": str(first.id),

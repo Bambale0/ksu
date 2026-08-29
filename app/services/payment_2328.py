@@ -187,6 +187,7 @@ class Payment2328Service:
         request_row.status = "completed"
         request_row.last_error = None
         await session.commit()
+        await session.refresh(payment)
         return payment
 
     @classmethod
