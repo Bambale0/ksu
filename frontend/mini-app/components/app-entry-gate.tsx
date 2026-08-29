@@ -13,7 +13,7 @@ const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
 const CONSUMED_TREND_TARGET_KEY = "__roxy_consumed_trend_target";
 const CONSUMED_PROFILE_TARGET_KEY = "__roxy_consumed_profile_target";
-const START_PARAM_NAMES = ["tgWebAppStartParam", "start_payload", "startapp"];
+const EXPLICIT_START_PARAM_NAMES = ["start_payload", "startapp"];
 
 type Target =
   | { kind: "post" | "remix"; generationId: string; referralCode: string }
@@ -37,14 +37,36 @@ function markTargetConsumed(storageKey: string, payload: string): void {
 }
 
 function explicitLaunchCarries(payload: string): boolean {
-  const snapshot = window.__ROXY_INITIAL_LAUNCH__;
-  for (const raw of [window.location.search, window.location.hash, snapshot?.search || "", snapshot?.hash || ""]) {
+  // Only a product-owned payload in the *current* URL is a fresh explicit launch.
+  // Telegram keeps SDK start_param and the initial launch snapshot alive for the
+  // whole WebView session, so treating those persistent values as explicit would
+  // reopen an already-consumed trend/profile every time the user presses Back.
+  for (const raw of [window.location.search, window.location.hash]) {
     const params = new URLSearchParams(String(raw || "").replace(/^[?#]/, ""));
-    for (const name of START_PARAM_NAMES) {
+    for (const name of EXPLICIT_START_PARAM_NAMES) {
       if (String(params.get(name) || "").trim() === payload) return true;
     }
   }
   return false;
+}
+
+function prepareTrendReturnLocation(): void {
+  // A shared trend starts on the Main Mini App URL and immediately redirects to
+  // the standalone trend page. Store a clean Catalog return URL before Telegram's
+  // navigation tracker snapshots it; otherwise native Back returns to the same
+  // startapp URL and opens the trend again in a loop.
+  const url = new URL(window.location.href);
+  url.searchParams.delete("startapp");
+  url.searchParams.delete("start_payload");
+  if (!url.searchParams.has("route")) url.searchParams.set("route", "catalog");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function EntryBackMarker() {
+  // telegram.ts treats an overlay as a transient layer. The marker is invisible,
+  // but keeps Telegram's native Back button visible while a deep-link gate/splash
+  // is active. Close chrome is reserved for the actually rendered Catalog root.
+  return <span className="overlay" aria-hidden="true" style={{ display: "none" }} />;
 }
 
 function profileTarget(referralCode: string, payload: string): Target | null {
@@ -90,14 +112,14 @@ function TrendStartApp({ trendId, payload }: { trendId: string; payload: string 
     markTargetConsumed(CONSUMED_TREND_TARGET_KEY, payload);
     window.location.replace(`/mini-app/trend/?id=${encodeURIComponent(trendId)}`);
   }, [payload, trendId]);
-  return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю тренд…</small></div>;
+  return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю тренд…</small></div>;
 }
 
 function ProfileTarget({ referralCode, payload }: { referralCode: string; payload: string }) {
   useEffect(() => {
     markTargetConsumed(CONSUMED_PROFILE_TARGET_KEY, payload);
   }, [payload]);
-  return <ProfileStartApp referralCode={referralCode} />;
+  return <><EntryBackMarker /><ProfileStartApp referralCode={referralCode} /></>;
 }
 
 export function AppEntryGate() {
@@ -105,18 +127,20 @@ export function AppEntryGate() {
   const [target, setTarget] = useState<Target | null>(null);
 
   useEffect(() => {
+    const parsed = parseTarget();
+    if (parsed?.kind === "trend") prepareTrendReturnLocation();
     const tg = initTelegram();
     tg?.ready?.();
     tg?.expand?.();
-    setTarget(parseTarget());
+    setTarget(parsed);
     setReady(true);
   }, []);
 
-  if (!ready) return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
+  if (!ready) return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
   if (target?.kind === "profile") return <ProfileTarget referralCode={target.referralCode} payload={target.payload} />;
   if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;
   if (target?.kind === "post" || target?.kind === "remix") {
-    return <FeedStartApp generationId={target.generationId} referralCode={target.referralCode} intent={target.kind} />;
+    return <><EntryBackMarker /><FeedStartApp generationId={target.generationId} referralCode={target.referralCode} intent={target.kind} /></>;
   }
   return <GenerationActionGate />;
 }
