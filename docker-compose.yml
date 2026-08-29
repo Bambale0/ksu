@@ -104,7 +104,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.notifications
+    command: >
+      sh -c "python -m app.workers.heartbeat notification-worker &
+      exec python -m app.workers.notifications"
 
   admin-support-worker:
     build: .
@@ -119,7 +121,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.admin_support
+    command: >
+      sh -c "python -m app.workers.heartbeat admin-support-worker &
+      exec python -m app.workers.admin_support"
 
   admin-campaign-worker:
     build: .
@@ -134,7 +138,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: python -m app.workers.admin_campaigns
+    command: >
+      sh -c "python -m app.workers.heartbeat admin-campaign-worker &
+      exec python -m app.workers.admin_campaigns"
 
   prompt-tool-worker:
     build: .
