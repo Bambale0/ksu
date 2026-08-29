@@ -20,7 +20,7 @@ from app.providers.payment_2328 import (
     make_2328_signature,
     verify_2328_webhook,
 )
-from app.providers.payments import CreatedPayment
+from app.providers.payments import CreatedPayment, PaymentProviderError
 from app.services.payment_2328 import Payment2328Service
 
 
@@ -57,6 +57,33 @@ def test_2328_webhook_signature_is_verified_before_state_changes() -> None:
 
     assert verify_2328_webhook(signed, "secret") is True
     assert verify_2328_webhook({**signed, "amount": "1.00"}, "secret") is False
+
+
+def test_2328_is_hidden_without_public_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(payment_2328_settings, "project_uuid", "project-uuid")
+    monkeypatch.setattr(payment_2328_settings, "api_key", "secret")
+    monkeypatch.setattr(settings, "public_base_url", "")
+
+    assert Payment2328Service.provider_configured() is False
+
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    assert Payment2328Service.provider_configured() is True
+
+
+@pytest.mark.asyncio
+async def test_2328_client_refuses_invoice_without_callback() -> None:
+    client = Payment2328Client("project-uuid", "secret")
+    try:
+        with pytest.raises(PaymentProviderError, match="callback URL"):
+            await client.create_payment(
+                local_id="ORDER-123",
+                amount=Decimal("100.00"),
+                currency="RUB",
+                description="Пополнение ROXY",
+                callback_url="",
+            )
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.asyncio
