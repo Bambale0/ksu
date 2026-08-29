@@ -38,13 +38,14 @@ async function mockPartnerApi(page, { failTransfer = false } = {}) {
 
     if (path === '/api/v1/referrals/stats') {
       return json({
-        partner_balance_rub: available.toFixed(2),
-        pending: '15.00',
-        total_earned: '180.00',
+        withdrawable_rub: available.toFixed(2),
+        pending_referral_rub: '15.00',
+        partner_total_earned_rub: '180.00',
         transferred_to_rox: (125 - available).toFixed(2),
         pending_withdrawals: withdrawalStatus === 'pending' ? '30.00' : '0.00',
-        minimum_withdrawal: '10.00',
+        minimum_withdrawal_rub: '10.00',
         rub_per_rox: '1.00',
+        rox_balance: '10000.00',
       });
     }
     if (path === '/api/v1/referrals/withdrawals' && method === 'GET') {
@@ -52,7 +53,7 @@ async function mockPartnerApi(page, { failTransfer = false } = {}) {
         items: [{
           id: 'withdrawal-1',
           amount: '30.00',
-          amount_rox: '30.00',
+          amount_rub: '30.00',
           status: withdrawalStatus,
           created_at: '2026-08-28T10:00:00Z',
           updated_at: '2026-08-28T10:00:00Z',
@@ -81,7 +82,7 @@ async function mockPartnerApi(page, { failTransfer = false } = {}) {
       return json({
         id: 'withdrawal-new',
         amount: Number(body.amount).toFixed(2),
-        amount_rox: Number(body.amount).toFixed(2),
+        amount_rub: Number(body.amount).toFixed(2),
         status: 'pending',
         created_at: '2026-08-28T10:02:00Z',
         updated_at: '2026-08-28T10:02:00Z',
@@ -94,7 +95,7 @@ async function mockPartnerApi(page, { failTransfer = false } = {}) {
       return json({
         id: 'withdrawal-1',
         amount: '30.00',
-        amount_rox: '30.00',
+        amount_rub: '30.00',
         status: 'canceled',
         created_at: '2026-08-28T10:00:00Z',
         updated_at: '2026-08-28T10:03:00Z',
@@ -112,7 +113,7 @@ test.beforeEach(async ({ page }) => {
   await installTelegram(page);
 });
 
-test('partner wallet renders real RUB accounting and stays mobile-safe', async ({ page }) => {
+test('partner wallet renders real RUB accounting and states that ROX is not withdrawable', async ({ page }) => {
   await mockPartnerApi(page);
   await page.goto('/mini-app/partner-wallet/');
 
@@ -120,7 +121,9 @@ test('partner wallet renders real RUB accounting and stays mobile-safe', async (
   await expect(page.getByText('125 ₽')).toBeVisible();
   await expect(page.getByText('15 ₽')).toBeVisible();
   await expect(page.getByText('180 ₽')).toBeVisible();
-  await expect(page.getByText('Минимальная сумма: 10 ₽')).toBeVisible();
+  await expect(page.getByText(/ROX .* на карту не выводится/)).toBeVisible();
+  await expect(page.getByText('Минимальная сумма: 10 ₽', { exact: false })).toBeVisible();
+  await expect(page.getByText('10000 ROX')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
