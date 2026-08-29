@@ -193,11 +193,15 @@ async def reconcile_crypto_payment(
     if (
         payment is None
         or payment.user_id != user.id
-        or payment.provider != CryptoBotPaymentService.PROVIDER
+        or payment.provider
+        not in {CryptoBotPaymentService.PROVIDER, Payment2328Service.PROVIDER}
     ):
         raise HTTPException(status_code=404, detail="Payment not found")
     try:
-        payment = await PaymentService.reconcile(session, payment_id=payment.id)
+        if payment.provider == Payment2328Service.PROVIDER:
+            payment = await Payment2328Service.reconcile(session, payment_id=payment.id)
+        else:
+            payment = await PaymentService.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail="Не удалось обновить статус оплаты") from exc
     return _payment_view(payment)
