@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 import unicodedata
 
-EMAIL_ERROR = "Введите корректный email латинскими символами, без пробелов и эмодзи"
+EMAIL_ERROR = (
+    "Введите корректный email латинскими символами, без пробелов и спецсимволов"
+)
 
 _INVISIBLE_EMAIL_CHARS = dict.fromkeys(
     map(ord, "\u200b\u200c\u200d\ufeff\u2060"),
@@ -55,5 +57,10 @@ def validate_billing_email(value: str) -> str:
     except UnicodeEncodeError as exc:
         raise ValueError(EMAIL_ERROR) from exc
     if not _EMAIL_RE.fullmatch(email):
+        raise ValueError(EMAIL_ERROR)
+    local_part, _domain = email.split("@", 1)
+    if not re.fullmatch(r"[A-Za-z0-9._]+", local_part):
+        raise ValueError(EMAIL_ERROR)
+    if local_part.startswith(".") or local_part.endswith(".") or ".." in local_part:
         raise ValueError(EMAIL_ERROR)
     return email

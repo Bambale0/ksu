@@ -6,13 +6,15 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from app.api.v1.card_payments import packages as package_view
 from app.core.config import settings
-from app.db.models import User, Wallet
+from app.db.models import Payment, User, Wallet
+from app.db.payment_models import PaymentRequest
 from app.db.session import SessionFactory
 from app.providers.card_checkout import CardCheckoutClient
-from app.providers.payments import CreatedPayment
+from app.providers.payments import CreatedPayment, PaymentProviderValidationError
 from app.services.card_payments import CardPackage, CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.referrals import ReferralService
@@ -98,7 +100,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
             "payment_provider": payment_provider,
         }
         return CreatedPayment(
-            external_id="card-bonus-1",
+            external_id=f"card-bonus-{uuid.uuid4()}",
             payment_url="https://pay.example/bonus",
             raw={"status": "pending"},
         )
@@ -199,7 +201,7 @@ async def test_fixed_price_card_package_omits_amount_on_invoice(
             "payment_provider": payment_provider,
         }
         return CreatedPayment(
-            external_id="card-fixed-1",
+            external_id=f"card-fixed-{uuid.uuid4()}",
             payment_url="https://pay.example/fixed",
             raw={"status": "pending"},
         )
@@ -229,6 +231,72 @@ async def test_fixed_price_card_package_omits_amount_on_invoice(
         "payment_provider": None,
     }
     assert Decimal(payment.amount) == Decimal("326.1")
+
+
+@pytest.mark.asyncio
+async def test_lava_email_rejection_marks_payment_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"p100":{"credits":"100","prices":{"RUB":"108.7"},"dynamic_amount":true}}',
+    )
+    monkeypatch.setattr(settings, "card_offer_id", "offer-email")
+
+    async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
+        return {
+            "items": [
+                {
+                    "id": "product-email",
+                    "offers": [{"id": "offer-email", "isDynamicPrice": True}],
+                }
+            ]
+        }
+
+    async def fake_create_invoice(
+        self: CardCheckoutClient,
+        *,
+        email: str,
+        offer_id: str,
+        currency: str,
+        amount: Decimal | None,
+        payment_provider: str | None = None,
+    ) -> CreatedPayment:
+        raise PaymentProviderValidationError(
+            "Lava Top не приняла этот email. Укажите другой email для чека."
+        )
+
+    monkeypatch.setattr(CardCheckoutClient, "get_products", fake_get_products)
+    monkeypatch.setattr(CardCheckoutClient, "create_invoice", fake_create_invoice)
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="ROX Email")
+        session.add(user)
+        await session.commit()
+
+        with pytest.raises(PaymentProviderValidationError):
+            await CardPaymentService.create(
+                session,
+                user_id=user.id,
+                package_id="p100",
+                currency="RUB",
+                billing_email="buyer@example.com",
+                request_key=str(uuid.uuid4()),
+            )
+
+        payment = await session.scalar(
+            select(Payment).where(Payment.user_id == user.id)
+        )
+        assert payment is not None
+        assert payment.status == "failed"
+        assert payment.payload["provider_error_type"] == "validation"
+
+        request_row = await session.scalar(
+            select(PaymentRequest).where(PaymentRequest.payment_id == payment.id)
+        )
+        assert request_row is not None
+        assert request_row.status == "failed"
 
 
 @pytest.mark.asyncio

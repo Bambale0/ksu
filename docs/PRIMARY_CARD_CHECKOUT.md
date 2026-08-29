@@ -33,6 +33,8 @@ POST /webhooks/payments/card
 ```
 
 Checkout requires a UUID `Idempotency-Key`, package id, explicit currency and billing email. The email is used for the hosted payment flow and is not inferred from Telegram identity.
+Lava Top may reject otherwise valid RFC emails with special characters in the local part.
+ROXY therefore accepts only Lava-safe checkout emails: Latin letters, digits, dot and underscore before `@`, with no spaces, emoji, `+`, or hyphen.
 
 ## Pricing
 
@@ -95,6 +97,7 @@ The authoritative lookup route is used for webhook reconciliation, refund inspec
 ## Invoice lifecycle
 
 The local `Payment` and `PaymentRequest` are committed before the remote create call, after currency, email, package and provider amount limits pass validation.
+If Lava Top still rejects the buyer email with `Incorrect email to purchase`, ROXY marks the local attempt as `failed` and returns a user-correctable `422` instead of a provider `502`.
 
 Normal lifecycle:
 

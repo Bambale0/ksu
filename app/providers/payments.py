@@ -13,6 +13,10 @@ class PaymentProviderError(RuntimeError):
     pass
 
 
+class PaymentProviderValidationError(PaymentProviderError):
+    pass
+
+
 @dataclass(slots=True)
 class CreatedPayment:
     external_id: str

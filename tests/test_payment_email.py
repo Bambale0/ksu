@@ -13,15 +13,15 @@ def test_billing_email_normalizes_mobile_keyboard_specials() -> None:
     value = " Ksenya\u2011Korkina9411\uff20Mail\uff0eRu\u200b "
 
     assert normalize_billing_email(value) == "ksenya-korkina9411@mail.ru"
-    assert validate_billing_email(value) == "ksenya-korkina9411@mail.ru"
+    with pytest.raises(ValueError, match="email"):
+        validate_billing_email(value)
 
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("buyer\u2013test@mail.ru", "buyer-test@mail.ru"),
-        ("buyer\u2014test@mail.ru", "buyer-test@mail.ru"),
-        ("buyer\u2212test@mail.ru", "buyer-test@mail.ru"),
+        ("buyer_test@mail.ru", "buyer_test@mail.ru"),
+        ("buyer.test@mail.ru", "buyer.test@mail.ru"),
         ("buyer@test\u3002ru", "buyer@test.ru"),
     ],
 )
@@ -34,7 +34,12 @@ def test_billing_email_normalizes_common_unicode_lookalikes(raw: str, expected: 
     [
         "ксения@mail.ru",
         "buyer🙂@mail.ru",
+        "buyer-test@mail.ru",
+        "buyer+test@mail.ru",
         "buyer @mail.ru",
+        ".buyer@mail.ru",
+        "buyer.@mail.ru",
+        "buyer..test@mail.ru",
         "buyer@mail",
     ],
 )
