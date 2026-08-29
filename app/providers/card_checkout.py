@@ -6,7 +6,11 @@ from typing import Any
 
 import httpx
 
-from app.providers.payments import CreatedPayment, PaymentProviderError
+from app.providers.payments import (
+    CreatedPayment,
+    PaymentProviderError,
+    PaymentProviderValidationError,
+)
 
 
 class CardCheckoutClient:
@@ -99,6 +103,13 @@ class CardCheckoutClient:
             raw = response.json()
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:1000].replace("\n", " ")
+            if (
+                exc.response.status_code == 400
+                and "incorrect email to purchase" in body.lower()
+            ):
+                raise PaymentProviderValidationError(
+                    "Lava Top не приняла этот email. Укажите другой email для чека."
+                ) from exc
             raise PaymentProviderError(
                 f"Card checkout invoice creation failed: HTTP {exc.response.status_code}: {body}"
             ) from exc

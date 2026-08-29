@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from app.providers.card_checkout import CardCheckoutClient
+from app.providers.payments import PaymentProviderValidationError
 from app.services.card_payments import CardPackage, CardPackageCatalog
 
 
@@ -147,3 +148,35 @@ async def test_dynamic_checkout_keeps_configured_id_when_catalog_hides_product()
     assert created.external_id == "contract-456"
     payload = json.loads(seen[1].content.decode("utf-8"))
     assert payload["offerId"] == CONFIGURED_OFFER_ID
+
+
+@pytest.mark.asyncio
+async def test_lava_incorrect_email_is_user_validation_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/api/v3/invoice":
+            return httpx.Response(
+                400,
+                json={
+                    "error": "Incorrect email to purchase",
+                    "details": {},
+                },
+            )
+        return httpx.Response(404)
+
+    client = CardCheckoutClient("api-key", "https://example.invalid")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://example.invalid",
+        transport=httpx.MockTransport(handler),
+    )
+
+    try:
+        with pytest.raises(PaymentProviderValidationError, match="другой email"):
+            await client.create_invoice(
+                email="buyer@mail.ru",
+                offer_id=CONFIGURED_OFFER_ID,
+                currency="RUB",
+                amount=Decimal("300"),
+            )
+    finally:
+        await client.aclose()
