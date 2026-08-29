@@ -44,6 +44,7 @@ type Payment = {
 };
 
 const TERMINAL = new Set(["succeeded", "refunded", "partially_refunded", "failed", "canceled", "expired"]);
+const LEGACY_CRYPTO_PROVIDER = "cryptobot";
 
 function initialProvider(): Provider {
   if (typeof window !== "undefined") {
@@ -51,6 +52,17 @@ function initialProvider(): Provider {
     if (requested === "2328") return "2328";
   }
   return "card";
+}
+
+function paymentProviderLabel(payment: Payment): string {
+  if (payment.label) return payment.label;
+  if (payment.provider === "2328") return "Криптовалюта";
+  if (payment.provider === LEGACY_CRYPTO_PROVIDER) return "Криптовалюта · старый счёт";
+  return "Lava Top";
+}
+
+function isCryptoPayment(payment: Payment): boolean {
+  return payment.provider === "2328" || payment.provider === LEGACY_CRYPTO_PROVIDER;
 }
 
 export default function PaymentsPage() {
@@ -116,7 +128,11 @@ export default function PaymentsPage() {
   const price = selected?.prices[activeCurrency];
   const providerLabel = provider === "card" ? "Lava Top" : cryptoCatalog?.label || "Криптовалюта";
   const supportedPayments = useMemo(
-    () => payments.filter((item) => item.provider === "card" || item.provider === "2328"),
+    () => payments.filter((item) => (
+      item.provider === "card"
+      || item.provider === "2328"
+      || item.provider === LEGACY_CRYPTO_PROVIDER
+    )),
     [payments],
   );
 
@@ -169,7 +185,7 @@ export default function PaymentsPage() {
     setError("");
     setNotice("");
     try {
-      const path = payment.provider === "2328"
+      const path = isCryptoPayment(payment)
         ? `/api/v1/payments/crypto/${encodeURIComponent(payment.id)}/reconcile`
         : `/api/v1/payments/card/${encodeURIComponent(payment.id)}/reconcile`;
       const next = await customerRequest<Payment>(path, { method: "POST" });
@@ -227,7 +243,7 @@ export default function PaymentsPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">История</span><h2>Пополнения</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
         <div className="transaction-list">{supportedPayments.length ? supportedPayments.map((payment) => <div className="transaction" key={payment.id}>
-          <div><strong>{compactNumber(payment.amount)} {payment.currency}</strong><small>{payment.provider === "2328" ? "Криптовалюта" : "Lava Top"} · {dateTime(payment.created_at)} · {payment.status}</small><small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}</small></div>
+          <div><strong>{compactNumber(payment.amount)} {payment.currency}</strong><small>{paymentProviderLabel(payment)} · {dateTime(payment.created_at)} · {payment.status}</small><small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}</small></div>
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {payment.payment_url && !TERMINAL.has(payment.status) ? <button type="button" onClick={() => { if (!openPaymentLink(payment.payment_url || "")) setError("Не удалось открыть платёжную ссылку"); }}>Оплатить</button> : null}
             {!TERMINAL.has(payment.status) ? <button type="button" disabled={busy === payment.id} onClick={() => void reconcile(payment)}>{busy === payment.id ? "…" : "Проверить статус"}</button> : <strong>{payment.status === "succeeded" ? "✓" : payment.status}</strong>}
