@@ -28,7 +28,7 @@ def test_admin_toolbar_reserves_space_above_bottom_navigation() -> None:
     responsive = RESPONSIVE.read_text(encoding="utf-8")
     moderation = MODERATION.read_text(encoding="utf-8")
     assert 'root.style.setProperty("--feed-admin-clearance", "58px")' in moderation
-    assert "bottom:calc(76px + var(--tg-safe-bottom, 0px))" in moderation
+    assert "bottom:calc(88px + var(--tg-safe-bottom, 0px))" in moderation
     assert "var(--feed-admin-clearance, 0px)" in responsive
     assert ".tiktok-feed-meta" in responsive
     assert ".tiktok-feed-rail" in responsive
