@@ -14,7 +14,7 @@ def test_cryptobot_is_primary_crypto_checkout_while_2328_remains_available() -> 
     assert "packages = await CryptoBotPaymentService.provider_packages()" in api_source
     assert "payment = await CryptoBotPaymentService.create(" in api_source
     assert '@router.post("/crypto/{payment_id}/reconcile")' in api_source
-    assert "payment.provider != CryptoBotPaymentService.PROVIDER" in api_source
+    assert "{CryptoBotPaymentService.PROVIDER, Payment2328Service.PROVIDER}" in api_source
 
     assert '@router.get("/crypto/2328/packages")' in api_source
     assert '@router.post("/crypto/2328/checkout"' in api_source
