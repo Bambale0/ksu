@@ -75,8 +75,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")
-          deadline=$((SECONDS + 900))
+          required=(
+            "CI"
+            "Admin Console"
+            "Batch Generation"
+            "Mini App Playwright E2E"
+            "ROXY E2E"
+            "ROXY Release Gate"
+          )
+          deadline=$((SECONDS + 1200))
 
           api_header=(
             -H "Authorization: Bearer ${GH_TOKEN}"
@@ -212,6 +219,9 @@ jobs:
             media-worker
             prompt-tool-worker
             payment-worker
+            notification-worker
+            admin-support-worker
+            admin-campaign-worker
             creator-partnership-worker
           )
           runtime_services=(
@@ -268,15 +278,20 @@ jobs:
           docker compose run --rm app alembic upgrade head </dev/null
           docker compose up -d --remove-orphans "${runtime_services[@]}" </dev/null
 
-          backup_worker_running=0
-          for _ in $(seq 1 30); do
-            if docker compose ps --status running --services | grep -Fxq backup-worker; then
-              backup_worker_running=1
-              break
+          for service in "${runtime_services[@]}"; do
+            running=0
+            for _ in $(seq 1 30); do
+              if docker compose ps --status running --services | grep -Fxq "${service}"; then
+                running=1
+                break
+              fi
+              sleep 2
+            done
+            if [[ "${running}" -ne 1 ]]; then
+              echo "Required production service is not running: ${service}" >&2
+              exit 1
             fi
-            sleep 2
           done
-          test "${backup_worker_running}" -eq 1
 
           app_port="$(docker compose port app 8000 | awk -F: 'END {print $NF}')"
           test -n "${app_port}"
@@ -313,13 +328,10 @@ jobs:
             exit 1
           fi
 
-          # Existing saved refs and public/profile rows may still point at
-          # provider URLs from releases before the durable media contracts.
-          # Localize them after health is established, matching tanyapi.
           docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
           docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; reference/feed static backfills completed; backup-worker is running."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; all runtime services are running; reference/feed static backfills completed."
           docker compose ps
           trap - ERR
           REMOTE
@@ -338,9 +350,9 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
-            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`"
+            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`, \`ROXY E2E\`, \`ROXY Release Gate\`"
             echo "- pre-deploy PostgreSQL archive validation: required"
-            echo "- backup-worker running check: required"
+            echo "- every production runtime service running check: required"
             echo "- reference static backfill after health gate: required"
             echo "- feed static backfill after health gate: required"
             echo "- Mini App SHA verification: required"
