@@ -3,18 +3,21 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.core.config import settings
 from app.db.admin_models import AdminTrend
 from app.db.models import AdminAccount
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
+from app.services.feed_links import mini_app_deep_link, trend_payload
 from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
@@ -309,6 +312,38 @@ async def get_trend(
         return await _customer_price(session, user_id=user.id, item=item)
     except Exception as exc:
         raise _domain_error(exc) from exc
+
+
+@router.post("/{trend_id}/share")
+async def share_trend(
+    trend_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, str]:
+    """Return a canonical Telegram share link that opens this exact public trend."""
+
+    try:
+        item = await TrendService.get_public(session, trend_id=trend_id)
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+    title = str(item.get("title") if isinstance(item, dict) else getattr(item, "title", "Тренд"))
+    payload = trend_payload(trend_id)
+    base = str(settings.public_base_url or "").strip().rstrip("/")
+    fallback = f"{base}/mini-app/trend/?id={trend_id}" if base else None
+    link = mini_app_deep_link(payload, fallback_url=fallback)
+    if not link:
+        raise HTTPException(status_code=503, detail="Public Mini App link is not configured")
+
+    share_text = f"Попробуй тренд «{title}» в ROXY ✨"
+    share_url = f"https://t.me/share/url?{urlencode({'url': link, 'text': share_text})}"
+    return {
+        "id": str(trend_id),
+        "link": link,
+        "copy_link": link,
+        "share_text": share_text,
+        "share_url": share_url,
+    }
 
 
 @router.post("/{trend_id}/run", status_code=status.HTTP_202_ACCEPTED)
