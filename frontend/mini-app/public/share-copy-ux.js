@@ -163,21 +163,31 @@
     document.getElementById(ROOT_ID)?.remove();
   };
 
+  const shareTitle = (targetLink) => {
+    try {
+      const url = new URL(String(targetLink || ""), window.location.href);
+      const payload = String(url.searchParams.get("startapp") || "").trim();
+      if (/^trend_[0-9a-f-]{36}$/i.test(payload)) return "Поделиться трендом";
+    } catch {}
+    return "Поделиться работой";
+  };
+
   const showSheet = (targetLink, continueTelegramShare) => {
     closeSheet();
     ensureStyle();
 
+    const title = shareTitle(targetLink);
     const root = document.createElement("div");
     root.id = ROOT_ID;
     root.setAttribute("role", "dialog");
     root.setAttribute("aria-modal", "true");
-    root.setAttribute("aria-label", "Поделиться работой");
+    root.setAttribute("aria-label", title);
     root.innerHTML = `
       <button class="roxy-share-backdrop" type="button" aria-label="Закрыть"></button>
       <section class="roxy-share-sheet">
         <div class="roxy-share-handle"></div>
         <div class="roxy-share-head">
-          <h2 class="roxy-share-title">Поделиться работой</h2>
+          <h2 class="roxy-share-title">${title}</h2>
           <button class="roxy-share-close" type="button" aria-label="Закрыть">×</button>
         </div>
         <div class="roxy-share-actions">
