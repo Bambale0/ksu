@@ -53,10 +53,11 @@ async def test_cryptobot_checkout_reuses_existing_service_and_is_idempotent(
                 "description": description,
             }
         )
+        invoice_id = random.randint(100_000_000, 999_999_999)
         return CreatedPayment(
-            external_id="123456",
+            external_id=str(invoice_id),
             payment_url="https://t.me/CryptoBot?start=invoice-test",
-            raw={"ok": True, "result": {"invoice_id": 123456}},
+            raw={"ok": True, "result": {"invoice_id": invoice_id}},
         )
 
     async def fake_aclose(self: CryptoPayClient) -> None:
