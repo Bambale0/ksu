@@ -16,6 +16,7 @@ import type {
   ReferralInvitation,
   ReferralReward,
   TrendItem,
+  TrendShare,
 } from "./types";
 
 declare global {
@@ -196,6 +197,7 @@ export const api = {
   }),
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
+  shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
   runTrend: (id: string, referenceUrls: string[] = []) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({ reference_urls: referenceUrls }),
