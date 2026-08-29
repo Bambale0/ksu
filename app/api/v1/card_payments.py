@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Payment
-from app.providers.payments import PaymentProviderError
+from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
@@ -110,6 +110,8 @@ async def checkout(
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PaymentProviderValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PaymentProviderError as exc:
         raise HTTPException(

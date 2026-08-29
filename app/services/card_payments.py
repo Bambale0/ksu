@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.db.models import Payment, WalletTransaction
 from app.db.payment_models import PaymentRequest
 from app.providers.card_checkout import CardCheckoutClient
-from app.providers.payments import PaymentProviderError
+from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import PaymentIdempotencyConflict, PaymentService, UnknownPaymentPackageError
@@ -504,6 +504,21 @@ class CardPaymentService:
                 ),
                 payment_provider=route,
             )
+        except PaymentProviderValidationError as exc:
+            payment = await session.get(Payment, payment.id)
+            request_row = await session.get(PaymentRequest, request_row.id)
+            if payment is not None:
+                payment.status = "failed"
+                payment.payload = {
+                    **payment.payload,
+                    "create_error": str(exc),
+                    "provider_error_type": "validation",
+                }
+            if request_row is not None:
+                request_row.status = "failed"
+                request_row.last_error = str(exc)[:4000]
+            await session.commit()
+            raise
         except Exception as exc:
             payment = await session.get(Payment, payment.id)
             request_row = await session.get(PaymentRequest, request_row.id)
