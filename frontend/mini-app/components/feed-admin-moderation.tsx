@@ -15,7 +15,7 @@ function key(prefix: string): string {
 function currentFeedCard(): string {
   const viewportCenter = window.innerHeight / 2;
   let winner: { id: string; distance: number } | null = null;
-  for (const card of Array.from(document.querySelectorAll<HTMLElement>>(".tiktok-feed-card[data-feed-id]"))) {
+  for (const card of Array.from(document.querySelectorAll<HTMLElement>(".tiktok-feed-card[data-feed-id]"))) {
     const rect = card.getBoundingClientRect();
     if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
     const center = rect.top + rect.height / 2;
