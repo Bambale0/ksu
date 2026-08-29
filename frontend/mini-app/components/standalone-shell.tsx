@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
+import { consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
 function compact(value: unknown): string {
   const number = Number(value || 0);
@@ -14,11 +14,28 @@ function compact(value: unknown): string {
 
 function returnFromStandalone() {
   haptic("light");
-  if (window.history.length > 1 && document.referrer.includes(window.location.host)) {
-    window.history.back();
+  if (typeof window === "undefined") return;
+
+  const returnTo = consumeMiniAppReturnLocation();
+  if (!returnTo) {
+    window.location.replace("/mini-app/?route=home");
     return;
   }
-  window.location.assign("/mini-app/?route=catalog");
+
+  if (window.history.length <= 1) {
+    window.location.replace(returnTo);
+    return;
+  }
+
+  const standaloneUrl = window.location.href;
+  let fallback = window.setTimeout(() => {
+    if (window.location.href === standaloneUrl) window.location.replace(returnTo);
+  }, 350);
+  window.addEventListener("pagehide", () => {
+    window.clearTimeout(fallback);
+    fallback = 0;
+  }, { once: true });
+  window.history.back();
 }
 
 export function StandaloneShell({

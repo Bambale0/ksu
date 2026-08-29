@@ -47,10 +47,192 @@ declare global {
 const INITIAL_HASH_KEY = "__roxy_initial_hash";
 const INITIAL_SEARCH_KEY = "__roxy_initial_search";
 const URL_START_PARAM_NAMES = ["tgWebAppStartParam", "start_payload", "startapp"];
+const MINI_APP_RETURN_KEY = "__roxy_standalone_return_v1";
+const MAIN_ROUTES = new Set(["home", "feed", "catalog", "create", "history", "profile", "partners"]);
+const managedTelegramApps = new WeakSet<object>();
+let returnTrackerInstalled = false;
+
+type RoxyHistoryState = Record<string, unknown> & {
+  roxyRoute?: string;
+  roxyRootEntry?: boolean;
+};
+
+function isMainMiniAppPath(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.replace(/\/+$/, "") === "/mini-app";
+}
+
+function currentMainRoute(): string {
+  if (typeof window === "undefined") return "home";
+  const route = String(new URL(window.location.href).searchParams.get("route") || "home");
+  return MAIN_ROUTES.has(route) ? route : "home";
+}
+
+function historyState(): RoxyHistoryState {
+  if (typeof window === "undefined") return {};
+  const value = window.history.state;
+  return value && typeof value === "object" ? { ...(value as Record<string, unknown>) } : {};
+}
+
+function stampMiniAppRootEntry(): void {
+  if (!isMainMiniAppPath()) return;
+  const state = historyState();
+  if (state.roxyRootEntry === true || typeof state.roxyRoute === "string") return;
+  const next: RoxyHistoryState = { ...state, roxyRoute: currentMainRoute(), roxyRootEntry: true };
+  window.history.replaceState(next, "", window.location.href);
+}
+
+function rememberMiniAppReturnLocation(): void {
+  if (!isMainMiniAppPath()) return;
+  try {
+    window.sessionStorage.setItem(
+      MINI_APP_RETURN_KEY,
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    );
+  } catch {
+    // sessionStorage can be unavailable in restrictive WebViews.
+  }
+}
+
+function installMiniAppReturnTracker(): void {
+  if (typeof window === "undefined" || returnTrackerInstalled) return;
+  returnTrackerInstalled = true;
+  const remember = () => rememberMiniAppReturnLocation();
+  window.addEventListener("pagehide", remember);
+  window.addEventListener("popstate", remember);
+  remember();
+}
+
+export function consumeMiniAppReturnLocation(): string | null {
+  if (typeof window === "undefined") return null;
+  let raw = "";
+  try {
+    raw = String(window.sessionStorage.getItem(MINI_APP_RETURN_KEY) || "").trim();
+    window.sessionStorage.removeItem(MINI_APP_RETURN_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  try {
+    const target = new URL(raw, window.location.origin);
+    if (target.origin !== window.location.origin) return null;
+    if (target.pathname.replace(/\/+$/, "") !== "/mini-app") return null;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function hasTransientCustomerLayer(): boolean {
+  if (typeof document === "undefined") return false;
+  return Boolean(document.querySelector([
+    '[role="dialog"]',
+    ".overlay",
+    ".sheet-overlay",
+    ".sheet-backdrop",
+    ".bottom-sheet",
+    ".preview-card",
+    ".tiktok-sheet-layer",
+  ].join(",")));
+}
+
+function isCustomerMainSurface(): boolean {
+  return isMainMiniAppPath()
+    && typeof document !== "undefined"
+    && Boolean(document.querySelector(".roxy-app .bottom-nav"));
+}
+
+function replaceRootRouteWithHome(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("route", "home");
+  const next: RoxyHistoryState = { ...historyState(), roxyRoute: "home", roxyRootEntry: true };
+  window.history.replaceState(next, "", url);
+  try {
+    window.dispatchEvent(new PopStateEvent("popstate", { state: next }));
+  } catch {
+    window.dispatchEvent(new Event("popstate"));
+  }
+}
+
+function handleCustomerBack(tg: TelegramWebApp): boolean {
+  if (!isCustomerMainSurface() || hasTransientCustomerLayer()) return false;
+
+  rememberMiniAppReturnLocation();
+  const route = currentMainRoute();
+  const state = historyState();
+
+  if (state.roxyRootEntry === true) {
+    if (route === "home") {
+      tg.close?.();
+      return true;
+    }
+    replaceRootRouteWithHome();
+    return true;
+  }
+
+  if (typeof state.roxyRoute === "string") {
+    window.history.back();
+    return true;
+  }
+
+  if (route === "home") {
+    tg.close?.();
+    return true;
+  }
+
+  replaceRootRouteWithHome();
+  return true;
+}
+
+function installManagedBackButton(tg: TelegramWebApp): void {
+  const raw = tg.BackButton;
+  if (!raw || managedTelegramApps.has(tg as object)) return;
+
+  const rawShow = raw.show?.bind(raw);
+  const rawHide = raw.hide?.bind(raw);
+  const rawOnClick = raw.onClick?.bind(raw);
+  const rawOffClick = raw.offClick?.bind(raw);
+  const adapters = new Map<() => void, () => void>();
+  const managed = Object.create(raw) as BackButton;
+
+  managed.show = () => {
+    rememberMiniAppReturnLocation();
+    rawShow?.();
+  };
+  managed.hide = () => {
+    rememberMiniAppReturnLocation();
+    if (isMainMiniAppPath()) rawShow?.();
+    else rawHide?.();
+  };
+  managed.onClick = (callback) => {
+    const previous = adapters.get(callback);
+    if (previous) rawOffClick?.(previous);
+    const adapter = () => {
+      if (!handleCustomerBack(tg)) callback();
+    };
+    adapters.set(callback, adapter);
+    rawOnClick?.(adapter);
+  };
+  managed.offClick = (callback) => {
+    const adapter = adapters.get(callback);
+    if (!adapter) return;
+    rawOffClick?.(adapter);
+    adapters.delete(callback);
+  };
+
+  try {
+    tg.BackButton = managed;
+    managedTelegramApps.add(tg as object);
+  } catch {
+    // Fall back to the SDK object unchanged on clients with immutable properties.
+  }
+}
 
 export function telegram(): TelegramWebApp | null {
   if (typeof window === "undefined") return null;
-  return window.Telegram?.WebApp ?? null;
+  const tg = window.Telegram?.WebApp ?? null;
+  if (tg) installManagedBackButton(tg);
+  return tg;
 }
 
 function paramsFromRaw(raw: string): URLSearchParams {
@@ -156,10 +338,12 @@ export function initTelegram(): TelegramWebApp | null {
   const tg = telegram();
   if (!tg) return null;
 
-  // Telegram's documented root-screen contract is BackButton hidden: the client
-  // then owns the WebView close affordance. Always reset to that baseline first
-  // so a Back button shown by a previously mounted nested screen cannot leak into
-  // ROXY's main menu. Nested screens explicitly opt back in with BackButton.show().
+  stampMiniAppRootEntry();
+  installMiniAppReturnTracker();
+
+  // Reset native navigation to the current screen baseline. On the customer
+  // Mini App path the managed BackButton remains visible so the user can always
+  // walk back through ROXY and close the WebView at the root screen.
   try {
     tg.BackButton?.hide?.();
   } catch {
