@@ -54,6 +54,8 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     post = (root / "frontend/mini-app/components/feed-startapp-app.tsx").read_text(encoding="utf-8")
     social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     types = (root / "frontend/mini-app/lib/types.ts").read_text(encoding="utf-8")
+    trend_page = (root / "frontend/mini-app/app/trend/page.tsx").read_text(encoding="utf-8")
+    api = (root / "frontend/mini-app/lib/api.ts").read_text(encoding="utf-8")
 
     # Launch-param parsing is centralized so entry routing and API attribution
     # consume the same tanyapi-style recovery order instead of drifting apart.
@@ -68,6 +70,9 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert "remix_" in entry
     assert "posts_" in entry
     assert "profile_" in entry
+    assert "trend_" in entry
+    assert "TrendStartApp" in entry
+    assert "/mini-app/trend/?id=" in entry
     assert "ProfileStartApp" in entry
     assert 'intent={target.kind}' in entry
 
@@ -86,3 +91,9 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert "stats?.profile_link" in social
     assert "Поделиться профилем" in social
     assert "Профиль автора" in social
+
+    assert "export type TrendShare" in types
+    assert "shareTrend:" in api
+    assert "/share`" in api
+    assert "Поделиться трендом" in trend_page
+    assert "openTelegramShare(result.share_url)" in trend_page
