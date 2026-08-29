@@ -21,6 +21,10 @@ export function FeedResponsiveLayout() {
           #050507;
       }
 
+      .tiktok-feed-media > video {
+        background: transparent;
+      }
+
       .tiktok-feed-media > video,
       .tiktok-feed-media > img.tiktok-feed-main-image {
         object-position: center 34%;
