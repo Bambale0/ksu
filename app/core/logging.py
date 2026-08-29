@@ -9,8 +9,10 @@ from typing import Any
 
 
 DEFAULT_LOG_FILE = Path("logs/bot.log")
+DEFAULT_ERROR_LOG_FILE = Path("logs/errors.log")
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_BACKUP_COUNT = 5
+SAFE_EXTRA_FIELDS = ("http_method", "http_route", "http_status", "duration_ms")
 
 
 class ObservabilityFilter(logging.Filter):
@@ -43,9 +45,26 @@ class JsonFormatter(logging.Formatter):
             "trace_id": str(getattr(record, "trace_id", "") or ""),
             "span_id": str(getattr(record, "span_id", "") or ""),
         }
+        for field in SAFE_EXTRA_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                payload[field] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+class ErrorLogFilter(logging.Filter):
+    """Route only actionable failures into the dedicated error log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.ERROR:
+            return True
+        status = getattr(record, "http_status", None)
+        try:
+            return int(status) >= 500
+        except (TypeError, ValueError):
+            return False
 
 
 def _stream_handler(formatter: logging.Formatter) -> logging.Handler:
@@ -58,10 +77,11 @@ def _stream_handler(formatter: logging.Formatter) -> logging.Handler:
 def configure_logging(
     log_file: str | Path = DEFAULT_LOG_FILE,
     *,
+    error_log_file: str | Path | None = DEFAULT_ERROR_LOG_FILE,
     max_bytes: int = DEFAULT_MAX_BYTES,
     backup_count: int = DEFAULT_BACKUP_COUNT,
 ) -> None:
-    """Configure structured stdout logs plus a rotating ``logs/bot.log`` file."""
+    """Configure structured stdout logs plus rotating application log files."""
 
     from app.core.config import settings
 
@@ -94,3 +114,17 @@ def configure_logging(
 
     root.addHandler(stream_handler)
     root.addHandler(file_handler)
+    if error_log_file is not None:
+        error_log_path = Path(error_log_file)
+        error_log_path.parent.mkdir(parents=True, exist_ok=True)
+        error_file_handler = RotatingFileHandler(
+            error_log_path,
+            maxBytes=max(1, int(max_bytes)),
+            backupCount=max(1, int(backup_count)),
+            encoding="utf-8",
+            delay=True,
+        )
+        error_file_handler.addFilter(ObservabilityFilter())
+        error_file_handler.addFilter(ErrorLogFilter())
+        error_file_handler.setFormatter(formatter)
+        root.addHandler(error_file_handler)

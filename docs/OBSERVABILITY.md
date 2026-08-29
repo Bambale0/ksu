@@ -169,6 +169,13 @@ LOG_LEVEL=INFO
 JSON_LOGS=true
 ```
 
+The app writes structured logs to stdout and to rotating local files:
+
+```text
+logs/bot.log       all application logs at LOG_LEVEL and above
+logs/errors.log    ERROR, CRITICAL, Traceback/exception records and HTTP status >= 500
+```
+
 Each log record contains:
 
 ```text
@@ -179,6 +186,15 @@ message
 request_id
 trace_id
 span_id
+```
+
+HTTP request records also include safe structured fields:
+
+```text
+http_method
+http_route
+http_status
+duration_ms
 ```
 
 `X-Request-ID` is preserved when it matches the bounded safe format; otherwise the API generates a UUID. The same value is placed in the response and logging context.

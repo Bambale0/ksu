@@ -311,6 +311,15 @@ YOOKASSA_SECRET_KEY=...
 PAYMENT_RETURN_URL=https://app.example.com/payment-result
 ```
 
+Failure log checks:
+
+```bash
+tail -n 200 logs/errors.log
+docker logs --since 1h ksu-app-1 2>&1 | grep -E 'ERROR|CRITICAL|Traceback|status=5[0-9][0-9]'
+docker logs --since 1h ksu-generation-worker-1 2>&1 | grep -E 'ERROR|CRITICAL|Traceback|status=5[0-9][0-9]'
+docker logs --since 1h ksu-payment-worker-1 2>&1 | grep -E 'ERROR|CRITICAL|Traceback|status=5[0-9][0-9]'
+```
+
 Primary hosted-card recovery contract:
 
 - invoice creation uses the current hosted-checkout create route;
