@@ -121,7 +121,7 @@ test('partner wallet renders real RUB accounting and states that ROX is not with
   await expect(page.getByText('125 ₽')).toBeVisible();
   await expect(page.getByText('15 ₽')).toBeVisible();
   await expect(page.getByText('180 ₽')).toBeVisible();
-  await expect(page.getByText(/ROX .* на карту не выводится/)).toBeVisible();
+  await expect(page.locator('.tool-panel .muted').filter({ hasText: 'ROX обратно в деньги не выводятся' })).toBeVisible();
   await expect(page.getByText('Минимальная сумма: 10 ₽', { exact: false })).toBeVisible();
   await expect(page.getByText('10000 ROX')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
@@ -166,5 +166,5 @@ test('partner wallet surfaces a conflicting transfer retry instead of hiding it'
   await page.getByLabel('Сумма, ₽').first().fill('25');
   await page.getByRole('button', { name: 'Перевести в ROX' }).click();
 
-  await expect(page.getByRole('alert')).toContainText('Idempotency key was already used');
+  await expect(page.locator('.action-error[role="alert"]')).toContainText('Idempotency key was already used');
 });
