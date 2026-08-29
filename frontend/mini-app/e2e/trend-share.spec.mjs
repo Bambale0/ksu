@@ -45,6 +45,7 @@ async function mockTrendApi(page) {
         model: { id: 'nano-banana-pro', title: 'Nano Banana Pro' },
         cost_rox: '25.00',
         admin_free: false,
+        usage_count: 128,
         reference_requirements: { min: 0, max: 0 },
       });
     }
@@ -61,13 +62,14 @@ async function mockTrendApi(page) {
   });
 }
 
-test('trend detail offers copy and native Telegram sharing', async ({ page }) => {
+test('trend detail shows usage count and offers native Telegram sharing', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installTelegram(page);
   await mockTrendApi(page);
 
   await page.goto(`/mini-app/trend/?id=${TREND_ID}`);
   await expect(page.getByRole('heading', { name: 'Плёночный портрет' })).toBeVisible();
+  await expect(page.getByText('🔥 128 запусков', { exact: true })).toBeVisible();
   const shareRequest = page.waitForRequest((request) =>
     new URL(request.url()).pathname === `/api/v1/trends/${TREND_ID}/share`
       && request.method() === 'POST'
