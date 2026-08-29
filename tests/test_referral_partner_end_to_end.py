@@ -440,6 +440,14 @@ async def test_refund_invalidates_pending_payout_and_admin_analytics_are_net(
         partner = await _user(session, "Refunded partner")
         buyer = await _user(session, "Refunded buyer")
         session.add(admin)
+        await session.flush()
+
+        baseline = await AdminPartnerService.analytics(session, admin=admin)
+        baseline_reversed = next(
+            (item for item in baseline["rewards"] if item["status"] == "reversed"),
+            {"gross_amount": "0", "reversed_amount": "0", "amount": "0"},
+        )
+
         reward = await _seed_referral_reward(session, partner=partner, buyer=buyer)
 
         payment = Payment(
@@ -504,9 +512,15 @@ async def test_refund_invalidates_pending_payout_and_admin_analytics_are_net(
         assert admin is not None
         analytics = await AdminPartnerService.analytics(session, admin=admin)
         reversed_row = next(item for item in analytics["rewards"] if item["status"] == "reversed")
-        assert Decimal(reversed_row["gross_amount"]) == Decimal("30.00")
-        assert Decimal(reversed_row["reversed_amount"]) == Decimal("30.00")
-        assert Decimal(reversed_row["amount"]) == Decimal("0.00")
+        assert Decimal(reversed_row["gross_amount"]) - Decimal(
+            baseline_reversed["gross_amount"]
+        ) == Decimal("30.00")
+        assert Decimal(reversed_row["reversed_amount"]) - Decimal(
+            baseline_reversed["reversed_amount"]
+        ) == Decimal("30.00")
+        assert Decimal(reversed_row["amount"]) - Decimal(baseline_reversed["amount"]) == Decimal(
+            "0.00"
+        )
 
 
 @pytest.mark.asyncio
