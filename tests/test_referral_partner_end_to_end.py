@@ -55,13 +55,25 @@ async def _seed_referral_reward(
     basis: Decimal = Decimal("100"),
 ) -> ReferralReward:
     session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+    payment = Payment(
+        user_id=buyer.id,
+        provider="partner-e2e",
+        external_id=f"partner-e2e-payment-{uuid.uuid4()}",
+        amount=basis,
+        currency="RUB",
+        rox_amount=basis,
+        status="succeeded",
+        payload={},
+    )
+    session.add(payment)
+    await session.flush()
     source_tx = await WalletService.credit(
         session,
         user_id=buyer.id,
         amount=basis,
         kind="payment",
-        reference_type="test_payment",
-        reference_id=str(uuid.uuid4()),
+        reference_type="payment",
+        reference_id=str(payment.id),
         idempotency_key=f"partner-e2e-source:{uuid.uuid4()}",
     )
     await ReferralService.accrue_from_payment(
@@ -79,6 +91,79 @@ async def _seed_referral_reward(
     )
     assert reward is not None
     return reward
+
+
+@pytest.mark.asyncio
+async def test_rox_wallet_balance_is_never_withdrawable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "partner_min_withdrawal_rub", Decimal("1"))
+
+    async with SessionFactory() as session:
+        partner = await _user(session, "ROX only partner")
+        await WalletService.credit(
+            session,
+            user_id=partner.id,
+            amount=Decimal("1000"),
+            kind="bonus",
+            reference_type="promo",
+            reference_id=str(uuid.uuid4()),
+            idempotency_key=f"rox-only:{uuid.uuid4()}",
+        )
+        await session.commit()
+
+        wallet = await session.get(Wallet, partner.id)
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal("1000.00")
+        assert (await PartnerService.accounting(session, partner.id))["available"] == Decimal("0")
+
+        with pytest.raises(PartnerInsufficientFunds):
+            await PartnerService.create_withdrawal(
+                session,
+                user_id=partner.id,
+                amount=Decimal("1"),
+                requisites="SBP +79990000000",
+            )
+
+
+@pytest.mark.asyncio
+async def test_bonus_rox_cannot_become_referral_cash_even_if_accrual_is_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+
+    async with SessionFactory() as session:
+        partner = await _user(session, "Partner")
+        buyer = await _user(session, "Bonus buyer")
+        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+        bonus_tx = await WalletService.credit(
+            session,
+            user_id=buyer.id,
+            amount=Decimal("1000"),
+            kind="bonus",
+            reference_type="promo",
+            reference_id=str(uuid.uuid4()),
+            idempotency_key=f"bonus-only:{uuid.uuid4()}",
+        )
+
+        # A future caller bug must not be able to turn internal ROX into cash.
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=bonus_tx.id,
+            payment_amount=Decimal("1000"),
+        )
+        await session.commit()
+
+        rewards = list(
+            (
+                await session.scalars(
+                    select(ReferralReward).where(ReferralReward.partner_user_id == partner.id)
+                )
+            ).all()
+        )
+        assert rewards == []
+        assert (await PartnerService.accounting(session, partner.id))["available"] == Decimal("0")
 
 
 @pytest.mark.asyncio
@@ -168,9 +253,11 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
                 )
             ).all()
         )
+        # Referral cash is based on the actual 326.10 RUB payment, never on the
+        # 300 purchased ROX or the extra 50 gift ROX credited to the wallet.
         assert [(item.level, Decimal(item.amount)) for item in rewards] == [
-            (1, Decimal("90.00")),
-            (2, Decimal("15.00")),
+            (1, Decimal("97.83")),
+            (2, Decimal("16.31")),
         ]
 
         # Provider retry must not duplicate either reward.
@@ -201,8 +288,8 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
         )
         first_accounting = await PartnerService.accounting(session, first_line.id)
         second_accounting = await PartnerService.accounting(session, second_line.id)
-        assert first_accounting["total_earned"] == Decimal("45.00")
-        assert second_accounting["total_earned"] == Decimal("7.50")
+        assert first_accounting["total_earned"] == Decimal("48.91")
+        assert second_accounting["total_earned"] == Decimal("8.15")
 
         # Exact replay of the refund is idempotent.
         await PaymentService.apply_reversal(
@@ -215,7 +302,7 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
             provider_payload={"refunded": "163.05"},
         )
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
-            "45.00"
+            "48.91"
         )
 
         await PaymentService.apply_reversal(
