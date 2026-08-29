@@ -216,6 +216,10 @@ class Settings(BaseSettings):
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
 
+    payment_2328_project_uuid: str = ""
+    payment_2328_api_key: str = ""
+    payment_2328_base_url: str = "https://api.2328.io/api"
+
     tbank_terminal_key: str = ""
     tbank_password: str = ""
     tbank_base_url: str = "https://securepay.tinkoff.ru"

@@ -14,6 +14,7 @@ from app.api.card_webhooks import router as card_webhook_router
 from app.api.health import router as health_router
 from app.api.internal_admin import router as internal_admin_router
 from app.api.metrics import router as metrics_router
+from app.api.payment_2328_webhooks import router as payment_2328_webhook_router
 from app.api.router import api_router
 from app.api.v1.batches import router as batch_router
 from app.api.webhooks import router as webhook_router
@@ -138,6 +139,7 @@ app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(webhook_router)
 app.include_router(card_webhook_router)
+app.include_router(payment_2328_webhook_router)
 app.include_router(internal_admin_router)
 app.include_router(api_router)
 app.include_router(batch_router, prefix="/api/v1")

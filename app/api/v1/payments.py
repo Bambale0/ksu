@@ -10,7 +10,7 @@ from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.credits import InternalCreditService
-from app.services.crypto_payments import CryptoBotPaymentService
+from app.services.payment_2328 import Payment2328Service
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import (
     PaymentIdempotencyConflict,
@@ -21,14 +21,25 @@ from app.services.payments import (
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
+LEGACY_CRYPTOBOT_PROVIDER = "cryptobot"
+LEGACY_CRYPTOBOT_LABEL = "Криптовалюта · старый счёт"
+
 
 class CreatePaymentRequest(BaseModel):
-    provider: Literal["cryptobot", "tbank", "yookassa"]
+    provider: Literal["2328", "tbank", "yookassa"]
     package_id: str = Field(min_length=1, max_length=64)
 
 
 class CryptoCheckoutRequest(BaseModel):
     package_id: str = Field(min_length=1, max_length=64)
+
+
+def _payment_label(payment: Payment) -> str:
+    if payment.provider == Payment2328Service.PROVIDER:
+        return Payment2328Service.PUBLIC_LABEL
+    if payment.provider == LEGACY_CRYPTOBOT_PROVIDER:
+        return LEGACY_CRYPTOBOT_LABEL
+    return payment.provider
 
 
 def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
@@ -37,11 +48,7 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "id": str(payment.id),
         "status": payment.status,
         "provider": payment.provider,
-        "label": (
-            CryptoBotPaymentService.PUBLIC_LABEL
-            if payment.provider == "cryptobot"
-            else payment.provider
-        ),
+        "label": _payment_label(payment),
         "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
@@ -75,21 +82,19 @@ async def list_packages() -> dict[str, object]:
 
 @router.get("/crypto/packages")
 async def list_crypto_packages() -> dict[str, object]:
-    packages = await CryptoBotPaymentService.provider_packages()
+    packages = await Payment2328Service.provider_packages()
     return {
-        "provider": CryptoBotPaymentService.PROVIDER,
-        "label": CryptoBotPaymentService.PUBLIC_LABEL,
-        "configured": CryptoBotPaymentService.provider_configured(),
-        "currencies": [CryptoBotPaymentService.CURRENCY],
+        "provider": Payment2328Service.PROVIDER,
+        "label": Payment2328Service.PUBLIC_LABEL,
+        "configured": Payment2328Service.provider_configured(),
+        "currencies": [Payment2328Service.CURRENCY],
         "packages": {
             package_id: {
                 "credits": str(package.credits),
                 "bonus_credits": str(TopUpBonusService.bonus_for(package.credits)),
                 "total_credits": str(TopUpBonusService.total_for(package.credits)),
                 "prices": {
-                    CryptoBotPaymentService.CURRENCY: str(
-                        package.prices[CryptoBotPaymentService.CURRENCY]
-                    )
+                    Payment2328Service.CURRENCY: str(package.prices[Payment2328Service.CURRENCY])
                 },
             }
             for package_id, package in packages.items()
@@ -114,14 +119,14 @@ async def create_crypto_payment(
 
     await AbuseProtectionService.payment_rate(redis, user.id)
     try:
-        payment = await CryptoBotPaymentService.create(
+        payment = await Payment2328Service.create(
             session,
             user_id=user.id,
             package_id=payload.package_id,
             request_key=request_key,
         )
     except UnknownPaymentPackageError as exc:
-        raise HTTPException(status_code=404, detail="Этот пакет недоступен для CryptoBot") from exc
+        raise HTTPException(status_code=404, detail="Этот пакет недоступен для оплаты криптовалютой") from exc
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -129,7 +134,7 @@ async def create_crypto_payment(
     except PaymentProviderError as exc:
         raise HTTPException(
             status_code=502,
-            detail="Не удалось открыть CryptoBot. Попробуйте ещё раз позже.",
+            detail="Не удалось открыть оплату криптовалютой. Попробуйте ещё раз позже.",
         ) from exc
     return _payment_view(payment, request_key=request_key)
 
@@ -144,13 +149,19 @@ async def reconcile_crypto_payment(
     if (
         payment is None
         or payment.user_id != user.id
-        or payment.provider != CryptoBotPaymentService.PROVIDER
+        or payment.provider
+        not in {Payment2328Service.PROVIDER, LEGACY_CRYPTOBOT_PROVIDER}
     ):
         raise HTTPException(status_code=404, detail="Payment not found")
     try:
-        payment = await PaymentService.reconcile(session, payment_id=payment.id)
+        if payment.provider == Payment2328Service.PROVIDER:
+            payment = await Payment2328Service.reconcile(session, payment_id=payment.id)
+        else:
+            # Cutover safety: existing CryptoBot invoices remain read/reconcile-only.
+            # No public API or UI can create another legacy invoice.
+            payment = await PaymentService.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:
-        raise HTTPException(status_code=502, detail="Не удалось обновить статус CryptoBot") from exc
+        raise HTTPException(status_code=502, detail="Не удалось обновить статус оплаты") from exc
     return _payment_view(payment)
 
 
@@ -191,8 +202,8 @@ async def create_payment(
     await AbuseProtectionService.payment_rate(redis, user.id)
 
     try:
-        if payload.provider == "cryptobot":
-            payment = await CryptoBotPaymentService.create(
+        if payload.provider == "2328":
+            payment = await Payment2328Service.create(
                 session,
                 user_id=user.id,
                 package_id=payload.package_id,

@@ -10,6 +10,7 @@ from app.db.models import Payment
 from app.db.session import SessionFactory
 from app.services.admin_security import utcnow
 from app.services.card_payments import CardPaymentService
+from app.services.payment_2328 import Payment2328Service
 from app.services.payments import PaymentService
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,12 @@ class PaymentReconciliationService:
                         "Skipping card payment reconciliation because provider is not configured"
                     )
                     continue
+            elif provider == Payment2328Service.PROVIDER:
+                if not Payment2328Service.provider_configured():
+                    logger.debug(
+                        "Skipping 2328.io payment reconciliation because provider is not configured"
+                    )
+                    continue
             elif not PaymentService.provider_configured(str(provider)):
                 logger.debug(
                     "Skipping %s payment reconciliation because provider is not configured",
@@ -61,6 +68,8 @@ class PaymentReconciliationService:
                 try:
                     if provider == CardPaymentService.PROVIDER:
                         await CardPaymentService.reconcile(session, payment_id=payment_id)
+                    elif provider == Payment2328Service.PROVIDER:
+                        await Payment2328Service.reconcile(session, payment_id=payment_id)
                     else:
                         await PaymentService.reconcile(session, payment_id=payment_id)
                 except Exception:
