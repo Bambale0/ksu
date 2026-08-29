@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
+import { haptic, openTelegramShare } from "@/lib/telegram";
 import type { TrendItem } from "@/lib/types";
 
 function trendId(): string {
@@ -27,6 +28,7 @@ export default function TrendPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [running, setRunning] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [error, setError] = useState("");
 
@@ -73,6 +75,21 @@ export default function TrendPage() {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить референс");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const share = async () => {
+    if (!trend || sharing) return;
+    setSharing(true);
+    setError("");
+    haptic("light");
+    try {
+      const result = await api.shareTrend(trend.id);
+      openTelegramShare(result.share_url);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось поделиться трендом");
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -139,6 +156,9 @@ export default function TrendPage() {
             {error ? <div className="action-error" role="alert">{error}</div> : null}
             <button className="primary wide" type="button" disabled={!ready || uploading || running} onClick={() => void run()}>
               {running ? "Запускаю…" : trend.admin_free ? "Сгенерировать бесплатно" : `Сгенерировать · ${money(trend.cost_rox)} ROX`}
+            </button>
+            <button className="secondary wide" type="button" disabled={sharing} onClick={() => void share()}>
+              {sharing ? "Открываю Telegram…" : "Поделиться трендом"}
             </button>
           </div>
         </div>

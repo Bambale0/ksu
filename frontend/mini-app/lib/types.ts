@@ -204,6 +204,14 @@ export type TrendItem = {
   created_at?: string;
 };
 
+export type TrendShare = {
+  id: string;
+  link: string;
+  copy_link: string;
+  share_text: string;
+  share_url: string;
+};
+
 export type PromptToolId = "image_analysis" | "prompt_builder" | "video_prompt";
 
 export type PromptToolCatalogItem = {
