@@ -21,6 +21,10 @@ class PartnerWalletTransferInsufficientFunds(PartnerWalletTransferError):
     pass
 
 
+class PartnerWalletTransferIdempotencyConflict(PartnerWalletTransferError):
+    pass
+
+
 class PartnerWalletTransferService:
     @staticmethod
     async def transferred_total(session: AsyncSession, user_id: uuid.UUID) -> Decimal:
@@ -51,6 +55,13 @@ class PartnerWalletTransferService:
         if user is None:
             raise LookupError("User not found")
         return user
+
+    @staticmethod
+    def _validate_replay(existing: PartnerWalletTransfer, amount: Decimal) -> None:
+        if Decimal(existing.amount_rub) != amount:
+            raise PartnerWalletTransferIdempotencyConflict(
+                "Idempotency key was already used for another transfer amount"
+            )
 
     @classmethod
     async def assert_available(
@@ -85,6 +96,10 @@ class PartnerWalletTransferService:
         key = idempotency_key.strip()
         if not key:
             raise PartnerWalletTransferError("Idempotency key is required")
+        normalized = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if normalized <= 0:
+            raise PartnerWalletTransferError("Amount must be positive")
+
         existing = await session.scalar(
             select(PartnerWalletTransfer).where(
                 PartnerWalletTransfer.idempotency_key == key,
@@ -92,9 +107,9 @@ class PartnerWalletTransferService:
             )
         )
         if existing is not None:
+            cls._validate_replay(existing, normalized)
             return existing
 
-        normalized = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         await cls._lock_user(session, user_id)
 
         # Re-check after the per-user row lock. This makes retries safe even when two
@@ -106,6 +121,7 @@ class PartnerWalletTransferService:
             )
         )
         if existing is not None:
+            cls._validate_replay(existing, normalized)
             return existing
         await cls.assert_available(
             session,

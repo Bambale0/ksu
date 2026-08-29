@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, ReferralReward, WalletTransaction
+from app.db.models import Payment, ReferralRelation, ReferralReward, WalletTransaction
 from app.db.payment_models import ReferralRewardReversal
 
 
@@ -61,6 +61,60 @@ class ReferralService:
             "pending": Decimal(pending or 0),
         }
 
+    @staticmethod
+    async def _paid_rub_basis(
+        session: AsyncSession,
+        *,
+        source_user_id: uuid.UUID,
+        source_transaction_id: uuid.UUID,
+    ) -> Decimal | None:
+        """Return the authoritative withdrawable basis for a real paid order.
+
+        ROX are an internal, non-withdrawable currency. Referral cash may therefore
+        never be inferred from a wallet credit amount, including purchased, gift,
+        promo or admin ROX. The wallet transaction must point to a real Payment and
+        the commission basis comes from the money recorded on that Payment.
+
+        Partner accounting is RUB-denominated. Foreign-currency payments stay
+        non-withdrawable until a provider records an explicit RUB settlement basis;
+        silently treating USD/EUR numbers as RUB would create fake cash.
+        """
+
+        wallet_tx = await session.get(WalletTransaction, source_transaction_id)
+        if (
+            wallet_tx is None
+            or wallet_tx.user_id != source_user_id
+            or wallet_tx.kind != "payment"
+            or wallet_tx.reference_type != "payment"
+            or not wallet_tx.reference_id
+        ):
+            return None
+
+        try:
+            payment_id = uuid.UUID(str(wallet_tx.reference_id))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+        payment = await session.get(Payment, payment_id)
+        if payment is None or payment.user_id != source_user_id:
+            return None
+
+        currency = str(payment.currency or "").strip().upper()
+        if currency == "RUB":
+            basis = Decimal(payment.amount)
+        else:
+            payload = payment.payload if isinstance(payment.payload, dict) else {}
+            explicit_rub_basis = payload.get("referral_basis_rub")
+            if explicit_rub_basis in (None, ""):
+                return None
+            try:
+                basis = Decimal(str(explicit_rub_basis))
+            except Exception:
+                return None
+
+        basis = basis.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return basis if basis > 0 else None
+
     @classmethod
     async def accrue_from_payment(
         cls,
@@ -68,26 +122,24 @@ class ReferralService:
         *,
         source_user_id: uuid.UUID,
         source_transaction_id: uuid.UUID,
-        payment_amount: Decimal,
+        payment_amount: Decimal | None = None,
     ) -> None:
         first_relation = await session.get(ReferralRelation, source_user_id)
         if first_relation is None:
             return
 
-        # Referral income is denominated in withdrawable ROX/RUB. For a real
-        # successful top-up the wallet payment transaction records exactly how many
-        # public ROX were purchased, independent of provider currency. Since
-        # 1 ROX = 1 RUB this is the correct reward basis for RUB, USD, EUR and crypto
-        # checkouts alike. Fall back to payment_amount only for legacy/direct callers.
-        wallet_tx = await session.get(WalletTransaction, source_transaction_id)
-        reward_basis = Decimal(payment_amount)
-        if (
-            wallet_tx is not None
-            and wallet_tx.user_id == source_user_id
-            and wallet_tx.kind == "payment"
-            and Decimal(wallet_tx.amount) > 0
-        ):
-            reward_basis = Decimal(wallet_tx.amount)
+        # payment_amount is intentionally ignored and retained only for backwards
+        # compatibility with existing provider call sites. The authoritative basis
+        # is loaded from the Payment linked by the wallet transaction, so ROX can
+        # never become withdrawable cash because a caller passed the wrong number.
+        _ = payment_amount
+        reward_basis = await cls._paid_rub_basis(
+            session,
+            source_user_id=source_user_id,
+            source_transaction_id=source_transaction_id,
+        )
+        if reward_basis is None:
+            return
 
         await cls._create_reward(
             session,
