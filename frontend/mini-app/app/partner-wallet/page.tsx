@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { compactNumber, customerIdempotencyKey, customerRequest, dateTime } from "@/lib/customer-api";
@@ -27,6 +27,7 @@ export default function PartnerWalletPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const withdrawalKey = useRef<string | null>(null);
 
   const load = async () => {
     setError("");
@@ -45,6 +46,10 @@ export default function PartnerWalletPage() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const resetWithdrawalIntent = () => {
+    withdrawalKey.current = null;
+  };
 
   const transferToRox = async () => {
     const amount = Number(transferAmount);
@@ -66,12 +71,16 @@ export default function PartnerWalletPage() {
   const withdraw = async () => {
     const amount = Number(withdrawAmount);
     if (!(amount > 0) || !requisites.trim() || busy) return;
+    const requestKey = withdrawalKey.current ?? customerIdempotencyKey();
+    withdrawalKey.current = requestKey;
     setBusy(true); setError(""); setNotice("");
     try {
       await customerRequest<Withdrawal>("/api/v1/referrals/withdrawals", {
         method: "POST",
+        headers: { "Idempotency-Key": requestKey },
         body: JSON.stringify({ amount, requisites: requisites.trim() }),
       });
+      withdrawalKey.current = null;
       setWithdrawAmount(""); setRequisites("");
       setNotice("Заявка на выплату создана");
       await load();
@@ -112,8 +121,8 @@ export default function PartnerWalletPage() {
           <div className="section-title"><div><span className="kicker">Выплата</span><h2>Вывести деньги</h2></div></div>
           <p className="muted">Минимальная сумма: {compactNumber(stats?.minimum_withdrawal)} ₽. Укажите реквизиты так, как их должна увидеть поддержка выплат.</p>
           <div className="form-stack">
-            <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min={stats?.minimum_withdrawal || "0.01"} step="0.01" value={withdrawAmount} onChange={(event) => setWithdrawAmount(event.target.value)} /></label>
-            <label className="field"><span className="label">Реквизиты</span><textarea className="control textarea" maxLength={1000} value={requisites} onChange={(event) => setRequisites(event.target.value)} placeholder="Карта / СБП / другие согласованные реквизиты" /></label>
+            <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min={stats?.minimum_withdrawal || "0.01"} step="0.01" value={withdrawAmount} onChange={(event) => { resetWithdrawalIntent(); setWithdrawAmount(event.target.value); }} /></label>
+            <label className="field"><span className="label">Реквизиты</span><textarea className="control textarea" maxLength={1000} value={requisites} onChange={(event) => { resetWithdrawalIntent(); setRequisites(event.target.value); }} placeholder="Карта / СБП / другие согласованные реквизиты" /></label>
             <button className="primary wide" type="button" disabled={busy || !(Number(withdrawAmount) > 0) || !requisites.trim()} onClick={() => void withdraw()}>{busy ? "Создаю…" : "Создать заявку"}</button>
           </div>
         </div>
