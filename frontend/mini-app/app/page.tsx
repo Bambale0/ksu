@@ -8,6 +8,7 @@ import { FeedAdminModeration } from "@/components/feed-admin-moderation";
 import { FeedResponsiveLayout } from "@/components/feed-responsive-layout";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
+import { HistoryPromptCopyUx } from "@/components/history-prompt-copy-ux";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { LiveTrendRail } from "@/components/live-trend-rail";
@@ -35,6 +36,7 @@ export default function Page() {
       <UploadInputResetGuard />
       <PostPublishSharePrompt />
       <GlobalUxEnhancers />
+      <HistoryPromptCopyUx />
       <KlingMultishotGuard />
       <InlineTrendAdmin />
     </ReferenceMemoryProvider>
