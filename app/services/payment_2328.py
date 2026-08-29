@@ -233,6 +233,13 @@ class Payment2328Service:
             currency=str(provider_payload.get("currency") or ""),
         )
         provider_status = str(provider_payload.get("payment_status") or "").lower()
+        request_row = await session.scalar(
+            select(PaymentRequest).where(PaymentRequest.payment_id == payment.id)
+        )
+        if request_row is not None and request_row.status == "unknown":
+            request_row.status = "completed"
+            request_row.last_error = None
+
         if provider_status in SUCCESS_STATUSES:
             return await PaymentService.complete(
                 session,
@@ -255,12 +262,6 @@ class Payment2328Service:
                 **(payment.payload or {}),
                 "last_provider_state": provider_payload,
             }
-            request_row = await session.scalar(
-                select(PaymentRequest).where(PaymentRequest.payment_id == payment.id)
-            )
-            if request_row is not None and request_row.status == "unknown":
-                request_row.status = "completed"
-                request_row.last_error = None
             await session.commit()
         return payment
 
