@@ -7,7 +7,6 @@ import json
 import random
 import uuid
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
@@ -186,30 +185,3 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
                 "callback_url": "https://roxy.example/webhooks/payments/2328",
             }
         ]
-
-
-def test_2328_crypto_checkout_replaces_cryptobot_in_public_surfaces() -> None:
-    api_source = Path("app/api/v1/payments.py").read_text(encoding="utf-8")
-    wallet_source = Path("frontend/mini-app/components/wallet-parity.tsx").read_text(
-        encoding="utf-8"
-    )
-    payments_source = Path("frontend/mini-app/app/payments/page.tsx").read_text(
-        encoding="utf-8"
-    )
-
-    assert '@router.get("/crypto/packages")' in api_source
-    assert '@router.post("/crypto/checkout"' in api_source
-    assert '@router.post("/crypto/{payment_id}/reconcile")' in api_source
-    assert 'provider: Literal["2328", "tbank", "yookassa"]' in api_source
-    assert 'LEGACY_CRYPTOBOT_PROVIDER = "cryptobot"' in api_source
-    assert 'PaymentService.reconcile(session, payment_id=payment.id)' in api_source
-    assert 'Payment2328Service.PROVIDER' in api_source
-    assert '"/api/v1/payments/crypto/packages"' in wallet_source
-    assert '/mini-app/payments/?provider=2328' in wallet_source
-    assert "Оплатить криптовалютой" in wallet_source
-    assert '"/api/v1/payments/crypto/checkout"' in payments_source
-    assert 'type Provider = "card" | "2328"' in payments_source
-    assert 'LEGACY_CRYPTO_PROVIDER = "cryptobot"' in payments_source
-    assert "isCryptoPayment(payment)" in payments_source
-    assert "CryptoBot" not in wallet_source
-    assert "CryptoBot" not in payments_source

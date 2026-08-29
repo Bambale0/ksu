@@ -30,18 +30,25 @@ function ensureHost(sheet: HTMLElement): HTMLElement {
 export function WalletParity() {
   const [catalog, setCatalog] = useState<PackageCatalog | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
-  const [cryptoAvailable, setCryptoAvailable] = useState(false);
+  const [cryptoBotAvailable, setCryptoBotAvailable] = useState(false);
+  const [crypto2328Available, setCrypto2328Available] = useState(false);
 
   useEffect(() => {
     void Promise.allSettled([
       customerRequest<PackageCatalog>("/api/v1/payments/card/packages"),
       customerRequest<PackageCatalog>("/api/v1/payments/crypto/packages"),
-    ]).then(([card, crypto]) => {
+      customerRequest<PackageCatalog>("/api/v1/payments/crypto/2328/packages"),
+    ]).then(([card, cryptoBot, crypto2328]) => {
       setCatalog(card.status === "fulfilled" ? card.value : null);
-      setCryptoAvailable(Boolean(
-        crypto.status === "fulfilled"
-        && crypto.value.configured
-        && Object.keys(crypto.value.packages || {}).length,
+      setCryptoBotAvailable(Boolean(
+        cryptoBot.status === "fulfilled"
+        && cryptoBot.value.configured
+        && Object.keys(cryptoBot.value.packages || {}).length,
+      ));
+      setCrypto2328Available(Boolean(
+        crypto2328.status === "fulfilled"
+        && crypto2328.value.configured
+        && Object.keys(crypto2328.value.packages || {}).length,
       ));
     });
   }, []);
@@ -88,9 +95,10 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
-      {cryptoAvailable ? <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=2328")}>Оплатить криптовалютой</button> : null}
+      {cryptoBotAvailable ? <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить через CryptoBot</button> : null}
+      {crypto2328Available ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=2328")}>Оплатить через 2328</button> : null}
       <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/")}>Все пополнения и статусы</button>
-      <small>Карта/СБП и криптовалюта используют серверные пакеты и бонусы ROX.</small>
+      <small>CryptoBot — основной крипто-способ; 2328 остаётся дополнительным. Все способы используют серверные пакеты и бонусы ROX.</small>
     </div>,
     host,
   );
