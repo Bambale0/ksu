@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ksu
       POSTGRES_USER: ksu
@@ -15,6 +16,7 @@ services:
 
   redis:
     image: redis:7.4-alpine
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -26,6 +28,7 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -43,6 +46,7 @@ services:
 
   generation-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -58,6 +62,7 @@ services:
 
   media-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -73,6 +78,7 @@ services:
 
   payment-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -81,10 +87,13 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: python -m app.workers.payments
 
   notification-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -97,8 +106,24 @@ services:
         condition: service_healthy
     command: python -m app.workers.notifications
 
+  admin-support-worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.admin_support
+
   admin-campaign-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -113,6 +138,7 @@ services:
 
   prompt-tool-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -128,6 +154,7 @@ services:
 
   creator-partnership-worker:
     build: .
+    restart: unless-stopped
     env_file: .env
     volumes:
       - ./logs:/app/logs
