@@ -145,7 +145,30 @@ The callback URL sent with every invoice is:
 ```
 
 No 2328.io API key or settlement decision is exposed to the Mini App. The crypto option
-is shown only when both project UUID and API key are configured on the server.
+is shown only when project UUID, API key and a public callback origin are all configured.
+The low-level client also refuses to create an invoice without `url_callback`.
+
+## CryptoBot cutover
+
+CryptoBot is no longer available for creating new payments. The public cryptocurrency
+checkout and the generic payment-create contract both create only `provider=2328`.
+
+Existing non-terminal `provider=cryptobot` rows are intentionally retained as a temporary
+read/reconcile-only compatibility path:
+
+```text
+existing CryptoBot invoice
+  -> remains visible in payment history
+  -> may reopen its already-created payment_url
+  -> POST /api/v1/payments/crypto/<id>/reconcile
+  -> legacy provider status lookup only
+  -> existing idempotent wallet settlement
+```
+
+This prevents a user from losing an invoice opened immediately before the cutover while
+ensuring no new CryptoBot invoice can be created. Keep the legacy CryptoPay token only
+until all old non-terminal invoices are terminal. After that drain period, the legacy
+CryptoBot provider/service/configuration can be removed in a separate cleanup.
 
 ## Provider navigation
 
@@ -182,7 +205,7 @@ refunded              Возвращено
 refund_review         Проверка возврата
 canceled              Отменено
 expired               Истекло
-failed                Ошибка
+failed                 Ошибка
 ```
 
 The Mini App never transitions these states itself.
@@ -236,7 +259,7 @@ app/api/v1/payments.py
 app/api/payment_2328_webhooks.py
 app/services/payment_2328.py
 app/providers/payment_2328.py
-app/core/payment_2328_config.py
+app/core/config.py
 app/services/payment_reconciliation.py
 app/api/v1/card_payments.py
 app/api/card_webhooks.py
@@ -246,6 +269,7 @@ app/providers/card_checkout.py
 frontend/mini-app/app/payments/page.tsx
 frontend/mini-app/components/wallet-parity.tsx
 tests/test_2328_checkout.py
+tests/test_2328_settlement.py
 tests/test_wallet_checkout.py
 ```
 
