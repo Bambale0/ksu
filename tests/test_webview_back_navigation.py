@@ -18,7 +18,7 @@ def test_customer_webview_back_uses_owned_history_and_closes_at_root() -> None:
 
 def test_root_back_button_stays_visible_for_customer_shell() -> None:
     source = TELEGRAM.read_text(encoding="utf-8")
-    assert "if (isCustomerMainSurface()) rawShow?.();" in source
+    assert "if (isMainMiniAppPath()) rawShow?.();" in source
     assert "else rawHide?.();" in source
     assert "if (!handleCustomerBack(tg)) callback();" in source
 
