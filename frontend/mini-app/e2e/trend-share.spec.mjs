@@ -82,12 +82,13 @@ test('trend detail offers copy and native Telegram sharing', async ({ page }) =>
   await expect.poll(() => page.evaluate(() => window.__trendShareUrl)).toBe(SHARE_URL);
 });
 
-test('shared trend startapp opens the exact trend only once', async ({ page }) => {
+test('shared trend opens exactly once per navigation and can be reopened', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installTelegram(page);
   await mockTrendApi(page);
 
-  await page.goto(`/mini-app/?startapp=trend_${TREND_ID}`);
+  const sharedUrl = `/mini-app/?startapp=trend_${TREND_ID}`;
+  await page.goto(sharedUrl);
   await expect(page).toHaveURL(new RegExp(`/mini-app/trend/\\?id=${TREND_ID}$`));
   await expect(page.getByRole('heading', { name: 'Плёночный портрет' })).toBeVisible();
 
@@ -95,4 +96,8 @@ test('shared trend startapp opens the exact trend only once', async ({ page }) =
   await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
   await page.waitForTimeout(500);
   await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+
+  await page.goto(sharedUrl);
+  await expect(page).toHaveURL(new RegExp(`/mini-app/trend/\\?id=${TREND_ID}$`));
+  await expect(page.getByRole('heading', { name: 'Плёночный портрет' })).toBeVisible();
 });
