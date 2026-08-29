@@ -46,7 +46,6 @@ def _onboarding_gate_applies(request: Request) -> bool:
     if any(_path_is_under(path, prefix) for prefix in safe_prefixes):
         return False
 
-    # Recovery/reversal actions must stay possible after an onboarding version bump.
     if path.endswith("/cancel") or path.endswith("/history/restore"):
         return False
     return path.startswith("/api/v1/")
@@ -56,13 +55,7 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Validate referral attribution carried by a Telegram Mini App launch.
-
-    Telegram-signed ``start_param`` is authoritative. The recovered header is
-    accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are additionally bound to their public
-    author so changing the numeric suffix cannot steal attribution.
-    """
+    """Validate referral attribution carried by a Telegram-signed Mini App launch."""
 
     link = parse_feed_deep_link(start_param)
     if link is None:
@@ -114,9 +107,6 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Telegram initData")
     try:
         init_data = safe_parse_webapp_init_data(settings.bot_token, x_telegram_init_data)
-        # Real aiogram WebAppInitData always carries auth_date. Some unit tests
-        # use a minimal SimpleNamespace after replacing signature parsing; keep
-        # those test doubles compatible without weakening the real wire format.
         auth_date = getattr(init_data, "auth_date", None)
         if auth_date is not None:
             validate_webapp_auth_date(auth_date)
@@ -135,9 +125,14 @@ async def get_current_user(
         username=web_user.username,
         language_code=web_user.language_code,
     )
+
+    # X-Telegram-Start-Param is retained as a routing/recovery transport for the
+    # Mini App, but it is client-controlled and must never assign money-bearing
+    # referral attribution. Only the start_param inside Telegram-signed initData is
+    # authoritative for a new user's inviter.
+    _ = x_telegram_start_param
     signed_start_param = str(getattr(init_data, "start_param", None) or "").strip()
-    fallback_start_param = str(x_telegram_start_param or "").strip()
-    resolved_start_param = signed_start_param or fallback_start_param or None
+    resolved_start_param = signed_start_param or None
     inviter_telegram_id = await _validated_startapp_inviter(session, resolved_start_param)
     user = await UserService.get_or_create(
         session,
@@ -155,9 +150,6 @@ async def get_current_user(
                 "version": settings.onboarding_version.strip() or "1",
             },
         )
-    # Carry the authenticated principal on this SQLAlchemy session so shared
-    # quote/model preflight code can read only this user's trusted reference
-    # metadata without changing every service method signature.
     session.info["current_user_id"] = user.id
     return user
 
