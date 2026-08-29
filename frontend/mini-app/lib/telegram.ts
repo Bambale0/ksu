@@ -201,7 +201,7 @@ function installManagedBackButton(tg: TelegramWebApp): void {
   };
   managed.hide = () => {
     rememberMiniAppReturnLocation();
-    if (isCustomerMainSurface()) rawShow?.();
+    if (isMainMiniAppPath()) rawShow?.();
     else rawHide?.();
   };
   managed.onClick = (callback) => {
@@ -342,8 +342,8 @@ export function initTelegram(): TelegramWebApp | null {
   installMiniAppReturnTracker();
 
   // Reset native navigation to the current screen baseline. On the customer
-  // shell the managed BackButton keeps the affordance visible so root can close
-  // the WebView; specialized/deep-link screens retain their existing contract.
+  // Mini App path the managed BackButton remains visible so the user can always
+  // walk back through ROXY and close the WebView at the root screen.
   try {
     tg.BackButton?.hide?.();
   } catch {
