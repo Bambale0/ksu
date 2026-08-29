@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import { haptic, openTelegramShare } from "@/lib/telegram";
+import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem } from "@/lib/types";
 
 function trendId(): string {
@@ -120,6 +121,7 @@ export default function TrendPage() {
             : null}
           <div className="panel tool-panel">
             <div className="trend-meta">
+              <span>{trendUsageLabel(trend.usage_count)}</span>
               <span>{trend.model?.title || "ROXY model"}</span>
               <span>{trend.admin_free ? "Бесплатно" : `${money(trend.cost_rox)} ROX`}</span>
               {trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}
