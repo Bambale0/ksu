@@ -184,6 +184,12 @@ function handleCustomerBack(tg: TelegramWebApp): boolean {
   return true;
 }
 
+function shouldUseTelegramCloseChrome(): boolean {
+  return isMainMiniAppPath()
+    && currentMainRoute() === "catalog"
+    && !hasTransientCustomerLayer();
+}
+
 function installManagedBackButton(tg: TelegramWebApp): void {
   const raw = tg.BackButton;
   if (!raw || managedTelegramApps.has(tg as object)) return;
@@ -197,11 +203,13 @@ function installManagedBackButton(tg: TelegramWebApp): void {
 
   managed.show = () => {
     rememberMiniAppReturnLocation();
-    rawShow?.();
+    if (shouldUseTelegramCloseChrome()) rawHide?.();
+    else rawShow?.();
   };
   managed.hide = () => {
     rememberMiniAppReturnLocation();
-    if (isMainMiniAppPath()) rawShow?.();
+    if (shouldUseTelegramCloseChrome()) rawHide?.();
+    else if (isMainMiniAppPath()) rawShow?.();
     else rawHide?.();
   };
   managed.onClick = (callback) => {
@@ -341,9 +349,9 @@ export function initTelegram(): TelegramWebApp | null {
   stampMiniAppRootEntry();
   installMiniAppReturnTracker();
 
-  // Reset native navigation to the current screen baseline. On the customer
-  // Mini App path the managed BackButton remains visible so the user can always
-  // walk back through ROXY and close the WebView at the root screen.
+  // Reset native navigation to the current screen baseline. The catalog is the
+  // WebView root and therefore leaves Telegram's own Close affordance visible;
+  // every other customer surface keeps the native Back button available.
   try {
     tg.BackButton?.hide?.();
   } catch {
