@@ -9,7 +9,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.payment_2328_config import payment_2328_settings
 from app.db.models import Payment
 from app.db.payment_models import PaymentRequest
 from app.providers.payment_2328 import (
@@ -37,8 +36,8 @@ class Payment2328Service:
     @staticmethod
     def provider_configured() -> bool:
         return bool(
-            payment_2328_settings.project_uuid
-            and payment_2328_settings.api_key
+            settings.payment_2328_project_uuid
+            and settings.payment_2328_api_key
             and settings.webhook_url("webhooks/payments/2328")
         )
 
@@ -272,7 +271,7 @@ class Payment2328Service:
     @staticmethod
     def _client() -> Payment2328Client:
         return Payment2328Client(
-            payment_2328_settings.project_uuid,
-            payment_2328_settings.api_key,
-            payment_2328_settings.base_url,
+            settings.payment_2328_project_uuid,
+            settings.payment_2328_api_key,
+            settings.payment_2328_base_url,
         )
