@@ -10,12 +10,11 @@ const HISTORY_PROMPT_SELECTOR = "[data-history-prompt-copy]";
 const PREVIEW_PROMPT_SELECTOR = ".preview-card .prompt-copy";
 
 async function copyText(value: string): Promise<boolean> {
-  const text = value.trim();
-  if (!text) return false;
+  if (!value.trim()) return false;
 
   try {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(value);
       return true;
     }
   } catch {
@@ -23,7 +22,7 @@ async function copyText(value: string): Promise<boolean> {
   }
 
   const textarea = document.createElement("textarea");
-  textarea.value = text;
+  textarea.value = value;
   textarea.setAttribute("readonly", "");
   textarea.setAttribute("aria-hidden", "true");
   textarea.style.position = "fixed";
@@ -32,7 +31,7 @@ async function copyText(value: string): Promise<boolean> {
   document.body.appendChild(textarea);
   textarea.focus({ preventScroll: true });
   textarea.select();
-  textarea.setSelectionRange(0, text.length);
+  textarea.setSelectionRange(0, value.length);
   try {
     return document.execCommand("copy");
   } catch {
@@ -43,8 +42,8 @@ async function copyText(value: string): Promise<boolean> {
 }
 
 function promptFor(item: Generation | undefined): string {
-  if (!item?.prompt || item.prompt_hidden) return "";
-  return item.prompt.trim();
+  if (!item?.prompt || item.prompt_hidden || !item.prompt.trim()) return "";
+  return item.prompt;
 }
 
 export function HistoryPromptCopyUx() {
