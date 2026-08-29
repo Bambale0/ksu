@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.core.payment_2328_config import payment_2328_settings
+from app.core.config import settings
 from app.db.models import Payment
 from app.db.session import SessionFactory
 from app.providers.payment_2328 import verify_2328_webhook
@@ -24,7 +24,7 @@ async def payment_2328_webhook(request: Request) -> dict[str, bool]:
         raise HTTPException(status_code=400, detail="Invalid JSON") from exc
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Invalid webhook payload")
-    if not verify_2328_webhook(payload, payment_2328_settings.api_key):
+    if not verify_2328_webhook(payload, settings.payment_2328_api_key):
         raise HTTPException(status_code=401, detail="Invalid 2328.io signature")
 
     order_id = str(payload.get("order_id") or "")
