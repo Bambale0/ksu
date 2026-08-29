@@ -5,6 +5,7 @@ import { CatalogParityFeatures } from "@/components/catalog-parity-features";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { FeedAdminModeration } from "@/components/feed-admin-moderation";
+import { FeedResponsiveLayout } from "@/components/feed-responsive-layout";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
@@ -22,6 +23,7 @@ export default function Page() {
       <ClientErrorReporter />
       <AppEntryGate />
       <TikTokFeedSurface />
+      <FeedResponsiveLayout />
       <FeedAdminModeration />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
