@@ -104,15 +104,16 @@ class Payment2328Client:
         description: str,
         callback_url: str,
     ) -> CreatedPayment:
+        if not callback_url:
+            raise PaymentProviderError("2328.io requires a public callback URL")
         payload: dict[str, Any] = {
             "amount": _money(amount),
             "currency": currency.upper(),
             "order_id": local_id,
+            "url_callback": callback_url,
             "description": description[:200],
             "ttl_seconds": 3600,
         }
-        if callback_url:
-            payload["url_callback"] = callback_url
 
         result = await self._post("/v1/payment", payload)
         external_id = str(result.get("uuid") or "")
