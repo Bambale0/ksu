@@ -88,9 +88,9 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
-      {cryptoAvailable ? <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить через CryptoBot</button> : null}
+      {cryptoAvailable ? <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=2328")}>Оплатить криптовалютой</button> : null}
       <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/")}>Все пополнения и статусы</button>
-      <small>Карта/СБП и CryptoBot используют серверные пакеты и бонусы ROX.</small>
+      <small>Карта/СБП и криптовалюта используют серверные пакеты и бонусы ROX.</small>
     </div>,
     host,
   );
