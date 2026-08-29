@@ -34,11 +34,18 @@ class RequestObservabilityMiddleware(BaseHTTPMiddleware):
             method = request.method.upper()
             HTTP_REQUESTS.labels(method=method, route=route_template, status=str(status_code)).inc()
             HTTP_DURATION.labels(method=method, route=route_template).observe(duration)
-            logger.info(
+            log = logger.error if status_code >= 500 else logger.info
+            log(
                 "http_request method=%s route=%s status=%s duration_ms=%.3f",
                 method,
                 route_template,
                 status_code,
                 duration * 1000,
+                extra={
+                    "http_method": method,
+                    "http_route": route_template,
+                    "http_status": status_code,
+                    "duration_ms": round(duration * 1000, 3),
+                },
             )
             request_id_var.reset(token)
