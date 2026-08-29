@@ -86,6 +86,23 @@ async function pressTelegramBack(page) {
   await page.evaluate(() => window.__pressTelegramBack());
 }
 
+test('Catalog leaves Telegram Close chrome visible while other main surfaces use Back', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await mockWebView(page);
+  await page.goto('/mini-app/?route=catalog');
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+  await expect(page.locator('button[data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
+  await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
+
+  await page.locator('button[data-roxy-customer-route="feed"]').click();
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=feed/);
+  await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(true);
+
+  await page.locator('button[data-roxy-customer-route="catalog"]').click();
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=catalog/);
+  await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
+});
+
 test('Profile -> Wallet -> native Back returns to Profile, then Home, then closes WebView', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await mockWebView(page);

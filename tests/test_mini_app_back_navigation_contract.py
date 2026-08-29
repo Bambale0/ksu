@@ -31,17 +31,17 @@ def test_telegram_webview_back_button_contract_remains_available() -> None:
     assert "BackButton?: BackButton;" in source
 
 
-def test_telegram_initialization_keeps_customer_native_back_available() -> None:
+def test_catalog_uses_native_close_chrome_while_other_customer_routes_keep_back() -> None:
     source = TELEGRAM.read_text(encoding="utf-8")
     init = source.split("export function initTelegram()", 1)[1].split("function safeAreaValue", 1)[0]
 
-    # initTelegram still establishes a deterministic BackButton baseline. The
-    # managed wrapper intentionally resolves hide() to the native show() action
-    # on the main Mini App path so Home can close the Telegram WebView.
     assert "tg.BackButton?.hide?.();" in init
-    assert "managed BackButton remains visible" in init
-    assert "if (isMainMiniAppPath()) rawShow?.();" in source
-    assert "else rawHide?.();" in source
+    assert "Telegram's own Close affordance visible" in init
+    assert "function shouldUseTelegramCloseChrome(): boolean" in source
+    assert 'currentMainRoute() === "catalog"' in source
+    assert "&& !hasTransientCustomerLayer();" in source
+    assert "if (shouldUseTelegramCloseChrome()) rawHide?.();" in source
+    assert "else if (isMainMiniAppPath()) rawShow?.();" in source
     assert "tg.close?.();" not in init
 
 
