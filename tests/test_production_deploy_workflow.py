@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
 DOC = ROOT / "docs" / "GITHUB_PRODUCTION_DEPLOY.md"
+COMPOSE = ROOT / "docker-compose.yml"
+RELEASE_GATE = ROOT / ".github" / "workflows" / "roxy-release-gate.yml"
 
 
 def _workflow() -> str:
@@ -15,7 +17,12 @@ def test_production_deploy_waits_for_exact_main_green_sha() -> None:
     for token in (
         'workflows: ["CI"]',
         "github.event.workflow_run.conclusion == 'success'",
-        'required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")',
+        '"CI"',
+        '"Admin Console"',
+        '"Batch Generation"',
+        '"Mini App Playwright E2E"',
+        '"ROXY E2E"',
+        '"ROXY Release Gate"',
         "head_sha=${DEPLOY_SHA}",
         "/git/ref/heads/main",
         "superseded=true",
@@ -23,6 +30,14 @@ def test_production_deploy_waits_for_exact_main_green_sha() -> None:
         'test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"',
     ):
         assert token in workflow
+
+
+def test_release_gate_runs_for_every_main_push_so_deploy_cannot_wait_on_missing_gate() -> None:
+    workflow = RELEASE_GATE.read_text(encoding="utf-8")
+    push_section, pull_request_section = workflow.split("  pull_request:", 1)
+    assert "  push:\n    branches: [main]" in push_section
+    assert "paths:" not in push_section
+    assert "paths:" in pull_request_section
 
 
 def test_production_deploy_pins_ssh_and_does_not_discover_host_key_at_runtime() -> None:
@@ -40,7 +55,7 @@ def test_production_deploy_pins_ssh_and_does_not_discover_host_key_at_runtime() 
     assert "ssh-keyscan" not in workflow
 
 
-def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> None:
+def test_production_deploy_has_backup_all_workers_and_smoke_gates() -> None:
     workflow = _workflow()
     for token in (
         "pg_dump -U ksu -d ksu -Fc",
@@ -49,7 +64,12 @@ def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> Non
         "media-worker",
         "prompt-tool-worker",
         "payment-worker",
+        "notification-worker",
+        "admin-support-worker",
+        "admin-campaign-worker",
         "creator-partnership-worker",
+        'for service in "${runtime_services[@]}"',
+        "Required production service is not running",
         "/health/live",
         "/health/ready",
         "/health/operational",
@@ -57,6 +77,30 @@ def test_production_deploy_has_backup_migration_workers_and_smoke_gates() -> Non
         "docker compose logs --tail=200",
     ):
         assert token in workflow
+
+
+def test_long_running_production_services_restart_unless_stopped() -> None:
+    compose = COMPOSE.read_text(encoding="utf-8")
+    for service in (
+        "postgres",
+        "redis",
+        "app",
+        "generation-worker",
+        "media-worker",
+        "payment-worker",
+        "notification-worker",
+        "admin-support-worker",
+        "admin-campaign-worker",
+        "prompt-tool-worker",
+        "creator-partnership-worker",
+        "backup-worker",
+    ):
+        marker = f"  {service}:"
+        assert marker in compose
+        start = compose.index(marker)
+        next_service = compose.find("\n  ", start + len(marker))
+        block = compose[start:] if next_service == -1 else compose[start:next_service]
+        assert "restart: unless-stopped" in block
 
 
 def test_deploy_without_secrets_fails_closed_and_is_documented() -> None:
