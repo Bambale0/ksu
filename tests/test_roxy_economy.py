@@ -1,4 +1,5 @@
 import random
+import uuid
 from decimal import Decimal
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from sqlalchemy import select
 
 from app.api.v1.referrals import stats
 from app.core.config import settings
-from app.db.models import ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
+from app.db.models import Payment, ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
 from app.services.partner_wallet import PartnerWalletTransferService
 from app.services.referrals import ReferralService
@@ -21,6 +22,37 @@ FRONTEND = ROOT / "frontend" / "mini-app"
 
 def _telegram_id() -> int:
     return random.randint(9_700_000_000_000_000, 9_799_999_999_999_999)
+
+
+async def _paid_transaction(
+    session,
+    *,
+    buyer: User,
+    paid_rub: Decimal,
+    credited_rox: Decimal,
+    key: str,
+) -> WalletTransaction:
+    payment = Payment(
+        user_id=buyer.id,
+        provider="economy-test",
+        external_id=f"economy-test-{uuid.uuid4()}",
+        amount=paid_rub,
+        currency="RUB",
+        rox_amount=credited_rox,
+        status="succeeded",
+        payload={},
+    )
+    session.add(payment)
+    await session.flush()
+    return await WalletService.credit(
+        session,
+        user_id=buyer.id,
+        amount=credited_rox,
+        kind="payment",
+        reference_type="payment",
+        reference_id=str(payment.id),
+        idempotency_key=key,
+    )
 
 
 @pytest.mark.asyncio
@@ -61,7 +93,7 @@ async def test_registration_and_invite_create_rox_wallet_bonuses(
 
 
 @pytest.mark.asyncio
-async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
+async def test_referral_percent_uses_actual_paid_rub_not_credited_rox(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
@@ -71,20 +103,19 @@ async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
         session.add_all([inviter, buyer])
         await session.flush()
         session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=inviter.id))
-        payment_tx = await WalletService.credit(
+        payment_tx = await _paid_transaction(
             session,
-            user_id=buyer.id,
-            amount=Decimal("300"),
-            kind="payment",
-            reference_type="payment",
-            reference_id="foreign-currency-payment",
-            idempotency_key=f"test-payment:{buyer.id}",
+            buyer=buyer,
+            paid_rub=Decimal("326.10"),
+            credited_rox=Decimal("350"),
+            key=f"test-payment:{buyer.id}",
         )
         await ReferralService.accrue_from_payment(
             session,
             source_user_id=buyer.id,
             source_transaction_id=payment_tx.id,
-            payment_amount=Decimal("6"),
+            # Deliberately wrong caller value: service must ignore it and read Payment.amount.
+            payment_amount=Decimal("350"),
         )
         await session.commit()
 
@@ -96,7 +127,7 @@ async def test_referral_percent_uses_purchased_rox_not_provider_currency_amount(
             )
         )
         assert reward is not None
-        assert reward.amount == Decimal("90.00")
+        assert reward.amount == Decimal("97.83")
 
 
 @pytest.mark.asyncio
@@ -110,12 +141,12 @@ async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available(
         session.add_all([partner, buyer])
         await session.flush()
         session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
-        payment_tx = await WalletService.credit(
+        payment_tx = await _paid_transaction(
             session,
-            user_id=buyer.id,
-            amount=Decimal("300"),
-            kind="payment",
-            idempotency_key=f"partner-transfer-payment:{buyer.id}",
+            buyer=buyer,
+            paid_rub=Decimal("300"),
+            credited_rox=Decimal("300"),
+            key=f"partner-transfer-payment:{buyer.id}",
         )
         await ReferralService.accrue_from_payment(
             session,
@@ -161,8 +192,11 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         payload = await stats(user, session)
         assert payload["rox_balance"] == "280.00"
         assert payload["partner_balance_rub"] == "0"
+        assert payload["withdrawable_rub"] == "0"
+        assert payload["pending_referral_rub"] == "0"
+        assert payload["partner_total_earned_rub"] == "0"
         assert payload["transferred_to_rox"] == "0"
-        assert payload["bonus_rox"] == "280.00"  # compatibility only
+        assert payload["bonus_rox"] == "280.00"  # wallet compatibility only
         assert payload["rub_per_rox"] == "1"
         assert payload["welcome_bonus_rox"] == "50"
         assert payload["invite_bonus_rox"] == "30"
@@ -170,7 +204,15 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         assert payload["first_line_percent"] == "30"
         assert payload["second_line_percent"] == "5"
         assert payload["minimum_withdrawal"] == "3000"
+        assert payload["minimum_withdrawal_rub"] == "3000"
         assert payload["withdrawal_status"] == "NONE"
+        for misleading_key in (
+            "withdrawable_rox",
+            "withdrawable_pending_rox",
+            "partner_total_earned_rox",
+            "minimum_withdrawal_rox",
+        ):
+            assert misleading_key not in payload
 
 
 def test_prompt_repeat_bonus_is_idempotent_success_only_and_blocks_self_reward() -> None:
