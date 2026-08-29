@@ -218,7 +218,7 @@ export default function PaymentsPage() {
           {selected ? <div className="profile-stats"><div><strong>{compactNumber(selected.credits)}</strong><span>базовые ROX</span></div><div><strong>+{compactNumber(selected.bonus_credits || 0)}</strong><span>бонус</span></div><div><strong>{compactNumber(selected.total_credits || selected.credits)}</strong><span>итого ROX</span></div></div> : null}
 
           <div className="form-stack">
-            {provider === "card" ? <label className="field"><span className="label">Email для чека</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
+            {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : provider === "2328" ? `Оплатить ${compactNumber(price)} RUB криптовалютой` : price ? `Оплатить ${compactNumber(price)} ${currency} через Lava Top` : "Пакет недоступен"}</button>
           </div>
         </> : null}
