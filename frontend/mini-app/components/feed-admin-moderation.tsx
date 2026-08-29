@@ -15,7 +15,7 @@ function key(prefix: string): string {
 function currentFeedCard(): string {
   const viewportCenter = window.innerHeight / 2;
   let winner: { id: string; distance: number } | null = null;
-  for (const card of Array.from(document.querySelectorAll<HTMLElement>(".tiktok-feed-card[data-feed-id]"))) {
+  for (const card of Array.from(document.querySelectorAll<HTMLElement>>(".tiktok-feed-card[data-feed-id]"))) {
     const rect = card.getBoundingClientRect();
     if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
     const center = rect.top + rect.height / 2;
@@ -123,7 +123,7 @@ export function FeedAdminModeration() {
 
   return <div className="feed-admin-moderation" role="group" aria-label="Модерация публикации">
     <style>{`
-      .feed-admin-moderation { position:fixed; z-index:145; left:50%; bottom:calc(76px + var(--tg-safe-bottom, 0px)); transform:translateX(-50%); width:min(calc(100vw - 22px), 620px); display:flex; align-items:center; gap:5px; padding:6px; border:1px solid rgba(218,176,255,.24); border-radius:18px; background:rgba(8,7,12,.82); box-shadow:0 14px 42px rgba(0,0,0,.42); backdrop-filter:blur(18px) saturate(135%); }
+      .feed-admin-moderation { position:fixed; z-index:145; left:50%; bottom:calc(88px + var(--tg-safe-bottom, 0px)); transform:translateX(-50%); width:min(calc(100vw - 22px), 620px); display:flex; align-items:center; gap:5px; padding:6px; border:1px solid rgba(218,176,255,.24); border-radius:18px; background:rgba(8,7,12,.82); box-shadow:0 14px 42px rgba(0,0,0,.42); backdrop-filter:blur(18px) saturate(135%); }
       .feed-admin-moderation button { flex:1 1 auto; min-width:0; min-height:34px; padding:6px 8px; border:0; border-radius:12px; background:rgba(155,92,255,.16); color:#f2e8ff; font-size:9px; font-weight:850; white-space:nowrap; }
       .feed-admin-moderation button.danger { background:rgba(255,77,118,.16); color:#ffd4df; }
       .feed-admin-moderation button:disabled { opacity:.45; }
