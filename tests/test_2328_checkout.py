@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from app.core.config import settings
-from app.core.payment_2328_config import payment_2328_settings
 from app.db.models import User
 from app.db.session import SessionFactory
 from app.providers.payment_2328 import (
@@ -60,8 +59,8 @@ def test_2328_webhook_signature_is_verified_before_state_changes() -> None:
 
 
 def test_2328_is_hidden_without_public_callback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(payment_2328_settings, "project_uuid", "project-uuid")
-    monkeypatch.setattr(payment_2328_settings, "api_key", "secret")
+    monkeypatch.setattr(settings, "payment_2328_project_uuid", "project-uuid")
+    monkeypatch.setattr(settings, "payment_2328_api_key", "secret")
     monkeypatch.setattr(settings, "public_base_url", "")
 
     assert Payment2328Service.provider_configured() is False
@@ -111,8 +110,8 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
         '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
     )
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
-    monkeypatch.setattr(payment_2328_settings, "project_uuid", "project-uuid")
-    monkeypatch.setattr(payment_2328_settings, "api_key", "secret")
+    monkeypatch.setattr(settings, "payment_2328_project_uuid", "project-uuid")
+    monkeypatch.setattr(settings, "payment_2328_api_key", "secret")
     calls: list[dict[str, str]] = []
 
     async def fake_create_payment(
