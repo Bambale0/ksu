@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -95,12 +96,12 @@ def test_long_running_production_services_restart_unless_stopped() -> None:
         "creator-partnership-worker",
         "backup-worker",
     ):
-        marker = f"  {service}:"
-        assert marker in compose
-        start = compose.index(marker)
-        next_service = compose.find("\n  ", start + len(marker))
-        block = compose[start:] if next_service == -1 else compose[start:next_service]
-        assert "restart: unless-stopped" in block
+        match = re.search(
+            rf"(?ms)^  {re.escape(service)}:\n.*?(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+            compose,
+        )
+        assert match is not None, service
+        assert "restart: unless-stopped" in match.group(0), service
 
 
 def test_deploy_without_secrets_fails_closed_and_is_documented() -> None:
