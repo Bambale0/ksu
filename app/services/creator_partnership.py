@@ -168,6 +168,23 @@ class CreatorPartnershipService:
         if average_views is not None and not 0 <= average_views <= 100_000_000:
             raise ValueError("Average views is out of range")
 
+        # Serialize all creator partnership admission for one user. This closes the
+        # check-then-insert race for different idempotency keys and for application
+        # submission racing with an admin approval.
+        locked_user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
+        if locked_user is None:
+            raise LookupError("User not found")
+
+        existing = await session.scalar(
+            select(CreatorPartnershipApplication).where(
+                CreatorPartnershipApplication.idempotency_key == key
+            )
+        )
+        if existing is not None:
+            if existing.user_id != user_id:
+                raise CreatorPartnershipConflict("Idempotency key already belongs to another user")
+            return existing, True
+
         active = await session.scalar(
             select(CreatorPartnershipAgreement).where(
                 CreatorPartnershipAgreement.user_id == user_id,
@@ -305,6 +322,11 @@ class CreatorPartnershipService:
             item.decided_at = now
             agreement = None
             if decision == "approved":
+                locked_user = await session.scalar(
+                    select(User).where(User.id == item.user_id).with_for_update()
+                )
+                if locked_user is None:
+                    raise LookupError("Creator partnership user not found")
                 current = await session.scalar(
                     select(CreatorPartnershipAgreement).where(
                         CreatorPartnershipAgreement.user_id == item.user_id,
@@ -471,6 +493,14 @@ class CreatorPartnershipService:
         note: str | None = None,
     ) -> tuple[CreatorPartnershipGrant, bool]:
         start = period_start(period)
+        locked = await session.scalar(
+            select(CreatorPartnershipAgreement)
+            .where(CreatorPartnershipAgreement.id == agreement.id)
+            .with_for_update()
+        )
+        if locked is None:
+            raise LookupError("Creator partnership agreement not found")
+        agreement = locked
         if agreement.status != "active":
             raise CreatorPartnershipConflict("Agreement is not active")
         if start < agreement.starts_on.replace(day=1):
