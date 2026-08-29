@@ -56,8 +56,8 @@ async function mockApi(page) {
       },
     });
     if (path === '/api/v1/payments/crypto/packages') return json({
-      provider: 'cryptobot',
-      label: 'CryptoBot',
+      provider: '2328',
+      label: 'Криптовалюта',
       configured: true,
       currencies: ['RUB'],
       packages: {
@@ -67,8 +67,9 @@ async function mockApi(page) {
     if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
       id: 'crypto-payment-1',
       status: 'pending',
-      provider: 'cryptobot',
-      payment_url: 'https://t.me/CryptoBot?start=invoice-test',
+      provider: '2328',
+      label: 'Криптовалюта',
+      payment_url: 'https://go.2328.io/invoice-test',
     }, 201);
     return json({ items: [] });
   });
@@ -89,7 +90,7 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 });
 
 
-test('quick wallet exposes CryptoBot and crypto checkout needs no billing email', async ({ page }) => {
+test('quick wallet exposes 2328 crypto checkout without billing email', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=profile');
@@ -98,14 +99,14 @@ test('quick wallet exposes CryptoBot and crypto checkout needs no billing email'
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
   await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
-  await page.getByRole('button', { name: 'CryptoBot' }).click();
+  await page.getByRole('button', { name: 'Криптовалюта', exact: true }).click();
   await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
-  await expect(page.getByText(/CryptoBot принимает TON/)).toBeVisible();
+  await expect(page.getByText(/На странице оплаты выберите удобную монету и сеть/)).toBeVisible();
 
   const checkout = page.waitForRequest((request) =>
     request.url().includes('/api/v1/payments/crypto/checkout') && request.method() === 'POST'
   );
-  await page.getByRole('button', { name: /Оплатить .* через CryptoBot/ }).click();
+  await page.getByRole('button', { name: /Оплатить .* RUB криптовалютой/ }).click();
   const request = await checkout;
   expect(JSON.parse(request.postData() || '{}')).toEqual({ package_id: 'starter' });
 });
