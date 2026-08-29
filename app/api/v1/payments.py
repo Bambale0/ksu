@@ -9,6 +9,7 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
+from app.services.card_payments import CardPackage
 from app.services.credits import InternalCreditService
 from app.services.crypto_payments import CryptoBotPaymentService
 from app.services.payment_2328 import Payment2328Service
@@ -62,7 +63,7 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
     }
 
 
-def _catalog_package(package: object, *, currency: str) -> dict[str, object]:
+def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object]:
     credits = package.credits
     return {
         "credits": str(credits),
