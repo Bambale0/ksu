@@ -1,6 +1,6 @@
 # Wallet and payment checkout
 
-**Status:** synchronized with current runtime on 2026-08-20.
+**Status:** synchronized with current runtime on 2026-08-29.
 
 Wallet is a presentation layer over the durable payment lifecycle. It does not calculate package prices, create arbitrary amounts, verify settlement itself or persist payment success locally.
 
@@ -9,7 +9,7 @@ Wallet is a presentation layer over the durable payment lifecycle. It does not c
 ```text
 Wallet
   |
-  +--> GET /api/v1/payments/card/packages
+  +--> GET /api/v1/payments/card/packages or /crypto/packages
   |
   +--> choose configured package/currency
   |
@@ -29,9 +29,8 @@ Wallet
 
 The client never invents settlement state or credits the balance optimistically.
 
-The active customer checkout is the hosted `card` route backed by Lava Top. Other
-payment providers remain reserve integrations and are not part of the current
-Mini App purchase path until they are explicitly enabled again.
+The primary card checkout is backed by Lava Top. Cryptocurrency checkout is backed by
+2328.io and uses the same server-owned ROX packages and top-up bonus rules.
 
 ## Server recovery after reload
 
@@ -61,6 +60,11 @@ Client protections include:
 
 Server `PaymentRequest` remains the durable idempotency boundary.
 
+For 2328.io, the local `Payment.id` is also sent unchanged as upstream `order_id`.
+2328.io scopes `order_id` to the merchant project and treats it as the create-payment
+idempotency key, so an ambiguous create can be queried or retried without creating a
+second invoice.
+
 ## Provider uncertainty
 
 An upstream create error can be ambiguous: the provider may have accepted the request even though ROXY did not receive a usable response.
@@ -68,14 +72,18 @@ An upstream create error can be ambiguous: the provider may have accepted the re
 The safe rule is:
 
 ```text
-unknown external side effect != retry create blindly
+unknown external side effect != create a new order
 ```
 
-ROXY persists `creation_unknown` / `PaymentRequest=unknown` and lets provider-specific reconciliation recover or review the original intent.
+ROXY persists `creation_unknown` / `PaymentRequest=unknown` and lets provider-specific reconciliation recover the original intent.
+
+For 2328.io reconciliation, ROXY queries `/v1/payment/info` by the provider UUID when
+known, otherwise by the immutable local `order_id`. A recovered provider object is bound
+only when `order_id`, payment UUID, amount and currency agree with the local payment.
 
 For the hosted `card` checkout, a later verified webhook carrying an unknown `contractId` triggers an authoritative `GET /api/v1/invoices/{id}` lookup. ROXY binds that contract only when provider id + amount + currency + buyer email identify **exactly one** unresolved local intent. Zero or multiple candidates remain unbound. Arbitrary custom `clientUtm` fields are not treated as a guaranteed merchant-correlation channel.
 
-See `PRIMARY_CARD_CHECKOUT.md` for the full contract.
+See `PRIMARY_CARD_CHECKOUT.md` for the full card contract.
 
 ## Rate limiting
 
@@ -83,44 +91,61 @@ Payment creation is protected by Redis payment-creation limits. On `429`, the Mi
 
 The client must not implement rapid automatic POST retries. Polling GETs are presentation refreshes, not payment creation.
 
-## CryptoBot / Crypto Pay
+## 2328.io cryptocurrency payments
 
-CryptoBot is a first-class wallet payment method rather than a client-side redirect hack.
-It reuses the same server-owned ROX package catalog and top-up bonus rules as card checkout.
-The user chooses a package, ROXY creates a `currency_type=fiat`, `fiat=RUB` Crypto Pay
-invoice, and CryptoBot lets the user settle it with any asset enabled for the app.
+The public Mini App route remains provider-neutral:
 
 ```text
-Wallet -> CryptoBot
+Wallet -> Криптовалюта
   -> POST /api/v1/payments/crypto/checkout
-  -> Crypto Pay createInvoice(payload=<local payment UUID>)
-  -> open mini_app_invoice_url / bot_invoice_url
-  -> invoice_paid webhook
-  -> HMAC-SHA256 verification over the raw request body
-  -> amount + fiat + invoice id verification
-  -> idempotent wallet credit
+  -> POST https://api.2328.io/api/v1/payment
+       amount=<RUB package price>
+       currency=RUB
+       order_id=<local Payment UUID>
+       url_callback=<PUBLIC_BASE_URL>/webhooks/payments/2328
+  -> open result.url hosted checkout
+  -> signed payment status webhook
+  -> verify HMAC-SHA256 before any state mutation
+  -> verify order_id + uuid + amount + currency
+  -> paid / overpaid -> idempotent wallet credit
 ```
 
-`createInvoice` has no provider-side idempotency key. ROXY therefore commits the local
-`Payment` + `PaymentRequest` before the external call. If the create response is lost,
-the durable payment enters `creation_unknown`; reconciliation searches Crypto Pay invoices
-by the local UUID stored in `payload` instead of blindly creating another invoice.
+2328.io request signing is HMAC-SHA256 over Base64 of compact UTF-8 JSON. Every outgoing
+request sends the project UUID in the `project` header and the hexadecimal signature in
+`sign`. Incoming webhook signatures are carried in the JSON `sign` field; ROXY removes
+that field, serializes the remaining object as compact UTF-8 JSON, Base64-encodes it and
+compares the HMAC in constant time.
+
+Settlement policy:
+
+```text
+pending / check / awaiting_confirmation / underpaid_check -> pending, no credit
+paid / overpaid                                      -> succeeded, credit once
+cancel                                               -> expired, no credit
+underpaid / aml_lock                                 -> failed, no credit
+```
+
+Redirects, client polling and transaction hashes are never treated as proof of payment.
+Webhook delivery is the fast path; periodic `/v1/payment/info` reconciliation is the
+recovery path for a lost webhook.
 
 Configuration is server-only:
 
 ```text
-CRYPTOPAY_API_TOKEN=<Crypto Pay app token>
-CRYPTOPAY_BASE_URL=https://pay.crypt.bot
+PAYMENT_2328_PROJECT_UUID=<project UUID from 2328.io>
+PAYMENT_2328_API_KEY=<API key from 2328.io>
+PAYMENT_2328_BASE_URL=https://api.2328.io/api
+PUBLIC_BASE_URL=https://your-production-origin.example
 ```
 
-The webhook must be enabled for the Crypto Pay app in @CryptoBot and point to:
+The callback URL sent with every invoice is:
 
 ```text
-<PUBLIC_BASE_URL>/webhooks/payments/cryptobot
+<PUBLIC_BASE_URL>/webhooks/payments/2328
 ```
 
-No Crypto Pay token, signature key, or settlement decision is exposed to the Mini App.
-The UI only shows CryptoBot when the server reports the provider as configured.
+No 2328.io API key or settlement decision is exposed to the Mini App. The crypto option
+is shown only when both project UUID and API key are configured on the server.
 
 ## Provider navigation
 
@@ -131,15 +156,17 @@ openTelegramLink(url)   t.me / telegram.me links
 openLink(url)           normal provider HTTPS links
 ```
 
+2328.io hosted checkout uses a normal HTTPS URL, so Telegram opens it through the guarded
+`openLink` path. Outside Telegram the fallback remains a secure new browser tab/window
+with `noopener,noreferrer`.
+
 KSU/ROXY enforces payment navigation through `payment-link-guard.js`:
 
 - only HTTPS payment URLs are accepted;
-- `openLink` / `openTelegramLink` are allowed only during direct click/keyboard activation;
-- automatic opening after an asynchronous checkout request is blocked;
+- link opening is allowed only during direct click/keyboard activation;
+- automatic opening after an asynchronous checkout request is blocked where the guard is active;
 - the server current-payment card exposes an explicit **Open payment** action;
 - returning to or reopening ROXY keeps the server payment state rather than browser financial state.
-
-Outside Telegram the fallback remains a secure new browser tab/window with `noopener,noreferrer`.
 
 ## Payment states
 
@@ -194,9 +221,10 @@ Wallet distinguishes:
 - provider secrets never reach the Mini App;
 - package amount/ROX are server-owned;
 - payment ownership is checked on user routes;
-- `Idempotency-Key` is not proof of settlement;
-- webhook payload is not trusted as wallet-credit authority;
-- provider status APIs + reconciliation are settlement truth;
+- `Idempotency-Key` and redirects are not proof of settlement;
+- 2328.io webhooks are HMAC-verified before any state mutation;
+- success is deduplicated by the existing wallet-credit idempotency key;
+- provider status APIs + reconciliation recover missed webhooks;
 - ambiguous payment correlation fails closed;
 - browser storage is not financial truth;
 - payment navigation accepts HTTPS only and requires direct activation in Telegram.
@@ -205,18 +233,20 @@ Wallet distinguishes:
 
 ```text
 app/api/v1/payments.py
+app/api/payment_2328_webhooks.py
+app/services/payment_2328.py
+app/providers/payment_2328.py
+app/core/payment_2328_config.py
+app/services/payment_reconciliation.py
 app/api/v1/card_payments.py
 app/api/card_webhooks.py
 app/services/card_payments.py
 app/services/card_payment_recovery.py
 app/providers/card_checkout.py
-app/web/mini_app/payment-link-guard.js
-app/web/mini_app/wallet.js
-app/web/mini_app/primary-card-checkout.js
+frontend/mini-app/app/payments/page.tsx
+frontend/mini-app/components/wallet-parity.tsx
+tests/test_2328_checkout.py
 tests/test_wallet_checkout.py
-tests/test_payment_link_guard.py
-tests/test_primary_card_checkout.py
-tests/test_card_payment_recovery.py
 ```
 
-The partner cabinet/withdrawal product is already shipped and documented separately; it is not a future Wallet epic. Wallet remains the user entrypoint for balance, top-up, payment state and ledger.
+The partner cabinet/withdrawal product is documented separately. Wallet remains the user entrypoint for balance, top-up, payment state and ledger.
