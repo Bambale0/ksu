@@ -11,11 +11,28 @@ const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
+const CONSUMED_TREND_TARGET_KEY = "__roxy_consumed_trend_target";
 
 type Target =
   | { kind: "post" | "remix"; generationId: string; referralCode: string }
-  | { kind: "trend"; trendId: string }
+  | { kind: "trend"; trendId: string; payload: string }
   | { kind: "profile"; referralCode: string };
+
+function trendTargetConsumed(payload: string): boolean {
+  try {
+    return window.sessionStorage.getItem(CONSUMED_TREND_TARGET_KEY) === payload;
+  } catch {
+    return false;
+  }
+}
+
+function markTrendTargetConsumed(payload: string): void {
+  try {
+    window.sessionStorage.setItem(CONSUMED_TREND_TARGET_KEY, payload);
+  } catch {
+    // Some restrictive WebViews disable sessionStorage; redirect still works.
+  }
+}
 
 function parseTarget(): Target | null {
   const payload = getStartParamFallback();
@@ -28,8 +45,9 @@ function parseTarget(): Target | null {
     return { kind: "remix", generationId: match[1], referralCode: match[2] };
   }
   if (TREND_LINK.test(payload)) {
+    if (trendTargetConsumed(payload)) return null;
     const match = TREND_LINK.exec(payload)!;
-    return { kind: "trend", trendId: match[1] };
+    return { kind: "trend", trendId: match[1], payload };
   }
   if (LEGACY_PROFILE_LINK.test(payload)) {
     const match = LEGACY_PROFILE_LINK.exec(payload)!;
@@ -43,10 +61,11 @@ function parseTarget(): Target | null {
   return null;
 }
 
-function TrendStartApp({ trendId }: { trendId: string }) {
+function TrendStartApp({ trendId, payload }: { trendId: string; payload: string }) {
   useEffect(() => {
+    markTrendTargetConsumed(payload);
     window.location.replace(`/mini-app/trend/?id=${encodeURIComponent(trendId)}`);
-  }, [trendId]);
+  }, [payload, trendId]);
   return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю тренд…</small></div>;
 }
 
@@ -64,7 +83,7 @@ export function AppEntryGate() {
 
   if (!ready) return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
   if (target?.kind === "profile") return <ProfileStartApp referralCode={target.referralCode} />;
-  if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} />;
+  if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;
   if (target?.kind === "post" || target?.kind === "remix") {
     return <FeedStartApp generationId={target.generationId} referralCode={target.referralCode} intent={target.kind} />;
   }
