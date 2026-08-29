@@ -31,19 +31,30 @@ def test_telegram_webview_back_button_contract_remains_available() -> None:
     assert "BackButton?: BackButton;" in source
 
 
-def test_telegram_initialization_resets_to_native_close_chrome() -> None:
+def test_telegram_initialization_keeps_customer_native_back_available() -> None:
     source = TELEGRAM.read_text(encoding="utf-8")
     init = source.split("export function initTelegram()", 1)[1].split("function safeAreaValue", 1)[0]
 
+    # initTelegram still establishes a deterministic BackButton baseline. The
+    # managed wrapper intentionally resolves hide() to the native show() action
+    # on the main Mini App path so Home can close the Telegram WebView.
     assert "tg.BackButton?.hide?.();" in init
-    assert "Nested screens explicitly opt back in with BackButton.show()." in init
+    assert "managed BackButton remains visible" in init
+    assert "if (isMainMiniAppPath()) rawShow?.();" in source
+    assert "else rawHide?.();" in source
     assert "tg.close?.();" not in init
 
 
-def test_main_menu_hides_back_while_nested_surfaces_show_it() -> None:
-    source = SOCIAL_APP.read_text(encoding="utf-8")
+def test_main_menu_delegates_back_to_managed_webview_history() -> None:
+    social = SOCIAL_APP.read_text(encoding="utf-8")
+    telegram = TELEGRAM.read_text(encoding="utf-8")
 
-    assert 'if (preview || walletOpen || route !== "home") tg.BackButton.show?.();' in source
-    assert "else tg.BackButton.hide?.();" in source
-    assert "tg.BackButton.onClick?.(back);" in source
-    assert "tg.BackButton?.offClick?.(back);" in source
+    # Local surfaces still own their first Back press (preview/wallet), while
+    # the shared Telegram adapter owns route history and closing at Home.
+    assert 'if (preview || walletOpen || route !== "home") tg.BackButton.show?.();' in social
+    assert "else tg.BackButton.hide?.();" in social
+    assert "tg.BackButton.onClick?.(back);" in social
+    assert "tg.BackButton?.offClick?.(back);" in social
+    assert "if (!handleCustomerBack(tg)) callback();" in telegram
+    assert "window.history.back();" in telegram
+    assert "tg.close?.();" in telegram
