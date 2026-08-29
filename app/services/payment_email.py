@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 EMAIL_ERROR = (
-    "Введите корректный email латинскими символами, без пробелов и спецсимволов"
+    "Введите корректный email латинскими символами, без пробелов"
 )
 
 _INVISIBLE_EMAIL_CHARS = dict.fromkeys(
@@ -59,8 +59,6 @@ def validate_billing_email(value: str) -> str:
     if not _EMAIL_RE.fullmatch(email):
         raise ValueError(EMAIL_ERROR)
     local_part, _domain = email.split("@", 1)
-    if not re.fullmatch(r"[A-Za-z0-9._]+", local_part):
-        raise ValueError(EMAIL_ERROR)
     if local_part.startswith(".") or local_part.endswith(".") or ".." in local_part:
         raise ValueError(EMAIL_ERROR)
     return email

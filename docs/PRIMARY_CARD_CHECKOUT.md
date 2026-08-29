@@ -33,8 +33,7 @@ POST /webhooks/payments/card
 ```
 
 Checkout requires a UUID `Idempotency-Key`, package id, explicit currency and billing email. The email is used for the hosted payment flow and is not inferred from Telegram identity.
-Lava Top may reject otherwise valid RFC emails with special characters in the local part.
-ROXY therefore accepts only Lava-safe checkout emails: Latin letters, digits, dot and underscore before `@`, with no spaces, emoji, `+`, or hyphen.
+ROXY accepts RFC-style ASCII checkout emails before forwarding them to Lava Top, including common local-part characters such as `+`, `-`, `_`, `.`, and `%`. The local validator rejects spaces, non-ASCII characters, emoji, malformed domains, leading/trailing dots, and repeated dots in the local part.
 
 ## Pricing
 
