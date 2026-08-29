@@ -21,6 +21,9 @@ from app.services.payments import (
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
+LEGACY_CRYPTOBOT_PROVIDER = "cryptobot"
+LEGACY_CRYPTOBOT_LABEL = "Криптовалюта · старый счёт"
+
 
 class CreatePaymentRequest(BaseModel):
     provider: Literal["2328", "tbank", "yookassa"]
@@ -31,13 +34,21 @@ class CryptoCheckoutRequest(BaseModel):
     package_id: str = Field(min_length=1, max_length=64)
 
 
+def _payment_label(payment: Payment) -> str:
+    if payment.provider == Payment2328Service.PROVIDER:
+        return Payment2328Service.PUBLIC_LABEL
+    if payment.provider == LEGACY_CRYPTOBOT_PROVIDER:
+        return LEGACY_CRYPTOBOT_LABEL
+    return payment.provider
+
+
 def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
     payload = payment.payload or {}
     return {
         "id": str(payment.id),
         "status": payment.status,
         "provider": payment.provider,
-        "label": Payment2328Service.PUBLIC_LABEL if payment.provider == "2328" else payment.provider,
+        "label": _payment_label(payment),
         "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
@@ -138,11 +149,17 @@ async def reconcile_crypto_payment(
     if (
         payment is None
         or payment.user_id != user.id
-        or payment.provider != Payment2328Service.PROVIDER
+        or payment.provider
+        not in {Payment2328Service.PROVIDER, LEGACY_CRYPTOBOT_PROVIDER}
     ):
         raise HTTPException(status_code=404, detail="Payment not found")
     try:
-        payment = await Payment2328Service.reconcile(session, payment_id=payment.id)
+        if payment.provider == Payment2328Service.PROVIDER:
+            payment = await Payment2328Service.reconcile(session, payment_id=payment.id)
+        else:
+            # Cutover safety: existing CryptoBot invoices remain read/reconcile-only.
+            # No public API or UI can create another legacy invoice.
+            payment = await PaymentService.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail="Не удалось обновить статус оплаты") from exc
     return _payment_view(payment)
