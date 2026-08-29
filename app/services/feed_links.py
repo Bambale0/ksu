@@ -54,6 +54,12 @@ def remix_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | No
     return f"{payload}_ref_{code}" if code else payload
 
 
+def trend_payload(trend_id: uuid.UUID | str) -> str:
+    """Build the public Main Mini App payload for an exact trend."""
+
+    return f"trend_{str(trend_id).strip()}"
+
+
 def prompt_payload(prompt_id: uuid.UUID | str, referral_telegram_id: int | str | None = None) -> str:
     payload = f"prompt_{str(prompt_id).strip()}"
     code = _code(referral_telegram_id) if referral_telegram_id is not None else ""
