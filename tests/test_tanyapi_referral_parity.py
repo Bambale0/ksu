@@ -76,23 +76,17 @@ def test_product_owned_start_payload_precedes_generic_startapp_fallback() -> Non
     assert 'const URL_START_PARAM_NAMES = ["tgWebAppStartParam", "start_payload", "startapp"]' in telegram
 
 
-def test_backend_applies_recovered_referral_before_user_creation() -> None:
+def test_backend_referral_attribution_requires_telegram_signed_start_param() -> None:
     source = _source("app/api/deps.py")
 
     assert "x_telegram_start_param" in source
-    assert "resolved_start_param = signed_start_param or fallback_start_param or None" in source
+    assert "signed_start_param =" in source
+    assert "resolved_start_param = signed_start_param or None" in source
+    assert "fallback_start_param" not in source
     assert "_validated_startapp_inviter(session, resolved_start_param)" in source
     assert source.index("_validated_startapp_inviter(session, resolved_start_param)") < source.index(
         "UserService.get_or_create"
     )
-
-
-def test_backend_prefers_signed_start_param_over_recovered_header() -> None:
-    source = _source("app/api/deps.py")
-
-    assert "signed_start_param =" in source
-    assert "fallback_start_param =" in source
-    assert "resolved_start_param = signed_start_param or fallback_start_param or None" in source
 
 
 def test_all_frontend_api_clients_use_shared_telegram_headers() -> None:
@@ -114,12 +108,12 @@ def test_runtime_bot_identity_is_not_trusted_to_static_env_only() -> None:
 
 
 @pytest.mark.asyncio
-async def test_authenticated_fallback_referral_reaches_new_user_creation(
+async def test_authenticated_unsigned_referral_header_cannot_assign_inviter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "bot_token", "test-token")
     monkeypatch.setattr(deps, "safe_parse_webapp_init_data", lambda _token, _raw: _parsed_init_data(None))
-    validate = AsyncMock(return_value=777)
+    validate = AsyncMock(return_value=None)
     monkeypatch.setattr(deps, "_validated_startapp_inviter", validate)
     created = SimpleNamespace(id="user-1", is_active=True)
     get_or_create = AsyncMock(return_value=created)
@@ -134,13 +128,13 @@ async def test_authenticated_fallback_referral_reaches_new_user_creation(
     )
 
     assert result is created
-    validate.assert_awaited_once_with(session, "ref_777")
-    assert get_or_create.await_args.kwargs["inviter_telegram_id"] == 777
+    validate.assert_awaited_once_with(session, None)
+    assert get_or_create.await_args.kwargs["inviter_telegram_id"] is None
     session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_signed_start_param_wins_over_recovered_header(
+async def test_signed_start_param_is_authoritative_over_recovered_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "bot_token", "test-token")
