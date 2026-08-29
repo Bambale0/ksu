@@ -14,6 +14,10 @@ const model = {
   },
 };
 
+const cryptoPackages = {
+  starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
+};
+
 async function mockApi(page) {
   await page.addInitScript(() => {
     window.Telegram = {
@@ -51,24 +55,34 @@ async function mockApi(page) {
       provider: 'kassa',
       label: 'Оплата картой',
       currencies: ['RUB'],
-      packages: {
-        starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
-      },
+      packages: cryptoPackages,
     });
     if (path === '/api/v1/payments/crypto/packages') return json({
-      provider: '2328',
-      label: 'Криптовалюта',
+      provider: 'cryptobot',
+      label: 'CryptoBot',
       configured: true,
       currencies: ['RUB'],
-      packages: {
-        starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
-      },
+      packages: cryptoPackages,
+    });
+    if (path === '/api/v1/payments/crypto/2328/packages') return json({
+      provider: '2328',
+      label: '2328',
+      configured: true,
+      currencies: ['RUB'],
+      packages: cryptoPackages,
     });
     if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
       id: 'crypto-payment-1',
       status: 'pending',
+      provider: 'cryptobot',
+      label: 'CryptoBot',
+      payment_url: 'https://t.me/CryptoBot?start=invoice-test',
+    }, 201);
+    if (path === '/api/v1/payments/crypto/2328/checkout' && request.method() === 'POST') return json({
+      id: 'crypto-payment-2',
+      status: 'pending',
       provider: '2328',
-      label: 'Криптовалюта',
+      label: '2328',
       payment_url: 'https://go.2328.io/invoice-test',
     }, 201);
     return json({ items: [] });
@@ -90,7 +104,7 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 });
 
 
-test('quick wallet exposes 2328 crypto checkout without billing email', async ({ page }) => {
+test('quick wallet exposes CryptoBot as primary crypto and keeps 2328 without billing email', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=profile');
@@ -99,14 +113,38 @@ test('quick wallet exposes 2328 crypto checkout without billing email', async ({
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
   await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
-  await page.getByRole('button', { name: 'Криптовалюта', exact: true }).click();
-  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
-  await expect(page.getByText(/На странице оплаты выберите удобную монету и сеть/)).toBeVisible();
 
-  const checkout = page.waitForRequest((request) =>
-    request.url().includes('/api/v1/payments/crypto/checkout') && request.method() === 'POST'
+  const cryptoBotButton = page.getByRole('button', { name: 'CryptoBot', exact: true });
+  const provider2328Button = page.getByRole('button', { name: '2328', exact: true });
+  await expect(cryptoBotButton).toBeVisible();
+  await expect(provider2328Button).toBeVisible();
+  const cryptoBotBox = await cryptoBotButton.boundingBox();
+  const provider2328Box = await provider2328Button.boundingBox();
+  expect(cryptoBotBox).not.toBeNull();
+  expect(provider2328Box).not.toBeNull();
+  expect(cryptoBotBox.x).toBeLessThan(provider2328Box.x);
+
+  await cryptoBotButton.click();
+  await expect(cryptoBotButton).toHaveClass(/active/);
+  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
+  await expect(page.getByText(/CryptoBot — основной крипто-способ/)).toBeVisible();
+
+  const cryptoBotCheckout = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/api/v1/payments/crypto/checkout' && request.method() === 'POST'
   );
-  await page.getByRole('button', { name: /Оплатить .* RUB криптовалютой/ }).click();
-  const request = await checkout;
-  expect(JSON.parse(request.postData() || '{}')).toEqual({ package_id: 'starter' });
+  await page.getByRole('button', { name: /Оплатить .* RUB через CryptoBot/ }).click();
+  const cryptoBotRequest = await cryptoBotCheckout;
+  expect(JSON.parse(cryptoBotRequest.postData() || '{}')).toEqual({ package_id: 'starter' });
+
+  await provider2328Button.click();
+  await expect(provider2328Button).toHaveClass(/active/);
+  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
+  await expect(page.getByText(/2328 — дополнительный крипто-способ/)).toBeVisible();
+
+  const provider2328Checkout = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/api/v1/payments/crypto/2328/checkout' && request.method() === 'POST'
+  );
+  await page.getByRole('button', { name: /Оплатить .* RUB через 2328/ }).click();
+  const provider2328Request = await provider2328Checkout;
+  expect(JSON.parse(provider2328Request.postData() || '{}')).toEqual({ package_id: 'starter' });
 });
