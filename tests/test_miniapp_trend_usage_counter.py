@@ -17,9 +17,17 @@ def test_trend_usage_count_remains_in_public_api_contract() -> None:
 
 
 def test_trend_usage_count_is_visible_on_catalog_card_and_detail() -> None:
+    formatter_path = MINI_APP / "lib" / "trend-usage.ts"
     rail = _read(MINI_APP / "components" / "live-trend-rail.tsx")
     detail = _read(MINI_APP / "app" / "trend" / "page.tsx")
 
+    assert formatter_path.is_file()
+    formatter = _read(formatter_path)
+    assert "export function trendUsageLabel" in formatter
+    assert '"запуск"' in formatter
+    assert '"запуска"' in formatter
+    assert '"запусков"' in formatter
+
     for source in (rail, detail):
+        assert 'from "@/lib/trend-usage"' in source
         assert "trendUsageLabel(trend.usage_count)" in source
-        assert "запуск" in source
