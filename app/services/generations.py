@@ -14,13 +14,14 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.model_catalog import ModelCatalog, ModelSpec
-from app.services.model_routing import resolve_model_request
+from app.services.model_routing import resolve_model_request, video_references
 from app.services.seedance25_contract import normalize_seedance25_input
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
 MAX_GENERATION_QUANTITY = 4
+VIDEO_REFERENCE_PRICE_MULTIPLIER = Decimal("2")
 
 
 class GenerationService:
@@ -150,6 +151,7 @@ class GenerationService:
             # normalizes old saved drafts (for example obsolete fixed_lens).
             merged = normalize_seedance25_input(merged)
 
+        has_video_reference = bool(video_references(merged))
         resolved_seconds = await cls._resolve_billing_seconds(
             session,
             model_id=routed.model_id,
@@ -162,6 +164,8 @@ class GenerationService:
             billing_seconds=resolved_seconds,
         )
         unit_price = cls._effective_unit_price(model_id=spec.id, parameters=clean)
+        if has_video_reference:
+            unit_price *= VIDEO_REFERENCE_PRICE_MULTIPLIER
         multiplier = Decimal(seconds) if spec.price_mode == "per_second" and seconds is not None else Decimal("1")
         cost_rox = (unit_price * multiplier).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
