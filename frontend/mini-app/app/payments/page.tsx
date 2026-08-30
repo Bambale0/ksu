@@ -12,7 +12,7 @@ import {
 import { openPaymentLink } from "@/lib/telegram";
 
 type Currency = "RUB" | "USD" | "EUR";
-type Provider = "card" | "cryptobot" | "2328";
+type Provider = "card" | "yookassa" | "cryptobot" | "2328";
 type Package = {
   credits: string;
   bonus_credits: string;
@@ -49,6 +49,7 @@ const CRYPTOBOT_PROVIDER = "cryptobot";
 function initialProvider(): Provider {
   if (typeof window !== "undefined") {
     const requested = new URLSearchParams(window.location.search).get("provider");
+    if (requested === "yookassa") return "yookassa";
     if (requested === "cryptobot") return "cryptobot";
     if (requested === "2328") return "2328";
   }
@@ -57,6 +58,7 @@ function initialProvider(): Provider {
 
 function paymentProviderLabel(payment: Payment): string {
   if (payment.label) return payment.label;
+  if (payment.provider === "yookassa") return "ЮKassa";
   if (payment.provider === CRYPTOBOT_PROVIDER) return "CryptoBot";
   if (payment.provider === "2328") return "2328";
   return "Lava Top";
@@ -64,6 +66,7 @@ function paymentProviderLabel(payment: Payment): string {
 
 export default function PaymentsPage() {
   const [cardCatalog, setCardCatalog] = useState<PackageResponse | null>(null);
+  const [yooKassaCatalog, setYooKassaCatalog] = useState<PackageResponse | null>(null);
   const [cryptoBotCatalog, setCryptoBotCatalog] = useState<PackageResponse | null>(null);
   const [crypto2328Catalog, setCrypto2328Catalog] = useState<PackageResponse | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -78,18 +81,23 @@ export default function PaymentsPage() {
   const load = async () => {
     setError("");
     try {
-      const [cardResult, cryptoBotResult, crypto2328Result, paymentsResult] = await Promise.all([
+      const [cardResult, yooKassaResult, cryptoBotResult, crypto2328Result, paymentsResult] = await Promise.all([
         customerRequest<PackageResponse>("/api/v1/payments/card/packages"),
+        customerRequest<PackageResponse>("/api/v1/payments/yookassa/packages"),
         customerRequest<PackageResponse>("/api/v1/payments/crypto/packages"),
         customerRequest<PackageResponse>("/api/v1/payments/crypto/2328/packages"),
         customerRequest<{ items: Payment[] }>("/api/v1/payments?limit=50"),
       ]);
       setCardCatalog(cardResult);
+      setYooKassaCatalog(yooKassaResult);
       setCryptoBotCatalog(cryptoBotResult);
       setCrypto2328Catalog(crypto2328Result);
       setPayments(paymentsResult.items || []);
 
       const cardAvailable = Object.keys(cardResult.packages || {}).length > 0;
+      const yooKassaAvailable = Boolean(
+        yooKassaResult.configured && Object.keys(yooKassaResult.packages || {}).length > 0,
+      );
       const cryptoBotAvailable = Boolean(
         cryptoBotResult.configured && Object.keys(cryptoBotResult.packages || {}).length > 0,
       );
@@ -98,9 +106,11 @@ export default function PaymentsPage() {
       );
       setProvider((current) => {
         if (current === "card" && cardAvailable) return current;
+        if (current === "yookassa" && yooKassaAvailable) return current;
         if (current === "cryptobot" && cryptoBotAvailable) return current;
         if (current === "2328" && crypto2328Available) return current;
         if (cardAvailable) return "card";
+        if (yooKassaAvailable) return "yookassa";
         if (cryptoBotAvailable) return "cryptobot";
         if (crypto2328Available) return "2328";
         return "card";
@@ -120,11 +130,16 @@ export default function PaymentsPage() {
 
   const catalog = provider === "card"
     ? cardCatalog
-    : provider === "cryptobot"
-      ? cryptoBotCatalog
-      : crypto2328Catalog;
+    : provider === "yookassa"
+      ? yooKassaCatalog
+      : provider === "cryptobot"
+        ? cryptoBotCatalog
+        : crypto2328Catalog;
   const activeCurrency: Currency = provider === "card" ? currency : "RUB";
   const cardAvailable = Boolean(cardCatalog && Object.keys(cardCatalog.packages || {}).length);
+  const yooKassaAvailable = Boolean(
+    yooKassaCatalog?.configured && Object.keys(yooKassaCatalog.packages || {}).length,
+  );
   const cryptoBotAvailable = Boolean(
     cryptoBotCatalog?.configured && Object.keys(cryptoBotCatalog.packages || {}).length,
   );
@@ -140,15 +155,20 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
-  const providerLabel = provider === "card" ? "Lava Top" : catalog?.label || (provider === "cryptobot" ? "CryptoBot" : "2328");
+  const providerLabel = provider === "card"
+    ? "Lava Top"
+    : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
   const providerAvailable = provider === "card"
     ? cardAvailable
-    : provider === "cryptobot"
-      ? cryptoBotAvailable
-      : crypto2328Available;
+    : provider === "yookassa"
+      ? yooKassaAvailable
+      : provider === "cryptobot"
+        ? cryptoBotAvailable
+        : crypto2328Available;
   const supportedPayments = useMemo(
     () => payments.filter((item) => (
       item.provider === "card"
+      || item.provider === "yookassa"
       || item.provider === CRYPTOBOT_PROVIDER
       || item.provider === "2328"
     )),
@@ -162,7 +182,13 @@ export default function PaymentsPage() {
     setNotice("");
     try {
       let payment: Payment;
-      if (provider === "cryptobot") {
+      if (provider === "yookassa") {
+        payment = await customerRequest<Payment>("/api/v1/payments", {
+          method: "POST",
+          headers: { "Idempotency-Key": customerIdempotencyKey() },
+          body: JSON.stringify({ provider: "yookassa", package_id: packageId }),
+        });
+      } else if (provider === "cryptobot") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": customerIdempotencyKey() },
@@ -211,11 +237,13 @@ export default function PaymentsPage() {
     setError("");
     setNotice("");
     try {
-      const path = payment.provider === "2328"
-        ? `/api/v1/payments/crypto/2328/${encodeURIComponent(payment.id)}/reconcile`
-        : payment.provider === CRYPTOBOT_PROVIDER
-          ? `/api/v1/payments/crypto/${encodeURIComponent(payment.id)}/reconcile`
-          : `/api/v1/payments/card/${encodeURIComponent(payment.id)}/reconcile`;
+      const path = payment.provider === "yookassa"
+        ? `/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile`
+        : payment.provider === "2328"
+          ? `/api/v1/payments/crypto/2328/${encodeURIComponent(payment.id)}/reconcile`
+          : payment.provider === CRYPTOBOT_PROVIDER
+            ? `/api/v1/payments/crypto/${encodeURIComponent(payment.id)}/reconcile`
+            : `/api/v1/payments/card/${encodeURIComponent(payment.id)}/reconcile`;
       const next = await customerRequest<Payment>(path, { method: "POST" });
       setPayments((current) => current.map((item) => (
         item.id === next.id ? { ...item, ...next } : item
@@ -232,15 +260,17 @@ export default function PaymentsPage() {
     }
   };
 
-  const cryptoHint = provider === "cryptobot"
-    ? "CryptoBot — основной крипто-способ. На странице счёта выберите удобную монету и сеть."
-    : "2328 — дополнительный крипто-способ. На странице оплаты выберите удобную монету и сеть.";
+  const providerHint = provider === "yookassa"
+    ? "ЮKassa — оплата в рублях. Доступный способ выберите на защищённой странице оплаты."
+    : provider === "cryptobot"
+      ? "CryptoBot — основной крипто-способ. На странице счёта выберите удобную монету и сеть."
+      : "2328 — дополнительный крипто-способ. На странице оплаты выберите удобную монету и сеть.";
 
   return (
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="Карта и СБП доступны через Lava Top. Для криптовалюты основной способ — CryptoBot, дополнительный — 2328."
+      copy="Оплатить в рублях можно через Lava Top или ЮKassa. Для криптовалюты основной способ — CryptoBot, дополнительный — 2328."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -249,11 +279,12 @@ export default function PaymentsPage() {
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
         <div className="segmented providers" aria-label="Способ оплаты">
           {cardAvailable ? <button type="button" className={provider === "card" ? "active" : ""} onClick={() => setProvider("card")}>Lava Top</button> : null}
+          {yooKassaAvailable ? <button type="button" className={provider === "yookassa" ? "active" : ""} onClick={() => setProvider("yookassa")}>ЮKassa</button> : null}
           {cryptoBotAvailable ? <button type="button" className={provider === "cryptobot" ? "active" : ""} onClick={() => setProvider("cryptobot")}>CryptoBot</button> : null}
           {crypto2328Available ? <button type="button" className={provider === "2328" ? "active" : ""} onClick={() => setProvider("2328")}>2328</button> : null}
         </div>
 
-        {!cardAvailable && !cryptoBotAvailable && !crypto2328Available ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
+        {!cardAvailable && !yooKassaAvailable && !cryptoBotAvailable && !crypto2328Available ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
@@ -262,7 +293,7 @@ export default function PaymentsPage() {
             <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
           </button>)}</div>
 
-          {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{cryptoHint}</p>}
+          {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
 
           {selected ? <div className="profile-stats"><div><strong>{compactNumber(selected.credits)}</strong><span>базовые ROX</span></div><div><strong>+{compactNumber(selected.bonus_credits || 0)}</strong><span>бонус</span></div><div><strong>{compactNumber(selected.total_credits || selected.credits)}</strong><span>итого ROX</span></div></div> : null}
 
