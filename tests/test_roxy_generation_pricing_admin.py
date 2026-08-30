@@ -224,8 +224,10 @@ async def test_admin_published_tariff_changes_real_quote_prices_and_survives_hyd
         )
         assert spec.id == "kling-motion-3.0"
         assert seconds == 5
-        assert unit_price == Decimal("85")
-        assert cost == Decimal("425.00")
+        # Admin publishes the base model tariff. The runtime applies the product-wide
+        # video-reference multiplier after the selected quality tier is resolved.
+        assert unit_price == Decimal("170")
+        assert cost == Decimal("850.00")
 
         # Simulate a fresh process that starts with code defaults, then hydrates
         # the currently published tariff from PostgreSQL.
