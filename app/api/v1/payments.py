@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.core.config import settings
 from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.abuse_protection import AbuseProtectionService
@@ -16,6 +17,7 @@ from app.services.payment_2328 import Payment2328Service
 from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import (
     PaymentIdempotencyConflict,
+    PaymentPackage,
     PaymentService,
     UnknownPaymentPackageError,
     UnknownPaymentProviderError,
@@ -38,6 +40,8 @@ def _payment_label(payment: Payment) -> str:
         return CryptoBotPaymentService.PUBLIC_LABEL
     if payment.provider == Payment2328Service.PROVIDER:
         return "2328"
+    if payment.provider == "yookassa":
+        return "ЮKassa"
     return payment.provider
 
 
@@ -73,6 +77,21 @@ def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object
     }
 
 
+def _yookassa_catalog_package(package: PaymentPackage) -> dict[str, object]:
+    return {
+        "credits": str(package.credits),
+        "bonus_credits": "0",
+        "total_credits": str(package.credits),
+        "prices": {package.currency: str(package.amount)},
+    }
+
+
+def _yookassa_configured() -> bool:
+    return PaymentService.provider_configured("yookassa") and bool(
+        settings.payment_return_url or settings.public_base_url
+    )
+
+
 @router.get("/packages")
 async def list_packages() -> dict[str, object]:
     return {
@@ -85,6 +104,21 @@ async def list_packages() -> dict[str, object]:
                 "rox": str(package.rox_amount),
             }
             for package_id, package in PaymentService.packages().items()
+        },
+    }
+
+
+@router.get("/yookassa/packages")
+async def list_yookassa_packages() -> dict[str, object]:
+    packages = PaymentService.packages()
+    return {
+        "provider": "yookassa",
+        "label": "ЮKassa",
+        "configured": _yookassa_configured(),
+        "currencies": ["RUB"],
+        "packages": {
+            package_id: _yookassa_catalog_package(package)
+            for package_id, package in packages.items()
         },
     }
 
@@ -224,6 +258,22 @@ async def reconcile_2328_crypto_payment(
         payment = await Payment2328Service.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:
         raise HTTPException(status_code=502, detail="Не удалось обновить статус оплаты") from exc
+    return _payment_view(payment)
+
+
+@router.post("/yookassa/{payment_id}/reconcile")
+async def reconcile_yookassa_payment(
+    payment_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, str]:
+    payment = await session.get(Payment, payment_id)
+    if payment is None or payment.user_id != user.id or payment.provider != "yookassa":
+        raise HTTPException(status_code=404, detail="Payment not found")
+    try:
+        payment = await PaymentService.reconcile(session, payment_id=payment.id)
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=502, detail="Не удалось обновить статус ЮKassa") from exc
     return _payment_view(payment)
 
 
