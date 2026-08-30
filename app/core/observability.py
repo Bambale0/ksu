@@ -130,6 +130,9 @@ DISTRIBUTED_EVENT_NAMES = (
     "payment_reconcile_success",
     "payment_reconcile_failure",
     "payment_worker_loop_error",
+    "admin_daily_stats_sent",
+    "admin_daily_stats_failure",
+    "admin_daily_stats_worker_loop_error",
     "media_ingest_processed",
     "music_audio_ingest_processed",
     "music_audio_worker_loop_error",
@@ -340,7 +343,13 @@ async def refresh_snapshot_metrics(session: AsyncSession, redis: Redis) -> None:
             max(0.0, (datetime.now(timezone.utc) - media_oldest).total_seconds())
         )
 
-    for worker in ("generation-worker", "payment-worker", "media-worker", "prompt-tool-worker"):
+    for worker in (
+        "generation-worker",
+        "payment-worker",
+        "media-worker",
+        "prompt-tool-worker",
+        "admin-daily-stats-worker",
+    ):
         await worker_health(redis, worker)
 
     for event in DISTRIBUTED_EVENT_NAMES:

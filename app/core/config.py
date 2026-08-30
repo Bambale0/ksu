@@ -163,6 +163,9 @@ class Settings(BaseSettings):
     campaign_delivery_lease_seconds: int = 90
     campaign_delivery_max_attempts: int = 8
     campaign_delivery_batch_size: int = 50
+    admin_daily_stats_enabled: bool = True
+    admin_daily_stats_poll_seconds: int = 300
+    admin_daily_stats_interval_seconds: int = 86400
 
     abuse_protection_enabled: bool = True
     abuse_fail_closed: bool = True

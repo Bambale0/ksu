@@ -111,6 +111,20 @@ services:
         condition: service_healthy
     command: python -m app.workers.admin_campaigns
 
+  admin-daily-stats-worker:
+    build: .
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.admin_daily_stats
+
   prompt-tool-worker:
     build: .
     env_file: .env

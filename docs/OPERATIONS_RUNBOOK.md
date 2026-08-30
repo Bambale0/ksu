@@ -27,6 +27,7 @@ Internet / Telegram
    |
    +----------> payment-worker ---------> payment providers
    +----------> creator-partnership-worker
+   +----------> admin-daily-stats-worker -> Telegram admin chats
 
  backup-worker ----------------------> PostgreSQL
        |
@@ -43,6 +44,7 @@ generation-worker
 media-worker
 payment-worker
 creator-partnership-worker
+admin-daily-stats-worker
 backup-worker
 ```
 
@@ -78,9 +80,9 @@ cp .env.example .env   # only for first-time setup; fill secrets separately
 chmod 600 .env
 
 docker compose up -d postgres redis
-docker compose build app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker
+docker compose build app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker admin-daily-stats-worker
 docker compose run --rm app alembic upgrade head
-docker compose up -d app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker backup-worker
+docker compose up -d app generation-worker media-worker prompt-tool-worker payment-worker creator-partnership-worker admin-daily-stats-worker backup-worker
 ```
 
 Never deploy from a feature branch. Never hard-code a historical Alembic revision as the deployment target.
@@ -112,6 +114,10 @@ REDIS_URL=redis://redis:6379/0
 BOT_TOKEN=...
 TELEGRAM_WEBHOOK_URL=https://api.example.com
 TELEGRAM_WEBHOOK_SECRET=<random-secret>
+
+ADMIN_DAILY_STATS_ENABLED=true
+ADMIN_DAILY_STATS_POLL_SECONDS=300
+ADMIN_DAILY_STATS_INTERVAL_SECONDS=86400
 
 DB_BACKUP_INTERVAL_SECONDS=10800
 DB_BACKUP_RETENTION_COUNT=16
