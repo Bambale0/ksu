@@ -9,6 +9,7 @@ from app.core.config import settings
 ROOT = Path(__file__).resolve().parents[1]
 PAYMENTS_PAGE = ROOT / "frontend" / "mini-app" / "app" / "payments" / "page.tsx"
 ENV_EXAMPLE = ROOT / ".env.example"
+YOOKASSA_DOCS = ROOT / "docs" / "yookassa.md"
 
 
 @pytest.mark.asyncio
@@ -73,8 +74,12 @@ def test_mini_app_exposes_yookassa_checkout_and_reconciliation() -> None:
         assert token in page
 
 
-def test_yookassa_env_example_documents_webhook_endpoint() -> None:
+def test_yookassa_setup_is_documented() -> None:
     env_example = ENV_EXAMPLE.read_text(encoding="utf-8")
-    assert "/webhooks/payments/yookassa" in env_example
+    docs = YOOKASSA_DOCS.read_text(encoding="utf-8")
     assert "YOOKASSA_SHOP_ID=" in env_example
     assert "YOOKASSA_SECRET_KEY=" in env_example
+    assert "/webhooks/payments/yookassa" in docs
+    assert "payment.succeeded" in docs
+    assert "payment.canceled" in docs
+    assert "refund.succeeded" in docs
