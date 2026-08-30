@@ -27,11 +27,13 @@ def test_customer_ui_shows_cryptobot_before_2328() -> None:
     payments_source = PAYMENTS_UI.read_text(encoding="utf-8")
     wallet_source = WALLET_UI.read_text(encoding="utf-8")
 
-    assert 'type Provider = "card" | "cryptobot" | "2328"' in payments_source
+    assert 'type Provider = "card" | "yookassa" | "cryptobot" | "2328"' in payments_source
+    assert '"/api/v1/payments/yookassa/packages"' in payments_source
     assert '"/api/v1/payments/crypto/packages"' in payments_source
     assert '"/api/v1/payments/crypto/2328/packages"' in payments_source
     assert '"/api/v1/payments/crypto/checkout"' in payments_source
     assert '"/api/v1/payments/crypto/2328/checkout"' in payments_source
+    assert "ЮKassa" in payments_source
     assert "CryptoBot" in payments_source
     assert "2328" in payments_source
     assert payments_source.index(">CryptoBot</button>") < payments_source.index(">2328</button>")
