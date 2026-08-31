@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getStartParamFallback } from "@/lib/telegram";
 
+const BROWSER_AUTH_STORAGE_KEY = "__roxy_browser_init_data_v1";
+
 type TelegramLoginUser = {
   id: number;
   first_name: string;
@@ -19,7 +21,17 @@ declare global {
   }
 }
 
-function saveBrowserInitData(initData: string): void {
+function saveBrowserInitData(initData: string, expiresIn: number): void {
+  const ttlSeconds = Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 24 * 60 * 60;
+  try {
+    window.sessionStorage.setItem(BROWSER_AUTH_STORAGE_KEY, JSON.stringify({
+      initData,
+      expiresAt: Date.now() + ttlSeconds * 1000,
+    }));
+  } catch {
+    // URL hash remains enough for the current page even when storage is restricted.
+  }
+
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   params.set("tgWebAppData", initData);
   window.location.hash = params.toString();
@@ -80,9 +92,10 @@ export function TelegramBrowserLogin() {
         const payload = await response.json().catch(() => null) as {
           ok?: boolean;
           init_data?: string;
+          expires_in?: number;
         } | null;
         if (!response.ok || !payload?.ok || !payload.init_data) throw new Error("Telegram login failed");
-        saveBrowserInitData(payload.init_data);
+        saveBrowserInitData(payload.init_data, Number(payload.expires_in || 0));
         window.location.reload();
       } catch {
         setStatus("error");
