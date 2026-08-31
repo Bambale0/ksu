@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { compactNumber, customerIdempotencyKey, customerRequest, dateTime } from "@/lib/customer-api";
@@ -27,6 +27,7 @@ export default function PartnerWalletPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const withdrawalKey = useRef<string | null>(null);
 
   const load = async () => {
     setError("");
@@ -45,6 +46,10 @@ export default function PartnerWalletPage() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  const resetWithdrawalIntent = () => {
+    withdrawalKey.current = null;
+  };
 
   const transferToRox = async () => {
     const amount = Number(transferAmount);
@@ -66,12 +71,16 @@ export default function PartnerWalletPage() {
   const withdraw = async () => {
     const amount = Number(withdrawAmount);
     if (!(amount > 0) || !requisites.trim() || busy) return;
+    const requestKey = withdrawalKey.current ?? customerIdempotencyKey();
+    withdrawalKey.current = requestKey;
     setBusy(true); setError(""); setNotice("");
     try {
       await customerRequest<Withdrawal>("/api/v1/referrals/withdrawals", {
         method: "POST",
+        headers: { "Idempotency-Key": requestKey },
         body: JSON.stringify({ amount, requisites: requisites.trim() }),
       });
+      withdrawalKey.current = null;
       setWithdrawAmount(""); setRequisites("");
       setNotice("Заявка на выплату создана");
       await load();
@@ -93,7 +102,7 @@ export default function PartnerWalletPage() {
   };
 
   return (
-    <StandaloneShell kicker="Партнёрам" title="Доход и выплаты" copy="Выводятся только партнёрские начисления в ₽ с оплаченных заказов ваших рефералов. ROX — внутренняя валюта ROXY и на карту не выводится.">
+    <StandaloneShell kicker="Партнёрам" title="Доход и выплаты" copy="Выводятся только партнёрские начисления в ₽ — процент с реально оплаченных заказов ваших рефералов. ROX — внутренняя валюта ROXY и на карту не выводится.">
       {stats ? <div className="profile-stats panel"><div><strong>{compactNumber(stats.withdrawable_rub)} ₽</strong><span>доступно</span></div><div><strong>{compactNumber(stats.pending_referral_rub)} ₽</strong><span>ожидается</span></div><div><strong>{compactNumber(stats.partner_total_earned_rub)} ₽</strong><span>заработано</span></div></div> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -110,10 +119,10 @@ export default function PartnerWalletPage() {
 
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">Выплата</span><h2>Вывести деньги</h2></div></div>
-          <p className="muted">На карту можно вывести только партнёрские начисления с реально оплаченных заказов рефералов. Минимальная сумма: {compactNumber(stats?.minimum_withdrawal_rub)} ₽.</p>
+          <p className="muted">На карту можно вывести только партнёрский процент с реально оплаченных заказов рефералов. ROX, бонусы и пополнения в вывод не входят. Минимальная сумма: {compactNumber(stats?.minimum_withdrawal_rub)} ₽.</p>
           <div className="form-stack">
-            <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min={stats?.minimum_withdrawal_rub || "0.01"} step="0.01" value={withdrawAmount} onChange={(event) => setWithdrawAmount(event.target.value)} /></label>
-            <label className="field"><span className="label">Реквизиты</span><textarea className="control textarea" maxLength={1000} value={requisites} onChange={(event) => setRequisites(event.target.value)} placeholder="Карта / СБП / другие согласованные реквизиты" /></label>
+            <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min={stats?.minimum_withdrawal_rub || "0.01"} step="0.01" value={withdrawAmount} onChange={(event) => { resetWithdrawalIntent(); setWithdrawAmount(event.target.value); }} /></label>
+            <label className="field"><span className="label">Реквизиты</span><textarea className="control textarea" maxLength={1000} value={requisites} onChange={(event) => { resetWithdrawalIntent(); setRequisites(event.target.value); }} placeholder="Карта / СБП / другие согласованные реквизиты" /></label>
             <button className="primary wide" type="button" disabled={busy || !(Number(withdrawAmount) > 0) || !requisites.trim()} onClick={() => void withdraw()}>{busy ? "Создаю…" : "Создать заявку"}</button>
           </div>
         </div>
