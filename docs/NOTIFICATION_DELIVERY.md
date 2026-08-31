@@ -23,7 +23,7 @@ For a successful generation the worker tries to send the first generated asset a
 - `📥 Скачать оригинал` — the generated result URL when one exists;
 - `🚀 Открыть в ROXY` — a private-chat Web App button to `/mini-app/?route=history&generation=<generation_id>`.
 
-If Telegram cannot fetch/decode the provider media URL under Bot API media limits, delivery degrades to a normal text message with the same result/open buttons instead of losing the completion notification.
+If Telegram cannot fetch or decode the remote media URL, the worker does **not** report a text-only false success. It downloads the original server-side, preferring the durable object-storage asset when available, retries the send as a native uploaded photo/video/audio, and if Telegram still rejects that media representation sends the original as a document. Network errors, rate limits and recipient errors remain failures for the durable outbox retry/terminal-state logic instead of being misclassified as media-format problems.
 
 Failure notifications contain a short user-facing reason category and explicitly state the ROX refund when the failed generation was charged. Raw provider exception text is not exposed as customer copy.
 
