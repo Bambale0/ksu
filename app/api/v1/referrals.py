@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -19,6 +19,7 @@ from app.services.partner import (
     PartnerService,
     PartnerWithdrawalBelowMinimum,
     PartnerWithdrawalError,
+    PartnerWithdrawalIdempotencyConflict,
 )
 from app.services.partner_wallet import (
     PartnerWalletTransferError,
@@ -307,22 +308,23 @@ async def create_withdrawal(
     payload: CreateWithdrawalRequest,
     user: CurrentUserDep,
     session: SessionDep,
+    idempotency_key: str = Header(
+        ...,
+        alias="Idempotency-Key",
+        min_length=8,
+        max_length=160,
+    ),
 ) -> dict[str, object]:
     try:
-        # Use the same user row lock as wallet conversion so a partner cannot spend
-        # the same RUB concurrently on a card payout and on ROX conversion.
-        await PartnerWalletTransferService.assert_available(
-            session,
-            user_id=user.id,
-            amount=payload.amount,
-            lock=True,
-        )
-        item = await PartnerService.create_withdrawal(
+        item = await PartnerWalletTransferService.create_cash_withdrawal(
             session,
             user_id=user.id,
             amount=payload.amount,
             requisites=payload.requisites,
+            idempotency_key=idempotency_key,
         )
+    except PartnerWithdrawalIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PartnerWalletTransferInsufficientFunds as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PartnerInsufficientFunds as exc:
