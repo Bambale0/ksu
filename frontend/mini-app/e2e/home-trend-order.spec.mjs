@@ -12,14 +12,21 @@ const model = {
 
 const trend = {
   id: 'trend_home_order',
-  title: 'Тренд под баннером',
-  description: 'Проверка порядка блоков',
+  title: 'Актуальный тренд',
+  description: 'Проверка верхней ленты',
   media_type: 'image',
   model: { id: model.id, title: model.title, family: model.family },
   cost_rox: '15.00',
   reference_requirements: { kind: 'none', min: 0, max: 0 },
   prompt_hidden: true,
   prompt_actions_allowed: false,
+};
+
+const birthdayTrend = {
+  ...trend,
+  id: 'trend_birthday',
+  title: 'Поздравление с днём рождения',
+  description: 'Шаблон из папки',
 };
 
 async function mockHome(page) {
@@ -36,15 +43,20 @@ async function mockHome(page) {
   });
 
   await page.route('**/api/v1/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const url = new URL(route.request().url());
+    const path = url.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
-    if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' });
+    if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00', is_admin: false });
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [trend] });
+    if (path === '/api/v1/trend-collections') return json({ items: [
+      { id: 'trends', system_key: 'trends', title: 'Тренды', description: 'Instagram', sort_order: 0, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
+      { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
+    ] });
+    if (path === '/api/v1/trend-collections/birthday/items') return json({ collection: { id: 'birthday', title: 'День рождения' }, items: url.searchParams.get('media_type') === 'video' ? [] : [birthdayTrend] });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/referrals/stats') return json({});
     if (path === '/api/v1/referrals/rewards' || path === '/api/v1/referrals/invitations') return json({ items: [] });
@@ -52,26 +64,37 @@ async function mockHome(page) {
   });
 }
 
-test('home puts trends directly below promo before creation formats', async ({ page }) => {
+test('home shows live trends below promo and category folders immediately after them', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=home');
-  await expect(page.locator('.home-screen')).toBeVisible();
-  await expect(page.locator('.home-screen .model-card', { hasText: trend.title })).toBeVisible();
 
-  await expect.poll(() => page.locator('.home-screen').evaluate((home) => {
-    const children = Array.from(home.children);
-    const promo = children.findIndex((node) => node.classList.contains('promo-slider'));
-    const section = (kicker) => children.findIndex((node) => node.querySelector('.kicker')?.textContent?.trim() === kicker);
-    const trends = section('Тренды');
-    const studio = section('Студия');
+  const home = page.locator('.home-screen');
+  const promo = home.locator(':scope > .promo-slider');
+  const trends = home.locator(':scope > #roxy-home-live-trends');
+  const folders = home.locator(':scope > #roxy-home-trend-folders');
+
+  await expect(home).toBeVisible();
+  await expect(promo).toBeVisible();
+  await expect(trends.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
+  await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
+
+  await expect.poll(() => home.evaluate((node) => {
+    const promo = node.querySelector(':scope > .promo-slider');
+    const trends = node.querySelector(':scope > #roxy-home-live-trends');
+    const folders = node.querySelector(':scope > #roxy-home-trend-folders');
     return {
-      trendsDirectlyAfterPromo: trends === promo + 1,
-      studioAfterTrendRail: studio > trends + 1,
+      trendsAfterPromo: Boolean(promo && trends && promo.nextElementSibling === trends),
+      foldersAfterTrends: Boolean(trends && folders && trends.nextElementSibling === folders),
     };
-  })).toEqual({ trendsDirectlyAfterPromo: true, studioAfterTrendRail: true });
+  })).toEqual({ trendsAfterPromo: true, foldersAfterTrends: true });
+
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+  await expect(folders.getByRole('tab', { name: /Фото/ })).toBeVisible();
+  await expect(folders.getByRole('tab', { name: /Видео/ })).toBeVisible();
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
 });
 
-test('catalog puts live trends directly below promo before feature catalog', async ({ page }) => {
+test('catalog keeps live trends directly below promo before feature catalog', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=catalog');
 

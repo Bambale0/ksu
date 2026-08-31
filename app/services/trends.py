@@ -15,6 +15,7 @@ from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.trend_collections import TrendCollectionService
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,7 @@ class TrendService:
         limit: int = 50,
         media_type: str | None = None,
     ) -> dict[str, Any]:
+        collection_state = await TrendCollectionService.state(session)
         rows = list(
             (
                 await session.scalars(
@@ -173,6 +175,11 @@ class TrendService:
         )
         items: list[dict[str, Any]] = []
         for row in rows:
+            if (
+                TrendCollectionService.assigned_collection(collection_state, row.id)
+                != TrendCollectionService.DEFAULT_COLLECTION_ID
+            ):
+                continue
             try:
                 view = await TrendService.public_view(session, row)
             except (ValueError, KeyError):
