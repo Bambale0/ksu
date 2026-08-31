@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { compactNumber, customerIdempotencyKey, customerRequest, dateTime } from "@/lib/customer-api";
@@ -16,6 +16,7 @@ type PartnerStats = {
 };
 type Withdrawal = { id: string; amount: string; amount_rub: string; status: string; created_at: string; updated_at: string; can_cancel: boolean };
 type Transfer = { id: string; amount_rub: string; rox_amount: string; created_at: string };
+type WithdrawalIntent = { fingerprint: string; idempotencyKey: string };
 
 export default function PartnerWalletPage() {
   const [stats, setStats] = useState<PartnerStats | null>(null);
@@ -27,6 +28,7 @@ export default function PartnerWalletPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const withdrawalIntentRef = useRef<WithdrawalIntent | null>(null);
 
   const load = async () => {
     setError("");
@@ -65,17 +67,32 @@ export default function PartnerWalletPage() {
 
   const withdraw = async () => {
     const amount = Number(withdrawAmount);
-    if (!(amount > 0) || !requisites.trim() || busy) return;
+    const cleanedRequisites = requisites.trim();
+    if (!(amount > 0) || !cleanedRequisites || busy) return;
+
+    const fingerprint = `${amount.toFixed(2)}\n${cleanedRequisites}`;
+    if (withdrawalIntentRef.current?.fingerprint !== fingerprint) {
+      withdrawalIntentRef.current = {
+        fingerprint,
+        idempotencyKey: customerIdempotencyKey(),
+      };
+    }
+    const idempotencyKey = withdrawalIntentRef.current.idempotencyKey;
+
     setBusy(true); setError(""); setNotice("");
     try {
       await customerRequest<Withdrawal>("/api/v1/referrals/withdrawals", {
         method: "POST",
-        body: JSON.stringify({ amount, requisites: requisites.trim() }),
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ amount, requisites: cleanedRequisites }),
       });
+      withdrawalIntentRef.current = null;
       setWithdrawAmount(""); setRequisites("");
       setNotice("Заявка на выплату создана");
       await load();
     } catch (reason) {
+      // Keep the key for the same exact intent. If the request reached the server
+      // but its response was lost, pressing the button again safely replays it.
       setError(reason instanceof Error ? reason.message : "Не удалось создать выплату");
     } finally { setBusy(false); }
   };
