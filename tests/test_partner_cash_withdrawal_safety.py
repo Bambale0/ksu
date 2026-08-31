@@ -10,14 +10,17 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.db.models import ReferralReward, User
+from app.db.models import AdminAccount, Payment, ReferralReward, User
 from app.db.partner_wallet_models import PartnerWithdrawalRequest
+from app.db.payment_models import PaymentReversal
 from app.db.session import SessionFactory
+from app.services.admin_partners import AdminPartnerService
 from app.services.partner import PartnerInsufficientFunds, PartnerWithdrawalIdempotencyConflict
 from app.services.partner_wallet import (
     PartnerWalletTransferInsufficientFunds,
     PartnerWalletTransferService,
 )
+from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
 
@@ -41,7 +44,7 @@ async def _seed_available_reward(
     partner: User,
     buyer: User,
     amount: Decimal = Decimal("30"),
-) -> None:
+) -> tuple[ReferralReward, uuid.UUID]:
     source_tx = await WalletService.credit(
         session,
         user_id=buyer.id,
@@ -51,18 +54,18 @@ async def _seed_available_reward(
         reference_id=str(uuid.uuid4()),
         idempotency_key=f"partner-safety-source:{uuid.uuid4()}",
     )
-    session.add(
-        ReferralReward(
-            partner_user_id=partner.id,
-            source_user_id=buyer.id,
-            source_transaction_id=source_tx.id,
-            level=1,
-            percent=Decimal("30"),
-            amount=amount,
-            status="available",
-        )
+    reward = ReferralReward(
+        partner_user_id=partner.id,
+        source_user_id=buyer.id,
+        source_transaction_id=source_tx.id,
+        level=1,
+        percent=Decimal("30"),
+        amount=amount,
+        status="available",
     )
+    session.add(reward)
     await session.flush()
+    return reward, source_tx.id
 
 
 def test_rox_never_enters_cash_withdrawal_contract() -> None:
@@ -183,3 +186,87 @@ async def test_cash_withdrawal_and_rox_conversion_cannot_double_spend_partner_in
     async with SessionFactory() as session:
         accounting = await PartnerWalletTransferService.accounting(session, partner_id)
         assert accounting["available"] == Decimal("10.00")
+
+
+@pytest.mark.asyncio
+async def test_admin_payout_recheck_counts_already_converted_partner_rox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "partner_min_withdrawal_rub", Decimal("1"))
+
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Admin")
+        partner = await _user(session, "Partner")
+        buyer = await _user(session, "Buyer")
+        admin = AdminAccount(user_id=admin_user.id, role="admin", is_active=True)
+        session.add(admin)
+        reward, source_transaction_id = await _seed_available_reward(
+            session,
+            partner=partner,
+            buyer=buyer,
+        )
+        await session.commit()
+
+        await PartnerWalletTransferService.transfer(
+            session,
+            user_id=partner.id,
+            amount=Decimal("10"),
+            idempotency_key=f"payout-backing-transfer:{uuid.uuid4()}",
+        )
+        withdrawal = await PartnerWalletTransferService.create_cash_withdrawal(
+            session,
+            user_id=partner.id,
+            amount=Decimal("20"),
+            requisites="SBP +79990000000",
+            idempotency_key=f"payout-backing-withdrawal:{uuid.uuid4()}",
+        )
+
+        payment = Payment(
+            user_id=buyer.id,
+            provider="audit",
+            external_id=f"audit-{uuid.uuid4()}",
+            amount=Decimal("100"),
+            currency="RUB",
+            rox_amount=Decimal("100"),
+            status="refunded",
+            payload={},
+        )
+        session.add(payment)
+        await session.flush()
+        reversal = PaymentReversal(
+            payment_id=payment.id,
+            provider="audit",
+            idempotency_key=f"audit-reversal-{uuid.uuid4()}",
+            amount=Decimal("20"),
+            credits=Decimal("20"),
+            reason="partial refund",
+            provider_payload={},
+        )
+        session.add(reversal)
+        await session.flush()
+        await ReferralService.reverse_payment_rewards(
+            session,
+            source_transaction_id=source_transaction_id,
+            payment_reversal_id=reversal.id,
+            cumulative_ratio=Decimal("0.20"),
+        )
+        await session.commit()
+
+        assert Decimal(reward.amount) == Decimal("30")
+        accounting = await PartnerWalletTransferService.accounting(session, partner.id)
+        assert accounting["total_earned"] == Decimal("24.00")
+        assert accounting["transferred_to_rox"] == Decimal("10.00")
+        assert accounting["reserved_or_paid"] == Decimal("20.00")
+
+        with pytest.raises(ValueError, match="no longer backed"):
+            await AdminPartnerService.update_withdrawal(
+                session,
+                admin=admin,
+                withdrawal_id=withdrawal.id,
+                status="processing",
+                reason="must not exceed post-refund earnings",
+                idempotency_key=f"admin-payout:{uuid.uuid4()}",
+                request_id=str(uuid.uuid4()),
+                confirmed=True,
+                step_up_valid=True,
+            )
