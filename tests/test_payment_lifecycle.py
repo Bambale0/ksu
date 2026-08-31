@@ -18,6 +18,23 @@ def _telegram_id(prefix: int) -> int:
     return prefix * 1_000_000_000_000 + random.randint(1, 999_999_999)
 
 
+def test_payment_packages_allow_explicit_provider_price_over_internal_rate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("1"))
+    monkeypatch.setattr(
+        settings,
+        "rox_packages_json",
+        '{"lava-starter":{"credits":"100","amount":"108.70","currency":"RUB"}}',
+    )
+
+    package = PaymentService.package("lava-starter")
+
+    assert package.rox_amount == Decimal("100")
+    assert package.amount == Decimal("108.70")
+    assert package.currency == "RUB"
+
+
 @pytest.mark.asyncio
 async def test_payment_creation_idempotency_prevents_duplicate_provider_invoice(
     monkeypatch: pytest.MonkeyPatch,

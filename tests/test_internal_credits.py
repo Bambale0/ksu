@@ -1,7 +1,5 @@
 from decimal import Decimal
 
-import pytest
-
 from app.core.config import settings
 from app.services.credits import InternalCreditService
 from app.services.payments import PaymentService
@@ -46,16 +44,17 @@ def test_payment_package_can_derive_rub_amount_from_credits() -> None:
         settings.rox_packages_json = previous_packages
 
 
-def test_payment_package_rejects_rate_mismatch() -> None:
+def test_payment_package_allows_explicit_provider_price() -> None:
     previous_rate = settings.internal_credit_rub
     previous_packages = settings.rox_packages_json
     settings.internal_credit_rub = Decimal("1")
     settings.rox_packages_json = (
-        '{"broken":{"amount":"299","credits":"300","currency":"RUB"}}'
+        '{"lava":{"amount":"299","credits":"300","currency":"RUB"}}'
     )
     try:
-        with pytest.raises(ValueError, match="violates internal credit rate"):
-            PaymentService.packages()
+        package = PaymentService.package("lava")
+        assert package.credits == Decimal("300")
+        assert package.amount == Decimal("299")
     finally:
         settings.internal_credit_rub = previous_rate
         settings.rox_packages_json = previous_packages
