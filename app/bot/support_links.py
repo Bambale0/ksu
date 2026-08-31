@@ -5,10 +5,6 @@ from urllib.parse import parse_qs, urlparse
 
 _TELEGRAM_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 _TELEGRAM_INVITE_RE = re.compile(r"^\+[A-Za-z0-9_-]{8,}$")
-_STALE_SUPPORT_URL_DEFAULTS = {
-    "https://t.me/korkinaxenia",
-    "tg://resolve?domain=korkinaxenia",
-}
 
 
 def _is_valid_telegram_peer(value: str) -> bool:
@@ -16,16 +12,10 @@ def _is_valid_telegram_peer(value: str) -> bool:
 
 
 def normalize_direct_support_url(raw_url: str | None) -> str | None:
-    """Return a safe Telegram support URL or None to use internal support.
-
-    A stale baked-in username makes Telegram show BOT_INVALID. Support must be
-    explicitly configured; otherwise ROXY falls back to its durable support flow.
-    """
+    """Return a safe Telegram support URL or None to use internal support."""
 
     url = (raw_url or "").strip()
     if not url:
-        return None
-    if url.rstrip("/").casefold() in _STALE_SUPPORT_URL_DEFAULTS:
         return None
 
     parsed = urlparse(url)
@@ -48,10 +38,7 @@ def normalize_direct_support_url(raw_url: str | None) -> str | None:
         peer = domains[0].strip().lstrip("@")
         if not _is_valid_telegram_peer(peer):
             return None
-        normalized = f"https://t.me/{peer}"
-        if normalized.casefold() in _STALE_SUPPORT_URL_DEFAULTS:
-            return None
-        return normalized
+        return f"https://t.me/{peer}"
 
     return None
 

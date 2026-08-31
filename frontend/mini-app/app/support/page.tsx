@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
+import { telegram } from "@/lib/telegram";
+
+const SUPPORT_TELEGRAM_USERNAME = "korkinaxenia";
+const SUPPORT_TELEGRAM_URL = `https://t.me/${SUPPORT_TELEGRAM_USERNAME}`;
 
 type Ticket = {
   id: string;
@@ -17,6 +21,15 @@ type Ticket = {
 };
 type Message = { id: string; body: string; author: "support" | "user"; created_at: string };
 type TicketDetail = Ticket & { messages: Message[] };
+
+function openTelegramSupport() {
+  const tg = telegram();
+  if (tg?.openTelegramLink) {
+    tg.openTelegramLink(SUPPORT_TELEGRAM_URL);
+    return;
+  }
+  window.open(SUPPORT_TELEGRAM_URL, "_blank", "noopener,noreferrer");
+}
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -98,6 +111,13 @@ export default function SupportPage() {
   return (
     <StandaloneShell kicker="Поддержка" title="Помощь ROXY" copy="Все обращения сохраняются в одном месте. Можно продолжить диалог, закрыть вопрос или переоткрыть его позже.">
       {error ? <div className="action-error" role="alert">{error}</div> : null}
+
+      <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+        <div className="section-title"><div><span className="kicker">Быстрая связь</span><h2>Поддержка в Telegram</h2></div></div>
+        <p className="muted">Если нужен быстрый ответ, напишите напрямую: <strong>@{SUPPORT_TELEGRAM_USERNAME}</strong></p>
+        <button className="primary wide" type="button" onClick={openTelegramSupport}>Написать @{SUPPORT_TELEGRAM_USERNAME}</button>
+      </div>
+
       <div className="tool-grid">
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">Новое обращение</span><h2>Написать в поддержку</h2></div></div>

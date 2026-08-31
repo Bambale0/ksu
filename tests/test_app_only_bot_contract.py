@@ -56,15 +56,12 @@ def test_launcher_uses_inline_app_button_and_clean_reply_keyboard() -> None:
     assert 'query["start_payload"] = start_payload' in keyboards
 
 
-def test_launcher_support_does_not_ship_stale_operator_handle() -> None:
+def test_launcher_support_remains_config_driven() -> None:
     launcher = _read("app/bot/handlers/launcher.py")
-    support_links = _read("app/bot/support_links.py")
     assert "@korkinaxenia" not in launcher
     assert "return \"@korkinaxenia\"" not in launcher
     assert "direct_support_handle(settings.support_telegram_url)" in launcher
     assert "Профиль → Поддержка" in launcher
-    assert "korkinaxenia" in support_links
-    assert "return None" in support_links
 
 
 def test_onboarding_is_owned_by_next_mini_app_not_text_bot() -> None:
