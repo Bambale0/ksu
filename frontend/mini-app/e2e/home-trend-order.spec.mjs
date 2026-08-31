@@ -70,3 +70,25 @@ test('home puts trends directly below promo before creation formats', async ({ p
     };
   })).toEqual({ trendsDirectlyAfterPromo: true, studioAfterTrendRail: true });
 });
+
+test('catalog puts live trends directly below promo before feature catalog', async ({ page }) => {
+  await mockHome(page);
+  await page.goto('/mini-app/?route=catalog');
+
+  const catalog = page.locator('.roxy-catalog-feature-mode');
+  await expect(catalog).toBeVisible();
+  await expect(page.locator('#roxy-live-trends .live-trend-card', { hasText: trend.title })).toBeVisible();
+
+  await expect.poll(() => catalog.evaluate((screen) => {
+    const children = Array.from(screen.children);
+    const promo = screen.querySelector(':scope > .promo-carousel');
+    const trends = screen.querySelector(':scope > #roxy-live-trends');
+    const featureHub = screen.querySelector(':scope > #roxy-catalog-feature-hub');
+    const trendsIndex = trends ? children.indexOf(trends) : -1;
+    const featureHubIndex = featureHub ? children.indexOf(featureHub) : -1;
+    return {
+      trendsDirectlyAfterPromo: Boolean(promo && trends && promo.nextElementSibling === trends),
+      featureCatalogAfterTrends: trendsIndex >= 0 && featureHubIndex > trendsIndex,
+    };
+  })).toEqual({ trendsDirectlyAfterPromo: true, featureCatalogAfterTrends: true });
+});
