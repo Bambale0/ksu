@@ -3,13 +3,6 @@ name: ROXY Release Gate
 on:
   push:
     branches: [main]
-    paths:
-      - "frontend/mini-app/**"
-      - "Dockerfile"
-      - "scripts/check_roxy_release.py"
-      - "tests/test_next_mini_app_contract.py"
-      - "docs/ROXY_DESIGN_SYSTEM.md"
-      - ".github/workflows/roxy-release-gate.yml"
   pull_request:
     paths:
       - "frontend/mini-app/**"
