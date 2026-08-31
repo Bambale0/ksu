@@ -96,6 +96,11 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "getInitDataFallback" in boundary
     assert "getBrowserInitData" in boundary
     assert "tg.initData = browserInitData" in boundary
+    assert 'fetch("/api/v1/me"' in boundary
+    assert 'headers: { "X-Telegram-Init-Data": initData }' in boundary
+    assert "clearBrowserInitData" in boundary
+    assert "if (valid)" in boundary
+    assert "clearBrowserInitData" in browser_session
     assert "<TelegramAuthBoundary>{children}</TelegramAuthBoundary>" in layout
     assert "/api/v1/browser-auth/config" in gate
     assert "/api/v1/browser-auth" in gate
