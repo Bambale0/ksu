@@ -330,7 +330,8 @@ async def share_trend(
     title = str(item.get("title") if isinstance(item, dict) else getattr(item, "title", "Тренд"))
     payload = trend_payload(trend_id, user.telegram_id)
     base = str(settings.public_base_url or "").strip().rstrip("/")
-    fallback = f"{base}/mini-app/trend/?id={trend_id}" if base else None
+    fallback_query = urlencode({"id": str(trend_id), "start_payload": payload, "startapp": payload})
+    fallback = f"{base}/mini-app/trend/?{fallback_query}" if base else None
     link = mini_app_deep_link(payload, fallback_url=fallback)
     if not link:
         raise HTTPException(status_code=503, detail="Public Mini App link is not configured")
