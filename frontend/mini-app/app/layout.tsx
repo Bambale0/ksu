@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import type { ReactNode } from "react";
 import { OnboardingRequiredBoundary } from "@/components/onboarding-required-boundary";
+import { TelegramAuthBoundary } from "@/components/telegram-auth-boundary";
 import "./globals.css";
 import "./loader.css";
 import "./catalog.css";
@@ -80,7 +81,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/keyboard-reference-ux.js" strategy="afterInteractive" />
         <Script src="/mini-app/share-copy-ux.js" strategy="afterInteractive" />
         <Script src="/mini-app/profile-id-ux.js" strategy="afterInteractive" />
-        <OnboardingRequiredBoundary>{children}</OnboardingRequiredBoundary>
+        <TelegramAuthBoundary>
+          <OnboardingRequiredBoundary>{children}</OnboardingRequiredBoundary>
+        </TelegramAuthBoundary>
       </body>
     </html>
   );
