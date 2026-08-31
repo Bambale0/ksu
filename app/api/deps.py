@@ -8,12 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.telegram_security import validate_webapp_auth_date
-from app.db.admin_models import AdminTrend
 from app.db.models import User
 from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import parse_feed_deep_link
 from app.services.onboarding import OnboardingService
+from app.services.trends import TrendService
 from app.services.users import UserService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -74,8 +74,9 @@ async def _validated_startapp_inviter(
     if link.action == "trend":
         if link.trend_id is None or link.referral_telegram_id <= 0:
             return None
-        trend = await session.get(AdminTrend, link.trend_id)
-        if trend is None or not trend.is_active:
+        try:
+            await TrendService.get_public(session, trend_id=link.trend_id)
+        except LookupError:
             return None
         return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
