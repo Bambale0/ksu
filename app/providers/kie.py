@@ -43,6 +43,19 @@ class KieClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    @staticmethod
+    def _require_success_payload(payload: dict[str, Any], *, operation: str) -> None:
+        raw_code = payload.get("code")
+        if raw_code is None:
+            return
+        try:
+            code = int(raw_code)
+        except (TypeError, ValueError) as exc:
+            raise KieProviderError(f"Kie {operation} returned invalid code: {payload!r}") from exc
+        if code != 200:
+            message = payload.get("msg") or payload.get("message") or payload
+            raise KieProviderError(f"Kie {operation} rejected: {message!r}")
+
     async def create_task(
         self,
         *,
@@ -60,6 +73,7 @@ class KieClient:
         response = await self._client.post("/api/v1/jobs/createTask", json=body)
         response.raise_for_status()
         payload = response.json()
+        self._require_success_payload(payload, operation="createTask")
         task_id = (payload.get("data") or {}).get("taskId")
         if not task_id:
             raise KieProviderError(f"Kie createTask returned no taskId: {payload!r}")
@@ -72,6 +86,7 @@ class KieClient:
         )
         response.raise_for_status()
         payload = response.json()
+        self._require_success_payload(payload, operation="recordInfo")
         data = payload.get("data") or {}
         return KieTask(
             task_id=str(data.get("taskId") or task_id),
@@ -90,6 +105,8 @@ class KieClient:
         callback_url: str = "",
     ) -> str:
         body = dict(input_data)
+        if body.get("customMode") is True and not str(body.get("title") or "").strip():
+            body["title"] = "ROXY Track"
         body["model"] = model
         if callback_url:
             body["callBackUrl"] = callback_url
