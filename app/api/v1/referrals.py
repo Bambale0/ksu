@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -19,6 +19,7 @@ from app.services.partner import (
     PartnerService,
     PartnerWithdrawalBelowMinimum,
     PartnerWithdrawalError,
+    PartnerWithdrawalIdempotencyConflict,
 )
 from app.services.partner_wallet import (
     PartnerWalletTransferError,
@@ -110,8 +111,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     return {
         "first_line": first,
         "second_line": second,
-        # Partner earnings are real RUB generated only by referral payments. They
-        # are separate from ROX, which are internal and never withdrawable.
+        # Only referral commissions from paid user orders are cash-withdrawable.
+        # ROX are internal credits and are deliberately excluded from payout accounting.
         "available": str(accounting["available"]),
         "partner_balance_rub": str(accounting["available"]),
         "withdrawable_rub": str(accounting["available"]),
@@ -126,19 +127,15 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
-        # Canonical share/copy link opens ROXY with a safe Telegram payload:
-        # Direct Mini App when BotFather short name is configured, otherwise
-        # bot /start fallback that preserves the payload into the WebApp button.
         "referral_link": referral_link,
         "referral_bot_link": referral_link,
         "referral_mini_app_link": referral_mini_app_link,
         "profile_link": profile_link,
         "author_profile_link": profile_link,
         "partner_chat_url": _partner_chat_url(),
-        # ROX wallet is deliberately separate from payout accounting. Purchased,
-        # bonus and partner-converted ROX can be spent in ROXY but never withdrawn.
+        # Purchased, bonus and partner-converted ROX can be spent in ROXY only.
         "rox_balance": str(wallet_rox),
-        "bonus_rox": str(wallet_rox),  # backward-compatible wallet alias
+        "bonus_rox": str(wallet_rox),
         "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
         "welcome_bonus_rox": str(settings.start_balance_rox),
@@ -307,22 +304,23 @@ async def create_withdrawal(
     payload: CreateWithdrawalRequest,
     user: CurrentUserDep,
     session: SessionDep,
+    idempotency_key: str = Header(
+        ...,
+        alias="Idempotency-Key",
+        min_length=8,
+        max_length=160,
+    ),
 ) -> dict[str, object]:
     try:
-        # Use the same user row lock as wallet conversion so a partner cannot spend
-        # the same RUB concurrently on a card payout and on ROX conversion.
-        await PartnerWalletTransferService.assert_available(
-            session,
-            user_id=user.id,
-            amount=payload.amount,
-            lock=True,
-        )
-        item = await PartnerService.create_withdrawal(
+        item = await PartnerWalletTransferService.create_cash_withdrawal(
             session,
             user_id=user.id,
             amount=payload.amount,
             requisites=payload.requisites,
+            idempotency_key=idempotency_key,
         )
+    except PartnerWithdrawalIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PartnerWalletTransferInsufficientFunds as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except PartnerInsufficientFunds as exc:
