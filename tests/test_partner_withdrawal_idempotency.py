@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, ReferralReward, User
+from app.db.models import ReferralRelation, User
 from app.db.partner_wallet_models import PartnerWalletTransfer, PartnerWithdrawalRequest
 from app.db.session import SessionFactory
 from app.services.partner import PartnerWithdrawalIdempotencyConflict
