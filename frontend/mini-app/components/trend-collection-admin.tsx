@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
-import { trendAdminApi, type TrendAdminItem } from "@/lib/trend-admin-api";
+import {
+  TREND_COLLECTION_TARGET_KEY,
+  trendAdminApi,
+  type TrendAdminItem,
+} from "@/lib/trend-admin-api";
 import {
   trendCollectionsApi,
   type TrendCollection,
@@ -132,7 +136,8 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
     }
   };
 
-  const openTrendEditor = () => {
+  const openTrendEditor = (collectionId = "trends") => {
+    try { window.sessionStorage.setItem(TREND_COLLECTION_TARGET_KEY, collectionId); } catch { /* optional */ }
     setOpen(false);
     window.setTimeout(() => {
       const button = document.querySelector<HTMLButtonElement>(".inline-trend-add-button");
@@ -153,7 +158,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
 
         <div className="trend-folder-admin-toolbar">
           <button className="primary" type="button" onClick={() => setDraft(emptyDraft())}>＋ Новая папка</button>
-          <button type="button" onClick={openTrendEditor}>＋ Новый шаблон</button>
+          <button type="button" onClick={() => openTrendEditor("trends")}>＋ Новый тренд</button>
           <button type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
 
@@ -173,6 +178,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
             <div><strong>{folder.title}</strong>{folder.system_key ? <small>Системная папка</small> : <small>Ваша папка</small>}</div>
             {folder.description ? <p>{folder.description}</p> : null}
             <div className="actions">
+              <button type="button" onClick={() => openTrendEditor(folder.id)}>＋ Шаблон</button>
               <button type="button" onClick={() => setDraft({ id: folder.id, title: folder.title, description: folder.description || "", sortOrder: folder.sort_order, isActive: folder.is_active })}>Редактировать</button>
               <button type="button" className={folder.is_active ? "danger" : ""} disabled={busy === folder.id} onClick={() => void toggleFolder(folder)}>{busy === folder.id ? "…" : folder.is_active ? "Скрыть" : "Показать"}</button>
             </div>
