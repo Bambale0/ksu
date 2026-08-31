@@ -16,15 +16,31 @@ function catalogScreen(): HTMLElement | null {
   return null;
 }
 
-function ensureHost(screen: HTMLElement): HTMLElement {
+function homeScreen(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".home-screen");
+}
+
+function ensureCatalogHost(screen: HTMLElement): HTMLElement {
   const existing = screen.querySelector<HTMLElement>("#roxy-live-trends");
   if (existing) return existing;
   const host = document.createElement("div");
   host.id = "roxy-live-trends";
-  host.dataset.liveTrends = "true";
+  host.dataset.liveTrends = "catalog";
   const featureHub = screen.querySelector("#roxy-catalog-feature-hub");
   if (featureHub?.nextSibling) screen.insertBefore(host, featureHub.nextSibling);
   else screen.appendChild(host);
+  return host;
+}
+
+function ensureHomeHost(screen: HTMLElement): HTMLElement | null {
+  const existing = screen.querySelector<HTMLElement>("#roxy-home-live-trends");
+  if (existing) return existing;
+  const promo = screen.querySelector<HTMLElement>(":scope > .promo-slider");
+  if (!promo) return null;
+  const host = document.createElement("div");
+  host.id = "roxy-home-live-trends";
+  host.dataset.liveTrends = "home";
+  promo.insertAdjacentElement("afterend", host);
   return host;
 }
 
@@ -64,8 +80,13 @@ function mediaLabel(trend: TrendItem): string {
   return "Фото";
 }
 
+type TrendHosts = {
+  home: HTMLElement | null;
+  catalog: HTMLElement | null;
+};
+
 export function LiveTrendRail() {
-  const [host, setHost] = useState<HTMLElement | null>(null);
+  const [hosts, setHosts] = useState<TrendHosts>({ home: null, catalog: null });
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [busyId, setBusyId] = useState("");
@@ -76,8 +97,15 @@ export function LiveTrendRail() {
     const sync = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const screen = catalogScreen();
-        setHost(screen ? ensureHost(screen) : null);
+        const home = homeScreen();
+        const catalog = catalogScreen();
+        const next = {
+          home: home ? ensureHomeHost(home) : null,
+          catalog: catalog ? ensureCatalogHost(catalog) : null,
+        };
+        setHosts((current) => (
+          current.home === next.home && current.catalog === next.catalog ? current : next
+        ));
       });
     };
     sync();
@@ -97,10 +125,10 @@ export function LiveTrendRail() {
   }, []);
 
   useEffect(() => {
-    if (!host) return;
+    if (!hosts.home && !hosts.catalog) return;
     void refresh();
     void api.me().then((me) => setIsAdmin(Boolean(me.is_admin))).catch(() => setIsAdmin(false));
-  }, [host, refresh]);
+  }, [hosts.home, hosts.catalog, refresh]);
 
   const remove = async (trend: TrendItem) => {
     if (!isAdmin || busyId) return;
@@ -118,12 +146,11 @@ export function LiveTrendRail() {
     }
   };
 
-  if (!host) return null;
-
-  return createPortal(
-    <section className="live-trend-section" aria-label="Живые тренды ROXY">
+  const section = (scope: "home" | "catalog") => (
+    <section className="live-trend-section" aria-label={scope === "home" ? "Тренды ROXY на главной" : "Живые тренды ROXY"}>
       <style>{`
         .live-trend-section { display:grid; gap:12px; margin:20px 0 24px; min-width:0; }
+        #roxy-home-live-trends .live-trend-section { margin:16px 0 22px; }
         .live-trend-section .section-title { display:flex; align-items:end; justify-content:space-between; gap:12px; }
         .live-trend-section .section-title h2 { margin:4px 0 0; font-size:25px; line-height:1; letter-spacing:-.04em; }
         .live-trend-rail { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(210px, 76vw); gap:12px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; padding:2px 2px 8px; scrollbar-width:none; }
@@ -163,7 +190,13 @@ export function LiveTrendRail() {
           </article>
         ))}
       </div> : <div className="live-trend-empty">Новые сценарии скоро появятся здесь.</div>}
-    </section>,
-    host,
+    </section>
+  );
+
+  return (
+    <>
+      {hosts.home ? createPortal(section("home"), hosts.home, "roxy-home-live-trends") : null}
+      {hosts.catalog ? createPortal(section("catalog"), hosts.catalog, "roxy-catalog-live-trends") : null}
+    </>
   );
 }
