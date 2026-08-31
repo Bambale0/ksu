@@ -71,3 +71,14 @@ test('catalog service cards render neon violet instead of Telegram link blue', a
     copyFill: 'rgb(189, 140, 255)',
   });
 });
+
+test('trend library is the first catalog content below the heading', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalog(page);
+  await page.goto('/mini-app/?route=catalog');
+
+  const trends = page.locator('#roxy-live-trends');
+  await expect(trends).toBeVisible();
+
+  await expect.poll(() => trends.evaluate((node) => node.previousElementSibling?.classList.contains('screen-head') === true)).toBe(true);
+});
