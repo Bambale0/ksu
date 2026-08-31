@@ -34,6 +34,7 @@ from app.api.v1 import (
     referrals,
     social,
     support,
+    trend_collections,
     trends,
     uploads,
 )
@@ -53,6 +54,7 @@ api_router.include_router(feed.router)
 api_router.include_router(feed_remix.router)
 api_router.include_router(feed_reference_media.router)
 api_router.include_router(trends.router)
+api_router.include_router(trend_collections.router)
 api_router.include_router(prompt_tools.router)
 api_router.include_router(reference_presets.router)
 api_router.include_router(media.router)
