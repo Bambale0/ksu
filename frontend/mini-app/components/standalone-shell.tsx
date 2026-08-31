@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
-import { consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
+import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
 function compact(value: unknown): string {
   const number = Number(value || 0);
@@ -36,6 +36,11 @@ function returnFromStandalone() {
     fallback = 0;
   }, { once: true });
   window.history.back();
+}
+
+function openMainRoute(route: "home" | "profile"): void {
+  clearStoredLaunchPayload();
+  window.location.assign(`/mini-app/?route=${route}`);
 }
 
 export function StandaloneShell({
@@ -80,7 +85,7 @@ export function StandaloneShell({
         <button
           className="brand"
           type="button"
-          onClick={() => window.location.assign("/mini-app/?route=home")}
+          onClick={() => openMainRoute("home")}
           aria-label="ROXY — главная"
         >
           <span className="roxy-mark" aria-hidden="true"><span>RX</span></span>
@@ -89,7 +94,7 @@ export function StandaloneShell({
         <button
           className="balance-button"
           type="button"
-          onClick={() => window.location.assign("/mini-app/?route=profile")}
+          onClick={() => openMainRoute("profile")}
         >
           <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
         </button>

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -23,6 +26,7 @@ from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_pa
 from app.services.users import UserService
 
 router = Router(name="app_launcher")
+logger = logging.getLogger(__name__)
 
 
 def _start_link(text: str | None) -> FeedDeepLink | None:
@@ -88,24 +92,31 @@ def _support_line() -> str:
 
 
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
-    await message.answer(
-        "Меню и поддержка закреплены снизу.",
-        reply_markup=quick_menu(),
-    )
-    await message.answer(
-        "<b>Добро пожаловать в ROXY ✨</b>\n\n"
-        "Создавайте изображения, видео и музыку.\n"
-        "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
-        "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
-        "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
-        "<b>Бонусы:</b>\n"
-        "🎁 50 ROX — сразу после регистрации\n"
-        "🎁 +30 ROX — за друга после его первой генерации\n\n"
-        "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
-        f"{_support_line()}",
-        reply_markup=app_launcher_menu(route=route, start_payload=payload),
-        parse_mode="HTML",
-    )
+    try:
+        await message.answer(
+            "Меню и поддержка закреплены снизу.",
+            reply_markup=quick_menu(),
+        )
+        await message.answer(
+            "<b>Добро пожаловать в ROXY ✨</b>\n\n"
+            "Создавайте изображения, видео и музыку.\n"
+            "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
+            "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
+            "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
+            "<b>Бонусы:</b>\n"
+            "🎁 50 ROX — сразу после регистрации\n"
+            "🎁 +30 ROX — за друга после его первой генерации\n\n"
+            "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
+            f"{_support_line()}",
+            reply_markup=app_launcher_menu(route=route, start_payload=payload),
+            parse_mode="HTML",
+        )
+    except TelegramAPIError as exc:
+        logger.warning(
+            "launcher_delivery_failed",
+            extra={"telegram_user_id": message.from_user.id if message.from_user else None},
+            exc_info=exc,
+        )
 
 
 @router.callback_query(F.data == "app:unavailable")
