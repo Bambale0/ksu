@@ -17,16 +17,21 @@ def test_inline_social_admin_routes_are_registered() -> None:
     )
 
 
-def test_mini_app_exposes_live_trends_and_admin_moderation_controls() -> None:
+def test_mini_app_exposes_template_library_and_admin_moderation_controls() -> None:
     page = Path("frontend/mini-app/app/page.tsx").read_text(encoding="utf-8")
     trends = Path("frontend/mini-app/components/live-trend-rail.tsx").read_text(encoding="utf-8")
+    folders = Path("frontend/mini-app/components/trend-collection-admin.tsx").read_text(encoding="utf-8")
     moderation = Path("frontend/mini-app/components/feed-admin-moderation.tsx").read_text(encoding="utf-8")
 
     assert "<LiveTrendRail />" in page
     assert "<FeedAdminModeration />" in page
-    assert "Актуальные тренды" in trends
+    assert "Библиотека шаблонов ROXY" in trends
+    assert "template-folder" in trends
+    assert "data-trend-launch" in trends
     assert "autoPlay loop playsInline" in trends
-    assert "Удалить" in trends
+    assert "/mini-app/ai-reference/" in trends
+    assert "Папки шаблонов" in folders
+    assert "Новая папка" in folders
     assert 'apply("blurred")' in moderation
     assert 'apply("hidden")' in moderation
     assert 'apply("removed")' in moderation
