@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.telegram_security import validate_webapp_auth_date
+from app.db.admin_models import AdminTrend
 from app.db.models import User
 from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
@@ -60,14 +61,22 @@ async def _validated_startapp_inviter(
 
     Telegram-signed ``start_param`` is authoritative. The recovered header is
     accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are additionally bound to their public
-    author so changing the numeric suffix cannot steal attribution.
+    user. Post/remix/profile payloads are bound to their public author. Trend
+    payloads intentionally belong to the authenticated user who shared the
+    public trend, regardless of who originally created that trend.
     """
 
     link = parse_feed_deep_link(start_param)
     if link is None:
         return None
     if link.action == "ref":
+        return link.referral_telegram_id
+    if link.action == "trend":
+        if link.trend_id is None or link.referral_telegram_id <= 0:
+            return None
+        trend = await session.get(AdminTrend, link.trend_id)
+        if trend is None or not trend.is_active:
+            return None
         return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
