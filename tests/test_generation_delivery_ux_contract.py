@@ -58,6 +58,7 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
     models = _read(ROOT / "app" / "db" / "models.py")
     migration = _read(ROOT / "alembic" / "versions" / "0028_generation_telegram_delivery.py")
     worker = _read(ROOT / "app" / "workers" / "notifications.py")
+    media_delivery = _read(ROOT / "app" / "services" / "telegram_generation_media.py")
 
     for token in (
         "telegram_notification_status",
@@ -67,8 +68,9 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
         assert token in models
         assert token in migration
         assert token in worker
-    assert "send_photo" in worker
-    assert "send_video" in worker
+    assert "send_generation_result_media" in worker
+    assert "send_photo" in media_delivery
+    assert "send_video" in media_delivery
     assert "🚀 Открыть в ROXY" in worker
     assert "📥 Скачать оригинал" in worker
 
