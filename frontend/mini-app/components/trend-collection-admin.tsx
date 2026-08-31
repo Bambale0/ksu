@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
 import {
-  TREND_COLLECTION_TARGET_KEY,
+  clearTrendCollectionTarget,
+  setTrendCollectionTarget,
   trendAdminApi,
   type TrendAdminItem,
 } from "@/lib/trend-admin-api";
@@ -30,6 +31,31 @@ const emptyDraft = (): FolderDraft => ({
   sortOrder: 100,
   isActive: true,
 });
+
+function watchTrendEditorLifecycle(): void {
+  let sawAdmin = false;
+  let sawForm = false;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTrendCollectionTarget();
+    observer.disconnect();
+  };
+  const sync = () => {
+    const admin = document.querySelector(".inline-trend-admin-overlay");
+    const form = document.querySelector(".inline-trend-form-overlay");
+    if (admin) sawAdmin = true;
+    if (form) sawForm = true;
+    if ((sawForm && !form) || (sawAdmin && !admin && !form)) finish();
+  };
+  const observer = new MutationObserver(sync);
+  observer.observe(document.body, { childList: true, subtree: true });
+  sync();
+  window.setTimeout(() => {
+    if (!sawAdmin && !sawForm) finish();
+  }, 3000);
+}
 
 export function TrendCollectionAdmin({ onChanged }: Props) {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -137,11 +163,13 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   };
 
   const openTrendEditor = (collectionId = "trends") => {
-    try { window.sessionStorage.setItem(TREND_COLLECTION_TARGET_KEY, collectionId); } catch { /* optional */ }
+    setTrendCollectionTarget(collectionId);
+    watchTrendEditorLifecycle();
     setOpen(false);
     window.setTimeout(() => {
       const button = document.querySelector<HTMLButtonElement>(".inline-trend-add-button");
-      button?.click();
+      if (button) button.click();
+      else clearTrendCollectionTarget();
     }, 80);
   };
 
