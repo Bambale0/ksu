@@ -1,35 +1,66 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
-import { getBrowserInitData } from "@/lib/browser-auth-session";
+import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
 import { getInitDataFallback, initTelegram } from "@/lib/telegram";
 import { TelegramBrowserLogin } from "./telegram-browser-login";
+
+async function validateInitData(initData: string): Promise<boolean> {
+  try {
+    const response = await fetch("/api/v1/me", {
+      method: "GET",
+      cache: "no-store",
+      headers: { "X-Telegram-Init-Data": initData },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const tg = initTelegram();
     tg?.ready?.();
     tg?.expand?.();
 
-    const nativeInitData = getInitDataFallback();
-    if (nativeInitData) {
-      setAuthenticated(true);
-      setReady(true);
-      return;
-    }
+    const run = async () => {
+      const nativeInitData = getInitDataFallback();
+      const browserInitData = nativeInitData ? "" : getBrowserInitData();
+      const candidate = nativeInitData || browserInitData;
 
-    const browserInitData = getBrowserInitData();
-    if (browserInitData && tg) {
-      // The backend already verified Telegram Login Widget HMAC before issuing
-      // this standard WebApp initData. Hydrate only the in-memory SDK facade so
-      // every existing ROXY API client continues through the same auth contour.
-      tg.initData = browserInitData;
-      setAuthenticated(true);
-    }
-    setReady(true);
+      if (!candidate) {
+        if (active) setReady(true);
+        return;
+      }
+
+      if (browserInitData && tg) {
+        // Browser login issues standard WebApp initData. Hydrate only the SDK
+        // facade in memory so every existing API client keeps one auth contour.
+        tg.initData = browserInitData;
+      }
+
+      const valid = await validateInitData(candidate);
+      if (!active) return;
+
+      if (valid) {
+        setAuthenticated(true);
+      } else {
+        // A stale/malformed URL credential or expired browser session must not
+        // admit the user into an app where every API call will fail with 401.
+        if (browserInitData) clearBrowserInitData();
+        if (tg) tg.initData = "";
+        setAuthenticated(false);
+      }
+      setReady(true);
+    };
+
+    void run();
+    return () => { active = false; };
   }, []);
 
   if (!ready) {
