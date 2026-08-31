@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.services.ai_reference import (
     AiReferenceError,
+    AiReferenceGenerationRequest,
     AiReferenceScenario,
     AiReferenceService,
     AiReferenceSubject,
@@ -33,7 +34,7 @@ def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
 
-def _build(payload: AiReferenceRequest):
+def _build(payload: AiReferenceRequest) -> AiReferenceGenerationRequest:
     try:
         return AiReferenceService.build_request(
             scenario=payload.scenario,
