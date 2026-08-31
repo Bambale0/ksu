@@ -65,7 +65,7 @@ async def test_seedance_provider_payload_uses_pure_reference_mode() -> None:
     assert "last_frame_url" not in provider_input
 
 
-def test_seedance_router_strips_frame_fields_when_multirefs_are_present() -> None:
+def test_seedance_router_folds_frame_fields_into_multirefs() -> None:
     routed = resolve_model_request(
         "seedance-2.0",
         {
@@ -79,7 +79,11 @@ def test_seedance_router_strips_frame_fields_when_multirefs_are_present() -> Non
         },
     )
 
-    assert routed.parameters["reference_image_urls"] == ["https://example.com/ref.png"]
+    assert routed.parameters["reference_image_urls"] == [
+        "https://example.com/ref.png",
+        "https://example.com/first.png",
+        "https://example.com/last.png",
+    ]
     assert "first_frame_url" not in routed.parameters
     assert "last_frame_url" not in routed.parameters
 
