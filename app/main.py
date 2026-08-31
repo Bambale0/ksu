@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
@@ -133,6 +133,11 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
             "retry_after": exc.retry_after,
         },
     )
+
+
+@app.get("/", include_in_schema=False)
+async def product_landing() -> RedirectResponse:
+    return RedirectResponse(url="/mini-app/landing/", status_code=307)
 
 
 app.include_router(health_router)
