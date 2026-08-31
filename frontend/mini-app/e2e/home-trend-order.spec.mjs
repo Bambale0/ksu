@@ -94,24 +94,33 @@ test('home shows live trends below promo and category folders immediately after 
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
 });
 
-test('catalog keeps live trends directly below promo before feature catalog', async ({ page }) => {
+test('catalog keeps live trends and category folders directly below promo before feature catalog', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=catalog');
 
   const catalog = page.locator('.roxy-catalog-feature-mode');
+  const trends = catalog.locator(':scope > #roxy-live-trends');
+  const folders = catalog.locator(':scope > #roxy-catalog-trend-folders');
   await expect(catalog).toBeVisible();
-  await expect(page.locator('#roxy-live-trends .live-trend-card', { hasText: trend.title })).toBeVisible();
+  await expect(trends.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
+  await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
 
   await expect.poll(() => catalog.evaluate((screen) => {
     const children = Array.from(screen.children);
     const promo = screen.querySelector(':scope > .promo-carousel');
     const trends = screen.querySelector(':scope > #roxy-live-trends');
+    const folders = screen.querySelector(':scope > #roxy-catalog-trend-folders');
+    const foldersIndex = folders ? children.indexOf(folders) : -1;
     const featureHub = screen.querySelector(':scope > #roxy-catalog-feature-hub');
-    const trendsIndex = trends ? children.indexOf(trends) : -1;
     const featureHubIndex = featureHub ? children.indexOf(featureHub) : -1;
     return {
       trendsDirectlyAfterPromo: Boolean(promo && trends && promo.nextElementSibling === trends),
-      featureCatalogAfterTrends: trendsIndex >= 0 && featureHubIndex > trendsIndex,
+      foldersDirectlyAfterTrends: Boolean(trends && folders && trends.nextElementSibling === folders),
+      featureCatalogAfterFolders: foldersIndex >= 0 && featureHubIndex > foldersIndex,
     };
-  })).toEqual({ trendsDirectlyAfterPromo: true, featureCatalogAfterTrends: true });
+  })).toEqual({
+    trendsDirectlyAfterPromo: true,
+    foldersDirectlyAfterTrends: true,
+    featureCatalogAfterFolders: true,
+  });
 });
