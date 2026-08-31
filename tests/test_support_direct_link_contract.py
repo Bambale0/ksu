@@ -2,12 +2,16 @@ from app.bot.support_links import direct_support_handle, normalize_direct_suppor
 from app.core.config import Settings
 
 
-def test_support_contact_is_opt_in_not_stale_operator_default() -> None:
+def test_support_contact_is_opt_in_by_default() -> None:
     assert Settings.model_fields["support_telegram_url"].default == ""
     assert normalize_direct_support_url("") is None
-    assert normalize_direct_support_url("https://t.me/korkinaxenia") is None
-    assert normalize_direct_support_url("tg://resolve?domain=korkinaxenia") is None
-    assert direct_support_handle("https://t.me/korkinaxenia") is None
+
+
+def test_support_contact_accepts_current_operator() -> None:
+    assert normalize_direct_support_url("https://t.me/korkinaxenia") == "https://t.me/korkinaxenia"
+    assert normalize_direct_support_url("https://t.me/korkinaxenia/") == "https://t.me/korkinaxenia"
+    assert normalize_direct_support_url("tg://resolve?domain=korkinaxenia") == "https://t.me/korkinaxenia"
+    assert direct_support_handle("https://t.me/korkinaxenia") == "@korkinaxenia"
 
 
 def test_support_contact_rejects_malformed_telegram_links() -> None:
