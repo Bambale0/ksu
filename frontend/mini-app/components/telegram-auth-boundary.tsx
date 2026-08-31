@@ -30,29 +30,38 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
 
     const run = async () => {
       const nativeInitData = getInitDataFallback();
-      const browserInitData = nativeInitData ? "" : getBrowserInitData();
-      const candidate = nativeInitData || browserInitData;
+      if (nativeInitData) {
+        // Native Telegram already enters the existing signed WebApp auth contour.
+        // Do not add an eager /me probe here: it would become the first app API
+        // request and bypass the shared launch/start-param headers used by routing.
+        if (active) {
+          setAuthenticated(true);
+          setReady(true);
+        }
+        return;
+      }
 
-      if (!candidate) {
+      const browserInitData = getBrowserInitData();
+      if (!browserInitData) {
         if (active) setReady(true);
         return;
       }
 
-      if (browserInitData && tg) {
+      if (tg) {
         // Browser login issues standard WebApp initData. Hydrate only the SDK
         // facade in memory so every existing API client keeps one auth contour.
         tg.initData = browserInitData;
       }
 
-      const valid = await validateInitData(candidate);
+      const valid = await validateInitData(browserInitData);
       if (!active) return;
 
       if (valid) {
         setAuthenticated(true);
       } else {
-        // A stale/malformed URL credential or expired browser session must not
-        // admit the user into an app where every API call will fail with 401.
-        if (browserInitData) clearBrowserInitData();
+        // A stale/expired browser session must not admit the user into an app
+        // where every API call will fail with 401.
+        clearBrowserInitData();
         if (tg) tg.initData = "";
         setAuthenticated(false);
       }
