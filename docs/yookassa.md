@@ -13,12 +13,12 @@ PAYMENT_RETURN_URL=https://<public-host>/mini-app/payments/
 
 Если `PAYMENT_RETURN_URL` пуст, используется `PUBLIC_BASE_URL`. Для показа ЮKassa в Mini App должны быть заданы `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` и один из публичных return URL.
 
-Пакеты берутся из `ROX_PACKAGES_JSON`. Для текущей экономики ROXY валюта пакета должна быть `RUB`, а стоимость в рублях должна соответствовать количеству базовых ROX.
+Пакеты берутся из `ROX_PACKAGES_JSON`. Для текущей экономики ROXY валюта пакета должна быть `RUB`. Если в пакете указано только `amount` или только `credits`, недостающее значение рассчитывается по внутренней деноминации `1 ROX = 1 RUB`. Если указаны оба поля, это явная цена провайдера: начисляется указанное количество ROX, а списывается указанная сумма в RUB. Так можно синхронизировать ЮKassa с пакетами Lava Top.
 
 Пример:
 
 ```env
-ROX_PACKAGES_JSON={"starter":{"amount":"300","credits":"300","currency":"RUB"},"pro":{"amount":"1000","credits":"1000","currency":"RUB"}}
+ROX_PACKAGES_JSON={"lava-starter":{"amount":"108.70","credits":"100","currency":"RUB"},"lava-pro":{"amount":"1086.96","credits":"1000","currency":"RUB"}}
 ```
 
 ## Webhook

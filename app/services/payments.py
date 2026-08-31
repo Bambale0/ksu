@@ -92,8 +92,10 @@ class PaymentService:
             if amount_raw is None and credits_raw is None:
                 continue
 
-            amount = Decimal(str(amount_raw)) if amount_raw is not None else None
-            credits = Decimal(str(credits_raw)) if credits_raw is not None else None
+            explicit_amount = amount_raw is not None
+            explicit_credits = credits_raw is not None
+            amount = Decimal(str(amount_raw)) if explicit_amount else None
+            credits = Decimal(str(credits_raw)) if explicit_credits else None
 
             if amount is None and credits is not None:
                 amount = InternalCreditService.rubles_for(credits)
@@ -104,7 +106,8 @@ class PaymentService:
             if amount <= 0 or credits <= 0:
                 continue
 
-            InternalCreditService.assert_rate(credits=credits, rubles=amount)
+            if not (explicit_amount and explicit_credits):
+                InternalCreditService.assert_rate(credits=credits, rubles=amount)
             result[str(package_id)] = PaymentPackage(
                 package_id=str(package_id),
                 amount=amount,

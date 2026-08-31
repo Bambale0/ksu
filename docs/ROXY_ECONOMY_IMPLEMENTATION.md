@@ -124,7 +124,7 @@ Operationally, a price change is complete only after catalog/quote verification 
 
 ## Package/payment units
 
-If `ROX_PACKAGES_JSON` or `CARD_PACKAGES_JSON` are explicitly configured, amounts are expressed in public ROX. For RUB packages the product relationship is 1 ROX per 1 RUB unless a separately documented promotion changes what the customer receives.
+If `ROX_PACKAGES_JSON` or `CARD_PACKAGES_JSON` are explicitly configured, amounts are expressed in public ROX. For RUB packages, omitting either `amount` or `credits` derives the missing value with the public denomination of 1 ROX per 1 RUB. When both values are present, the package uses the explicit provider price: customers receive the configured ROX amount and pay the configured RUB amount. Use that form when mirroring independently priced provider catalogs such as Lava Top.
 
 A non-zero `GENERATION_DAILY_SPEND_LIMIT_CREDITS` is also interpreted in current public ROX units despite the legacy config field name.
 
