@@ -44,7 +44,7 @@ def _withdrawal_view(item: PartnerWithdrawal) -> dict[str, object]:
     return {
         "id": str(item.id),
         "amount": str(item.amount),
-        "amount_rox": str(InternalCreditService.credits_for(item.amount)),
+        "amount_rub": str(item.amount),
         "status": item.status,
         "created_at": item.created_at.isoformat(),
         "updated_at": item.updated_at.isoformat(),
@@ -73,9 +73,6 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     payload = f"ref_{user.telegram_id}"
     wallet = await session.get(Wallet, user.id)
     wallet_rox = Decimal(wallet.balance if wallet is not None else 0)
-    withdrawable_rox = InternalCreditService.credits_for(accounting["available"])
-    pending_rox = InternalCreditService.credits_for(accounting["pending_rewards"])
-    partner_total_rox = InternalCreditService.credits_for(accounting["total_earned"])
     referral_link = PartnerService.referral_link(user.telegram_id)
     referral_mini_app_link = PartnerService.referral_mini_app_link(user.telegram_id)
     profile_link = PartnerService.profile_link(user.telegram_id)
@@ -110,18 +107,23 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         .limit(1)
     )
     minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
-    minimum_rox = InternalCreditService.credits_for(minimum_rub)
 
     return {
         "first_line": first,
         "second_line": second,
+        # Only referral commissions from paid user orders are cash-withdrawable.
+        # ROX are internal credits and are deliberately excluded from payout accounting.
         "available": str(accounting["available"]),
         "partner_balance_rub": str(accounting["available"]),
+        "withdrawable_rub": str(accounting["available"]),
         "pending": str(accounting["pending_rewards"]),
+        "pending_referral_rub": str(accounting["pending_rewards"]),
         "total_earned": str(accounting["total_earned"]),
+        "partner_total_earned_rub": str(accounting["total_earned"]),
         "transferred_to_rox": str(accounting["transferred_to_rox"]),
         "pending_withdrawals": str(accounting["pending_withdrawals"]),
         "minimum_withdrawal": str(minimum_rub),
+        "minimum_withdrawal_rub": str(minimum_rub),
         "first_line_percent": str(settings.referral_first_percent),
         "second_line_percent": str(settings.referral_second_percent),
         "referral_payload": payload,
@@ -131,17 +133,14 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "profile_link": profile_link,
         "author_profile_link": profile_link,
         "partner_chat_url": _partner_chat_url(),
+        # Purchased, bonus and partner-converted ROX can be spent in ROXY only.
         "rox_balance": str(wallet_rox),
         "bonus_rox": str(wallet_rox),
-        "withdrawable_rox": str(withdrawable_rox),
-        "withdrawable_pending_rox": str(pending_rox),
-        "partner_total_earned_rox": str(partner_total_rox),
         "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
         "welcome_bonus_rox": str(settings.start_balance_rox),
         "invite_bonus_rox": str(settings.invite_bonus_rox),
         "prompt_repeat_bonus_rox": str(settings.prompt_repeat_bonus_rox),
-        "minimum_withdrawal_rox": str(minimum_rox),
         "prompts_created": prompts_created,
         "prompt_repeats": prompt_repeats,
         "withdrawal_status": latest_withdrawal.status if latest_withdrawal is not None else "NONE",
@@ -218,15 +217,14 @@ async def rewards(
                 "line": reward.level,
                 "percent": str(reward.percent),
                 "amount": str(reward.amount),
-                "amount_rox": str(InternalCreditService.credits_for(reward.amount)),
+                "amount_rub": str(reward.amount),
                 "reversed_amount": str(Decimal(reversed_amount or 0)),
+                "reversed_amount_rub": str(Decimal(reversed_amount or 0)),
                 "net_amount": str(
                     max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
                 ),
-                "net_amount_rox": str(
-                    InternalCreditService.credits_for(
-                        max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
-                    )
+                "net_amount_rub": str(
+                    max(Decimal("0"), Decimal(reward.amount) - Decimal(reversed_amount or 0))
                 ),
                 "status": reward.status,
                 "created_at": reward.created_at.isoformat(),
