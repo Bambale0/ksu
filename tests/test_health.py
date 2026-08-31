@@ -1,8 +1,22 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.health import OPERATIONAL_WORKERS
 from app.core.config import settings
 from app.main import app
+
+
+def test_operational_health_covers_every_production_worker() -> None:
+    assert set(OPERATIONAL_WORKERS) == {
+        "generation-worker",
+        "payment-worker",
+        "media-worker",
+        "prompt-tool-worker",
+        "notification-worker",
+        "admin-support-worker",
+        "admin-campaign-worker",
+        "creator-partnership-worker",
+    }
 
 
 @pytest.mark.asyncio
