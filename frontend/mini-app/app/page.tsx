@@ -11,6 +11,7 @@ import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { HistoryPromptCopyUx } from "@/components/history-prompt-copy-ux";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
+import { LegacyTrendCatalogGuard } from "@/components/legacy-trend-catalog-guard";
 import { LiveTrendRail } from "@/components/live-trend-rail";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
@@ -28,6 +29,7 @@ export default function Page() {
       <FeedAdminModeration />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
+      <LegacyTrendCatalogGuard />
       <LiveTrendRail />
       <CatalogParityFeatures />
       <CustomerParityHub />
