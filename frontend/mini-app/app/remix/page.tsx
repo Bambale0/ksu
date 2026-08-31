@@ -57,11 +57,20 @@ export default function FeedRemixPage() {
   const [prompt, setPrompt] = useState("");
   const [references, setReferences] = useState<OwnedReference[]>([]);
   const [quote, setQuote] = useState<FeedRemixQuote | null>(null);
+  const [onboarding, setOnboarding] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState("");
   const quoteSeq = useRef(0);
+
+  const loadDraft = async (query: { source: string; surface: FeedSurface }) => {
+    const prepared = await api.prepareRemix(query.source, query.surface);
+    setDraft(prepared);
+    setSurface(prepared.surface || query.surface);
+    setPrompt(prepared.prompt || "");
+    setError("");
+  };
 
   useEffect(() => {
     let active = true;
@@ -75,12 +84,14 @@ export default function FeedRemixPage() {
         return;
       }
       try {
-        const prepared = await api.prepareRemix(query.source, query.surface);
+        const onboardingState = await api.onboarding();
         if (!active) return;
-        setDraft(prepared);
-        setSurface(prepared.surface || query.surface);
-        setPrompt(prepared.prompt || "");
-        setError("");
+        setOnboarding(onboardingState);
+        if (onboardingState?.enabled && !onboardingState?.completed) {
+          setError("");
+          return;
+        }
+        await loadDraft(query);
       } catch (reason) {
         if (active) setError(reason instanceof Error ? reason.message : "Не удалось подготовить повтор");
       } finally {
@@ -197,6 +208,7 @@ export default function FeedRemixPage() {
 
   const previewUrl = draft?.preview_url || "";
   const previewKind = mediaKind(previewUrl);
+  const onboardingRequired = Boolean(onboarding?.enabled && !onboarding?.completed);
 
   return (
     <StandaloneShell
@@ -204,10 +216,23 @@ export default function FeedRemixPage() {
       title={draft?.model_title || "Своя версия работы"}
       copy="Берём идею и настройки исходной работы, а референсы добавляете вы. Файлы автора в вашу генерацию не переносятся."
     >
+      {onboardingRequired ? <OnboardingGate data={onboarding || {}} onDone={async () => {
+        const next = await api.completeOnboarding();
+        setOnboarding(next);
+        if (sourceId) {
+          setLoading(true);
+          try {
+            await loadDraft({ source: sourceId, surface });
+          } finally {
+            setLoading(false);
+          }
+        }
+      }} /> : null}
+
       {loading ? <div className="panel tool-panel"><p className="muted">Подготавливаю повтор…</p></div> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
 
-      {draft ? <>
+      {draft && !onboardingRequired ? <>
         <div className="panel tool-panel">
           <p className="muted">Повтор запущен не будет автоматически — сначала добавьте свои референсы и подтвердите запуск.</p>
         </div>
@@ -277,4 +302,17 @@ export default function FeedRemixPage() {
       </> : null}
     </StandaloneShell>
   );
+}
+
+function OnboardingGate({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return <div className="overlay onboarding-overlay" role="dialog" aria-modal="true">
+    <div className="onboarding-card">
+      <span className="kicker">Добро пожаловать</span>
+      <h1>{data.title || "ROXY"}</h1>
+      <p>{data.body || "Студия для создания фото, видео и музыки."}</p>
+      <div className="onboarding-links">{data.rules_url && <a href={data.rules_url} target="_blank" rel="noreferrer">Правила</a>}{data.privacy_url && <a href={data.privacy_url} target="_blank" rel="noreferrer">Конфиденциальность</a>}</div>
+      <button className="primary wide" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onDone(); } finally { setBusy(false); } }}>{busy ? "Открываю…" : "Открыть ROXY"}</button>
+    </div>
+  </div>;
 }

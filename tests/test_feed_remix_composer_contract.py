@@ -18,6 +18,9 @@ def test_feed_repeat_routes_through_reference_composer_before_launch() -> None:
     assert "launchRemix" in api
 
     assert "api.prepareRemix(query.source, query.surface)" in composer
+    assert "api.onboarding()" in composer
+    assert "api.completeOnboarding()" in composer
+    assert "OnboardingGate" in composer
     assert "Референсы исходной публикации не копируются" in composer
     assert "reference_ids: references.map" in composer
     assert "confirm_own_references: true" in composer
