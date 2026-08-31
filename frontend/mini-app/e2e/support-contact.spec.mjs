@@ -33,7 +33,7 @@ test('support exposes the direct Telegram contact', async ({ page }) => {
 
   await page.goto('/mini-app/support/');
 
-  await expect(page.getByText('@korkinaxenia')).toBeVisible();
+  await expect(page.getByText('@korkinaxenia', { exact: true })).toBeVisible();
   const contact = page.getByRole('button', { name: 'Написать @korkinaxenia' });
   await expect(contact).toBeVisible();
   await contact.click();
