@@ -61,6 +61,37 @@ def test_only_admin_manage_routes_can_mutate_folders() -> None:
     assert '@router.post("")' not in source
 
 
+def test_folder_create_uses_stable_target_for_idempotent_replay() -> None:
+    source = _source("app/api/v1/trend_collections.py")
+
+    assert 'command_key = _command_key(idempotency_key, "folder-create")' in source
+    assert "_stable_uuid(scope='folder', admin_id=account.id, command_key=command_key)" in source
+    assert "idempotency_key=command_key" in source
+
+
+def test_folder_trend_create_and_assignment_are_one_server_transaction() -> None:
+    source = _source("app/api/v1/trend_collections.py")
+    client = _source("frontend/mini-app/lib/trend-admin-api.ts")
+
+    assert '@router.post("/manage/{collection_id}/items")' in source
+    assert "session.add(item)" in source
+    assert "await TrendCollectionService.assign_trend(" in source
+    assert '"operation": "trend_collection.create_item"' in source
+    assert "/api/v1/trend-collections/manage/${encodeURIComponent(collectionId)}/items" in client
+    assert "trendCollectionsApi.assign" not in client
+
+
+def test_pending_folder_target_is_ephemeral_and_cleared_with_editor_lifecycle() -> None:
+    client = _source("frontend/mini-app/lib/trend-admin-api.ts")
+    admin = _source("frontend/mini-app/components/trend-collection-admin.tsx")
+
+    assert "sessionStorage" not in client
+    assert "sessionStorage" not in admin
+    assert "setTrendCollectionTarget(collectionId)" in admin
+    assert "watchTrendEditorLifecycle()" in admin
+    assert "clearTrendCollectionTarget()" in admin
+
+
 def test_home_folder_ux_has_category_grid_photo_video_tabs_and_trend_launcher() -> None:
     source = _source("frontend/mini-app/components/home-trend-folders.tsx")
     admin = _source("frontend/mini-app/components/trend-collection-admin.tsx")
