@@ -36,8 +36,7 @@ async function mockHome(page) {
   });
 
   await page.route('**/api/v1/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
+    const path = new URL(route.request().url()).pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
@@ -52,21 +51,23 @@ async function mockHome(page) {
   });
 }
 
-test('home puts trends directly below promo before creation formats', async ({ page }) => {
+test('home renders the real live trend rail directly below promo', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=home');
-  await expect(page.locator('.home-screen')).toBeVisible();
-  await expect(page.locator('.home-screen .model-card', { hasText: trend.title })).toBeVisible();
 
-  await expect.poll(() => page.locator('.home-screen').evaluate((home) => {
-    const children = Array.from(home.children);
-    const promo = children.findIndex((node) => node.classList.contains('promo-slider'));
-    const section = (kicker) => children.findIndex((node) => node.querySelector('.kicker')?.textContent?.trim() === kicker);
-    const trends = section('Тренды');
-    const studio = section('Студия');
-    return {
-      trendsDirectlyAfterPromo: trends === promo + 1,
-      studioAfterTrendRail: studio > trends + 1,
-    };
-  })).toEqual({ trendsDirectlyAfterPromo: true, studioAfterTrendRail: true });
+  const home = page.locator('.home-screen');
+  const promo = home.locator(':scope > .promo-slider');
+  const trendHost = home.locator(':scope > #roxy-home-live-trends');
+
+  await expect(home).toBeVisible();
+  await expect(promo).toBeVisible();
+  await expect(trendHost).toBeVisible();
+  await expect(trendHost.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
+
+  await expect.poll(() => home.evaluate((node) => {
+    const children = Array.from(node.children);
+    const promoIndex = children.findIndex((child) => child.classList.contains('promo-slider'));
+    const trendIndex = children.findIndex((child) => child.id === 'roxy-home-live-trends');
+    return trendIndex === promoIndex + 1;
+  })).toBe(true);
 });
