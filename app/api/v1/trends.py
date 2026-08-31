@@ -320,7 +320,7 @@ async def share_trend(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, str]:
-    """Return a canonical Telegram share link that opens this exact public trend."""
+    """Return a canonical Telegram share link attributed to the current sharer."""
 
     try:
         item = await TrendService.get_public(session, trend_id=trend_id)
@@ -328,9 +328,10 @@ async def share_trend(
         raise _domain_error(exc) from exc
 
     title = str(item.get("title") if isinstance(item, dict) else getattr(item, "title", "Тренд"))
-    payload = trend_payload(trend_id)
+    payload = trend_payload(trend_id, user.telegram_id)
     base = str(settings.public_base_url or "").strip().rstrip("/")
-    fallback = f"{base}/mini-app/trend/?id={trend_id}" if base else None
+    fallback_query = urlencode({"id": str(trend_id), "start_payload": payload, "startapp": payload})
+    fallback = f"{base}/mini-app/trend/?{fallback_query}" if base else None
     link = mini_app_deep_link(payload, fallback_url=fallback)
     if not link:
         raise HTTPException(status_code=503, detail="Public Mini App link is not configured")

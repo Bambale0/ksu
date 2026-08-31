@@ -8,7 +8,7 @@ import { ProfileStartApp } from "./profile-startapp-app";
 
 const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
 const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
-const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
 const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
 const CONSUMED_TREND_TARGET_KEY = "__roxy_consumed_trend_target";

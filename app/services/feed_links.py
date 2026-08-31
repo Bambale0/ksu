@@ -8,13 +8,14 @@ from urllib.parse import quote
 
 from app.core.config import settings
 
-FeedLinkAction = Literal["ref", "feed", "posts", "remix"]
+FeedLinkAction = Literal["ref", "feed", "posts", "remix", "trend"]
 
 _REF_RE = re.compile(r"^ref_(\d+)$", re.IGNORECASE)
 _POST_RE = re.compile(r"^feed_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
 _LEGACY_PROFILE_RE = re.compile(r"^posts_(\d+)_ref_(\d+)$", re.IGNORECASE)
 _PROFILE_RE = re.compile(r"^profile_(\d+)(?:_ref_(\d+))?$", re.IGNORECASE)
 _REMIX_RE = re.compile(r"^remix_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
+_TREND_RE = re.compile(r"^trend_([0-9a-fA-F-]{36})(?:_ref_(\d+))?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,7 @@ class FeedDeepLink:
     referral_telegram_id: int
     generation_id: uuid.UUID | None = None
     profile_referral_code: str | None = None
+    trend_id: uuid.UUID | None = None
 
 
 def _code(value: int | str) -> str:
@@ -54,10 +56,15 @@ def remix_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | No
     return f"{payload}_ref_{code}" if code else payload
 
 
-def trend_payload(trend_id: uuid.UUID | str) -> str:
-    """Build the public Main Mini App payload for an exact trend."""
+def trend_payload(
+    trend_id: uuid.UUID | str,
+    referral_telegram_id: int | str | None = None,
+) -> str:
+    """Build a public trend payload, optionally attributed to the user sharing it."""
 
-    return f"trend_{str(trend_id).strip()}"
+    payload = f"trend_{str(trend_id).strip()}"
+    code = _code(referral_telegram_id) if referral_telegram_id is not None else ""
+    return f"{payload}_ref_{code}" if code else payload
 
 
 def prompt_payload(prompt_id: uuid.UUID | str, referral_telegram_id: int | str | None = None) -> str:
@@ -156,6 +163,17 @@ def parse_feed_deep_link(payload: str | None) -> FeedDeepLink | None:
         return FeedDeepLink(
             action="remix",
             generation_id=generation_id,
+            referral_telegram_id=referral,
+        )
+    if match := _TREND_RE.fullmatch(payload):
+        try:
+            trend_id = uuid.UUID(match.group(1))
+        except ValueError:
+            return None
+        referral = int(match.group(2)) if match.group(2) else 0
+        return FeedDeepLink(
+            action="trend",
+            trend_id=trend_id,
             referral_telegram_id=referral,
         )
     return None

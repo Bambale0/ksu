@@ -71,6 +71,9 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert "posts_" in entry
     assert "profile_" in entry
     assert "trend_" in entry
+    trend_link_line = next(line for line in entry.splitlines() if line.startswith("const TREND_LINK"))
+    assert "(?:_ref_" in trend_link_line
+    assert ")?$/i" in trend_link_line
     assert "TrendStartApp" in entry
     assert "/mini-app/trend/?id=" in entry
     assert "ProfileStartApp" in entry

@@ -13,6 +13,7 @@ from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import parse_feed_deep_link
 from app.services.onboarding import OnboardingService
+from app.services.trends import TrendService
 from app.services.users import UserService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -60,14 +61,23 @@ async def _validated_startapp_inviter(
 
     Telegram-signed ``start_param`` is authoritative. The recovered header is
     accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are additionally bound to their public
-    author so changing the numeric suffix cannot steal attribution.
+    user. Post/remix/profile payloads are bound to their public author. Trend
+    payloads intentionally belong to the authenticated user who shared the
+    public trend, regardless of who originally created that trend.
     """
 
     link = parse_feed_deep_link(start_param)
     if link is None:
         return None
     if link.action == "ref":
+        return link.referral_telegram_id
+    if link.action == "trend":
+        if link.trend_id is None or link.referral_telegram_id <= 0:
+            return None
+        try:
+            await TrendService.get_public(session, trend_id=link.trend_id)
+        except LookupError:
+            return None
         return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
