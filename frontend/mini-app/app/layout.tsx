@@ -32,30 +32,7 @@ export const viewport: Viewport = {
 const launchSnapshot = `
 (() => {
   try {
-    const browserAuthKey = "__roxy_browser_init_data_v1";
-    const rawHash = window.location.hash || "";
-    const hashParams = new URLSearchParams(rawHash.replace(/^#/, ""));
-
-    // Native Telegram launch credentials stay in page memory only. Browser
-    // login is different: ROXY issued that short-lived credential after
-    // verifying Telegram Login Widget HMAC, so keep it only for this tab to
-    // survive full-page Mini App routes such as remix/trend/action screens.
-    if (!hashParams.get("tgWebAppData")) {
-      try {
-        const stored = JSON.parse(window.sessionStorage?.getItem(browserAuthKey) || "null");
-        const initData = String(stored?.initData || "").trim();
-        const expiresAt = Number(stored?.expiresAt || 0);
-        if (initData && expiresAt > Date.now()) hashParams.set("tgWebAppData", initData);
-        else if (stored) window.sessionStorage?.removeItem(browserAuthKey);
-      } catch {
-        window.sessionStorage?.removeItem(browserAuthKey);
-      }
-    }
-
-    const snapshot = {
-      hash: hashParams.toString() ? "#" + hashParams.toString() : rawHash,
-      search: window.location.search || "",
-    };
+    const snapshot = { hash: window.location.hash || "", search: window.location.search || "" };
     window.__ROXY_INITIAL_LAUNCH__ = snapshot;
 
     const routingOnly = (raw) => {
@@ -68,8 +45,8 @@ const launchSnapshot = `
       return safe.toString();
     };
 
-    // Native Telegram initData is never copied into the generic launch
-    // snapshots; those remain routing-only.
+    // Keep Telegram auth initData in page memory only. Session storage receives
+    // only non-secret routing payloads needed after client-side navigation.
     window.sessionStorage?.setItem("__roxy_initial_hash", routingOnly(snapshot.hash));
     window.sessionStorage?.setItem("__roxy_initial_search", routingOnly(snapshot.search));
   } catch {}
