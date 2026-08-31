@@ -22,19 +22,11 @@ class TrendCollectionService:
     _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
     DEFAULTS: tuple[dict[str, Any], ...] = (
         {
-            "id": "ai-reference",
-            "system_key": "ai_reference",
-            "title": "AI РЕФЕРЕНС",
-            "description": "Создание референса · взрослый, детский, для животных · HD · редактор референса",
-            "sort_order": 0,
-            "is_active": True,
-        },
-        {
             "id": "trends",
             "system_key": "trends",
             "title": "Тренды",
             "description": "То, что сейчас гуляет в Instagram",
-            "sort_order": 10,
+            "sort_order": 0,
             "is_active": True,
         },
         {
@@ -42,7 +34,7 @@ class TrendCollectionService:
             "system_key": "birthday",
             "title": "День рождения",
             "description": "Фото и видео для поздравлений и праздничных сюжетов",
-            "sort_order": 20,
+            "sort_order": 10,
             "is_active": True,
         },
     )
