@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TrendCollectionAdmin } from "@/components/trend-collection-admin";
+import { api } from "@/lib/api";
 import { haptic } from "@/lib/telegram";
 import {
   trendCollectionsApi,
@@ -52,9 +53,41 @@ function folderCount(folder: TrendCollection): string {
   return `${count} шаблонов`;
 }
 
+function TrendCards({ trends }: { trends: TrendItem[] }) {
+  return <div className="template-trend-rail">
+    {trends.map((trend) => <article className="template-trend-card" key={trend.id}>
+      <button
+        className="template-trend-open"
+        type="button"
+        data-trend-launch="true"
+        onClick={() => {
+          haptic("light");
+          window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
+        }}
+      >
+        {trend.preview_url ? trend.media_type === "video"
+          ? <video className="template-trend-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
+          : <img className="template-trend-media" src={trend.preview_url} alt="" loading="lazy" />
+          : null}
+        <span className="template-trend-copy">
+          <strong>{trend.title}</strong>
+          {trend.description ? <small>{trend.description}</small> : null}
+          <span className="template-trend-meta">
+            <span>{trendUsageLabel(trend.usage_count)}</span>
+            <span>{mediaLabel(trend)}</span>
+            <span>{price(trend)}</span>
+            {trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}
+          </span>
+        </span>
+      </button>
+    </article>)}
+  </div>;
+}
+
 export function LiveTrendRail() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [collections, setCollections] = useState<TrendCollection[]>([]);
+  const [fallbackTrends, setFallbackTrends] = useState<TrendItem[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [trends, setTrends] = useState<TrendItem[]>([]);
@@ -76,15 +109,33 @@ export function LiveTrendRail() {
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, []);
 
+  const loadLegacyFallback = useCallback(async () => {
+    try {
+      const legacy = await api.trends();
+      setFallbackTrends(legacy.items || []);
+      setError("");
+    } catch (cause) {
+      setFallbackTrends([]);
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить шаблоны");
+    }
+  }, []);
+
   const refreshCollections = useCallback(async () => {
     try {
       const result = await trendCollectionsApi.list();
-      setCollections(result.items || []);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить папки");
+      const items = result.items || [];
+      setCollections(items);
+      if (items.length) {
+        setFallbackTrends([]);
+        setError("");
+      } else {
+        await loadLegacyFallback();
+      }
+    } catch {
+      setCollections([]);
+      await loadLegacyFallback();
     }
-  }, []);
+  }, [loadLegacyFallback]);
 
   useEffect(() => {
     if (!host) return;
@@ -152,27 +203,13 @@ export function LiveTrendRail() {
             <span className="template-folder-meta"><span>{folderCount(folder)}</span><span>Фото {folder.photo_count || 0}</span><span>Видео {folder.video_count || 0}</span></span>
           </span>
         </button>)}
-      </div> : <div className="template-library-empty">Папки пока не созданы.</div> : <>
+      </div> : fallbackTrends.length ? <TrendCards trends={fallbackTrends} /> : <div className="template-library-empty">Папки пока не созданы.</div> : <>
         <div className="template-media-tabs" role="tablist" aria-label="Тип шаблона">
           <button className={mediaType === "image" ? "active" : ""} role="tab" aria-selected={mediaType === "image"} type="button" onClick={() => setMediaType("image")}>Фото · {selected.photo_count || 0}</button>
           <button className={mediaType === "video" ? "active" : ""} role="tab" aria-selected={mediaType === "video"} type="button" onClick={() => setMediaType("video")}>Видео · {selected.video_count || 0}</button>
         </div>
 
-        {loading ? <div className="template-library-empty">Загружаю шаблоны…</div> : trends.length ? <div className="template-trend-rail">
-          {trends.map((trend) => <article className="template-trend-card" key={trend.id}>
-            <button className="template-trend-open" type="button" onClick={() => { haptic("light"); window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`); }}>
-              {trend.preview_url ? trend.media_type === "video"
-                ? <video className="template-trend-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
-                : <img className="template-trend-media" src={trend.preview_url} alt="" loading="lazy" />
-                : null}
-              <span className="template-trend-copy">
-                <strong>{trend.title}</strong>
-                {trend.description ? <small>{trend.description}</small> : null}
-                <span className="template-trend-meta"><span>{trendUsageLabel(trend.usage_count)}</span><span>{mediaLabel(trend)}</span><span>{price(trend)}</span>{trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}</span>
-              </span>
-            </button>
-          </article>)}
-        </div> : <div className="template-library-empty">В этой вкладке пока нет шаблонов.</div>}
+        {loading ? <div className="template-library-empty">Загружаю шаблоны…</div> : trends.length ? <TrendCards trends={trends} /> : <div className="template-library-empty">В этой вкладке пока нет шаблонов.</div>}
       </>}
     </section>,
     host,
