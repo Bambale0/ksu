@@ -123,6 +123,18 @@ export function consumeMiniAppReturnLocation(): string | null {
   }
 }
 
+export function clearStoredLaunchPayload(): void {
+  if (typeof window === "undefined") return;
+  window.__ROXY_INITIAL_LAUNCH__ = { hash: "", search: "" };
+  for (const key of [INITIAL_HASH_KEY, INITIAL_SEARCH_KEY]) {
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch {
+      // sessionStorage can be unavailable in restrictive WebViews.
+    }
+  }
+}
+
 function hasTransientCustomerLayer(): boolean {
   if (typeof document === "undefined") return false;
   return Boolean(document.querySelector([

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { copyToClipboard } from "@/lib/telegram";
+import { clearStoredLaunchPayload, copyToClipboard } from "@/lib/telegram";
 import type { FeedCard, FeedSurface } from "@/lib/types";
 import { Icon } from "./icons";
 import { StandaloneShell } from "./standalone-shell";
@@ -13,6 +13,11 @@ function asset(card: FeedCard): { url: string; type: "image" | "video" | "audio"
   if (contentType.startsWith("video/") || /\.(mp4|mov|webm)(\?|$)/i.test(url)) return { url, type: "video" };
   if (contentType.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)(\?|$)/i.test(url)) return { url, type: "audio" };
   return { url, type: "image" };
+}
+
+function openInternal(path: string): void {
+  clearStoredLaunchPayload();
+  window.location.assign(path);
 }
 
 export function FeedStartApp({
@@ -98,7 +103,7 @@ export function FeedStartApp({
             {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Открываю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
             {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => void copyLink()}><Icon name="share" size={16} />Скопировать ссылку</button> : null}
             {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`profile_${referralCode}`)}`)}><Icon name="profile" size={16}/>Профиль автора</button> : null}
-            <button className="secondary" type="button" onClick={() => window.location.assign("/mini-app/?route=feed")}>Открыть всю ленту</button>
+            <button className="secondary" type="button" onClick={() => openInternal("/mini-app/?route=feed")}>Открыть всю ленту</button>
           </div>
         </div>
       </div>

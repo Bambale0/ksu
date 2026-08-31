@@ -78,6 +78,12 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert "/mini-app/trend/?id=" in entry
     assert "ProfileStartApp" in entry
     assert 'intent={target.kind}' in entry
+    explicit_launch = entry.split("function explicitLaunchCarries", 1)[1].split("function profileTarget", 1)[0]
+    assert "window.location.search" in explicit_launch
+    assert "window.location.hash" in explicit_launch
+    assert "__ROXY_INITIAL_LAUNCH__" in explicit_launch
+    assert "clearStoredLaunchPayload" in profile
+    assert "clearStoredLaunchPayload" in post
 
     assert "api.profileFeed(referralCode, 0)" in profile
     assert "data-profile-startapp-posts" in profile

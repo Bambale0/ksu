@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { customerRequest } from "@/lib/customer-api";
+import { clearStoredLaunchPayload } from "@/lib/telegram";
 import type { FeedCard } from "@/lib/types";
 import { Icon } from "./icons";
 import { StandaloneShell } from "./standalone-shell";
@@ -27,6 +28,11 @@ function media(card: FeedCard): { url: string; type: "image" | "video" | "audio"
   if (contentType.startsWith("video/") || /\.(mp4|mov|webm)(\?|$)/i.test(url)) return { url, type: "video" };
   if (contentType.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)(\?|$)/i.test(url)) return { url, type: "audio" };
   return { url, type: "image" };
+}
+
+function openInternal(path: string): void {
+  clearStoredLaunchPayload();
+  window.location.assign(path);
 }
 
 export function ProfileStartApp({ referralCode }: { referralCode: string }) {
@@ -91,9 +97,9 @@ export function ProfileStartApp({ referralCode }: { referralCode: string }) {
             </button>;
           })}</div> : null}
           <div className="tool-actions">
-            <button className="primary" type="button" onClick={() => window.location.assign("/mini-app/subscriptions/")}><Icon name="heart" size={16}/>Мои подписки</button>
-            <button className="secondary" type="button" onClick={() => window.location.assign("/mini-app/?route=feed")}>Открыть ленту</button>
-            <button className="secondary" type="button" onClick={() => window.location.assign("/mini-app/?route=home")}>Открыть ROXY</button>
+            <button className="primary" type="button" onClick={() => openInternal("/mini-app/subscriptions/")}><Icon name="heart" size={16}/>Мои подписки</button>
+            <button className="secondary" type="button" onClick={() => openInternal("/mini-app/?route=feed")}>Открыть ленту</button>
+            <button className="secondary" type="button" onClick={() => openInternal("/mini-app/?route=home")}>Открыть ROXY</button>
           </div>
         </div>
       </div>
