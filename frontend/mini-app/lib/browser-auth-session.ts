@@ -6,6 +6,15 @@ type StoredBrowserAuth = {
   expiresAt: number;
 };
 
+export function clearBrowserInitData(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(BROWSER_AUTH_STORAGE_KEY);
+  } catch {
+    // Restrictive browsers can disable sessionStorage.
+  }
+}
+
 export function saveBrowserInitData(initData: string, expiresIn: number): void {
   if (typeof window === "undefined") return;
   const value = String(initData || "").trim();
@@ -34,12 +43,12 @@ export function getBrowserInitData(): string {
     const initData = String(stored?.initData || "").trim();
     const expiresAt = Number(stored?.expiresAt || 0);
     if (!initData || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-      window.sessionStorage.removeItem(BROWSER_AUTH_STORAGE_KEY);
+      clearBrowserInitData();
       return "";
     }
     return initData;
   } catch {
-    try { window.sessionStorage.removeItem(BROWSER_AUTH_STORAGE_KEY); } catch { /* unavailable */ }
+    clearBrowserInitData();
     return "";
   }
 }
