@@ -11,7 +11,7 @@ from app.db.models import AdminAccount, PartnerWithdrawal, ReferralRelation, Ref
 from app.db.payment_models import ReferralRewardReversal
 from app.services.admin_commands import AdminCommandLedger, redact_secrets
 from app.services.admin_policy import AdminPolicy
-from app.services.partner import PartnerService
+from app.services.partner_wallet import PartnerWalletTransferService
 
 
 class AdminPartnerService:
@@ -178,8 +178,15 @@ class AdminPartnerService:
                 )
                 if user is None:
                     raise LookupError("Withdrawal user not found")
-                accounting = await PartnerService.accounting(session, withdrawal.user_id)
-                if accounting["reserved_or_paid"] > accounting["total_earned"]:
+                accounting = await PartnerWalletTransferService.accounting(
+                    session,
+                    withdrawal.user_id,
+                )
+                committed = (
+                    Decimal(accounting["reserved_or_paid"])
+                    + Decimal(accounting["transferred_to_rox"])
+                )
+                if committed > Decimal(accounting["total_earned"]):
                     raise ValueError(
                         "Withdrawal is no longer backed by current partner earnings; reject or cancel it"
                     )
