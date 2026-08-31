@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getInitDataFallback, getStartParamFallback, initTelegram } from "@/lib/telegram";
+import { getStartParamFallback, initTelegram } from "@/lib/telegram";
 import { FeedStartApp } from "./feed-startapp-app";
 import { GenerationActionGate } from "./generation-action-app";
 import { ProfileStartApp } from "./profile-startapp-app";
-import { TelegramBrowserLogin } from "./telegram-browser-login";
 
 const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
 const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
@@ -103,21 +102,17 @@ function ProfileTarget({ referralCode, payload }: { referralCode: string; payloa
 
 export function AppEntryGate() {
   const [ready, setReady] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
     tg?.ready?.();
     tg?.expand?.();
-    const hasInitData = Boolean(getInitDataFallback());
-    setAuthenticated(hasInitData);
-    if (hasInitData) setTarget(parseTarget());
+    setTarget(parseTarget());
     setReady(true);
   }, []);
 
-  if (!ready) return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ROXY…</small></div>;
-  if (!authenticated) return <TelegramBrowserLogin />;
+  if (!ready) return <div className="splash" role="status"><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
   if (target?.kind === "profile") return <ProfileTarget referralCode={target.referralCode} payload={target.payload} />;
   if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;
   if (target?.kind === "post" || target?.kind === "remix") {
