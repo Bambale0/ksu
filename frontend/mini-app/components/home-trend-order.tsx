@@ -25,12 +25,30 @@ function promoteHomeTrends(): void {
   trendTitle.insertAdjacentElement("afterend", trendRail);
 }
 
+function promoteCatalogTrends(): void {
+  for (const screen of Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))) {
+    const kicker = screen.querySelector<HTMLElement>(".screen-head .kicker")?.textContent?.trim();
+    if (kicker !== "Каталог" && !screen.classList.contains("roxy-catalog-feature-mode")) continue;
+
+    const promo = screen.querySelector<HTMLElement>(":scope > .promo-carousel");
+    const trends = screen.querySelector<HTMLElement>(":scope > #roxy-live-trends");
+    if (!promo || !trends || promo.nextElementSibling === trends) continue;
+
+    promo.insertAdjacentElement("afterend", trends);
+  }
+}
+
+function promoteTrends(): void {
+  promoteHomeTrends();
+  promoteCatalogTrends();
+}
+
 export function HomeTrendOrder() {
   useEffect(() => {
     let frame = 0;
     const sync = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(promoteHomeTrends);
+      frame = requestAnimationFrame(promoteTrends);
     };
 
     sync();
