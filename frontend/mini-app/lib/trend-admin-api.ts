@@ -1,7 +1,10 @@
 "use client";
 
 import { telegramHeaders } from "./telegram";
+import { trendCollectionsApi } from "./trend-collections-api";
 import type { GenerationModel } from "./types";
+
+export const TREND_COLLECTION_TARGET_KEY = "__roxy_trend_collection_target_v1";
 
 export type TrendAdminPayload = {
   schema_version?: number;
@@ -72,13 +75,35 @@ function writeHeaders(prefix: string): Record<string, string> {
   };
 }
 
+async function targetCollection(): Promise<string> {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(window.sessionStorage.getItem(TREND_COLLECTION_TARGET_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function clearTargetCollection(): void {
+  if (typeof window === "undefined") return;
+  try { window.sessionStorage.removeItem(TREND_COLLECTION_TARGET_KEY); } catch { /* optional */ }
+}
+
 export const trendAdminApi = {
   list: () => request<TrendAdminList>("/api/v1/trends/manage"),
-  create: (body: TrendWriteBody) => request<TrendAdminItem>("/api/v1/trends/manage", {
-    method: "POST",
-    headers: writeHeaders("trend-create"),
-    body: JSON.stringify(body),
-  }),
+  create: async (body: TrendWriteBody) => {
+    const item = await request<TrendAdminItem>("/api/v1/trends/manage", {
+      method: "POST",
+      headers: writeHeaders("trend-create"),
+      body: JSON.stringify(body),
+    });
+    const collectionId = await targetCollection();
+    if (collectionId) {
+      await trendCollectionsApi.assign(item.id, collectionId);
+      clearTargetCollection();
+    }
+    return item;
+  },
   update: (id: string, body: TrendWriteBody) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: writeHeaders("trend-update"),
