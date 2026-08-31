@@ -47,6 +47,7 @@ function mediaLabel(trend: TrendItem): string {
 }
 
 function folderCount(folder: TrendCollection): string {
+  if (folder.system_key === "ai_reference") return "3 инструмента";
   const count = Number(folder.item_count || 0);
   if (count === 1) return "1 шаблон";
   if (count > 1 && count < 5) return `${count} шаблона`;
@@ -168,6 +169,10 @@ export function LiveTrendRail() {
 
   const openFolder = (folder: TrendCollection) => {
     haptic("light");
+    if (folder.system_key === "ai_reference") {
+      window.location.assign("/mini-app/ai-reference/");
+      return;
+    }
     setSelectedId(folder.id);
     setMediaType(Number(folder.photo_count || 0) > 0 || Number(folder.video_count || 0) === 0 ? "image" : "video");
   };
@@ -200,7 +205,9 @@ export function LiveTrendRail() {
           <span className="template-folder-copy">
             <strong>{folder.title}</strong>
             {folder.description ? <small>{folder.description}</small> : null}
-            <span className="template-folder-meta"><span>{folderCount(folder)}</span><span>Фото {folder.photo_count || 0}</span><span>Видео {folder.video_count || 0}</span></span>
+            {folder.system_key === "ai_reference"
+              ? <span className="template-folder-meta"><span>{folderCount(folder)}</span><span>Старт работы</span></span>
+              : <span className="template-folder-meta"><span>{folderCount(folder)}</span><span>Фото {folder.photo_count || 0}</span><span>Видео {folder.video_count || 0}</span></span>}
           </span>
         </button>)}
       </div> : fallbackTrends.length ? <TrendCards trends={fallbackTrends} /> : <div className="template-library-empty">Папки пока не созданы.</div> : <>
