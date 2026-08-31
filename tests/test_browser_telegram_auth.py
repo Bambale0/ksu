@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -88,6 +87,7 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     entry = (root / "frontend/mini-app/components/app-entry-gate.tsx").read_text(encoding="utf-8")
     gate = (root / "frontend/mini-app/components/telegram-browser-login.tsx").read_text(encoding="utf-8")
     telegram = (root / "frontend/mini-app/lib/telegram.ts").read_text(encoding="utf-8")
+    layout = (root / "frontend/mini-app/app/layout.tsx").read_text(encoding="utf-8")
     social = (root / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     action = (root / "frontend/mini-app/components/generation-action-app.tsx").read_text(encoding="utf-8")
 
@@ -100,6 +100,9 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "localStorage" not in gate
 
     assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
-    assert "getInitDataFallback" in social
-    assert "getInitDataFallback" in action
-    assert "telegram()?.initData" not in action
+    assert "const recoveredInitData = getInitDataFallback();" in telegram
+    assert "tg.initData = recoveredInitData" in telegram
+    assert "telegram-web-app.js" in layout
+    assert "const tg = initTelegram();" in social
+    assert "tg?.initData ? api.me()" in social
+    assert "const tg = initTelegram();" in action
