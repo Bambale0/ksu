@@ -52,7 +52,7 @@ const launchSnapshot = `
     }
 
     const snapshot = {
-      hash: hashParams.toString() ? `#${hashParams.toString()}` : rawHash,
+      hash: hashParams.toString() ? "#" + hashParams.toString() : rawHash,
       search: window.location.search || "",
     };
     window.__ROXY_INITIAL_LAUNCH__ = snapshot;
