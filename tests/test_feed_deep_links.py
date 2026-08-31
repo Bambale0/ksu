@@ -12,6 +12,7 @@ from app.services.feed_links import (
     profile_payload,
     referral_payload,
     remix_payload,
+    trend_payload,
 )
 from app.services.partner import PartnerService
 
@@ -49,6 +50,23 @@ def test_remix_deep_link_is_distinct_action() -> None:
     assert link.generation_id == generation_id
 
 
+def test_trend_deep_link_carries_sharer_referral_and_keeps_legacy_shape() -> None:
+    trend_id = uuid.uuid4()
+
+    shared = parse_feed_deep_link(trend_payload(trend_id, 123456))
+    legacy = parse_feed_deep_link(trend_payload(trend_id))
+
+    assert shared is not None
+    assert shared.action == "trend"
+    assert shared.trend_id == trend_id
+    assert shared.referral_telegram_id == 123456
+
+    assert legacy is not None
+    assert legacy.action == "trend"
+    assert legacy.trend_id == trend_id
+    assert legacy.referral_telegram_id == 0
+
+
 def test_partner_referral_link_opens_direct_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
@@ -64,11 +82,13 @@ def test_partner_referral_link_opens_direct_main_mini_app(monkeypatch) -> None: 
 
 def test_referral_payloads_round_trip_for_share_surfaces() -> None:
     generation_id = uuid.uuid4()
+    trend_id = uuid.uuid4()
 
     referral = parse_feed_deep_link(referral_payload(123456))
     post = parse_feed_deep_link(post_payload(generation_id, 123456))
     profile = parse_feed_deep_link(profile_payload(123456))
     remix = parse_feed_deep_link(remix_payload(generation_id, 123456))
+    trend = parse_feed_deep_link(trend_payload(trend_id, 123456))
 
     assert referral is not None
     assert referral.action == "ref"
@@ -88,6 +108,11 @@ def test_referral_payloads_round_trip_for_share_surfaces() -> None:
     assert remix.action == "remix"
     assert remix.generation_id == generation_id
     assert remix.referral_telegram_id == 123456
+
+    assert trend is not None
+    assert trend.action == "trend"
+    assert trend.trend_id == trend_id
+    assert trend.referral_telegram_id == 123456
 
 
 def test_all_generated_social_links_match_tanyapi_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -158,3 +183,4 @@ def test_invalid_deep_link_does_not_fall_back_to_private_lookup() -> None:
     assert parse_feed_deep_link("posts_secret-user_ref_123") is None
     assert parse_feed_deep_link("profile_secret-user") is None
     assert parse_feed_deep_link("remix_not-a-uuid_ref_123") is None
+    assert parse_feed_deep_link("trend_not-a-uuid_ref_123") is None
