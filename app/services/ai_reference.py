@@ -74,13 +74,14 @@ class AiReferenceService:
     ) -> AiReferenceGenerationRequest:
         refs = cls._references(reference_urls)
         if scenario == "create":
-            if subject not in cls._CREATE_PROMPTS:
+            create_prompt = cls._CREATE_PROMPTS.get(subject) if subject is not None else None
+            if create_prompt is None:
                 raise AiReferenceError("Выберите: взрослый, детский или для животных")
             if not 1 <= len(refs) <= cls.MAX_CREATE_REFERENCES:
                 raise AiReferenceError("Для создания референса добавьте от 1 до 4 фотографий")
             return AiReferenceGenerationRequest(
                 model_id=cls.MODEL_ID,
-                prompt=cls._CREATE_PROMPTS[subject],
+                prompt=create_prompt,
                 parameters={
                     "image_input": refs,
                     "aspect_ratio": "1:1" if subject == "pet" else "3:4",
