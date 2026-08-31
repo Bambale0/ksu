@@ -129,7 +129,7 @@ def test_reference_editor_requires_instruction() -> None:
 def test_ai_reference_ui_exposes_all_three_working_scenarios() -> None:
     page = Path("frontend/mini-app/app/ai-reference/page.tsx").read_text(encoding="utf-8")
     client = Path("frontend/mini-app/lib/ai-reference-api.ts").read_text(encoding="utf-8")
-    home_card = Path("frontend/mini-app/components/ai-reference-home-card.tsx").read_text(
+    home_entry = Path("frontend/mini-app/components/ai-reference-home-entry.tsx").read_text(
         encoding="utf-8"
     )
     home = Path("frontend/mini-app/app/page.tsx").read_text(encoding="utf-8")
@@ -143,7 +143,9 @@ def test_ai_reference_ui_exposes_all_three_working_scenarios() -> None:
     assert "Что изменить?" in page
     assert "/api/v1/ai-reference/quote" in client
     assert "/api/v1/ai-reference/run" in client
-    assert 'window.location.assign("/mini-app/ai-reference/")' in home_card
-    assert "AI РЕФЕРЕНС" in home_card
-    assert "<AiReferenceHomeCard />" in home
-    assert home.index("<AiReferenceHomeCard />") < home.index("<HomeTrendFolders />")
+    assert 'window.location.assign("/mini-app/ai-reference/")' in home_entry
+    assert "AI РЕФЕРЕНС" in home_entry
+    assert 'document.querySelector<HTMLElement>("#roxy-home-trend-folders")' in home_entry
+    assert "host.prepend(mount)" in home_entry
+    assert "<AiReferenceHomeEntry />" in home
+    assert "<HomeTrendFolders />" in home
