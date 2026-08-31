@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
@@ -67,20 +67,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.bot = bot
         app.state.dispatcher = dispatcher
 
-        # Public Mini App links should use Telegram's live bot identity, not a
-        # potentially stale deployment username.
         try:
             bot_info = await bot.get_me()
             if bot_info.username:
                 settings.bot_username = bot_info.username
-            app.state.bot_has_main_web_app = bool(
-                getattr(bot_info, "has_main_web_app", False)
-            )
+            app.state.bot_has_main_web_app = bool(getattr(bot_info, "has_main_web_app", False))
             if settings.is_production and not app.state.bot_has_main_web_app:
                 logger.warning(
-                    "Telegram Main Mini App is not enabled for @%s; "
-                    "public ?startapp links cannot open ROXY directly. "
-                    "Enable the Main Mini App in BotFather before publishing referral/share links.",
+                    "Telegram Main Mini App is not enabled for @%s; public ?startapp links cannot open ROXY directly. Enable the Main Mini App in BotFather before publishing referral/share links.",
                     settings.bot_username or "unknown",
                 )
         except Exception:
@@ -127,12 +121,13 @@ async def resource_policy_error(_request: Request, exc: ResourcePolicyError) -> 
     return JSONResponse(
         status_code=status_code,
         headers={"Retry-After": str(exc.retry_after)},
-        content={
-            "detail": str(exc),
-            "code": exc.code,
-            "retry_after": exc.retry_after,
-        },
+        content={"detail": str(exc), "code": exc.code, "retry_after": exc.retry_after},
     )
+
+
+@app.get("/", include_in_schema=False)
+async def product_landing() -> RedirectResponse:
+    return RedirectResponse(url="/landing/", status_code=307)
 
 
 app.include_router(health_router)
@@ -145,12 +140,11 @@ app.include_router(api_router)
 app.include_router(batch_router, prefix="/api/v1")
 
 web_dir = Path(__file__).resolve().parent / "web"
+landing_dir = web_dir / "landing"
 mini_app_dir = web_dir / "mini_app"
 admin_app_dir = web_dir / "admin_app"
 mimetypes.add_type("image/webp", ".webp")
 
-# Production Nginx can serve these paths directly. StaticFiles keeps local and
-# reverse-proxy-less deployments on the same product-owned URL contract.
 app.mount(
     FeedStaticStorage.public_prefix(),
     StaticFiles(directory=FeedStaticStorage.ensure_root()),
@@ -161,5 +155,6 @@ app.mount(
     StaticFiles(directory=ReferenceStaticStorage.ensure_root()),
     name="reference-static",
 )
+app.mount("/landing", StaticFiles(directory=landing_dir, html=True), name="landing")
 app.mount("/mini-app", StaticFiles(directory=mini_app_dir, html=True), name="mini-app")
 app.mount("/admin-app", StaticFiles(directory=admin_app_dir, html=True), name="admin-app")
