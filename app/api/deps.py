@@ -57,13 +57,11 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Validate referral attribution carried by a Telegram Mini App launch.
+    """Validate referral attribution carried by a Telegram-signed Mini App launch.
 
-    Telegram-signed ``start_param`` is authoritative. The recovered header is
-    accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are bound to their public author. Trend
-    payloads intentionally belong to the authenticated user who shared the
-    public trend, regardless of who originally created that trend.
+    Post/remix/profile payloads are bound to their public author. Trend payloads
+    intentionally belong to the authenticated user who shared the public trend,
+    regardless of who originally created that trend.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -145,10 +143,12 @@ async def get_current_user(
         username=web_user.username,
         language_code=web_user.language_code,
     )
+
+    # This header remains available to the frontend as a routing/recovery transport,
+    # but it is client-controlled and must never assign money-bearing referral income.
+    _ = x_telegram_start_param
     signed_start_param = str(getattr(init_data, "start_param", None) or "").strip()
-    fallback_start_param = str(x_telegram_start_param or "").strip()
-    resolved_start_param = signed_start_param or fallback_start_param or None
-    inviter_telegram_id = await _validated_startapp_inviter(session, resolved_start_param)
+    inviter_telegram_id = await _validated_startapp_inviter(session, signed_start_param or None)
     user = await UserService.get_or_create(
         session,
         tg_user,
