@@ -9,10 +9,7 @@ from urllib.parse import parse_qs
 import pytest
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 
-from app.core.telegram_browser_auth import (
-    build_browser_init_data,
-    verify_telegram_login_widget,
-)
+from app.core.telegram_browser_auth import build_browser_init_data, verify_telegram_login_widget
 
 BOT_TOKEN = "123456:browser-auth-test-token"
 
@@ -29,19 +26,12 @@ def _signed_login_payload(*, auth_date: datetime | None = None) -> dict[str, obj
     }
     check_string = "\n".join(f"{key}={payload[key]}" for key in sorted(payload))
     secret = hashlib.sha256(BOT_TOKEN.encode("utf-8")).digest()
-    payload["hash"] = hmac.new(
-        secret,
-        check_string.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    payload["hash"] = hmac.new(secret, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
     return payload
 
 
 def test_browser_login_widget_signature_is_verified() -> None:
-    payload = _signed_login_payload()
-
-    user = verify_telegram_login_widget(payload, BOT_TOKEN)
-
+    user = verify_telegram_login_widget(_signed_login_payload(), BOT_TOKEN)
     assert user == {
         "id": 424242,
         "first_name": "Roxy",
@@ -55,26 +45,20 @@ def test_browser_login_widget_signature_is_verified() -> None:
 def test_browser_login_widget_rejects_tampered_identity() -> None:
     payload = _signed_login_payload()
     payload["id"] = 777777
-
     with pytest.raises(ValueError, match="signature"):
         verify_telegram_login_widget(payload, BOT_TOKEN)
 
 
 def test_browser_login_widget_rejects_stale_payload() -> None:
-    payload = _signed_login_payload(
-        auth_date=datetime.now(timezone.utc) - timedelta(minutes=11),
-    )
-
+    payload = _signed_login_payload(auth_date=datetime.now(timezone.utc) - timedelta(minutes=11))
     with pytest.raises(ValueError, match="expired"):
         verify_telegram_login_widget(payload, BOT_TOKEN)
 
 
 def test_browser_init_data_enters_existing_webapp_auth_contour() -> None:
     user = verify_telegram_login_widget(_signed_login_payload(), BOT_TOKEN)
-
     init_data = build_browser_init_data(user, BOT_TOKEN)
     parsed = safe_parse_webapp_init_data(BOT_TOKEN, init_data)
-
     assert parsed.user is not None
     assert parsed.user.id == 424242
     assert parsed.user.first_name == "Roxy"
@@ -101,7 +85,9 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "clearBrowserInitData" in boundary
     assert "if (valid)" in boundary
     assert "clearBrowserInitData" in browser_session
-    assert "<TelegramAuthBoundary>{children}</TelegramAuthBoundary>" in layout
+    assert "<TelegramAuthBoundary>" in layout
+    assert "<OnboardingRequiredBoundary>{children}</OnboardingRequiredBoundary>" in layout
+    assert "</TelegramAuthBoundary>" in layout
     assert "/api/v1/browser-auth/config" in gate
     assert "/api/v1/browser-auth" in gate
     assert "telegram-widget.js" in gate
@@ -111,7 +97,6 @@ def test_mini_app_browser_auth_reuses_same_frontend_and_headers() -> None:
     assert "sessionStorage" in browser_session
     assert "localStorage" not in browser_session
     assert '"tgWebAppData"' not in layout
-
     assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
     assert "const recoveredInitData = getInitDataFallback();" in telegram
     assert "tg.initData = recoveredInitData" in telegram
