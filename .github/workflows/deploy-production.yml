@@ -23,7 +23,7 @@ jobs:
        github.event.workflow_run.event == 'push') ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     environment: production
 
     steps:
@@ -75,8 +75,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E")
-          deadline=$((SECONDS + 900))
+          required=("CI" "Admin Console" "Batch Generation" "Mini App Playwright E2E" "ROXY E2E" "ROXY Release Gate")
+          deadline=$((SECONDS + 1500))
 
           api_header=(
             -H "Authorization: Bearer ${GH_TOKEN}"
@@ -212,6 +212,8 @@ jobs:
             media-worker
             prompt-tool-worker
             payment-worker
+            notification-worker
+            admin-campaign-worker
             creator-partnership-worker
           )
           runtime_services=(
@@ -313,13 +315,10 @@ jobs:
             exit 1
           fi
 
-          # Existing saved refs and public/profile rows may still point at
-          # provider URLs from releases before the durable media contracts.
-          # Localize them after health is established, matching tanyapi.
           docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
           docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; reference/feed static backfills completed; backup-worker is running."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; reference/feed static backfills completed; all runtime workers are refreshed; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -338,7 +337,8 @@ jobs:
             echo "- target: \`${DEPLOY_SHA:-unknown}\`"
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
-            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`"
+            echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`, \`ROXY E2E\`, \`ROXY Release Gate\`"
+            echo "- all application workers rebuilt/restarted: required"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- backup-worker running check: required"
             echo "- reference static backfill after health gate: required"
