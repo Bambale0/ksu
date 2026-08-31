@@ -32,6 +32,12 @@ class CollectionAssignmentRequest(BaseModel):
     collection_id: str = Field(min_length=1, max_length=64)
 
 
+class CollectionTrendCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+
+
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
@@ -41,6 +47,10 @@ def _command_key(value: str | None, prefix: str) -> str:
     if len(key) > 160:
         raise HTTPException(status_code=400, detail="Invalid Idempotency-Key")
     return key
+
+
+def _stable_uuid(*, scope: str, admin_id: uuid.UUID, command_key: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"ksu:{scope}:{admin_id}:{command_key}")
 
 
 def _request_id(request: Request) -> str:
@@ -151,7 +161,8 @@ async def create_trend_collection(
 ) -> dict[str, Any]:
     try:
         account = await _inline_admin(session, user_id=user.id)
-        collection_id = f"folder-{uuid.uuid4().hex[:12]}"
+        command_key = _command_key(idempotency_key, "folder-create")
+        collection_id = f"folder-{_stable_uuid(scope='folder', admin_id=account.id, command_key=command_key).hex[:12]}"
 
         async def operation() -> dict[str, Any]:
             return await TrendCollectionService.upsert_collection(
@@ -163,12 +174,73 @@ async def create_trend_collection(
 
         result, replayed = await AdminCommandLedger.execute(
             session,
-            idempotency_key=_command_key(idempotency_key, "folder-create"),
+            idempotency_key=command_key,
             admin_user_id=account.id,
             request_id=_request_id(request),
             action="social.moderate",
             target_id=collection_id,
             request_payload={"operation": "trend_collection.create", **payload.model_dump()},
+            operation=operation,
+        )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.post("/manage/{collection_id}/items")
+async def create_trend_in_collection(
+    collection_id: str,
+    payload: CollectionTrendCreateRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        account = await _inline_admin(session, user_id=user.id)
+        state = await TrendCollectionService.state(session)
+        if not any(item["id"] == collection_id for item in state["collections"]):
+            raise LookupError("Folder not found")
+
+        title = payload.title.strip()
+        recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
+        command_key = _command_key(idempotency_key, "folder-trend-create")
+        trend_id = _stable_uuid(scope="folder-trend", admin_id=account.id, command_key=command_key)
+
+        async def operation() -> dict[str, Any]:
+            item = AdminTrend(
+                id=trend_id,
+                title=title,
+                payload=recipe,
+                is_active=payload.is_active,
+                created_by_admin_id=account.id,
+            )
+            session.add(item)
+            await session.flush()
+            await TrendCollectionService.assign_trend(
+                session,
+                admin_id=account.id,
+                trend_id=trend_id,
+                collection_id=collection_id,
+            )
+            return {**TrendService.admin_view(item), "collection_id": collection_id}
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=command_key,
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=str(trend_id),
+            request_payload={
+                "operation": "trend_collection.create_item",
+                "collection_id": collection_id,
+                "title": title,
+                "payload": recipe,
+                "is_active": payload.is_active,
+            },
             operation=operation,
         )
         await session.commit()
