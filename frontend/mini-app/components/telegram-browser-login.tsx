@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { saveBrowserInitData } from "@/lib/browser-auth-session";
 import { getStartParamFallback } from "@/lib/telegram";
-
-const BROWSER_AUTH_STORAGE_KEY = "__roxy_browser_init_data_v1";
 
 type TelegramLoginUser = {
   id: number;
@@ -19,22 +18,6 @@ declare global {
   interface Window {
     onRoxyTelegramAuth?: (user: TelegramLoginUser) => void;
   }
-}
-
-function saveBrowserInitData(initData: string, expiresIn: number): void {
-  const ttlSeconds = Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 24 * 60 * 60;
-  try {
-    window.sessionStorage.setItem(BROWSER_AUTH_STORAGE_KEY, JSON.stringify({
-      initData,
-      expiresAt: Date.now() + ttlSeconds * 1000,
-    }));
-  } catch {
-    // URL hash remains enough for the current page even when storage is restricted.
-  }
-
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  params.set("tgWebAppData", initData);
-  window.location.hash = params.toString();
 }
 
 function telegramMiniAppUrl(botUsername: string): string {
