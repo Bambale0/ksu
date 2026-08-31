@@ -56,6 +56,12 @@ function profileTarget(referralCode: string, payload: string): Target | null {
 }
 
 function parseTarget(): Target | null {
+  // Recovery from the backend onboarding gate must win over Telegram's retained
+  // start_param. Otherwise a feed/remix deep link can reopen itself forever and
+  // prevent a first-time user from ever reaching the existing onboarding card.
+  const current = new URL(window.location.href);
+  if (current.searchParams.get("onboarding") === "1") return null;
+
   const payload = getStartParamFallback();
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
