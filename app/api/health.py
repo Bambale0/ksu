@@ -7,6 +7,17 @@ from app.db.session import SessionFactory
 
 router = APIRouter(prefix="/health", tags=["health"])
 
+OPERATIONAL_WORKERS = (
+    "generation-worker",
+    "payment-worker",
+    "media-worker",
+    "prompt-tool-worker",
+    "notification-worker",
+    "admin-support-worker",
+    "admin-campaign-worker",
+    "creator-partnership-worker",
+)
+
 
 @router.get("/live")
 async def live() -> dict[str, str]:
@@ -26,13 +37,7 @@ async def ready(request: Request) -> dict[str, str]:
 
 @router.get("/telegram")
 async def telegram_contract(request: Request) -> dict[str, object]:
-    """Expose the non-secret Telegram contract used by ROXY public deep links.
-
-    ROXY follows the same Main Mini App contract as tanyapi: public links use
-    ``https://t.me/<bot>?startapp=<payload>`` so Telegram opens the Mini App
-    immediately. A named Mini App short-name path is exposed only as diagnostic
-    metadata and is not required to build referral, profile, feed or repeat URLs.
-    """
+    """Expose the non-secret Telegram contract used by ROXY public deep links."""
 
     configured = bool(settings.bot_token)
     username = str(settings.bot_username or "").strip().lstrip("@") or None
@@ -68,10 +73,8 @@ async def telegram_contract(request: Request) -> dict[str, object]:
 @router.get("/operational")
 async def operational(request: Request) -> dict[str, object]:
     workers = [
-        await worker_health(request.app.state.redis, "generation-worker"),
-        await worker_health(request.app.state.redis, "payment-worker"),
-        await worker_health(request.app.state.redis, "media-worker"),
-        await worker_health(request.app.state.redis, "prompt-tool-worker"),
+        await worker_health(request.app.state.redis, worker)
+        for worker in OPERATIONAL_WORKERS
     ]
     if not all(bool(item["up"]) for item in workers):
         raise HTTPException(
