@@ -9,7 +9,7 @@ import { FeedResponsiveLayout } from "@/components/feed-responsive-layout";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { HistoryPromptCopyUx } from "@/components/history-prompt-copy-ux";
-import { HomeTrendOrder } from "@/components/home-trend-order";
+import { HomeTrendFolders } from "@/components/home-trend-folders";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { LiveTrendRail } from "@/components/live-trend-rail";
@@ -24,13 +24,13 @@ export default function Page() {
     <ReferenceMemoryProvider>
       <ClientErrorReporter />
       <AppEntryGate />
-      <HomeTrendOrder />
       <TikTokFeedSurface />
       <FeedResponsiveLayout />
       <FeedAdminModeration />
       <BalanceAnchorGuard />
       <CatalogFeatureHub />
       <LiveTrendRail />
+      <HomeTrendFolders />
       <CatalogParityFeatures />
       <CustomerParityHub />
       <WalletParity />
