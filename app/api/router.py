@@ -11,6 +11,7 @@ from app.api.v1 import (
     admin_payments,
     admin_trends,
     admin_users,
+    ai_reference,
     card_payments,
     client_logs,
     creator_partnership,
@@ -46,6 +47,7 @@ api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(creator_partnership.router)
 api_router.include_router(generations.router)
+api_router.include_router(ai_reference.router)
 api_router.include_router(generation_actions.router)
 api_router.include_router(generation_action_contexts.router)
 api_router.include_router(generation_history.router)
