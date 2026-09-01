@@ -118,6 +118,8 @@ def test_production_deploy_repairs_and_verifies_admin_security_key() -> None:
 
     assert "ADMIN_SECURITY_KEY" in workflow
     assert "/dev/urandom" in workflow
+    assert "normalize_admin_security_key" in workflow
+    assert "s/[[:space:]]+#.*$//" in workflow
     assert "settings.admin_security_key" in workflow
     assert 'curl -fsSI "${app_base}/admin-app/"' in workflow
 
