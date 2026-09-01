@@ -11,6 +11,7 @@ from app.db.models import User, Wallet
 from app.db.session import SessionFactory
 from app.providers.payments import CreatedPayment
 from app.services.payments import PaymentService
+from app.services.yookassa_payments import YooKassaPaymentService
 
 
 def _telegram_id() -> int:
@@ -48,10 +49,9 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
         session.add(user)
         await session.commit()
 
-        payment = await PaymentService.create(
+        payment = await YooKassaPaymentService.create(
             session,
             user_id=user.id,
-            provider="yookassa",
             package_id="p300",
             request_key=str(uuid.uuid4()),
         )
@@ -66,6 +66,11 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
             session,
             payment_id=payment.id,
             provider_payload={"status": "succeeded"},
+        )
+        await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded", "duplicate": True},
         )
 
         wallet = await session.get(Wallet, user.id)
