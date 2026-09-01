@@ -218,3 +218,18 @@ async def test_publish_share_payload_contract(monkeypatch: pytest.MonkeyPatch) -
         assert "app?startapp" not in share["link"]
         assert share["share_url"].startswith("https://t.me/share/url?url=")
         assert share["share_text"].endswith(share["link"])
+
+
+def test_animate_context_uses_grok_i2v_model_defaults() -> None:
+    generation = _image_generation(uuid.uuid4())
+
+    payload = build_action_context_payload(generation, "animate")
+
+    assert payload["defaults"]["model_id"] == "grok-video-i2v"
+    assert payload["defaults"]["parameters"] == {
+        "aspect_ratio": "16:9",
+        "mode": "normal",
+        "duration": 6,
+        "resolution": "480p",
+        "nsfw_checker": True,
+    }
