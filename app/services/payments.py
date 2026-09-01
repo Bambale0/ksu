@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -655,7 +656,15 @@ class PaymentService:
             try:
                 if not payment.external_id:
                     package_id = str((payment.payload or {}).get("package_id") or "")
-                    package = cls.package(package_id)
+                    try:
+                        package = cls.package(package_id)
+                    except UnknownPaymentPackageError as exc:
+                        return await cls.mark_reconciliation_failed(
+                            session,
+                            payment,
+                            reason="unknown_package",
+                            error=str(exc),
+                        )
                     created = await client.create_payment(
                         local_id=str(payment.id),
                         amount=package.amount,
@@ -670,7 +679,17 @@ class PaymentService:
                         "provider_response": created.raw,
                     }
                     await session.commit()
-                authoritative = await client.get_payment(str(payment.external_id))
+                try:
+                    authoritative = await client.get_payment(str(payment.external_id))
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 404:
+                        return await cls.mark_reconciliation_failed(
+                            session,
+                            payment,
+                            reason="provider_not_found",
+                            error=str(exc),
+                        )
+                    raise
             finally:
                 await client.aclose()
             return await cls.apply_yookassa_state(
@@ -680,6 +699,30 @@ class PaymentService:
             )
 
         raise UnknownPaymentProviderError(payment.provider)
+
+    @classmethod
+    async def mark_reconciliation_failed(
+        cls,
+        session: AsyncSession,
+        payment: Payment,
+        *,
+        reason: str,
+        error: str,
+    ) -> Payment:
+        if payment.status in {"succeeded", "partially_refunded", "refunded"}:
+            return payment
+        payment.status = "failed"
+        payment.payload = {
+            **(payment.payload or {}),
+            "reconciliation_terminal_error": {
+                "reason": reason,
+                "provider": payment.provider,
+                "external_id": payment.external_id,
+                "error": error[:1000],
+            },
+        }
+        await session.commit()
+        return payment
 
     @classmethod
     async def apply_yookassa_state(
