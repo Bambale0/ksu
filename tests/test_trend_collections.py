@@ -92,12 +92,14 @@ def test_pending_folder_target_is_ephemeral_and_cleared_with_editor_lifecycle() 
     assert "clearTrendCollectionTarget()" in admin
 
 
-def test_home_folder_ux_has_category_grid_photo_video_tabs_and_trend_launcher() -> None:
+def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher() -> None:
     source = _source("frontend/mini-app/components/home-trend-folders.tsx")
     admin = _source("frontend/mini-app/components/trend-collection-admin.tsx")
     page = _source("frontend/mini-app/app/page.tsx")
 
-    assert "Папки трендов" in source
+    assert 'aria-label="Категории шаблонов"' in source
+    assert '"Папки трендов"' not in source
+    assert "← Категории" in source
     assert 'folder.system_key !== "trends"' in source
     assert "Фото ·" in source
     assert "Видео ·" in source
