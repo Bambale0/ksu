@@ -7,6 +7,8 @@ on:
     paths:
       - "frontend/mini-app/**"
       - "Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/deploy-production.yml"
       - "scripts/check_roxy_release.py"
       - "tests/test_next_mini_app_contract.py"
       - "docs/ROXY_DESIGN_SYSTEM.md"
