@@ -170,8 +170,9 @@ class PartnerService:
         if replay is not None:
             return replay
 
-        # Serialize withdrawal admission for one partner and re-check the replay
-        # under the lock so concurrent identical retries cannot reserve twice.
+        # Serialize all partner-money admission for one user. This lock is shared
+        # with RUB->ROX conversion, so concurrent cash/credit spending cannot consume
+        # the same earnings twice. The replay is re-checked under that lock.
         user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
         if user is None:
             raise LookupError("User not found")
