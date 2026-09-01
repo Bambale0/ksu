@@ -24,7 +24,7 @@ class OnboardingService:
         return value
 
     @staticmethod
-    def _current_version() -> str:
+    def current_version() -> str:
         configured = settings.onboarding_version.strip()
         # Production installations created before the full onboarding shipped
         # commonly pin the legacy default "1" in .env. Treat that legacy value
@@ -35,9 +35,14 @@ class OnboardingService:
         return configured
 
     @classmethod
+    def _current_version(cls) -> str:
+        """Backward-compatible alias for older tests/internal callers."""
+        return cls.current_version()
+
+    @classmethod
     async def status(cls, session: AsyncSession, user_id: uuid.UUID) -> dict[str, object]:
         row = await session.get(UserOnboarding, user_id)
-        current_version = cls._current_version()
+        current_version = cls.current_version()
         completed_version = row.completed_version if row else None
         completed = (not settings.onboarding_enabled) or completed_version == current_version
         return {
@@ -54,7 +59,7 @@ class OnboardingService:
 
     @classmethod
     async def complete(cls, session: AsyncSession, user_id: uuid.UUID) -> UserOnboarding:
-        current_version = cls._current_version()
+        current_version = cls.current_version()
         row = await session.get(UserOnboarding, user_id)
         now = datetime.now(UTC)
         if row is None:
