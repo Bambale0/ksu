@@ -104,8 +104,13 @@ def install_feed_publication_contract() -> None:
         return bool(urls) and all(FeedStaticStorage.local_url_exists(url) for url in urls)
 
     @staticmethod
-    async def static_media_views(session, generation: Generation) -> list[dict[str, Any]]:  # type: ignore[no-untyped-def]
-        del session
+    async def static_media_views(
+        session,
+        generation: Generation,
+        *,
+        prefetched_assets: Any | None = None,
+    ) -> list[dict[str, Any]]:  # type: ignore[no-untyped-def]
+        del session, prefetched_assets
         views: list[dict[str, Any]] = []
         for ordinal, url in enumerate(_local_result_urls(generation)):
             view = FeedStaticStorage.media_view(url, ordinal=ordinal)
@@ -179,12 +184,14 @@ def install_feed_publication_contract() -> None:
         *,
         viewer_user_id: uuid.UUID,
         surface: str,
+        prefetched: Any | None = None,
     ) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         card = await previous_to_card(
             session,
             generation,
             viewer_user_id=viewer_user_id,
             surface=surface,
+            prefetched=prefetched,
         )
         media = card.get("media")
         if isinstance(media, list) and media:
