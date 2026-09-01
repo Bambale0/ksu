@@ -15,7 +15,7 @@ from app.bot.keyboards import (
     quick_menu,
 )
 from app.core.config import settings
-from app.db.models import Wallet
+from app.db.models import User, Wallet
 from app.services.account_profile import AccountProfileService
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
@@ -23,7 +23,6 @@ from app.services.onboarding import OnboardingService
 from app.services.partner import PartnerService
 from app.services.partner_wallet import PartnerWalletTransferService
 from app.services.referrals import ReferralService
-from app.services.trends import TrendService
 from app.services.users import UserService
 
 router = Router(name="start")
@@ -47,14 +46,6 @@ async def _validated_inviter(
     if link is None:
         return None
     if link.action == "ref":
-        return link.referral_telegram_id
-    if link.action == "trend":
-        if link.trend_id is None or link.referral_telegram_id <= 0:
-            return None
-        try:
-            await TrendService.get_public(session, trend_id=link.trend_id)
-        except LookupError:
-            return None
         return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
@@ -81,9 +72,12 @@ async def _validated_inviter(
             break
         except FeedNotFoundError:
             continue
-    if generation is None or link.referral_telegram_id <= 0:
+    if generation is None:
         return None
-    return link.referral_telegram_id
+    author = await session.get(User, generation.user_id)
+    if author is None or author.telegram_id != link.referral_telegram_id:
+        return None
+    return author.telegram_id
 
 
 async def _balances(session: AsyncSession, user_id) -> tuple[object, object]:  # type: ignore[no-untyped-def]
