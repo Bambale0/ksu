@@ -41,13 +41,9 @@ class PartnerWalletTransferService:
 
     @classmethod
     async def accounting(cls, session: AsyncSession, user_id: uuid.UUID) -> dict[str, Decimal]:
-        base = await PartnerService.accounting(session, user_id)
-        transferred = await cls.transferred_total(session, user_id)
-        return {
-            **base,
-            "transferred_to_rox": transferred,
-            "available": max(Decimal("0"), Decimal(base["available"]) - transferred),
-        }
+        # PartnerService is the single source of truth for the shared RUB earnings
+        # pool. It already subtracts both cash withdrawals and RUB->ROX transfers.
+        return await PartnerService.accounting(session, user_id)
 
     @staticmethod
     async def _lock_user(session: AsyncSession, user_id: uuid.UUID) -> User:
