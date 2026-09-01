@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TrendCollectionAdmin } from "@/components/trend-collection-admin";
 import { haptic } from "@/lib/telegram";
@@ -79,6 +79,7 @@ export function HomeTrendFolders() {
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   const [error, setError] = useState("");
+  const itemRequestVersion = useRef(0);
 
   useEffect(() => {
     let frame = 0;
@@ -121,22 +122,31 @@ export function HomeTrendFolders() {
   );
 
   const loadItems = useCallback(async (collectionId: string, kind: "image" | "video") => {
+    const version = ++itemRequestVersion.current;
     setLoadingItems(true);
     setError("");
     try {
       const response = await trendCollectionsApi.items(collectionId, kind);
+      if (version !== itemRequestVersion.current) return;
       setItems(response.items || []);
     } catch (cause) {
+      if (version !== itemRequestVersion.current) return;
       setItems([]);
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить шаблоны");
     } finally {
-      setLoadingItems(false);
+      if (version === itemRequestVersion.current) setLoadingItems(false);
     }
   }, []);
 
   useEffect(() => {
-    if (selectedId) void loadItems(selectedId, mediaType);
-    else setItems([]);
+    if (selectedId) {
+      void loadItems(selectedId, mediaType);
+      return;
+    }
+    itemRequestVersion.current += 1;
+    setItems([]);
+    setLoadingItems(false);
+    setError("");
   }, [selectedId, mediaType, loadItems]);
 
   const openFolder = (folder: TrendCollection) => {

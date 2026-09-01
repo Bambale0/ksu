@@ -20,9 +20,9 @@ from app.bot.keyboards import (
 )
 from app.bot.support_links import direct_support_handle
 from app.core.config import settings
-from app.db.models import User
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
+from app.services.trends import TrendService
 from app.services.users import UserService
 
 router = Router(name="app_launcher")
@@ -50,6 +50,14 @@ async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -
         return None
     if link.action == "ref":
         return link.referral_telegram_id
+    if link.action == "trend":
+        if link.trend_id is None or link.referral_telegram_id <= 0:
+            return None
+        try:
+            await TrendService.get_public(session, trend_id=link.trend_id)
+        except LookupError:
+            return None
+        return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
             return None
@@ -72,12 +80,9 @@ async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -
             break
         except FeedNotFoundError:
             continue
-    if generation is None:
+    if generation is None or link.referral_telegram_id <= 0:
         return None
-    author = await session.get(User, generation.user_id)
-    if author is None or author.telegram_id != link.referral_telegram_id:
-        return None
-    return author.telegram_id
+    return link.referral_telegram_id
 
 
 def _support_handle() -> str | None:
