@@ -96,7 +96,13 @@ jobs:
         run: pytest -q tests/test_next_mini_app_contract.py
 
       - name: Feed domain
-        run: pytest -q tests/test_feed_domain.py tests/test_feed_remix.py tests/test_feed_deep_links.py tests/test_feed_bot_callbacks.py
+        run: >-
+          pytest -q
+          tests/test_feed_cards_query_count.py
+          tests/test_feed_domain.py
+          tests/test_feed_remix.py
+          tests/test_feed_deep_links.py
+          tests/test_feed_bot_callbacks.py
 
       - name: Generation and model contracts
         run: >-

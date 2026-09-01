@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
@@ -62,6 +63,17 @@ class FeedSurfaceError(FeedError):
 
 class FeedMediaUnavailableError(FeedPublicationError):
     pass
+
+
+@dataclass(slots=True)
+class _CardPrefetch:
+    moderation: dict[uuid.UUID, GenerationModerationState]
+    authors: dict[uuid.UUID, User]
+    media_assets: dict[uuid.UUID, list[MediaAsset]]
+    likes_count: dict[uuid.UUID, int]
+    liked_generation_ids: set[uuid.UUID]
+    comments_count: dict[uuid.UUID, int]
+    remixes_count: dict[uuid.UUID, int]
 
 
 class FeedService:
@@ -366,21 +378,30 @@ class FeedService:
         return suffix if 1 < len(suffix) <= 9 else ""
 
     @classmethod
-    async def _media_views(cls, session: AsyncSession, generation: Generation) -> list[dict[str, Any]]:
-        assets = list(
-            (
-                await session.scalars(
-                    select(MediaAsset)
-                    .where(
-                        MediaAsset.generation_id == generation.id,
-                        MediaAsset.status == "ready",
-                        MediaAsset.object_key.is_not(None),
-                        MediaAsset.bucket.is_not(None),
+    async def _media_views(
+        cls,
+        session: AsyncSession,
+        generation: Generation,
+        *,
+        prefetched_assets: list[MediaAsset] | None = None,
+    ) -> list[dict[str, Any]]:
+        if prefetched_assets is None:
+            assets = list(
+                (
+                    await session.scalars(
+                        select(MediaAsset)
+                        .where(
+                            MediaAsset.generation_id == generation.id,
+                            MediaAsset.status == "ready",
+                            MediaAsset.object_key.is_not(None),
+                            MediaAsset.bucket.is_not(None),
+                        )
+                        .order_by(MediaAsset.ordinal)
                     )
-                    .order_by(MediaAsset.ordinal)
-                )
-            ).all()
-        )
+                ).all()
+            )
+        else:
+            assets = prefetched_assets
         if assets:
             views: list[dict[str, Any]] = []
             for asset in assets:
@@ -409,6 +430,104 @@ class FeedService:
         return context.reference_images, context.reference_videos
 
     @classmethod
+    async def _prefetch_card_data(
+        cls,
+        session: AsyncSession,
+        generations: list[Generation],
+        *,
+        viewer_user_id: uuid.UUID,
+        surface: FeedSurface,
+    ) -> _CardPrefetch:
+        if not generations:
+            return _CardPrefetch({}, {}, {}, {}, set(), {}, {})
+
+        generation_ids = [generation.id for generation in generations]
+        author_ids = list({generation.user_id for generation in generations})
+
+        moderation_rows = list(
+            (
+                await session.scalars(
+                    select(GenerationModerationState).where(
+                        GenerationModerationState.generation_id.in_(generation_ids)
+                    )
+                )
+            ).all()
+        )
+        authors = list(
+            (
+                await session.scalars(select(User).where(User.id.in_(author_ids)))
+            ).all()
+        )
+        media_rows = list(
+            (
+                await session.scalars(
+                    select(MediaAsset)
+                    .where(
+                        MediaAsset.generation_id.in_(generation_ids),
+                        MediaAsset.status == "ready",
+                        MediaAsset.object_key.is_not(None),
+                        MediaAsset.bucket.is_not(None),
+                    )
+                    .order_by(MediaAsset.generation_id, MediaAsset.ordinal)
+                )
+            ).all()
+        )
+        like_rows = list(
+            (
+                await session.execute(
+                    select(GenerationLike.generation_id, func.count())
+                    .where(GenerationLike.generation_id.in_(generation_ids))
+                    .group_by(GenerationLike.generation_id)
+                )
+            ).all()
+        )
+        liked_generation_ids = set(
+            (
+                await session.scalars(
+                    select(GenerationLike.generation_id).where(
+                        GenerationLike.generation_id.in_(generation_ids),
+                        GenerationLike.user_id == viewer_user_id,
+                    )
+                )
+            ).all()
+        )
+        comment_rows = list(
+            (
+                await session.execute(
+                    select(FeedComment.generation_id, func.count())
+                    .where(
+                        FeedComment.generation_id.in_(generation_ids),
+                        FeedComment.surface == surface,
+                    )
+                    .group_by(FeedComment.generation_id)
+                )
+            ).all()
+        )
+        remix_rows = list(
+            (
+                await session.execute(
+                    select(FeedRemixEvent.source_generation_id, func.count())
+                    .where(FeedRemixEvent.source_generation_id.in_(generation_ids))
+                    .group_by(FeedRemixEvent.source_generation_id)
+                )
+            ).all()
+        )
+
+        media_assets: dict[uuid.UUID, list[MediaAsset]] = {}
+        for asset in media_rows:
+            media_assets.setdefault(asset.generation_id, []).append(asset)
+
+        return _CardPrefetch(
+            moderation={row.generation_id: row for row in moderation_rows},
+            authors={row.id: row for row in authors},
+            media_assets=media_assets,
+            likes_count={generation_id: int(count or 0) for generation_id, count in like_rows},
+            liked_generation_ids=liked_generation_ids,
+            comments_count={generation_id: int(count or 0) for generation_id, count in comment_rows},
+            remixes_count={generation_id: int(count or 0) for generation_id, count in remix_rows},
+        )
+
+    @classmethod
     async def to_card(
         cls,
         session: AsyncSession,
@@ -416,52 +535,67 @@ class FeedService:
         *,
         viewer_user_id: uuid.UUID,
         surface: str,
+        prefetched: _CardPrefetch | None = None,
     ) -> dict[str, Any]:
         normalized_surface = cls._validate_surface(surface)
-        moderation = await session.get(GenerationModerationState, generation.id)
+        if prefetched is None:
+            moderation = await session.get(GenerationModerationState, generation.id)
+            author = await session.get(User, generation.user_id)
+            media = await cls._media_views(session, generation)
+            like_count = int(
+                (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(GenerationLike)
+                        .where(GenerationLike.generation_id == generation.id)
+                    )
+                )
+                or 0
+            )
+            liked_by_me = (await session.get(GenerationLike, (generation.id, viewer_user_id))) is not None
+            comments_count = int(
+                (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(FeedComment)
+                        .where(
+                            FeedComment.generation_id == generation.id,
+                            FeedComment.surface == normalized_surface,
+                        )
+                    )
+                )
+                or 0
+            )
+            remixes = int(
+                (
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(FeedRemixEvent)
+                        .where(FeedRemixEvent.source_generation_id == generation.id)
+                    )
+                )
+                or 0
+            )
+        else:
+            moderation = prefetched.moderation.get(generation.id)
+            author = prefetched.authors.get(generation.user_id)
+            media = await cls._media_views(
+                session,
+                generation,
+                prefetched_assets=prefetched.media_assets.get(generation.id, []),
+            )
+            like_count = prefetched.likes_count.get(generation.id, 0)
+            liked_by_me = generation.id in prefetched.liked_generation_ids
+            comments_count = prefetched.comments_count.get(generation.id, 0)
+            remixes = prefetched.remixes_count.get(generation.id, 0)
+
         moderation_state = moderation.state if moderation else None
         if not cls._surface_visible(generation, surface=normalized_surface, moderation_state=moderation_state):
             raise FeedNotFoundError("Publication not found")
-        author = await session.get(User, generation.user_id)
         if author is None or not author.is_active:
             raise FeedNotFoundError("Publication author not found")
-        media = await cls._media_views(session, generation)
         if not media:
             raise FeedNotFoundError("Publication media is unavailable")
-        like_count = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(GenerationLike)
-                    .where(GenerationLike.generation_id == generation.id)
-                )
-            )
-            or 0
-        )
-        liked_by_me = (await session.get(GenerationLike, (generation.id, viewer_user_id))) is not None
-        comments_count = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(FeedComment)
-                    .where(
-                        FeedComment.generation_id == generation.id,
-                        FeedComment.surface == normalized_surface,
-                    )
-                )
-            )
-            or 0
-        )
-        remixes = int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(FeedRemixEvent)
-                    .where(FeedRemixEvent.source_generation_id == generation.id)
-                )
-            )
-            or 0
-        )
         derivative = generation.source_feed_gen_id is not None
         prompt_hidden = derivative or not generation.feed_prompt_visible
         references_hidden = derivative or not generation.feed_references_visible
@@ -534,11 +668,24 @@ class FeedService:
         viewer_user_id: uuid.UUID,
         surface: str,
     ) -> list[dict[str, Any]]:
+        normalized_surface = cls._validate_surface(surface)
+        prefetched = await cls._prefetch_card_data(
+            session,
+            generations,
+            viewer_user_id=viewer_user_id,
+            surface=normalized_surface,
+        )
         cards: list[dict[str, Any]] = []
         for generation in generations:
             try:
                 cards.append(
-                    await cls.to_card(session, generation, viewer_user_id=viewer_user_id, surface=surface)
+                    await cls.to_card(
+                        session,
+                        generation,
+                        viewer_user_id=viewer_user_id,
+                        surface=normalized_surface,
+                        prefetched=prefetched,
+                    )
                 )
             except FeedNotFoundError:
                 continue
