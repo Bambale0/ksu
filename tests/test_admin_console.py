@@ -102,14 +102,15 @@ def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
 
 
 def test_admin_login_fits_short_telegram_webview_and_explains_launch_contract() -> None:
+    html = _read(ADMIN / "index.html")
     css = _read(ADMIN / "admin.css")
-    js = _read(ADMIN / "admin.js")
 
     assert "100dvh" in css
     assert "overflow-y:auto" in css.replace(" ", "")
     assert "@media(max-height:700px)" in css.replace(" ", "")
-    assert "кнопкой «Веб-админка»" in js
-    assert "прямой URL" in js
+    assert "кнопкой «Веб-админка»" in html
+    assert "Прямой URL" in html
+    assert html.index('id="loginButton"') < html.index('id="loginRecovery"')
 
 
 def test_production_deploy_repairs_and_verifies_admin_security_key() -> None:
