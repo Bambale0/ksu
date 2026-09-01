@@ -3,7 +3,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from redis.asyncio import Redis
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.feed import handle_deep_link
@@ -16,7 +15,7 @@ from app.bot.keyboards import (
     quick_menu,
 )
 from app.core.config import settings
-from app.db.models import User, Wallet
+from app.db.models import Wallet
 from app.services.account_profile import AccountProfileService
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
@@ -41,14 +40,6 @@ def _parse_inviter(text: str | None) -> int | None:
     return link.referral_telegram_id
 
 
-async def _existing_inviter(session: AsyncSession, telegram_id: int) -> int | None:
-    if telegram_id <= 0:
-        return None
-    return await session.scalar(
-        select(User.telegram_id).where(User.telegram_id == telegram_id)
-    )
-
-
 async def _validated_inviter(
     session: AsyncSession,
     link: FeedDeepLink | None,
@@ -58,13 +49,13 @@ async def _validated_inviter(
     if link.action == "ref":
         return link.referral_telegram_id
     if link.action == "trend":
-        if link.trend_id is None:
+        if link.trend_id is None or link.referral_telegram_id <= 0:
             return None
         try:
             await TrendService.get_public(session, trend_id=link.trend_id)
         except LookupError:
             return None
-        return await _existing_inviter(session, link.referral_telegram_id)
+        return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
             return None
@@ -90,9 +81,9 @@ async def _validated_inviter(
             break
         except FeedNotFoundError:
             continue
-    if generation is None:
+    if generation is None or link.referral_telegram_id <= 0:
         return None
-    return await _existing_inviter(session, link.referral_telegram_id)
+    return link.referral_telegram_id
 
 
 async def _balances(session: AsyncSession, user_id) -> tuple[object, object]:  # type: ignore[no-untyped-def]
