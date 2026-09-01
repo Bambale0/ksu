@@ -212,6 +212,10 @@ class Settings(BaseSettings):
     # ui_schema. Seedance 2.5 currently accepts reference videos up to 200 MB.
     kie_upload_max_bytes: int = 200 * 1024 * 1024
     kie_webhook_hmac_key: str = ""
+    kie_credit_alert_enabled: bool = True
+    kie_credit_alert_threshold: Decimal = Decimal("500")
+    kie_credit_alert_poll_seconds: int = 60
+    kie_credit_alert_repeat_seconds: int = 21600
 
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
