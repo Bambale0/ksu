@@ -9,6 +9,8 @@ FRONTEND = ROOT / "frontend" / "mini-app"
 COMPONENT = FRONTEND / "components" / "user-onboarding.tsx"
 STYLES = FRONTEND / "components" / "user-onboarding.module.css"
 PAGE = FRONTEND / "app" / "page.tsx"
+PROFILE_SERVICE = ROOT / "app" / "services" / "account_profile.py"
+API_DEPS = ROOT / "app" / "api" / "deps.py"
 
 
 def test_full_onboarding_is_mounted_as_customer_entry_experience() -> None:
@@ -76,13 +78,33 @@ def test_onboarding_is_safe_area_and_small_screen_aware() -> None:
     assert ":global(.onboarding-overlay:not(.roxy-onboarding-v2))" in styles
 
 
+def test_onboarding_status_failure_keeps_the_gate_closed_and_retryable() -> None:
+    component = COMPONENT.read_text(encoding="utf-8")
+
+    assert "Fail closed" in component
+    assert 'setStatusError("Не удалось проверить знакомство с ROXY. Попробуйте ещё раз.")' in component
+    assert "Попробовать ещё раз" in component
+    assert "setStatus({ enabled: false, completed: true })" not in component
+
+
 def test_legacy_product_version_rolls_forward_without_breaking_custom_versions(
     monkeypatch,
 ) -> None:
     assert PRODUCT_ONBOARDING_VERSION == "2"
 
     monkeypatch.setattr(settings, "onboarding_version", "1")
+    assert OnboardingService.current_version() == "2"
     assert OnboardingService._current_version() == "2"
 
     monkeypatch.setattr(settings, "onboarding_version", "v3-experiment")
-    assert OnboardingService._current_version() == "v3-experiment"
+    assert OnboardingService.current_version() == "v3-experiment"
+
+
+def test_effective_version_is_shared_by_profile_and_precondition_reports() -> None:
+    profile = PROFILE_SERVICE.read_text(encoding="utf-8")
+    deps = API_DEPS.read_text(encoding="utf-8")
+
+    assert "current_onboarding_version = OnboardingService.current_version()" in profile
+    assert '"current_version": current_onboarding_version' in profile
+    assert "onboarding.completed_version == current_onboarding_version" in profile
+    assert deps.count('"version": OnboardingService.current_version()') == 2
