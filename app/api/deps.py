@@ -78,7 +78,7 @@ async def _validated_startapp_inviter(
     if link is None:
         return None
     if link.action == "ref":
-        return await _existing_inviter(session, link.referral_telegram_id)
+        return link.referral_telegram_id
     if link.action == "trend":
         if link.trend_id is None or link.referral_telegram_id <= 0:
             return None
