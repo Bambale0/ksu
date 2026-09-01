@@ -373,7 +373,7 @@ jobs:
           docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
           docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
 
-          echo "Production is healthy; Mini App serves ${DEPLOY_SHA}; web admin security is configured; reference/feed static backfills completed; backup-worker is running."
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; web admin security is configured; reference/feed static backfills completed; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
