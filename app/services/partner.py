@@ -14,6 +14,7 @@ from app.db.models import (
     ReferralReward,
     User,
 )
+from app.db.partner_wallet_models import PartnerWithdrawalRequest
 from app.db.payment_models import ReferralRewardReversal
 from app.services.feed_links import bot_start_link, mini_app_deep_link, profile_payload, referral_payload
 
@@ -27,6 +28,10 @@ class PartnerInsufficientFunds(PartnerWithdrawalError):
 
 
 class PartnerWithdrawalBelowMinimum(PartnerWithdrawalError):
+    pass
+
+
+class PartnerWithdrawalIdempotencyConflict(PartnerWithdrawalError):
     pass
 
 
@@ -104,6 +109,32 @@ class PartnerService:
             "reserved_or_paid": reserved,
         }
 
+    @staticmethod
+    async def _withdrawal_replay(
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        key: str,
+        amount: Decimal,
+        requisites: str,
+    ) -> PartnerWithdrawal | None:
+        request = await session.scalar(
+            select(PartnerWithdrawalRequest).where(
+                PartnerWithdrawalRequest.user_id == user_id,
+                PartnerWithdrawalRequest.idempotency_key == key,
+            )
+        )
+        if request is None:
+            return None
+        if Decimal(request.amount_rub) != amount or request.requisites != requisites:
+            raise PartnerWithdrawalIdempotencyConflict(
+                "Idempotency key was already used for another withdrawal intent"
+            )
+        withdrawal = await session.get(PartnerWithdrawal, request.withdrawal_id)
+        if withdrawal is None:
+            raise RuntimeError("Idempotent withdrawal request is inconsistent")
+        return withdrawal
+
     @classmethod
     async def create_withdrawal(
         cls,
@@ -112,6 +143,7 @@ class PartnerService:
         user_id: uuid.UUID,
         amount: Decimal,
         requisites: str,
+        idempotency_key: str,
     ) -> PartnerWithdrawal:
         amount = Decimal(amount).quantize(Decimal("0.01"))
         if amount <= 0:
@@ -124,12 +156,35 @@ class PartnerService:
         cleaned = requisites.strip()
         if not cleaned:
             raise PartnerWithdrawalError("Withdrawal requisites are required")
+        key = idempotency_key.strip()
+        if not key or len(key) > 160:
+            raise PartnerWithdrawalError("Valid Idempotency-Key is required")
 
-        # Serialize withdrawal admission for one partner. The same lock is held while
-        # calculating available earnings and inserting the reservation row.
+        replay = await cls._withdrawal_replay(
+            session,
+            user_id=user_id,
+            key=key,
+            amount=amount,
+            requisites=cleaned,
+        )
+        if replay is not None:
+            return replay
+
+        # Serialize withdrawal admission for one partner and re-check the replay
+        # under the lock so concurrent identical retries cannot reserve twice.
         user = await session.scalar(select(User).where(User.id == user_id).with_for_update())
         if user is None:
             raise LookupError("User not found")
+        replay = await cls._withdrawal_replay(
+            session,
+            user_id=user_id,
+            key=key,
+            amount=amount,
+            requisites=cleaned,
+        )
+        if replay is not None:
+            return replay
+
         accounting = await cls.accounting(session, user_id)
         if amount > accounting["available"]:
             raise PartnerInsufficientFunds("Withdrawal amount exceeds available partner balance")
@@ -141,6 +196,16 @@ class PartnerService:
             requisites={"details": cleaned},
         )
         session.add(withdrawal)
+        await session.flush()
+        session.add(
+            PartnerWithdrawalRequest(
+                user_id=user_id,
+                withdrawal_id=withdrawal.id,
+                idempotency_key=key,
+                amount_rub=amount,
+                requisites=cleaned,
+            )
+        )
         await session.flush()
         return withdrawal
 
