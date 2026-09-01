@@ -61,6 +61,33 @@ type TrendWriteBody = {
   is_active?: boolean;
 };
 
+export function normalizeTrendTags(tags: unknown): string[] {
+  const source = Array.isArray(tags) ? tags : [tags];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of source) {
+    for (const token of String(raw ?? "").split(/[\s,;]+/u)) {
+      const tag = token.trim().replace(/^#+/, "").toLocaleLowerCase();
+      if (!tag || tag.length > 40 || !/^[\p{L}\p{N}_-]+$/u.test(tag) || seen.has(tag)) continue;
+      seen.add(tag);
+      normalized.push(tag);
+      if (normalized.length >= 20) return normalized;
+    }
+  }
+  return normalized;
+}
+
+function normalizeWriteBody(body: TrendWriteBody): TrendWriteBody {
+  return {
+    ...body,
+    payload: {
+      ...body.payload,
+      tags: normalizeTrendTags(body.payload.tags),
+    },
+  };
+}
+
 function idempotencyKey(prefix: string): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}:${crypto.randomUUID()}`;
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -102,7 +129,7 @@ export const trendAdminApi = {
     const item = await request<TrendAdminItem>(path, {
       method: "POST",
       headers: writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
-      body: JSON.stringify(body),
+      body: JSON.stringify(normalizeWriteBody(body)),
     });
     clearTrendCollectionTarget();
     return item;
@@ -110,7 +137,7 @@ export const trendAdminApi = {
   update: (id: string, body: TrendWriteBody) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: writeHeaders("trend-update"),
-    body: JSON.stringify(body),
+    body: JSON.stringify(normalizeWriteBody(body)),
   }),
   hide: (id: string) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "DELETE",
