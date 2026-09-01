@@ -426,7 +426,12 @@
       ["Поддержка", `${data.support?.open ?? 0} открыто`],
       ["Выводы", `${data.withdrawals?.pending_or_processing ?? 0} в обработке`],
       ["Платежи", `${data.payments?.succeeded ?? 0} успешно`],
-      ["Продано ROX", String(data.payments?.credits ?? 0)],
+      [
+        "Выручка net",
+        `${data.payments?.net_amount ?? data.payments?.amount ?? 0} ${data.payments?.currency ?? "RUB"}`,
+      ],
+      ["Продано ROX net", String(data.payments?.net_credits ?? data.payments?.credits ?? 0)],
+      ["Баланс кошельков", String(data.wallets?.balance ?? 0)],
     ];
     for (const [title, value] of metrics) grid.appendChild(card(title, node("strong", "metric-value", value)));
     dom.controlView.replaceChildren(grid);

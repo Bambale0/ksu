@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AdminAccount, PartnerWithdrawal, ReferralRelation, ReferralReward, User
+from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.admin_commands import AdminCommandLedger, redact_secrets
 from app.services.admin_policy import AdminPolicy
@@ -51,6 +52,64 @@ class AdminPartnerService:
                 ).group_by(PartnerWithdrawal.status)
             )
         ).all()
+        gross_rewards = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(ReferralReward.amount), 0)).where(
+                        ReferralReward.status.in_(("available", "reversed"))
+                    )
+                )
+            )
+            or 0
+        )
+        total_reversed = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(ReferralRewardReversal.amount), 0))
+                )
+            )
+            or 0
+        )
+        reserved_or_paid = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(PartnerWithdrawal.amount), 0)).where(
+                        PartnerWithdrawal.status.in_(("pending", "processing", "paid"))
+                    )
+                )
+            )
+            or 0
+        )
+        pending_withdrawals = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(PartnerWithdrawal.amount), 0)).where(
+                        PartnerWithdrawal.status.in_(("pending", "processing"))
+                    )
+                )
+            )
+            or 0
+        )
+        transferred_to_rox = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(PartnerWalletTransfer.amount_rub), 0))
+                )
+            )
+            or 0
+        )
+        pending_rewards = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(ReferralReward.amount), 0)).where(
+                        ReferralReward.status == "pending"
+                    )
+                )
+            )
+            or 0
+        )
+        total_earned = max(Decimal("0"), gross_rewards - total_reversed)
+        spent = reserved_or_paid + transferred_to_rox
         reward_rows = []
         for state, count, gross_amount in rewards:
             gross = Decimal(gross_amount or 0)
@@ -66,6 +125,14 @@ class AdminPartnerService:
             )
         return {
             "referral_relations": referrals,
+            "accounting": {
+                "total_earned": str(total_earned),
+                "available": str(max(Decimal("0"), total_earned - spent)),
+                "pending_rewards": str(pending_rewards),
+                "pending_withdrawals": str(pending_withdrawals),
+                "reserved_or_paid": str(reserved_or_paid),
+                "transferred_to_rox": str(transferred_to_rox),
+            },
             "rewards": reward_rows,
             "withdrawals": [
                 {"status": state, "count": int(count or 0), "amount": str(amount or 0)}
