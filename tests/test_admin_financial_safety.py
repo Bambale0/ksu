@@ -5,9 +5,11 @@ from decimal import Decimal
 import pytest
 
 from app.db.models import AdminAccount, Generation, Payment, User, Wallet
+from app.db.payment_models import PaymentReversal
 from app.db.session import SessionFactory
 from app.services.admin_generation_operations import AdminGenerationOperationService
 from app.services.admin_payments import AdminPaymentService
+from app.services.admin_reporting import AdminReportingService
 from app.services.payments import PaymentService
 from app.services.wallet import WalletService
 
@@ -174,3 +176,64 @@ async def test_operation_refund_is_single_effect_even_with_new_idempotency_key()
         wallet = await session.get(Wallet, customer_id)
         assert wallet is not None
         assert Decimal(wallet.balance) == Decimal("30.00")
+
+
+@pytest.mark.asyncio
+async def test_admin_summary_reports_net_money_after_full_refund() -> None:
+    async with SessionFactory() as session:
+        admin_user = User(
+            telegram_id=random.randint(8_500_000_000_000, 8_599_999_999_999),
+            first_name="Reporting admin",
+        )
+        customer = User(
+            telegram_id=random.randint(8_600_000_000_000, 8_699_999_999_999),
+            first_name="Reporting customer",
+        )
+        session.add_all([admin_user, customer])
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={},
+            is_active=True,
+            mfa_enabled=True,
+        )
+        session.add(admin)
+        await session.flush()
+        baseline = await AdminReportingService.summary(session, admin=admin)
+        payment = Payment(
+            user_id=customer.id,
+            provider="reporting",
+            external_id=f"reporting-{uuid.uuid4()}",
+            amount=Decimal("100"),
+            currency="RUB",
+            rox_amount=Decimal("100"),
+            status="refunded",
+            payload={},
+        )
+        session.add(payment)
+        await session.flush()
+        session.add(
+            PaymentReversal(
+                payment_id=payment.id,
+                provider=payment.provider,
+                idempotency_key=f"reporting-reversal:{uuid.uuid4()}",
+                amount=Decimal("100"),
+                credits=Decimal("100"),
+                reason="refund",
+                provider_payload={},
+            )
+        )
+        await WalletService.ensure_wallet(session, customer.id)
+        await session.commit()
+
+        summary = await AdminReportingService.summary(session, admin=admin)
+        assert Decimal(summary["payments"]["gross_amount"]) - Decimal(
+            baseline["payments"]["gross_amount"]
+        ) == Decimal("100.00")
+        assert Decimal(summary["payments"]["reversed_amount"]) - Decimal(
+            baseline["payments"]["reversed_amount"]
+        ) == Decimal("100.00")
+        assert Decimal(summary["payments"]["net_amount"]) == Decimal(
+            baseline["payments"]["net_amount"]
+        )

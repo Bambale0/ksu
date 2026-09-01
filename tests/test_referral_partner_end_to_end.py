@@ -376,6 +376,51 @@ async def test_partner_wallet_transfer_replay_must_match_original_amount(
 
 
 @pytest.mark.asyncio
+async def test_admin_partner_analytics_include_actual_available_accounting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+    monkeypatch.setattr(settings, "partner_min_withdrawal_rub", Decimal("1"))
+
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Accounting admin")
+        admin = AdminAccount(user_id=admin_user.id, role="admin", is_active=True)
+        partner = await _user(session, "Accounting partner")
+        buyer = await _user(session, "Accounting buyer")
+        session.add(admin)
+        await _seed_referral_reward(
+            session,
+            partner=partner,
+            buyer=buyer,
+            basis=Decimal("100"),
+        )
+        await PartnerWalletTransferService.transfer(
+            session,
+            user_id=partner.id,
+            amount=Decimal("10"),
+            idempotency_key=f"accounting-transfer:{uuid.uuid4()}",
+        )
+        await PartnerService.create_withdrawal(
+            session,
+            user_id=partner.id,
+            amount=Decimal("5"),
+            requisites="SBP +79990000000",
+            idempotency_key=f"accounting-withdraw:{uuid.uuid4()}",
+        )
+        await session.commit()
+
+        analytics = await AdminPartnerService.analytics(session, admin=admin)
+        assert analytics["accounting"] == {
+            "total_earned": "30.00",
+            "available": "15.00",
+            "pending_rewards": "0",
+            "pending_withdrawals": "5.00",
+            "reserved_or_paid": "5.00",
+            "transferred_to_rox": "10.00",
+        }
+
+
+@pytest.mark.asyncio
 async def test_cash_withdrawal_and_rox_conversion_cannot_double_spend_same_partner_income(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -22,6 +22,7 @@ from app.db.models import (
     User,
 )
 from app.services.admin_security import AdminAuditService, has_permission
+from app.services.admin_reporting import AdminReportingService
 from app.services.generation_provider import GenerationProviderService
 
 router = APIRouter(prefix="/admin", tags=["admin-operations"])
@@ -74,73 +75,7 @@ class PromoUpdateRequest(BaseModel):
 
 @router.get("/dashboard")
 async def dashboard(context: DashboardDep, session: SessionDep) -> dict[str, object]:
-    del context
-    total_users = int((await session.scalar(select(func.count()).select_from(User))) or 0)
-    active_users = int(
-        (
-            await session.scalar(
-                select(func.count()).select_from(User).where(User.is_active.is_(True))
-            )
-        )
-        or 0
-    )
-    queued_generations = int(
-        (
-            await session.scalar(
-                select(func.count())
-                .select_from(Generation)
-                .where(Generation.status.in_(["queued", "submitting", "generating", "retry"]))
-            )
-        )
-        or 0
-    )
-    failed_generations = int(
-        (
-            await session.scalar(
-                select(func.count()).select_from(Generation).where(Generation.status == "failed")
-            )
-        )
-        or 0
-    )
-    open_tickets = int(
-        (
-            await session.scalar(
-                select(func.count())
-                .select_from(SupportTicket)
-                .where(SupportTicket.status.in_(["open", "in_progress"]))
-            )
-        )
-        or 0
-    )
-    pending_withdrawals = int(
-        (
-            await session.scalar(
-                select(func.count())
-                .select_from(PartnerWithdrawal)
-                .where(PartnerWithdrawal.status.in_(["pending", "processing"]))
-            )
-        )
-        or 0
-    )
-    successful_payments = await session.execute(
-        select(
-            func.count(Payment.id),
-            func.coalesce(func.sum(Payment.amount), 0),
-            func.coalesce(func.sum(Payment.rox_amount), 0),
-        ).where(Payment.status == "succeeded")
-    )
-    payment_count, payment_rub, payment_credits = successful_payments.one()
-    return {
-        "users": {"total": total_users, "active": active_users},
-        "generations": {"active": queued_generations, "failed": failed_generations},
-        "support": {"open": open_tickets},
-        "withdrawals": {"pending_or_processing": pending_withdrawals},
-        "payments": {
-            "succeeded": int(payment_count or 0),
-            "rub": str(payment_rub),
-            "credits": str(payment_credits),
-        },
-    }
+    return await AdminReportingService.summary(session, admin=context.account)
 
 
 @router.get("/generations")
