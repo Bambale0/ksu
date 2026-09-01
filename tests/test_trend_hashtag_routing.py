@@ -86,9 +86,10 @@ def test_trend_publish_normalizes_hashtags_without_opening_folder_admin() -> Non
     form_source = _source("frontend/mini-app/components/inline-trend-admin.tsx")
 
     assert "export function normalizeTrendTags" in api_source
-    assert "normalizeWriteBody(body)" in api_source
+    assert "hashtagsFromText(body.title)" in api_source
+    assert "hashtagsFromText(body.payload.description)" in api_source
     assert api_source.count("normalizeWriteBody(body)") >= 2
     assert 'split(/[\\s,;]+/u)' in api_source
     assert 'replace(/^#+/, "")' in api_source
-    assert 'tags: draft.tags' in form_source
-    assert 'Опубликовать тренд' in form_source
+    assert "value={draft.tags}" in form_source
+    assert "Опубликовать тренд" in form_source
