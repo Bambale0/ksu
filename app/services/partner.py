@@ -14,7 +14,7 @@ from app.db.models import (
     ReferralReward,
     User,
 )
-from app.db.partner_wallet_models import PartnerWithdrawalRequest
+from app.db.partner_wallet_models import PartnerWalletTransfer, PartnerWithdrawalRequest
 from app.db.payment_models import ReferralRewardReversal
 from app.services.feed_links import bot_start_link, mini_app_deep_link, profile_payload, referral_payload
 
@@ -89,6 +89,16 @@ class PartnerService:
             )
             or 0
         )
+        transferred = Decimal(
+            (
+                await session.scalar(
+                    select(func.coalesce(func.sum(PartnerWalletTransfer.amount_rub), 0)).where(
+                        PartnerWalletTransfer.user_id == user_id
+                    )
+                )
+            )
+            or 0
+        )
         pending_withdrawals = Decimal(
             (
                 await session.scalar(
@@ -101,12 +111,14 @@ class PartnerService:
             or 0
         )
         net_earned = max(Decimal("0"), gross - reversals)
+        spent = reserved + transferred
         return {
             "total_earned": net_earned,
-            "available": max(Decimal("0"), net_earned - reserved),
+            "available": max(Decimal("0"), net_earned - spent),
             "pending_rewards": pending_rewards,
             "pending_withdrawals": pending_withdrawals,
             "reserved_or_paid": reserved,
+            "transferred_to_rox": transferred,
         }
 
     @staticmethod
