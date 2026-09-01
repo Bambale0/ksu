@@ -13,8 +13,10 @@ from app.db.models import (
     Payment,
     SupportTicket,
     User,
+    Wallet,
     WalletTransaction,
 )
+from app.db.payment_models import PaymentReversal
 from app.services.admin_commands import redact_secrets
 from app.services.admin_policy import AdminPolicy
 
@@ -76,9 +78,24 @@ class AdminReportingService:
                     func.count(Payment.id),
                     func.coalesce(func.sum(Payment.amount), 0),
                     func.coalesce(func.sum(Payment.rox_amount), 0),
-                ).where(Payment.status == "succeeded")
+                ).where(Payment.status.in_(("succeeded", "partially_refunded", "refunded")))
             )
         ).one()
+        reversal_row = (
+            await session.execute(
+                select(
+                    func.coalesce(func.sum(PaymentReversal.amount), 0),
+                    func.coalesce(func.sum(PaymentReversal.credits), 0),
+                )
+            )
+        ).one()
+        wallet_balance = Decimal(
+            (await session.scalar(select(func.coalesce(func.sum(Wallet.balance), 0)))) or 0
+        )
+        gross_amount = Decimal(payment_row[1] or 0)
+        gross_credits = Decimal(payment_row[2] or 0)
+        reversed_amount = Decimal(reversal_row[0] or 0)
+        reversed_credits = Decimal(reversal_row[1] or 0)
         return {
             "users": {"total": total_users, "active": active_users},
             "generations": {"active": active_generations, "failed": failed_generations},
@@ -86,8 +103,18 @@ class AdminReportingService:
             "withdrawals": {"pending_or_processing": pending_withdrawals},
             "payments": {
                 "succeeded": int(payment_row[0] or 0),
-                "amount": str(payment_row[1] or 0),
-                "credits": str(payment_row[2] or 0),
+                "amount": str(gross_amount),
+                "gross_amount": str(gross_amount),
+                "reversed_amount": str(reversed_amount),
+                "net_amount": str(max(Decimal("0"), gross_amount - reversed_amount)),
+                "credits": str(gross_credits),
+                "gross_credits": str(gross_credits),
+                "reversed_credits": str(reversed_credits),
+                "net_credits": str(max(Decimal("0"), gross_credits - reversed_credits)),
+                "currency": "RUB",
+            },
+            "wallets": {
+                "balance": str(wallet_balance),
             },
         }
 
@@ -237,6 +264,18 @@ class AdminReportingService:
                 )
             )
         ).one()
+        wallet_balance = Decimal(
+            (await session.scalar(select(func.coalesce(func.sum(Wallet.balance), 0)))) or 0
+        )
+        reversal_totals = (
+            await session.execute(
+                select(
+                    func.coalesce(func.sum(PaymentReversal.amount), 0),
+                    func.coalesce(func.sum(PaymentReversal.credits), 0),
+                    func.count(PaymentReversal.id),
+                )
+            )
+        ).one()
         return {
             "payments": [
                 {
@@ -255,5 +294,11 @@ class AdminReportingService:
             "wallet": {
                 "net_credits": str(wallet_totals[0] or 0),
                 "transactions": int(wallet_totals[1] or 0),
+                "balance": str(wallet_balance),
+            },
+            "reversals": {
+                "amount": str(reversal_totals[0] or 0),
+                "credits": str(reversal_totals[1] or 0),
+                "count": int(reversal_totals[2] or 0),
             },
         }

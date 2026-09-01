@@ -145,8 +145,12 @@ def _fmt_summary(data: dict[str, object]) -> str:
         f"Генерации: {generations['active']} активных, {generations['failed']} не получилось\n"
         f"Поддержка: {support['open']} открытых\n"
         f"Выплаты: {withdrawals['pending_or_processing']} в очереди\n"
-        f"Платежи: {payments['succeeded']} успешных, {payments['amount']} {payments.get('currency', '')}\n"
-        f"Начислено кредитов: {payments['credits']}"
+        f"Платежи: {payments['succeeded']} успешных, "
+        f"net {payments.get('net_amount', payments['amount'])} "
+        f"{payments.get('currency', '')}\n"
+        f"Возвраты: {payments.get('reversed_amount', '0')} {payments.get('currency', '')}\n"
+        f"Продано ROX net: {payments.get('net_credits', payments['credits'])}\n"
+        f"Баланс кошельков: {data.get('wallets', {}).get('balance', '—')} ROX"
     )
 
 
@@ -230,7 +234,15 @@ async def admin_finance(callback: CallbackQuery, session: AsyncSession, state: F
         + ("\n".join(payment_lines) or "—")
         + "\n\nВыплаты:\n"
         + ("\n".join(withdrawal_lines) or "—")
-        + f"\n\nОпераций баланса: {data['wallet']['transactions']}, чистое начисление: {data['wallet']['net_credits']}"
+        + (
+            f"\n\nВозвраты: {data['reversals']['count']} шт., "
+            f"{data['reversals']['amount']} RUB / {data['reversals']['credits']} ROX"
+        )
+        + (
+            f"\nОпераций баланса: {data['wallet']['transactions']}, "
+            f"чистое начисление: {data['wallet']['net_credits']}"
+        )
+        + f"\nТекущий баланс кошельков: {data['wallet']['balance']} ROX"
     )
     await _send_or_edit(callback, text[:3900], _back_admin())
 
@@ -249,9 +261,18 @@ async def admin_partners(callback: CallbackQuery, session: AsyncSession, state: 
         f"• {row['status']}: {row['count']} / {row['amount']}"
         for row in data["withdrawals"]
     )
+    accounting = data["accounting"]
     await _send_or_edit(
         callback,
-        f"🤝 Партнёры\n\nСвязей: {data['referral_relations']}\n\nRewards:\n{rewards or '—'}\n\nWithdrawals:\n{withdrawals or '—'}",
+        "🤝 Партнёры\n\n"
+        f"Связей: {data['referral_relations']}\n"
+        f"Заработано net: {accounting['total_earned']} RUB\n"
+        f"Доступно: {accounting['available']} RUB\n"
+        f"Зарезервировано/выплачено: {accounting['reserved_or_paid']} RUB\n"
+        f"Переведено в ROX: {accounting['transferred_to_rox']} RUB\n"
+        f"Ожидает начисления: {accounting['pending_rewards']} RUB\n"
+        f"Ожидает выплат: {accounting['pending_withdrawals']} RUB\n\n"
+        f"Rewards:\n{rewards or '—'}\n\nWithdrawals:\n{withdrawals or '—'}",
         _back_admin(),
     )
 
