@@ -124,6 +124,8 @@ function FeatureVisual({ kind, balance }: { kind: Step["visual"]; balance?: stri
 
 export function UserOnboardingGate() {
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
+  const [statusError, setStatusError] = useState("");
+  const [statusAttempt, setStatusAttempt] = useState(0);
   const [me, setMe] = useState<Me | null>(null);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -139,6 +141,7 @@ export function UserOnboardingGate() {
     tg?.ready?.();
     tg?.expand?.();
     let active = true;
+    setStatusError("");
     Promise.allSettled([api.onboarding(), tg?.initData ? api.me() : Promise.resolve(null)]).then(([onboardingResult, meResult]) => {
       if (!active) return;
       if (onboardingResult.status === "fulfilled") {
@@ -146,12 +149,14 @@ export function UserOnboardingGate() {
         setStatus(next);
         if (next.enabled && !next.completed) setStep(readSavedStep(String(next.version || "current")));
       } else {
-        setStatus({ enabled: false, completed: true });
+        // Fail closed: a transient status error must never bypass mandatory onboarding.
+        setStatus(null);
+        setStatusError("Не удалось проверить знакомство с ROXY. Попробуйте ещё раз.");
       }
       if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
     });
     return () => { active = false; };
-  }, []);
+  }, [statusAttempt]);
 
   useEffect(() => {
     if (!status?.enabled || status.completed) return;
@@ -207,7 +212,26 @@ export function UserOnboardingGate() {
     setStep((value) => Math.min(STEPS.length - 1, value + 1));
   };
 
-  if (!status?.enabled || status.completed) return null;
+  if (status === null) {
+    return <div className={`onboarding-overlay roxy-onboarding-v2 ${styles.overlay}`} role="dialog" aria-modal="true" aria-labelledby="roxy-onboarding-status-title">
+      <div className={`${styles.shell} onboarding-card`}>
+        <header className={styles.topline}>
+          <div className={styles.brand}><span>R</span><strong>ROXY</strong></div>
+        </header>
+        <main className={styles.content}>
+          <div className={`${styles.visual} ${styles.welcomeVisual}`} aria-hidden="true"><div className={styles.logoOrb}>R</div></div>
+          <div className={styles.copy}>
+            <span className={styles.eyebrow}>Знакомство с ROXY</span>
+            <h1 id="roxy-onboarding-status-title">{statusError ? "Не удалось открыть знакомство" : "Проверяю ваш прогресс…"}</h1>
+            <p>{statusError || "Секунду — проверяю, нужно ли показать вводные шаги."}</p>
+          </div>
+        </main>
+        {statusError ? <footer className={styles.footer}><button className={styles.primary} type="button" onClick={() => setStatusAttempt((value) => value + 1)}>Попробовать ещё раз</button></footer> : null}
+      </div>
+    </div>;
+  }
+
+  if (!status.enabled || status.completed) return null;
 
   return <div className={`onboarding-overlay roxy-onboarding-v2 ${styles.overlay}`} role="dialog" aria-modal="true" aria-labelledby="roxy-onboarding-title">
     <div className={`${styles.shell} onboarding-card`}>
