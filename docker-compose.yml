@@ -176,6 +176,22 @@ services:
         condition: service_healthy
     command: python -m app.workers.creator_partnership
 
+  kie-credit-alert-worker:
+    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.kie_credit_alerts
+
   backup-worker:
     image: postgres:17-alpine
     env_file: .env
