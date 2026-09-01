@@ -2,6 +2,7 @@ import { AppEntryGate } from "@/components/app-entry-gate";
 import { BalanceAnchorGuard } from "@/components/balance-anchor-guard";
 import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
 import { CatalogParityFeatures } from "@/components/catalog-parity-features";
+import { CatalogTrendFolders } from "@/components/catalog-trend-folders";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { FeedAdminModeration } from "@/components/feed-admin-moderation";
@@ -31,6 +32,7 @@ export default function Page() {
       <CatalogFeatureHub />
       <LiveTrendRail />
       <HomeTrendFolders />
+      <CatalogTrendFolders />
       <CatalogParityFeatures />
       <CustomerParityHub />
       <WalletParity />
