@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { clearBrowserInitData, getBrowserInitData } from "@/lib/browser-auth-session";
-import { getInitDataFallback, initTelegram } from "@/lib/telegram";
+import { getInitDataFallback, initTelegram, type TelegramWebApp } from "@/lib/telegram";
 import { TelegramBrowserLogin } from "./telegram-browser-login";
 
 async function validateInitData(initData: string): Promise<boolean> {
@@ -16,6 +16,35 @@ async function validateInitData(initData: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function installBrowserInitDataFacade(browserInitData: string): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const namespace = window.Telegram;
+  const current = namespace?.WebApp;
+  if (!namespace || !current) return () => undefined;
+
+  const facade = new Proxy(current, {
+    get(target, property) {
+      if (property === "initData") return browserInitData;
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as TelegramWebApp;
+
+  try {
+    namespace.WebApp = facade;
+  } catch {
+    return () => undefined;
+  }
+
+  return () => {
+    try {
+      if (namespace.WebApp === facade) namespace.WebApp = current;
+    } catch {
+      // Browser auth remains server-validated even if the SDK namespace is immutable.
+    }
+  };
 }
 
 export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
@@ -47,14 +76,15 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (tg) {
-        // Browser login issues standard WebApp initData. Hydrate only the SDK
-        // facade in memory so every existing API client keeps one auth contour.
-        tg.initData = browserInitData;
-      }
-
+      // Telegram.WebApp.initData is read-only in the real SDK. Keep the SDK object
+      // untouched and expose the server-issued browser credential through a small
+      // in-memory facade so existing API clients keep using the same auth contour.
+      const restoreFacade = installBrowserInitDataFacade(browserInitData);
       const valid = await validateInitData(browserInitData);
-      if (!active) return;
+      if (!active) {
+        restoreFacade();
+        return;
+      }
 
       if (valid) {
         setAuthenticated(true);
@@ -62,7 +92,7 @@ export function TelegramAuthBoundary({ children }: { children: ReactNode }) {
         // A stale/expired browser session must not admit the user into an app
         // where every API call will fail with 401.
         clearBrowserInitData();
-        if (tg) tg.initData = "";
+        restoreFacade();
         setAuthenticated(false);
       }
       setReady(true);
