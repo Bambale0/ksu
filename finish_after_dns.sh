@@ -61,7 +61,28 @@ text = path.read_text()
 text = text.replace("TELEGRAM_WEBHOOK_URL=\n", "TELEGRAM_WEBHOOK_URL=https://$DOMAIN\n")
 path.write_text(text)
 PY
-docker compose up -d app
+
+# Preserve the immutable production release image. Never let this maintenance
+# helper fall back to ksu-app:local after a SHA-tagged deployment.
+app_container="$(docker compose ps -q app)"
+active_image=""
+if [ -n "$app_container" ]; then
+  active_image="$(docker inspect "$app_container" --format '{{.Config.Image}}')"
+fi
+if [[ "$active_image" =~ ^ksu-app:([0-9a-f]{40})$ ]]; then
+  export KSU_IMAGE_TAG="${BASH_REMATCH[1]}"
+else
+  release_sha="$(git rev-parse HEAD)"
+  if [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] && docker image inspect "ksu-app:${release_sha}" >/dev/null 2>&1; then
+    export KSU_IMAGE_TAG="$release_sha"
+  else
+    echo "Cannot resolve the active immutable ksu-app release tag; refusing to restart app as ksu-app:local." >&2
+    exit 3
+  fi
+fi
+
+echo "Restarting app with immutable release tag ${KSU_IMAGE_TAG}"
+docker compose up -d --force-recreate app
 sleep 5
 curl -fsS "https://$DOMAIN/health/live"
 echo

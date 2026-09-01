@@ -23,7 +23,7 @@ jobs:
        github.event.workflow_run.event == 'push') ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     environment: production
 
     steps:
@@ -83,7 +83,7 @@ jobs:
             "ROXY E2E"
             "ROXY Release Gate"
           )
-          deadline=$((SECONDS + 1200))
+          deadline=$((SECONDS + 1500))
 
           api_header=(
             -H "Authorization: Bearer ${GH_TOKEN}"
@@ -213,7 +213,7 @@ jobs:
           test -f docker-compose.yml
           test -f .env
 
-          build_services=(
+          application_services=(
             app
             generation-worker
             media-worker
@@ -225,7 +225,7 @@ jobs:
             creator-partnership-worker
           )
           runtime_services=(
-            "${build_services[@]}"
+            "${application_services[@]}"
             backup-worker
           )
 
@@ -307,6 +307,9 @@ jobs:
 
           ensure_admin_security_key
 
+          export KSU_IMAGE_TAG="${DEPLOY_SHA}"
+          expected_image_name="ksu-app:${KSU_IMAGE_TAG}"
+
           printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
           install -d -m 755 static/uploads/feed static/uploads/refs
 
@@ -334,10 +337,18 @@ jobs:
             rm -f "${old_backup}" "${old_backup}.sha256"
           done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
 
-          docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}" </dev/null
-          docker compose run --rm app alembic upgrade head </dev/null
-          docker compose up -d --remove-orphans "${runtime_services[@]}" </dev/null
+          # Build one immutable application image for the exact tested SHA.
+          # Every Python service in docker-compose.yml resolves to this same tag.
+          docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" app </dev/null
+          expected_image_id="$(docker image inspect "${expected_image_name}" --format '{{.Id}}')"
+          test -n "${expected_image_id}"
+          echo "Release image: ${expected_image_name} (${expected_image_id})"
 
+          docker compose run --rm app alembic upgrade head </dev/null
+          docker compose up -d --force-recreate --remove-orphans "${runtime_services[@]}" </dev/null
+
+          # First prove availability for every required runtime service, including
+          # backup-worker which intentionally uses the PostgreSQL image.
           for service in "${runtime_services[@]}"; do
             running=0
             for _ in $(seq 1 30); do
@@ -351,6 +362,26 @@ jobs:
               echo "Required production service is not running: ${service}" >&2
               exit 1
             fi
+          done
+
+          # Then prove app and every Python worker run the exact immutable image.
+          for service in "${application_services[@]}"; do
+            container_id="$(docker compose ps -q "${service}")"
+            if [[ -z "${container_id}" ]]; then
+              echo "${service} has no running container" >&2
+              exit 1
+            fi
+            running="$(docker inspect "${container_id}" --format '{{.State.Running}}')"
+            actual_image_id="$(docker inspect "${container_id}" --format '{{.Image}}')"
+            if [[ "${running}" != "true" ]]; then
+              echo "${service} is not running" >&2
+              exit 1
+            fi
+            if [[ "${actual_image_id}" != "${expected_image_id}" ]]; then
+              echo "${service} image mismatch: expected ${expected_image_id}, got ${actual_image_id}" >&2
+              exit 1
+            fi
+            echo "${service}: running exact release image ${expected_image_name}"
           done
 
           app_port="$(docker compose port app 8000 | awk -F: 'END {print $NF}')"
@@ -369,7 +400,7 @@ jobs:
           test "${ready}" -eq 1
 
           operational=0
-          for _ in $(seq 1 60); do
+          for _ in $(seq 1 90); do
             if curl -fsS "${app_base}/health/operational" >/dev/null 2>&1; then
               operational=1
               break
@@ -398,13 +429,40 @@ jobs:
             exit 1
           fi
 
-          # Existing saved refs and public/profile rows may still point at
-          # provider URLs from releases before the durable media contracts.
-          # Localize them after health is established, matching tanyapi.
-          docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
-          docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
+          run_backfill() {
+            label="$1"
+            module="$2"
+            output="$(docker compose exec -T app python -m "${module}" 2>&1)"
+            printf '%s\n' "${output}"
+            if grep -Eq 'failed=[1-9][0-9]*' <<<"${output}"; then
+              echo "${label} completed with unresolved legacy rows; release remains healthy but maintenance is partial." >&2
+            else
+              echo "${label} completed without reported failures."
+            fi
+          }
+          run_backfill "Reference static backfill" scripts.backfill_reference_static
+          run_backfill "Feed static backfill" scripts.backfill_feed_static
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; web admin security is configured; all runtime services are running; reference/feed static backfills completed."
+          # Keep one rollback image while removing older SHA-tagged releases so
+          # repeated deployments cannot fill the production host filesystem.
+          rollback_image_name="ksu-app:${previous_sha}"
+          echo "Pruning superseded release image tags; retaining ${expected_image_name} and ${rollback_image_name}."
+          while IFS= read -r image_ref; do
+            if [[ ! "${image_ref}" =~ ^ksu-app:([0-9a-f]{40})$ ]]; then
+              continue
+            fi
+            release_sha="${BASH_REMATCH[1]}"
+            if [[ "${release_sha}" == "${DEPLOY_SHA}" || "${release_sha}" == "${previous_sha}" ]]; then
+              continue
+            fi
+            if docker image rm "${image_ref}" >/dev/null 2>&1; then
+              echo "Removed superseded release image ${image_ref}."
+            else
+              echo "Could not remove ${image_ref}; it is still referenced and will be retried on a later release." >&2
+            fi
+          done < <(docker images --format '{{.Repository}}:{{.Tag}}' ksu-app)
+
+          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; web admin security is configured; every Python service runs ${expected_image_name}; all runtime services are running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -424,12 +482,14 @@ jobs:
             echo "- stale/superseded: \`${SUPERSEDED:-unknown}\`"
             echo "- SSH configured: \`${CONFIGURED:-not-checked}\`"
             echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`, \`ROXY E2E\`, \`ROXY Release Gate\`"
+            echo "- immutable application image: required for app + every Python worker"
+            echo "- per-container image ID verification: required"
+            echo "- old SHA-tag release image pruning: keep current + previous rollback"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- every production runtime service running check: required"
             echo "- web admin security key bootstrap/verification: required"
             echo "- admin-app HTTP smoke check: required"
-            echo "- reference static backfill after health gate: required"
-            echo "- feed static backfill after health gate: required"
+            echo "- legacy reference/feed backfills: failures are reported as partial maintenance"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"

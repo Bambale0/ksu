@@ -61,19 +61,21 @@ def test_compose_runs_isolated_backup_worker_with_dedicated_volume() -> None:
 
 def test_production_deploy_validates_predeploy_dump_and_starts_worker() -> None:
     workflow = _read(".github/workflows/deploy-production.yml")
-    assert "build_services=(" in workflow
+    assert "application_services=(" in workflow
     assert "runtime_services=(" in workflow
     assert "backup-worker" in workflow
-    assert 'docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" "${build_services[@]}"' in workflow
-    assert 'docker compose up -d --remove-orphans "${runtime_services[@]}"' in workflow
+    assert 'docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" app' in workflow
+    assert 'docker compose up -d --force-recreate --remove-orphans "${runtime_services[@]}"' in workflow
     assert 'pg_restore --list < "${backup}"' in workflow
     assert 'sha256sum "${backup}" > "${backup}.sha256"' in workflow
-    # Backup worker is now covered by the stronger all-runtime-services gate rather
-    # than a one-off special case. This keeps the backup availability contract while
-    # also proving every application worker is alive after deploy.
+    # Backup worker is covered by the all-runtime-services gate, while Python
+    # application services additionally prove immutable image identity.
     assert 'for service in "${runtime_services[@]}"' in workflow
     assert 'docker compose ps --status running --services | grep -Fxq "${service}"' in workflow
     assert "Required production service is not running" in workflow
+    assert 'for service in "${application_services[@]}"' in workflow
+    assert 'actual_image_id="$(docker inspect "${container_id}" --format \'{{.Image}}\')"' in workflow
+    assert "image mismatch" in workflow
 
 
 def test_example_env_keeps_secrets_blank_and_documents_backup_policy() -> None:

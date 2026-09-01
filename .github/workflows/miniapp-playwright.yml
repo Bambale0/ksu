@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - 'frontend/mini-app/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-production.yml'
       - '.github/workflows/miniapp-playwright.yml'
   workflow_dispatch:
 
