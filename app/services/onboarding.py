@@ -10,6 +10,9 @@ from app.core.config import settings
 from app.db.onboarding_models import UserOnboarding
 
 
+PRODUCT_ONBOARDING_VERSION = "2"
+
+
 class OnboardingService:
     @staticmethod
     def _safe_external_url(value: str) -> str | None:
@@ -20,10 +23,21 @@ class OnboardingService:
             return None
         return value
 
+    @staticmethod
+    def _current_version() -> str:
+        configured = settings.onboarding_version.strip()
+        # Production installations created before the full onboarding shipped
+        # commonly pin the legacy default "1" in .env. Treat that legacy value
+        # as the current product rollout while preserving explicit future/custom
+        # versions such as "v2", "3" or experiment identifiers.
+        if not configured or configured == "1":
+            return PRODUCT_ONBOARDING_VERSION
+        return configured
+
     @classmethod
     async def status(cls, session: AsyncSession, user_id: uuid.UUID) -> dict[str, object]:
         row = await session.get(UserOnboarding, user_id)
-        current_version = settings.onboarding_version.strip() or "1"
+        current_version = cls._current_version()
         completed_version = row.completed_version if row else None
         completed = (not settings.onboarding_enabled) or completed_version == current_version
         return {
@@ -40,7 +54,7 @@ class OnboardingService:
 
     @classmethod
     async def complete(cls, session: AsyncSession, user_id: uuid.UUID) -> UserOnboarding:
-        current_version = settings.onboarding_version.strip() or "1"
+        current_version = cls._current_version()
         row = await session.get(UserOnboarding, user_id)
         now = datetime.now(UTC)
         if row is None:
