@@ -78,6 +78,17 @@ def test_onboarding_is_safe_area_and_small_screen_aware() -> None:
     assert ":global(.onboarding-overlay:not(.roxy-onboarding-v2))" in styles
 
 
+def test_legacy_single_card_is_neutralized_when_v2_owns_onboarding() -> None:
+    component = COMPONENT.read_text(encoding="utf-8")
+
+    assert "neutralizeLegacyOnboarding" in component
+    assert 'document.querySelectorAll<HTMLElement>(".onboarding-overlay:not(.roxy-onboarding-v2)")' in component
+    assert 'card.classList.remove("onboarding-card")' in component
+    assert 'overlay.setAttribute("aria-hidden", "true")' in component
+    assert 'overlay.setAttribute("inert", "")' in component
+    assert "new MutationObserver(neutralizeLegacyOnboarding)" in component
+
+
 def test_onboarding_status_failure_keeps_the_gate_closed_and_retryable() -> None:
     component = COMPONENT.read_text(encoding="utf-8")
 
