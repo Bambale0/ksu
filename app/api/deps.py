@@ -4,7 +4,6 @@ from aiogram.types import User as TelegramUser
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from fastapi import Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -54,14 +53,6 @@ def _onboarding_gate_applies(request: Request) -> bool:
     return path.startswith("/api/v1/")
 
 
-async def _existing_inviter(session: AsyncSession, telegram_id: int) -> int | None:
-    if telegram_id <= 0:
-        return None
-    return await session.scalar(
-        select(User.telegram_id).where(User.telegram_id == telegram_id)
-    )
-
-
 async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
@@ -70,8 +61,9 @@ async def _validated_startapp_inviter(
 
     Telegram-signed ``start_param`` is authoritative. Public post/remix/trend
     payloads validate that their source still exists, while referral ownership
-    belongs to the authenticated user who shared the link rather than the
-    original author of that source. Profile payloads stay bound to that profile.
+    belongs to the user encoded by the share link rather than the original
+    author of that source. Referral antifraud validates inviter existence when a
+    new user is actually attached. Profile payloads stay bound to that profile.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -86,7 +78,7 @@ async def _validated_startapp_inviter(
             await TrendService.get_public(session, trend_id=link.trend_id)
         except LookupError:
             return None
-        return await _existing_inviter(session, link.referral_telegram_id)
+        return link.referral_telegram_id
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
             return None
@@ -112,9 +104,9 @@ async def _validated_startapp_inviter(
             break
         except FeedNotFoundError:
             continue
-    if generation is None:
+    if generation is None or link.referral_telegram_id <= 0:
         return None
-    return await _existing_inviter(session, link.referral_telegram_id)
+    return link.referral_telegram_id
 
 
 async def get_current_user(
