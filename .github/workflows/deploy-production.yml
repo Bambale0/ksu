@@ -237,6 +237,50 @@ jobs:
           git reset --hard "${DEPLOY_SHA}"
           test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
+          ensure_admin_security_key() {
+            local current=""
+            local generated=""
+            local tmp=""
+
+            if grep -q '^ADMIN_SECURITY_KEY=' .env; then
+              current="$(grep '^ADMIN_SECURITY_KEY=' .env | tail -n 1 | cut -d= -f2-)"
+              current="${current%$'\r'}"
+              current="${current#\"}"
+              current="${current%\"}"
+              current="${current#\'}"
+              current="${current%\'}"
+            fi
+
+            if (( ${#current} >= 32 )); then
+              echo "ADMIN_SECURITY_KEY is configured."
+              return
+            fi
+
+            generated="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+            test "${#generated}" -ge 32
+            tmp="$(mktemp)"
+            awk -v replacement="ADMIN_SECURITY_KEY=${generated}" '
+              BEGIN { replaced = 0 }
+              /^ADMIN_SECURITY_KEY=/ {
+                if (!replaced) {
+                  print replacement
+                  replaced = 1
+                }
+                next
+              }
+              { print }
+              END {
+                if (!replaced) print replacement
+              }
+            ' .env > "${tmp}"
+            cat "${tmp}" > .env
+            rm -f "${tmp}"
+            chmod 600 .env
+            echo "Generated persistent ADMIN_SECURITY_KEY for the web admin session layer."
+          }
+
+          ensure_admin_security_key
+
           printf '{"sha":"%s"}\n' "${DEPLOY_SHA}" > app/web/mini_app/release.json
           install -d -m 755 static/uploads/feed static/uploads/refs
 
@@ -305,6 +349,16 @@ jobs:
 
           curl -fsS "${app_base}/health/live" >/dev/null
           curl -fsSI "${app_base}/mini-app/" >/dev/null
+          curl -fsSI "${app_base}/admin-app/" >/dev/null
+
+          docker compose exec -T app python - <<'PYTHON'
+          from app.core.config import settings
+
+          key = settings.admin_security_key.strip()
+          if len(key) < 32:
+              raise SystemExit("ADMIN_SECURITY_KEY is not configured for web admin auth")
+          print("Web admin security configuration is ready.")
+          PYTHON
 
           expected_release="{\"sha\":\"${DEPLOY_SHA}\"}"
           actual_release="$(curl -fsS "${app_base}/mini-app/release.json")"
@@ -319,7 +373,7 @@ jobs:
           docker compose exec -T app python -m scripts.backfill_reference_static </dev/null
           docker compose exec -T app python -m scripts.backfill_feed_static </dev/null
 
-          echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; reference/feed static backfills completed; backup-worker is running."
+          echo "Production is healthy; Mini App serves ${DEPLOY_SHA}; web admin security is configured; reference/feed static backfills completed; backup-worker is running."
           docker compose ps
           trap - ERR
           REMOTE
@@ -341,6 +395,8 @@ jobs:
             echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- backup-worker running check: required"
+            echo "- web admin security key bootstrap/verification: required"
+            echo "- admin-app HTTP smoke check: required"
             echo "- reference static backfill after health gate: required"
             echo "- feed static backfill after health gate: required"
             echo "- Mini App SHA verification: required"
