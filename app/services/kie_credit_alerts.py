@@ -23,7 +23,10 @@ ALERT_ROLES = frozenset({"owner", "admin", "finance"})
 class KieCreditAlertService:
     @staticmethod
     def _format_credits(value: Decimal) -> str:
-        return f"{value:f}".rstrip("0").rstrip(".") or "0"
+        text = format(value, "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text or "0"
 
     @staticmethod
     def _alert_state(credits: Decimal) -> str | None:
