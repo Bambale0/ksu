@@ -105,8 +105,10 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
     assert "Видео ·" in source
     assert "/mini-app/trend/?id=" in source
     assert "TrendCollectionAdmin" in source
-    assert "＋ Новая папка" in admin
-    assert "Разложить шаблоны по папкам" in admin
+    assert "＋ Новая категория" in admin
+    assert "Готовые шаблоны" in admin
+    assert "Описание и хэштеги" in admin
+    assert "Разложить шаблоны по категориям" in admin
     assert "HomeTrendFolders" in page
 
 
