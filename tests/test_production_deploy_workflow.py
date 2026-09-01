@@ -7,6 +7,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "deploy-production.yml"
 DOC = ROOT / "docs" / "GITHUB_PRODUCTION_DEPLOY.md"
 COMPOSE = ROOT / "docker-compose.yml"
 RELEASE_GATE = ROOT / ".github" / "workflows" / "roxy-release-gate.yml"
+DNS_HELPER = ROOT / "finish_after_dns.sh"
 
 
 def _workflow() -> str:
@@ -129,3 +130,25 @@ def test_production_deploy_proves_the_exact_mini_app_release() -> None:
     assert "actual_release=" in workflow
     assert "Mini App release mismatch" in workflow
     assert "Production is healthy and Mini App serves" in workflow
+
+
+def test_dns_helper_preserves_the_active_immutable_release_image() -> None:
+    helper = DNS_HELPER.read_text(encoding="utf-8")
+
+    assert 'docker inspect "$app_container" --format \'{{.Config.Image}}\'' in helper
+    assert '^ksu-app:([0-9a-f]{40})$' in helper
+    assert 'export KSU_IMAGE_TAG="${BASH_REMATCH[1]}"' in helper
+    assert 'docker image inspect "ksu-app:${release_sha}"' in helper
+    assert 'docker compose up -d --force-recreate app' in helper
+    assert "refusing to restart app as ksu-app:local" in helper
+
+
+def test_production_deploy_prunes_old_release_tags_but_keeps_one_rollback() -> None:
+    workflow = _workflow()
+
+    assert 'rollback_image_name="ksu-app:${previous_sha}"' in workflow
+    assert "^ksu-app:([0-9a-f]{40})$" in workflow
+    assert '"${release_sha}" == "${DEPLOY_SHA}"' in workflow
+    assert '"${release_sha}" == "${previous_sha}"' in workflow
+    assert "docker images --format '{{.Repository}}:{{.Tag}}' ksu-app" in workflow
+    assert 'docker image rm "${image_ref}"' in workflow
