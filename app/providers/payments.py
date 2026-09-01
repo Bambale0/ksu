@@ -274,19 +274,29 @@ class YooKassaClient:
         confirmation: dict[str, Any] = {"type": "redirect"}
         if return_url:
             confirmation["return_url"] = return_url
-        response = await self._client.post(
-            "/v3/payments",
-            headers={"Idempotence-Key": local_id},
-            json={
-                "amount": {"value": _money(amount), "currency": currency},
-                "capture": True,
-                "confirmation": confirmation,
-                "description": description[:128],
-                "metadata": {"payment_id": local_id},
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
+        try:
+            response = await self._client.post(
+                "/v3/payments",
+                headers={"Idempotence-Key": local_id},
+                json={
+                    "amount": {"value": _money(amount), "currency": currency},
+                    "capture": True,
+                    "confirmation": confirmation,
+                    "description": description[:128],
+                    "metadata": {"payment_id": local_id},
+                },
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"YooKassa create payment failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("YooKassa transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("YooKassa returned invalid JSON") from exc
         external_id = body.get("id")
         payment_url = (body.get("confirmation") or {}).get("confirmation_url")
         if not external_id or not payment_url:
@@ -294,9 +304,19 @@ class YooKassaClient:
         return CreatedPayment(str(external_id), str(payment_url), body)
 
     async def get_payment(self, external_id: str) -> dict[str, Any]:
-        response = await self._client.get(f"/v3/payments/{external_id}")
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await self._client.get(f"/v3/payments/{external_id}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"YooKassa get payment failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("YooKassa transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("YooKassa returned invalid JSON") from exc
 
     async def create_refund(
         self,
@@ -307,14 +327,24 @@ class YooKassaClient:
         idempotency_key: str,
         description: str,
     ) -> dict[str, Any]:
-        response = await self._client.post(
-            "/v3/refunds",
-            headers={"Idempotence-Key": idempotency_key},
-            json={
-                "payment_id": external_payment_id,
-                "amount": {"value": _money(amount), "currency": currency},
-                "description": description[:250],
-            },
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await self._client.post(
+                "/v3/refunds",
+                headers={"Idempotence-Key": idempotency_key},
+                json={
+                    "payment_id": external_payment_id,
+                    "amount": {"value": _money(amount), "currency": currency},
+                    "description": description[:250],
+                },
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"YooKassa create refund failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("YooKassa transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("YooKassa returned invalid JSON") from exc

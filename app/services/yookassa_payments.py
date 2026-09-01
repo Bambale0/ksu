@@ -55,4 +55,5 @@ class YooKassaPaymentService(PaymentService):
             "credited_credits": str(credited_credits),
         }
         await session.commit()
+        await session.refresh(payment)
         return payment

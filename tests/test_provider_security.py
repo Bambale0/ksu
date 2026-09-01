@@ -9,7 +9,12 @@ import pytest
 
 from app.core.config import settings
 from app.providers.kie import verify_kie_webhook
-from app.providers.payments import CryptoPayClient, PaymentProviderError, make_tbank_token
+from app.providers.payments import (
+    CryptoPayClient,
+    PaymentProviderError,
+    YooKassaClient,
+    make_tbank_token,
+)
 from app.services.payments import PaymentService
 
 
@@ -79,6 +84,48 @@ async def test_cryptopay_create_invoice_wraps_blocked_method() -> None:
                 currency="RUB",
                 description="ROXY",
             )
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_yookassa_create_payment_wraps_provider_http_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"type": "service_unavailable"})
+
+    client = YooKassaClient("shop-id", "secret", "https://example.invalid")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://example.invalid",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(PaymentProviderError, match="HTTP 503"):
+            await client.create_payment(
+                local_id="payment-yookassa-http-error",
+                amount=Decimal("300"),
+                currency="RUB",
+                description="ROXY",
+                return_url="https://roxy.example/mini-app/payments/",
+            )
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_yookassa_get_payment_wraps_invalid_json() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not-json")
+
+    client = YooKassaClient("shop-id", "secret", "https://example.invalid")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://example.invalid",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(PaymentProviderError, match="invalid JSON"):
+            await client.get_payment("provider-payment-id")
     finally:
         await client.aclose()
 

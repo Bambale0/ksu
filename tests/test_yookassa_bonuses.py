@@ -11,6 +11,7 @@ from app.db.models import User, Wallet
 from app.db.session import SessionFactory
 from app.providers.payments import CreatedPayment
 from app.services.payments import PaymentService
+from app.api.v1.payments import _payment_view
 from app.services.yookassa_payments import YooKassaPaymentService
 
 
@@ -61,6 +62,7 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
         assert payment.payload["base_credits"] == "300"
         assert payment.payload["bonus_credits"] == "50"
         assert payment.payload["credited_credits"] == "350"
+        assert _payment_view(payment)["updated_at"]
 
         await PaymentService.complete(
             session,
