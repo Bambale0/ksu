@@ -328,22 +328,33 @@ class TrendCollectionService:
         trend_id: uuid.UUID,
         tags: Iterable[object],
     ) -> str | None:
-        state = await cls.state(session)
+        setting = await cls._locked_setting(session, admin_id=admin_id)
+        state = cls.merge_state(setting.value)
+        tid = str(trend_id)
+        assignments = state["assignments"]
+        auto = set(state.get("auto_assignments") or [])
+        current = str(assignments.get(tid) or "").strip().lower()
+
+        # A manual move is authoritative. Editing the recipe must not silently
+        # convert that assignment into an automatic one just because a tag still
+        # happens to match the same (or another) collection.
+        if current and tid not in auto:
+            return current
+
         collection_id = cls.matching_collection(state, tags)
         if collection_id is None:
-            await cls._clear_auto_assignment(
-                session,
-                admin_id=admin_id,
-                trend_id=trend_id,
-            )
-            return None
-        await cls.assign_trend(
-            session,
-            admin_id=admin_id,
-            trend_id=trend_id,
-            collection_id=collection_id,
-            automatic=True,
-        )
+            if tid not in auto:
+                return None
+            assignments.pop(tid, None)
+            auto.discard(tid)
+        else:
+            assignments[tid] = collection_id
+            auto.add(tid)
+
+        state["auto_assignments"] = sorted(auto)
+        setting.value = state
+        setting.updated_by_admin_id = admin_id
+        await session.flush()
         return collection_id
 
     @classmethod

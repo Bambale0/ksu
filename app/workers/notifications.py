@@ -9,10 +9,13 @@ from urllib.parse import urlencode
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.observability import record_worker_heartbeat
 from app.db.models import Generation, Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
@@ -23,8 +26,16 @@ from app.services.notifications import NotificationDeliveryService
 from app.services.telegram_generation_media import send_generation_result_media
 
 logger = logging.getLogger(__name__)
+WORKER_NAME = "notification-worker"
 
 _GENERATION_NOTIFICATION_KINDS = {"generation_succeeded", "generation_failed"}
+
+
+async def _heartbeat(redis: Redis) -> None:
+    try:
+        await record_worker_heartbeat(redis, WORKER_NAME)
+    except RedisError:
+        logger.warning("Could not publish notification worker heartbeat")
 
 
 def _notification_text(notification: Notification) -> str:
@@ -431,9 +442,11 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
 async def run() -> None:
     if not settings.bot_token:
         raise RuntimeError("BOT_TOKEN is required for the notification worker")
+    redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(settings.bot_token)
     try:
         while True:
+            await _heartbeat(redis)
             async with SessionFactory() as session:
                 claimed = await NotificationDeliveryService.claim_batch(session)
                 delivery_ids = [row.id for row in claimed]
@@ -443,7 +456,9 @@ async def run() -> None:
                 continue
             for delivery_id in delivery_ids:
                 await _process_delivery(bot, delivery_id)
+                await _heartbeat(redis)
     finally:
+        await redis.aclose()
         await bot.session.close()
 
 

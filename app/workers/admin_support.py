@@ -6,15 +6,26 @@ import uuid
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.observability import record_worker_heartbeat
 from app.db.admin_models import SupportOutbox
 from app.db.models import SupportMessage, SupportTicket, User
 from app.db.session import SessionFactory
 from app.services.admin_delivery import SupportOutboxDeliveryService
 
 logger = logging.getLogger(__name__)
+WORKER_NAME = "admin-support-worker"
+
+
+async def _heartbeat(redis: Redis) -> None:
+    try:
+        await record_worker_heartbeat(redis, WORKER_NAME)
+    except RedisError:
+        logger.warning("Could not publish admin support worker heartbeat")
 
 
 async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
@@ -74,9 +85,11 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
 async def run() -> None:
     if not settings.bot_token:
         raise RuntimeError("BOT_TOKEN is required for the support outbox worker")
+    redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(settings.bot_token)
     try:
         while True:
+            await _heartbeat(redis)
             async with SessionFactory() as session:
                 claimed = await SupportOutboxDeliveryService.claim_batch(session)
                 ids = [row.id for row in claimed]
@@ -86,7 +99,9 @@ async def run() -> None:
                 continue
             for outbox_id in ids:
                 await _process(bot, outbox_id)
+                await _heartbeat(redis)
     finally:
+        await redis.aclose()
         await bot.session.close()
 
 

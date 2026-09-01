@@ -91,3 +91,27 @@ async def test_manual_folder_assignment_is_not_removed_by_missing_tags() -> None
     state = TrendCollectionService.merge_state(session.setting.value)
     assert TrendCollectionService.assigned_collection(state, trend_id) == "birthday"
     assert str(trend_id) not in state["auto_assignments"]
+
+
+async def test_matching_tag_does_not_convert_manual_assignment_to_automatic() -> None:
+    session = _Session()
+    trend_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+
+    await TrendCollectionService.assign_trend(
+        session,  # type: ignore[arg-type]
+        admin_id=admin_id,
+        trend_id=trend_id,
+        collection_id="birthday",
+    )
+    assigned = await TrendCollectionService.assign_from_tags(
+        session,  # type: ignore[arg-type]
+        admin_id=admin_id,
+        trend_id=trend_id,
+        tags=["#др"],
+    )
+
+    assert assigned == "birthday"
+    state = TrendCollectionService.merge_state(session.setting.value)
+    assert state["assignments"][str(trend_id)] == "birthday"
+    assert str(trend_id) not in state["auto_assignments"]
