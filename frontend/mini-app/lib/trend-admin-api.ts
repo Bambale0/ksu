@@ -4,6 +4,7 @@ import { telegramHeaders } from "./telegram";
 import type { GenerationModel } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
+const INLINE_HASHTAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
 
 export function setTrendCollectionTarget(collectionId: string): void {
   if (typeof document === "undefined") return;
@@ -61,6 +62,42 @@ type TrendWriteBody = {
   is_active?: boolean;
 };
 
+function hashtagsFromText(value: unknown): string[] {
+  const text = String(value ?? "");
+  return Array.from(text.matchAll(INLINE_HASHTAG_RE), (match) => match[1]);
+}
+
+export function normalizeTrendTags(tags: unknown): string[] {
+  const source = Array.isArray(tags) ? tags : [tags];
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of source) {
+    for (const token of String(raw ?? "").split(/[\s,;]+/u)) {
+      const tag = token.trim().replace(/^#+/, "").toLocaleLowerCase();
+      if (!tag || tag.length > 40 || !/^[\p{L}\p{N}_-]+$/u.test(tag) || seen.has(tag)) continue;
+      seen.add(tag);
+      normalized.push(tag);
+      if (normalized.length >= 20) return normalized;
+    }
+  }
+  return normalized;
+}
+
+function normalizeWriteBody(body: TrendWriteBody): TrendWriteBody {
+  const inlineHashtags = [
+    ...hashtagsFromText(body.title),
+    ...hashtagsFromText(body.payload.description),
+  ];
+  return {
+    ...body,
+    payload: {
+      ...body.payload,
+      tags: normalizeTrendTags([...(body.payload.tags || []), ...inlineHashtags]),
+    },
+  };
+}
+
 function idempotencyKey(prefix: string): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}:${crypto.randomUUID()}`;
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -102,7 +139,7 @@ export const trendAdminApi = {
     const item = await request<TrendAdminItem>(path, {
       method: "POST",
       headers: writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
-      body: JSON.stringify(body),
+      body: JSON.stringify(normalizeWriteBody(body)),
     });
     clearTrendCollectionTarget();
     return item;
@@ -110,7 +147,7 @@ export const trendAdminApi = {
   update: (id: string, body: TrendWriteBody) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: writeHeaders("trend-update"),
-    body: JSON.stringify(body),
+    body: JSON.stringify(normalizeWriteBody(body)),
   }),
   hide: (id: string) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "DELETE",

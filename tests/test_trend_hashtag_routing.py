@@ -79,3 +79,17 @@ def test_inline_trend_create_and_update_auto_assign_recipe_tags() -> None:
 
     assert source.count("await TrendCollectionService.assign_from_tags(") == 2
     assert 'tags=recipe.get("tags") or []' in source
+
+
+def test_trend_publish_normalizes_hashtags_without_opening_folder_admin() -> None:
+    api_source = _source("frontend/mini-app/lib/trend-admin-api.ts")
+    form_source = _source("frontend/mini-app/components/inline-trend-admin.tsx")
+
+    assert "export function normalizeTrendTags" in api_source
+    assert "hashtagsFromText(body.title)" in api_source
+    assert "hashtagsFromText(body.payload.description)" in api_source
+    assert api_source.count("normalizeWriteBody(body)") >= 2
+    assert 'split(/[\\s,;]+/u)' in api_source
+    assert 'replace(/^#+/, "")' in api_source
+    assert "value={draft.tags}" in form_source
+    assert "Опубликовать тренд" in form_source
