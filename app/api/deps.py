@@ -4,6 +4,7 @@ from aiogram.types import User as TelegramUser
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from fastapi import Depends, Header, HTTPException, Request, status
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -53,24 +54,31 @@ def _onboarding_gate_applies(request: Request) -> bool:
     return path.startswith("/api/v1/")
 
 
+async def _existing_inviter(session: AsyncSession, telegram_id: int) -> int | None:
+    if telegram_id <= 0:
+        return None
+    return await session.scalar(
+        select(User.telegram_id).where(User.telegram_id == telegram_id)
+    )
+
+
 async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
     """Validate referral attribution carried by a Telegram Mini App launch.
 
-    Telegram-signed ``start_param`` is authoritative. The recovered header is
-    accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are bound to their public author. Trend
-    payloads intentionally belong to the authenticated user who shared the
-    public trend, regardless of who originally created that trend.
+    Telegram-signed ``start_param`` is authoritative. Public post/remix/trend
+    payloads validate that their source still exists, while referral ownership
+    belongs to the authenticated user who shared the link rather than the
+    original author of that source. Profile payloads stay bound to that profile.
     """
 
     link = parse_feed_deep_link(start_param)
     if link is None:
         return None
     if link.action == "ref":
-        return link.referral_telegram_id
+        return await _existing_inviter(session, link.referral_telegram_id)
     if link.action == "trend":
         if link.trend_id is None or link.referral_telegram_id <= 0:
             return None
@@ -78,7 +86,7 @@ async def _validated_startapp_inviter(
             await TrendService.get_public(session, trend_id=link.trend_id)
         except LookupError:
             return None
-        return link.referral_telegram_id
+        return await _existing_inviter(session, link.referral_telegram_id)
     if link.action == "posts" and link.profile_referral_code:
         if str(link.referral_telegram_id) != link.profile_referral_code:
             return None
@@ -106,10 +114,7 @@ async def _validated_startapp_inviter(
             continue
     if generation is None:
         return None
-    author = await session.get(User, generation.user_id)
-    if author is None or author.telegram_id != link.referral_telegram_id:
-        return None
-    return author.telegram_id
+    return await _existing_inviter(session, link.referral_telegram_id)
 
 
 async def get_current_user(
