@@ -37,18 +37,20 @@ def test_mini_app_referral_validates_public_source_but_not_source_author() -> No
     assert "_existing_inviter" not in source
 
 
-def test_bot_start_referral_has_same_sharer_semantics_and_supports_trends() -> None:
-    source = _source("app/bot/handlers/start.py")
+def test_registered_bot_launcher_has_same_sharer_semantics_and_supports_trends() -> None:
+    source = _source("app/bot/handlers/launcher.py")
+    dispatcher = _source("app/bot/dispatcher.py")
     block = source.split("async def _validated_inviter", 1)[1].split(
-        "async def _balances", 1
+        "def _support_handle", 1
     )[0]
 
+    assert "dispatcher.include_router(launcher.router)" in dispatcher
     assert 'if link.action == "trend":' in block
     assert "TrendService.get_public" in block
     assert "FeedService.assert_surface_visible" in block
     assert "return link.referral_telegram_id" in block
     assert "generation.user_id" not in block
-    assert "_existing_inviter" not in source
+    assert "author.telegram_id != link.referral_telegram_id" not in block
 
 
 def test_existing_user_referrer_is_never_reassigned_by_new_share_link() -> None:
