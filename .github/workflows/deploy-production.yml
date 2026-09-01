@@ -443,6 +443,25 @@ jobs:
           run_backfill "Reference static backfill" scripts.backfill_reference_static
           run_backfill "Feed static backfill" scripts.backfill_feed_static
 
+          # Keep one rollback image while removing older SHA-tagged releases so
+          # repeated deployments cannot fill the production host filesystem.
+          rollback_image_name="ksu-app:${previous_sha}"
+          echo "Pruning superseded release image tags; retaining ${expected_image_name} and ${rollback_image_name}."
+          while IFS= read -r image_ref; do
+            if [[ ! "${image_ref}" =~ ^ksu-app:([0-9a-f]{40})$ ]]; then
+              continue
+            fi
+            release_sha="${BASH_REMATCH[1]}"
+            if [[ "${release_sha}" == "${DEPLOY_SHA}" || "${release_sha}" == "${previous_sha}" ]]; then
+              continue
+            fi
+            if docker image rm "${image_ref}" >/dev/null 2>&1; then
+              echo "Removed superseded release image ${image_ref}."
+            else
+              echo "Could not remove ${image_ref}; it is still referenced and will be retried on a later release." >&2
+            fi
+          done < <(docker images --format '{{.Repository}}:{{.Tag}}' ksu-app)
+
           echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; web admin security is configured; every Python service runs ${expected_image_name}; all runtime services are running."
           docker compose ps
           trap - ERR
@@ -465,6 +484,7 @@ jobs:
             echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`, \`ROXY E2E\`, \`ROXY Release Gate\`"
             echo "- immutable application image: required for app + every Python worker"
             echo "- per-container image ID verification: required"
+            echo "- old SHA-tag release image pruning: keep current + previous rollback"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- every production runtime service running check: required"
             echo "- web admin security key bootstrap/verification: required"
