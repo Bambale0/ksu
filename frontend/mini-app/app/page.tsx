@@ -16,7 +16,6 @@ import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { LiveTrendRail } from "@/components/live-trend-rail";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
-import { TrendCollectionAdmin } from "@/components/trend-collection-admin";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
 import { WalletParity } from "@/components/wallet-parity";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
@@ -44,7 +43,6 @@ export default function Page() {
       <HistoryPromptCopyUx />
       <KlingMultishotGuard />
       <InlineTrendAdmin />
-      <TrendCollectionAdmin />
     </ReferenceMemoryProvider>
   );
 }
