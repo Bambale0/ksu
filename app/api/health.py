@@ -16,6 +16,7 @@ OPERATIONAL_WORKERS = (
     "admin-support-worker",
     "admin-campaign-worker",
     "creator-partnership-worker",
+    "kie-credit-alert-worker",
 )
 
 
