@@ -16,18 +16,21 @@
       <div class="brand-mark" aria-hidden="true">К</div>
       <span class="eyebrow">Ксю</span>
       <h1 id="authTitle">Админ-панель</h1>
-      <p class="muted" id="authIntro">Вход доступен только администратору из Telegram.</p>
+      <p class="muted" id="authIntro">Открывайте эту панель кнопкой «Веб-админка» внутри бота. Прямой URL не передаёт Telegram-доступ.</p>
       <form id="loginForm" class="stack">
         <label class="field" id="otpField">
           <span>Код подтверждения</span>
           <input id="loginOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456">
-          <small>Оставьте пустым при первом входе, если дополнительная защита ещё не настроена.</small>
-        </label>
-        <label class="field">
-          <span>Резервный код</span>
-          <input id="loginRecovery" autocomplete="off" maxlength="128" placeholder="Использовать вместо кода подтверждения">
+          <small>При первом входе оставьте поле пустым и нажмите «Войти» — панель предложит настроить защиту.</small>
         </label>
         <button class="primary" id="loginButton" type="submit">Войти</button>
+        <details class="recovery-login">
+          <summary>Войти резервным кодом</summary>
+          <label class="field">
+            <span>Резервный код</span>
+            <input id="loginRecovery" autocomplete="off" maxlength="128" placeholder="Резервный код">
+          </label>
+        </details>
       </form>
       <div class="form-message" id="loginMessage" role="status" aria-live="polite"></div>
       <button class="ghost" id="bootstrapButton" type="button">Первичная регистрация владельца</button>
