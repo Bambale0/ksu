@@ -80,7 +80,7 @@ export function CatalogTrendFolders() {
       .catch((cause) => {
         if (!alive) return;
         setCollections([]);
-        setError(cause instanceof Error ? cause.message : "Не удалось загрузить папки трендов");
+        setError(cause instanceof Error ? cause.message : "Не удалось загрузить категории");
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -122,7 +122,7 @@ export function CatalogTrendFolders() {
   if (!host) return null;
 
   return createPortal(
-    <section className="catalog-trend-folders" aria-label="Папки трендов по категориям">
+    <section className="catalog-trend-folders" aria-label="Категории шаблонов">
       <style>{`
         #roxy-catalog-trend-folders{margin:0 0 24px;min-width:0}
         .catalog-trend-folders{display:grid;gap:13px;margin:2px 0 26px;min-width:0}
@@ -156,14 +156,13 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folders-error{padding:11px 13px;border-radius:14px;background:rgba(255,80,120,.1);color:#ffc6d3}
         @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.catalog-trend-folders .home-trend-folder-items{grid-auto-columns:minmax(230px,310px)}}
       `}</style>
-      <div className="home-trend-folders-head">
+      {selected ? <div className="home-trend-folders-head">
         <div className="home-trend-folders-copy">
-          <span className="kicker">Категории</span>
-          <h2>{selected?.title || "Папки трендов"}</h2>
-          <p>{selected?.description || "Праздники и тематические подборки — всё разложено по папкам."}</p>
+          <h2>{selected.title}</h2>
+          {selected.description ? <p>{selected.description}</p> : null}
         </div>
-        {selected ? <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Папки</button> : null}
-      </div>
+        <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Категории</button>
+      </div> : null}
       {error ? <div className="home-trend-folders-error" role="alert">{error}</div> : null}
       {!selected ? loading ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <div className="home-trend-folder-grid">
         {collections.map((folder) => <button className="home-trend-folder" type="button" key={folder.id} onClick={() => {
