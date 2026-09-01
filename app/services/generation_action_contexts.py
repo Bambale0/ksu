@@ -82,6 +82,22 @@ def context_generation(generation: Generation) -> dict[str, object]:
     }
 
 
+def _model_ui_defaults(
+    generation: Generation,
+    action: str,
+    model_id: str,
+) -> dict[str, object]:
+    for candidate in GenerationActionService.public_candidates(generation, action):
+        if str(candidate.get("id") or "") != model_id:
+            continue
+        ui_schema = candidate.get("ui_schema")
+        if not isinstance(ui_schema, dict):
+            return {}
+        defaults = ui_schema.get("defaults")
+        return dict(defaults) if isinstance(defaults, dict) else {}
+    return {}
+
+
 def action_defaults(
     generation: Generation,
     action: str,
@@ -100,6 +116,7 @@ def action_defaults(
     params = dict(generation.parameters or {})
     prompt = "" if generation.action_type == "trend" else generation.prompt
     reusable = GenerationActionService.reusable_parameters(generation, default_model_id)
+    model_defaults = _model_ui_defaults(generation, action, default_model_id)
     input_url: str | None = generation.input_url
 
     if canonical in {"remix", "edit", "animate"}:
@@ -112,7 +129,7 @@ def action_defaults(
     return {
         "model_id": default_model_id,
         "prompt": prompt,
-        "parameters": reusable,
+        "parameters": {**model_defaults, **reusable},
         "billing_seconds": params.get("_billing_seconds"),
         "input_url": input_url,
     }
