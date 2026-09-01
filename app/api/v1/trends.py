@@ -19,6 +19,7 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.feed_links import mini_app_deep_link, trend_payload
 from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
+from app.services.trend_collections import TrendCollectionService
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
@@ -167,6 +168,12 @@ async def inline_admin_trend_create(
             )
             session.add(item)
             await session.flush()
+            await TrendCollectionService.assign_from_tags(
+                session,
+                admin_id=account.id,
+                trend_id=item.id,
+                tags=recipe.get("tags") or [],
+            )
             return TrendService.admin_view(item)
 
         result, replayed = await AdminCommandLedger.execute(
@@ -210,6 +217,12 @@ async def inline_admin_trend_update(
             item.payload = recipe
             item.is_active = payload.is_active
             await session.flush()
+            await TrendCollectionService.assign_from_tags(
+                session,
+                admin_id=account.id,
+                trend_id=item.id,
+                tags=recipe.get("tags") or [],
+            )
             return TrendService.admin_view(item)
 
         result, replayed = await AdminCommandLedger.execute(
