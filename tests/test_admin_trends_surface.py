@@ -50,6 +50,8 @@ def test_trend_manager_uses_admin_auth_and_server_owned_crud() -> None:
     ):
         assert token in js, token
 
+    assert 'permissions.includes("*")' in js
+    assert 'permissions.includes("social.moderate")' in js
     assert "state.token" in js
     assert "localStorage" not in js
     assert "sessionStorage" not in js

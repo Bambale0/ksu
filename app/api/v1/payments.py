@@ -22,6 +22,7 @@ from app.services.payments import (
     UnknownPaymentPackageError,
     UnknownPaymentProviderError,
 )
+from app.services.yookassa_payments import YooKassaPaymentService
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -78,16 +79,17 @@ def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object
 
 
 def _yookassa_catalog_package(package: PaymentPackage) -> dict[str, object]:
+    credits = package.credits
     return {
-        "credits": str(package.credits),
-        "bonus_credits": "0",
-        "total_credits": str(package.credits),
+        "credits": str(credits),
+        "bonus_credits": str(TopUpBonusService.bonus_for(credits)),
+        "total_credits": str(TopUpBonusService.total_for(credits)),
         "prices": {package.currency: str(package.amount)},
     }
 
 
 def _yookassa_configured() -> bool:
-    return PaymentService.provider_configured("yookassa") and bool(
+    return YooKassaPaymentService.provider_configured("yookassa") and bool(
         settings.payment_return_url or settings.public_base_url
     )
 
@@ -326,6 +328,13 @@ async def create_payment(
             )
         elif payload.provider == Payment2328Service.PROVIDER:
             payment = await Payment2328Service.create(
+                session,
+                user_id=user.id,
+                package_id=payload.package_id,
+                request_key=request_key,
+            )
+        elif payload.provider == YooKassaPaymentService.PROVIDER:
+            payment = await YooKassaPaymentService.create(
                 session,
                 user_id=user.id,
                 package_id=payload.package_id,
