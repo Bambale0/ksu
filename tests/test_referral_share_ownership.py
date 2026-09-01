@@ -58,3 +58,20 @@ def test_existing_user_referrer_is_never_reassigned_by_new_share_link() -> None:
     assert "return user" in existing_branch
     assert "inviter_telegram_id" not in existing_branch
     assert "referrer" not in existing_branch
+
+
+def test_repeat_composer_can_copy_current_partner_repeat_link() -> None:
+    source = _source("frontend/mini-app/app/remix/page.tsx")
+
+    assert "Скопировать ссылку повтора" in source
+    assert "/link?kind=remix&surface=" in source
+    assert "telegramHeaders(false)" in source
+    assert "copyToClipboard(link)" in source
+
+
+def test_trend_page_can_copy_current_partner_trend_link() -> None:
+    source = _source("frontend/mini-app/app/trend/page.tsx")
+
+    assert "Скопировать ссылку тренда" in source
+    assert "api.shareTrend(trend.id)" in source
+    assert "copyToClipboard(result.copy_link || result.link)" in source
