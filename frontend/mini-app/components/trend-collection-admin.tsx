@@ -89,7 +89,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
       setAssignments(state.assignments || {});
       setTrends(trendState.items || []);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить папки");
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить категории");
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   const saveFolder = async () => {
     if (!draft || saving) return;
     if (!draft.title.trim()) {
-      setError("Введите название папки");
+      setError("Введите название категории");
       return;
     }
     setSaving(true);
@@ -125,7 +125,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
       await refresh();
       onChanged?.();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось сохранить папку");
+      setError(cause instanceof Error ? cause.message : "Не удалось сохранить категорию");
     } finally {
       setSaving(false);
     }
@@ -141,7 +141,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
       await refresh();
       onChanged?.();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось изменить папку");
+      setError(cause instanceof Error ? cause.message : "Не удалось изменить категорию");
     } finally {
       setBusy("");
     }
@@ -176,16 +176,16 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   if (!isAdmin) return null;
 
   return <>
-    <button className="trend-folder-admin-open" type="button" onClick={() => setOpen(true)}>Папки</button>
-    {open ? <div className="trend-folder-admin-overlay" role="dialog" aria-modal="true" aria-label="Управление папками шаблонов">
+    <button className="trend-folder-admin-open" type="button" onClick={() => setOpen(true)}>Шаблоны</button>
+    {open ? <div className="trend-folder-admin-overlay" role="dialog" aria-modal="true" aria-label="Управление готовыми шаблонами">
       <section className="trend-folder-admin-panel">
         <header className="trend-folder-admin-head">
-          <div><span className="kicker">Админ</span><h2>Папки шаблонов</h2><p>Пользователи только выбирают готовое. Добавлять и раскладывать контент можете только вы.</p></div>
+          <div><span className="kicker">Админ</span><h2>Готовые шаблоны</h2><p>Создавайте категории и добавляйте в их описание простые хэштеги. Тренд с таким же тегом сам попадёт в нужную категорию.</p></div>
           <button type="button" onClick={() => { setOpen(false); setDraft(null); }} aria-label="Закрыть">×</button>
         </header>
 
         <div className="trend-folder-admin-toolbar">
-          <button className="primary" type="button" onClick={() => setDraft(emptyDraft())}>＋ Новая папка</button>
+          <button className="primary" type="button" onClick={() => setDraft(emptyDraft())}>＋ Новая категория</button>
           <button type="button" onClick={() => openTrendEditor("trends")}>＋ Новый тренд</button>
           <button type="button" onClick={() => void refresh()} disabled={loading}>Обновить</button>
         </div>
@@ -194,16 +194,16 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
         {loading ? <div className="trend-folder-admin-empty">Загружаю…</div> : null}
 
         {draft ? <form className="trend-folder-admin-form" onSubmit={(event) => { event.preventDefault(); void saveFolder(); }}>
-          <strong>{draft.id ? "Редактировать папку" : "Новая папка"}</strong>
-          <label><span>Название</span><input value={draft.title} maxLength={80} onChange={(event) => setDraft((current) => current ? { ...current, title: event.target.value } : current)} placeholder="Например, 8 марта" autoFocus /></label>
-          <label><span>Описание</span><textarea value={draft.description} maxLength={240} rows={2} onChange={(event) => setDraft((current) => current ? { ...current, description: event.target.value } : current)} placeholder="Что лежит в этой папке" /></label>
+          <strong>{draft.id ? "Редактировать категорию" : "Новая категория"}</strong>
+          <label><span>Название</span><input value={draft.title} maxLength={80} onChange={(event) => setDraft((current) => current ? { ...current, title: event.target.value } : current)} placeholder="Например, День рождения" autoFocus /></label>
+          <label><span>Описание и хэштеги</span><textarea value={draft.description} maxLength={240} rows={2} onChange={(event) => setDraft((current) => current ? { ...current, description: event.target.value } : current)} placeholder="Например: Поздравления #др #birthday" /></label>
           <label><span>Порядок</span><input type="number" min={-100000} max={100000} value={draft.sortOrder} onChange={(event) => setDraft((current) => current ? { ...current, sortOrder: Number(event.target.value || 0) } : current)} /></label>
           <div className="actions"><button type="button" onClick={() => setDraft(null)}>Отмена</button><button className="primary" type="submit" disabled={saving}>{saving ? "Сохраняю…" : "Сохранить"}</button></div>
         </form> : null}
 
         <div className="trend-folder-admin-list">
           {collections.map((folder) => <article className={`trend-folder-admin-card${folder.is_active ? "" : " is-hidden"}`} key={folder.id}>
-            <div><strong>{folder.title}</strong>{folder.system_key ? <small>Системная папка</small> : <small>Ваша папка</small>}</div>
+            <div><strong>{folder.title}</strong>{folder.system_key ? <small>Системная категория</small> : <small>Ваша категория</small>}</div>
             {folder.description ? <p>{folder.description}</p> : null}
             <div className="actions">
               <button type="button" onClick={() => openTrendEditor(folder.id)}>＋ Шаблон</button>
@@ -214,7 +214,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
         </div>
 
         <div className="trend-folder-admin-assign">
-          <div><span className="kicker">Содержимое</span><h3>Разложить шаблоны по папкам</h3><p>Старые тренды по умолчанию остаются в папке «Тренды».</p></div>
+          <div><span className="kicker">Содержимое</span><h3>Разложить шаблоны по категориям</h3><p>Добавьте #тег в описание категории и тот же тег в тренд — новые и отредактированные тренды разложатся автоматически. Здесь всегда можно выбрать категорию вручную.</p></div>
           {trends.map((trend) => {
             const currentId = assignments[trend.id] || "trends";
             return <label className="trend-folder-admin-assignment" key={trend.id}>
