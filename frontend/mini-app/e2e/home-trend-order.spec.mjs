@@ -165,3 +165,17 @@ test('catalog ignores stale folder responses when switching photo and video tabs
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toHaveCount(0);
 });
+
+test('home ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
+  await mockHome(page, { delayedFolderTabs: true });
+  await page.goto('/mini-app/?route=home');
+
+  const folders = page.locator('#roxy-home-trend-folders');
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+  await folders.getByRole('tab', { name: /Видео/ }).click();
+
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
+  await page.waitForTimeout(220);
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toHaveCount(0);
+});
