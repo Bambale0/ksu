@@ -68,7 +68,12 @@ def test_production_deploy_validates_predeploy_dump_and_starts_worker() -> None:
     assert 'docker compose up -d --remove-orphans "${runtime_services[@]}"' in workflow
     assert 'pg_restore --list < "${backup}"' in workflow
     assert 'sha256sum "${backup}" > "${backup}.sha256"' in workflow
-    assert "backup_worker_running" in workflow
+    # Backup worker is now covered by the stronger all-runtime-services gate rather
+    # than a one-off special case. This keeps the backup availability contract while
+    # also proving every application worker is alive after deploy.
+    assert 'for service in "${runtime_services[@]}"' in workflow
+    assert 'docker compose ps --status running --services | grep -Fxq "${service}"' in workflow
+    assert "Required production service is not running" in workflow
 
 
 def test_example_env_keeps_secrets_blank_and_documents_backup_policy() -> None:
