@@ -29,7 +29,14 @@ const birthdayTrend = {
   description: 'Шаблон из папки',
 };
 
-async function mockHome(page) {
+const birthdayVideoTrend = {
+  ...birthdayTrend,
+  id: 'trend_birthday_video',
+  title: 'Видео-поздравление',
+  media_type: 'video',
+};
+
+async function mockHome(page, { delayedFolderTabs = false } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -54,9 +61,16 @@ async function mockHome(page) {
     if (path === '/api/v1/trends') return json({ items: [trend] });
     if (path === '/api/v1/trend-collections') return json({ items: [
       { id: 'trends', system_key: 'trends', title: 'Тренды', description: 'Instagram', sort_order: 0, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
-      { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
+      { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 2, photo_count: 1, video_count: 1 },
     ] });
-    if (path === '/api/v1/trend-collections/birthday/items') return json({ collection: { id: 'birthday', title: 'День рождения' }, items: url.searchParams.get('media_type') === 'video' ? [] : [birthdayTrend] });
+    if (path === '/api/v1/trend-collections/birthday/items') {
+      const mediaType = url.searchParams.get('media_type');
+      if (delayedFolderTabs) await new Promise((resolve) => setTimeout(resolve, mediaType === 'image' ? 180 : 20));
+      return json({
+        collection: { id: 'birthday', title: 'День рождения' },
+        items: mediaType === 'video' ? [birthdayVideoTrend] : [birthdayTrend],
+      });
+    }
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/referrals/stats') return json({});
     if (path === '/api/v1/referrals/rewards' || path === '/api/v1/referrals/invitations') return json({ items: [] });
@@ -123,4 +137,24 @@ test('catalog keeps live trends and category folders directly below promo before
     foldersDirectlyAfterTrends: true,
     featureCatalogAfterFolders: true,
   });
+
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+  const back = folders.getByRole('button', { name: /Папки/ });
+  await expect(back).toBeVisible();
+  await expect.poll(() => back.evaluate((node) => getComputedStyle(node).borderRadius)).toBe('999px');
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+});
+
+test('catalog ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
+  await mockHome(page, { delayedFolderTabs: true });
+  await page.goto('/mini-app/?route=catalog');
+
+  const folders = page.locator('#roxy-catalog-trend-folders');
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+  await folders.getByRole('tab', { name: /Видео/ }).click();
+
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
+  await page.waitForTimeout(220);
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
+  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toHaveCount(0);
 });
