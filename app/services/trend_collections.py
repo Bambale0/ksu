@@ -27,6 +27,7 @@ class TrendCollectionService:
             "system_key": "trends",
             "title": "Тренды",
             "description": "То, что сейчас гуляет в Instagram",
+            "aliases": [],
             "sort_order": 0,
             "is_active": True,
         },
@@ -35,6 +36,9 @@ class TrendCollectionService:
             "system_key": "birthday",
             "title": "День рождения",
             "description": "Фото и видео для поздравлений и праздничных сюжетов",
+            # Internal aliases keep creator-facing folder copy clean while allowing
+            # short hashtags such as #др to route templates automatically.
+            "aliases": ["др", "деньрождения", "день-рождения", "день_рождения", "birthday"],
             "sort_order": 10,
             "is_active": True,
         },
@@ -60,11 +64,19 @@ class TrendCollectionService:
             str(collection.get(field) or "")
             for field in ("title", "description")
         )
-        return {
+        result = {
             normalized
             for raw in cls._HASHTAG_RE.findall(text)
             if (normalized := cls.normalize_hashtag(raw))
         }
+        aliases = collection.get("aliases")
+        if isinstance(aliases, list):
+            result.update(
+                normalized
+                for raw in aliases
+                if (normalized := cls.normalize_hashtag(raw))
+            )
+        return result
 
     @classmethod
     def matching_collection(cls, state: dict[str, Any], tags: Iterable[object]) -> str | None:
@@ -110,11 +122,23 @@ class TrendCollectionService:
         sort_order = int(raw.get("sort_order", 100))
         if sort_order < -100_000 or sort_order > 100_000:
             raise TrendCollectionError("Folder sort_order is out of range")
+
+        raw_aliases = raw.get("aliases")
+        aliases: list[str] = []
+        if isinstance(raw_aliases, list):
+            seen: set[str] = set()
+            for value in raw_aliases:
+                alias = cls.normalize_hashtag(value)
+                if alias and alias not in seen:
+                    seen.add(alias)
+                    aliases.append(alias)
+
         normalized = {
             "id": cid,
             "system_key": system_key if system_key is not None else raw.get("system_key"),
             "title": title,
             "description": description,
+            "aliases": aliases,
             "sort_order": sort_order,
             "is_active": bool(raw.get("is_active", True)),
         }
@@ -143,6 +167,7 @@ class TrendCollectionService:
                 )
             except TrendCollectionError:
                 continue
+
         assignments_raw = value.get("assignments")
         assignments: dict[str, str] = {}
         if isinstance(assignments_raw, dict):
@@ -151,11 +176,28 @@ class TrendCollectionService:
                 cid = str(collection_id or "").strip().lower()
                 if tid and cid in by_id:
                     assignments[tid] = cid
+
+        auto_raw = value.get("auto_assignments")
+        auto_assignments: list[str] = []
+        if isinstance(auto_raw, list):
+            auto_assignments = sorted(
+                {
+                    str(trend_id).strip()
+                    for trend_id in auto_raw
+                    if str(trend_id).strip() in assignments
+                }
+            )
+
         collections = sorted(
             by_id.values(),
             key=lambda item: (int(item.get("sort_order", 0)), str(item.get("title", "")).casefold()),
         )
-        return {"schema_version": 1, "collections": collections, "assignments": assignments}
+        return {
+            "schema_version": 1,
+            "collections": collections,
+            "assignments": assignments,
+            "auto_assignments": auto_assignments,
+        }
 
     @classmethod
     async def state(cls, session: AsyncSession) -> dict[str, Any]:
@@ -233,6 +275,7 @@ class TrendCollectionService:
         admin_id: uuid.UUID,
         trend_id: uuid.UUID,
         collection_id: str,
+        automatic: bool = False,
     ) -> dict[str, str]:
         trend = await session.get(AdminTrend, trend_id)
         if trend is None:
@@ -241,11 +284,40 @@ class TrendCollectionService:
         state = cls.merge_state(setting.value)
         if not any(item["id"] == collection_id for item in state["collections"]):
             raise LookupError("Folder not found")
-        state["assignments"][str(trend_id)] = collection_id
+        tid = str(trend_id)
+        state["assignments"][tid] = collection_id
+        auto = set(state.get("auto_assignments") or [])
+        if automatic:
+            auto.add(tid)
+        else:
+            auto.discard(tid)
+        state["auto_assignments"] = sorted(auto)
         setting.value = state
         setting.updated_by_admin_id = admin_id
         await session.flush()
-        return {"trend_id": str(trend_id), "collection_id": collection_id}
+        return {"trend_id": tid, "collection_id": collection_id}
+
+    @classmethod
+    async def _clear_auto_assignment(
+        cls,
+        session: AsyncSession,
+        *,
+        admin_id: uuid.UUID,
+        trend_id: uuid.UUID,
+    ) -> bool:
+        setting = await cls._locked_setting(session, admin_id=admin_id)
+        state = cls.merge_state(setting.value)
+        tid = str(trend_id)
+        auto = set(state.get("auto_assignments") or [])
+        if tid not in auto:
+            return False
+        state["assignments"].pop(tid, None)
+        auto.discard(tid)
+        state["auto_assignments"] = sorted(auto)
+        setting.value = state
+        setting.updated_by_admin_id = admin_id
+        await session.flush()
+        return True
 
     @classmethod
     async def assign_from_tags(
@@ -259,12 +331,18 @@ class TrendCollectionService:
         state = await cls.state(session)
         collection_id = cls.matching_collection(state, tags)
         if collection_id is None:
+            await cls._clear_auto_assignment(
+                session,
+                admin_id=admin_id,
+                trend_id=trend_id,
+            )
             return None
         await cls.assign_trend(
             session,
             admin_id=admin_id,
             trend_id=trend_id,
             collection_id=collection_id,
+            automatic=True,
         )
         return collection_id
 
