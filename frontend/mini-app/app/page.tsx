@@ -1,3 +1,4 @@
+import { AiReferenceHomeEntry } from "@/components/ai-reference-home-entry";
 import { AppEntryGate } from "@/components/app-entry-gate";
 import { BalanceAnchorGuard } from "@/components/balance-anchor-guard";
 import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
@@ -32,6 +33,7 @@ export default function Page() {
       <CatalogFeatureHub />
       <LiveTrendRail />
       <HomeTrendFolders />
+      <AiReferenceHomeEntry />
       <CatalogTrendFolders />
       <CatalogParityFeatures />
       <CustomerParityHub />
