@@ -210,7 +210,7 @@ export function UserOnboardingGate() {
   if (!status?.enabled || status.completed) return null;
 
   return <div className={`onboarding-overlay roxy-onboarding-v2 ${styles.overlay}`} role="dialog" aria-modal="true" aria-labelledby="roxy-onboarding-title">
-    <div className={styles.shell}>
+    <div className={`${styles.shell} onboarding-card`}>
       <header className={styles.topline}>
         <div className={styles.brand}><span>R</span><strong>ROXY</strong></div>
         <button className={styles.skip} type="button" disabled={busy} onClick={() => void finish("home")}>Пропустить</button>
