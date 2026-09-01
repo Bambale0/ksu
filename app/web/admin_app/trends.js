@@ -465,7 +465,8 @@
         state.token = null;
         throw new Error("Сначала настройте дополнительную защиту в основной админке, затем вернитесь в «Тренды».");
       }
-      if (!(result.permissions || []).includes("social.moderate")) {
+      const permissions = result.permissions || [];
+      if (!permissions.includes("*") && !permissions.includes("social.moderate")) {
         await api("/api/v1/admin/auth/logout", { method: "POST" }).catch(() => undefined);
         state.token = null;
         throw new Error("У этого администратора нет права управлять трендами.");
