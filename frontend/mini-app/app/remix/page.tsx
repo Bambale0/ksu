@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api, type FeedRemixDraft, type FeedRemixQuote } from "@/lib/api";
-import { haptic, notify } from "@/lib/telegram";
+import { copyToClipboard, haptic, notify, telegramHeaders } from "@/lib/telegram";
 import type { FeedSurface } from "@/lib/types";
 
 type OwnedReference = {
@@ -60,6 +60,7 @@ export default function FeedRemixPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
   const [error, setError] = useState("");
   const quoteSeq = useRef(0);
 
@@ -168,6 +169,38 @@ export default function FeedRemixPage() {
     }
   };
 
+  const copyRepeatLink = async () => {
+    if (!sourceId || copyingLink) return;
+    setCopyingLink(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/v1/feed/${encodeURIComponent(sourceId)}/link?kind=remix&surface=${encodeURIComponent(surface)}`,
+        {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: telegramHeaders(false),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = payload?.detail ?? payload?.message ?? `HTTP ${response.status}`;
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+      const link = String(payload?.link || "").trim();
+      if (!link) throw new Error("Ссылка повтора пока недоступна");
+      const copied = await copyToClipboard(link);
+      if (!copied) throw new Error("Не удалось скопировать ссылку повтора");
+      notify("success");
+      haptic("light");
+    } catch (reason) {
+      notify("error");
+      setError(reason instanceof Error ? reason.message : "Не удалось скопировать ссылку повтора");
+    } finally {
+      setCopyingLink(false);
+    }
+  };
+
   const launch = async () => {
     if (!draft || !sourceId || !requirementsMet || !quote || launching) return;
     setLaunching(true);
@@ -271,6 +304,7 @@ export default function FeedRemixPage() {
               <small>{quote ? (quote.admin_free ? "Для администратора бесплатно" : "Расчёт готов") : requirementsMet ? "Считаю…" : "Добавьте референсы"}</small>
             </div>
             <button className="primary wide" type="button" disabled={!quote?.cost_rox || !requirementsMet || uploading || launching} onClick={() => void launch()}>{launching ? "Запускаю…" : quote?.cost_rox ? `Повторить · ${quote.cost_rox} ROX` : "Повторить"}</button>
+            <button className="secondary wide" type="button" disabled={copyingLink || launching} onClick={() => void copyRepeatLink()}>{copyingLink ? "Копирую…" : "Скопировать ссылку повтора"}</button>
             <button className="secondary wide" type="button" disabled={launching} onClick={returnToFeed}>Вернуться в ленту</button>
           </aside>
         </div>
