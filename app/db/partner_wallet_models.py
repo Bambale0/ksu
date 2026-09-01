@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -31,6 +31,34 @@ class PartnerWalletTransfer(Base):
         ForeignKey("wallet_transactions.id", ondelete="RESTRICT"), unique=True, nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PartnerWithdrawalRequest(Base):
+    """Durable transport-idempotency record for a cash withdrawal intent."""
+
+    __tablename__ = "partner_withdrawal_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_partner_withdrawal_requests_user_idempotency",
+        ),
+        Index("ix_partner_withdrawal_requests_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    withdrawal_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("partner_withdrawals.id", ondelete="RESTRICT"), unique=True, nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    amount_rub: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    requisites: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
