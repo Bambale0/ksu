@@ -20,6 +20,7 @@ def test_operational_health_covers_every_production_worker() -> None:
         "admin-support-worker",
         "admin-campaign-worker",
         "creator-partnership-worker",
+        "kie-credit-alert-worker",
     }
 
 
