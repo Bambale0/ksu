@@ -101,6 +101,26 @@ def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
     assert "context: AdminSecurityReadDep" not in signature
 
 
+def test_admin_login_fits_short_telegram_webview_and_explains_launch_contract() -> None:
+    css = _read(ADMIN / "admin.css")
+    js = _read(ADMIN / "admin.js")
+
+    assert "100dvh" in css
+    assert "overflow-y:auto" in css.replace(" ", "")
+    assert "@media(max-height:700px)" in css.replace(" ", "")
+    assert "кнопкой «Веб-админка»" in js
+    assert "прямой URL" in js
+
+
+def test_production_deploy_repairs_and_verifies_admin_security_key() -> None:
+    workflow = _read(ROOT / ".github" / "workflows" / "deploy-production.yml")
+
+    assert "ADMIN_SECURITY_KEY" in workflow
+    assert "/dev/urandom" in workflow
+    assert "settings.admin_security_key" in workflow
+    assert 'curl -fsSI "${app_base}/admin-app/"' in workflow
+
+
 def test_admin_console_files_are_present_and_node_checked() -> None:
     workflow = _read(ROOT / ".github" / "workflows" / "admin-console.yml")
     assert (ADMIN / "index.html").is_file()
