@@ -4,6 +4,7 @@ import { telegramHeaders } from "./telegram";
 import type { GenerationModel } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
+const INLINE_HASHTAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
 
 export function setTrendCollectionTarget(collectionId: string): void {
   if (typeof document === "undefined") return;
@@ -61,6 +62,11 @@ type TrendWriteBody = {
   is_active?: boolean;
 };
 
+function hashtagsFromText(value: unknown): string[] {
+  const text = String(value ?? "");
+  return Array.from(text.matchAll(INLINE_HASHTAG_RE), (match) => match[1]);
+}
+
 export function normalizeTrendTags(tags: unknown): string[] {
   const source = Array.isArray(tags) ? tags : [tags];
   const normalized: string[] = [];
@@ -79,11 +85,15 @@ export function normalizeTrendTags(tags: unknown): string[] {
 }
 
 function normalizeWriteBody(body: TrendWriteBody): TrendWriteBody {
+  const inlineHashtags = [
+    ...hashtagsFromText(body.title),
+    ...hashtagsFromText(body.payload.description),
+  ];
   return {
     ...body,
     payload: {
       ...body.payload,
-      tags: normalizeTrendTags(body.payload.tags),
+      tags: normalizeTrendTags([...(body.payload.tags || []), ...inlineHashtags]),
     },
   };
 }
