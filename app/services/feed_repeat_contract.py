@@ -46,12 +46,14 @@ def install_feed_repeat_contract() -> None:
         *,
         viewer_user_id: uuid.UUID,
         surface: str,
+        prefetched: Any | None = None,
     ) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         card = await previous_to_card(
             session,
             generation,
             viewer_user_id=viewer_user_id,
             surface=surface,
+            prefetched=prefetched,
         )
         allowed = repeat_allowed(generation)
         # Existing Mini App surfaces read prompt_actions_allowed for the Repeat
