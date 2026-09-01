@@ -79,7 +79,7 @@ test('nested buttons inside a trend-launch card keep their own click handler', a
   });
 
   const before = page.url();
-  await page.getByRole('button', { name: 'Вложенное действие' }).click();
+  await page.locator('#nested-trend-action').click();
 
   await expect.poll(() => page.evaluate(() => window.__nestedTrendActionClicks)).toBe(1);
   expect(page.url()).toBe(before);
