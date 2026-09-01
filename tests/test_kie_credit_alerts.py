@@ -92,9 +92,11 @@ async def test_kie_credit_provider_uses_documented_common_api_contract() -> None
 @pytest.mark.parametrize(
     "payload",
     [
+        [],
         {"code": 500, "msg": "failed", "data": 100},
         {"code": "nope", "data": 100},
         {"code": 200, "data": None},
+        {"code": 200, "data": True},
         {"code": 200, "data": -1},
         {"code": 200, "data": "NaN"},
     ],
@@ -105,6 +107,12 @@ async def test_kie_credit_provider_rejects_invalid_provider_payloads(payload: ob
 
     with pytest.raises(KieProviderError):
         await client.get_remaining_credits()
+
+
+def test_kie_credit_format_preserves_integer_trailing_zeroes() -> None:
+    assert KieCreditAlertService._format_credits(Decimal("500")) == "500"
+    assert KieCreditAlertService._format_credits(Decimal("500.00")) == "500"
+    assert KieCreditAlertService._format_credits(Decimal("123.50")) == "123.5"
 
 
 @pytest.mark.asyncio
