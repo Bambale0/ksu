@@ -264,6 +264,10 @@ def parse_bootstrap_ids() -> set[int]:
     return result
 
 
+def is_env_admin(telegram_id: int | None) -> bool:
+    return telegram_id is not None and telegram_id in parse_bootstrap_ids()
+
+
 def sanitize_audit_metadata(value: Any, *, depth: int = 0) -> Any:
     if depth > 5:
         return "[truncated]"
@@ -377,11 +381,17 @@ class AdminAuthService:
         session: AsyncSession,
         telegram_user: TelegramUser,
     ) -> AdminAccount | None:
+        if not is_env_admin(telegram_user.id):
+            return None
         user = await UserService.get_or_create(session, telegram_user)
         admin = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
-        if admin is None and telegram_user.id in parse_bootstrap_ids():
+        if admin is None:
             admin = AdminAccount(user_id=user.id, role="owner", is_active=True)
             session.add(admin)
+            await session.flush()
+        else:
+            admin.role = "owner"
+            admin.is_active = True
             await session.flush()
         return admin
 

@@ -17,6 +17,7 @@ from app.services.admin_security import (
     AdminSecurityConfigurationError,
     fingerprint,
     hash_admin_token,
+    is_env_admin,
     utcnow,
 )
 
@@ -65,6 +66,21 @@ async def get_admin_context_base(
     user = await session.get(User, admin.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=403, detail="Admin account unavailable")
+    if not is_env_admin(user.telegram_id):
+        record.revoked_at = utcnow()
+        record.revoke_reason = "removed_from_env_allowlist"
+        await AdminAuditService.record(
+            session,
+            action="admin.authorization.denied",
+            outcome="denied",
+            admin=admin,
+            admin_session=record,
+            request=request,
+            reason="Admin Telegram ID is not present in ADMIN_BOOTSTRAP_TELEGRAM_IDS",
+            metadata={"telegram_id_hash": fingerprint(str(user.telegram_id))},
+        )
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access denied")
 
     await AdminAuthService.enforce_rate_limit(
         redis,

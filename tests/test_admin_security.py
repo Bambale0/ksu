@@ -1,16 +1,19 @@
 from datetime import UTC, datetime
+import random
 
 import pytest
 
 from app.core.config import settings
 from app.db.models import AdminAccount
 from app.services.admin_security import (
+    AdminAuthService,
     AdminSecurityConfigurationError,
     decrypt_mfa_secret,
     effective_permissions,
     encrypt_mfa_secret,
     has_permission,
     hash_admin_token,
+    is_env_admin,
     sanitize_audit_metadata,
     totp_code,
     verify_totp,
@@ -27,6 +30,57 @@ def test_admin_permissions_deny_by_default() -> None:
     assert has_permission(admin, "users.read")
     assert not has_permission(admin, "users.wallet.adjust")
     assert not has_permission(admin, "admins.manage")
+
+
+def test_admin_identity_comes_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = random.randint(9_100_000_000_000, 9_199_999_999_999)
+    second = random.randint(9_200_000_000_000, 9_299_999_999_999)
+    other = random.randint(9_300_000_000_000, 9_399_999_999_999)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", f"{first}, {second}")
+
+    assert is_env_admin(first)
+    assert is_env_admin(second)
+    assert not is_env_admin(other)
+    assert not is_env_admin(None)
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_admin_denies_ids_not_present_in_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aiogram.types import User as TelegramUser
+
+    from app.db.session import SessionFactory
+
+    allowed = random.randint(9_400_000_000_000, 9_499_999_999_999)
+    denied = random.randint(9_500_000_000_000, 9_599_999_999_999)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(allowed))
+    telegram_user = TelegramUser(id=denied, is_bot=False, first_name="Not admin")
+
+    async with SessionFactory() as session:
+        admin = await AdminAuthService.get_or_bootstrap_admin(session, telegram_user)
+
+    assert admin is None
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_admin_promotes_env_id_to_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aiogram.types import User as TelegramUser
+
+    from app.db.session import SessionFactory
+
+    allowed = random.randint(9_600_000_000_000, 9_699_999_999_999)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(allowed))
+    telegram_user = TelegramUser(id=allowed, is_bot=False, first_name="Owner")
+
+    async with SessionFactory() as session:
+        admin = await AdminAuthService.get_or_bootstrap_admin(session, telegram_user)
+
+    assert admin is not None
+    assert admin.role == "owner"
+    assert admin.is_active is True
 
 
 def test_explicit_deny_beats_role_grant() -> None:
