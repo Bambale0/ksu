@@ -33,9 +33,15 @@ class KieCreditClient:
         try:
             response = await self._client.get("/api/v1/chat/credit")
             response.raise_for_status()
-            payload: dict[str, Any] = response.json()
+            raw_payload: Any = response.json()
         except (httpx.HTTPError, ValueError, TypeError) as exc:
             raise KieProviderError("Kie credit balance request failed") from exc
+
+        if not isinstance(raw_payload, dict):
+            raise KieProviderError(
+                f"Kie credit balance returned invalid payload: {raw_payload!r}"
+            )
+        payload: dict[str, Any] = raw_payload
 
         raw_code = payload.get("code")
         try:
