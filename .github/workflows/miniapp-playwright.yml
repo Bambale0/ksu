@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - 'frontend/mini-app/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-production.yml'
       - '.github/workflows/miniapp-playwright.yml'
   workflow_dispatch:
 
@@ -43,15 +45,19 @@ jobs:
         working-directory: frontend/mini-app
         run: >-
           npx playwright test
-          e2e/client-error-reporting.spec.mjs
-          e2e/video-mode-selector-parity.spec.mjs
-          e2e/responsive-device-surfaces.spec.mjs
+          --project=iphone-13
+          --project=iphone-13-landscape
+          --project=iphone-se
+          --project=iphone-se-landscape
+          --project=ipad-mini
+          --project=ipad-mini-landscape
+          --project=ipad-pro-11
+          --project=ipad-pro-11-landscape
           e2e/responsive-deep-surfaces.spec.mjs
-          --project=webkit-mobile
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: miniapp-playwright-report
-          path: frontend/mini-app/playwright-report
-          if-no-files-found: ignore
+          e2e/responsive-video-generation.spec.mjs
+          e2e/responsive-history-generation-detail.spec.mjs
+          e2e/responsive-overflow-stress.spec.mjs
+          e2e/all-user-surfaces.spec.mjs
+          e2e/user-flow-coverage.spec.mjs
+          e2e/trend-library.spec.mjs
+          e2e/video-generation-modes.spec.mjs
