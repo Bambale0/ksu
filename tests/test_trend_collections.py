@@ -105,9 +105,29 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
     assert "Видео ·" in source
     assert "/mini-app/trend/?id=" in source
     assert "TrendCollectionAdmin" in source
-    assert "＋ Новая папка" in admin
-    assert "Разложить шаблоны по папкам" in admin
+    assert "＋ Новая категория" in admin
+    assert "Готовые шаблоны" in admin
+    assert "Описание и хэштеги" in admin
+    assert "Управление трендами" in admin
     assert "HomeTrendFolders" in page
+
+
+def test_mini_app_admin_can_edit_reassign_and_hide_existing_trends() -> None:
+    admin = _source("frontend/mini-app/components/trend-collection-admin.tsx")
+    client = _source("frontend/mini-app/lib/trend-admin-api.ts")
+
+    assert "Boolean(me.is_admin)" in admin
+    assert "trendAdminApi.update(original.id" in admin
+    assert "...original.payload" in admin
+    assert "tags: parseTags(editingTrend.tags)" in admin
+    assert "trendCollectionsApi.assign(trendId, collectionId)" in admin
+    assert "trendAdminApi.hide(trend.id)" in admin
+    assert "trendAdminApi.activate(trend.id)" in admin
+    assert "Старые фото и видео не нужно загружать заново" in admin
+    assert "trend-admin-edit-${trend.id}" in admin
+    assert "trend-admin-visibility-${trend.id}" in admin
+    assert "/api/v1/trends/manage/${encodeURIComponent(id)}" in client
+    assert "/activate" in client
 
 
 def test_top_live_trends_are_real_api_cards_not_legacy_model_sections() -> None:

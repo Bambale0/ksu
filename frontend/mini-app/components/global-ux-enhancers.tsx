@@ -158,6 +158,29 @@ function trendCardContext(card: HTMLElement): boolean {
   return index === 0;
 }
 
+const TREND_LAUNCH_INTERACTIVE_SELECTOR = [
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "summary",
+  "[role='button']",
+  "[role='link']",
+  "[contenteditable='true']",
+  "[data-no-trend-launch='true']",
+].join(",");
+
+function trendLaunchCardFromTarget(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+  const card = target.closest<HTMLElement>("[data-trend-launch='true']");
+  if (!card) return null;
+  const interactive = target.closest<HTMLElement>(TREND_LAUNCH_INTERACTIVE_SELECTOR);
+  if (interactive && interactive !== card && card.contains(interactive)) return null;
+  return card;
+}
+
 export function GlobalUxEnhancers() {
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -220,7 +243,7 @@ export function GlobalUxEnhancers() {
     const observer = new MutationObserver(decorate);
     observer.observe(document.body, { childList: true, subtree: true });
     const open = (target: EventTarget | null) => {
-      const element = target instanceof Element ? target.closest<HTMLElement>("[data-trend-launch='true']") : null;
+      const element = trendLaunchCardFromTarget(target);
       const id = element?.dataset.trendId;
       if (!id) return false;
       window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(id)}`);

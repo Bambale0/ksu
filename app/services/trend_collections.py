@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
+from typing import Any, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ class TrendCollectionService:
     SETTING_KEY = "trend_collections_v1"
     DEFAULT_COLLECTION_ID = "trends"
     _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    _HASHTAG_RE = re.compile(r"(?<!\w)#([\w-]{1,40})", re.UNICODE)
     DEFAULTS: tuple[dict[str, Any], ...] = (
         {
             "id": "trends",
@@ -42,6 +43,50 @@ class TrendCollectionService:
     @classmethod
     def default_collections(cls) -> list[dict[str, Any]]:
         return [dict(item) for item in cls.DEFAULTS]
+
+    @classmethod
+    def normalize_hashtag(cls, value: object) -> str:
+        tag = str(value or "").strip().casefold()
+        if tag.startswith("#"):
+            tag = tag[1:]
+        tag = tag.strip()
+        if not tag or len(tag) > 40 or not re.fullmatch(r"[\w-]+", tag, re.UNICODE):
+            return ""
+        return tag
+
+    @classmethod
+    def collection_hashtags(cls, collection: dict[str, Any]) -> set[str]:
+        text = " ".join(
+            str(collection.get(field) or "")
+            for field in ("title", "description")
+        )
+        return {
+            normalized
+            for raw in cls._HASHTAG_RE.findall(text)
+            if (normalized := cls.normalize_hashtag(raw))
+        }
+
+    @classmethod
+    def matching_collection(cls, state: dict[str, Any], tags: Iterable[object]) -> str | None:
+        normalized_tags = {
+            normalized
+            for raw in tags
+            if (normalized := cls.normalize_hashtag(raw))
+        }
+        if not normalized_tags:
+            return None
+        collections = state.get("collections") if isinstance(state, dict) else []
+        if not isinstance(collections, list):
+            return None
+        for collection in collections:
+            if not isinstance(collection, dict):
+                continue
+            collection_id = str(collection.get("id") or "").strip().lower()
+            if collection_id == cls.DEFAULT_COLLECTION_ID or not bool(collection.get("is_active", True)):
+                continue
+            if normalized_tags.intersection(cls.collection_hashtags(collection)):
+                return collection_id
+        return None
 
     @classmethod
     def normalize_collection(
@@ -201,6 +246,27 @@ class TrendCollectionService:
         setting.updated_by_admin_id = admin_id
         await session.flush()
         return {"trend_id": str(trend_id), "collection_id": collection_id}
+
+    @classmethod
+    async def assign_from_tags(
+        cls,
+        session: AsyncSession,
+        *,
+        admin_id: uuid.UUID,
+        trend_id: uuid.UUID,
+        tags: Iterable[object],
+    ) -> str | None:
+        state = await cls.state(session)
+        collection_id = cls.matching_collection(state, tags)
+        if collection_id is None:
+            return None
+        await cls.assign_trend(
+            session,
+            admin_id=admin_id,
+            trend_id=trend_id,
+            collection_id=collection_id,
+        )
+        return collection_id
 
     @classmethod
     def assigned_collection(cls, state: dict[str, Any], trend_id: uuid.UUID | str) -> str:

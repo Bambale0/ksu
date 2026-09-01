@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
-import { haptic, openTelegramShare } from "@/lib/telegram";
+import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem } from "@/lib/types";
 
@@ -30,6 +30,7 @@ export default function TrendPage() {
   const [uploading, setUploading] = useState(false);
   const [running, setRunning] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [error, setError] = useState("");
 
@@ -91,6 +92,24 @@ export default function TrendPage() {
       setError(reason instanceof Error ? reason.message : "Не удалось поделиться трендом");
     } finally {
       setSharing(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!trend || copying) return;
+    setCopying(true);
+    setError("");
+    try {
+      const result = await api.shareTrend(trend.id);
+      const copied = await copyToClipboard(result.copy_link || result.link);
+      if (!copied) throw new Error("Не удалось скопировать ссылку тренда");
+      notify("success");
+      haptic("light");
+    } catch (reason) {
+      notify("error");
+      setError(reason instanceof Error ? reason.message : "Не удалось скопировать ссылку тренда");
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -161,6 +180,9 @@ export default function TrendPage() {
             </button>
             <button className="secondary wide" type="button" disabled={sharing} onClick={() => void share()}>
               {sharing ? "Открываю Telegram…" : "Поделиться трендом"}
+            </button>
+            <button className="secondary wide" type="button" disabled={copying} onClick={() => void copyLink()}>
+              {copying ? "Копирую…" : "Скопировать ссылку тренда"}
             </button>
           </div>
         </div>

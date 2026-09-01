@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
-from app.db.models import Generation, User
+from app.db.models import Generation
 from app.services import action_telemetry
 from app.services.feed import (
     FeedDerivativePublicationError,
@@ -324,15 +324,13 @@ async def share(
         shares_count = await FeedService.increment_feed_share(
             session, generation_id=generation_id, surface=payload.surface
         )
-        author = await session.get(User, generation.user_id)
-        if author is None:
-            raise FeedNotFoundError("Publication author not found")
         card = await _updated_feed_card(session, generation, user=user, surface=payload.surface)
+        referral_code = str(user.telegram_id)
         link = _direct_mini_app_link(
-            FeedService.post_deep_link(generation.id, str(author.telegram_id))
+            FeedService.post_deep_link(generation.id, referral_code)
         )
         remix_link = _direct_mini_app_link(
-            FeedService.remix_deep_link(generation.id, str(author.telegram_id))
+            FeedService.remix_deep_link(generation.id, referral_code)
         )
         await session.commit()
     except (FeedError, FeedNotFoundError) as exc:
@@ -350,7 +348,7 @@ async def share(
         "post_link": link,
         "repeat_link": remix_link,
         "remix_link": remix_link,
-        "share": FeedService.share_payload(generation, author.telegram_id),
+        "share": FeedService.share_payload(generation, user.telegram_id),
         "item": card,
         "feed_item": card,
     }
@@ -439,19 +437,15 @@ async def link(
     kind: Literal["post", "remix"] = Query(default="post"),
     surface: Literal["feed", "profile"] = Query(default="feed"),
 ) -> dict[str, object]:
-    del user
     try:
         generation = await FeedService.assert_surface_visible(
             session, generation_id, surface=surface
         )
-        author = await session.get(User, generation.user_id)
-        if author is None:
-            raise FeedNotFoundError("Publication author not found")
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
-    referral_code = str(author.telegram_id)
-    value = (
-        _direct_mini_app_link(FeedService.post_deep_link(generation.id, referral_code))
+    referral_code = str(user.telegram_id)
+    value = _direct_mini_app_link(
+        FeedService.post_deep_link(generation.id, referral_code)
         if kind == "post"
         else FeedService.remix_deep_link(generation.id, referral_code)
     )

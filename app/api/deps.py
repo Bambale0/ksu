@@ -59,11 +59,11 @@ async def _validated_startapp_inviter(
 ) -> int | None:
     """Validate referral attribution carried by a Telegram Mini App launch.
 
-    Telegram-signed ``start_param`` is authoritative. The recovered header is
-    accepted only after the request's signed initData authenticates the Telegram
-    user. Post/remix/profile payloads are bound to their public author. Trend
-    payloads intentionally belong to the authenticated user who shared the
-    public trend, regardless of who originally created that trend.
+    Telegram-signed ``start_param`` is authoritative. Public post/remix/trend
+    payloads validate that their source still exists, while referral ownership
+    belongs to the user encoded by the share link rather than the original
+    author of that source. Referral antifraud validates inviter existence when a
+    new user is actually attached. Profile payloads stay bound to that profile.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -104,12 +104,9 @@ async def _validated_startapp_inviter(
             break
         except FeedNotFoundError:
             continue
-    if generation is None:
+    if generation is None or link.referral_telegram_id <= 0:
         return None
-    author = await session.get(User, generation.user_id)
-    if author is None or author.telegram_id != link.referral_telegram_id:
-        return None
-    return author.telegram_id
+    return link.referral_telegram_id
 
 
 async def get_current_user(
