@@ -1,8 +1,63 @@
+from pathlib import Path
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.health import OPERATIONAL_WORKERS
 from app.core.config import settings
 from app.main import app
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_operational_health_covers_every_production_worker() -> None:
+    assert set(OPERATIONAL_WORKERS) == {
+        "generation-worker",
+        "payment-worker",
+        "media-worker",
+        "prompt-tool-worker",
+        "notification-worker",
+        "admin-support-worker",
+        "admin-campaign-worker",
+        "creator-partnership-worker",
+    }
+
+
+def test_delivery_worker_heartbeats_are_tied_to_worker_progress() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "python -m app.workers.heartbeat" not in compose
+
+    workers = (
+        (
+            "notification-worker",
+            "app.workers.notifications",
+            "app/workers/notifications.py",
+            "await _process_delivery(bot, delivery_id)",
+        ),
+        (
+            "admin-support-worker",
+            "app.workers.admin_support",
+            "app/workers/admin_support.py",
+            "await _process(bot, outbox_id)",
+        ),
+        (
+            "admin-campaign-worker",
+            "app.workers.admin_campaigns",
+            "app/workers/admin_campaigns.py",
+            "await _process(bot, delivery_id)",
+        ),
+    )
+
+    for worker_name, module_name, source_path, process_call in workers:
+        assert f"command: python -m {module_name}" in compose
+        source = (ROOT / source_path).read_text(encoding="utf-8")
+        assert f'WORKER_NAME = "{worker_name}"' in source
+        assert "record_worker_heartbeat" in source
+        run_block = source.split("async def run() -> None:", 1)[1]
+        assert process_call in run_block
+        # One heartbeat before claiming work keeps an idle worker healthy; the
+        # second, after each processed row, proves health advances with progress.
+        assert run_block.count("await _heartbeat(redis)") >= 2
 
 
 @pytest.mark.asyncio

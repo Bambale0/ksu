@@ -6,10 +6,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import User
+from app.db.models import PartnerWithdrawal, User
 from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.services.credits import InternalCreditService
-from app.services.partner import PartnerService
+from app.services.partner import PartnerService, PartnerWithdrawalError
 from app.services.wallet import WalletService
 
 
@@ -41,13 +41,9 @@ class PartnerWalletTransferService:
 
     @classmethod
     async def accounting(cls, session: AsyncSession, user_id: uuid.UUID) -> dict[str, Decimal]:
-        base = await PartnerService.accounting(session, user_id)
-        transferred = await cls.transferred_total(session, user_id)
-        return {
-            **base,
-            "transferred_to_rox": transferred,
-            "available": max(Decimal("0"), Decimal(base["available"]) - transferred),
-        }
+        # PartnerService is the single source of truth for the shared RUB earnings
+        # pool. It already subtracts both cash withdrawals and RUB->ROX transfers.
+        return await PartnerService.accounting(session, user_id)
 
     @staticmethod
     async def _lock_user(session: AsyncSession, user_id: uuid.UUID) -> User:
@@ -152,3 +148,56 @@ class PartnerWalletTransferService:
         session.add(transfer)
         await session.flush()
         return transfer
+
+    @classmethod
+    async def create_cash_withdrawal(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        amount: Decimal,
+        requisites: str,
+        idempotency_key: str,
+    ) -> PartnerWithdrawal:
+        """Serialize cash withdrawal with RUB->ROX conversion and safe request replay."""
+
+        key = idempotency_key.strip()
+        if not key or len(key) > 160:
+            raise PartnerWithdrawalError("Valid Idempotency-Key is required")
+        normalized = Decimal(amount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        cleaned = requisites.strip()
+
+        replay = await PartnerService._withdrawal_replay(
+            session,
+            user_id=user_id,
+            key=key,
+            amount=normalized,
+            requisites=cleaned,
+        )
+        if replay is not None:
+            return replay
+
+        await cls._lock_user(session, user_id)
+        replay = await PartnerService._withdrawal_replay(
+            session,
+            user_id=user_id,
+            key=key,
+            amount=normalized,
+            requisites=cleaned,
+        )
+        if replay is not None:
+            return replay
+
+        await cls.assert_available(
+            session,
+            user_id=user_id,
+            amount=normalized,
+            lock=False,
+        )
+        return await PartnerService.create_withdrawal(
+            session,
+            user_id=user_id,
+            amount=normalized,
+            requisites=cleaned,
+            idempotency_key=key,
+        )

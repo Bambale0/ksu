@@ -57,13 +57,13 @@ async def _validated_startapp_inviter(
     session: AsyncSession,
     start_param: str | None,
 ) -> int | None:
-    """Validate referral attribution carried by a Telegram Mini App launch.
+    """Validate referral attribution carried by a Telegram-signed Mini App launch.
 
-    Telegram-signed ``start_param`` is authoritative. Public post/remix/trend
-    payloads validate that their source still exists, while referral ownership
-    belongs to the user encoded by the share link rather than the original
-    author of that source. Referral antifraud validates inviter existence when a
-    new user is actually attached. Profile payloads stay bound to that profile.
+    Public post/remix/trend payloads validate that their source still exists,
+    while referral ownership belongs to the user encoded by the share link rather
+    than the original author of that source. Referral antifraud validates inviter
+    existence when a new user is actually attached. Profile payloads stay bound
+    to that profile.
     """
 
     link = parse_feed_deep_link(start_param)
@@ -142,10 +142,12 @@ async def get_current_user(
         username=web_user.username,
         language_code=web_user.language_code,
     )
+
+    # The fallback header remains a routing/recovery transport for the Mini App,
+    # but it is client-controlled and must never assign money-bearing referrals.
+    _ = x_telegram_start_param
     signed_start_param = str(getattr(init_data, "start_param", None) or "").strip()
-    fallback_start_param = str(x_telegram_start_param or "").strip()
-    resolved_start_param = signed_start_param or fallback_start_param or None
-    inviter_telegram_id = await _validated_startapp_inviter(session, resolved_start_param)
+    inviter_telegram_id = await _validated_startapp_inviter(session, signed_start_param or None)
     user = await UserService.get_or_create(
         session,
         tg_user,

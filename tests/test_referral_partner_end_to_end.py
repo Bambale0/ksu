@@ -123,6 +123,7 @@ async def test_rox_wallet_balance_is_never_withdrawable(
                 user_id=partner.id,
                 amount=Decimal("1"),
                 requisites="SBP +79990000000",
+                idempotency_key=f"rox-only-withdraw:{uuid.uuid4()}",
             )
 
 
@@ -411,6 +412,7 @@ async def test_cash_withdrawal_and_rox_conversion_cannot_double_spend_same_partn
                     user_id=partner_id,
                     amount=Decimal("20"),
                     requisites="SBP +79990000000",
+                    idempotency_key=f"race-withdraw:{uuid.uuid4()}",
                 )
                 await session.commit()
                 return "withdrawn"
@@ -479,6 +481,7 @@ async def test_refund_invalidates_pending_payout_and_admin_analytics_are_net(
             user_id=partner.id,
             amount=Decimal("30"),
             requisites="SBP +79990000000",
+            idempotency_key=f"refund-withdraw:{uuid.uuid4()}",
         )
         await ReferralService.reverse_payment_rewards(
             session,

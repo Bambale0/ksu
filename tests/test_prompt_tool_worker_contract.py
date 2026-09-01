@@ -17,7 +17,13 @@ def test_prompt_tool_worker_shares_uploaded_reference_storage() -> None:
 def test_operational_health_requires_prompt_tool_worker() -> None:
     health = (ROOT / "app" / "api" / "health.py").read_text(encoding="utf-8")
 
-    assert 'worker_health(request.app.state.redis, "prompt-tool-worker")' in health
+    for token in (
+        "OPERATIONAL_WORKERS = (",
+        '"prompt-tool-worker",',
+        "for worker in OPERATIONAL_WORKERS",
+        "await worker_health(request.app.state.redis, worker)",
+    ):
+        assert token in health
 
 
 def test_prompt_tools_docs_cover_shared_storage_runtime_contract() -> None:
