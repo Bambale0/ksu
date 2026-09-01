@@ -11,6 +11,8 @@ from app.api.v1 import (
     admin_payments,
     admin_trends,
     admin_users,
+    ai_reference,
+    browser_auth,
     card_payments,
     client_logs,
     creator_partnership,
@@ -42,6 +44,8 @@ from app.api.v1 import (
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(me.router)
 api_router.include_router(onboarding.router)
+api_router.include_router(browser_auth.router)
+api_router.include_router(ai_reference.router)
 api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(creator_partnership.router)
