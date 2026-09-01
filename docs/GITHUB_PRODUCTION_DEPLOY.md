@@ -21,7 +21,7 @@ A manual `workflow_dispatch` is also available. Manual runs resolve the current 
 
 Before SSH starts, the workflow compares the target SHA with current `main`. A completed workflow for an older commit cannot overwrite a newer production release.
 
-**CI success alone is not proof of production delivery.** The deploy workflow must reach the host, pass its database/deployment gates, prove all production runtime services are running and verify the exact Mini App release SHA. Missing required deployment secrets fails the workflow; incomplete SSH configuration never produces a successful no-op.
+**CI success alone is not proof of production delivery.** The deploy workflow must reach the host, pass its database/deployment gates, prove all production runtime services are running, prove every Python application process uses the exact immutable release image, and verify the exact Mini App release SHA. Missing required deployment secrets fails the workflow; incomplete SSH configuration never produces a successful no-op.
 
 ## Required GitHub Actions secrets
 
@@ -58,7 +58,33 @@ The deployment user must be able to:
 6. Write `DEPLOY_PATH/backups/` for the pre-migration archive/checksum.
 7. Create/use the compose-managed `db_backups` Docker volume for periodic backups.
 
-The server clone must keep its own read access to the GitHub repository (for a private repo, use a narrowly scoped server-side read credential/deploy key).
+The server clone must keep its own read access to the GitHub repository.
+
+## Immutable application image contract
+
+`app` and every Python worker declare the same Compose image:
+
+```text
+ksu-app:${KSU_IMAGE_TAG:-local}
+```
+
+During production deployment the workflow exports `KSU_IMAGE_TAG=<tested-main-sha>`, builds `app` exactly once, and records the resulting Docker image ID. The same tag is then used by:
+
+- `app`
+- `generation-worker`
+- `media-worker`
+- `prompt-tool-worker`
+- `payment-worker`
+- `notification-worker`
+- `admin-support-worker`
+- `admin-campaign-worker`
+- `creator-partnership-worker`
+
+The containers are force-recreated. Before any API health gate can make the deployment green, Docker inspection must prove every service above is running **and** its `.Image` ID equals the image ID built for the release SHA.
+
+This prevents the old split-brain failure mode where a new API container could coexist with a worker still running code from an older release.
+
+`backup-worker` intentionally uses the official PostgreSQL image and is checked for runtime availability, not application-image identity.
 
 ## What a deployment does
 
@@ -68,46 +94,22 @@ For the exact tested SHA, the remote script performs:
 git fetch --prune origin main
 git reset --hard <tested-main-sha>
 write app/web/mini_app/release.json with <tested-main-sha>
+export KSU_IMAGE_TAG=<tested-main-sha>
 docker compose config -q
 docker compose up -d postgres redis
 pg_dump -Fc -> backups/predeploy-<timestamp>-<sha>.dump
 require non-empty archive
 pg_restore --list < predeploy dump
 write SHA-256 sidecar
-docker compose build every application-backed runtime service
+build one ksu-app:<tested-main-sha> image via the app service
+record the immutable image ID
 docker compose run --rm app alembic upgrade head
-docker compose up -d --remove-orphans all runtime services + backup-worker
+force-recreate all runtime services + backup-worker
 require every runtime service to be running
+require every Python application service to use the exact release image ID
 ```
 
-Application images built by the workflow:
-
-- `app`
-- `generation-worker`
-- `media-worker`
-- `prompt-tool-worker`
-- `payment-worker`
-- `notification-worker`
-- `admin-support-worker`
-- `admin-campaign-worker`
-- `creator-partnership-worker`
-
-Runtime services explicitly started/recreated and checked:
-
-- `app`
-- `generation-worker`
-- `media-worker`
-- `prompt-tool-worker`
-- `payment-worker`
-- `notification-worker`
-- `admin-support-worker`
-- `admin-campaign-worker`
-- `creator-partnership-worker`
-- `backup-worker`
-
-Long-running services use `restart: unless-stopped`. The notification, support and campaign workers publish process-coupled Redis heartbeats; generation, payment, media, prompt-tool and creator-partnership workers publish their own heartbeats. `/health/operational` requires every application worker heartbeat to be fresh.
-
-`backup-worker` uses the official PostgreSQL image rather than the application Dockerfile, so it is intentionally a runtime service but not part of the application build list.
+Long-running services use `restart: unless-stopped`. `/health/operational` requires fresh heartbeats from generation, payment, media, prompt-tool, notification, admin-support, admin-campaign and creator-partnership workers.
 
 PostgreSQL and Redis data volumes are not recreated. Pre-deploy dumps/checksums older than 14 days are pruned from the host `backups/` directory. Periodic backups are kept separately in the private `db_backups` volume according to `DB_BACKUP_RETENTION_COUNT`.
 
@@ -119,23 +121,30 @@ The workflow verifies on the production host:
 
 ```text
 every required runtime service is running
+every Python application service has image ID == ksu-app:<tested-main-sha> image ID
 APP_BASE=http://127.0.0.1:$(docker compose port app 8000 | awk -F: 'END {print $NF}')
 GET $APP_BASE/health/ready
 GET $APP_BASE/health/operational
 GET $APP_BASE/health/live
 HEAD $APP_BASE/mini-app/
+HEAD $APP_BASE/admin-app/
 GET $APP_BASE/mini-app/release.json == {"sha":"<tested-main-sha>"}
+verify ADMIN_SECURITY_KEY is configured in the running app
 ```
 
-`/health/operational` is intentionally stronger than container liveness. It requires fresh heartbeats from generation, payment, media, prompt-tool, notification, admin-support, admin-campaign and creator-partnership workers.
-
-The SHA check makes delivery observable: a green deployment means the running Mini App is serving the commit the workflow intended to deploy, not merely that an API process answers.
+The SHA check makes delivery observable: a green deployment means the running Mini App is serving the commit the workflow intended to deploy. The image-ID gate additionally proves that asynchronous workers are serving the same code.
 
 Mini App responses use no-store/no-cache behavior so Telegram WebView cannot keep an old HTML/JS/CSS release indefinitely after a successful deployment.
 
 If deployment fails after entering the repository, diagnostics include `docker compose ps` and recent logs for all current runtime services, including `backup-worker`.
 
 There is intentionally no automatic database downgrade or blind code rollback after a failed migration. Alembic downgrade is never performed implicitly; prefer a reviewed forward fix or a controlled database restore/recovery plan.
+
+## Legacy media maintenance
+
+After the health and release-identity gates pass, the deployment runs the reference/feed static backfills for records created before the durable-media contract.
+
+Backfill output is inspected for `failed=N`. A non-zero legacy failure count is reported explicitly as **partial maintenance** instead of being described as a clean backfill. It does not invalidate a healthy new release because unreachable historical provider URLs can be permanently unrecoverable, but the unresolved count remains visible in deploy logs for follow-up cleanup.
 
 ## Backup-specific release evidence
 
@@ -154,6 +163,7 @@ After a deployment:
 2. confirm `docker compose ps` works non-interactively as `DEPLOY_USER`;
 3. run **Actions → Deploy Production → Run workflow** if an explicit deployment is needed;
 4. confirm all six exact-SHA workflow gates are green;
-5. confirm the pre-migration archive validation, every-runtime-service check, API health checks and Mini App SHA check are green;
+5. confirm the pre-migration archive validation, all-runtime-service check, immutable image-ID parity, API health checks and Mini App SHA check are green;
 6. verify `/backups/latest.dump` checksum/catalog after the worker completes its first backup;
-7. confirm the verified backup reaches the configured encrypted off-host durability layer.
+7. review any reported legacy-media `failed=N` rows separately;
+8. confirm the verified backup reaches the configured encrypted off-host durability layer.
