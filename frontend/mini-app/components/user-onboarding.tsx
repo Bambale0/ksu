@@ -159,6 +159,24 @@ export function UserOnboardingGate() {
   }, [statusAttempt]);
 
   useEffect(() => {
+    // The old single-card onboarding is still rendered by the legacy shell while
+    // the product migrates to this server-owned v2 gate. Keep that hidden shell
+    // inert and remove its shared test/geometry hook so there is exactly one
+    // active onboarding card in the DOM at every viewport.
+    const neutralizeLegacyOnboarding = () => {
+      document.querySelectorAll<HTMLElement>(".onboarding-overlay:not(.roxy-onboarding-v2)").forEach((overlay) => {
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.setAttribute("inert", "");
+        overlay.querySelectorAll(".onboarding-card").forEach((card) => card.classList.remove("onboarding-card"));
+      });
+    };
+    neutralizeLegacyOnboarding();
+    const observer = new MutationObserver(neutralizeLegacyOnboarding);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!status?.enabled || status.completed) return;
     saveStep(version, step);
   }, [status?.completed, status?.enabled, step, version]);
