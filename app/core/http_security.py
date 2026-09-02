@@ -7,6 +7,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.core.admin_telegram_security import (
+    FRESH_ADMIN_INIT_DATA_PATHS,
+    validate_fresh_admin_init_data,
+)
 from app.core.config import settings
 
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{8,64}$")
@@ -17,11 +21,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         incoming_id = request.headers.get("x-request-id", "")
         request_id = incoming_id if REQUEST_ID_RE.fullmatch(incoming_id) else uuid.uuid4().hex
         request.state.request_id = request_id
+        path = request.url.path
+
+        # Admin login/MFA privilege-establishment endpoints require a freshly
+        # issued Telegram credential. Signature verification alone would make a
+        # captured initData bearer replayable for as long as the bot token lives.
+        if path in FRESH_ADMIN_INIT_DATA_PATHS:
+            raw_init_data = request.headers.get("x-telegram-init-data", "")
+            if raw_init_data:
+                try:
+                    validate_fresh_admin_init_data(raw_init_data)
+                except ValueError:
+                    response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid or expired Telegram initData"},
+                    )
+                    return self._secure_response(response, request_id, path)
 
         # Security-sensitive production endpoints fail closed when their bearer
         # secret was omitted from deployment configuration. Development/test can
         # stay lightweight without teaching production to accept unsigned input.
-        path = request.url.path
         if settings.is_production:
             if path == "/webhooks/telegram" and not settings.telegram_webhook_secret:
                 response = JSONResponse(

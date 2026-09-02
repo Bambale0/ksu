@@ -12,6 +12,8 @@ def validate_webapp_auth_date(
     auth_date: datetime,
     *,
     now: datetime | None = None,
+    max_age: timedelta = TELEGRAM_INIT_DATA_MAX_AGE,
+    future_skew: timedelta = TELEGRAM_INIT_DATA_FUTURE_SKEW,
 ) -> None:
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
@@ -25,7 +27,7 @@ def validate_webapp_auth_date(
     else:
         issued = issued.astimezone(timezone.utc)
 
-    if issued - current > TELEGRAM_INIT_DATA_FUTURE_SKEW:
+    if issued - current > future_skew:
         raise ValueError("Telegram initData auth_date is in the future")
-    if current - issued > TELEGRAM_INIT_DATA_MAX_AGE:
+    if current - issued > max_age:
         raise ValueError("Telegram initData has expired")
