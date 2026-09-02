@@ -12,6 +12,10 @@ def generation_with(*, kind: str = "image", **parameters: object) -> SimpleNames
     return SimpleNamespace(kind=kind, parameters=parameters)
 
 
+def job_with(status: str, error: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(status=status, last_error=error)
+
+
 def test_legacy_audio_detection_covers_suno_and_audio_snapshots() -> None:
     assert LegacyMediaBackfillService.is_audio_generation(generation_with(kind="music"))
     assert LegacyMediaBackfillService.is_audio_generation(
@@ -25,6 +29,19 @@ def test_legacy_audio_detection_covers_suno_and_audio_snapshots() -> None:
     )
     assert not LegacyMediaBackfillService.is_audio_generation(
         generation_with(_media_type="video", _model_family="kling")
+    )
+
+
+def test_only_misrouted_generic_audio_jobs_are_reset() -> None:
+    assert LegacyMediaBackfillService.is_misrouted_generic_audio_job(job_with("pending"))
+    assert LegacyMediaBackfillService.is_misrouted_generic_audio_job(
+        job_with("failed", "Unsupported media content type: audio/mpeg")
+    )
+    assert not LegacyMediaBackfillService.is_misrouted_generic_audio_job(
+        job_with("audio_pending", "temporary upstream failure")
+    )
+    assert not LegacyMediaBackfillService.is_misrouted_generic_audio_job(
+        job_with("failed", "Unsupported audio content type: application/pdf")
     )
 
 
