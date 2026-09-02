@@ -36,6 +36,29 @@ async function mockCatalog(page) {
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/references') return json({ items: [] });
     if (path === '/api/v1/discovery/home') return json({ slides: [] });
+    if (path === '/api/v1/prompt-tools') return json({
+      admin_free: false,
+      items: [
+        {
+          id: 'prompt_builder',
+          title: 'Промпт-билдер',
+          description: 'Image prompt builder',
+          enabled: true,
+          admin_free: false,
+          cost_credits: '7.00',
+          retail_cost_credits: '7.00',
+        },
+        {
+          id: 'video_prompt',
+          title: 'Описание по видео',
+          description: 'Video prompt builder',
+          enabled: true,
+          admin_free: false,
+          cost_credits: '12.00',
+          retail_cost_credits: '12.00',
+        },
+      ],
+    });
     return json({ items: [] });
   });
 }
@@ -70,4 +93,21 @@ test('catalog service cards render neon violet instead of Telegram link blue', a
     copyColor: 'rgb(189, 140, 255)',
     copyFill: 'rgb(189, 140, 255)',
   });
+});
+
+test('Seedance catalog card advertises the real 5-second minimum price', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockCatalog(page);
+  await page.goto('/mini-app/?route=catalog');
+
+  const seedance = page.locator('[data-catalog-feature="prompt-seedance"]');
+  await expect(seedance).toBeVisible();
+  await expect(seedance.locator('.catalog-feature-pill')).toHaveText('от 30 ROX');
+
+  await seedance.click();
+
+  await expect(page).toHaveURL(/\/mini-app\/prompt-tools\/\?mode=seedance/);
+  await expect(page.getByRole('button', { name: 'Сценарий' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Стоимость').locator('..').getByRole('heading', { name: '30 ROX' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '5 сек' })).toHaveClass(/active/);
 });
