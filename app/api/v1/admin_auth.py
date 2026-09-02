@@ -59,6 +59,16 @@ def _session_view(record: AdminSession, current_id: uuid.UUID) -> dict[str, obje
     }
 
 
+async def _enforce_mfa_rate_limit(redis: RedisDep, context: AdminBaseDep) -> None:
+    """Share the MFA attempt budget across every session for one admin account."""
+
+    await AdminAuthService.enforce_rate_limit(
+        redis,
+        key=f"admin:mfa:{context.account.id}",
+        limit=settings.admin_login_rate_limit_per_minute,
+    )
+
+
 @router.post("/login")
 async def login(
     payload: LoginRequest,
@@ -222,7 +232,9 @@ async def confirm_mfa(
     request: Request,
     context: AdminBaseDep,
     session: SessionDep,
+    redis: RedisDep,
 ) -> dict[str, object]:
+    await _enforce_mfa_rate_limit(redis, context)
     encrypted = context.account.mfa_secret_encrypted
     if not encrypted:
         raise HTTPException(status_code=409, detail="MFA setup has not started")
@@ -257,6 +269,7 @@ async def step_up(
     request: Request,
     context: AdminBaseDep,
     session: SessionDep,
+    redis: RedisDep,
     x_telegram_init_data: Annotated[str | None, Header()] = None,
 ) -> dict[str, str]:
     if not context.account.mfa_enabled:
@@ -266,6 +279,7 @@ async def step_up(
     telegram_user = AdminAuthService.parse_telegram_init_data(x_telegram_init_data)
     if telegram_user.id != context.user.telegram_id:
         raise HTTPException(status_code=403, detail="Identity mismatch")
+    await _enforce_mfa_rate_limit(redis, context)
     if not AdminAuthService.verify_second_factor(
         context.account,
         otp=payload.otp,
