@@ -185,13 +185,20 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
     if (!files.length || uploading) return;
     setUploading(true); setError("");
     try {
+      const existing = field.control === "files" && Array.isArray(draft?.values[field.name])
+        ? [...draft.values[field.name] as string[]]
+        : [];
+      const maxItems = field.control === "file" ? 1 : field.max_items || 12;
+      const availableSlots = Math.max(0, maxItems - existing.length);
+      if (field.control === "files" && availableSlots === 0) throw new Error(`Можно добавить максимум ${maxItems} файлов`);
+
       const urls: string[] = [];
-      for (const file of files.slice(0, field.control === "file" ? 1 : field.max_items || 12)) {
+      for (const file of files.slice(0, field.control === "file" ? 1 : availableSlots)) {
         if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) throw new Error(`${file.name}: максимум ${field.max_size_mb} МБ`);
         const result = await api.upload(file);
         urls.push(result.url);
       }
-      update(field.name, field.control === "file" ? urls[0] || "" : urls);
+      update(field.name, field.control === "file" ? urls[0] || "" : [...existing, ...urls]);
       notify("success"); haptic("light");
     } catch (reason) {
       notify("error"); setError(reason instanceof Error ? reason.message : "Не удалось загрузить файл");
