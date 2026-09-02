@@ -55,6 +55,7 @@ def test_only_admin_manage_routes_can_mutate_folders() -> None:
     assert '@router.get("/{collection_id}/items")' in source
     assert '@router.post("/manage")' in source
     assert '@router.patch("/manage/{collection_id}")' in source
+    assert '@router.delete("/manage/{collection_id}")' in source
     assert '@router.put("/manage/items/{trend_id}")' in source
     assert "await _inline_admin(session, user_id=user.id)" in source
     assert "AdminPolicy.authorize_action(account, \"social.moderate\", confirmed=True)" in source
@@ -107,7 +108,7 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
     assert "TrendCollectionAdmin" in source
     assert "＋ Новая категория" in admin
     assert "Готовые шаблоны" in admin
-    assert "Описание и хэштеги" in admin
+    assert "Хэштеги категории" in admin
     assert "Управление трендами" in admin
     assert "HomeTrendFolders" in page
 

@@ -24,6 +24,7 @@ router = APIRouter(prefix="/trend-collections", tags=["trend-collections"])
 class CollectionWriteRequest(BaseModel):
     title: str = Field(min_length=1, max_length=80)
     description: str = Field(default="", max_length=240)
+    hashtags: list[str] = Field(default_factory=list, max_length=TrendCollectionService.MAX_HASHTAGS)
     sort_order: int = Field(default=100, ge=-100_000, le=100_000)
     is_active: bool = True
 
@@ -58,6 +59,12 @@ def _request_id(request: Request) -> str:
     return value[:96] if value else f"mini-app:{uuid.uuid4()}"
 
 
+def _collection_payload(payload: CollectionWriteRequest) -> dict[str, Any]:
+    value = payload.model_dump()
+    value["aliases"] = value.pop("hashtags")
+    return value
+
+
 def _domain_error(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
@@ -67,7 +74,7 @@ def _domain_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, (TrendCollectionError, ValueError)):
         return HTTPException(status_code=422, detail=str(exc))
-    return HTTPException(status_code=500, detail="Template folder operation failed")
+    return HTTPException(status_code=500, detail="Template category operation failed")
 
 
 async def _inline_admin(session: SessionDep, *, user_id: uuid.UUID) -> AdminAccount:
@@ -127,14 +134,14 @@ async def list_trend_collections(
         collection = by_id.get(collection_id)
         if collection is None:
             continue
-        payload = trend.payload if isinstance(trend.payload, dict) else {}
-        media_type = str(payload.get("media_type") or "").lower()
+        trend_payload = trend.payload if isinstance(trend.payload, dict) else {}
+        media_type = str(trend_payload.get("media_type") or "").lower()
         if media_type not in {"image", "video"}:
             continue
         collection["item_count"] += 1
         collection["photo_count" if media_type == "image" else "video_count"] += 1
         if not collection["preview_url"]:
-            collection["preview_url"] = payload.get("preview_url")
+            collection["preview_url"] = trend_payload.get("preview_url")
 
     return {"items": collections}
 
@@ -163,13 +170,14 @@ async def create_trend_collection(
         account = await _inline_admin(session, user_id=user.id)
         command_key = _command_key(idempotency_key, "folder-create")
         collection_id = f"folder-{_stable_uuid(scope='folder', admin_id=account.id, command_key=command_key).hex[:12]}"
+        write_payload = _collection_payload(payload)
 
         async def operation() -> dict[str, Any]:
             return await TrendCollectionService.upsert_collection(
                 session,
                 admin_id=account.id,
                 collection_id=collection_id,
-                payload=payload.model_dump(),
+                payload=write_payload,
             )
 
         result, replayed = await AdminCommandLedger.execute(
@@ -264,13 +272,14 @@ async def update_trend_collection(
         state = await TrendCollectionService.state(session)
         if not any(item["id"] == collection_id for item in state["collections"]):
             raise LookupError("Folder not found")
+        write_payload = _collection_payload(payload)
 
         async def operation() -> dict[str, Any]:
             return await TrendCollectionService.upsert_collection(
                 session,
                 admin_id=account.id,
                 collection_id=collection_id,
-                payload=payload.model_dump(),
+                payload=write_payload,
             )
 
         result, replayed = await AdminCommandLedger.execute(
@@ -324,7 +333,7 @@ async def _set_collection_active(
 
 
 @router.delete("/manage/{collection_id}")
-async def hide_trend_collection(
+async def delete_trend_collection(
     collection_id: str,
     request: Request,
     user: CurrentUserDep,
@@ -332,14 +341,27 @@ async def hide_trend_collection(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> dict[str, Any]:
     try:
-        return await _set_collection_active(
-            collection_id,
-            active=False,
-            request=request,
-            user=user,
-            session=session,
-            idempotency_key=idempotency_key,
+        account = await _inline_admin(session, user_id=user.id)
+
+        async def operation() -> dict[str, Any]:
+            return await TrendCollectionService.delete_collection(
+                session,
+                admin_id=account.id,
+                collection_id=collection_id,
+            )
+
+        result, replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=_command_key(idempotency_key, "folder-delete"),
+            admin_user_id=account.id,
+            request_id=_request_id(request),
+            action="social.moderate",
+            target_id=collection_id,
+            request_payload={"operation": "trend_collection.delete"},
+            operation=operation,
         )
+        await session.commit()
+        return {**result, "idempotency_replayed": replayed}
     except Exception as exc:
         await session.rollback()
         raise _domain_error(exc) from exc
