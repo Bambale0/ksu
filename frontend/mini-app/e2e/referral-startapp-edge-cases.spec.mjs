@@ -218,13 +218,17 @@ test('feed target 404 falls back to profile lookup and then shows a safe error',
   expect(audit.remixCalls()).toBe(0);
 });
 
-test('mismatched referral signature disables repeat and share actions', async ({ page }) => {
+test('feed referral identifies the sharer and may differ from the author', async ({ page }) => {
   const payload = `feed_${generationId}_ref_999`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.getByText('Реферальная подпись не совпадает с автором работы.')).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Повторить$/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Скопировать ссылку' })).toBeDisabled();
+  // Shared-work attribution is allowed to differ from publication ownership.
+  await expect(page.getByText('Creator 777')).toBeVisible();
+  await expect(page.getByText('Реферальная подпись не совпадает с автором работы.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Повторить$/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Скопировать ссылку' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Профиль автора' })).toBeEnabled();
+  expect(audit.feedItemCalls).toEqual([{ id: generationId, surface: 'feed' }]);
   expect(audit.remixCalls()).toBe(0);
 });
 
