@@ -159,14 +159,25 @@ function syncStaleQuoteUi(stale: boolean): void {
   }
   if (box?.hasAttribute(QUOTE_STALE_ATTR)) box.removeAttribute(QUOTE_STALE_ATTR);
   if (button?.hasAttribute(QUOTE_STALE_ATTR)) {
-    // The stale guard mutates the DOM `disabled` property outside React. When
-    // React already believes disabled=false it may not write the same prop again,
-    // leaving the physical button locked after a fresh quote. Only undo a
-    // disabled state owned by this guard, identified by our marker.
+    // Only undo the disabled state owned by this stale guard. The release is
+    // scheduled after React has had two animation frames to consume the quote
+    // response and commit its fresh Quote state, preventing an enabled DOM
+    // button whose submit closure still sees quote=null.
     button.disabled = false;
     button.removeAttribute(QUOTE_STALE_ATTR);
   }
 }
+
+function releaseFreshQuoteAfterReactCommit(quoteVersion: number): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (quoteVersionRefForRelease !== null && quoteVersionRefForRelease !== quoteVersion) return;
+      syncStaleQuoteUi(false);
+    });
+  });
+}
+
+let quoteVersionRefForRelease: number | null = null;
 
 function draftMutationEvent(event: Event): boolean {
   const target = event.target;
@@ -207,10 +218,6 @@ export function GenerationQuantityControl() {
   useEffect(() => {
     maxQuantityRef.current = maxQuantity;
     window.__roxyMaxGenerationQuantity = maxQuantity;
-
-    // Keep the ref in sync immediately. MutationObserver callbacks can run before
-    // React commits a state update, so the ref is the authoritative selection at
-    // the DOM bridge between the visible control and RoxyApp's hidden legacy one.
     const clamped = coerceQuantity(quantityRef.current, maxQuantity);
     quantityRef.current = clamped;
     window.__roxyGenerationQuantity = clamped;
@@ -227,6 +234,7 @@ export function GenerationQuantityControl() {
       if (!draftMutationEvent(event)) return;
       quoteStaleRef.current = true;
       quoteVersionRef.current += 1;
+      quoteVersionRefForRelease = quoteVersionRef.current;
       syncStaleQuoteUi(true);
     };
     const keepStaleLocked = () => {
@@ -244,6 +252,7 @@ export function GenerationQuantityControl() {
       document.removeEventListener("click", invalidate, true);
       observer.disconnect();
       quoteStaleRef.current = false;
+      quoteVersionRefForRelease = null;
       syncStaleQuoteUi(false);
     };
   }, []);
@@ -254,17 +263,15 @@ export function GenerationQuantityControl() {
       const publishId = publishedGenerationId(input, init);
       const isQuote = targetQuoteRequest(input, init);
       const quoteVersion = isQuote ? ++quoteVersionRef.current : 0;
+      if (isQuote) quoteVersionRefForRelease = quoteVersion;
       const nextInit = targetGenerationRequest(input, init)
         ? withQuantity(init, quantityRef.current, maxQuantityRef.current)
         : init;
       const response = await originalFetch(input, nextInit);
       if (publishId && response.ok) emitPublished(response, publishId);
       if (isQuote && response.ok && quoteVersionRef.current === quoteVersion) {
-        window.setTimeout(() => {
-          if (quoteVersionRef.current !== quoteVersion) return;
-          quoteStaleRef.current = false;
-          syncStaleQuoteUi(false);
-        }, 0);
+        quoteStaleRef.current = false;
+        releaseFreshQuoteAfterReactCommit(quoteVersion);
       }
       return response;
     }) as typeof window.fetch;
@@ -288,12 +295,6 @@ export function GenerationQuantityControl() {
         const buttons = legacyQuantityButtons(legacy);
         const active = buttons.find(({ button }) => button.classList.contains("active"));
         const intended = coerceQuantity(quantityRef.current, maxQuantityRef.current);
-
-        // On first discovery, preserve RoxyApp's current draft selection, but
-        // clamp an old 5/6 draft to the supported backend maximum. Afterwards the
-        // visible control owns the selection. Never copy a stale legacy `active`
-        // class back into visible state: React may not have committed that class
-        // yet when this MutationObserver runs after a user click.
         const next = alreadySynced
           ? intended
           : coerceQuantity(active?.count || intended, maxQuantityRef.current);
@@ -348,12 +349,11 @@ export function GenerationQuantityControl() {
             className={quantity === count ? "active" : ""}
             aria-pressed={quantity === count}
             onClick={() => {
-              // Set the authoritative value before touching the hidden React
-              // control. Its rerender can synchronously trigger our observer.
               quantityRef.current = count;
               window.__roxyGenerationQuantity = count;
               quoteStaleRef.current = true;
               quoteVersionRef.current += 1;
+              quoteVersionRefForRelease = quoteVersionRef.current;
               syncStaleQuoteUi(true);
               setQuantity(count);
               selectLegacyQuantity(count);
