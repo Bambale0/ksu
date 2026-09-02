@@ -30,6 +30,14 @@ function fingerprint(intent: CheckoutIntent): string {
   });
 }
 
+function removeStoredIntent(store: Storage): void {
+  try {
+    store.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage can be unavailable in hardened/private WebViews. Checkout must still work.
+  }
+}
+
 function readStoredIntent(): StoredIntent | null {
   const store = storage();
   if (!store) return null;
@@ -42,12 +50,12 @@ function readStoredIntent(): StoredIntent | null {
       || typeof parsed.createdAt !== "number"
       || Date.now() - parsed.createdAt > INTENT_TTL_MS
     ) {
-      store.removeItem(STORAGE_KEY);
+      removeStoredIntent(store);
       return null;
     }
     return parsed as StoredIntent;
   } catch {
-    store.removeItem(STORAGE_KEY);
+    removeStoredIntent(store);
     return null;
   }
 }
@@ -58,11 +66,18 @@ export function checkoutIdempotencyKey(intent: CheckoutIntent): string {
   if (existing?.fingerprint === intentFingerprint) return existing.key;
 
   const key = customerIdempotencyKey();
-  storage()?.setItem(STORAGE_KEY, JSON.stringify({
-    fingerprint: intentFingerprint,
-    key,
-    createdAt: Date.now(),
-  } satisfies StoredIntent));
+  const store = storage();
+  if (store) {
+    try {
+      store.setItem(STORAGE_KEY, JSON.stringify({
+        fingerprint: intentFingerprint,
+        key,
+        createdAt: Date.now(),
+      } satisfies StoredIntent));
+    } catch {
+      // Falling back to an in-request key is safer than blocking payment entirely.
+    }
+  }
   return key;
 }
 
@@ -70,5 +85,6 @@ export function clearCheckoutIdempotencyKey(intent: CheckoutIntent, key: string)
   const existing = readStoredIntent();
   if (!existing) return;
   if (existing.fingerprint !== fingerprint(intent) || existing.key !== key) return;
-  storage()?.removeItem(STORAGE_KEY);
+  const store = storage();
+  if (store) removeStoredIntent(store);
 }
