@@ -147,6 +147,15 @@ def test_admin_freshness_guard_is_wired_before_route_handlers() -> None:
     assert '"Invalid or expired Telegram initData"' in middleware
 
 
+def test_admin_mfa_verification_uses_shared_account_rate_limit() -> None:
+    auth = (ROOT / "app/api/v1/admin_auth.py").read_text(encoding="utf-8")
+    assert 'key=f"admin:mfa:{context.account.id}"' in auth
+    assert "limit=settings.admin_login_rate_limit_per_minute" in auth
+    assert auth.count("await _enforce_mfa_rate_limit(redis, context)") == 2
+    assert "async def confirm_mfa(" in auth
+    assert "async def step_up(" in auth
+
+
 def test_datetime_timezone_sanity() -> None:
     # Regression guard: admin session helpers use aware UTC datetimes.
     assert datetime.now(UTC).tzinfo is not None
