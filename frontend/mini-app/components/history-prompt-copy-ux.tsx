@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
+import { resolveRenderedGeneration } from "@/lib/rendered-generation-identity";
 import { haptic } from "@/lib/telegram";
 import type { Generation } from "@/lib/types";
 
@@ -41,7 +42,7 @@ async function copyText(value: string): Promise<boolean> {
   }
 }
 
-function promptFor(item: Generation | undefined): string {
+function promptFor(item: Generation | null | undefined): string {
   if (!item?.prompt || item.prompt_hidden || !item.prompt.trim()) return "";
   return item.prompt;
 }
@@ -107,10 +108,14 @@ export function HistoryPromptCopyUx() {
       await loadUntil(cards.length);
       if (!active) return;
 
-      cards.forEach((card, index) => {
-        const prompt = promptFor(generations.current[index]);
+      cards.forEach((card) => {
+        const generation = resolveRenderedGeneration(card, generations.current);
+        const prompt = promptFor(generation);
         let target = card.querySelector<HTMLElement>(HISTORY_PROMPT_SELECTOR);
         if (!prompt) {
+          // Never use list position as a fallback. If a newer work shifted the
+          // enhancer's snapshot, ambiguity must hide this convenience action
+          // instead of exposing another generation's prompt.
           target?.remove();
           return;
         }
@@ -124,6 +129,7 @@ export function HistoryPromptCopyUx() {
           card.appendChild(target);
         }
         target.dataset.prompt = prompt;
+        target.dataset.generationId = generation?.id || "";
         if (target.textContent !== prompt) target.textContent = prompt;
       });
     };
