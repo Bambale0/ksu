@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import socket
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -54,6 +55,28 @@ def _provider_urls(generation: Generation) -> list[str]:
     return values
 
 
+async def _asset_source_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
+    assets = list(
+        (
+            await session.scalars(
+                select(MediaAsset)
+                .where(MediaAsset.generation_id == generation.id)
+                .order_by(MediaAsset.ordinal)
+            )
+        ).all()
+    )
+    values: list[str] = []
+    for asset in assets:
+        value = str(asset.source_url or "").strip()
+        if (
+            value.startswith("https://")
+            and not FeedStaticStorage.is_local_url(value)
+            and value not in values
+        ):
+            values.append(value)
+    return values
+
+
 def _ensure_previews(urls: list[str]) -> None:
     for url in urls:
         FeedPreviewService.preview_url_for(url)
@@ -98,28 +121,41 @@ async def _persist_generation(session, generation: Generation) -> bool:  # type:
         return False
 
     provider_sources = _provider_urls(generation)
-    candidates = provider_sources
-    try:
-        if not candidates:
-            raise FeedStaticStorageError("no provider URLs")
+    asset_sources = await _asset_source_urls(session, generation)
+    source_sets: list[list[str]] = []
+    for candidates in (provider_sources, asset_sources):
+        if candidates and candidates not in source_sets:
+            source_sets.append(candidates)
+
+    persisted = None
+    used_sources: list[str] = []
+    last_error: Exception = FeedStaticStorageError("no recoverable provider or asset URLs")
+    for candidates in source_sets:
+        try:
+            persisted = await FeedStaticStorage.persist_urls(
+                candidates,
+                generation_id=generation.id,
+            )
+        except (FeedStaticStorageError, socket.gaierror) as exc:
+            last_error = exc
+            continue
+        used_sources = candidates
+        break
+
+    if persisted is None:
+        s3_sources = await _s3_urls(session, generation)
+        if not s3_sources:
+            raise last_error
         persisted = await FeedStaticStorage.persist_urls(
-            candidates,
-            generation_id=generation.id,
-        )
-    except FeedStaticStorageError:
-        candidates = await _s3_urls(session, generation)
-        if not candidates:
-            raise
-        persisted = await FeedStaticStorage.persist_urls(
-            candidates,
+            s3_sources,
             generation_id=generation.id,
         )
 
     public_urls = [item.public_url for item in persisted]
     _ensure_previews(public_urls)
     params = dict(generation.parameters or {})
-    if provider_sources:
-        params["_provider_result_urls"] = provider_sources
+    if used_sources:
+        params["_provider_result_urls"] = used_sources
     params["_result_urls"] = public_urls
     params["_feed_static"] = True
     generation.parameters = params
