@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { OnboardingRequiredBoundary } from "@/components/onboarding-required-boundary";
 import { TelegramAuthBoundary } from "@/components/telegram-auth-boundary";
 import "./globals.css";
+import "./browser-landing.css";
 import "./loader.css";
 import "./catalog.css";
 import "./ux-polish.css";
