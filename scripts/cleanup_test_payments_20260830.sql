@@ -19,7 +19,6 @@ WHERE created_at >= TIMESTAMPTZ '2026-08-30 00:00:00+00'
   AND (
        user_id = '90120784-86d7-4771-91c9-3ee54eabdf24'
        OR coalesce(payload->>'billing_email','') LIKE 'smoke+%@%'
-       OR coalesce(payload->>'billing_email','') = 'buyer@example.com'
        OR coalesce(external_id,'') LIKE 'card-bonus%'
        OR coalesce(external_id,'') LIKE 'card-fixed%'
        OR coalesce(payload->>'payment_url','') LIKE '%pay.example%'
