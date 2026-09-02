@@ -5,10 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { StandaloneShell } from "@/components/standalone-shell";
 import {
   compactNumber,
-  customerIdempotencyKey,
   customerRequest,
   dateTime,
 } from "@/lib/customer-api";
+import {
+  checkoutIdempotencyKey,
+  clearCheckoutIdempotencyKey,
+  type CheckoutIntent,
+} from "@/lib/payment-idempotency";
 import { openPaymentLink } from "@/lib/telegram";
 
 type Currency = "RUB" | "USD" | "EUR";
@@ -45,6 +49,7 @@ type Payment = {
 
 const TERMINAL = new Set(["succeeded", "refunded", "partially_refunded", "failed", "canceled", "expired"]);
 const CRYPTOBOT_PROVIDER = "cryptobot";
+const AMBIGUOUS_CREATION = new Set(["creating", "creation_unknown"]);
 
 function initialProvider(): Provider {
   if (typeof window !== "undefined") {
@@ -177,6 +182,14 @@ export default function PaymentsPage() {
 
   const checkout = async () => {
     if (!packageId || !price || busy || (provider === "card" && !email.trim())) return;
+    const intent: CheckoutIntent = {
+      provider,
+      packageId,
+      currency: activeCurrency,
+      billingEmail: provider === "card" ? email.trim() : "",
+    };
+    const requestKey = checkoutIdempotencyKey(intent);
+
     setBusy("checkout");
     setError("");
     setNotice("");
@@ -185,25 +198,25 @@ export default function PaymentsPage() {
       if (provider === "yookassa") {
         payment = await customerRequest<Payment>("/api/v1/payments", {
           method: "POST",
-          headers: { "Idempotency-Key": customerIdempotencyKey() },
+          headers: { "Idempotency-Key": requestKey },
           body: JSON.stringify({ provider: "yookassa", package_id: packageId }),
         });
       } else if (provider === "cryptobot") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
           method: "POST",
-          headers: { "Idempotency-Key": customerIdempotencyKey() },
+          headers: { "Idempotency-Key": requestKey },
           body: JSON.stringify({ package_id: packageId }),
         });
       } else if (provider === "2328") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", {
           method: "POST",
-          headers: { "Idempotency-Key": customerIdempotencyKey() },
+          headers: { "Idempotency-Key": requestKey },
           body: JSON.stringify({ package_id: packageId }),
         });
       } else {
         payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", {
           method: "POST",
-          headers: { "Idempotency-Key": customerIdempotencyKey() },
+          headers: { "Idempotency-Key": requestKey },
           body: JSON.stringify({
             package_id: packageId,
             currency,
@@ -217,15 +230,42 @@ export default function PaymentsPage() {
         payment,
         ...current.filter((item) => item.id !== payment.id),
       ]);
-      if (payment.payment_url && !openPaymentLink(payment.payment_url)) {
+
+      if (AMBIGUOUS_CREATION.has(payment.status)) {
+        setNotice(
+          "Предыдущая попытка оплаты уже зарегистрирована. Второй счёт не создаём — проверьте её статус в истории ниже.",
+        );
+        return;
+      }
+
+      if (!payment.payment_url) {
+        if (TERMINAL.has(payment.status)) {
+          clearCheckoutIdempotencyKey(intent, requestKey);
+          setNotice(
+            payment.status === "succeeded"
+              ? "Оплата уже подтверждена, ROX начислены."
+              : `Текущий статус оплаты: ${payment.status}`,
+          );
+        } else {
+          setNotice(
+            "Оплата уже зарегистрирована, но ссылка ещё не получена. Второй счёт не создаём — проверьте статус в истории ниже.",
+          );
+        }
+        return;
+      }
+
+      if (!openPaymentLink(payment.payment_url)) {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
+      clearCheckoutIdempotencyKey(intent, requestKey);
       setNotice(
         provider === "card"
           ? "Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус»."
           : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.`,
       );
     } catch (reason) {
+      // Keep the request key for an ambiguous transport/provider failure. A retry
+      // must target the same local payment intent instead of creating another bill.
       setError(reason instanceof Error ? reason.message : "Не удалось создать оплату");
     } finally {
       setBusy(null);
