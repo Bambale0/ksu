@@ -156,6 +156,16 @@ def test_admin_mfa_verification_uses_shared_account_rate_limit() -> None:
     assert "async def step_up(" in auth
 
 
+def test_admin_recovery_code_consumption_uses_row_lock_and_refresh() -> None:
+    auth = (ROOT / "app/api/v1/admin_auth.py").read_text(encoding="utf-8")
+    assert "async def _lock_admin_for_recovery_code(" in auth
+    assert ".with_for_update()" in auth
+    assert ".execution_options(populate_existing=True)" in auth
+    assert auth.count("await _lock_admin_for_recovery_code(session,") == 2
+    assert "if payload.recovery_code and admin.mfa_enabled:" in auth
+    assert "if payload.recovery_code:" in auth
+
+
 def test_datetime_timezone_sanity() -> None:
     # Regression guard: admin session helpers use aware UTC datetimes.
     assert datetime.now(UTC).tzinfo is not None
