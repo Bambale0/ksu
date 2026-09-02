@@ -127,8 +127,10 @@ test('feed author profile action overrides sticky Telegram feed start_param', as
   await expect(page).toHaveURL(/\/mini-app\/?\?start_payload=profile_777/);
   await expect(page.getByText('Профиль ROXY')).toBeVisible();
   await expect(page.getByText('Creator', { exact: true })).toBeVisible();
-  await expect(page.getByText('@creator')).toBeVisible();
-  await expect(page.getByText('12')).toBeVisible();
+  await expect(page.getByText('@creator')).toHaveCount(1);
+  await expect(page.getByText('12', { exact: true })).toBeVisible();
+  await expect(page.getByText('подписчиков', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Подписаться' })).toBeVisible();
 });
 
 test('remix startapp opens the repeat screen for the exact work', async ({ page }) => {
