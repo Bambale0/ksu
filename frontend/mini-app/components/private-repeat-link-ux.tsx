@@ -17,6 +17,7 @@ export function PrivateRepeatLinkUx() {
   const hasMore = useRef(true);
   const loading = useRef<Promise<void> | null>(null);
   const selectedGeneration = useRef<string | null>(null);
+  const previewLoads = useRef(new Set<string>());
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -30,6 +31,7 @@ export function PrivateRepeatLinkUx() {
 
   useEffect(() => {
     let active = true;
+    let queued = false;
 
     const loadUntil = async (count: number) => {
       if (generations.current.length >= count || !hasMore.current) return;
@@ -51,6 +53,22 @@ export function PrivateRepeatLinkUx() {
       })().catch(() => undefined).finally(() => { loading.current = null; });
       loading.current = task;
       await task;
+    };
+
+    const loadExactGeneration = async (generationId: string): Promise<Generation | null> => {
+      const known = generations.current.find((item) => item.id === generationId);
+      if (known) return known;
+      if (previewLoads.current.has(generationId)) return null;
+      previewLoads.current.add(generationId);
+      try {
+        const generation = await api.generation(generationId);
+        if (active && !generations.current.some((item) => item.id === generation.id)) {
+          generations.current = [...generations.current, generation];
+        }
+        return generation;
+      } catch {
+        return null;
+      }
     };
 
     const makeButton = (generationId: string, preview = false) => {
@@ -78,6 +96,7 @@ export function PrivateRepeatLinkUx() {
           return;
         }
         if (!existing) card.appendChild(makeButton(generation.id));
+        else existing.dataset.privateRepeatLink = generation.id;
       });
 
       const previewActions = document.querySelector<HTMLElement>(".preview-card .preview-actions");
@@ -89,13 +108,24 @@ export function PrivateRepeatLinkUx() {
       }
       const fromUrl = new URL(window.location.href).searchParams.get("generation");
       const generationId = selectedGeneration.current || fromUrl;
-      const generation = generationId ? generations.current.find((item) => item.id === generationId) : null;
+      let generation = generationId ? generations.current.find((item) => item.id === generationId) || null : null;
+      if (generationId && !generation) generation = await loadExactGeneration(generationId);
+      if (!active) return;
       if (!generation || generation.status !== "succeeded" || generation.prompt_actions_allowed === false) {
         existingPreview?.remove();
         return;
       }
       if (!existingPreview) previewActions.appendChild(makeButton(generation.id, true));
       else existingPreview.dataset.privateRepeatLink = generation.id;
+    };
+
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(() => {
+        queued = false;
+        void decorate();
+      });
     };
 
     const cardFromTarget = (target: EventTarget | null): HTMLElement | null => {
@@ -145,18 +175,9 @@ export function PrivateRepeatLinkUx() {
       if (index >= 0) {
         void loadUntil(index + 1).then(() => {
           selectedGeneration.current = generations.current[index]?.id || null;
+          schedule();
         });
       }
-    };
-
-    let queued = false;
-    const schedule = () => {
-      if (queued) return;
-      queued = true;
-      window.requestAnimationFrame(() => {
-        queued = false;
-        void decorate();
-      });
     };
 
     schedule();
