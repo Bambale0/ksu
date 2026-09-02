@@ -65,11 +65,10 @@ function repairStandaloneReturnLocation(): void {
   }
 }
 
-function returnFromStandalone() {
+function returnFromStandalone(returnTo: string | null) {
   haptic("light");
   if (typeof window === "undefined") return;
 
-  const returnTo = consumeMiniAppReturnLocation();
   const target = returnTo || "/mini-app/?route=home";
   try {
     // Mark the exact destination so its StandaloneShell can discard a stale
@@ -109,15 +108,19 @@ export function StandaloneShell({
   useEffect(() => {
     const tg = initTelegram();
     const safe = () => syncSafeArea(tg);
-    const back = () => returnFromStandalone();
     tg?.ready?.();
     tg?.expand?.();
     tg?.BackButton?.show?.();
-    tg?.BackButton?.onClick?.(back);
-    // Managed BackButton.show() remembers the current page. Repair the return
-    // target only after all Telegram BackButton setup has completed so the
-    // repaired parent cannot be overwritten by the setup itself.
+
+    // The generic return tracker and Telegram chrome can write sessionStorage
+    // again after this effect. Repair once, then capture and consume the verified
+    // parent before registering native Back so late writes can never turn Back
+    // into a self-loop.
     repairStandaloneReturnLocation();
+    const returnTo = consumeMiniAppReturnLocation();
+    const back = () => returnFromStandalone(returnTo);
+    tg?.BackButton?.onClick?.(back);
+
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
