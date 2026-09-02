@@ -55,6 +55,12 @@ async function mockApi(page) {
         cost_rub: pro ? '30.00' : '10.00',
       });
     }
+    if (path === '/api/v1/generations' && request.method() === 'POST') {
+      return json({ id: 'gen-1', status: 'queued' });
+    }
+    if (path === '/api/v1/generations/gen-1') {
+      return json({ id: 'gen-1', status: 'succeeded', model, result_url: 'https://example.test/result.png' });
+    }
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
@@ -92,4 +98,14 @@ test('changing a price-sensitive field invalidates the old quote before the next
   await expect(create).toBeEnabled();
   await expect(create).not.toHaveAttribute('data-roxy-quote-stale', 'true');
   await expect(create).toContainText('Создать · 30 ROX');
+
+  const generationRequestPromise = page.waitForRequest((request) => {
+    const path = new URL(request.url()).pathname;
+    return path === '/api/v1/generations' && request.method() === 'POST';
+  });
+  await create.click();
+  const generationRequest = await generationRequestPromise;
+  const submitted = generationRequest.postDataJSON();
+  expect(submitted.parameters.quality).toBe('pro');
+  expect(submitted.prompt).toBe('Тест billing race');
 });
