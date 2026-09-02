@@ -107,31 +107,31 @@ function validate(model: GenerationModel, draft: Draft): string[] {
   return [...new Set(errors)];
 }
 
-function FieldControl({ field, value, disabled, onChange, onUpload }: {
+function ReferenceFieldControl({ field, value, disabled, onUpload }: {
   field: UiField;
   value: unknown;
   disabled: boolean;
-  onChange: (value: unknown) => void;
   onUpload: (files: File[]) => void;
 }) {
-  const label = field.name === "prompt" ? "Описание" : field.label;
-  if (field.control === "file" || field.control === "files") {
-    const items = Array.isArray(value) ? value : value ? [value] : [];
-    return <label className="field"><span className="label">{label}{field.required ? " · обязательно" : ""}</span><span className="upload-control"><span>{disabled ? "Загружаю…" : items.length ? `Добавлено: ${items.length} · выбрать ещё` : "Добавить свой файл"}</span><input type="file" accept={field.accept} multiple={field.control === "files"} disabled={disabled} onChange={(event) => { const files = Array.from(event.currentTarget.files || []); event.currentTarget.value = ""; onUpload(files); }} /></span>{items.length ? <small className="muted">Файлы автора сюда не передаются — используются только ваши загрузки.</small> : null}</label>;
-  }
-  if (field.control === "toggle") {
-    return <label className="toggle-row"><span><strong>{label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><i /></label>;
-  }
-  if (field.suggestions?.length) {
-    return <label className="field"><span className="label">{label}</span><select className="control" value={String(value ?? "")} onChange={(event) => onChange(event.target.value)}><option value="">Выберите</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
-  }
-  if (field.control === "number") {
-    return <label className="field"><span className="label">{label}</span><input className="control" type="number" min={field.min} max={field.max} step={field.step} value={String(value ?? "")} onChange={(event) => onChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>;
-  }
-  if (field.control === "textarea" || field.control === "json") {
-    return <label className="field"><span className="label">{label}</span><textarea className="control textarea" rows={field.control === "json" ? 5 : 3} value={typeof value === "string" ? value : field.control === "json" && value ? JSON.stringify(value, null, 2) : String(value ?? "")} placeholder={field.placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
-  }
-  return <label className="field"><span className="label">{label}</span><input className="control" value={String(value ?? "")} placeholder={field.placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return <label className="field">
+    <span className="label">{field.label}{field.required ? " · обязательно" : ""}</span>
+    <span className="upload-control">
+      <span>{disabled ? "Загружаю…" : items.length ? `Добавлено: ${items.length} · выбрать ещё` : "Добавить свой файл"}</span>
+      <input
+        type="file"
+        accept={field.accept}
+        multiple={field.control === "files"}
+        disabled={disabled}
+        onChange={(event) => {
+          const files = Array.from(event.currentTarget.files || []);
+          event.currentTarget.value = "";
+          onUpload(files);
+        }}
+      />
+    </span>
+    {items.length ? <small className="muted">Используются только ваши загрузки.</small> : null}
+  </label>;
 }
 
 export function PrivateRepeatStartApp({ token }: { token: string }) {
@@ -164,7 +164,9 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
   }, [token]);
 
   const errors = useMemo(() => model && draft ? validate(model, draft) : [], [draft, model]);
-  const fields = useMemo(() => model && draft ? visibleFields(model, draft.scenario).filter((field) => field.name !== "prompt") : [], [draft, model]);
+  const referenceFields = useMemo(() => model && draft
+    ? visibleFields(model, draft.scenario).filter((field) => field.control === "file" || field.control === "files")
+    : [], [draft, model]);
 
   useEffect(() => {
     if (!model || !draft || errors.length || uploading || submitting) { setQuote(null); return; }
@@ -217,20 +219,31 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
     }
   };
 
-  return <StandaloneShell kicker="Приватный повтор" title={model?.title || "Повторить в ROXY"} copy="Исходная работа остаётся приватной. Ссылка переносит только идею и безопасные настройки — фото, видео и другие файлы автора не передаются.">
-    {loading ? <div className="panel tool-panel"><p className="muted">Открываю настройки повтора…</p></div> : null}
+  return <StandaloneShell
+    kicker="Приватный повтор"
+    title={model?.title || "Повторить в ROXY"}
+    copy="Промпт и настройки исходной работы скрыты. Добавьте только свои референсы — остальное ROXY повторит автоматически."
+  >
+    {loading ? <div className="panel tool-panel"><p className="muted">Открываю повтор…</p></div> : null}
     {error ? <div className="action-error" role="alert">{error}</div> : null}
     {recipe && model && draft ? <div className="tool-grid">
       <div className="panel tool-panel">
-        <span className="kicker">1 · Идея</span>
-        <label className="field"><span className="label">Описание</span><textarea className="control textarea" rows={4} maxLength={8000} value={draft.prompt} onChange={(event) => setDraft((current) => current ? { ...current, prompt: event.target.value } : current)} /></label>
-        {recipe.references_required ? <div className="panel" style={{ padding: 12 }}><strong>Добавьте свои референсы</strong><p className="muted">У автора в этой генерации были свои файлы. Из соображений приватности ROXY их не показывает и не копирует.</p></div> : null}
-        {fields.map((field) => <FieldControl key={field.name} field={field} value={draft.values[field.name]} disabled={uploading} onChange={(value) => update(field.name, value)} onUpload={(files) => void upload(field, files)} />)}
-        {model.ui_schema?.billing_seconds ? <label className="field"><span className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</span><input className="control" type="number" min={model.ui_schema.billing_seconds.min} max={model.ui_schema.billing_seconds.max} value={draft.billingSeconds ?? ""} onChange={(event) => setDraft((current) => current ? { ...current, billingSeconds: event.target.value ? Number(event.target.value) : null } : current)} /></label> : null}
+        <span className="kicker">1 · Референс</span>
+        <div className="panel" style={{ padding: 12 }}>
+          <strong>{recipe.references_required ? "Добавьте свой референс" : "Всё готово к повтору"}</strong>
+          <p className="muted">Промпт и исходные настройки не показываются и не редактируются. ROXY использует их автоматически.</p>
+        </div>
+        {referenceFields.map((field) => <ReferenceFieldControl
+          key={field.name}
+          field={field}
+          value={draft.values[field.name]}
+          disabled={uploading}
+          onUpload={(files) => void upload(field, files)}
+        />)}
       </div>
       <aside className="panel tool-panel">
         <span className="kicker">2 · Запуск</span><h2>{model.title}</h2>
-        <p className="muted">Никакой публикации не происходит. Новая работа тоже будет приватной, пока вы сами не решите её опубликовать.</p>
+        <p className="muted">Новая работа останется приватной, пока вы сами не решите её опубликовать.</p>
         <div className="quote-box"><span>Стоимость</span><strong>{quote?.cost_rox ? `${quote.cost_rox} ROX` : "—"}</strong><small>{errors[0] || (quote ? "Можно запускать" : "Считаю…")}</small></div>
         <button className="primary wide" type="button" disabled={!quote || Boolean(errors.length) || uploading || submitting} onClick={() => void launch()}>{submitting ? "Запускаю…" : quote?.cost_rox ? `Повторить · ${quote.cost_rox} ROX` : "Повторить"}</button>
         <button className="secondary wide" type="button" disabled={submitting} onClick={() => window.location.assign("/mini-app/?route=home")}>На главную</button>
