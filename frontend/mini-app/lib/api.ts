@@ -115,6 +115,15 @@ function promptVisibleForPublish(normalized: PublishOptions): boolean {
   return Boolean(normalized.promptVisible);
 }
 
+function normalizeCustomerQuote(quote: Quote): Quote {
+  // Generation quote responses carry both the public retail price and the
+  // account-specific charge. Customer UI must always treat `cost_rox` as the
+  // amount that will actually be debited; the retail amount remains available
+  // separately as `retail_cost_rox` for disclosure/analytics.
+  if (quote.effective_cost_rox == null) return quote;
+  return { ...quote, cost_rox: quote.effective_cost_rox };
+}
+
 function idempotencyKey(prefix: string): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}:${crypto.randomUUID()}`;
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -136,7 +145,7 @@ export const api = {
   generations: (params = "limit=24") => request<{ items: Generation[]; has_more: boolean; next_before?: string | null }>(`/api/v1/generations?${params}`),
   generation: (id: string) => request<Generation>(`/api/v1/generations/${encodeURIComponent(id)}`),
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
-  quote: (body: Record<string, unknown>) => request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) }),
+  quote: async (body: Record<string, unknown>) => normalizeCustomerQuote(await request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) })),
   create: (body: Record<string, unknown>) => request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) }),
   upload: (file: File) => {
     const form = new FormData();
