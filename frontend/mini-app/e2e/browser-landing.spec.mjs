@@ -23,7 +23,9 @@ test('browser visitors see the full ROXY landing with working sections', async (
   await expect(page.locator('#how')).toContainText('Три шага от идеи до результата');
   await expect(page.locator('#examples')).toContainText('Найди свой визуальный стиль');
   await expect(page.locator('#telegram-login')).toContainText('Войти с Telegram');
-  await expect(page.locator('.roxy-landing-hero-art img')).toHaveAttribute('src', /^data:image\/webp;base64,/);
+  const hero = page.locator('.roxy-landing-hero-art img');
+  await expect(hero).toHaveAttribute('src', /^data:image\/webp;base64,/);
+  await expect.poll(() => hero.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(page.getByText('KSU')).toHaveCount(0);
 });
 
