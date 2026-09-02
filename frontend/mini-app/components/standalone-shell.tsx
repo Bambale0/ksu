@@ -84,9 +84,13 @@ function returnFromStandalone() {
   window.location.replace(target);
 }
 
-function openMainRoute(route: "home" | "profile"): void {
+function openMainRoute(route: "home"): void {
   clearStoredLaunchPayload();
   window.location.assign(`/mini-app/?route=${route}`);
+}
+
+function openPayments(): void {
+  window.location.assign("/mini-app/payments/");
 }
 
 export function StandaloneShell({
@@ -141,7 +145,7 @@ export function StandaloneShell({
         <button
           className="balance-button"
           type="button"
-          onClick={() => openMainRoute("profile")}
+          onClick={openPayments}
         >
           <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
         </button>
