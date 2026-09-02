@@ -164,9 +164,9 @@ test('History enhancers keep the rendered work identity when a newer generation 
   await expect(repeat).toHaveAttribute('data-private-repeat-link', aId);
 
   const request = page.waitForRequest((candidate) => candidate.method() === 'POST' && candidate.url().includes('/repeat-link'));
-  // This synthetic preview is intentionally outside the live ROXY layout. The
-  // regression is about identity binding, not bottom-nav pointer hit-testing.
-  await repeat.click({ force: true });
+  // This preview is intentionally synthetic. Trigger the DOM click directly so
+  // the test exercises the enhancer's delegated handler without layout hit-testing.
+  await repeat.evaluate((element) => element.click());
   const posted = await request;
   expect(new URL(posted.url()).pathname).toBe(`/api/v1/generations/${aId}/repeat-link`);
   await expect.poll(() => page.evaluate(() => window.__copiedText)).toBe('https://t.me/roxy_bot/app?startapp=repeat_a');
