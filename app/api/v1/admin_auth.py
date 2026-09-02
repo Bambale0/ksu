@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.api.admin_deps import AdminBaseDep
 from app.api.deps import RedisDep, SessionDep
 from app.core.config import settings
-from app.db.models import AdminSession
+from app.db.models import AdminAccount, AdminSession
 from app.services.admin_security import (
     AdminAuditService,
     AdminAuthService,
@@ -69,6 +69,23 @@ async def _enforce_mfa_rate_limit(redis: RedisDep, context: AdminBaseDep) -> Non
     )
 
 
+async def _lock_admin_for_recovery_code(
+    session: SessionDep,
+    admin_id: uuid.UUID,
+) -> AdminAccount:
+    """Serialize one-time recovery-code consumption and refresh stale identity state."""
+
+    admin = await session.scalar(
+        select(AdminAccount)
+        .where(AdminAccount.id == admin_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if admin is None or not admin.is_active:
+        raise HTTPException(status_code=403, detail="Admin account unavailable")
+    return admin
+
+
 @router.post("/login")
 async def login(
     payload: LoginRequest,
@@ -102,6 +119,9 @@ async def login(
         )
         await session.commit()
         raise HTTPException(status_code=403, detail="Admin access denied")
+
+    if payload.recovery_code and admin.mfa_enabled:
+        admin = await _lock_admin_for_recovery_code(session, admin.id)
 
     now = utcnow()
     if admin.locked_until is not None and admin.locked_until > now:
@@ -280,8 +300,17 @@ async def step_up(
     if telegram_user.id != context.user.telegram_id:
         raise HTTPException(status_code=403, detail="Identity mismatch")
     await _enforce_mfa_rate_limit(redis, context)
+
+    admin = context.account
+    if payload.recovery_code:
+        admin = await _lock_admin_for_recovery_code(session, admin.id)
+        if not AdminAuthService.session_is_valid(context.session, admin):
+            raise HTTPException(status_code=401, detail="Admin session expired")
+        if not admin.mfa_enabled:
+            raise HTTPException(status_code=403, detail="MFA must be enabled")
+
     if not AdminAuthService.verify_second_factor(
-        context.account,
+        admin,
         otp=payload.otp,
         recovery_code=payload.recovery_code,
     ):
@@ -289,7 +318,7 @@ async def step_up(
             session,
             action="admin.step_up",
             outcome="failure",
-            admin=context.account,
+            admin=admin,
             admin_session=context.session,
             request=request,
             reason="Invalid second factor",
@@ -303,7 +332,7 @@ async def step_up(
         session,
         action="admin.step_up",
         outcome="success",
-        admin=context.account,
+        admin=admin,
         admin_session=context.session,
         request=request,
     )
