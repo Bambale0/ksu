@@ -25,6 +25,7 @@ from app.core.http_security import SecurityHeadersMiddleware
 from app.core.logging import configure_logging
 from app.core.observability import configure_telemetry, shutdown_telemetry
 from app.core.pricing_runtime_sync import PricingRuntimeSyncMiddleware
+from app.core.webhook_body_limit import WebhookBodyLimitMiddleware
 from app.db.session import SessionFactory, engine
 from app.services.abuse_protection import ProtectionBackendUnavailable, ResourcePolicyError
 from app.services.admin_pricing import AdminPricingService
@@ -113,6 +114,10 @@ app = FastAPI(
     redoc_url=None if settings.is_production else "/redoc",
     lifespan=lifespan,
 )
+# Register the body limiter before the security middleware so Starlette keeps
+# SecurityHeadersMiddleware outside it and even 413 responses retain the normal
+# request/security headers. The limiter itself sits before FastAPI route parsing.
+app.add_middleware(WebhookBodyLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestObservabilityMiddleware)
 app.add_middleware(PricingRuntimeSyncMiddleware)
