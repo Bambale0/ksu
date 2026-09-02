@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { saveBrowserInitData } from "@/lib/browser-auth-session";
+import { ROXY_LANDING_HERO } from "@/lib/roxy-landing-hero";
 import { getStartParamFallback } from "@/lib/telegram";
 
 type TelegramLoginUser = {
@@ -153,7 +154,7 @@ export function TelegramBrowserLogin() {
         </div>
         <div className="roxy-landing-hero-art">
           <div className="roxy-hero-halo" aria-hidden="true" />
-          <img src="/mini-app/roxy-landing/hero.webp" width="420" height="525" alt="ROXY — AI-студия для создания фото и видео" fetchPriority="high" />
+          <img src={ROXY_LANDING_HERO} width="320" height="400" alt="ROXY — AI-студия для создания фото и видео" fetchPriority="high" />
         </div>
       </section>
 
@@ -164,7 +165,7 @@ export function TelegramBrowserLogin() {
         </div>
         <div className="roxy-landing-showpiece">
           <div><span className="roxy-landing-pill">ROXY Creative Studio</span><h3>Одна идея — много способов воплотить её</h3><p>Выбирай модель вручную или просто добавляй референс: ROXY подстроит сценарий создания под задачу.</p></div>
-          <img src="/mini-app/roxy-landing/hero.webp" width="420" height="525" alt="Инструменты ROXY" loading="lazy" />
+          <img src={ROXY_LANDING_HERO} width="320" height="400" alt="Инструменты ROXY" loading="lazy" />
         </div>
       </section>
 
@@ -183,9 +184,9 @@ export function TelegramBrowserLogin() {
         </div>
         <div className="roxy-example-stage">
           <div className="roxy-example-mosaic" aria-label="Примеры визуального стиля ROXY">
-            <figure><img src="/mini-app/roxy-landing/hero.webp" alt="AI изображение в ROXY" width="420" height="525" loading="lazy" /></figure>
-            <figure><img src="/mini-app/roxy-landing/hero.webp" alt="AI видео в ROXY" width="420" height="525" loading="lazy" /></figure>
-            <figure><img src="/mini-app/roxy-landing/hero.webp" alt="Интерфейс ROXY" width="420" height="525" loading="lazy" /></figure>
+            <figure><img src={ROXY_LANDING_HERO} alt="AI изображение в ROXY" width="320" height="400" loading="lazy" /></figure>
+            <figure><img src={ROXY_LANDING_HERO} alt="AI видео в ROXY" width="320" height="400" loading="lazy" /></figure>
+            <figure><img src={ROXY_LANDING_HERO} alt="Интерфейс ROXY" width="320" height="400" loading="lazy" /></figure>
           </div>
           <div className="roxy-example-copy"><span className="roxy-landing-pill">Фото · Видео · Тренды</span><h3>Не начинай каждый раз с нуля</h3><p>Выбирай готовую идею, добавляй свой референс и адаптируй результат под себя.</p><a className="roxy-landing-button roxy-landing-button-ghost" href={launchHref} target={launchTarget} rel={launchRel}>Открыть ROXY</a></div>
         </div>
