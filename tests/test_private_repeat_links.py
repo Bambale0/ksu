@@ -88,9 +88,11 @@ def test_private_repeat_frontend_is_independent_from_publication() -> None:
     assert "PrivateRepeatStartApp" in repeat_page
     assert "TOKEN_RE" in repeat_page
     assert "privateRepeatApi.resolve(token)" in flow
-    assert "Исходная работа остаётся приватной" in flow
-    assert "файлы автора не передаются" in flow
-    assert "Никакой публикации не происходит" in flow
+    assert "Промпт и настройки исходной работы скрыты" in flow
+    assert "Промпт и исходные настройки не показываются и не редактируются" in flow
+    assert 'field.control === "file" || field.control === "files"' in flow
+    assert '<span className="label">Описание</span>' not in flow
+    assert "Новая работа останется приватной" in flow
     assert "Скопировать ссылку на повтор" in button
     assert "работа осталась приватной" in button
     assert "privateRepeatApi.createLink(generationId)" in button
