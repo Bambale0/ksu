@@ -27,6 +27,10 @@ test('browser visitors see the full ROXY landing with working sections', async (
   await expect(hero).toHaveAttribute('src', /^data:image\/webp;base64,/);
   await expect.poll(() => hero.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(page.getByText('KSU')).toHaveCount(0);
+
+  const nav = page.locator('.roxy-landing-nav');
+  await page.evaluate(() => window.scrollTo(0, Math.min(document.body.scrollHeight, 1200)));
+  await expect.poll(() => nav.evaluate((node) => Math.round(node.getBoundingClientRect().top))).toBe(0);
 });
 
 test('Telegram CTA preserves a referral startapp payload', async ({ page }) => {
