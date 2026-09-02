@@ -56,12 +56,11 @@ export function FeedStartApp({
 
   const media = card ? asset(card) : { url: "", type: "image" as const };
   const authorCode = String(card?.author_referral_code || card?.author?.telegram_id || "");
-  const validReferral = Boolean(card && authorCode === referralCode);
   const author = card?.author?.display_name || card?.author?.username || "Автор ROXY";
   const model = String(card?.model || "ROXY");
 
   const repeat = async () => {
-    if (!card || !validReferral || busy) return;
+    if (!card || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -73,7 +72,7 @@ export function FeedStartApp({
   };
 
   const copyLink = async () => {
-    if (!card || !validReferral) return;
+    if (!card) return;
     setError("");
     try {
       const result = await api.share(card.id, surface);
@@ -88,21 +87,20 @@ export function FeedStartApp({
 
   return (
     <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={model} copy={intent === "remix" ? "Открой работу и собери свой вариант" : "Публичная работа автора ROXY"}>
-      <div className="tool-grid">
+      <div className="tool-grid" data-feed-startapp-referrer={referralCode || undefined}>
         <div className="panel tool-panel">
           {media.url && media.type === "video" ? <video className="trend-preview" src={media.url} controls playsInline /> : null}
           {media.url && media.type === "audio" ? <audio src={media.url} controls /> : null}
           {media.url && media.type === "image" ? <img className="trend-preview" src={media.url} alt="Работа ROXY" /> : null}
           {card ? <p className="muted" data-feed-startapp-author>Автор: <strong>{author}</strong></p> : null}
           {card?.prompt && !card.prompt_hidden ? <p className="prompt-copy">{card.prompt}</p> : null}
-          {card && !validReferral ? <div className="action-error" role="alert">Реферальная подпись не совпадает с автором работы.</div> : null}
           {error ? <div className="action-error" role="alert">{error}</div> : null}
           {notice ? <div role="status">{notice}</div> : null}
           {!card && !error ? <p className="muted">Открываю работу…</p> : null}
           <div className="tool-actions">
-            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={!validReferral || busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Открываю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
-            {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => void copyLink()}><Icon name="share" size={16} />Скопировать ссылку</button> : null}
-            {card ? <button className="secondary" type="button" disabled={!validReferral} onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`profile_${referralCode}`)}`)}><Icon name="profile" size={16}/>Профиль автора</button> : null}
+            {card?.prompt_actions_allowed !== false && card ? <button className="primary" type="button" disabled={busy} onClick={() => void repeat()}><Icon name="create" size={16} />{busy ? "Открываю…" : intent === "remix" ? "Повторить эту работу" : "Повторить"}</button> : null}
+            {card ? <button className="secondary" type="button" onClick={() => void copyLink()}><Icon name="share" size={16} />Скопировать ссылку</button> : null}
+            {card ? <button className="secondary" type="button" disabled={!authorCode} onClick={() => authorCode && window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`profile_${authorCode}`)}`)}><Icon name="profile" size={16}/>Профиль автора</button> : null}
             <button className="secondary" type="button" onClick={() => openInternal("/mini-app/?route=feed")}>Открыть всю ленту</button>
           </div>
         </div>
