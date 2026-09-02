@@ -29,7 +29,7 @@ const model = {
   },
 };
 
-async function mockPrivateRepeat(page) {
+async function mockPrivateRepeat(page, referenceFields = ['reference_images']) {
   const repeatBodies = [];
 
   await page.addInitScript((startParam) => {
@@ -56,7 +56,7 @@ async function mockPrivateRepeat(page) {
     if (path === `/api/v1/generation-repeat-links/${token}`) return json({
       model_id: model.id,
       references_required: true,
-      reference_fields: ['reference_images'],
+      reference_fields: referenceFields,
     });
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
     if (path === '/api/v1/uploads/kie' && method === 'POST') return json({
@@ -128,4 +128,29 @@ test('private repeat keeps source prompt and settings completely server-only', a
   expect(serializedBodies).not.toContain(secretPrompt);
   expect(serializedBodies).not.toContain(secretSetting);
   expect(serializedBodies).not.toContain('private.example');
+});
+
+test('private repeat replaces legacy top-level input_url with the recipient upload', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await mockPrivateRepeat(page, ['input_url']);
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
+
+  await expect(page.getByText('Добавьте свой референс')).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'my-reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('recipient-owned-image'),
+  });
+
+  const launch = page.getByRole('button', { name: /Повторить · 25\.00 ROX/ });
+  await expect(launch).toBeEnabled();
+  await launch.click();
+  await page.waitForURL('**/mini-app/?route=history&generation=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+
+  const launched = state.repeatBodies.find((item) => item.kind === 'launch');
+  expect(launched.body).toEqual({
+    parameters: { input_url: 'https://recipient.local/my-reference.png' },
+  });
 });
