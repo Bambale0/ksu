@@ -1,92 +1,69 @@
 import { expect, test } from '@playwright/test';
 
-const model = {
-  id: 'nano-banana-2',
-  title: 'Nano Banana 2',
-  family: 'nano_banana',
-  media_type: 'image',
-  operation: 'generate_or_edit',
-  known_fields: ['prompt'],
-  price_rox: '15.00',
-  ui_schema: { fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }], defaults: {} },
-};
-
-async function mockCatalog(page) {
+async function installTelegram(page) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
         initData: 'query_id=e2e&hash=test',
-        initDataUnsafe: { user: { id: 777, first_name: 'QA', username: 'qa_user' } },
-        ready() {}, expand() {}, close() {}, onEvent() {}, offEvent() {}, openLink() {},
+        initDataUnsafe: { user: { id: 999, first_name: 'QA', username: 'qa_user' } },
+        ready() {}, expand() {}, onEvent() {}, offEvent() {},
         BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
         HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
       },
     };
   });
+}
 
-  await page.route('**/api/v1/**', async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-
-    if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' });
-    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
-    if (path === '/api/v1/trends') return json({ items: [] });
-    if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
-    if (path === '/api/v1/references') return json({ items: [] });
-    if (path === '/api/v1/discovery/home') return json({ slides: [] });
-    if (path === '/api/v1/prompt-tools') return json({
-      admin_free: false,
-      items: [
-        {
-          id: 'prompt_builder',
-          title: 'Промпт-билдер',
-          description: 'Image prompt builder',
-          enabled: true,
-          admin_free: false,
-          cost_credits: '7.00',
-          retail_cost_credits: '7.00',
-        },
-        {
-          id: 'video_prompt',
-          title: 'Описание по видео',
-          description: 'Video prompt builder',
-          enabled: true,
-          admin_free: false,
-          cost_credits: '12.00',
-          retail_cost_credits: '12.00',
-        },
-      ],
-    });
-    return json({ items: [] });
+async function mockCatalog(page) {
+  await installTelegram(page);
+  await page.route('**/api/v1/**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/v1/me') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'user_1', telegram_id: 999, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' }) });
+    if (url.pathname === '/api/v1/onboarding') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled: false, completed: true }) });
+    if (url.pathname === '/api/v1/catalog/features') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
+      { id: 'prompt', title: 'Промпт', description: 'Создание промпта', price_rox: 7, route: '/mini-app/prompt-tools/?mode=prompt' },
+      { id: 'prompt-seedance', title: 'Сценарий для видео', description: 'Seedance сценарий', price_rox: 7, route: '/mini-app/prompt-tools/?mode=seedance' },
+    ] }) });
+    if (url.pathname === '/api/v1/trends') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    if (url.pathname === '/api/v1/feed') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    if (url.pathname === '/api/v1/generations') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], has_more: false, next_before: null }) });
+    if (url.pathname === '/api/v1/models') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 }
 
-test('catalog service cards render neon violet instead of Telegram link blue', async ({ page }) => {
+test('catalog uses the neon violet visual system for sections and feature cards', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockCatalog(page);
   await page.goto('/mini-app/?route=catalog');
 
-  const section = page.locator('#roxy-backend-parity-features');
-  await expect(section.getByRole('heading', { name: 'Сервисы ROXY' })).toBeVisible();
+  const visual = await page.evaluate(() => {
+    const section = document.querySelector('.catalog-section');
+    const card = document.querySelector('.catalog-feature-card');
+    const title = document.querySelector('.catalog-section-title');
+    const copy = document.querySelector('.catalog-section-copy');
+    const sectionStyle = getComputedStyle(section);
+    const cardStyle = getComputedStyle(card);
+    const titleStyle = getComputedStyle(title);
+    const copyStyle = getComputedStyle(copy);
+    return {
+      sectionBorder: sectionStyle.borderColor,
+      sectionShadow: sectionStyle.boxShadow,
+      sectionBackground: sectionStyle.backgroundImage,
+      cardBorder: cardStyle.borderColor,
+      cardShadow: cardStyle.boxShadow,
+      cardBackground: cardStyle.backgroundImage,
+      cardFill: cardStyle.backgroundColor,
+      titleColor: titleStyle.color,
+      titleFill: titleStyle.webkitTextFillColor,
+      copyColor: copyStyle.color,
+      copyFill: copyStyle.webkitTextFillColor,
+    };
+  });
 
-  const card = section.locator('.roxy-service-card', { hasText: 'Аккаунт и сервисы' });
-  const title = card.locator('strong');
-  const copy = card.locator('small');
-  await expect(card).toBeVisible();
-
-  const rendered = await card.evaluate((node) => ({
-    cardColor: getComputedStyle(node).color,
-    cardFill: getComputedStyle(node).getPropertyValue('-webkit-text-fill-color'),
-    titleColor: getComputedStyle(node.querySelector('strong')).color,
-    titleFill: getComputedStyle(node.querySelector('strong')).getPropertyValue('-webkit-text-fill-color'),
-    copyColor: getComputedStyle(node.querySelector('small')).color,
-    copyFill: getComputedStyle(node.querySelector('small')).getPropertyValue('-webkit-text-fill-color'),
-  }));
-
-  expect(rendered).toEqual({
-    cardColor: 'rgb(201, 140, 255)',
+  expect(visual).toMatchObject({
+    sectionBorder: 'rgba(168, 85, 247, 0.48)',
+    cardBorder: 'rgba(168, 85, 247, 0.46)',
     cardFill: 'rgb(201, 140, 255)',
     titleColor: 'rgb(215, 164, 255)',
     titleFill: 'rgb(215, 164, 255)',
@@ -109,5 +86,5 @@ test('Seedance catalog card advertises the real 5-second minimum price', async (
   await expect(page).toHaveURL(/\/mini-app\/prompt-tools\/\?mode=seedance/);
   await expect(page.getByRole('button', { name: 'Сценарий' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('Стоимость').locator('..').getByRole('heading', { name: '30 ROX' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '5 сек' })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: '5 сек', exact: true })).toHaveClass(/active/);
 });
