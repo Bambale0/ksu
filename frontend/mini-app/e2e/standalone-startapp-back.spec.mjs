@@ -85,6 +85,8 @@ async function mockApp(page) {
 }
 
 async function pressTelegramBack(page) {
+  // The callback is installed asynchronously by the standalone shell; poll it
+  // rather than assuming a specific render/effect ordering on a fresh base.
   await expect.poll(() => page.evaluate(() => typeof window.__telegramBackHandler === 'function')).toBe(true);
   await page.evaluate(() => window.__pressTelegramBack());
 }
