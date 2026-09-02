@@ -75,7 +75,7 @@ test('create screen exposes one visible quantity control with only 1-4 launches'
 
   await quantityPanel.getByRole('button', { name: '4', exact: true }).click();
   await expect(quantityPanel.getByRole('button', { name: '4', exact: true })).toHaveClass(/active/);
-  await expect(create.getByText('Стоимость за 4', { exact: true })).toBeVisible();
+  await expect(quantityPanel).toContainText('Стоимость за 4');
   await expect.poll(() => quoteQuantities.includes(4)).toBe(true);
   expect(await page.evaluate(() => window.__roxyMaxGenerationQuantity)).toBe(4);
 });
