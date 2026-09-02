@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -29,6 +30,7 @@ class _Session:
 
 
 def _payment(*, provider: str, status: str = "creation_unknown") -> Payment:
+    now = datetime.now(timezone.utc)
     return Payment(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -39,6 +41,8 @@ def _payment(*, provider: str, status: str = "creation_unknown") -> Payment:
         rox_amount=Decimal("350"),
         status=status,
         payload={"package_id": "starter", "request_key": str(uuid.uuid4())},
+        created_at=now,
+        updated_at=now,
     )
 
 
