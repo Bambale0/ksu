@@ -53,9 +53,9 @@ function repairStandaloneReturnLocation(): void {
     const stored = String(window.sessionStorage.getItem(STANDALONE_RETURN_KEY) || "");
     if (stored !== current) return;
 
-    // AppEntryGate initializes Telegram before StandaloneShell mounts, and the
-    // generic return tracker therefore records the *new* deep-link page itself.
-    // Recover the real same-origin Mini App parent from document.referrer. A cold
+    // AppEntryGate and the managed BackButton can both stamp the newly opened
+    // standalone page as the return target. Recover the real same-origin Mini App
+    // parent from document.referrer after those setup calls have finished. A cold
     // Telegram launch has no safe Mini App referrer, so it falls back to Home.
     const referrer = safeMiniAppReferrer();
     if (referrer && referrer !== current) window.sessionStorage.setItem(STANDALONE_RETURN_KEY, referrer);
@@ -108,13 +108,16 @@ export function StandaloneShell({
 
   useEffect(() => {
     const tg = initTelegram();
-    repairStandaloneReturnLocation();
     const safe = () => syncSafeArea(tg);
     const back = () => returnFromStandalone();
     tg?.ready?.();
     tg?.expand?.();
     tg?.BackButton?.show?.();
     tg?.BackButton?.onClick?.(back);
+    // Managed BackButton.show() remembers the current page. Repair the return
+    // target only after all Telegram BackButton setup has completed so the
+    // repaired parent cannot be overwritten by the setup itself.
+    repairStandaloneReturnLocation();
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
