@@ -96,10 +96,15 @@ export function PrivateRepeatLinkUx() {
       await loadUntil(Math.max(cards.length, 1));
       if (!active) return;
 
+      // The rendered preview is the current source of truth. A `generation` query
+      // can survive after the user opens another History item, so trusting it first
+      // can silently create a repeat link for the previous work.
+      let generation = resolveRenderedGeneration(previewCard, generations.current);
       const fromUrl = new URL(window.location.href).searchParams.get("generation");
-      let generation = fromUrl ? generations.current.find((item) => item.id === fromUrl) || null : null;
-      if (fromUrl && !generation) generation = await loadExactGeneration(fromUrl);
-      if (!generation) generation = resolveRenderedGeneration(previewCard, generations.current);
+      if (!generation && fromUrl) {
+        generation = generations.current.find((item) => item.id === fromUrl) || null;
+        if (!generation) generation = await loadExactGeneration(fromUrl);
+      }
       if (!active) return;
 
       // A newer generation can appear between History's request and this enhancer's
