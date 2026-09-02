@@ -71,12 +71,11 @@ export function PrivateRepeatLinkUx() {
       }
     };
 
-    const makeButton = (generationId: string, preview = false) => {
+    const makeButton = (generationId: string) => {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.privateRepeatLink = generationId;
-      button.dataset.privateRepeatPlacement = preview ? "preview" : "history";
-      button.className = preview ? "secondary private-repeat-link-preview" : "private-repeat-link-history";
+      button.className = "secondary private-repeat-link-preview";
       button.textContent = "Скопировать ссылку на повтор";
       button.title = "Работа останется приватной";
       button.setAttribute("aria-label", "Скопировать приватную ссылку на повтор");
@@ -84,28 +83,22 @@ export function PrivateRepeatLinkUx() {
     };
 
     const decorate = async () => {
+      // Do not inject a button into the history card itself: the whole card is
+      // already the click target that opens preview. Adding another full-width
+      // control changes the card's center hit target and breaks ordinary preview
+      // and reuse flows. The repeat-link action belongs in the opened work.
       const cards = Array.from(document.querySelectorAll<HTMLElement>(".history-card"));
       if (cards.length) await loadUntil(cards.length);
       if (!active) return;
 
-      cards.forEach((card, index) => {
-        const generation = generations.current[index];
-        const existing = card.querySelector<HTMLElement>(`${LINK_SELECTOR}[data-private-repeat-placement='history']`);
-        if (!generation || generation.status !== "succeeded" || generation.prompt_actions_allowed === false) {
-          existing?.remove();
-          return;
-        }
-        if (!existing) card.appendChild(makeButton(generation.id));
-        else existing.dataset.privateRepeatLink = generation.id;
-      });
-
       const previewActions = document.querySelector<HTMLElement>(".preview-card .preview-actions");
       const privatePreview = document.querySelector<HTMLElement>(".preview-card .kicker")?.textContent?.trim() === "Моя работа";
-      const existingPreview = previewActions?.querySelector<HTMLElement>(`${LINK_SELECTOR}[data-private-repeat-placement='preview']`);
+      const existingPreview = previewActions?.querySelector<HTMLButtonElement>(LINK_SELECTOR);
       if (!previewActions || !privatePreview) {
         existingPreview?.remove();
         return;
       }
+
       const fromUrl = new URL(window.location.href).searchParams.get("generation");
       const generationId = selectedGeneration.current || fromUrl;
       let generation = generationId ? generations.current.find((item) => item.id === generationId) || null : null;
@@ -115,7 +108,7 @@ export function PrivateRepeatLinkUx() {
         existingPreview?.remove();
         return;
       }
-      if (!existingPreview) previewActions.appendChild(makeButton(generation.id, true));
+      if (!existingPreview) previewActions.appendChild(makeButton(generation.id));
       else existingPreview.dataset.privateRepeatLink = generation.id;
     };
 
@@ -168,6 +161,7 @@ export function PrivateRepeatLinkUx() {
           return;
         }
       }
+
       const card = cardFromTarget(event.target);
       if (!card) return;
       const cards = Array.from(document.querySelectorAll<HTMLElement>(".history-card"));
@@ -192,21 +186,7 @@ export function PrivateRepeatLinkUx() {
   }, [showToast]);
 
   return <>
-    <style>{`
-      .history-card .private-repeat-link-history {
-        grid-column: 1 / -1;
-        min-height: 34px;
-        margin-top: 5px;
-        border: 1px solid rgba(190, 125, 255, .24);
-        border-radius: 10px;
-        background: rgba(155, 92, 255, .09);
-        color: #e6d4ff;
-        font-size: 10px;
-        font-weight: 800;
-      }
-      .history-card .private-repeat-link-history:disabled,
-      .preview-actions .private-repeat-link-preview:disabled { opacity: .55; }
-    `}</style>
+    <style>{`.preview-actions .private-repeat-link-preview:disabled { opacity: .55; }`}</style>
     {toast ? <div className="toast" role="status" data-private-repeat-toast>{toast}</div> : null}
   </>;
 }
