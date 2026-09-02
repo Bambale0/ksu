@@ -146,15 +146,19 @@ function syncStaleQuoteUi(stale: boolean): void {
   const box = quoteBox();
   const button = createButton();
   if (stale) {
-    if (box) box.setAttribute(QUOTE_STALE_ATTR, "true");
+    if (box && box.getAttribute(QUOTE_STALE_ATTR) !== "true") {
+      box.setAttribute(QUOTE_STALE_ATTR, "true");
+    }
     if (button) {
-      button.disabled = true;
-      button.setAttribute(QUOTE_STALE_ATTR, "true");
+      if (!button.disabled) button.disabled = true;
+      if (button.getAttribute(QUOTE_STALE_ATTR) !== "true") {
+        button.setAttribute(QUOTE_STALE_ATTR, "true");
+      }
     }
     return;
   }
-  box?.removeAttribute(QUOTE_STALE_ATTR);
-  button?.removeAttribute(QUOTE_STALE_ATTR);
+  if (box?.hasAttribute(QUOTE_STALE_ATTR)) box.removeAttribute(QUOTE_STALE_ATTR);
+  if (button?.hasAttribute(QUOTE_STALE_ATTR)) button.removeAttribute(QUOTE_STALE_ATTR);
 }
 
 function draftMutationEvent(event: Event): boolean {
