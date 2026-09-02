@@ -46,6 +46,22 @@ async function installFeedRoutes(page, audit = {}) {
         surface: 'feed',
       }) });
     }
+    if (url.pathname === '/api/v1/profiles/777/feed') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        author: {
+          id: 'creator-777', telegram_id: 777, username: 'creator',
+          display_name: 'Creator', referral_code: '777',
+        },
+        items: [],
+      }) });
+    }
+    if (url.pathname === '/api/v1/social/profiles/creator-777') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: 'creator-777', telegram_id: 777, username: 'creator', display_name: 'Creator',
+        referral_code: '777', profile_discoverable: true, is_self: false,
+        subscribed_by_me: false, follower_count: 12,
+      }) });
+    }
     if (url.pathname === `/api/v1/feed/${generationId}/remix/prepare`) {
       audit.prepareCalls = (audit.prepareCalls || 0) + 1;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
@@ -96,6 +112,23 @@ test('referral startapp opens the exact feed work and sends Repeat to the compos
   await expect.poll(() => audit.prepareCalls).toBe(1);
   expect(audit.remixCalls).toBe(0);
   await expect(page.getByText(/Референсы исходной публикации не копируются/)).toBeVisible();
+});
+
+test('feed author profile action overrides sticky Telegram feed start_param', async ({ page }) => {
+  await installTelegramStartParam(page, payload);
+  await installFeedRoutes(page);
+
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
+  await expect(page.getByText('Лента ROXY')).toBeVisible();
+  await expect(page.getByText('Creator')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Профиль автора' }).click();
+
+  await expect(page).toHaveURL(/\/mini-app\/?\?start_payload=profile_777/);
+  await expect(page.getByText('Профиль ROXY')).toBeVisible();
+  await expect(page.getByText('Creator', { exact: true })).toBeVisible();
+  await expect(page.getByText('@creator')).toBeVisible();
+  await expect(page.getByText('12')).toBeVisible();
 });
 
 test('remix startapp opens the repeat screen for the exact work', async ({ page }) => {
