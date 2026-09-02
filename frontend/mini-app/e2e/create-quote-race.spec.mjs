@@ -72,7 +72,7 @@ async function mockApi(page) {
   });
 }
 
-test('changing a price-sensitive field invalidates the old quote before the next quote resolves', async ({ page }) => {
+test('changing a price-sensitive field blocks old-quote submit until the fresh quote resolves', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=create');
@@ -87,17 +87,31 @@ test('changing a price-sensitive field invalidates the old quote before the next
   await expect(create).toBeEnabled();
   await expect(create).toContainText('Создать · 10 ROX');
 
+  let generationPosts = 0;
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/v1/generations' && request.method() === 'POST') generationPosts += 1;
+  });
+
   const quality = page.getByLabel('Качество');
   await quality.selectOption('pro');
 
-  await expect(create).toBeDisabled();
   await expect(create).toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(create).toHaveAttribute('aria-disabled', 'true');
   await expect(quoteBox).toHaveAttribute('data-roxy-quote-stale', 'true');
 
+  // The React button may still be physically enabled because it owns the native
+  // disabled state. The capture guard must nevertheless make the stale click a
+  // no-op, so the old 10 ROX quote can never submit the new 30 ROX payload.
+  await create.click();
+  await page.waitForTimeout(150);
+  expect(generationPosts).toBe(0);
+
   await expect(quoteBox.locator('strong')).toHaveText('30 ROX', { timeout: 3000 });
-  await expect(create).toBeEnabled();
   await expect(create).not.toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(create).not.toHaveAttribute('aria-disabled', 'true');
   await expect(create).toContainText('Создать · 30 ROX');
+  await expect(create).toBeEnabled();
 
   const generationRequestPromise = page.waitForRequest((request) => {
     const path = new URL(request.url()).pathname;
@@ -108,4 +122,5 @@ test('changing a price-sensitive field invalidates the old quote before the next
   const submitted = generationRequest.postDataJSON();
   expect(submitted.parameters.quality).toBe('pro');
   expect(submitted.prompt).toBe('Тест billing race');
+  expect(generationPosts).toBe(1);
 });
