@@ -6,10 +6,63 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
+const STANDALONE_RETURN_KEY = "__roxy_standalone_return_v1";
+const STANDALONE_RETURNING_TO_KEY = "__roxy_standalone_returning_to_v1";
+
 function compact(value: unknown): string {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return "0";
   return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(number);
+}
+
+function currentLocation(): string {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function safeMiniAppReferrer(): string | null {
+  const raw = String(document.referrer || "").trim();
+  if (!raw) return null;
+  try {
+    const referrer = new URL(raw, window.location.origin);
+    if (referrer.origin !== window.location.origin) return null;
+    const path = referrer.pathname.replace(/\/+$/, "");
+    if (path !== "/mini-app" && !path.startsWith("/mini-app/")) return null;
+    return `${referrer.pathname}${referrer.search}${referrer.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+function repairStandaloneReturnLocation(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const current = currentLocation();
+    const returningTo = String(window.sessionStorage.getItem(STANDALONE_RETURNING_TO_KEY) || "");
+    if (returningTo) {
+      window.sessionStorage.removeItem(STANDALONE_RETURNING_TO_KEY);
+      // The previous document can write itself back during pagehide after native
+      // Back has already consumed its parent. When we arrive at the requested
+      // standalone target, discard that stale child so Back cannot bounce between
+      // the same two deep-link pages forever.
+      if (returningTo === current) {
+        window.sessionStorage.removeItem(STANDALONE_RETURN_KEY);
+        return;
+      }
+    }
+
+    const stored = String(window.sessionStorage.getItem(STANDALONE_RETURN_KEY) || "");
+    if (stored !== current) return;
+
+    // AppEntryGate initializes Telegram before StandaloneShell mounts, and the
+    // generic return tracker therefore records the *new* deep-link page itself.
+    // Recover the real same-origin Mini App parent from document.referrer. A cold
+    // Telegram launch has no safe Mini App referrer, so it falls back to Home.
+    const referrer = safeMiniAppReferrer();
+    if (referrer && referrer !== current) window.sessionStorage.setItem(STANDALONE_RETURN_KEY, referrer);
+    else window.sessionStorage.removeItem(STANDALONE_RETURN_KEY);
+  } catch {
+    // sessionStorage/referrer can be unavailable in restrictive WebViews.
+  }
 }
 
 function returnFromStandalone() {
@@ -17,11 +70,18 @@ function returnFromStandalone() {
   if (typeof window === "undefined") return;
 
   const returnTo = consumeMiniAppReturnLocation();
+  const target = returnTo || "/mini-app/?route=home";
+  try {
+    // Mark the exact destination so its StandaloneShell can discard a stale
+    // pagehide write from the child document after this navigation completes.
+    window.sessionStorage.setItem(STANDALONE_RETURNING_TO_KEY, target);
+  } catch {
+    // Navigation still works when storage is unavailable.
+  }
   // Standalone tools can be reached through location.replace() from a Telegram
   // deep-link gate, so browser history may point at about:blank or an unrelated
-  // page. The tracker already stores the exact safe Mini App route; use it as
-  // the navigation authority instead of guessing from history.length.
-  window.location.replace(returnTo || "/mini-app/?route=home");
+  // page. Use the repaired same-origin Mini App return location instead.
+  window.location.replace(target);
 }
 
 function openMainRoute(route: "home" | "profile"): void {
@@ -44,6 +104,7 @@ export function StandaloneShell({
 
   useEffect(() => {
     const tg = initTelegram();
+    repairStandaloneReturnLocation();
     const safe = () => syncSafeArea(tg);
     const back = () => returnFromStandalone();
     tg?.ready?.();
