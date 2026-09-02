@@ -18,6 +18,7 @@ import { LiveTrendRail } from "@/components/live-trend-rail";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
+import { UserOnboardingGate } from "@/components/user-onboarding";
 import { WalletEmailInputGuard } from "@/components/wallet-email-input-guard";
 import { WalletParity } from "@/components/wallet-parity";
 import { ReferenceMemoryProvider } from "@/lib/reference-memory";
@@ -27,6 +28,7 @@ export default function Page() {
     <ReferenceMemoryProvider>
       <ClientErrorReporter />
       <AppEntryGate />
+      <UserOnboardingGate />
       <TikTokFeedSurface />
       <FeedResponsiveLayout />
       <FeedAdminModeration />

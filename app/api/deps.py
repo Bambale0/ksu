@@ -161,7 +161,7 @@ async def get_current_user(
             status_code=status.HTTP_428_PRECONDITION_REQUIRED,
             detail={
                 "code": "onboarding_required",
-                "version": settings.onboarding_version.strip() or "1",
+                "version": OnboardingService.current_version(),
             },
         )
     # Carry the authenticated principal on this SQLAlchemy session so shared
@@ -204,7 +204,7 @@ async def get_onboarded_user(
             status_code=status.HTTP_428_PRECONDITION_REQUIRED,
             detail={
                 "code": "onboarding_required",
-                "version": settings.onboarding_version.strip() or "1",
+                "version": OnboardingService.current_version(),
             },
         )
     return user
