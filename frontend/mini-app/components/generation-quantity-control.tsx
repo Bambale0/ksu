@@ -7,7 +7,6 @@ import { api } from "@/lib/api";
 
 const DEFAULT_MAX_GENERATION_QUANTITY = 4;
 const LEGACY_HIDDEN_ATTR = "data-roxy-legacy-quantity-hidden";
-const QUOTE_STALE_ATTR = "data-roxy-quote-stale";
 
 type PublishDetail = {
   id: string;
@@ -49,10 +48,6 @@ function targetGenerationRequest(input: RequestInfo | URL, init?: RequestInit): 
   const url = requestUrl(input);
   if (requestMethod(input, init) !== "POST") return false;
   return url.endsWith("/api/v1/generations") || url.endsWith("/api/v1/generations/quote");
-}
-
-function targetQuoteRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
-  return requestMethod(input, init) === "POST" && requestUrl(input).endsWith("/api/v1/generations/quote");
 }
 
 function publishedGenerationId(input: RequestInfo | URL, init?: RequestInit): string | null {
@@ -134,73 +129,12 @@ function selectLegacyQuantity(count: number): void {
   legacyQuantityButtons(panel).find((item) => item.count === count)?.button.click();
 }
 
-function quoteBox(): HTMLElement | null {
-  return document.querySelector<HTMLElement>(".create-screen .quote-box");
-}
-
-function createButton(): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(".create-screen .create-summary button.primary");
-}
-
-function syncStaleQuoteUi(stale: boolean): void {
-  const box = quoteBox();
-  const button = createButton();
-  if (stale) {
-    if (box && box.getAttribute(QUOTE_STALE_ATTR) !== "true") {
-      box.setAttribute(QUOTE_STALE_ATTR, "true");
-    }
-    if (button) {
-      if (!button.disabled) button.disabled = true;
-      if (button.getAttribute(QUOTE_STALE_ATTR) !== "true") {
-        button.setAttribute(QUOTE_STALE_ATTR, "true");
-      }
-    }
-    return;
-  }
-  if (box?.hasAttribute(QUOTE_STALE_ATTR)) box.removeAttribute(QUOTE_STALE_ATTR);
-  if (button?.hasAttribute(QUOTE_STALE_ATTR)) {
-    // Only undo the disabled state owned by this stale guard. The release is
-    // scheduled after React has had two animation frames to consume the quote
-    // response and commit its fresh Quote state, preventing an enabled DOM
-    // button whose submit closure still sees quote=null.
-    button.disabled = false;
-    button.removeAttribute(QUOTE_STALE_ATTR);
-  }
-}
-
-function releaseFreshQuoteAfterReactCommit(quoteVersion: number): void {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      if (quoteVersionRefForRelease !== null && quoteVersionRefForRelease !== quoteVersion) return;
-      syncStaleQuoteUi(false);
-    });
-  });
-}
-
-let quoteVersionRefForRelease: number | null = null;
-
-function draftMutationEvent(event: Event): boolean {
-  const target = event.target;
-  if (!(target instanceof Element) || !target.closest(".create-screen")) return false;
-  if (event.type === "input" || event.type === "change") return true;
-  if (event.type !== "click") return false;
-
-  const button = target.closest<HTMLButtonElement>("button");
-  if (!button || button.closest(".create-summary")) return false;
-  if (button.matches(".saved-reference-pick") || button.closest(".upload-list")) return true;
-  const panel = button.closest<HTMLElement>(".panel");
-  const label = panel?.querySelector<HTMLElement>(":scope > .label")?.textContent?.trim();
-  return label === "Режим";
-}
-
 export function GenerationQuantityControl() {
   const [quantity, setQuantity] = useState(1);
   const [maxQuantity, setMaxQuantity] = useState(DEFAULT_MAX_GENERATION_QUANTITY);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const quantityRef = useRef(1);
   const maxQuantityRef = useRef(DEFAULT_MAX_GENERATION_QUANTITY);
-  const quoteStaleRef = useRef(false);
-  const quoteVersionRef = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -230,49 +164,14 @@ export function GenerationQuantityControl() {
   }, [maxQuantity, quantity]);
 
   useEffect(() => {
-    const invalidate = (event: Event) => {
-      if (!draftMutationEvent(event)) return;
-      quoteStaleRef.current = true;
-      quoteVersionRef.current += 1;
-      quoteVersionRefForRelease = quoteVersionRef.current;
-      syncStaleQuoteUi(true);
-    };
-    const keepStaleLocked = () => {
-      if (quoteStaleRef.current) syncStaleQuoteUi(true);
-    };
-
-    document.addEventListener("input", invalidate, true);
-    document.addEventListener("change", invalidate, true);
-    document.addEventListener("click", invalidate, true);
-    const observer = new MutationObserver(keepStaleLocked);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-    return () => {
-      document.removeEventListener("input", invalidate, true);
-      document.removeEventListener("change", invalidate, true);
-      document.removeEventListener("click", invalidate, true);
-      observer.disconnect();
-      quoteStaleRef.current = false;
-      quoteVersionRefForRelease = null;
-      syncStaleQuoteUi(false);
-    };
-  }, []);
-
-  useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const patchedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const publishId = publishedGenerationId(input, init);
-      const isQuote = targetQuoteRequest(input, init);
-      const quoteVersion = isQuote ? ++quoteVersionRef.current : 0;
-      if (isQuote) quoteVersionRefForRelease = quoteVersion;
       const nextInit = targetGenerationRequest(input, init)
         ? withQuantity(init, quantityRef.current, maxQuantityRef.current)
         : init;
       const response = await originalFetch(input, nextInit);
       if (publishId && response.ok) emitPublished(response, publishId);
-      if (isQuote && response.ok && quoteVersionRef.current === quoteVersion) {
-        quoteStaleRef.current = false;
-        releaseFreshQuoteAfterReactCommit(quoteVersion);
-      }
       return response;
     }) as typeof window.fetch;
     window.fetch = patchedFetch;
@@ -351,13 +250,9 @@ export function GenerationQuantityControl() {
             onClick={() => {
               quantityRef.current = count;
               window.__roxyGenerationQuantity = count;
-              quoteStaleRef.current = true;
-              quoteVersionRef.current += 1;
-              quoteVersionRefForRelease = quoteVersionRef.current;
-              syncStaleQuoteUi(true);
               setQuantity(count);
               selectLegacyQuantity(count);
-              triggerQuoteRefresh();
+              window.setTimeout(triggerQuoteRefresh, 0);
             }}
           >
             {count}
