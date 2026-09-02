@@ -18,7 +18,7 @@ class LegacyMediaBackfillService:
     def is_audio_generation(generation: Generation) -> bool:
         params = generation.parameters or {}
         return (
-            str(generation.kind or "").strip().lower() == "music"
+            str(getattr(generation, "kind", "") or "").strip().lower() == "music"
             or str(params.get("_provider_api") or "").strip().lower() == "suno_music"
             or str(params.get("_media_type") or "").strip().lower() == "audio"
             or str(params.get("_model_family") or "").strip().lower() == "suno"
