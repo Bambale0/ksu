@@ -30,8 +30,8 @@ def test_standalone_back_returns_to_exact_previous_mini_app_location() -> None:
     assert "MINI_APP_RETURN_KEY" in telegram
     assert "pagehide" in telegram
     assert "consumeMiniAppReturnLocation" in standalone
-    assert "window.history.back()" in standalone
-    assert "window.location.replace(returnTo)" in standalone
+    assert 'window.location.replace(returnTo || "/mini-app/?route=home")' in standalone
+    assert "window.history.back()" not in standalone
     assert "document.referrer" not in standalone
     assert '?route=catalog' not in standalone
 
