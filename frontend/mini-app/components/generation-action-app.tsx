@@ -23,6 +23,11 @@ type SharePayload = {
   share_text?: string;
   copy_link?: string | null;
 };
+type PublishState = {
+  share: SharePayload;
+  publicationScope: "profile" | "feed";
+  downgradedToProfile: boolean;
+};
 type ActionModel = {
   id: string;
   title: string;
@@ -200,7 +205,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
   const [error, setError] = useState("");
   const [promptVisible, setPromptVisible] = useState(false);
   const [scope, setScope] = useState<"profile" | "feed">("feed");
-  const [published, setPublished] = useState<SharePayload | null>(null);
+  const [published, setPublished] = useState<PublishState | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
@@ -341,16 +346,15 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
         method: "POST",
         body: JSON.stringify({ publication_scope: scope, prompt_visible: promptVisible, references_visible: false }),
       });
-      const share = result.share?.link ? result.share : null;
+      const share = result.share?.link ? result.share : {};
+      const publicationScope: "profile" | "feed" = result.publication_scope === "feed" ? "feed" : "profile";
       notify("success");
       haptic("medium");
-      if (!share) {
-        // Link building depends on the deployed bot username; without it we at
-        // least keep the user on the published card instead of navigating away.
-        setPublished({});
-        return;
-      }
-      setPublished(share);
+      setPublished({
+        share,
+        publicationScope,
+        downgradedToProfile: Boolean(result.downgraded_to_profile),
+      });
     } catch (reason) {
       notify("error");
       setError(reason instanceof Error ? reason.message : "Не удалось опубликовать");
@@ -363,7 +367,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
   const mediaType = resultMediaType(context);
   const source = context.source_url;
 
-  if (published) return <PublishSuccess share={published} generationId={context.generation.id} />;
+  if (published) return <PublishSuccess share={published.share} generationId={context.generation.id} publicationScope={published.publicationScope} downgradedToProfile={published.downgradedToProfile} />;
 
   return <div className="roxy-app generation-action-app">
     <header className="topbar action-topbar">
@@ -427,9 +431,10 @@ function goToGeneration(generationId: string) {
   window.location.assign(`${url.pathname}${url.search}${url.hash}`);
 }
 
-function PublishSuccess({ share, generationId }: { share: SharePayload; generationId: string }) {
+function PublishSuccess({ share, generationId, publicationScope, downgradedToProfile }: { share: SharePayload; generationId: string; publicationScope: "profile" | "feed"; downgradedToProfile: boolean }) {
   const [copied, setCopied] = useState(false);
   const postLink = share.link || share.copy_link || "";
+  const inFeed = publicationScope === "feed";
 
   const copy = async () => {
     const target = share.copy_link || share.link;
@@ -455,8 +460,12 @@ function PublishSuccess({ share, generationId }: { share: SharePayload; generati
         <section className="screen">
           <div className="panel publish-success-card" role="status">
             <span className="publish-success-badge">🎉</span>
-            <h1>Работа опубликована!</h1>
-            <p className="muted">Теперь она доступна в ленте. Поделитесь ссылкой — так работу увидят больше людей.</p>
+            <h1>{inFeed ? "Работа опубликована!" : "Работа опубликована в профиль!"}</h1>
+            <p className="muted">{inFeed
+              ? "Теперь она доступна в ленте и профиле. Поделитесь ссылкой — так работу увидят больше людей."
+              : downgradedToProfile
+                ? "Лента сейчас недоступна, поэтому работа опубликована только в профиль. Ссылкой всё равно можно поделиться."
+                : "Теперь она доступна в вашем профиле. Поделитесь ссылкой, если хотите показать работу друзьям."}</p>
             <div className="publish-success-actions">
               <button className="primary wide" type="button" disabled={!share.share_url && !postLink} onClick={sharePost}>
                 <Icon name="spark"/>Поделиться ссылкой
