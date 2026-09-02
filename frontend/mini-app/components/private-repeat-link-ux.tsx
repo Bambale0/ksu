@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { privateRepeatApi } from "@/lib/private-repeat-api";
+import { resolveRenderedGeneration } from "@/lib/rendered-generation-identity";
 import { copyToClipboard, haptic } from "@/lib/telegram";
 import type { Generation } from "@/lib/types";
 
@@ -16,7 +17,6 @@ export function PrivateRepeatLinkUx() {
   const nextBefore = useRef<string | null>(null);
   const hasMore = useRef(true);
   const loading = useRef<Promise<void> | null>(null);
-  const selectedGeneration = useRef<string | null>(null);
   const previewLoads = useRef(new Set<string>());
 
   const showToast = useCallback((message: string) => {
@@ -83,27 +83,28 @@ export function PrivateRepeatLinkUx() {
     };
 
     const decorate = async () => {
-      // Do not inject a button into the history card itself: the whole card is
-      // already the click target that opens preview. Adding another full-width
-      // control changes the card's center hit target and breaks ordinary preview
-      // and reuse flows. The repeat-link action belongs in the opened work.
-      const cards = Array.from(document.querySelectorAll<HTMLElement>(".history-card"));
-      if (cards.length) await loadUntil(cards.length);
-      if (!active) return;
-
-      const previewActions = document.querySelector<HTMLElement>(".preview-card .preview-actions");
-      const privatePreview = document.querySelector<HTMLElement>(".preview-card .kicker")?.textContent?.trim() === "Моя работа";
+      const previewCard = document.querySelector<HTMLElement>(".preview-card");
+      const previewActions = previewCard?.querySelector<HTMLElement>(".preview-actions");
+      const privatePreview = previewCard?.querySelector<HTMLElement>(".kicker")?.textContent?.trim() === "Моя работа";
       const existingPreview = previewActions?.querySelector<HTMLButtonElement>(LINK_SELECTOR);
-      if (!previewActions || !privatePreview) {
+      if (!previewCard || !previewActions || !privatePreview) {
         existingPreview?.remove();
         return;
       }
 
-      const fromUrl = new URL(window.location.href).searchParams.get("generation");
-      const generationId = selectedGeneration.current || fromUrl;
-      let generation = generationId ? generations.current.find((item) => item.id === generationId) || null : null;
-      if (generationId && !generation) generation = await loadExactGeneration(generationId);
+      const cards = Array.from(document.querySelectorAll<HTMLElement>(".history-card"));
+      await loadUntil(Math.max(cards.length, 1));
       if (!active) return;
+
+      const fromUrl = new URL(window.location.href).searchParams.get("generation");
+      let generation = fromUrl ? generations.current.find((item) => item.id === fromUrl) || null : null;
+      if (fromUrl && !generation) generation = await loadExactGeneration(fromUrl);
+      if (!generation) generation = resolveRenderedGeneration(previewCard, generations.current);
+      if (!active) return;
+
+      // A newer generation can appear between History's request and this enhancer's
+      // request. Never fall back to card/list position: an unresolved preview is
+      // safer than creating a repeat link for somebody else's work.
       if (!generation || generation.status !== "succeeded" || generation.prompt_actions_allowed === false) {
         existingPreview?.remove();
         return;
@@ -119,11 +120,6 @@ export function PrivateRepeatLinkUx() {
         queued = false;
         void decorate();
       });
-    };
-
-    const cardFromTarget = (target: EventTarget | null): HTMLElement | null => {
-      if (!(target instanceof Element)) return null;
-      return target.closest<HTMLElement>(".history-card");
     };
 
     const copyLink = async (button: HTMLButtonElement) => {
@@ -151,27 +147,13 @@ export function PrivateRepeatLinkUx() {
     };
 
     const onClick = (event: MouseEvent) => {
-      if (event.target instanceof Element) {
-        const button = event.target.closest<HTMLButtonElement>(LINK_SELECTOR);
-        if (button) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          void copyLink(button);
-          return;
-        }
-      }
-
-      const card = cardFromTarget(event.target);
-      if (!card) return;
-      const cards = Array.from(document.querySelectorAll<HTMLElement>(".history-card"));
-      const index = cards.indexOf(card);
-      if (index >= 0) {
-        void loadUntil(index + 1).then(() => {
-          selectedGeneration.current = generations.current[index]?.id || null;
-          schedule();
-        });
-      }
+      if (!(event.target instanceof Element)) return;
+      const button = event.target.closest<HTMLButtonElement>(LINK_SELECTOR);
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      void copyLink(button);
     };
 
     schedule();
