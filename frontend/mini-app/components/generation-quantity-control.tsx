@@ -158,7 +158,14 @@ function syncStaleQuoteUi(stale: boolean): void {
     return;
   }
   if (box?.hasAttribute(QUOTE_STALE_ATTR)) box.removeAttribute(QUOTE_STALE_ATTR);
-  if (button?.hasAttribute(QUOTE_STALE_ATTR)) button.removeAttribute(QUOTE_STALE_ATTR);
+  if (button?.hasAttribute(QUOTE_STALE_ATTR)) {
+    // The stale guard mutates the DOM `disabled` property outside React. When
+    // React already believes disabled=false it may not write the same prop again,
+    // leaving the physical button locked after a fresh quote. Only undo a
+    // disabled state owned by this guard, identified by our marker.
+    button.disabled = false;
+    button.removeAttribute(QUOTE_STALE_ATTR);
+  }
 }
 
 function draftMutationEvent(event: Event): boolean {
