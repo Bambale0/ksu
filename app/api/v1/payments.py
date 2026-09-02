@@ -46,6 +46,31 @@ def _payment_label(payment: Payment) -> str:
     return payment.provider
 
 
+def _recovered_payment_url(payment: Payment, payload: dict[str, object]) -> str:
+    direct = str(payload.get("payment_url") or "")
+    if direct:
+        return direct
+
+    state = payload.get("last_provider_state")
+    if not isinstance(state, dict):
+        return ""
+    if payment.provider == CryptoBotPaymentService.PROVIDER:
+        return str(
+            state.get("mini_app_invoice_url")
+            or state.get("bot_invoice_url")
+            or state.get("web_app_invoice_url")
+            or ""
+        )
+    if payment.provider == Payment2328Service.PROVIDER:
+        return str(
+            state.get("url")
+            or state.get("payment_url")
+            or state.get("paymentUrl")
+            or ""
+        )
+    return ""
+
+
 def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
     payload = payment.payload or {}
     return {
@@ -61,7 +86,7 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "base_credits": str(payload.get("base_credits") or payment.rox_amount),
         "bonus_credits": str(payload.get("bonus_credits") or "0"),
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
-        "payment_url": str(payload.get("payment_url") or ""),
+        "payment_url": _recovered_payment_url(payment, payload),
         "idempotency_key": request_key or str(payload.get("request_key") or ""),
         "created_at": payment.created_at.isoformat(),
         "updated_at": payment.updated_at.isoformat(),
