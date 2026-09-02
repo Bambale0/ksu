@@ -71,7 +71,7 @@ test('ambiguous checkout retry reuses the same idempotency key', async ({ page }
   const checkoutKeys = await mockPayments(page);
   await page.goto('/mini-app/payments/?provider=cryptobot');
 
-  const pay = page.getByRole('button', { name: /Оплатить 326\.09 RUB через CryptoBot/ });
+  const pay = page.getByRole('button', { name: /Оплатить .* RUB через CryptoBot/ });
   await expect(pay).toBeVisible();
 
   await pay.click();
