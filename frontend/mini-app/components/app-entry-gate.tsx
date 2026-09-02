@@ -15,7 +15,6 @@ const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
 const CONSUMED_TREND_TARGET_KEY = "__roxy_consumed_trend_target";
 const CONSUMED_PROFILE_TARGET_KEY = "__roxy_consumed_profile_target";
-const CONSUMED_REPEAT_TARGET_KEY = "__roxy_consumed_private_repeat_target";
 const EXPLICIT_START_PARAM_NAMES = ["start_payload", "startapp"];
 
 type Target =
@@ -44,7 +43,7 @@ function explicitLaunchCarries(payload: string): boolean {
   // Only product-owned payloads in the current URL count as a fresh explicit
   // launch. Telegram keeps initDataUnsafe.start_param alive for the WebView
   // session, so treating that sticky SDK value as explicit would reopen a
-  // consumed trend/profile/repeat every time the user presses native Back.
+  // consumed trend/profile every time the user presses native Back.
   for (const raw of [window.location.search, window.location.hash]) {
     const params = new URLSearchParams(String(raw || "").replace(/^[?#]/, ""));
     for (const name of EXPLICIT_START_PARAM_NAMES) {
@@ -94,7 +93,10 @@ function parseTarget(): Target | null {
     return { kind: "remix", generationId: match[1], referralCode: match[2] };
   }
   if (PRIVATE_REPEAT_LINK.test(payload)) {
-    if (targetConsumed(CONSUMED_REPEAT_TARGET_KEY, payload) && !explicitLaunchCarries(payload)) return null;
+    // Telegram keeps start_param sticky for the WebView session. Once ROXY has
+    // navigated to a concrete customer route (history/home/create), do not reopen
+    // the repeat unless the current URL explicitly carries the repeat payload.
+    if (current.searchParams.has("route") && !explicitLaunchCarries(payload)) return null;
     const match = PRIVATE_REPEAT_LINK.exec(payload)!;
     return { kind: "repeat", token: match[1], payload };
   }
@@ -130,10 +132,7 @@ function ProfileTarget({ referralCode, payload }: { referralCode: string; payloa
   return <><EntryBackMarker /><ProfileStartApp referralCode={referralCode} /></>;
 }
 
-function PrivateRepeatTarget({ token, payload }: { token: string; payload: string }) {
-  useEffect(() => {
-    markTargetConsumed(CONSUMED_REPEAT_TARGET_KEY, payload);
-  }, [payload]);
+function PrivateRepeatTarget({ token }: { token: string }) {
   return <><EntryBackMarker /><PrivateRepeatStartApp token={token} /></>;
 }
 
@@ -153,7 +152,7 @@ export function AppEntryGate() {
 
   if (!ready) return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
   if (target?.kind === "profile") return <ProfileTarget referralCode={target.referralCode} payload={target.payload} />;
-  if (target?.kind === "repeat") return <PrivateRepeatTarget token={target.token} payload={target.payload} />;
+  if (target?.kind === "repeat") return <PrivateRepeatTarget token={target.token} />;
   if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;
   if (target?.kind === "post" || target?.kind === "remix") {
     return <><EntryBackMarker /><FeedStartApp generationId={target.generationId} referralCode={target.referralCode} intent={target.kind} /></>;
