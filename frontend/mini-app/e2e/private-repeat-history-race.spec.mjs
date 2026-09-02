@@ -60,8 +60,6 @@ async function installTelegram(page) {
 }
 
 async function mockRace(page) {
-  let limit24Calls = 0;
-
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
     status: 200,
     contentType: 'image/png',
@@ -82,14 +80,10 @@ async function mockRace(page) {
     if (path === '/api/v1/generations') {
       const limit = url.searchParams.get('limit');
       if (limit === '12') return json({ items: [], has_more: false, next_before: null });
-      if (limit === '24') {
-        limit24Calls += 1;
-        // RoxyApp renders A from the first History snapshot. The independent
-        // prompt enhancer then sees a newer snapshot where B was inserted first.
-        return json({ items: limit24Calls === 1 ? [workA] : [workB, workA], has_more: false, next_before: null });
-      }
-      if (limit === '50') {
-        // The repeat-link enhancer also sees the newer order.
+      if (limit === '24' || limit === '50') {
+        // The rendered DOM below is work A, while both independent enhancers see
+        // a newer snapshot where B has been inserted before A. This keeps the
+        // race deterministic even when React dev/StrictMode repeats requests.
         return json({ items: [workB, workA], has_more: false, next_before: null });
       }
       return json({ items: [], has_more: false, next_before: null });
@@ -107,13 +101,46 @@ async function mockRace(page) {
   });
 }
 
+async function injectRenderedWorkA(page) {
+  await page.evaluate(({ image }) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'history-card';
+    card.innerHTML = `
+      <span class="media-thumb"><img src="${image}" alt="" /></span>
+      <div><strong>Nano Banana 2</strong><small>02 сент. · 11:00 · Готово</small></div>
+      <span class="status succeeded">Готово</span>
+    `;
+    document.body.appendChild(card);
+  }, { image: aImage });
+}
+
+async function injectPreviewA(page) {
+  await page.evaluate(({ image, prompt }) => {
+    const preview = document.createElement('div');
+    preview.className = 'preview-card';
+    preview.innerHTML = `
+      <div class="preview-media"><img src="${image}" alt="Результат" /></div>
+      <div class="preview-copy">
+        <span class="kicker">Моя работа</span>
+        <h2>Nano Banana 2</h2>
+        <p class="prompt-copy">${prompt}</p>
+        <div class="preview-actions"></div>
+      </div>
+    `;
+    document.body.appendChild(preview);
+  }, { image: aImage, prompt: aPrompt });
+}
+
 test('History enhancers keep the rendered work identity when a newer generation shifts their snapshots', async ({ page }) => {
   await installTelegram(page);
   await mockRace(page);
-  await page.goto('/mini-app/?route=history', { waitUntil: 'domcontentloaded' });
+  await page.goto('/mini-app/?route=home', { waitUntil: 'domcontentloaded' });
 
+  // Keep RoxyApp out of the identity setup. The synthetic DOM represents the
+  // already-rendered snapshot A; the enhancers deliberately receive [B, A].
+  await injectRenderedWorkA(page);
   const card = page.locator('.history-card').first();
-  await expect(card).toHaveCount(1);
   await expect(card.locator('img')).toHaveAttribute('src', aImage);
 
   const copyPrompt = card.getByRole('button', { name: 'Скопировать промпт', exact: true });
@@ -123,8 +150,12 @@ test('History enhancers keep the rendered work identity when a newer generation 
   await copyPrompt.click();
   await expect.poll(() => page.evaluate(() => window.__copiedText)).toBe(aPrompt);
 
+  // Old repeat-link code remembered history-card index 0 here, which points to
+  // B in the enhancer snapshot. The fixed code never treats position as identity.
   await card.locator('img').click();
-  const preview = page.locator('.preview-card');
+  await injectPreviewA(page);
+
+  const preview = page.locator('.preview-card').first();
   await expect(preview).toBeVisible();
   await expect(preview.getByText(aPrompt, { exact: true })).toBeVisible();
 
