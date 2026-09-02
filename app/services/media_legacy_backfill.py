@@ -32,6 +32,15 @@ class LegacyMediaBackfillService:
             result_urls.insert(0, generation.result_url)
         return result_urls
 
+    @staticmethod
+    def is_misrouted_generic_audio_job(job: MediaIngestJob) -> bool:
+        if job.status == "pending":
+            return True
+        if job.status != "failed":
+            return False
+        error = str(job.last_error or "").lower()
+        return "unsupported media content type: audio/" in error
+
     @classmethod
     async def repair_audio_generation(
         cls,
@@ -59,11 +68,10 @@ class LegacyMediaBackfillService:
             if asset.status == "ready" and asset.object_key and asset.bucket:
                 continue
             job = await session.get(MediaIngestJob, asset.id, with_for_update=True)
-            if job is None:
-                # enqueue_results creates missing jobs. If an unusual legacy row
-                # still has none, leave it for the next reconciliation pass.
+            if job is None or not cls.is_misrouted_generic_audio_job(job):
+                # Existing audio_pending/audio_processing and genuine audio failures
+                # belong to MusicMediaIngestQueue. Do not reset their retry state.
                 continue
-            was_audio = job.status in {"audio_pending", "audio_processing"}
             asset.status = "audio_pending"
             asset.error = None
             job.status = "audio_pending"
@@ -72,8 +80,7 @@ class LegacyMediaBackfillService:
             job.lease_until = None
             job.completed_at = None
             job.last_error = None
-            if not was_audio:
-                repaired += 1
+            repaired += 1
         return created + repaired
 
     @classmethod
