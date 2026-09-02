@@ -23,6 +23,9 @@ FALLBACK_MEDIA_TYPES_BY_EXTENSION = {
     ".aac": "audio/aac",
     ".aif": "audio/aiff",
     ".aiff": "audio/aiff",
+    ".avi": "video/x-msvideo",
+    ".avif": "image/avif",
+    ".bmp": "image/bmp",
     ".flac": "audio/flac",
     ".gif": "image/gif",
     ".heic": "image/heic",
@@ -31,6 +34,7 @@ FALLBACK_MEDIA_TYPES_BY_EXTENSION = {
     ".jpg": "image/jpeg",
     ".m4a": "audio/mp4",
     ".m4v": "video/x-m4v",
+    ".mkv": "video/x-matroska",
     ".mov": "video/quicktime",
     ".mp3": "audio/mpeg",
     ".mp4": "video/mp4",
@@ -39,6 +43,8 @@ FALLBACK_MEDIA_TYPES_BY_EXTENSION = {
     ".ogg": "audio/ogg",
     ".ogv": "video/ogg",
     ".png": "image/png",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
     ".wav": "audio/wav",
     ".webm": "video/webm",
     ".webp": "image/webp",
@@ -60,12 +66,12 @@ def _fallback_content_type(filename: str | None) -> str | None:
 
 
 def _upload_content_type(file: UploadFile) -> str:
-    declared = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if declared.startswith(ALLOWED_MEDIA_PREFIXES):
+    declared = ReferenceStaticStorage.normalize_content_type(file.content_type)
+    if ReferenceStaticStorage.supports_content_type(declared):
         return declared
     if declared in OCTET_STREAM_TYPES:
         fallback = _fallback_content_type(file.filename)
-        if fallback:
+        if fallback and ReferenceStaticStorage.supports_content_type(fallback):
             return fallback
     return declared or "application/octet-stream"
 
@@ -135,8 +141,8 @@ async def upload_to_kie(
     """
 
     content_type = _upload_content_type(file)
-    if not content_type.startswith(ALLOWED_MEDIA_PREFIXES):
-        raise HTTPException(status_code=415, detail="Only image, video and audio files are allowed")
+    if not ReferenceStaticStorage.supports_content_type(content_type):
+        raise HTTPException(status_code=415, detail="Only supported image, video and audio files are allowed")
 
     size_bytes = _upload_size(file)
     if size_bytes > settings.kie_upload_max_bytes:

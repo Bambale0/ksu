@@ -14,6 +14,7 @@ from app.core.admin_telegram_security import (
 from app.core.config import settings
 
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{8,64}$")
+REFERENCE_STATIC_CSP = "sandbox; default-src 'none'; base-uri 'none'; form-action 'none'"
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -73,6 +74,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
+
+        if path.startswith("/uploads/refs/"):
+            # User-controlled reference media lives on the product origin. New
+            # uploads are restricted to passive media types, while this sandbox
+            # also neutralizes any legacy HTML/SVG/XML artifact already on disk.
+            response.headers["Content-Security-Policy"] = REFERENCE_STATIC_CSP
 
         if path.startswith("/api/v1/admin"):
             response.headers["Cache-Control"] = "no-store, max-age=0"
