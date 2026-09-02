@@ -90,8 +90,8 @@ test('private repeat link never exposes owner media and accepts recipient refere
 
   await expect(page.locator('body')).toContainText('Исходная работа остаётся приватной.');
   await expect(page.getByText('Из соображений приватности ROXY их не показывает и не копирует.', { exact: false })).toBeVisible();
-  await expect(page.getByDisplayValue('Неоновый портрет')).toBeVisible();
-  await expect(page.getByDisplayValue('2K')).toBeVisible();
+  await expect(page.getByLabel('Описание')).toHaveValue('Неоновый портрет');
+  await expect(page.getByLabel('Качество')).toHaveValue('2K');
   await expect(page.getByText('Добавьте свои референсы')).toBeVisible();
   await expect(page.locator('body')).not.toContainText('private.example');
 
