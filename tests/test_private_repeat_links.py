@@ -10,6 +10,8 @@ from app.services.private_repeat_links import (
     apply_repeat_reference_parameters,
     generation_id_from_repeat_token,
     public_repeat_descriptor,
+    public_repeat_quote,
+    repeat_reference_urls,
     repeat_token,
     sanitize_repeat_recipe,
 )
@@ -75,7 +77,26 @@ def test_private_repeat_recipe_never_exposes_owner_media() -> None:
     assert "private.example" not in serialized
 
 
-def test_private_repeat_recipient_can_only_supply_owned_reference_media() -> None:
+def test_private_repeat_quote_exposes_only_payable_price() -> None:
+    public = public_repeat_quote(
+        {
+            "model_id": "secret-model",
+            "cost_rox": "25.00",
+            "effective_cost_rox": "17.00",
+            "billing_seconds": 10,
+            "unit_price_rox": "2.50",
+            "internal_credit_rub": "1.00",
+        }
+    )
+
+    assert public == {"cost_rox": "17.00"}
+    serialized = str(public)
+    assert "billing_seconds" not in serialized
+    assert "model_id" not in serialized
+    assert "unit_price" not in serialized
+
+
+def test_private_repeat_recipient_can_only_override_reference_fields() -> None:
     recipe = sanitize_repeat_recipe(
         {
             "model_id": "reference-model",
@@ -86,20 +107,48 @@ def test_private_repeat_recipient_can_only_supply_owned_reference_media() -> Non
         }
     )
 
-    merged = apply_repeat_reference_parameters(
-        recipe,
-        {"input_url": "https://recipient.example/upload.png"},
-    )
+    recipient_url = "/uploads/refs/image/recipient/2026/09/upload.png"
+    merged = apply_repeat_reference_parameters(recipe, {"input_url": recipient_url})
     assert merged == {
         "model_id": "reference-model",
         "prompt": "SERVER_ONLY_SENTINEL_PROMPT",
-        "input_url": "https://recipient.example/upload.png",
+        "input_url": recipient_url,
         "billing_seconds": 8,
         "parameters": {"resolution": "2K", "seed": 777},
     }
+    assert repeat_reference_urls({"input_url": recipient_url}) == [recipient_url]
 
     with pytest.raises(ValueError, match="only reference uploads"):
         apply_repeat_reference_parameters(recipe, {"resolution": "4K"})
+
+
+def test_private_repeat_requires_replacement_for_removed_source_media() -> None:
+    recipe = sanitize_repeat_recipe(
+        {
+            "model_id": "reference-model",
+            "prompt": "server only",
+            "input_url": "https://owner.example/source.png",
+            "parameters": {},
+        }
+    )
+
+    with pytest.raises(ValueError, match="required reference"):
+        apply_repeat_reference_parameters(recipe, {})
+
+
+def test_private_repeat_rejects_nested_or_non_url_reference_payloads() -> None:
+    recipe = sanitize_repeat_recipe(
+        {
+            "model_id": "reference-model",
+            "prompt": "server only",
+            "parameters": {"reference_images": ["https://owner.example/ref.png"]},
+        }
+    )
+
+    with pytest.raises(ValueError, match="uploaded media URL"):
+        apply_repeat_reference_parameters(recipe, {"reference_images": {"url": "/uploads/refs/a.png"}})
+    with pytest.raises(ValueError, match="uploaded media URL"):
+        apply_repeat_reference_parameters(recipe, {"reference_images": ["not-a-url"]})
 
 
 def test_private_repeat_api_does_not_publish_or_return_source_identity() -> None:
@@ -111,9 +160,14 @@ def test_private_repeat_api_does_not_publish_or_return_source_identity() -> None
     assert '@router.post("/generation-repeat-links/{token}/launch", status_code=202)' in source
     assert "generation.user_id != user.id" in source
     assert "public_repeat_descriptor(recipe)" in source
+    assert "public_repeat_quote(quote)" in source
     assert "_repeat_generation_request(recipe, payload)" in source
+    assert "_assert_owned_uploaded_references(payload, user, session)" in source
+    assert 'UserReference.source == "mini_app_upload"' in source
+    assert "ReferenceStaticStorage.is_local_url(url)" in source
     assert "mini_app_deep_link(payload)" in source
     assert 'payload = f"repeat_{token}"' in source
+    assert "return await quote_generation" not in source
     assert "FeedService.publish" not in source
     assert "publication_scope =" not in source
     assert '"generation_id"' not in source
@@ -151,6 +205,7 @@ def test_private_repeat_frontend_never_receives_or_posts_hidden_recipe() -> None
     assert "Промпт и настройки исходной работы скрыты" in flow
     assert "не загружаются в приложение" in flow
     assert 'field.control === "file" || field.control === "files"' in flow
+    assert 'name: "input_url"' in flow
     assert '<span className="label">Описание</span>' not in flow
     assert "Новая работа останется приватной" in flow
     assert "Скопировать ссылку на повтор" in button
