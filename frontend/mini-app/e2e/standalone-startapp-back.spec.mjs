@@ -46,6 +46,11 @@ async function mockApp(page) {
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
+    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Lava Top', configured: false, currencies: [], packages: {} });
+    if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: false, currencies: [], packages: {} });
+    if (path === '/api/v1/payments/crypto/packages') return json({ provider: 'cryptobot', label: 'CryptoBot', configured: false, currencies: [], packages: {} });
+    if (path === '/api/v1/payments/crypto/2328/packages') return json({ provider: '2328', label: '2328', configured: false, currencies: [], packages: {} });
+    if (path === '/api/v1/payments') return json({ items: [] });
     if (path === `/api/v1/feed/${generationId}`) return json({
       id: generationId,
       model: 'Nano Banana 2',
@@ -117,4 +122,19 @@ test('shared work to author profile native Back returns to the work, not the pro
   await expect(page.getByText('Лента ROXY')).toBeVisible();
   await expect(page.getByText('Back navigation portrait')).toBeVisible();
   await expect(page.getByText('Профиль ROXY')).toHaveCount(0);
+});
+
+test('shared standalone Balance opens payments instead of the profile', async ({ page }) => {
+  await installStickyTelegram(page, feedPayload);
+  await mockApp(page);
+
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(feedPayload)}`);
+  await expect(page.getByText('Лента ROXY')).toBeVisible();
+  await expect(page.locator('.balance-button')).toContainText('100 ROX');
+
+  await page.locator('.balance-button').click();
+
+  await expect(page).toHaveURL(/\/mini-app\/payments\//);
+  await expect(page.getByRole('heading', { name: 'Пополнения ROX' })).toBeVisible();
+  await expect(page.getByText('Пополнение сейчас недоступно.')).toBeVisible();
 });
