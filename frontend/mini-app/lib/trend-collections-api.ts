@@ -8,6 +8,7 @@ export type TrendCollection = {
   system_key?: string | null;
   title: string;
   description?: string;
+  aliases?: string[];
   sort_order: number;
   is_active: boolean;
   item_count?: number;
@@ -18,6 +19,7 @@ export type TrendCollection = {
 
 export type TrendCollectionState = {
   schema_version?: number;
+  initialized?: boolean;
   collections: TrendCollection[];
   assignments: Record<string, string>;
 };
@@ -25,6 +27,7 @@ export type TrendCollectionState = {
 export type TrendCollectionWrite = {
   title: string;
   description?: string;
+  hashtags?: string[];
   sort_order?: number;
   is_active?: boolean;
 };
@@ -76,9 +79,9 @@ export const trendCollectionsApi = {
     headers: writeHeaders("folder-update"),
     body: JSON.stringify(body),
   }),
-  hide: (id: string) => request<TrendCollection>(`/api/v1/trend-collections/manage/${encodeURIComponent(id)}`, {
+  remove: (id: string) => request<{ id: string; deleted: boolean; released_items: number; auto_reassigned: number }>(`/api/v1/trend-collections/manage/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    headers: writeHeaders("folder-hide"),
+    headers: writeHeaders("folder-delete"),
   }),
   activate: (id: string) => request<TrendCollection>(`/api/v1/trend-collections/manage/${encodeURIComponent(id)}/activate`, {
     method: "POST",
