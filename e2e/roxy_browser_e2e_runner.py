@@ -46,7 +46,10 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     )
     await expect(page).to_have_title(re.compile("ROXY"))
     await expect(page.locator('[data-roxy-customer-route="home"]')).to_have_count(2, timeout=8000)
-    await expect(page.locator('[data-roxy-customer-route="home"]:visible').first).to_contain_text("Каталог")
+    home_tab = page.locator('.bottom-nav button[data-roxy-customer-route="home"]:visible')
+    await expect(home_tab).to_have_count(1)
+    await expect(home_tab.locator("small")).to_have_text("Каталог")
+    await expect(home_tab).to_have_attribute("aria-current", "page")
     await expect(page.locator('[data-roxy-customer-route="catalog"]:visible')).to_have_count(0)
 
     for route in ("home", "create", "history", "profile"):
