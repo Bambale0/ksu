@@ -52,6 +52,19 @@ function explicitLaunchCarries(payload: string): boolean {
   return false;
 }
 
+function explicitInternalPayload(): string {
+  // start_payload is ROXY's own in-WebView navigation alias. It must outrank
+  // Telegram's sticky initDataUnsafe.start_param, otherwise a feed deep link
+  // immediately reopens itself when its "Профиль автора" action navigates to
+  // profile_*, and a public profile cannot open one of its feed works either.
+  for (const raw of [window.location.search, window.location.hash]) {
+    const params = new URLSearchParams(String(raw || "").replace(/^[?#]/, ""));
+    const value = String(params.get("start_payload") || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
 function prepareTrendReturnLocation(): void {
   // Store a clean Catalog return URL before the trend page is opened. Without
   // this, Telegram can return to the same ?startapp=trend_* URL and immediately
@@ -82,7 +95,7 @@ function parseTarget(): Target | null {
   const current = new URL(window.location.href);
   if (current.searchParams.get("onboarding") === "1") return null;
 
-  const payload = getStartParamFallback();
+  const payload = explicitInternalPayload() || getStartParamFallback();
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
     return { kind: "post", generationId: match[1], referralCode: match[2] };
