@@ -1,0 +1,95 @@
+import { expect, test } from '@playwright/test';
+
+const model = {
+  id: 'quote-race-model',
+  title: 'Quote Race Model',
+  family: 'quote_race',
+  media_type: 'image',
+  operation: 'generate',
+  price_rox: '10.00',
+  ui_schema: {
+    defaults: { quality: 'standard' },
+    fields: [
+      { name: 'prompt', label: 'Промпт', control: 'textarea', required: true },
+      { name: 'quality', label: 'Качество', control: 'select', suggestions: ['standard', 'pro'] },
+    ],
+  },
+};
+
+async function installTelegram(page) {
+  await page.addInitScript(() => {
+    window.Telegram = {
+      WebApp: {
+        initData: 'query_id=quote-race&hash=test',
+        initDataUnsafe: { user: { id: 777, first_name: 'QA' } },
+        ready() {}, expand() {}, onEvent() {}, offEvent() {},
+        BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
+        HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
+      },
+    };
+  });
+}
+
+async function mockApi(page) {
+  await installTelegram(page);
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+
+    if (path === '/api/v1/me') return json({ id: 'user-1', telegram_id: 777, first_name: 'QA', balance_rox: '100.00' });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [], max_generation_quantity: 4 });
+    if (path === '/api/v1/generations/quote') {
+      const body = request.postDataJSON();
+      const pro = body?.parameters?.quality === 'pro';
+      if (pro) await new Promise((resolve) => setTimeout(resolve, 700));
+      return json({
+        model_id: model.id,
+        cost_rox: pro ? '30.00' : '10.00',
+        effective_cost_rox: pro ? '30.00' : '10.00',
+        retail_cost_rox: pro ? '30.00' : '10.00',
+        cost_rub: pro ? '30.00' : '10.00',
+      });
+    }
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
+    if (path === '/api/v1/feed') return json({ items: [] });
+    if (path === '/api/v1/trends') return json({ items: [] });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/references') return json({ items: [] });
+    if (path === '/api/v1/prompt-tools') return json({ admin_free: false, items: [] });
+    if (path === '/api/v1/trend-collections') return json({ items: [] });
+    return json({ items: [] });
+  });
+}
+
+test('changing a price-sensitive field invalidates the old quote before the next quote resolves', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/?route=create');
+
+  const prompt = page.locator('textarea').first();
+  await expect(prompt).toBeVisible();
+  await prompt.fill('Тест billing race');
+
+  const quoteBox = page.locator('.quote-box');
+  const create = page.locator('.create-summary button.primary').first();
+  await expect(quoteBox.locator('strong')).toHaveText('10 ROX');
+  await expect(create).toBeEnabled();
+  await expect(create).toContainText('Создать · 10 ROX');
+
+  const quality = page.getByLabel('Качество');
+  await quality.selectOption('pro');
+
+  await expect(create).toBeDisabled();
+  await expect(create).toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(quoteBox).toHaveAttribute('data-roxy-quote-stale', 'true');
+
+  await expect(quoteBox.locator('strong')).toHaveText('30 ROX', { timeout: 3000 });
+  await expect(create).toBeEnabled();
+  await expect(create).not.toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(create).toContainText('Создать · 30 ROX');
+});
