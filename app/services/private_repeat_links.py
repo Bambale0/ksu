@@ -131,3 +131,36 @@ def sanitize_repeat_recipe(payload: dict[str, object]) -> dict[str, object]:
     if removed_private_media:
         result["references_required"] = True
     return result
+
+
+def public_repeat_descriptor(recipe: dict[str, object]) -> dict[str, object]:
+    """Return only metadata that is safe for a repeat-link recipient to inspect."""
+
+    return {
+        "model_id": str(recipe.get("model_id") or ""),
+        "references_required": bool(recipe.get("references_required")),
+    }
+
+
+def apply_repeat_reference_parameters(
+    recipe: dict[str, object],
+    reference_parameters: dict[str, Any],
+) -> dict[str, object]:
+    """Merge recipient-owned media without exposing or allowing recipe overrides."""
+
+    parameters = dict(recipe.get("parameters") or {})
+    for raw_key, value in reference_parameters.items():
+        key = str(raw_key)
+        if key.casefold() not in _PRIVATE_MEDIA_FIELDS:
+            raise ValueError("Private repeat accepts only reference uploads")
+        if not _contains_private_url(value):
+            raise ValueError("Private repeat reference must be an uploaded media URL")
+        parameters[key] = value
+
+    return {
+        "model_id": str(recipe.get("model_id") or ""),
+        "prompt": str(recipe.get("prompt") or ""),
+        "input_url": recipe.get("input_url"),
+        "billing_seconds": recipe.get("billing_seconds"),
+        "parameters": parameters,
+    }
