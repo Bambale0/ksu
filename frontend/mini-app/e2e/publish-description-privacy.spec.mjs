@@ -41,18 +41,35 @@ async function mockPublish(page) {
   });
 }
 
-test('publish respects visible Show description toggle despite global privacy guard', async ({ page }) => {
+async function openPublish(page) {
   await mockPublish(page);
   await page.goto('/mini-app/?route=generation-action&generation=gen_source&action=publish');
   await expect(page.getByText('📤 Опубликовать').first()).toBeVisible();
+  return page.getByLabel('Показать описание');
+}
 
-  const showDescription = page.getByLabel('Показать описание');
+async function publishRequest(page) {
+  const published = page.waitForRequest((request) => request.url().endsWith('/api/v1/feed/gen_source/publish') && request.method() === 'POST');
+  await page.getByRole('button', { name: 'Опубликовать' }).click();
+  return published;
+}
+
+test('publish respects enabled Show description toggle despite global privacy guard', async ({ page }) => {
+  const showDescription = await openPublish(page);
   await expect(showDescription).not.toBeChecked();
   await showDescription.check();
   await expect(showDescription).toBeChecked();
 
-  const published = page.waitForRequest((request) => request.url().endsWith('/api/v1/feed/gen_source/publish') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Опубликовать' }).click();
-  const request = await published;
+  const request = await publishRequest(page);
   expect(request.postDataJSON().prompt_visible).toBe(true);
+  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(false);
+});
+
+test('publish keeps description private when Show description stays disabled', async ({ page }) => {
+  const showDescription = await openPublish(page);
+  await expect(showDescription).not.toBeChecked();
+
+  const request = await publishRequest(page);
+  expect(request.postDataJSON().prompt_visible).toBe(false);
+  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(true);
 });
