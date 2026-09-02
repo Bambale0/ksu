@@ -245,7 +245,17 @@
       if (host !== "t.me" && host !== "telegram.me") return null;
       if (url.pathname.replace(/\/$/, "") !== "/share/url") return null;
       const targetLink = String(url.searchParams.get("url") || "").trim();
-      return targetLink ? targetLink : null;
+      if (!targetLink) return null;
+
+      // Telegram's share endpoint renders `url` and `text` together. Some
+      // backend payloads historically also appended that same link to `text`,
+      // producing two identical links in the outgoing message. Normalize at the
+      // final native-share boundary so old/stale API responses are safe too.
+      const shareText = String(url.searchParams.get("text") || "");
+      const cleanText = shareText.split(targetLink).join("").trim();
+      if (cleanText !== shareText.trim()) url.searchParams.set("text", cleanText);
+
+      return { targetLink, shareUrl: url.toString() };
     } catch {
       return null;
     }
@@ -258,13 +268,13 @@
 
     const originalOpenTelegramLink = webApp.openTelegramLink.bind(webApp);
     webApp.openTelegramLink = (rawUrl) => {
-      const targetLink = parseTelegramShare(rawUrl);
-      if (!targetLink) {
+      const share = parseTelegramShare(rawUrl);
+      if (!share) {
         originalOpenTelegramLink(rawUrl);
         return;
       }
 
-      showSheet(targetLink, () => originalOpenTelegramLink(rawUrl));
+      showSheet(share.targetLink, () => originalOpenTelegramLink(share.shareUrl));
     };
     webApp[PATCH_MARK] = true;
     return true;
