@@ -75,7 +75,7 @@ test('ambiguous checkout retry reuses the same idempotency key', async ({ page }
   await expect(pay).toBeVisible();
 
   await pay.click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByText('provider response was lost', { exact: true })).toBeVisible();
   await expect(pay).toBeEnabled();
 
   await pay.click();
