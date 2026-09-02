@@ -54,7 +54,7 @@ async function mockPayments(page) {
         currency: 'RUB',
         credits: '350',
         rox: '350',
-        payment_url: '',
+        payment_url: `https://pay.example.test/invoice-${checkoutCount}`,
         created_at: '2026-09-02T12:00:00+00:00',
         updated_at: '2026-09-02T12:00:00+00:00',
       }, 201);
@@ -80,6 +80,7 @@ test('ambiguous checkout retry reuses the same idempotency key', async ({ page }
 
   await pay.click();
   await expect(page.getByText(/Счёт CryptoBot создан/)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
 
   expect(checkoutKeys).toHaveLength(2);
   expect(checkoutKeys[0]).toBeTruthy();
