@@ -83,7 +83,7 @@ async function mockRace(page) {
       if (limit === '24' || limit === '50') {
         // The rendered DOM below is work A, while both independent enhancers see
         // a newer snapshot where B has been inserted before A. This keeps the
-        // race deterministic even when React dev/StrictMode repeats requests.
+        // race deterministic across React dev/StrictMode retries and base updates.
         return json({ items: [workB, workA], has_more: false, next_before: null });
       }
       return json({ items: [], has_more: false, next_before: null });
