@@ -155,6 +155,24 @@ function quoteLabel(): string {
   return (quoteBox()?.querySelector("strong")?.textContent || "").trim();
 }
 
+function syncStaleMarker(stale: boolean): void {
+  const box = quoteBox();
+  const button = createButton();
+  if (stale) {
+    box?.setAttribute(QUOTE_STALE_ATTR, "true");
+    if (button) {
+      button.setAttribute(QUOTE_STALE_ATTR, "true");
+      button.setAttribute("aria-disabled", "true");
+    }
+    return;
+  }
+  box?.removeAttribute(QUOTE_STALE_ATTR);
+  if (button?.getAttribute(QUOTE_STALE_ATTR) === "true") {
+    button.removeAttribute(QUOTE_STALE_ATTR);
+    button.removeAttribute("aria-disabled");
+  }
+}
+
 function draftMutationEvent(event: Event): boolean {
   const target = event.target;
   if (!(target instanceof Element) || !target.closest(".create-screen")) return false;
@@ -179,14 +197,11 @@ export function GenerationQuantityControl() {
   const staleVersionRef = useRef(0);
   const staleLabelRef = useRef("");
 
-  const lockStaleQuote = () => {
-    const box = quoteBox();
-    const button = createButton();
-    if (box?.getAttribute(QUOTE_STALE_ATTR) !== "true") box?.setAttribute(QUOTE_STALE_ATTR, "true");
-    if (button) {
-      if (!button.disabled) button.disabled = true;
-      if (button.getAttribute(QUOTE_STALE_ATTR) !== "true") button.setAttribute(QUOTE_STALE_ATTR, "true");
-    }
+  const markStale = () => {
+    if (!staleRef.current) staleLabelRef.current = quoteLabel();
+    staleRef.current = true;
+    staleVersionRef.current += 1;
+    syncStaleMarker(true);
   };
 
   const releaseStaleQuote = (version: number, expectedLabel: string) => {
@@ -199,13 +214,7 @@ export function GenerationQuantityControl() {
         return;
       }
       staleRef.current = false;
-      const box = quoteBox();
-      const button = createButton();
-      box?.removeAttribute(QUOTE_STALE_ATTR);
-      if (button?.getAttribute(QUOTE_STALE_ATTR) === "true") {
-        button.disabled = false;
-        button.removeAttribute(QUOTE_STALE_ATTR);
-      }
+      syncStaleMarker(false);
     };
     window.requestAnimationFrame(check);
   };
@@ -240,32 +249,37 @@ export function GenerationQuantityControl() {
   useEffect(() => {
     const invalidate = (event: Event) => {
       if (!draftMutationEvent(event)) return;
-      if (!staleRef.current) staleLabelRef.current = quoteLabel();
-      staleRef.current = true;
-      staleVersionRef.current += 1;
-      lockStaleQuote();
+      markStale();
     };
-    const keepLocked = () => {
-      if (staleRef.current) lockStaleQuote();
+    const blockStaleCreate = (event: MouseEvent) => {
+      if (!staleRef.current) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest<HTMLButtonElement>(".create-screen .create-summary button.primary");
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      syncStaleMarker(true);
+    };
+    const keepMarked = () => {
+      if (staleRef.current) syncStaleMarker(true);
     };
 
     document.addEventListener("input", invalidate, true);
     document.addEventListener("change", invalidate, true);
     document.addEventListener("click", invalidate, true);
-    const observer = new MutationObserver(keepLocked);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    document.addEventListener("click", blockStaleCreate, true);
+    const observer = new MutationObserver(keepMarked);
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => {
       document.removeEventListener("input", invalidate, true);
       document.removeEventListener("change", invalidate, true);
       document.removeEventListener("click", invalidate, true);
+      document.removeEventListener("click", blockStaleCreate, true);
       observer.disconnect();
       staleRef.current = false;
-      quoteBox()?.removeAttribute(QUOTE_STALE_ATTR);
-      const button = createButton();
-      if (button?.getAttribute(QUOTE_STALE_ATTR) === "true") {
-        button.disabled = false;
-        button.removeAttribute(QUOTE_STALE_ATTR);
-      }
+      syncStaleMarker(false);
     };
   }, []);
 
@@ -363,6 +377,7 @@ export function GenerationQuantityControl() {
             onClick={() => {
               quantityRef.current = count;
               window.__roxyGenerationQuantity = count;
+              markStale();
               setQuantity(count);
               selectLegacyQuantity(count);
               window.setTimeout(triggerQuoteRefresh, 0);
