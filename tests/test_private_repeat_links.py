@@ -76,14 +76,17 @@ def test_private_repeat_api_does_not_publish_or_return_source_identity() -> None
 def test_private_repeat_frontend_is_independent_from_publication() -> None:
     gate = (ROOT / "frontend/mini-app/components/app-entry-gate.tsx").read_text(encoding="utf-8")
     flow = (ROOT / "frontend/mini-app/components/private-repeat-startapp.tsx").read_text(encoding="utf-8")
+    repeat_page = (ROOT / "frontend/mini-app/app/repeat/page.tsx").read_text(encoding="utf-8")
     button = (ROOT / "frontend/mini-app/components/private-repeat-link-ux.tsx").read_text(encoding="utf-8")
     onboarding = (ROOT / "frontend/mini-app/components/user-onboarding.tsx").read_text(encoding="utf-8")
     page = (ROOT / "frontend/mini-app/app/page.tsx").read_text(encoding="utf-8")
 
     assert "PRIVATE_REPEAT_LINK" in gate
     assert 'kind: "repeat"' in gate
-    assert "PrivateRepeatStartApp" in gate
+    assert "/mini-app/repeat/?token=" in gate
     assert "current.searchParams.has(\"route\")" in gate
+    assert "PrivateRepeatStartApp" in repeat_page
+    assert "TOKEN_RE" in repeat_page
     assert "privateRepeatApi.resolve(token)" in flow
     assert "Исходная работа остаётся приватной" in flow
     assert "файлы автора не передаются" in flow
@@ -91,5 +94,6 @@ def test_private_repeat_frontend_is_independent_from_publication() -> None:
     assert "Скопировать ссылку на повтор" in button
     assert "работа осталась приватной" in button
     assert "privateRepeatApi.createLink(generationId)" in button
+    assert "history-card .private-repeat-link-history" not in button
     assert "repeat_" in onboarding
     assert "<PrivateRepeatLinkUx />" in page
