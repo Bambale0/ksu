@@ -1,0 +1,50 @@
+"use client";
+
+import { useEffect } from "react";
+
+const DASHES = /[\u2010\u2011\u2012\u2013\u2014\u2212]/g;
+const WALLET_EMAIL_SELECTOR =
+  ".wallet-input[autocomplete='email'], input[autocomplete='email'][inputmode='email']";
+
+function isWalletEmailInput(input: HTMLInputElement): boolean {
+  return input.matches(WALLET_EMAIL_SELECTOR);
+}
+
+function normalizeWalletEmailInput(input: HTMLInputElement): void {
+  if (!isWalletEmailInput(input)) return;
+  if (input.type === "email") input.type = "text";
+  if (input.inputMode !== "email") input.inputMode = "email";
+  const normalized = input.value.replace(DASHES, "-");
+  if (normalized !== input.value) {
+    input.value = normalized;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function normalizeAllWalletEmailInputs(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLInputElement>(WALLET_EMAIL_SELECTOR).forEach(normalizeWalletEmailInput);
+}
+
+export function WalletEmailInputGuard() {
+  useEffect(() => {
+    normalizeAllWalletEmailInputs();
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLInputElement) normalizeWalletEmailInput(node);
+          if (node instanceof HTMLElement) normalizeAllWalletEmailInputs(node);
+        }
+      }
+    });
+    const onInput = (event: Event) => {
+      if (event.target instanceof HTMLInputElement) normalizeWalletEmailInput(event.target);
+    };
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("input", onInput);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("input", onInput);
+    };
+  }, []);
+  return null;
+}
