@@ -57,10 +57,14 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     trend_page = (root / "frontend/mini-app/app/trend/page.tsx").read_text(encoding="utf-8")
     api = (root / "frontend/mini-app/lib/api.ts").read_text(encoding="utf-8")
 
-    # Launch-param parsing is centralized so entry routing and API attribution
-    # consume the same tanyapi-style recovery order instead of drifting apart.
+    # Telegram launch-param recovery remains centralized, but a current
+    # ROXY-owned start_payload must outrank Telegram's sticky SDK start_param
+    # when the already-open WebView navigates from one deep-link target to
+    # another (for example feed work -> author profile -> another feed work).
     assert "getStartParamFallback" in entry
-    assert "const payload = getStartParamFallback();" in entry
+    assert "function explicitInternalPayload()" in entry
+    assert 'params.get("start_payload")' in entry
+    assert "const payload = explicitInternalPayload() || getStartParamFallback();" in entry
     assert "initDataUnsafe?.start_param" in telegram
     assert "tgWebAppStartParam" in telegram
     assert '"start_payload"' in telegram
