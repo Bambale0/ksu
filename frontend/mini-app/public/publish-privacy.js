@@ -1,27 +1,26 @@
 (() => {
-  const state = { hidePrompt: true };
+  const state = { hidePrompt: true, promptVisible: false };
   window.__roxyPublishPrivacy = state;
 
-  function bindPromptToggle(label) {
-    if (!label || label.dataset.roxyPrivacyReady === "true") return;
-    const strong = label.querySelector("strong");
-    const small = label.querySelector("small");
-    const input = label.querySelector('input[type="checkbox"]');
-    if (!input) return;
-
-    label.dataset.roxyPrivacyReady = "true";
-    label.dataset.roxyHidePrompt = "true";
-    if (strong) strong.textContent = "Скрыть промпт";
-    if (small) small.textContent = "Включено — prompt не будет виден в публикации";
-    input.checked = state.hidePrompt;
+  function findPromptToggle() {
+    const rows = Array.from(document.querySelectorAll("label.toggle-row"));
+    return rows.find((row) => /Показать описание|Показать промпт|Скрыть промпт/.test(row.textContent || "")) || null;
   }
 
-  function polishPreviewPrivacy() {
-    document.querySelectorAll(".preview-card .panel").forEach((panel) => {
-      const rows = Array.from(panel.querySelectorAll("label.toggle-row"));
-      const promptRow = rows.find((row) => /Показать промпт|Скрыть промпт/.test(row.textContent || ""));
-      bindPromptToggle(promptRow);
-    });
+  function readPromptVisibility() {
+    const row = findPromptToggle();
+    const input = row?.querySelector('input[type="checkbox"]');
+    if (!row || !input) return false;
+    const text = row.textContent || "";
+    if (/Скрыть промпт/.test(text)) return !input.checked;
+    return Boolean(input.checked);
+  }
+
+  function syncPromptVisibility() {
+    const promptVisible = readPromptVisibility();
+    state.promptVisible = promptVisible;
+    // Keep the legacy API contract in sync until api.ts no longer reads hidePrompt.
+    state.hidePrompt = !promptVisible;
   }
 
   document.addEventListener(
@@ -29,8 +28,8 @@
     (event) => {
       const target = event.target;
       if (!(target instanceof HTMLInputElement)) return;
-      if (!target.closest('[data-roxy-hide-prompt="true"]')) return;
-      state.hidePrompt = Boolean(target.checked);
+      if (!target.closest("label.toggle-row")) return;
+      syncPromptVisibility();
     },
     true,
   );
@@ -42,15 +41,26 @@
       const isPublish = /\/api\/v1\/feed\/[^/]+\/publish(?:\?|$)/.test(url);
       if (isPublish && typeof init.body === "string") {
         const body = JSON.parse(init.body);
-        body.prompt_visible = !state.hidePrompt;
+        syncPromptVisibility();
+        body.prompt_visible = state.promptVisible;
         init = { ...init, body: JSON.stringify(body) };
       }
     } catch (_) {
-      // Keep publishing functional even if an old WebView cannot parse something here.
+      // Privacy-safe fallback: if this compatibility layer cannot read the UI,
+      // keep publishing functional and never expose a prompt accidentally.
+      state.promptVisible = false;
+      state.hidePrompt = true;
+      try {
+        if (typeof init.body === "string") {
+          const body = JSON.parse(init.body);
+          body.prompt_visible = false;
+          init = { ...init, body: JSON.stringify(body) };
+        }
+      } catch (_) {}
     }
     return nativeFetch(input, init);
   };
 
-  polishPreviewPrivacy();
-  new MutationObserver(polishPreviewPrivacy).observe(document.documentElement, { childList: true, subtree: true });
+  syncPromptVisibility();
+  new MutationObserver(syncPromptVisibility).observe(document.documentElement, { childList: true, subtree: true });
 })();
