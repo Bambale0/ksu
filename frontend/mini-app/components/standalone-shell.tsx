@@ -17,25 +17,11 @@ function returnFromStandalone() {
   if (typeof window === "undefined") return;
 
   const returnTo = consumeMiniAppReturnLocation();
-  if (!returnTo) {
-    window.location.replace("/mini-app/?route=home");
-    return;
-  }
-
-  if (window.history.length <= 1) {
-    window.location.replace(returnTo);
-    return;
-  }
-
-  const standaloneUrl = window.location.href;
-  let fallback = window.setTimeout(() => {
-    if (window.location.href === standaloneUrl) window.location.replace(returnTo);
-  }, 350);
-  window.addEventListener("pagehide", () => {
-    window.clearTimeout(fallback);
-    fallback = 0;
-  }, { once: true });
-  window.history.back();
+  // Standalone tools can be reached through location.replace() from a Telegram
+  // deep-link gate, so browser history may point at about:blank or an unrelated
+  // page. The tracker already stores the exact safe Mini App route; use it as
+  // the navigation authority instead of guessing from history.length.
+  window.location.replace(returnTo || "/mini-app/?route=home");
 }
 
 function openMainRoute(route: "home" | "profile"): void {

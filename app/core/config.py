@@ -213,6 +213,12 @@ class Settings(BaseSettings):
     kie_upload_max_bytes: int = 200 * 1024 * 1024
     kie_webhook_hmac_key: str = ""
 
+    @field_validator("kie_upload_max_bytes")
+    @classmethod
+    def enforce_public_kie_upload_limit(cls, value: int) -> int:
+        """Keep stale production overrides from breaking the public 200 MB contract."""
+        return max(int(value), 200 * 1024 * 1024)
+
     cryptopay_api_token: str = ""
     cryptopay_base_url: str = "https://pay.crypt.bot"
 

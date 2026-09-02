@@ -81,7 +81,13 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     explicit_launch = entry.split("function explicitLaunchCarries", 1)[1].split("function profileTarget", 1)[0]
     assert "window.location.search" in explicit_launch
     assert "window.location.hash" in explicit_launch
-    assert "__ROXY_INITIAL_LAUNCH__" in explicit_launch
+    # Telegram retains SDK/snapshot start params for the whole WebView session.
+    # Reopening an already-consumed target therefore requires a fresh product URL,
+    # not a persistent launch snapshot or tgWebAppStartParam value.
+    assert "__ROXY_INITIAL_LAUNCH__" not in explicit_launch
+    assert "tgWebAppStartParam" not in explicit_launch
+    assert '"start_payload"' in explicit_launch
+    assert '"startapp"' in explicit_launch
     assert "clearStoredLaunchPayload" in profile
     assert "clearStoredLaunchPayload" in post
 

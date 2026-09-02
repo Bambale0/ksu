@@ -1,4 +1,4 @@
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.services.model_catalog import ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
 
@@ -23,3 +23,9 @@ def test_global_kie_upload_limit_covers_largest_public_model_reference() -> None
     assert largest_public_bytes == 200 * 1024 * 1024
     assert "seedance-2.0.reference_video_urls" in largest_fields
     assert settings.kie_upload_max_bytes >= largest_public_bytes
+
+
+def test_stale_kie_upload_override_cannot_lower_public_200mb_contract() -> None:
+    configured = Settings(_env_file=None, kie_upload_max_bytes=100 * 1024 * 1024)
+
+    assert configured.kie_upload_max_bytes == 200 * 1024 * 1024
