@@ -107,16 +107,27 @@ def _contains_private_url(value: object) -> bool:
 
 
 def sanitize_repeat_recipe(payload: dict[str, object]) -> dict[str, object]:
-    """Strip every owner-media capability from a reusable generation recipe."""
+    """Strip owner media while retaining the hidden server-side generation recipe."""
 
     raw_parameters = payload.get("parameters")
     parameters = raw_parameters if isinstance(raw_parameters, dict) else {}
     clean_parameters: dict[str, Any] = {}
-    removed_private_media = bool(payload.get("input_url")) or bool(payload.get("references_required"))
+    reference_fields: list[str] = []
+    removed_private_media = bool(payload.get("references_required"))
+
+    if payload.get("input_url"):
+        removed_private_media = True
+        reference_fields.append("input_url")
 
     for raw_key, value in parameters.items():
         key = str(raw_key)
-        if key.casefold() in _PRIVATE_MEDIA_FIELDS or _contains_private_url(value):
+        if key.casefold() in _PRIVATE_MEDIA_FIELDS:
+            if value not in (None, "", [], {}):
+                removed_private_media = True
+                if key not in reference_fields:
+                    reference_fields.append(key)
+            continue
+        if _contains_private_url(value):
             removed_private_media = True
             continue
         clean_parameters[key] = value
@@ -130,16 +141,23 @@ def sanitize_repeat_recipe(payload: dict[str, object]) -> dict[str, object]:
     }
     if removed_private_media:
         result["references_required"] = True
+    if reference_fields:
+        # Field names are safe routing metadata; source URLs and values remain server-only.
+        result["reference_fields"] = reference_fields
     return result
 
 
 def public_repeat_descriptor(recipe: dict[str, object]) -> dict[str, object]:
     """Return only metadata that is safe for a repeat-link recipient to inspect."""
 
-    return {
+    result: dict[str, object] = {
         "model_id": str(recipe.get("model_id") or ""),
         "references_required": bool(recipe.get("references_required")),
     }
+    reference_fields = recipe.get("reference_fields")
+    if isinstance(reference_fields, list):
+        result["reference_fields"] = [str(item) for item in reference_fields if str(item)]
+    return result
 
 
 def apply_repeat_reference_parameters(
@@ -149,18 +167,45 @@ def apply_repeat_reference_parameters(
     """Merge recipient-owned media without exposing or allowing recipe overrides."""
 
     parameters = dict(recipe.get("parameters") or {})
+    input_url = recipe.get("input_url")
+    raw_allowed = recipe.get("reference_fields")
+    allowed = {
+        str(item).casefold()
+        for item in raw_allowed
+        if str(item)
+    } if isinstance(raw_allowed, list) else set()
+    references_required = bool(recipe.get("references_required"))
+
+    if reference_parameters and not references_required:
+        raise ValueError("This private repeat does not accept reference uploads")
+
+    supplied: set[str] = set()
     for raw_key, value in reference_parameters.items():
         key = str(raw_key)
-        if key.casefold() not in _PRIVATE_MEDIA_FIELDS:
+        normalized = key.casefold()
+        if normalized not in _PRIVATE_MEDIA_FIELDS:
             raise ValueError("Private repeat accepts only reference uploads")
+        if allowed and normalized not in allowed:
+            raise ValueError("Reference field does not belong to this private repeat")
         if not _contains_private_url(value):
             raise ValueError("Private repeat reference must be an uploaded media URL")
-        parameters[key] = value
+
+        supplied.add(normalized)
+        if normalized == "input_url":
+            if not isinstance(value, str):
+                raise ValueError("Private repeat input reference must be a single uploaded media URL")
+            input_url = value
+        else:
+            parameters[key] = value
+
+    missing = allowed - supplied
+    if missing:
+        raise ValueError("Add the required reference before repeating")
 
     return {
         "model_id": str(recipe.get("model_id") or ""),
         "prompt": str(recipe.get("prompt") or ""),
-        "input_url": recipe.get("input_url"),
+        "input_url": input_url,
         "billing_seconds": recipe.get("billing_seconds"),
         "parameters": parameters,
     }
