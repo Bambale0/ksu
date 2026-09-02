@@ -97,7 +97,7 @@ function formattedBalance(balance?: string | null): string {
 
 function hasContentLaunchTarget(): boolean {
   try {
-    return /^(feed_|remix_|profile_|posts_)/i.test(getStartParamFallback());
+    return /^(feed_|remix_|repeat_|profile_|posts_)/i.test(getStartParamFallback());
   } catch {
     return false;
   }
