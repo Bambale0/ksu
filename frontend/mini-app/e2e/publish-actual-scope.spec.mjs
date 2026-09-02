@@ -70,7 +70,7 @@ test('profile-only publish never claims the work is in the public feed', async (
   const request = await submit(page);
   expect(request.postDataJSON().publication_scope).toBe('profile');
 
-  const status = page.getByRole('status');
+  const status = page.locator('.publish-success-card');
   await expect(status.getByRole('heading', { name: 'Работа опубликована в профиль!' })).toBeVisible();
   await expect(status).toContainText('Теперь она доступна в вашем профиле.');
   await expect(status).not.toContainText('Теперь она доступна в ленте');
@@ -82,7 +82,7 @@ test('feed downgrade uses the server publication scope instead of the requested 
   const request = await submit(page);
   expect(request.postDataJSON().publication_scope).toBe('feed');
 
-  const status = page.getByRole('status');
+  const status = page.locator('.publish-success-card');
   await expect(status.getByRole('heading', { name: 'Работа опубликована в профиль!' })).toBeVisible();
   await expect(status).toContainText('Лента сейчас недоступна, поэтому работа опубликована только в профиль.');
   await expect(status).not.toContainText('Теперь она доступна в ленте');
@@ -92,7 +92,7 @@ test('successful feed publish still reports feed and profile visibility', async 
   await openPublish(page, { publication_scope: 'feed', downgraded_to_profile: false, share: {} });
   await submit(page);
 
-  const status = page.getByRole('status');
+  const status = page.locator('.publish-success-card');
   await expect(status.getByRole('heading', { name: 'Работа опубликована!' })).toBeVisible();
   await expect(status).toContainText('Теперь она доступна в ленте и профиле.');
 });
