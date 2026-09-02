@@ -88,7 +88,8 @@ test('private repeat link never exposes owner media and accepts recipient refere
   const state = await mockPrivateRepeat(page);
   await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.getByText('Исходная работа остаётся приватной.', { exact: false })).toBeVisible();
+  await expect(page.locator('body')).toContainText('Исходная работа остаётся приватной.');
+  await expect(page.getByText('Из соображений приватности ROXY их не показывает и не копирует.', { exact: false })).toBeVisible();
   await expect(page.getByDisplayValue('Неоновый портрет')).toBeVisible();
   await expect(page.getByDisplayValue('2K')).toBeVisible();
   await expect(page.getByText('Добавьте свои референсы')).toBeVisible();
