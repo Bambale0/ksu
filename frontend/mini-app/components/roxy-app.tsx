@@ -488,6 +488,9 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   }, [drafts, selected]);
 
   const persist = useCallback((modelId: string, next: Draft) => {
+    quoteSeq.current += 1;
+    setQuote(null);
+    setQuoteError("");
     setDrafts((current) => {
       const all = { ...current, [modelId]: next };
       localStorage.setItem(DRAFTS_KEY, JSON.stringify(all));
@@ -503,7 +506,11 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const errors = selected && draft ? validateDraft(selected, draft) : ["Выберите модель"];
 
   useEffect(() => {
-    if (!selected || !draft || errors.length || uploading) { setQuote(null); return; }
+    if (!selected || !draft || errors.length || uploading) {
+      quoteSeq.current += 1;
+      setQuote(null);
+      return;
+    }
     const seq = ++quoteSeq.current;
     const timer = window.setTimeout(async () => {
       try {
@@ -517,9 +524,11 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   }, [draft, selected, uploading, errors.join("|")]);
 
   const chooseModel = (id: string) => {
+    quoteSeq.current += 1;
     setSelectedId(id);
     localStorage.setItem(MODEL_KEY, id);
     setQuote(null);
+    setQuoteError("");
     haptic("light");
   };
 
