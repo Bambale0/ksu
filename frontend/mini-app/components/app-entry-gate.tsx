@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { getStartParamFallback, initTelegram } from "@/lib/telegram";
 import { FeedStartApp } from "./feed-startapp-app";
 import { GenerationActionGate } from "./generation-action-app";
-import { PrivateRepeatStartApp } from "./private-repeat-startapp";
 import { ProfileStartApp } from "./profile-startapp-app";
 
 const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
@@ -133,7 +132,13 @@ function ProfileTarget({ referralCode, payload }: { referralCode: string; payloa
 }
 
 function PrivateRepeatTarget({ token }: { token: string }) {
-  return <><EntryBackMarker /><PrivateRepeatStartApp token={token} /></>;
+  useEffect(() => {
+    // The root page mounts feed/history enhancers. Keep repeat isolated on the
+    // same standalone shell used by other tools so those enhancers cannot hide
+    // or intercept its controls.
+    window.location.replace(`/mini-app/repeat/?token=${encodeURIComponent(token)}`);
+  }, [token]);
+  return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю приватный повтор…</small></div>;
 }
 
 export function AppEntryGate() {
