@@ -83,17 +83,19 @@ async function mockPrivateRepeat(page) {
   return { createdBody: () => createdBody };
 }
 
-test('private repeat link never exposes owner media and accepts recipient references', async ({ page }) => {
+test('private repeat hides the source recipe and asks only for recipient references', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await mockPrivateRepeat(page);
   await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.locator('body')).toContainText('Исходная работа остаётся приватной.');
-  await expect(page.getByText('Из соображений приватности ROXY их не показывает и не копирует.', { exact: false })).toBeVisible();
-  await expect(page.getByLabel('Описание')).toHaveValue('Неоновый портрет');
-  await expect(page.getByLabel('Качество')).toHaveValue('2K');
-  await expect(page.getByText('Добавьте свои референсы')).toBeVisible();
-  await expect(page.locator('body')).not.toContainText('private.example');
+  const bodyText = page.locator('body');
+  await expect(bodyText).toContainText('Промпт и настройки исходной работы скрыты.');
+  await expect(page.getByText('Добавьте свой референс')).toBeVisible();
+  await expect(page.getByLabel('Описание')).toHaveCount(0);
+  await expect(page.getByLabel('Качество')).toHaveCount(0);
+  await expect(bodyText).not.toContainText('Неоновый портрет');
+  await expect(bodyText).not.toContainText('private.example');
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
 
   await page.locator('input[type="file"]').setInputFiles({
     name: 'my-reference.png',
@@ -106,11 +108,11 @@ test('private repeat link never exposes owner media and accepts recipient refere
   await launch.click();
 
   await page.waitForURL('**/mini-app/?route=history&generation=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-  await expect(page.getByText('Исходная работа остаётся приватной.', { exact: false })).toHaveCount(0);
 
   const body = state.createdBody();
   expect(body.model_id).toBe('nano-banana-2');
   expect(body.prompt).toBe('Неоновый портрет');
+  expect(body.parameters.resolution).toBe('2K');
   expect(body.input_url).toBeUndefined();
   expect(body.parameters.reference_images).toEqual(['https://recipient.local/my-reference.png']);
   expect(JSON.stringify(body)).not.toContain('private.example');
