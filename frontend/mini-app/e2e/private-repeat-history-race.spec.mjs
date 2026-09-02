@@ -119,6 +119,7 @@ async function injectPreviewA(page) {
   await page.evaluate(({ image, prompt }) => {
     const preview = document.createElement('div');
     preview.className = 'preview-card';
+    preview.dataset.historyRacePreview = 'a';
     preview.innerHTML = `
       <div class="preview-media"><img src="${image}" alt="Результат" /></div>
       <div class="preview-copy">
@@ -132,10 +133,12 @@ async function injectPreviewA(page) {
   }, { image: aImage, prompt: aPrompt });
 }
 
-test('History enhancers keep the rendered work identity when a newer generation shifts their snapshots', async ({ page }) => {
+test('History enhancers keep the rendered work identity when list order and generation query are stale', async ({ page }) => {
   await installTelegram(page);
   await mockRace(page);
-  await page.goto('/mini-app/?route=home', { waitUntil: 'domcontentloaded' });
+  // B is deliberately left in the URL as if the user arrived from a completed
+  // generation and then opened A from History without the query being cleared.
+  await page.goto(`/mini-app/?route=home&generation=${bId}`, { waitUntil: 'domcontentloaded' });
 
   // Keep RoxyApp out of the identity setup. The synthetic DOM represents the
   // already-rendered snapshot A; the enhancers deliberately receive [B, A].
@@ -147,15 +150,17 @@ test('History enhancers keep the rendered work identity when a newer generation 
   await expect(copyPrompt).toContainText(aPrompt);
   await expect(copyPrompt).not.toContainText(bPrompt);
   await expect(copyPrompt).toHaveAttribute('data-generation-id', aId);
-  await copyPrompt.click();
+  await copyPrompt.evaluate((element) => element.click());
   await expect.poll(() => page.evaluate(() => window.__copiedText)).toBe(aPrompt);
 
-  // Old repeat-link code remembered history-card index 0 here, which points to
-  // B in the enhancer snapshot. The fixed code never treats position as identity.
-  await card.locator('img').click();
+  // The stale URL is the bug trigger; a second stale preview is not. The enhancer
+  // intentionally decorates the one active `.preview-card`, so remove the old B
+  // overlay while keeping `generation=B` in the URL and render A as the active work.
+  await page.locator('.preview-card').evaluateAll((nodes) => nodes.forEach((node) => node.remove()));
+  expect(new URL(page.url()).searchParams.get('generation')).toBe(bId);
   await injectPreviewA(page);
 
-  const preview = page.locator('.preview-card').first();
+  const preview = page.locator('[data-history-race-preview="a"]');
   await expect(preview).toBeVisible();
   await expect(preview.getByText(aPrompt, { exact: true })).toBeVisible();
 
@@ -164,8 +169,6 @@ test('History enhancers keep the rendered work identity when a newer generation 
   await expect(repeat).toHaveAttribute('data-private-repeat-link', aId);
 
   const request = page.waitForRequest((candidate) => candidate.method() === 'POST' && candidate.url().includes('/repeat-link'));
-  // This preview is intentionally synthetic. Trigger the DOM click directly so
-  // the test exercises the enhancer's delegated handler without layout hit-testing.
   await repeat.evaluate((element) => element.click());
   const posted = await request;
   expect(new URL(posted.url()).pathname).toBe(`/api/v1/generations/${aId}/repeat-link`);
