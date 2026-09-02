@@ -15,6 +15,10 @@ class InsufficientBalanceError(RuntimeError):
         super().__init__("Not enough ROX")
 
 
+class IdempotencyConflictError(RuntimeError):
+    """Raised when an idempotency key is reused for a different wallet operation."""
+
+
 class WalletService:
     @staticmethod
     async def ensure_wallet(session: AsyncSession, user_id: uuid.UUID) -> Wallet:
@@ -37,6 +41,28 @@ class WalletService:
             )
         )
 
+    @staticmethod
+    def _validate_idempotent_replay(
+        existing: WalletTransaction,
+        *,
+        user_id: uuid.UUID,
+        signed_amount: Decimal,
+        kind: str,
+        reference_type: str | None,
+        reference_id: str | None,
+    ) -> WalletTransaction:
+        if (
+            existing.user_id != user_id
+            or Decimal(existing.amount) != Decimal(signed_amount)
+            or existing.kind != kind
+            or existing.reference_type != reference_type
+            or existing.reference_id != reference_id
+        ):
+            raise IdempotencyConflictError(
+                "Wallet idempotency key already belongs to a different operation"
+            )
+        return existing
+
     @classmethod
     async def credit(
         cls,
@@ -53,7 +79,14 @@ class WalletService:
             raise ValueError("Credit amount must be positive")
         existing = await cls._existing_by_key(session, idempotency_key)
         if existing:
-            return existing
+            return cls._validate_idempotent_replay(
+                existing,
+                user_id=user_id,
+                signed_amount=amount,
+                kind=kind,
+                reference_type=reference_type,
+                reference_id=reference_id,
+            )
 
         wallet = await session.scalar(
             select(Wallet).where(Wallet.user_id == user_id).with_for_update()
@@ -150,7 +183,14 @@ class WalletService:
             raise ValueError("Debit amount must be positive")
         existing = await cls._existing_by_key(session, idempotency_key)
         if existing:
-            return existing
+            return cls._validate_idempotent_replay(
+                existing,
+                user_id=user_id,
+                signed_amount=-amount,
+                kind=kind,
+                reference_type=reference_type,
+                reference_id=reference_id,
+            )
 
         wallet = await session.scalar(
             select(Wallet).where(Wallet.user_id == user_id).with_for_update()
