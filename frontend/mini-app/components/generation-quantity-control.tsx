@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 
 const DEFAULT_MAX_GENERATION_QUANTITY = 4;
+const LEGACY_HIDDEN_ATTR = "data-roxy-legacy-quantity-hidden";
 
 type PublishDetail = {
   id: string;
@@ -79,7 +80,7 @@ function withQuantity(init: RequestInit | undefined, quantity: number, maxQuanti
     const payload = JSON.parse(init.body) as Record<string, unknown>;
     return {
       ...init,
-      body: JSON.stringify({ ...payload, quantity: coerceQuantity(payload.quantity || quantity, maxQuantity) }),
+      body: JSON.stringify({ ...payload, quantity: coerceQuantity(quantity, maxQuantity) }),
     };
   } catch {
     return init;
@@ -100,6 +101,32 @@ function triggerQuoteRefresh() {
   const temporary = current.endsWith(" ") ? current.slice(0, -1) : `${current} `;
   dispatchTextareaInput(prompt, temporary);
   window.setTimeout(() => dispatchTextareaInput(prompt, current), 0);
+}
+
+function legacyQuantityPanel(): HTMLElement | null {
+  for (const label of document.querySelectorAll<HTMLElement>(".create-screen .create-controls .panel > .label")) {
+    const panel = label.closest<HTMLElement>(".panel");
+    if (
+      (label.textContent || "").trim() === "Количество запусков"
+      && panel
+      && !panel.classList.contains("generation-quantity-panel")
+    ) {
+      return panel;
+    }
+  }
+  return null;
+}
+
+function legacyQuantityButtons(panel: HTMLElement): Array<{ button: HTMLButtonElement; count: number }> {
+  return Array.from(panel.querySelectorAll<HTMLButtonElement>("button"))
+    .map((button) => ({ button, count: Number((button.textContent || "").trim()) }))
+    .filter((item) => Number.isInteger(item.count) && item.count >= 1);
+}
+
+function selectLegacyQuantity(count: number): void {
+  const panel = legacyQuantityPanel();
+  if (!panel) return;
+  legacyQuantityButtons(panel).find((item) => item.count === count)?.button.click();
 }
 
 export function GenerationQuantityControl() {
@@ -125,7 +152,14 @@ export function GenerationQuantityControl() {
   useEffect(() => {
     maxQuantityRef.current = maxQuantity;
     window.__roxyMaxGenerationQuantity = maxQuantity;
-    setQuantity((current) => coerceQuantity(current, maxQuantity));
+
+    // Keep the ref in sync immediately. MutationObserver callbacks can run before
+    // React commits a state update, so the ref is the authoritative selection at
+    // the DOM bridge between the visible control and RoxyApp's hidden legacy one.
+    const clamped = coerceQuantity(quantityRef.current, maxQuantity);
+    quantityRef.current = clamped;
+    window.__roxyGenerationQuantity = clamped;
+    setQuantity((current) => current === clamped ? current : clamped);
   }, [maxQuantity]);
 
   useEffect(() => {
@@ -151,12 +185,44 @@ export function GenerationQuantityControl() {
   }, []);
 
   useEffect(() => {
-    const syncHost = () => {
+    const sync = () => {
       const controls = document.querySelector<HTMLElement>(".create-screen .create-controls");
       if (!controls) {
         setHost(null);
         return;
       }
+
+      const legacy = legacyQuantityPanel();
+      if (legacy) {
+        const alreadySynced = legacy.getAttribute(LEGACY_HIDDEN_ATTR) === "true";
+        const buttons = legacyQuantityButtons(legacy);
+        const active = buttons.find(({ button }) => button.classList.contains("active"));
+        const intended = coerceQuantity(quantityRef.current, maxQuantityRef.current);
+
+        // On first discovery, preserve RoxyApp's current draft selection, but
+        // clamp an old 5/6 draft to the supported backend maximum. Afterwards the
+        // visible control owns the selection. Never copy a stale legacy `active`
+        // class back into visible state: React may not have committed that class
+        // yet when this MutationObserver runs after a user click.
+        const next = alreadySynced
+          ? intended
+          : coerceQuantity(active?.count || intended, maxQuantityRef.current);
+
+        if (!alreadySynced) {
+          quantityRef.current = next;
+          window.__roxyGenerationQuantity = next;
+          setQuantity(next);
+        }
+
+        if (active?.count !== next) {
+          buttons.find(({ count }) => count === next)?.button.click();
+        }
+
+        legacy.hidden = true;
+        legacy.setAttribute("aria-hidden", "true");
+        legacy.setAttribute(LEGACY_HIDDEN_ATTR, "true");
+      }
+
       let next = controls.querySelector<HTMLElement>(":scope > [data-generation-quantity-control]");
       if (!next) {
         next = document.createElement("div");
@@ -165,10 +231,18 @@ export function GenerationQuantityControl() {
       }
       setHost(next);
     };
-    syncHost();
-    const observer = new MutationObserver(syncHost);
+
+    sync();
+    const observer = new MutationObserver(sync);
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      for (const panel of document.querySelectorAll<HTMLElement>(`[${LEGACY_HIDDEN_ATTR}="true"]`)) {
+        panel.hidden = false;
+        panel.removeAttribute("aria-hidden");
+        panel.removeAttribute(LEGACY_HIDDEN_ATTR);
+      }
+    };
   }, []);
 
   if (!host) return null;
@@ -184,7 +258,12 @@ export function GenerationQuantityControl() {
             className={quantity === count ? "active" : ""}
             aria-pressed={quantity === count}
             onClick={() => {
+              // Set the authoritative value before touching the hidden React
+              // control. Its rerender can synchronously trigger our observer.
+              quantityRef.current = count;
+              window.__roxyGenerationQuantity = count;
               setQuantity(count);
+              selectLegacyQuantity(count);
               window.setTimeout(triggerQuoteRefresh, 0);
             }}
           >
