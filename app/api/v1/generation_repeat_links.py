@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.api.v1.generations import (
@@ -14,14 +15,18 @@ from app.api.v1.generations import (
     quote_generation,
 )
 from app.db.models import Generation
+from app.db.reference_models import UserReference
 from app.services.feed_links import mini_app_deep_link
 from app.services.private_repeat_links import (
     apply_repeat_reference_parameters,
     generation_id_from_repeat_token,
     public_repeat_descriptor,
+    public_repeat_quote,
+    repeat_reference_urls,
     repeat_token,
     sanitize_repeat_recipe,
 )
+from app.services.reference_static import ReferenceStaticStorage
 
 router = APIRouter(tags=["generation-repeat-links"])
 
@@ -47,6 +52,41 @@ async def _resolved_repeat_recipe(token: str, session: SessionDep) -> dict[str, 
     return sanitize_repeat_recipe(raw_recipe)
 
 
+async def _assert_owned_uploaded_references(
+    payload: PrivateRepeatInputs,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> None:
+    try:
+        urls = repeat_reference_urls(payload.parameters) if payload.parameters else []
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not urls:
+        return
+
+    # A private-repeat recipient may only use media created by the authenticated
+    # upload endpoint. Merely registering an arbitrary HTTPS URL in the reference
+    # library is not sufficient ownership proof.
+    if any(not ReferenceStaticStorage.is_local_url(url) for url in urls):
+        raise HTTPException(status_code=422, detail="Use your own uploaded reference")
+
+    rows = set(
+        (
+            await session.scalars(
+                select(UserReference.source_url).where(
+                    UserReference.user_id == user.id,
+                    UserReference.status == "ready",
+                    UserReference.source == "mini_app_upload",
+                    UserReference.source_url.in_(urls),
+                )
+            )
+        ).all()
+    )
+    if rows != set(urls):
+        # Do not disclose whether a rejected URL belongs to another user.
+        raise HTTPException(status_code=422, detail="Use your own uploaded reference")
+
+
 def _repeat_generation_request(
     recipe: dict[str, object],
     inputs: PrivateRepeatInputs,
@@ -68,6 +108,12 @@ def _repeat_generation_request(
         parameters=dict(merged.get("parameters") or {}),
         quantity=1,
     )
+
+
+def _private_repeat_failure(exc: HTTPException) -> HTTPException:
+    if exc.status_code == 409 and str(exc.detail) == "Insufficient credits":
+        return exc
+    return HTTPException(status_code=409, detail="This repeat is no longer available")
 
 
 @router.post("/generations/{generation_id}/repeat-link")
@@ -118,10 +164,15 @@ async def quote_private_repeat(
     payload: PrivateRepeatInputs,
     user: CurrentUserDep,
     session: SessionDep,
-) -> dict[str, Any]:
+) -> dict[str, str]:
     recipe = await _resolved_repeat_recipe(token, session)
+    await _assert_owned_uploaded_references(payload, user, session)
     request = _repeat_generation_request(recipe, payload)
-    return await quote_generation(request, user, session)
+    try:
+        quote = await quote_generation(request, user, session)
+    except HTTPException as exc:
+        raise _private_repeat_failure(exc) from exc
+    return public_repeat_quote(quote)
 
 
 @router.post("/generation-repeat-links/{token}/launch", status_code=202)
@@ -133,5 +184,9 @@ async def launch_private_repeat(
     redis: RedisDep,
 ) -> dict[str, str | bool | None | int | list[str]]:
     recipe = await _resolved_repeat_recipe(token, session)
+    await _assert_owned_uploaded_references(payload, user, session)
     request = _repeat_generation_request(recipe, payload)
-    return await create_generation(request, user, session, redis)
+    try:
+        return await create_generation(request, user, session, redis)
+    except HTTPException as exc:
+        raise _private_repeat_failure(exc) from exc
