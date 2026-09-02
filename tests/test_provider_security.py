@@ -2,15 +2,23 @@ import base64
 import hashlib
 import hmac
 import time
+import uuid
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
 
 from app.core.config import settings
-from app.providers.kie import verify_kie_webhook
+from app.providers.kie import (
+    kie_generation_binding,
+    verify_kie_generation_binding,
+    verify_kie_webhook,
+)
 from app.providers.payments import CryptoPayClient, PaymentProviderError, make_tbank_token
 from app.services.payments import PaymentService
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.asyncio
@@ -125,6 +133,58 @@ def test_kie_webhook_rejects_stale_signed_callback() -> None:
         hmac_key=key,
         max_age_seconds=300,
     )
+
+
+def test_kie_webhook_fails_closed_without_hmac_key() -> None:
+    timestamp = str(int(time.time()))
+    assert not verify_kie_webhook(
+        task_id="attacker-controlled-task",
+        timestamp=timestamp,
+        signature="anything",
+        hmac_key="",
+    )
+
+
+def test_kie_generation_binding_is_scoped_and_tamper_evident() -> None:
+    key = "kie-webhook-secret"
+    generation_id = uuid.uuid4()
+    other_generation_id = uuid.uuid4()
+    binding = kie_generation_binding(generation_id, key)
+
+    assert binding
+    assert key not in binding
+    assert verify_kie_generation_binding(generation_id, binding, key)
+    assert not verify_kie_generation_binding(other_generation_id, binding, key)
+    replacement = "A" if binding[-1] != "A" else "B"
+    assert not verify_kie_generation_binding(generation_id, binding[:-1] + replacement, key)
+    assert not verify_kie_generation_binding(generation_id, binding, "")
+
+
+def test_kie_callback_contract_never_places_global_secret_in_url() -> None:
+    provider = (ROOT / "app/services/generation_provider.py").read_text(encoding="utf-8")
+    webhook = (ROOT / "app/api/webhooks.py").read_text(encoding="utf-8")
+
+    assert '"binding": kie_generation_binding(' in provider
+    assert 'params["token"]' not in provider
+    assert 'request.query_params.get("token")' not in webhook
+    assert "verify_kie_webhook(" in webhook
+    assert "verify_kie_generation_binding(" in webhook
+    assert "candidate_generation_id" in webhook
+
+
+def test_production_refuses_kie_callbacks_without_hmac_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.main import _validate_production_security_configuration
+
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "telegram_webhook_url", "")
+    monkeypatch.setattr(settings, "kie_api_key", "kie-api-key")
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    monkeypatch.setattr(settings, "kie_webhook_hmac_key", "")
+
+    with pytest.raises(RuntimeError, match="KIE_WEBHOOK_HMAC_KEY"):
+        _validate_production_security_configuration()
 
 
 def test_tbank_token_uses_only_root_values() -> None:

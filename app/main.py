@@ -44,6 +44,10 @@ def _validate_production_security_configuration() -> None:
         raise RuntimeError(
             "TELEGRAM_WEBHOOK_SECRET is required when Telegram webhook delivery is enabled in production"
         )
+    if settings.kie_api_key and settings.public_base_url and not settings.kie_webhook_hmac_key:
+        raise RuntimeError(
+            "KIE_WEBHOOK_HMAC_KEY is required when KIE callbacks are enabled in production"
+        )
 
 
 @asynccontextmanager

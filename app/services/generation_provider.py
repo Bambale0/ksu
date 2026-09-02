@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
-from app.providers.kie import KieClient, KieProviderError, KieTask
+from app.providers.kie import KieClient, KieProviderError, KieTask, kie_generation_binding
 from app.providers.kie_veo import KieVeoClient
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.kie_image_contracts import KieImageContractError
@@ -32,6 +32,8 @@ from app.services.wallet import WalletService
 SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
 _TERMINAL_STATUSES = {"succeeded", "failed"}
 _UNCERTAIN_CLIENT_STATUSES = {408, 425}
+
+
 class GenerationProviderService:
     @staticmethod
     def _provider_api(generation: Generation) -> str:
@@ -150,11 +152,16 @@ class GenerationProviderService:
         await session.commit()
 
         callback_url = settings.webhook_url("webhooks/kie")
-        if callback_url:
-            params = {"generation_id": str(generation.id)}
-            if settings.kie_webhook_hmac_key:
-                params["token"] = settings.kie_webhook_hmac_key
+        if callback_url and settings.kie_webhook_hmac_key:
+            params = {
+                "generation_id": str(generation.id),
+                "binding": kie_generation_binding(generation.id, settings.kie_webhook_hmac_key),
+            }
             callback_url = f"{callback_url}?{urlencode(params)}"
+        elif callback_url:
+            # Never ask KIE to call an endpoint that cannot authenticate callbacks.
+            # Non-production environments can rely on the existing polling/recovery path.
+            callback_url = ""
         input_data = cls._input_for(generation)
 
         try:

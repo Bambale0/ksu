@@ -14,7 +14,11 @@ from app.core.config import settings
 from app.db.models import Payment
 from app.db.payment_models import PaymentRefundRequest
 from app.db.session import SessionFactory
-from app.providers.kie import extract_kie_task_id, verify_kie_webhook
+from app.providers.kie import (
+    extract_kie_task_id,
+    verify_kie_generation_binding,
+    verify_kie_webhook,
+)
 from app.providers.payments import CryptoPayClient, YooKassaClient, make_tbank_token
 from app.services.generation_provider import GenerationProviderService
 from app.services.payments import PaymentService
@@ -52,13 +56,11 @@ async def kie_webhook(
     task_id = extract_kie_task_id(payload)
     if not task_id:
         raise HTTPException(status_code=400, detail="Missing Kie task id")
-    query_token = request.query_params.get("token")
-    token_valid = bool(
-        settings.kie_webhook_hmac_key
-        and query_token
-        and hmac.compare_digest(query_token, settings.kie_webhook_hmac_key)
-    )
-    if not token_valid and not verify_kie_webhook(
+
+    # KIE signs taskId.timestamp in headers. Never treat a query parameter as an
+    # alternative bearer credential: callback URLs are routinely copied into
+    # provider/proxy logs and are not an appropriate place for a global secret.
+    if not verify_kie_webhook(
         task_id=task_id,
         timestamp=x_webhook_timestamp,
         signature=x_webhook_signature,
@@ -68,11 +70,24 @@ async def kie_webhook(
 
     generation_id: uuid.UUID | None = None
     raw_generation_id = request.query_params.get("generation_id")
+    binding = request.query_params.get("binding")
     if raw_generation_id:
         try:
-            generation_id = uuid.UUID(raw_generation_id)
+            candidate_generation_id = uuid.UUID(raw_generation_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid generation id") from exc
+
+        if binding:
+            if not verify_kie_generation_binding(
+                candidate_generation_id,
+                binding,
+                settings.kie_webhook_hmac_key,
+            ):
+                raise HTTPException(status_code=403, detail="Invalid Kie generation binding")
+            generation_id = candidate_generation_id
+        # Legacy callbacks may still carry an unsigned generation_id and the old
+        # token query parameter. Ignore that recovery hint instead of trusting it;
+        # task_id lookup still completes callbacks whose external_id was persisted.
 
     async with SessionFactory() as session:
         await GenerationProviderService.sync_kie_task(

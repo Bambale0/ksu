@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -130,9 +131,7 @@ class KieClient:
         response.raise_for_status()
         payload = response.json()
         if int(payload.get("code") or 0) != 200:
-            raise KieProviderError(
-                f"Kie music record-info failed: {payload.get('msg') or payload!r}"
-            )
+            raise KieProviderError(f"Kie music record-info failed: {payload.get('msg') or payload!r}")
         data = payload.get("data") or {}
         provider_status = str(data.get("status") or "PENDING").upper()
         tracks = _extract_music_tracks(data)
@@ -150,11 +149,7 @@ class KieClient:
         return KieTask(
             task_id=str(data.get("taskId") or task_id),
             state=state,
-            result_urls=[
-                str(item["audio_url"])
-                for item in tracks
-                if item.get("audio_url")
-            ],
+            result_urls=[str(item["audio_url"]) for item in tracks if item.get("audio_url")],
             fail_code=str(data.get("errorCode") or ""),
             fail_message=str(data.get("errorMessage") or ""),
             raw=payload,
@@ -180,9 +175,9 @@ def verify_kie_webhook(
     hmac_key: str,
     max_age_seconds: int = 300,
 ) -> bool:
-    if not hmac_key:
-        return True
-    if not task_id or not timestamp or not signature:
+    """Verify the official KIE taskId.timestamp HMAC and fail closed without a key."""
+
+    if not hmac_key or not task_id or not timestamp or not signature:
         return False
     try:
         sent_at = int(timestamp)
@@ -195,6 +190,27 @@ def verify_kie_webhook(
     digest = hmac.new(hmac_key.encode(), message, hashlib.sha256).digest()
     expected = base64.b64encode(digest).decode()
     return hmac.compare_digest(expected, signature)
+
+
+def kie_generation_binding(generation_id: uuid.UUID, hmac_key: str) -> str:
+    """Sign the local generation recovery hint without exposing the webhook secret."""
+
+    if not hmac_key:
+        raise ValueError("KIE webhook HMAC key is not configured")
+    message = f"roxy:kie-callback:v1:{generation_id}".encode("ascii")
+    digest = hmac.new(hmac_key.encode(), message, hashlib.sha256).digest()[:18]
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def verify_kie_generation_binding(
+    generation_id: uuid.UUID,
+    binding: str | None,
+    hmac_key: str,
+) -> bool:
+    if not binding or not hmac_key:
+        return False
+    expected = kie_generation_binding(generation_id, hmac_key)
+    return hmac.compare_digest(expected, binding)
 
 
 def _extract_music_tracks(data: dict[str, Any]) -> list[dict[str, Any]]:
