@@ -16,6 +16,8 @@ export type CheckoutIntent = {
   billingEmail?: string;
 };
 
+let memoryIntent: StoredIntent | null = null;
+
 function storage(): Storage | null {
   if (typeof window === "undefined" || typeof localStorage === "undefined") return null;
   return localStorage;
@@ -30,7 +32,19 @@ function fingerprint(intent: CheckoutIntent): string {
   });
 }
 
-function removeStoredIntent(store: Storage): void {
+function validIntent(value: Partial<StoredIntent> | null): value is StoredIntent {
+  return Boolean(
+    value
+    && typeof value.fingerprint === "string"
+    && typeof value.key === "string"
+    && typeof value.createdAt === "number"
+    && Date.now() - value.createdAt <= INTENT_TTL_MS,
+  );
+}
+
+function removeStoredIntent(store: Storage | null): void {
+  memoryIntent = null;
+  if (!store) return;
   try {
     store.removeItem(STORAGE_KEY);
   } catch {
@@ -40,24 +54,21 @@ function removeStoredIntent(store: Storage): void {
 
 function readStoredIntent(): StoredIntent | null {
   const store = storage();
-  if (!store) return null;
-  try {
-    const parsed = JSON.parse(store.getItem(STORAGE_KEY) || "null") as Partial<StoredIntent> | null;
-    if (
-      !parsed
-      || typeof parsed.fingerprint !== "string"
-      || typeof parsed.key !== "string"
-      || typeof parsed.createdAt !== "number"
-      || Date.now() - parsed.createdAt > INTENT_TTL_MS
-    ) {
+  if (store) {
+    try {
+      const parsed = JSON.parse(store.getItem(STORAGE_KEY) || "null") as Partial<StoredIntent> | null;
+      if (validIntent(parsed)) {
+        memoryIntent = parsed;
+        return parsed;
+      }
       removeStoredIntent(store);
-      return null;
+    } catch {
+      // Keep the in-memory fallback if this WebView blocks storage access.
     }
-    return parsed as StoredIntent;
-  } catch {
-    removeStoredIntent(store);
-    return null;
   }
+  if (validIntent(memoryIntent)) return memoryIntent;
+  memoryIntent = null;
+  return null;
 }
 
 export function checkoutIdempotencyKey(intent: CheckoutIntent): string {
@@ -65,26 +76,26 @@ export function checkoutIdempotencyKey(intent: CheckoutIntent): string {
   const existing = readStoredIntent();
   if (existing?.fingerprint === intentFingerprint) return existing.key;
 
-  const key = customerIdempotencyKey();
+  const next: StoredIntent = {
+    fingerprint: intentFingerprint,
+    key: customerIdempotencyKey(),
+    createdAt: Date.now(),
+  };
+  memoryIntent = next;
   const store = storage();
   if (store) {
     try {
-      store.setItem(STORAGE_KEY, JSON.stringify({
-        fingerprint: intentFingerprint,
-        key,
-        createdAt: Date.now(),
-      } satisfies StoredIntent));
+      store.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
-      // Falling back to an in-request key is safer than blocking payment entirely.
+      // The in-memory copy still protects retries for the current WebView session.
     }
   }
-  return key;
+  return next.key;
 }
 
 export function clearCheckoutIdempotencyKey(intent: CheckoutIntent, key: string): void {
   const existing = readStoredIntent();
   if (!existing) return;
   if (existing.fingerprint !== fingerprint(intent) || existing.key !== key) return;
-  const store = storage();
-  if (store) removeStoredIntent(store);
+  removeStoredIntent(storage());
 }
