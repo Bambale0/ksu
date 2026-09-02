@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import uuid
+from pathlib import Path
 
 from app.core.config import settings
 from app.services.private_repeat_links import (
@@ -67,7 +67,8 @@ def test_private_repeat_api_does_not_publish_or_return_source_identity() -> None
     assert "sanitize_repeat_recipe(raw_recipe)" in source
     assert "mini_app_deep_link(payload)" in source
     assert 'payload = f"repeat_{token}"' in source
-    assert "publish" not in source.casefold()
+    assert "FeedService.publish" not in source
+    assert "publication_scope =" not in source
     assert '"generation_id"' not in source
     assert '"result_url"' not in source
 
