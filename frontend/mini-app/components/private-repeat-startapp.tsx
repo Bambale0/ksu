@@ -17,22 +17,47 @@ function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
-function fileFields(model: GenerationModel): UiField[] {
+function modelFileFields(model: GenerationModel): UiField[] {
   return (model.ui_schema?.fields || []).filter((field) => field.control === "file" || field.control === "files");
 }
 
+function repeatReferenceFields(model: GenerationModel, descriptor: PrivateRepeatDescriptor): UiField[] {
+  const modelFields = modelFileFields(model);
+  const explicit = descriptor.reference_fields || [];
+  if (!explicit.length) return descriptor.references_required ? modelFields : [];
+
+  const byName = new Map(modelFields.map((field) => [field.name, field]));
+  const result: UiField[] = [];
+  for (const name of explicit) {
+    const field = byName.get(name);
+    if (field) {
+      result.push(field);
+      continue;
+    }
+    if (name === "input_url") {
+      // Older generations stored the primary source outside model parameters.
+      // It is still recipient media, but has no corresponding public UI field.
+      result.push({
+        name: "input_url",
+        label: "Референс",
+        control: "file",
+        accept: "image/*,video/*,audio/*",
+        required: true,
+      });
+    }
+  }
+  return result;
+}
+
 function allowedReferenceNames(model: GenerationModel, descriptor: PrivateRepeatDescriptor): Set<string> {
-  const modelNames = new Set(fileFields(model).map((field) => field.name));
-  const explicit = (descriptor.reference_fields || []).filter((name) => modelNames.has(name));
-  if (explicit.length) return new Set(explicit);
-  if (descriptor.references_required) return modelNames;
-  return new Set<string>();
+  return new Set(repeatReferenceFields(model, descriptor).map((field) => field.name));
 }
 
 function chooseScenario(model: GenerationModel, descriptor: PrivateRepeatDescriptor): string | null {
   const items = model.ui_schema?.scenario?.items || [];
   if (!items.length) return null;
-  const allowed = allowedReferenceNames(model, descriptor);
+  const modelNames = new Set(modelFileFields(model).map((field) => field.name));
+  const allowed = new Set([...allowedReferenceNames(model, descriptor)].filter((name) => modelNames.has(name)));
   if (allowed.size) {
     const match = items.find((item) => (item.visible_fields || []).some((name) => allowed.has(name)));
     if (match) return match.id;
@@ -45,12 +70,13 @@ function scenarioReferenceFields(
   scenarioId: string | null,
   descriptor: PrivateRepeatDescriptor,
 ): UiField[] {
-  const allowed = allowedReferenceNames(model, descriptor);
-  if (!allowed.size) return [];
+  const fields = repeatReferenceFields(model, descriptor);
+  if (!fields.length) return [];
   const scenarios = model.ui_schema?.scenario?.items || [];
   const scenario = scenarios.find((item) => item.id === scenarioId);
   const visible = new Set(scenario?.visible_fields || []);
-  return fileFields(model).filter((field) => allowed.has(field.name) && (!scenario || visible.has(field.name)));
+  const modelNames = new Set(modelFileFields(model).map((field) => field.name));
+  return fields.filter((field) => !modelNames.has(field.name) || !scenario || visible.has(field.name));
 }
 
 function requiredReferenceNames(
@@ -61,7 +87,7 @@ function requiredReferenceNames(
   const explicit = new Set(descriptor.reference_fields || []);
   if (explicit.size) return explicit;
   const scenario = model.ui_schema?.scenario?.items?.find((item: UiScenarioItem) => item.id === scenarioId);
-  const fileNames = new Set(fileFields(model).map((field) => field.name));
+  const fileNames = new Set(modelFileFields(model).map((field) => field.name));
   const required = new Set<string>();
   for (const name of scenario?.required_fields || []) if (fileNames.has(name)) required.add(name);
   return required;
@@ -73,7 +99,7 @@ function validateReferences(
   descriptor: PrivateRepeatDescriptor,
 ): string[] {
   if (!descriptor.references_required) return [];
-  const available = new Set(fileFields(model).map((field) => field.name));
+  const available = allowedReferenceNames(model, descriptor);
   const explicit = descriptor.reference_fields || [];
   if (explicit.some((name) => !available.has(name))) {
     return ["Для этой работы нужен референс, который текущая версия модели больше не принимает"];
