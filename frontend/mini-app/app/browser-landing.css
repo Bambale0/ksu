@@ -5,7 +5,7 @@
   --landing-muted: #aaa5b8;
   position: relative;
   min-height: 100dvh;
-  overflow: hidden;
+  overflow: clip;
   padding-bottom: 24px;
   color: #fff;
   background:
