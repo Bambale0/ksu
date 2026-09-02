@@ -59,17 +59,17 @@ test('publish respects enabled Show description toggle despite global privacy gu
   await expect(showDescription).not.toBeChecked();
   await showDescription.check();
   await expect(showDescription).toBeChecked();
+  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(false);
 
   const request = await publishRequest(page);
   expect(request.postDataJSON().prompt_visible).toBe(true);
-  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(false);
 });
 
 test('publish keeps description private when Show description stays disabled', async ({ page }) => {
   const showDescription = await openPublish(page);
   await expect(showDescription).not.toBeChecked();
+  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(true);
 
   const request = await publishRequest(page);
   expect(request.postDataJSON().prompt_visible).toBe(false);
-  expect(await page.evaluate(() => window.__roxyPublishPrivacy?.hidePrompt)).toBe(true);
 });
