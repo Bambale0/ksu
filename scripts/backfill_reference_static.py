@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import socket
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,13 +158,18 @@ async def _persist_reference(session, row: UserReference) -> bool:  # type: igno
 def _is_unavailable_source(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in {404, 410}
+    return False
+
+
+def _is_transient_source_error(exc: Exception) -> bool:
     return isinstance(
         exc,
         (
             httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.ReadTimeout,
+            httpx.TimeoutException,
             httpx.RemoteProtocolError,
+            socket.gaierror,
+            TimeoutError,
         ),
     )
 
@@ -204,7 +210,13 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
                         raise
                     continue
                 stats.failed += 1
-                print(f"reference-static backfill failed reference={reference_id}: {exc}")
+                if _is_transient_source_error(exc):
+                    print(
+                        "reference-static backfill transient failure "
+                        f"reference={reference_id}: {exc}"
+                    )
+                else:
+                    print(f"reference-static backfill failed reference={reference_id}: {exc}")
                 if strict:
                     raise
             except Exception as exc:
@@ -219,7 +231,13 @@ async def backfill(*, limit: int | None = None, strict: bool = False) -> Backfil
                         raise
                     continue
                 stats.failed += 1
-                print(f"reference-static backfill unexpected reference={reference_id}: {exc}")
+                if _is_transient_source_error(exc):
+                    print(
+                        "reference-static backfill transient failure "
+                        f"reference={reference_id}: {exc}"
+                    )
+                else:
+                    print(f"reference-static backfill unexpected reference={reference_id}: {exc}")
                 if strict:
                     raise
             else:
