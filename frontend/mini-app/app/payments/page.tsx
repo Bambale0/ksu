@@ -238,10 +238,26 @@ export default function PaymentsPage() {
         return;
       }
 
-      clearCheckoutIdempotencyKey(intent, requestKey);
-      if (payment.payment_url && !openPaymentLink(payment.payment_url)) {
+      if (!payment.payment_url) {
+        if (TERMINAL.has(payment.status)) {
+          clearCheckoutIdempotencyKey(intent, requestKey);
+          setNotice(
+            payment.status === "succeeded"
+              ? "Оплата уже подтверждена, ROX начислены."
+              : `Текущий статус оплаты: ${payment.status}`,
+          );
+        } else {
+          setNotice(
+            "Оплата уже зарегистрирована, но ссылка ещё не получена. Второй счёт не создаём — проверьте статус в истории ниже.",
+          );
+        }
+        return;
+      }
+
+      if (!openPaymentLink(payment.payment_url)) {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
+      clearCheckoutIdempotencyKey(intent, requestKey);
       setNotice(
         provider === "card"
           ? "Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус»."
