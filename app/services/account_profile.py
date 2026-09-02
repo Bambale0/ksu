@@ -12,6 +12,7 @@ from app.db.models import Generation, Notification, PartnerWithdrawal, Payment, 
 from app.db.onboarding_models import UserOnboarding
 from app.db.social_models import UserSubscription
 from app.services.credits import InternalCreditService
+from app.services.onboarding import OnboardingService
 from app.services.profile_preferences import ProfilePreferenceService
 from app.services.referrals import ReferralService
 
@@ -109,6 +110,7 @@ class AccountProfileService:
         referral = await ReferralService.stats(session, user.id)
         preferences = await ProfilePreferenceService.get_or_create(session, user.id)
         onboarding = await session.get(UserOnboarding, user.id)
+        current_onboarding_version = OnboardingService.current_version()
         withdrawable_rox = InternalCreditService.credits_for(referral["available"])
         pending_withdrawable_rox = InternalCreditService.credits_for(referral["pending"])
 
@@ -167,12 +169,12 @@ class AccountProfileService:
             "notifications": {"unread": unread},
             "onboarding": {
                 "enabled": settings.onboarding_enabled,
-                "current_version": settings.onboarding_version,
+                "current_version": current_onboarding_version,
                 "completed_version": onboarding.completed_version if onboarding else None,
                 "completed_at": onboarding.completed_at.isoformat() if onboarding else None,
                 "is_current": bool(
                     not settings.onboarding_enabled
-                    or (onboarding and onboarding.completed_version == settings.onboarding_version)
+                    or (onboarding and onboarding.completed_version == current_onboarding_version)
                 ),
             },
             "preferences": {
