@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.api.v1.payments import _payment_view
 from app.db.models import Payment
 from app.services.payment_2328 import Payment2328Service
 from app.services.payments import PaymentService
@@ -75,7 +76,9 @@ async def test_cryptobot_reconcile_restores_checkout_url_after_lost_create_respo
 
     assert result.external_id == "998877"
     assert result.status == "pending"
-    assert result.payload["payment_url"] == "https://t.me/CryptoBot?start=invoice-recovered"
+    assert _payment_view(result)["payment_url"] == (
+        "https://t.me/CryptoBot?start=invoice-recovered"
+    )
     assert session.commits == 1
 
 
@@ -99,7 +102,7 @@ async def test_2328_reconcile_state_restores_checkout_url_after_lost_create_resp
 
     assert result.external_id == "db17d490-15b6-47b9-9015-91d1d8b119f2"
     assert result.status == "pending"
-    assert result.payload["payment_url"] == (
+    assert _payment_view(result)["payment_url"] == (
         "https://go.2328.io/db17d490-15b6-47b9-9015-91d1d8b119f2"
     )
     assert session.commits == 1
