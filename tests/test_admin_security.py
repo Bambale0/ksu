@@ -1,8 +1,13 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.core.admin_telegram_security import (
+    FRESH_ADMIN_INIT_DATA_PATHS,
+    validate_fresh_admin_init_data,
+)
 from app.core.config import settings
+from app.core.telegram_browser_auth import build_browser_init_data
 from app.db.models import AdminAccount
 from app.services.admin_security import (
     AdminSecurityConfigurationError,
@@ -95,6 +100,40 @@ def test_audit_metadata_redacts_secrets() -> None:
     assert payload["nested"]["provider_response"] == "[redacted]"
     assert payload["nested"]["requisites"] == "[redacted]"
     assert payload["nested"]["safe"] == "ok"
+
+
+def test_admin_initdata_freshness_rejects_replay_and_future_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "123456:test-admin-bot-token"
+    monkeypatch.setattr(settings, "bot_token", token)
+    now = datetime(2026, 9, 2, 14, 0, tzinfo=UTC)
+    user = {
+        "id": 123456789,
+        "first_name": "Admin",
+        "last_name": "",
+        "username": "admin",
+        "language_code": "ru",
+    }
+
+    fresh = build_browser_init_data(user, token, now=now - timedelta(minutes=9))
+    validate_fresh_admin_init_data(fresh, now=now)
+
+    replayed = build_browser_init_data(user, token, now=now - timedelta(minutes=11))
+    with pytest.raises(ValueError, match="expired"):
+        validate_fresh_admin_init_data(replayed, now=now)
+
+    future = build_browser_init_data(user, token, now=now + timedelta(minutes=2))
+    with pytest.raises(ValueError, match="future"):
+        validate_fresh_admin_init_data(future, now=now)
+
+
+def test_admin_privilege_establishment_routes_require_fresh_initdata() -> None:
+    assert FRESH_ADMIN_INIT_DATA_PATHS == {
+        "/api/v1/admin/auth/login",
+        "/api/v1/admin/auth/mfa/setup",
+        "/api/v1/admin/auth/step-up",
+    }
 
 
 def test_datetime_timezone_sanity() -> None:
