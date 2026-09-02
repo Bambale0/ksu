@@ -318,95 +318,99 @@ async def user_history(
     per_source = max(10, min(limit, 50))
     events: list[dict[str, object]] = []
 
-    txs = list(
-        (
-            await session.scalars(
-                select(WalletTransaction)
-                .where(WalletTransaction.user_id == user_id)
-                .order_by(WalletTransaction.created_at.desc())
-                .limit(per_source)
-            )
-        ).all()
-    )
-    for tx in txs:
-        events.append(
-            {
-                "type": "wallet",
-                "id": str(tx.id),
-                "at": tx.created_at,
-                "kind": tx.kind,
-                "amount": str(tx.amount),
-                "balance_after": str(tx.balance_after),
-            }
+    if has_permission(context.account, "users.wallet.adjust"):
+        txs = list(
+            (
+                await session.scalars(
+                    select(WalletTransaction)
+                    .where(WalletTransaction.user_id == user_id)
+                    .order_by(WalletTransaction.created_at.desc())
+                    .limit(per_source)
+                )
+            ).all()
         )
+        for tx in txs:
+            events.append(
+                {
+                    "type": "wallet",
+                    "id": str(tx.id),
+                    "at": tx.created_at,
+                    "kind": tx.kind,
+                    "amount": str(tx.amount),
+                    "balance_after": str(tx.balance_after),
+                }
+            )
 
-    generations = list(
-        (
-            await session.scalars(
-                select(Generation)
-                .where(Generation.user_id == user_id)
-                .order_by(Generation.created_at.desc())
-                .limit(per_source)
-            )
-        ).all()
-    )
-    for item in generations:
-        events.append(
-            {
-                "type": "generation",
-                "id": str(item.id),
-                "at": item.created_at,
-                "status": item.status,
-                "model_id": (item.parameters or {}).get("_model_id"),
-                "cost_credits": str(item.cost_rox),
-                "prompt": item.prompt[:500],
-            }
+    if has_permission(context.account, "generations.read"):
+        generations = list(
+            (
+                await session.scalars(
+                    select(Generation)
+                    .where(Generation.user_id == user_id)
+                    .order_by(Generation.created_at.desc())
+                    .limit(per_source)
+                )
+            ).all()
         )
+        for item in generations:
+            events.append(
+                {
+                    "type": "generation",
+                    "id": str(item.id),
+                    "at": item.created_at,
+                    "status": item.status,
+                    "model_id": (item.parameters or {}).get("_model_id"),
+                    "cost_credits": str(item.cost_rox),
+                    "prompt": item.prompt[:500],
+                }
+            )
 
-    payments = list(
-        (
-            await session.scalars(
-                select(Payment)
-                .where(Payment.user_id == user_id)
-                .order_by(Payment.created_at.desc())
-                .limit(per_source)
-            )
-        ).all()
-    )
-    for item in payments:
-        events.append(
-            {
-                "type": "payment",
-                "id": str(item.id),
-                "at": item.created_at,
-                "provider": item.provider,
-                "status": item.status,
-                "amount": str(item.amount),
-                "currency": item.currency,
-                "credits": str(item.rox_amount),
-            }
+    if has_permission(context.account, "payments.read"):
+        payments = list(
+            (
+                await session.scalars(
+                    select(Payment)
+                    .where(Payment.user_id == user_id)
+                    .order_by(Payment.created_at.desc())
+                    .limit(per_source)
+                )
+            ).all()
         )
+        for item in payments:
+            events.append(
+                {
+                    "type": "payment",
+                    "id": str(item.id),
+                    "at": item.created_at,
+                    "provider": item.provider,
+                    "status": item.status,
+                    "amount": str(item.amount),
+                    "currency": item.currency,
+                    "credits": str(item.rox_amount),
+                }
+            )
 
-    tickets = list(
-        (
-            await session.scalars(
-                select(SupportTicket)
-                .where(SupportTicket.user_id == user_id)
-                .order_by(SupportTicket.created_at.desc())
-                .limit(per_source)
-            )
-        ).all()
-    )
-    for item in tickets:
-        events.append(
-            {
-                "type": "support_ticket",
-                "id": str(item.id),
-                "at": item.created_at,
-                "topic": item.topic,
-                "status": item.status,
-            }
+    if has_permission(context.account, "support.read"):
+        tickets = list(
+            (
+                await session.scalars(
+                    select(SupportTicket)
+                    .where(SupportTicket.user_id == user_id)
+                    .order_by(SupportTicket.created_at.desc())
+                    .limit(per_source)
+                )
+            ).all()
         )
+        for item in tickets:
+            events.append(
+                {
+                    "type": "support_ticket",
+                    "id": str(item.id),
+                    "at": item.created_at,
+                    "topic": item.topic,
+                    "status": item.status,
+                }
+            )
 
     if has_permission(context.account, "users.notes"):
         notes = list(
