@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 
 const DEFAULT_MAX_GENERATION_QUANTITY = 4;
 const LEGACY_HIDDEN_ATTR = "data-roxy-legacy-quantity-hidden";
+const QUOTE_STALE_ATTR = "data-roxy-quote-stale";
 
 type PublishDetail = {
   id: string;
@@ -36,6 +37,15 @@ function coerceQuantity(value: unknown, maxQuantity = DEFAULT_MAX_GENERATION_QUA
   return Math.min(maxQuantity, Math.max(1, Math.trunc(numeric)));
 }
 
+function compact(value: unknown): string {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  return new Intl.NumberFormat("ru-RU", {
+    notation: Math.abs(numeric) >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  }).format(numeric);
+}
+
 function requestUrl(input: RequestInfo | URL): string {
   return typeof input === "string" || input instanceof URL ? String(input) : input.url;
 }
@@ -48,6 +58,10 @@ function targetGenerationRequest(input: RequestInfo | URL, init?: RequestInit): 
   const url = requestUrl(input);
   if (requestMethod(input, init) !== "POST") return false;
   return url.endsWith("/api/v1/generations") || url.endsWith("/api/v1/generations/quote");
+}
+
+function targetQuoteRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  return requestMethod(input, init) === "POST" && requestUrl(input).endsWith("/api/v1/generations/quote");
 }
 
 function publishedGenerationId(input: RequestInfo | URL, init?: RequestInit): string | null {
@@ -129,12 +143,72 @@ function selectLegacyQuantity(count: number): void {
   legacyQuantityButtons(panel).find((item) => item.count === count)?.button.click();
 }
 
+function quoteBox(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".create-screen .quote-box");
+}
+
+function createButton(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(".create-screen .create-summary button.primary");
+}
+
+function quoteLabel(): string {
+  return (quoteBox()?.querySelector("strong")?.textContent || "").trim();
+}
+
+function draftMutationEvent(event: Event): boolean {
+  const target = event.target;
+  if (!(target instanceof Element) || !target.closest(".create-screen")) return false;
+  if (event.type === "input" || event.type === "change") return true;
+  if (event.type !== "click") return false;
+
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || button.closest(".create-summary")) return false;
+  if (button.matches(".saved-reference-pick") || button.closest(".upload-list")) return true;
+  const panel = button.closest<HTMLElement>(".panel");
+  const label = panel?.querySelector<HTMLElement>(":scope > .label")?.textContent?.trim();
+  return label === "Режим";
+}
+
 export function GenerationQuantityControl() {
   const [quantity, setQuantity] = useState(1);
   const [maxQuantity, setMaxQuantity] = useState(DEFAULT_MAX_GENERATION_QUANTITY);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const quantityRef = useRef(1);
   const maxQuantityRef = useRef(DEFAULT_MAX_GENERATION_QUANTITY);
+  const staleRef = useRef(false);
+  const staleVersionRef = useRef(0);
+  const staleLabelRef = useRef("");
+
+  const lockStaleQuote = () => {
+    const box = quoteBox();
+    const button = createButton();
+    if (box?.getAttribute(QUOTE_STALE_ATTR) !== "true") box?.setAttribute(QUOTE_STALE_ATTR, "true");
+    if (button) {
+      if (!button.disabled) button.disabled = true;
+      if (button.getAttribute(QUOTE_STALE_ATTR) !== "true") button.setAttribute(QUOTE_STALE_ATTR, "true");
+    }
+  };
+
+  const releaseStaleQuote = (version: number, expectedLabel: string) => {
+    const check = () => {
+      if (!staleRef.current || staleVersionRef.current !== version) return;
+      const currentLabel = quoteLabel();
+      const costUnchanged = expectedLabel === staleLabelRef.current;
+      if (!costUnchanged && currentLabel !== expectedLabel) {
+        window.requestAnimationFrame(check);
+        return;
+      }
+      staleRef.current = false;
+      const box = quoteBox();
+      const button = createButton();
+      box?.removeAttribute(QUOTE_STALE_ATTR);
+      if (button?.getAttribute(QUOTE_STALE_ATTR) === "true") {
+        button.disabled = false;
+        button.removeAttribute(QUOTE_STALE_ATTR);
+      }
+    };
+    window.requestAnimationFrame(check);
+  };
 
   useEffect(() => {
     let active = true;
@@ -164,14 +238,53 @@ export function GenerationQuantityControl() {
   }, [maxQuantity, quantity]);
 
   useEffect(() => {
+    const invalidate = (event: Event) => {
+      if (!draftMutationEvent(event)) return;
+      if (!staleRef.current) staleLabelRef.current = quoteLabel();
+      staleRef.current = true;
+      staleVersionRef.current += 1;
+      lockStaleQuote();
+    };
+    const keepLocked = () => {
+      if (staleRef.current) lockStaleQuote();
+    };
+
+    document.addEventListener("input", invalidate, true);
+    document.addEventListener("change", invalidate, true);
+    document.addEventListener("click", invalidate, true);
+    const observer = new MutationObserver(keepLocked);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    return () => {
+      document.removeEventListener("input", invalidate, true);
+      document.removeEventListener("change", invalidate, true);
+      document.removeEventListener("click", invalidate, true);
+      observer.disconnect();
+      staleRef.current = false;
+      quoteBox()?.removeAttribute(QUOTE_STALE_ATTR);
+      const button = createButton();
+      if (button?.getAttribute(QUOTE_STALE_ATTR) === "true") {
+        button.disabled = false;
+        button.removeAttribute(QUOTE_STALE_ATTR);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     const patchedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const publishId = publishedGenerationId(input, init);
+      const isQuote = targetQuoteRequest(input, init);
+      const quoteVersion = isQuote ? staleVersionRef.current : 0;
       const nextInit = targetGenerationRequest(input, init)
         ? withQuantity(init, quantityRef.current, maxQuantityRef.current)
         : init;
       const response = await originalFetch(input, nextInit);
       if (publishId && response.ok) emitPublished(response, publishId);
+      if (isQuote && response.ok && staleRef.current && staleVersionRef.current === quoteVersion) {
+        void response.clone().json()
+          .then((payload) => releaseStaleQuote(quoteVersion, `${compact(payload?.cost_rox)} ROX`))
+          .catch(() => undefined);
+      }
       return response;
     }) as typeof window.fetch;
     window.fetch = patchedFetch;
