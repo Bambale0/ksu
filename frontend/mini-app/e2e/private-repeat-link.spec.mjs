@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const token = '0123456789abcdef0123456789abcdef_AAAAAAAAAAAAAAAA';
 const payload = `repeat_${token}`;
+const secretPrompt = 'SERVER_ONLY_SENTINEL_PROMPT';
+const secretSetting = 'SERVER_ONLY_SENTINEL_SETTING';
 
 const model = {
   id: 'nano-banana-2',
@@ -27,8 +29,8 @@ const model = {
   },
 };
 
-async function mockPrivateRepeat(page) {
-  let createdBody = null;
+async function mockPrivateRepeat(page, referenceFields = ['reference_images']) {
+  const repeatBodies = [];
 
   await page.addInitScript((startParam) => {
     window.Telegram = {
@@ -53,11 +55,8 @@ async function mockPrivateRepeat(page) {
     if (path === '/api/v1/me') return json({ id: 'recipient', telegram_id: 888, first_name: 'Recipient', balance_rox: '100.00', created_at: '2026-09-02T00:00:00Z', is_active: true });
     if (path === `/api/v1/generation-repeat-links/${token}`) return json({
       model_id: model.id,
-      prompt: 'Неоновый портрет',
-      input_url: null,
-      billing_seconds: null,
-      parameters: { resolution: '2K' },
       references_required: true,
+      reference_fields: referenceFields,
     });
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
     if (path === '/api/v1/uploads/kie' && method === 'POST') return json({
@@ -65,9 +64,12 @@ async function mockPrivateRepeat(page) {
       name: 'my-reference.png',
       reference: { id: 'recipient-ref', kind: 'image', url: 'https://recipient.local/my-reference.png' },
     }, 201);
-    if (path === '/api/v1/generations/quote' && method === 'POST') return json({ cost_rox: '25.00', enough_balance: true });
-    if (path === '/api/v1/generations' && method === 'POST') {
-      createdBody = request.postDataJSON();
+    if (path === `/api/v1/generation-repeat-links/${token}/quote` && method === 'POST') {
+      repeatBodies.push({ kind: 'quote', body: request.postDataJSON() });
+      return json({ cost_rox: '25.00', enough_balance: true });
+    }
+    if (path === `/api/v1/generation-repeat-links/${token}/launch` && method === 'POST') {
+      repeatBodies.push({ kind: 'launch', body: request.postDataJSON() });
       return json({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status: 'queued', cost_rox: '25.00' }, 202);
     }
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
@@ -80,10 +82,10 @@ async function mockPrivateRepeat(page) {
     return json({ items: [] });
   });
 
-  return { createdBody: () => createdBody };
+  return { repeatBodies };
 }
 
-test('private repeat hides the source recipe and asks only for recipient references', async ({ page }) => {
+test('private repeat keeps source prompt and settings completely server-only', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await mockPrivateRepeat(page);
   await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
@@ -93,9 +95,13 @@ test('private repeat hides the source recipe and asks only for recipient referen
   await expect(page.getByText('Добавьте свой референс')).toBeVisible();
   await expect(page.getByLabel('Описание')).toHaveCount(0);
   await expect(page.getByLabel('Качество')).toHaveCount(0);
-  await expect(bodyText).not.toContainText('Неоновый портрет');
-  await expect(bodyText).not.toContainText('private.example');
+  await expect(bodyText).not.toContainText(secretPrompt);
+  await expect(bodyText).not.toContainText(secretSetting);
   await expect(page.locator('input[type="file"]')).toHaveCount(1);
+
+  const html = await page.content();
+  expect(html).not.toContain(secretPrompt);
+  expect(html).not.toContain(secretSetting);
 
   await page.locator('input[type="file"]').setInputFiles({
     name: 'my-reference.png',
@@ -109,11 +115,42 @@ test('private repeat hides the source recipe and asks only for recipient referen
 
   await page.waitForURL('**/mini-app/?route=history&generation=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 
-  const body = state.createdBody();
-  expect(body.model_id).toBe('nano-banana-2');
-  expect(body.prompt).toBe('Неоновый портрет');
-  expect(body.parameters.resolution).toBe('2K');
-  expect(body.input_url).toBeUndefined();
-  expect(body.parameters.reference_images).toEqual(['https://recipient.local/my-reference.png']);
-  expect(JSON.stringify(body)).not.toContain('private.example');
+  expect(state.repeatBodies.some((item) => item.kind === 'quote')).toBeTruthy();
+  const launched = state.repeatBodies.find((item) => item.kind === 'launch');
+  expect(launched.body).toEqual({
+    parameters: { reference_images: ['https://recipient.local/my-reference.png'] },
+  });
+
+  const serializedBodies = JSON.stringify(state.repeatBodies);
+  expect(serializedBodies).not.toContain('prompt');
+  expect(serializedBodies).not.toContain('resolution');
+  expect(serializedBodies).not.toContain('billing_seconds');
+  expect(serializedBodies).not.toContain(secretPrompt);
+  expect(serializedBodies).not.toContain(secretSetting);
+  expect(serializedBodies).not.toContain('private.example');
+});
+
+test('private repeat replaces legacy top-level input_url with the recipient upload', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await mockPrivateRepeat(page, ['input_url']);
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
+
+  await expect(page.getByText('Добавьте свой референс')).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(1);
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'my-reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('recipient-owned-image'),
+  });
+
+  const launch = page.getByRole('button', { name: /Повторить · 25\.00 ROX/ });
+  await expect(launch).toBeEnabled();
+  await launch.click();
+  await page.waitForURL('**/mini-app/?route=history&generation=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+
+  const launched = state.repeatBodies.find((item) => item.kind === 'launch');
+  expect(launched.body).toEqual({
+    parameters: { input_url: 'https://recipient.local/my-reference.png' },
+  });
 });

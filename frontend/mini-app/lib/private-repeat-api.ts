@@ -1,7 +1,16 @@
 "use client";
 
 import { telegramHeaders } from "./telegram";
-import type { RecreateGenerationPayload } from "./types";
+
+export type PrivateRepeatDescriptor = {
+  model_id: string;
+  references_required: boolean;
+  reference_fields?: string[];
+};
+
+type PrivateRepeatInputs = {
+  parameters: Record<string, unknown>;
+};
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -21,12 +30,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+function inputs(parameters: Record<string, unknown>): PrivateRepeatInputs {
+  return { parameters };
+}
+
 export const privateRepeatApi = {
   createLink: (generationId: string) => request<{ link: string; payload: string; private: true }>(
     `/api/v1/generations/${encodeURIComponent(generationId)}/repeat-link`,
     { method: "POST" },
   ),
-  resolve: (token: string) => request<RecreateGenerationPayload>(
+  resolve: (token: string) => request<PrivateRepeatDescriptor>(
     `/api/v1/generation-repeat-links/${encodeURIComponent(token)}`,
+  ),
+  quote: (token: string, parameters: Record<string, unknown>) => request<{ cost_rox?: string; enough_balance?: boolean }>(
+    `/api/v1/generation-repeat-links/${encodeURIComponent(token)}/quote`,
+    { method: "POST", body: JSON.stringify(inputs(parameters)) },
+  ),
+  launch: (token: string, parameters: Record<string, unknown>) => request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>(
+    `/api/v1/generation-repeat-links/${encodeURIComponent(token)}/launch`,
+    { method: "POST", body: JSON.stringify(inputs(parameters)) },
   ),
 };

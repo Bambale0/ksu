@@ -106,17 +106,53 @@ def _contains_private_url(value: object) -> bool:
     return False
 
 
+def _reference_urls(value: object) -> list[str]:
+    if isinstance(value, str):
+        item = value.strip()
+        if item and _contains_private_url(item):
+            return [item]
+        raise ValueError("Private repeat reference must be an uploaded media URL")
+    if isinstance(value, list) and value:
+        result: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not item.strip() or not _contains_private_url(item):
+                raise ValueError("Private repeat references must be uploaded media URLs")
+            result.append(item.strip())
+        return result
+    raise ValueError("Private repeat reference must be an uploaded media URL")
+
+
+def repeat_reference_urls(reference_parameters: dict[str, Any]) -> list[str]:
+    """Collect the media URLs supplied by a repeat recipient after shape validation."""
+
+    values: list[str] = []
+    for value in reference_parameters.values():
+        values.extend(_reference_urls(value))
+    return list(dict.fromkeys(values))
+
+
 def sanitize_repeat_recipe(payload: dict[str, object]) -> dict[str, object]:
-    """Strip every owner-media capability from a reusable generation recipe."""
+    """Strip owner media while retaining the hidden server-side generation recipe."""
 
     raw_parameters = payload.get("parameters")
     parameters = raw_parameters if isinstance(raw_parameters, dict) else {}
     clean_parameters: dict[str, Any] = {}
-    removed_private_media = bool(payload.get("input_url")) or bool(payload.get("references_required"))
+    reference_fields: list[str] = []
+    removed_private_media = bool(payload.get("references_required"))
+
+    if payload.get("input_url"):
+        removed_private_media = True
+        reference_fields.append("input_url")
 
     for raw_key, value in parameters.items():
         key = str(raw_key)
-        if key.casefold() in _PRIVATE_MEDIA_FIELDS or _contains_private_url(value):
+        if key.casefold() in _PRIVATE_MEDIA_FIELDS:
+            if value not in (None, "", [], {}):
+                removed_private_media = True
+                if key not in reference_fields:
+                    reference_fields.append(key)
+            continue
+        if _contains_private_url(value):
             removed_private_media = True
             continue
         clean_parameters[key] = value
@@ -130,4 +166,85 @@ def sanitize_repeat_recipe(payload: dict[str, object]) -> dict[str, object]:
     }
     if removed_private_media:
         result["references_required"] = True
+    if reference_fields:
+        # Field names are safe routing metadata; source URLs and values remain server-only.
+        result["reference_fields"] = reference_fields
     return result
+
+
+def public_repeat_descriptor(recipe: dict[str, object]) -> dict[str, object]:
+    """Return only metadata that is safe for a repeat-link recipient to inspect."""
+
+    result: dict[str, object] = {
+        "model_id": str(recipe.get("model_id") or ""),
+        "references_required": bool(recipe.get("references_required")),
+    }
+    reference_fields = recipe.get("reference_fields")
+    if isinstance(reference_fields, list):
+        result["reference_fields"] = [str(item) for item in reference_fields if str(item)]
+    return result
+
+
+def public_repeat_quote(quote: dict[str, Any]) -> dict[str, str]:
+    """Expose only the recipient's payable price, never recipe-derived quote metadata."""
+
+    cost = quote.get("effective_cost_rox")
+    if cost is None:
+        cost = quote.get("cost_rox")
+    return {"cost_rox": str(cost or "0.00")}
+
+
+def apply_repeat_reference_parameters(
+    recipe: dict[str, object],
+    reference_parameters: dict[str, Any],
+) -> dict[str, object]:
+    """Merge recipient-owned media without exposing or allowing recipe overrides."""
+
+    parameters = dict(recipe.get("parameters") or {})
+    input_url = recipe.get("input_url")
+    raw_allowed = recipe.get("reference_fields")
+    allowed_by_normalized = {
+        str(item).casefold(): str(item)
+        for item in raw_allowed
+        if str(item)
+    } if isinstance(raw_allowed, list) else {}
+    allowed = set(allowed_by_normalized)
+    references_required = bool(recipe.get("references_required"))
+
+    if reference_parameters and not references_required:
+        raise ValueError("This private repeat does not accept reference uploads")
+    if references_required and not reference_parameters:
+        raise ValueError("Add the required reference before repeating")
+
+    supplied: set[str] = set()
+    for raw_key, value in reference_parameters.items():
+        key = str(raw_key)
+        normalized = key.casefold()
+        if normalized not in _PRIVATE_MEDIA_FIELDS:
+            raise ValueError("Private repeat accepts only reference uploads")
+        if allowed and normalized not in allowed:
+            raise ValueError("Reference field does not belong to this private repeat")
+
+        urls = _reference_urls(value)
+        supplied.add(normalized)
+        canonical_key = allowed_by_normalized.get(normalized, key)
+        if normalized == "input_url":
+            if len(urls) != 1:
+                raise ValueError("Private repeat input reference must be a single uploaded media URL")
+            input_url = urls[0]
+        else:
+            parameters[canonical_key] = urls[0] if isinstance(value, str) else urls
+
+    missing = allowed - supplied
+    if missing:
+        raise ValueError("Add the required reference before repeating")
+    if references_required and not supplied:
+        raise ValueError("Add the required reference before repeating")
+
+    return {
+        "model_id": str(recipe.get("model_id") or ""),
+        "prompt": str(recipe.get("prompt") or ""),
+        "input_url": input_url,
+        "billing_seconds": recipe.get("billing_seconds"),
+        "parameters": parameters,
+    }
