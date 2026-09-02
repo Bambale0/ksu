@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,8 @@ from app.services.admin_security import (
     totp_code,
     verify_totp,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_admin_permissions_deny_by_default() -> None:
@@ -134,6 +137,14 @@ def test_admin_privilege_establishment_routes_require_fresh_initdata() -> None:
         "/api/v1/admin/auth/mfa/setup",
         "/api/v1/admin/auth/step-up",
     }
+
+
+def test_admin_freshness_guard_is_wired_before_route_handlers() -> None:
+    middleware = (ROOT / "app/core/http_security.py").read_text(encoding="utf-8")
+    assert "if path in FRESH_ADMIN_INIT_DATA_PATHS:" in middleware
+    assert "validate_fresh_admin_init_data(raw_init_data)" in middleware
+    assert 'status_code=401' in middleware
+    assert '"Invalid or expired Telegram initData"' in middleware
 
 
 def test_datetime_timezone_sanity() -> None:
