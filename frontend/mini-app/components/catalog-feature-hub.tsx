@@ -24,6 +24,7 @@ type CatalogFeature = {
 };
 
 const MEDIA_FILTER_KEY = "ksu-selected-media";
+const SEEDANCE_MIN_PRICE_ROX = 30;
 
 function catalogScreen(): HTMLElement | null {
   for (const node of Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))) {
@@ -168,7 +169,7 @@ export function CatalogFeatureHub() {
         copy: "Сцена, камера, движение и детали в готовой структуре",
         icon: "spark",
         href: "/mini-app/prompt-tools/?mode=seedance",
-        price: price(imageTool),
+        price: imageTool?.enabled ? `от ${SEEDANCE_MIN_PRICE_ROX} ROX` : null,
       },
       {
         id: "batch",
