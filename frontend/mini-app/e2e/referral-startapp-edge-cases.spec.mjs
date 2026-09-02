@@ -222,6 +222,7 @@ test('feed referral identifies the sharer and may differ from the author', async
   const payload = `feed_${generationId}_ref_999`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
+  // Shared-work attribution is allowed to differ from publication ownership.
   await expect(page.getByText('Creator 777')).toBeVisible();
   await expect(page.getByText('Реферальная подпись не совпадает с автором работы.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Повторить$/ })).toBeEnabled();
