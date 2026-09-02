@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import mimetypes
 import os
 import shutil
 import tempfile
@@ -24,7 +23,43 @@ class ReferenceStaticStorage:
     The reference library stores these server-owned URLs as its source of truth.
     Provider URLs are transport artifacts created later, immediately before a
     generation request is submitted.
+
+    File names are untrusted user input. Persisted extensions therefore come
+    exclusively from an allow-listed media Content-Type, never from the supplied
+    filename. This keeps the product origin from becoming an active-document
+    hosting surface (for example ``evil.html`` declared as ``image/png``).
     """
+
+    SAFE_MEDIA_EXTENSIONS: dict[str, str] = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/heic": ".heic",
+        "image/heif": ".heif",
+        "image/avif": ".avif",
+        "image/bmp": ".bmp",
+        "image/tiff": ".tiff",
+        "video/mp4": ".mp4",
+        "video/quicktime": ".mov",
+        "video/webm": ".webm",
+        "video/mpeg": ".mpeg",
+        "video/ogg": ".ogv",
+        "video/x-m4v": ".m4v",
+        "video/x-msvideo": ".avi",
+        "video/x-matroska": ".mkv",
+        "audio/aac": ".aac",
+        "audio/aiff": ".aiff",
+        "audio/x-aiff": ".aiff",
+        "audio/flac": ".flac",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/webm": ".webm",
+    }
 
     @staticmethod
     def root() -> Path:
@@ -92,15 +127,33 @@ class ReferenceStaticStorage:
             raise ReferenceStaticStorageError("Unsupported reference kind")
         return normalized
 
-    @staticmethod
-    def _extension(*, filename: str, content_type: str) -> str:
-        suffix = Path(filename or "").suffix.lower()
-        if suffix and 1 < len(suffix) <= 12 and suffix[1:].isalnum():
-            return suffix
-        guessed = mimetypes.guess_extension((content_type or "").split(";", 1)[0].strip())
-        if guessed == ".jpe":
-            return ".jpg"
-        return guessed or ".bin"
+    @classmethod
+    def normalize_content_type(cls, content_type: str | None) -> str:
+        return str(content_type or "").split(";", 1)[0].strip().lower()
+
+    @classmethod
+    def supports_content_type(cls, content_type: str | None, *, kind: str | None = None) -> bool:
+        normalized = cls.normalize_content_type(content_type)
+        if normalized not in cls.SAFE_MEDIA_EXTENSIONS:
+            return False
+        if kind is None:
+            return True
+        try:
+            safe_kind = cls._safe_kind(kind)
+        except ReferenceStaticStorageError:
+            return False
+        return normalized.startswith(f"{safe_kind}/")
+
+    @classmethod
+    def _extension(cls, *, filename: str, content_type: str) -> str:
+        # ``filename`` is intentionally ignored: it is attacker-controlled and
+        # must never decide how StaticFiles later classifies the response.
+        del filename
+        normalized = cls.normalize_content_type(content_type)
+        extension = cls.SAFE_MEDIA_EXTENSIONS.get(normalized)
+        if extension is None:
+            raise ReferenceStaticStorageError("Unsupported reference media type")
+        return extension
 
     @classmethod
     def persist_stream(
@@ -115,6 +168,8 @@ class ReferenceStaticStorage:
         expected_size: int | None = None,
     ) -> tuple[str, Path, int]:
         safe_kind = cls._safe_kind(kind)
+        if not cls.supports_content_type(content_type, kind=safe_kind):
+            raise ReferenceStaticStorageError("Reference media type does not match kind")
         digest = str(file_hash or "").strip().lower()
         if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
             raise ReferenceStaticStorageError("Reference hash must be SHA-256")
