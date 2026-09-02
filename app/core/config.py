@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     partner_telegram_url: str = ""
     telegram_webhook_url: str = ""
     telegram_webhook_secret: str = Field(default="", min_length=0, max_length=256)
+    webhook_body_max_bytes: int = Field(default=1024 * 1024, ge=16 * 1024, le=4 * 1024 * 1024)
 
     onboarding_enabled: bool = True
     onboarding_version: str = "1"
