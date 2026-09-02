@@ -96,6 +96,12 @@ function parseTarget(): Target | null {
   if (current.searchParams.get("onboarding") === "1") return null;
 
   const payload = explicitInternalPayload() || getStartParamFallback();
+  // A concrete customer route is an intentional in-app navigation destination.
+  // Telegram keeps its original start_param for the entire WebView session, so
+  // that retained feed/remix/profile payload must not hijack route=feed/home/etc.
+  // A fresh explicit start_payload/startapp in the current URL still wins.
+  if (current.searchParams.has("route") && !explicitLaunchCarries(payload)) return null;
+
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
     return { kind: "post", generationId: match[1], referralCode: match[2] };
