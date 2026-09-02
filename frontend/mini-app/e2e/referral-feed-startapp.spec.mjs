@@ -133,6 +133,33 @@ test('feed author profile action overrides sticky Telegram feed start_param', as
   await expect(page.getByRole('button', { name: 'Подписаться' })).toBeVisible();
 });
 
+test('explicit feed route escapes a sticky Telegram feed start_param', async ({ page }) => {
+  await installTelegramStartParam(page, payload);
+  await installFeedRoutes(page);
+
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
+  await expect(page.getByRole('button', { name: 'Открыть всю ленту' })).toBeVisible();
+  await page.getByRole('button', { name: 'Открыть всю ленту' }).click();
+
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=feed/);
+  await expect(page.getByText('Работы сообщества')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Открыть всю ленту' })).toHaveCount(0);
+});
+
+test('profile can return home while Telegram retains the original feed start_param', async ({ page }) => {
+  await installTelegramStartParam(page, payload);
+  await installFeedRoutes(page);
+
+  await page.goto(`/mini-app/?startapp=${encodeURIComponent(payload)}`);
+  await page.getByRole('button', { name: 'Профиль автора' }).click();
+  await expect(page.getByRole('button', { name: 'Открыть ROXY' })).toBeVisible();
+  await page.getByRole('button', { name: 'Открыть ROXY' }).click();
+
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
+  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Открыть ROXY' })).toHaveCount(0);
+});
+
 test('remix startapp opens the repeat screen for the exact work', async ({ page }) => {
   const remixPayload = `remix_${generationId}_ref_777`;
   await installTelegramStartParam(page, remixPayload);
