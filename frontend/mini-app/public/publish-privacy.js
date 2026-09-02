@@ -1,5 +1,5 @@
 (() => {
-  const state = { promptVisible: false };
+  const state = { hidePrompt: true, promptVisible: false };
   window.__roxyPublishPrivacy = state;
 
   function findPromptToggle() {
@@ -17,7 +17,10 @@
   }
 
   function syncPromptVisibility() {
-    state.promptVisible = readPromptVisibility();
+    const promptVisible = readPromptVisibility();
+    state.promptVisible = promptVisible;
+    // Keep the legacy API contract in sync until api.ts no longer reads hidePrompt.
+    state.hidePrompt = !promptVisible;
   }
 
   document.addEventListener(
@@ -38,13 +41,15 @@
       const isPublish = /\/api\/v1\/feed\/[^/]+\/publish(?:\?|$)/.test(url);
       if (isPublish && typeof init.body === "string") {
         const body = JSON.parse(init.body);
-        state.promptVisible = readPromptVisibility();
+        syncPromptVisibility();
         body.prompt_visible = state.promptVisible;
         init = { ...init, body: JSON.stringify(body) };
       }
     } catch (_) {
       // Privacy-safe fallback: if this compatibility layer cannot read the UI,
       // keep publishing functional and never expose a prompt accidentally.
+      state.promptVisible = false;
+      state.hidePrompt = true;
       try {
         if (typeof init.body === "string") {
           const body = JSON.parse(init.body);
