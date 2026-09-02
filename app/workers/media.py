@@ -15,7 +15,8 @@ from app.core.observability import (
     record_worker_heartbeat,
 )
 from app.db.session import SessionFactory, engine
-from app.services.media_assets import MediaAssetService, MediaIngestService
+from app.services.media_assets import MediaIngestService
+from app.services.media_legacy_backfill import LegacyMediaBackfillService
 from app.services.music_media import MusicMediaIngestService
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ async def run() -> None:
             if now >= next_legacy_reconcile_at:
                 try:
                     async with SessionFactory() as session:
-                        await MediaAssetService.ensure_legacy(session)
+                        await LegacyMediaBackfillService.ensure(session)
                 except Exception:
                     WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
                     logger.exception("Legacy media reconciliation failed")

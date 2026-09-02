@@ -8,6 +8,7 @@ import { ProfileStartApp } from "./profile-startapp-app";
 
 const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
 const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
+const PRIVATE_REPEAT_LINK = /^repeat_([0-9a-f]{32}_[A-Za-z0-9_-]{16})$/;
 const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
 const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
@@ -17,6 +18,7 @@ const EXPLICIT_START_PARAM_NAMES = ["start_payload", "startapp"];
 
 type Target =
   | { kind: "post" | "remix"; generationId: string; referralCode: string }
+  | { kind: "repeat"; token: string; payload: string }
   | { kind: "trend"; trendId: string; payload: string }
   | { kind: "profile"; referralCode: string; payload: string };
 
@@ -89,6 +91,14 @@ function parseTarget(): Target | null {
     const match = REMIX_LINK.exec(payload)!;
     return { kind: "remix", generationId: match[1], referralCode: match[2] };
   }
+  if (PRIVATE_REPEAT_LINK.test(payload)) {
+    // Telegram keeps start_param sticky for the WebView session. Once ROXY has
+    // navigated to a concrete customer route (history/home/create), do not reopen
+    // the repeat unless the current URL explicitly carries the repeat payload.
+    if (current.searchParams.has("route") && !explicitLaunchCarries(payload)) return null;
+    const match = PRIVATE_REPEAT_LINK.exec(payload)!;
+    return { kind: "repeat", token: match[1], payload };
+  }
   if (TREND_LINK.test(payload)) {
     if (targetConsumed(CONSUMED_TREND_TARGET_KEY, payload) && !explicitLaunchCarries(payload)) return null;
     const match = TREND_LINK.exec(payload)!;
@@ -121,6 +131,16 @@ function ProfileTarget({ referralCode, payload }: { referralCode: string; payloa
   return <><EntryBackMarker /><ProfileStartApp referralCode={referralCode} /></>;
 }
 
+function PrivateRepeatTarget({ token }: { token: string }) {
+  useEffect(() => {
+    // The root page mounts feed/history enhancers. Keep repeat isolated on the
+    // same standalone shell used by other tools so those enhancers cannot hide
+    // or intercept its controls.
+    window.location.replace(`/mini-app/repeat/?token=${encodeURIComponent(token)}`);
+  }, [token]);
+  return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю приватный повтор…</small></div>;
+}
+
 export function AppEntryGate() {
   const [ready, setReady] = useState(false);
   const [target, setTarget] = useState<Target | null>(null);
@@ -137,6 +157,7 @@ export function AppEntryGate() {
 
   if (!ready) return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
   if (target?.kind === "profile") return <ProfileTarget referralCode={target.referralCode} payload={target.payload} />;
+  if (target?.kind === "repeat") return <PrivateRepeatTarget token={target.token} />;
   if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;
   if (target?.kind === "post" || target?.kind === "remix") {
     return <><EntryBackMarker /><FeedStartApp generationId={target.generationId} referralCode={target.referralCode} intent={target.kind} /></>;

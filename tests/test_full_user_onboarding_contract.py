@@ -52,7 +52,7 @@ def test_first_entry_content_deep_links_survive_onboarding_completion() -> None:
     component = COMPONENT.read_text(encoding="utf-8")
 
     assert "getStartParamFallback" in component
-    assert "/^(feed_|remix_|profile_|posts_)/i" in component
+    assert "/^(feed_|remix_|repeat_|profile_|posts_)/i" in component
     assert "if (hasContentLaunchTarget())" in component
     assert "window.location.reload()" in component
 
