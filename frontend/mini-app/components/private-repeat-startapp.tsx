@@ -3,108 +3,103 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
-import { privateRepeatApi } from "@/lib/private-repeat-api";
+import { privateRepeatApi, type PrivateRepeatDescriptor } from "@/lib/private-repeat-api";
 import { haptic, notify } from "@/lib/telegram";
-import type { GenerationModel, RecreateGenerationPayload, UiField, UiScenarioItem } from "@/lib/types";
+import type { GenerationModel, UiField, UiScenarioItem } from "@/lib/types";
 import { StandaloneShell } from "./standalone-shell";
 
 type Draft = {
-  prompt: string;
   values: Record<string, unknown>;
   scenario: string | null;
-  billingSeconds: number | null;
 };
 
 function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
-function fileFieldNames(model: GenerationModel): Set<string> {
-  return new Set(
-    (model.ui_schema?.fields || [])
-      .filter((field) => field.control === "file" || field.control === "files")
-      .map((field) => field.name),
-  );
+function fileFields(model: GenerationModel): UiField[] {
+  return (model.ui_schema?.fields || []).filter((field) => field.control === "file" || field.control === "files");
 }
 
-function scenarioScore(item: UiScenarioItem, values: Record<string, unknown>): number {
-  const required = item.required_fields || [];
-  const any = item.required_any || [];
-  if (required.some((name) => isEmpty(values[name]))) return -1;
-  if (any.length && !any.some((name) => !isEmpty(values[name]))) return -1;
-  return required.length * 4 + (any.length ? 3 : 0) + (item.visible_fields || []).filter((name) => !isEmpty(values[name])).length;
+function allowedReferenceNames(model: GenerationModel, descriptor: PrivateRepeatDescriptor): Set<string> {
+  const modelNames = new Set(fileFields(model).map((field) => field.name));
+  const explicit = (descriptor.reference_fields || []).filter((name) => modelNames.has(name));
+  if (explicit.length) return new Set(explicit);
+  if (descriptor.references_required) return modelNames;
+  return new Set<string>();
 }
 
-function chooseScenario(model: GenerationModel, recipe: RecreateGenerationPayload, values: Record<string, unknown>): string | null {
+function chooseScenario(model: GenerationModel, descriptor: PrivateRepeatDescriptor): string | null {
   const items = model.ui_schema?.scenario?.items || [];
   if (!items.length) return null;
-  if (recipe.references_required) {
-    const files = fileFieldNames(model);
-    const referenceScenario = items.find((item) => (item.visible_fields || []).some((name) => files.has(name)));
-    if (referenceScenario) return referenceScenario.id;
+  const allowed = allowedReferenceNames(model, descriptor);
+  if (allowed.size) {
+    const match = items.find((item) => (item.visible_fields || []).some((name) => allowed.has(name)));
+    if (match) return match.id;
   }
-  let winner = items[0];
-  let score = -1;
-  for (const item of items) {
-    const next = scenarioScore(item, values);
-    if (next > score) {
-      winner = item;
-      score = next;
-    }
-  }
-  return winner?.id || model.ui_schema?.scenario?.default || items[0]?.id || null;
+  return model.ui_schema?.scenario?.default || items[0]?.id || null;
 }
 
-function visibleFields(model: GenerationModel, scenarioId: string | null): UiField[] {
-  const fields = model.ui_schema?.fields || [];
+function scenarioReferenceFields(
+  model: GenerationModel,
+  scenarioId: string | null,
+  descriptor: PrivateRepeatDescriptor,
+): UiField[] {
+  const allowed = allowedReferenceNames(model, descriptor);
+  if (!allowed.size) return [];
   const scenarios = model.ui_schema?.scenario?.items || [];
   const scenario = scenarios.find((item) => item.id === scenarioId);
-  if (!scenario) return fields;
-  const controlled = new Set<string>();
-  for (const item of scenarios) {
-    for (const name of item.visible_fields || []) controlled.add(name);
-    for (const name of item.clear_fields || []) controlled.add(name);
-  }
-  return fields.filter((field) => !controlled.has(field.name) || scenario.visible_fields?.includes(field.name));
+  const visible = new Set(scenario?.visible_fields || []);
+  return fileFields(model).filter((field) => allowed.has(field.name) && (!scenario || visible.has(field.name)));
 }
 
-function buildPayload(model: GenerationModel, draft: Draft): Record<string, unknown> {
-  const parameters: Record<string, unknown> = {};
-  for (const field of visibleFields(model, draft.scenario)) {
-    if (field.name === "prompt") continue;
-    const value = draft.values[field.name];
-    if (isEmpty(value)) continue;
-    if (field.control === "json" && typeof value === "string") parameters[field.name] = JSON.parse(value);
-    else parameters[field.name] = value;
-  }
-  const payload: Record<string, unknown> = {
-    model_id: model.id,
-    prompt: draft.prompt,
-    parameters,
-  };
-  if (draft.billingSeconds) payload.billing_seconds = draft.billingSeconds;
-  return payload;
+function requiredReferenceNames(
+  model: GenerationModel,
+  scenarioId: string | null,
+  descriptor: PrivateRepeatDescriptor,
+): Set<string> {
+  const explicit = new Set(descriptor.reference_fields || []);
+  if (explicit.size) return explicit;
+  const scenario = model.ui_schema?.scenario?.items?.find((item: UiScenarioItem) => item.id === scenarioId);
+  const fileNames = new Set(fileFields(model).map((field) => field.name));
+  const required = new Set<string>();
+  for (const name of scenario?.required_fields || []) if (fileNames.has(name)) required.add(name);
+  return required;
 }
 
-function validate(model: GenerationModel, draft: Draft): string[] {
-  const errors: string[] = [];
-  const fields = visibleFields(model, draft.scenario);
-  for (const field of fields) {
-    const value = field.name === "prompt" ? draft.prompt : draft.values[field.name];
-    if (field.required && isEmpty(value)) errors.push(`Заполните «${field.name === "prompt" ? "Описание" : field.label}»`);
-    if (field.control === "json" && !isEmpty(value)) {
-      try { JSON.parse(String(value)); } catch { errors.push(`Проверьте «${field.label}»`); }
+function validateReferences(
+  model: GenerationModel,
+  draft: Draft,
+  descriptor: PrivateRepeatDescriptor,
+): string[] {
+  if (!descriptor.references_required) return [];
+  const available = new Set(fileFields(model).map((field) => field.name));
+  const explicit = descriptor.reference_fields || [];
+  if (explicit.some((name) => !available.has(name))) {
+    return ["Для этой работы нужен референс, который текущая версия модели больше не принимает"];
+  }
+
+  const visible = scenarioReferenceFields(model, draft.scenario, descriptor);
+  if (!visible.length) return ["Для повтора нужен свой референс"];
+
+  const required = requiredReferenceNames(model, draft.scenario, descriptor);
+  if (required.size) {
+    for (const name of required) {
+      if (isEmpty(draft.values[name])) return ["Добавьте обязательный референс"];
     }
+    return [];
   }
-  const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario);
-  for (const name of scenario?.required_fields || []) {
-    if (isEmpty(draft.values[name])) errors.push("Добавьте обязательный референс");
+  if (!visible.some((field) => !isEmpty(draft.values[field.name]))) return ["Добавьте хотя бы один свой референс"];
+  return [];
+}
+
+function referenceParameters(fields: UiField[], values: Record<string, unknown>): Record<string, unknown> {
+  const parameters: Record<string, unknown> = {};
+  for (const field of fields) {
+    const value = values[field.name];
+    if (!isEmpty(value)) parameters[field.name] = value;
   }
-  const any = scenario?.required_any || [];
-  if (any.length && !any.some((name) => !isEmpty(draft.values[name]))) errors.push("Добавьте хотя бы один свой референс");
-  const billing = model.ui_schema?.billing_seconds;
-  if (billing?.required && !draft.billingSeconds) errors.push(`Заполните «${billing.label || "Длительность"}»`);
-  return [...new Set(errors)];
+  return parameters;
 }
 
 function ReferenceFieldControl({ field, value, disabled, onUpload }: {
@@ -115,7 +110,7 @@ function ReferenceFieldControl({ field, value, disabled, onUpload }: {
 }) {
   const items = Array.isArray(value) ? value : value ? [value] : [];
   return <label className="field">
-    <span className="label">{field.label}{field.required ? " · обязательно" : ""}</span>
+    <span className="label">{field.label}</span>
     <span className="upload-control">
       <span>{disabled ? "Загружаю…" : items.length ? `Добавлено: ${items.length} · выбрать ещё` : "Добавить свой файл"}</span>
       <input
@@ -135,7 +130,7 @@ function ReferenceFieldControl({ field, value, disabled, onUpload }: {
 }
 
 export function PrivateRepeatStartApp({ token }: { token: string }) {
-  const [recipe, setRecipe] = useState<RecreateGenerationPayload | null>(null);
+  const [descriptor, setDescriptor] = useState<PrivateRepeatDescriptor | null>(null);
   const [model, setModel] = useState<GenerationModel | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [quote, setQuote] = useState<{ cost_rox?: string } | null>(null);
@@ -148,38 +143,37 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
   useEffect(() => {
     let active = true;
     Promise.all([privateRepeatApi.resolve(token), api.models()])
-      .then(([nextRecipe, catalog]) => {
+      .then(([nextDescriptor, catalog]) => {
         if (!active) return;
-        const nextModel = catalog.models.find((item) => item.id === nextRecipe.model_id);
+        const nextModel = catalog.models.find((item) => item.id === nextDescriptor.model_id);
         if (!nextModel) throw new Error("Эта модель больше недоступна");
-        const values = { ...(nextModel.ui_schema?.defaults || {}), ...(nextRecipe.parameters || {}) };
-        const scenario = chooseScenario(nextModel, nextRecipe, values);
-        setRecipe(nextRecipe);
+        setDescriptor(nextDescriptor);
         setModel(nextModel);
-        setDraft({ prompt: nextRecipe.prompt || "", values, scenario, billingSeconds: nextRecipe.billing_seconds ?? null });
+        setDraft({ values: {}, scenario: chooseScenario(nextModel, nextDescriptor) });
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : "Не удалось открыть ссылку повтора"))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [token]);
 
-  const errors = useMemo(() => model && draft ? validate(model, draft) : [], [draft, model]);
-  const referenceFields = useMemo(() => model && draft
-    ? visibleFields(model, draft.scenario).filter((field) => field.control === "file" || field.control === "files")
-    : [], [draft, model]);
+  const referenceFields = useMemo(() => model && draft && descriptor
+    ? scenarioReferenceFields(model, draft.scenario, descriptor)
+    : [], [descriptor, draft, model]);
+  const errors = useMemo(() => model && draft && descriptor
+    ? validateReferences(model, draft, descriptor)
+    : [], [descriptor, draft, model]);
+  const parameters = useMemo(() => draft ? referenceParameters(referenceFields, draft.values) : {}, [draft, referenceFields]);
 
   useEffect(() => {
-    if (!model || !draft || errors.length || uploading || submitting) { setQuote(null); return; }
+    if (!descriptor || !model || !draft || errors.length || uploading || submitting) { setQuote(null); return; }
     const seq = ++quoteSeq.current;
     const timer = window.setTimeout(() => {
-      let body: Record<string, unknown>;
-      try { body = buildPayload(model, draft); } catch { setQuote(null); return; }
-      void api.quote(body)
+      void privateRepeatApi.quote(token, parameters)
         .then((next) => { if (quoteSeq.current === seq) { setQuote(next); setError(""); } })
         .catch((reason) => { if (quoteSeq.current === seq) { setQuote(null); setError(reason instanceof Error ? reason.message : "Не удалось рассчитать стоимость"); } });
     }, 260);
     return () => window.clearTimeout(timer);
-  }, [draft, errors.length, model, submitting, uploading]);
+  }, [descriptor, draft, errors.length, model, parameters, submitting, token, uploading]);
 
   const update = (name: string, value: unknown) => setDraft((current) => current ? { ...current, values: { ...current.values, [name]: value } } : current);
 
@@ -208,10 +202,10 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
   };
 
   const launch = async () => {
-    if (!model || !draft || errors.length || !quote || submitting) return;
+    if (!model || !draft || !descriptor || errors.length || !quote || submitting) return;
     setSubmitting(true); setError("");
     try {
-      const created = await api.create(buildPayload(model, draft));
+      const created = await privateRepeatApi.launch(token, parameters);
       notify("success"); haptic("medium");
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(created.id)}`);
     } catch (reason) {
@@ -226,12 +220,12 @@ export function PrivateRepeatStartApp({ token }: { token: string }) {
   >
     {loading ? <div className="panel tool-panel"><p className="muted">Открываю повтор…</p></div> : null}
     {error ? <div className="action-error" role="alert">{error}</div> : null}
-    {recipe && model && draft ? <div className="tool-grid">
+    {descriptor && model && draft ? <div className="tool-grid">
       <div className="panel tool-panel">
         <span className="kicker">1 · Референс</span>
         <div className="panel" style={{ padding: 12 }}>
-          <strong>{recipe.references_required ? "Добавьте свой референс" : "Всё готово к повтору"}</strong>
-          <p className="muted">Промпт и исходные настройки не показываются и не редактируются. ROXY использует их автоматически.</p>
+          <strong>{descriptor.references_required ? "Добавьте свой референс" : "Всё готово к повтору"}</strong>
+          <p className="muted">Промпт и исходные настройки не показываются, не загружаются в приложение и не редактируются. ROXY использует их только на сервере.</p>
         </div>
         {referenceFields.map((field) => <ReferenceFieldControl
           key={field.name}
