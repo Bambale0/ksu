@@ -55,7 +55,9 @@ test('partner transfers ROX to a direct referral and rapid double click submits 
 
   const panel = page.locator('[data-partner-rox-transfer]');
   await expect(panel).toBeVisible();
-  await expect(panel.getByText('Creator', { exact: false })).toBeVisible();
+  const recipient = panel.getByLabel('Кому');
+  await expect(recipient).toHaveValue('11111111-1111-4111-8111-111111111111');
+  await expect(recipient.locator('option:checked')).toContainText('Creator');
   await panel.getByLabel('Сколько ROX').fill('5500');
 
   const submit = panel.getByRole('button', { name: 'Перевести 5 500 ROX' });
