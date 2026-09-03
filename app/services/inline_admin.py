@@ -19,7 +19,14 @@ async def ensure_bootstrap_admin(
     here: explicit revocation in the admin domain must win over bootstrap config.
     """
 
-    if not user.is_active or int(user.telegram_id) not in parse_bootstrap_ids():
+    telegram_id = getattr(user, "telegram_id", None)
+    if not bool(getattr(user, "is_active", False)) or telegram_id is None:
+        return None
+    try:
+        trusted_telegram_id = int(telegram_id)
+    except (TypeError, ValueError):
+        return None
+    if trusted_telegram_id not in parse_bootstrap_ids():
         return None
 
     account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
