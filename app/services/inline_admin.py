@@ -22,10 +22,13 @@ async def ensure_bootstrap_admin(
     if int(user.telegram_id) not in parse_bootstrap_ids():
         return None
 
-    # Serialize first-use bootstrap for the same Telegram user. This avoids two
-    # concurrent Mini App requests racing the unique admin_accounts.user_id key.
-    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
+    account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
+    if account is not None:
+        return account
 
+    # Serialize only the first-use bootstrap for the same Telegram user. Existing
+    # admins take the fast path above and do not lock their user row on every API call.
+    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
     account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
     if account is not None:
         return account
