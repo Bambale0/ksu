@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 const WRONG_UNPUBLISH_TOAST = "Работа опубликована в профиле";
 const UNPUBLISH_SUCCESS_TOAST = "Публикация убрана";
@@ -29,7 +29,7 @@ function toastNode(): HTMLElement | null {
 }
 
 export function UnpublishFeedbackGuard() {
-  useEffect(() => {
+  useLayoutEffect(() => {
     let removeSucceededAt = 0;
     let correctionPending = false;
     const originalFetch = window.fetch.bind(window);
