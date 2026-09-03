@@ -8,10 +8,11 @@ const model = {
   operation: 'generate',
   price_rox: '10.00',
   ui_schema: {
-    defaults: { quality: 'standard' },
+    defaults: { quality: 'standard', duration: 1 },
     fields: [
       { name: 'prompt', label: 'Промпт', control: 'textarea', required: true },
       { name: 'quality', label: 'Качество', control: 'select', suggestions: ['standard', 'pro'] },
+      { name: 'duration', label: 'Длительность', control: 'number', min: 1, max: 10, step: 1 },
     ],
   },
 };
@@ -46,13 +47,15 @@ async function mockApi(page) {
     if (path === '/api/v1/generations/quote') {
       const body = request.postDataJSON();
       const pro = body?.parameters?.quality === 'pro';
+      const duration = Number(body?.parameters?.duration || 1);
+      const cost = pro ? '30.00' : duration === 2 ? '20.00' : '10.00';
       if (pro) await new Promise((resolve) => setTimeout(resolve, 700));
       return json({
         model_id: model.id,
-        cost_rox: pro ? '30.00' : '10.00',
-        effective_cost_rox: pro ? '30.00' : '10.00',
-        retail_cost_rox: pro ? '30.00' : '10.00',
-        cost_rub: pro ? '30.00' : '10.00',
+        cost_rox: cost,
+        effective_cost_rox: cost,
+        retail_cost_rox: cost,
+        cost_rub: cost,
       });
     }
     if (path === '/api/v1/generations' && request.method() === 'POST') return json({ id: 'gen-1', status: 'queued' });
@@ -68,16 +71,20 @@ async function mockApi(page) {
   });
 }
 
-test('changing a price-sensitive field blocks old-quote submit until the fresh quote resolves', async ({ page }) => {
+async function openCreate(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=create');
-
   const prompt = page.locator('textarea').first();
   const quoteBox = page.locator('.quote-box');
   const create = page.locator('.create-summary button.primary').first();
   await expect(prompt).toBeVisible();
   await expect(quoteBox.locator('strong')).toHaveText('10 ROX');
+  return { prompt, quoteBox, create };
+}
+
+test('changing a price-sensitive field blocks old-quote submit until the fresh quote resolves', async ({ page }) => {
+  const { prompt, quoteBox, create } = await openCreate(page);
   await prompt.fill('Тест billing race');
 
   // Prompt content affects the generation, not its price. It must not create a
@@ -123,4 +130,26 @@ test('changing a price-sensitive field blocks old-quote submit until the fresh q
   expect(submitted.parameters.quality).toBe('pro');
   expect(submitted.prompt).toBe('Тест billing race');
   expect(generationPosts).toBe(1);
+});
+
+test('numeric field blur cannot re-stale an already rendered fresh quote', async ({ page }) => {
+  const { prompt, quoteBox, create } = await openCreate(page);
+  await prompt.fill('Suno-like numeric billing path');
+
+  const duration = page.getByLabel('Длительность');
+  await duration.fill('2');
+  await expect(create).toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(quoteBox.locator('strong')).toHaveText('20 ROX', { timeout: 3000 });
+  await expect(create).not.toHaveAttribute('data-roxy-quote-stale', 'true');
+  await expect(create).toContainText('Создать · 20 ROX');
+
+  // Clicking Create blurs the number input. Native browsers emit `change` on
+  // that blur; it must not create a second stale version after the quote above.
+  const generationRequestPromise = page.waitForRequest((request) => {
+    const path = new URL(request.url()).pathname;
+    return path === '/api/v1/generations' && request.method() === 'POST';
+  });
+  await create.click();
+  const generationRequest = await generationRequestPromise;
+  expect(generationRequest.postDataJSON().parameters.duration).toBe(2);
 });
