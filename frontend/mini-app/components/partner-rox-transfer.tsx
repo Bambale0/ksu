@@ -38,6 +38,13 @@ function findPartnerHost(): HTMLElement | null {
   return host;
 }
 
+function recipientOptionLabel(item: Invitation): string {
+  if (item.first_name && item.username) return `${item.first_name} · ${item.username}`;
+  if (item.first_name) return item.first_name;
+  if (item.username) return `@${item.username}`;
+  return "Реферал";
+}
+
 export function PartnerRoxTransfer() {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [items, setItems] = useState<Invitation[]>([]);
@@ -134,7 +141,7 @@ export function PartnerRoxTransfer() {
             <select value={recipientId} onChange={(event) => { setRecipientId(event.target.value); setIntentKey(customerIdempotencyKey()); setMessage(""); }}>
               {items.map((item) => (
                 <option value={item.user_id} key={item.user_id}>
-                  {item.first_name || item.username || "Реферал"}{item.username ? ` · @${item.username}` : ""}
+                  {recipientOptionLabel(item)}
                 </option>
               ))}
             </select>
