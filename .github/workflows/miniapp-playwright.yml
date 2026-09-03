@@ -49,6 +49,7 @@ jobs:
           e2e/video-mode-selector-parity.spec.mjs
           e2e/responsive-device-surfaces.spec.mjs
           e2e/responsive-deep-surfaces.spec.mjs
+          e2e/trend-category-admin.spec.mjs
           --project=webkit-mobile
       - name: Upload Playwright report
         if: always()
