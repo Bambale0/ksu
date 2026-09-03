@@ -1,4 +1,4 @@
-import { telegramHeaders } from "./telegram";
+import { initTelegram, telegramHeaders } from "./telegram";
 import type {
   FeedCard,
   FeedComment,
@@ -43,6 +43,38 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return payload as T;
+}
+
+const ME_RETRY_DELAYS_MS = [0, 180, 650, 1600] as const;
+let meRequest: Promise<Me> | null = null;
+
+async function currentUser(): Promise<Me> {
+  // All Mini App islands need the same identity during startup. In Telegram's
+  // iOS WebView several of them can mount at once, while WebApp.initData is
+  // still being hydrated. Share one request instead of racing independent /me
+  // calls, and retry transient startup failures after re-priming Telegram.
+  if (meRequest) return meRequest;
+
+  const task = (async () => {
+    let lastError: unknown = new Error("Не удалось загрузить профиль");
+    for (const delay of ME_RETRY_DELAYS_MS) {
+      if (delay) await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+      initTelegram();
+      try {
+        return await request<Me>("/api/v1/me");
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  })();
+
+  meRequest = task;
+  try {
+    return await task;
+  } finally {
+    if (meRequest === task) meRequest = null;
+  }
 }
 
 type PublishOptions = {
@@ -137,7 +169,7 @@ function beginFeedRemix(id: string, surface: FeedSurface): Promise<never> {
 }
 
 export const api = {
-  me: () => request<Me>("/api/v1/me"),
+  me: currentUser,
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
   onboarding: () => request<Record<string, any>>("/api/v1/onboarding"),
   completeOnboarding: () => request<Record<string, any>>("/api/v1/onboarding/complete", { method: "POST" }),

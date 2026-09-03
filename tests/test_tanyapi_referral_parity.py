@@ -92,7 +92,8 @@ def test_all_frontend_api_clients_use_shared_telegram_headers() -> None:
     api = _source("frontend/mini-app/lib/api.ts")
     customer_api = _source("frontend/mini-app/lib/customer-api.ts")
 
-    assert 'import { telegramHeaders } from "./telegram"' in api
+    assert 'from "./telegram"' in api
+    assert "telegramHeaders" in api
     assert '...telegramHeaders(Boolean(init.body) && !isForm)' in api
     assert 'import { telegramHeaders } from "./telegram"' in customer_api
     assert '...telegramHeaders(Boolean(init.body) && !isForm)' in customer_api

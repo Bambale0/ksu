@@ -232,7 +232,8 @@ def test_react_profile_uses_signed_telegram_auth_and_no_browser_business_state()
 
     assert 'headers["X-Telegram-Init-Data"] = initData' in telegram
     assert "telegramHeaders" in api
-    assert 'me: () => request<Me>("/api/v1/me")' in api
+    assert 'request<Me>("/api/v1/me")' in api
+    assert "me: currentUser" in api
     assert "ProfileScreen" in app
     assert "profileWorks" in app
     assert "profilePublications" in app

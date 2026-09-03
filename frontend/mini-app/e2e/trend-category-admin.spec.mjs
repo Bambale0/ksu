@@ -77,11 +77,12 @@ const adsTrend = {
   },
 };
 
-async function mockAdminHome(page) {
+async function mockAdminHome(page, { meFailures = 0 } = {}) {
   const state = {
     categories: [systemCategory, ugcCategory, adsCategory],
     assignments: { trend_ugc: 'ugc', trend_ads: 'ads' },
     createdBody: null,
+    meCalls: 0,
   };
 
   await page.addInitScript(() => {
@@ -104,7 +105,11 @@ async function mockAdminHome(page) {
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
-    if (path === '/api/v1/me') return json({ id: 'admin_1', telegram_id: 777, first_name: 'Admin', username: 'admin_user', balance_rox: '150.00', is_admin: true });
+    if (path === '/api/v1/me') {
+      state.meCalls += 1;
+      if (state.meCalls <= meFailures) return json({ detail: 'Telegram WebView bootstrap is not ready yet' }, 503);
+      return json({ id: 'admin_1', telegram_id: 777, first_name: 'Admin', username: 'admin_user', balance_rox: '150.00', is_admin: true });
+    }
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
@@ -184,6 +189,17 @@ test('admin can search categories and trends by hashtag, assign a result, and cr
     is_active: true,
   });
   await expect(dialog.getByTestId('trend-category-admin-card-beauty')).toBeVisible();
+});
+
+test('iPhone admin recovers the trend management control after a transient /me bootstrap failure', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await mockAdminHome(page, { meFailures: 1 });
+  await page.goto('/mini-app/?route=home');
+
+  const manage = page.locator('#roxy-home-trend-folders').getByTestId('trend-category-admin-open');
+  await expect(manage).toBeVisible({ timeout: 6_000 });
+  await expect(manage).toHaveText('Управлять');
+  await expect.poll(() => state.meCalls).toBeGreaterThanOrEqual(2);
 });
 
 test('category management is hidden from non-admin users', async ({ page }) => {

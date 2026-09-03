@@ -71,7 +71,8 @@ def test_profile_domains_are_owned_by_backend_and_react_mini_app() -> None:
 
     assert "AccountProfileService.overview" in start
     assert '@router.get("/overview")' in me
-    assert 'me: () => request<Me>("/api/v1/me")' in api
+    assert 'request<Me>("/api/v1/me")' in api
+    assert "me: currentUser" in api
     assert "profileWorks" in app
     assert "profilePublications" in app
     assert "Работы" in app
