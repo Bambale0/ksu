@@ -15,6 +15,7 @@ import { HomeTrendFolders } from "@/components/home-trend-folders";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { LiveTrendRail } from "@/components/live-trend-rail";
+import { PartnerRoxTransfer } from "@/components/partner-rox-transfer";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { PrivateRepeatLinkUx } from "@/components/private-repeat-link-ux";
 import { TikTokFeedSurface } from "@/components/tiktok-feed-surface";
@@ -44,6 +45,7 @@ export default function Page() {
       <CustomerParityHub />
       <WalletParity />
       <WalletEmailInputGuard />
+      <PartnerRoxTransfer />
       <GenerationQuantityControl />
       <UploadInputResetGuard />
       <PostPublishSharePrompt />
