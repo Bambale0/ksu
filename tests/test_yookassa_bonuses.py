@@ -62,6 +62,12 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
         assert payment.payload["bonus_credits"] == "50"
         assert payment.payload["credited_credits"] == "350"
 
+        # Regression: server-side onupdate used to leave updated_at expired
+        # after create/commit, so reading it in an async session raised
+        # sqlalchemy.exc.MissingGreenlet (HTTP 500 on POST /payments).
+        assert payment.created_at is not None
+        assert payment.updated_at is not None
+
         await PaymentService.complete(
             session,
             payment_id=payment.id,
