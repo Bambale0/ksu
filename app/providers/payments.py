@@ -274,19 +274,29 @@ class YooKassaClient:
         confirmation: dict[str, Any] = {"type": "redirect"}
         if return_url:
             confirmation["return_url"] = return_url
-        response = await self._client.post(
-            "/v3/payments",
-            headers={"Idempotence-Key": local_id},
-            json={
-                "amount": {"value": _money(amount), "currency": currency},
-                "capture": True,
-                "confirmation": confirmation,
-                "description": description[:128],
-                "metadata": {"payment_id": local_id},
-            },
-        )
-        response.raise_for_status()
-        body = response.json()
+        try:
+            response = await self._client.post(
+                "/v3/payments",
+                headers={"Idempotence-Key": local_id},
+                json={
+                    "amount": {"value": _money(amount), "currency": currency},
+                    "capture": True,
+                    "confirmation": confirmation,
+                    "description": description[:128],
+                    "metadata": {"payment_id": local_id},
+                },
+            )
+            response.raise_for_status()
+            body = response.json()
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text[:1000].replace("\n", " ")
+            raise PaymentProviderError(
+                f"YooKassa create payment failed: HTTP {exc.response.status_code}: {text}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PaymentProviderError("YooKassa create payment transport failed") from exc
+        except ValueError as exc:
+            raise PaymentProviderError("YooKassa create payment returned invalid JSON") from exc
         external_id = body.get("id")
         payment_url = (body.get("confirmation") or {}).get("confirmation_url")
         if not external_id or not payment_url:
