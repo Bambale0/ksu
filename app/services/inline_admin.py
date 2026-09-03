@@ -14,12 +14,12 @@ async def ensure_bootstrap_admin(
     """Materialize ENV-provisioned admins after trusted Telegram authentication.
 
     CurrentUserDep has already verified Telegram WebApp initData, so user.telegram_id
-    is a trusted identity. Only IDs explicitly listed in ADMIN_BOOTSTRAP_TELEGRAM_IDS
-    are eligible. Existing rows are never reactivated here: explicit revocation in the
-    admin domain must win over bootstrap configuration.
+    is a trusted identity. Only active users explicitly listed in
+    ADMIN_BOOTSTRAP_TELEGRAM_IDS are eligible. Existing rows are never reactivated
+    here: explicit revocation in the admin domain must win over bootstrap config.
     """
 
-    if int(user.telegram_id) not in parse_bootstrap_ids():
+    if not user.is_active or int(user.telegram_id) not in parse_bootstrap_ids():
         return None
 
     account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
