@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ReferralRelation, User, WalletTransaction
+from app.db.models import ReferralRelation, User, Wallet, WalletTransaction
 from app.services.wallet import WalletService
 
 
@@ -78,6 +78,17 @@ class PartnerRoxTransferService:
         )
         amount = Decimal(amount_rox)
         reference_id = str(transfer_id)
+
+        # Serialize transfer intents from one sender before WalletService performs
+        # its idempotency lookup. Without this lock, two concurrent retries can
+        # both observe a missing transaction and the loser reaches the database
+        # unique constraint instead of returning the already-created transfer.
+        await WalletService.ensure_wallet(session, sender_user_id)
+        sender_wallet = await session.scalar(
+            select(Wallet).where(Wallet.user_id == sender_user_id).with_for_update()
+        )
+        if sender_wallet is None:  # pragma: no cover - ensure_wallet guarantees it.
+            raise PartnerRoxTransferError("Sender wallet is unavailable")
 
         sender_tx = await WalletService.debit(
             session,
