@@ -12,6 +12,7 @@ from app.db.models import User
 from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import parse_feed_deep_link
+from app.services.inline_admin import ensure_bootstrap_admin
 from app.services.onboarding import OnboardingService
 from app.services.trends import TrendService
 from app.services.users import UserService
@@ -153,6 +154,11 @@ async def get_current_user(
         tg_user,
         inviter_telegram_id=inviter_telegram_id,
     )
+    # ADMIN_BOOTSTRAP_TELEGRAM_IDS is the source for initial administrator
+    # provisioning. The Telegram identity above is signature-verified, so it is
+    # safe to materialize the matching AdminAccount here for ordinary Mini App
+    # traffic as well as the standalone admin login flow.
+    await ensure_bootstrap_admin(session, user)
     await session.commit()
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is restricted")
