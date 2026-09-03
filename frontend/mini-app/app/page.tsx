@@ -9,6 +9,7 @@ import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { FeedAdminModeration } from "@/components/feed-admin-moderation";
 import { FeedResponsiveLayout } from "@/components/feed-responsive-layout";
 import { GenerationQuantityControl } from "@/components/generation-quantity-control";
+import { GenerationQuoteFreshnessGuard } from "@/components/generation-quote-freshness-guard";
 import { GenerationSubmitGuard } from "@/components/generation-submit-guard";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { HistoryPromptCopyUx } from "@/components/history-prompt-copy-ux";
@@ -48,6 +49,7 @@ export default function Page() {
       <WalletEmailInputGuard />
       <PartnerRoxTransfer />
       <GenerationQuantityControl />
+      <GenerationQuoteFreshnessGuard />
       <GenerationSubmitGuard />
       <UploadInputResetGuard />
       <PostPublishSharePrompt />
