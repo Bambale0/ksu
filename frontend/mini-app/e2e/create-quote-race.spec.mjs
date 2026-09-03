@@ -74,12 +74,17 @@ test('changing a price-sensitive field blocks old-quote submit until the fresh q
   await page.goto('/mini-app/?route=create');
 
   const prompt = page.locator('textarea').first();
-  await expect(prompt).toBeVisible();
-  await prompt.fill('Тест billing race');
-
   const quoteBox = page.locator('.quote-box');
   const create = page.locator('.create-summary button.primary').first();
+  await expect(prompt).toBeVisible();
   await expect(quoteBox.locator('strong')).toHaveText('10 ROX');
+  await prompt.fill('Тест billing race');
+
+  // Prompt content affects the generation, not its price. It must not create a
+  // temporary billing lock or force the customer to wait for a quote that the
+  // application intentionally does not request for free-form copy changes.
+  expect(await create.getAttribute('data-roxy-quote-stale')).toBeNull();
+  expect(await quoteBox.getAttribute('data-roxy-quote-stale')).toBeNull();
   await expect(create).toBeEnabled();
   await expect(create).toContainText('Создать · 10 ROX');
 
