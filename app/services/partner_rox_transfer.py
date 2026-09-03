@@ -7,8 +7,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ReferralRelation, User
-from app.services.wallet import WalletService, WalletTransaction
+from app.db.models import ReferralRelation, User, WalletTransaction
+from app.services.wallet import WalletService
 
 
 class PartnerRoxTransferError(ValueError):
