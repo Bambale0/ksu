@@ -1,20 +1,20 @@
-# Partner ROX transfers
+# ROX transfers
 
 ## Product contract
 
-A user can sponsor a creator from their own referral first line by transferring ROX from the sender's normal ROX wallet to the recipient's normal ROX wallet.
+A ROXY user can transfer ROX from their normal ROX wallet to any other active ROXY user.
 
-This is intentionally different from the existing partner `wallet-transfers` flow, which converts withdrawable partner RUB earnings into the same user's ROX.
+This is intentionally different from the partner `wallet-transfers` flow, which converts withdrawable partner RUB earnings into the same user's ROX.
 
 ## Customer flow
 
 1. Open **Партнёрам → Кабинет автора**.
-2. In **Перевести ROX**, select a user from the first referral line.
+2. In **Перевести ROX**, enter the recipient's numeric `ID` shown in their ROXY profile.
 3. Enter a whole-number ROX amount, for example `5500`.
 4. Confirm the irreversible transfer.
 5. The sender sees the new available ROX balance; the recipient can spend the credited ROX on normal generations immediately.
 
-Only direct first-line referrals are eligible. The client sends the recipient's internal user UUID; the backend independently verifies the referral relationship.
+The recipient does not need to be a referral. The backend resolves the entered Telegram user ID to an internal user and verifies that the account exists and is active. Self-transfers are rejected.
 
 ## API
 
@@ -22,19 +22,22 @@ Only direct first-line referrals are eligible. The client sends the recipient's 
 
 ```json
 {
-  "recipient_user_id": "<uuid>",
+  "recipient_telegram_id": 123456789,
   "amount_rox": 5500,
   "idempotency_key": "<unique intent key>"
 }
 ```
 
-Success (`201`) returns the transfer id, recipient id, amount and sender's remaining balance. The response never exposes the recipient's wallet balance.
+Success (`201`) returns the transfer id, recipient internal id, recipient Telegram id, amount and sender's remaining balance. The response never exposes the recipient's wallet balance.
+
+For rollout compatibility, the endpoint temporarily still accepts the old `recipient_user_id` UUID field, but the customer Mini App no longer uses or exposes internal UUIDs.
 
 ## Accounting and safety invariants
 
 - Transfer amount is a positive integer ROX value.
 - Sender cannot transfer to themselves.
-- Recipient must be an active direct first-line referral of the sender.
+- Recipient must exist in ROXY and be active.
+- Missing and restricted recipients share the same generic unavailable response.
 - Sender wallet uses the normal non-negative `WalletService.debit` path.
 - Recipient uses the normal `WalletService.credit` path.
 - Debit and credit are committed in one database transaction.
@@ -50,4 +53,4 @@ Ledger kinds:
 
 ## Pricing
 
-Receiving ROX does **not** copy the sponsor's billing privileges, admin-free mode, discounts, roles, or price overrides. Sponsored pricing remains a separate explicit entitlement feature.
+Receiving ROX does **not** copy the sender's billing privileges, admin-free mode, discounts, roles, or price overrides.
