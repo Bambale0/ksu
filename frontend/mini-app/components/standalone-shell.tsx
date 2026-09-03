@@ -108,9 +108,22 @@ export function StandaloneShell({
   useEffect(() => {
     const tg = initTelegram();
     const safe = () => syncSafeArea(tg);
+    const showBack = () => {
+      try {
+        tg?.BackButton?.show?.();
+      } catch {
+        // Older Telegram clients can expose a partial BackButton implementation.
+      }
+    };
     tg?.ready?.();
     tg?.expand?.();
-    tg?.BackButton?.show?.();
+    showBack();
+
+    // Global Telegram/auth effects can finish in the same hydration turn and
+    // reset native chrome after this shell has mounted. A standalone page owns
+    // Back while it is visible, so re-assert that ownership after the effect
+    // flush instead of depending on React parent/child effect ordering.
+    const backFrame = window.requestAnimationFrame(showBack);
 
     // The generic return tracker and Telegram chrome can write sessionStorage
     // again after this effect. Repair once, then capture and consume the verified
@@ -128,6 +141,7 @@ export function StandaloneShell({
       void api.me().then((me) => setBalance(me.balance_rox)).catch(() => setBalance(null));
     }
     return () => {
+      window.cancelAnimationFrame(backFrame);
       tg?.BackButton?.offClick?.(back);
       tg?.BackButton?.hide?.();
       tg?.offEvent?.("safeAreaChanged", safe);
