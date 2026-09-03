@@ -1,7 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { compactNumber, customerIdempotencyKey, customerRequest } from "@/lib/customer-api";
 
@@ -47,6 +47,7 @@ export function PartnerRoxTransfer() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [intentKey, setIntentKey] = useState(() => customerIdempotencyKey());
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     let frame = 0;
@@ -91,9 +92,10 @@ export function PartnerRoxTransfer() {
   const validAmount = Number.isInteger(amountNumber) && amountNumber > 0 && amountNumber <= balance;
 
   const submit = async () => {
-    if (!recipient || !validAmount || busy) return;
+    if (!recipient || !validAmount || busy || submittingRef.current) return;
     const label = recipient.first_name || (recipient.username ? `@${recipient.username}` : "рефералу");
     if (!window.confirm(`Перевести ${compactNumber(amountNumber, 0)} ROX ${label}? Перевод необратим.`)) return;
+    submittingRef.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -113,6 +115,7 @@ export function PartnerRoxTransfer() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось перевести ROX");
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   };
