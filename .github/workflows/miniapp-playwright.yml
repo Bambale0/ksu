@@ -42,6 +42,7 @@ jobs:
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium
       - name: Run iPhone/iPad WebKit responsive and crash audit
+        if: always()
         working-directory: frontend/mini-app
         run: >-
           npx playwright test
