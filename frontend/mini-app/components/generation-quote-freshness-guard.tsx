@@ -46,7 +46,20 @@ function relevantDraftMutation(event: Event): boolean {
   const screen = target.closest(".create-screen");
   if (!screen) return false;
 
-  if (event.type === "input" || event.type === "change") return true;
+  if (event.type === "input" || event.type === "change") {
+    // Free-form copy changes the generation payload but not its billing quote.
+    // Treating prompt / negative-prompt edits as price-sensitive leaves a valid
+    // quote artificially locked until the no-request timeout, because the app
+    // intentionally does not re-quote those text edits.
+    if (target instanceof HTMLTextAreaElement) return false;
+    if (target instanceof HTMLInputElement) {
+      const type = String(target.type || "text").toLowerCase();
+      if (["text", "search", "email", "url", "tel", "password", "hidden"].includes(type)) return false;
+    }
+    // Selects, numeric/range inputs, toggles and file inputs may affect model
+    // billing and therefore must wait for a quote produced from the new draft.
+    return true;
+  }
   if (event.type !== "click") return false;
 
   const button = target.closest<HTMLButtonElement>("button");
