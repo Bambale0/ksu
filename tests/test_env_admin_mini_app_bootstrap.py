@@ -39,7 +39,7 @@ async def test_env_admin_is_materialized_for_signed_mini_app_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "1001, 2002")
-    user = SimpleNamespace(id=uuid.uuid4(), telegram_id=2002)
+    user = SimpleNamespace(id=uuid.uuid4(), telegram_id=2002, is_active=True)
     session = _FakeSession()
 
     account = await ensure_bootstrap_admin(session, user)  # type: ignore[arg-type]
@@ -59,7 +59,23 @@ async def test_non_env_user_never_touches_admin_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "1001")
-    user = SimpleNamespace(id=uuid.uuid4(), telegram_id=2002)
+    user = SimpleNamespace(id=uuid.uuid4(), telegram_id=2002, is_active=True)
+    session = _FakeSession()
+
+    account = await ensure_bootstrap_admin(session, user)  # type: ignore[arg-type]
+
+    assert account is None
+    assert session.executed == 0
+    assert session.added == 0
+    assert session.flushed == 0
+
+
+@pytest.mark.asyncio
+async def test_restricted_env_user_is_never_bootstrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "2002")
+    user = SimpleNamespace(id=uuid.uuid4(), telegram_id=2002, is_active=False)
     session = _FakeSession()
 
     account = await ensure_bootstrap_admin(session, user)  # type: ignore[arg-type]
@@ -77,13 +93,14 @@ async def test_env_bootstrap_does_not_reactivate_revoked_admin(
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "2002")
     user_id = uuid.uuid4()
     revoked = AdminAccount(user_id=user_id, role="owner", is_active=False)
-    user = SimpleNamespace(id=user_id, telegram_id=2002)
+    user = SimpleNamespace(id=user_id, telegram_id=2002, is_active=True)
     session = _FakeSession(existing=revoked)
 
     account = await ensure_bootstrap_admin(session, user)  # type: ignore[arg-type]
 
     assert account is revoked
     assert account.is_active is False
+    assert session.executed == 0
     assert session.added == 0
     assert session.flushed == 0
 
