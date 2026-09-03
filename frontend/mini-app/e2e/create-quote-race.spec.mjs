@@ -79,6 +79,9 @@ async function openCreate(page) {
   const quoteBox = page.locator('.quote-box');
   const create = page.locator('.create-summary button.primary').first();
   await expect(prompt).toBeVisible();
+  // Prompt is required, so the application correctly does not request a quote
+  // while it is empty. Seed a valid draft first, then assert the baseline quote.
+  await prompt.fill('Начальный валидный промпт');
   await expect(quoteBox.locator('strong')).toHaveText('10 ROX');
   return { prompt, quoteBox, create };
 }
