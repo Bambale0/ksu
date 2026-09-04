@@ -9,24 +9,33 @@ from e2e import roxy_browser_e2e_v2 as suite
 
 
 async def robust_route(page: Page, name: str) -> None:
-    target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
-    try:
-        await expect(target).to_be_visible(timeout=10000)
-        await target.click()
-    except Exception:
+    canonical_name = "home" if name == "catalog" else name
+    if name == "catalog":
+        # Catalog is a backwards-compatible URL alias only. There is no second
+        # visible Catalog tab anymore: every legacy launch must converge on Home.
         await page.goto(
-            f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
+            f"{suite.legacy.BASE_URL}/mini-app/?route=catalog",
             wait_until="domcontentloaded",
         )
+    else:
+        target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
+        try:
+            await expect(target).to_be_visible(timeout=10000)
+            await target.click()
+        except Exception:
+            await page.goto(
+                f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
+                wait_until="domcontentloaded",
+            )
     await expect(page).to_have_url(
-        re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"),
+        re.compile(rf"[?&]route={re.escape(canonical_name)}(?:&|$)"),
         timeout=8000,
     )
     ready = {
         "home": ".home-screen",
         "create": ".create-screen",
         "profile": ".profile-screen",
-    }.get(name, "main .screen")
+    }.get(canonical_name, "main .screen")
     await expect(page.locator(ready).first).to_be_visible(timeout=10000)
 
 
@@ -42,6 +51,8 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
         report.controls_seen.add(f"primary:{route}")
 
     await robust_route(page, "catalog")
+    await expect(page.locator('[data-roxy-customer-route="catalog"]:visible')).to_have_count(0)
+    await expect(page.locator('[data-roxy-customer-route="home"]:visible').first).to_contain_text("Каталог")
     prompt = page.locator('[data-catalog-feature="prompt-image"]:visible').first
     await expect(prompt).to_be_visible(timeout=10000)
     await prompt.click()
@@ -51,9 +62,10 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     )
     await page.go_back()
     await expect(page).to_have_url(
-        re.compile(r"[?&]route=catalog(?:&|$)"),
+        re.compile(r"[?&]route=home(?:&|$)"),
         timeout=7000,
     )
+    report.controls_seen.add("catalog:legacy-alias-to-home")
     report.controls_seen.add("catalog:prompt-tools/back")
     report.ok("boot + canonical navigation + Back")
 
