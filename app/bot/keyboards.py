@@ -17,6 +17,7 @@ QUICK_MENU_TEXT = "🏠 Меню"
 QUICK_PROMPT_TEXT = "✨ Описание для фото"
 QUICK_VIDEO_PROMPT_TEXT = "🎬 Описание для видео"
 QUICK_SUPPORT_TEXT = "🆘 Поддержка"
+QUICK_TEST_TEXT = "🧪 Тест"
 
 
 def _ref_code_from_start_payload(start_payload: str) -> str | None:
@@ -76,10 +77,13 @@ def app_launcher_menu(
     )
 
 
-def app_reply_menu() -> ReplyKeyboardMarkup:
-    """Persistent Telegram bottom keyboard: only menu and support."""
+def app_reply_menu(*, is_admin: bool = False) -> ReplyKeyboardMarkup:
+    """Persistent Telegram bottom keyboard, with the test shortcut for trusted admins only."""
+    rows = [[KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)]]
+    if is_admin:
+        rows.append([KeyboardButton(text=QUICK_TEST_TEXT)])
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)]],
+        keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
         input_field_placeholder="Меню или поддержка",
@@ -109,9 +113,9 @@ def _batch_button() -> InlineKeyboardButton:
     return InlineKeyboardButton(text="🗂 Пакетная обработка", callback_data="create")
 
 
-def quick_menu() -> ReplyKeyboardMarkup:
+def quick_menu(*, is_admin: bool = False) -> ReplyKeyboardMarkup:
     """Compatibility keyboard for launcher and support shortcuts."""
-    return app_reply_menu()
+    return app_reply_menu(is_admin=is_admin)
 
 
 def back_menu(callback_data: str = "nav:main") -> InlineKeyboardMarkup:
