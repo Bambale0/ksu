@@ -51,6 +51,7 @@ jobs:
           e2e/responsive-device-surfaces.spec.mjs
           e2e/responsive-deep-surfaces.spec.mjs
           e2e/trend-category-admin.spec.mjs
+          e2e/home-is-catalog.spec.mjs
           e2e/trend-back-navigation.spec.mjs
           --project=webkit-mobile
       - name: Upload Playwright report

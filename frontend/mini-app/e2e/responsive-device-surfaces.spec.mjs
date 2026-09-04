@@ -184,12 +184,16 @@ test('Telegram safe area keeps native iPhone env fallback', async ({ page }) => 
   });
 });
 
-test('tablet home uses tablet grid instead of phone carousel', async ({ page }) => {
+test('tablet home keeps the canonical catalog instead of the legacy Studio grid', async ({ page }) => {
   await page.setViewportSize({ width: 834, height: 1194 });
   await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
   await expect(page.locator('.home-screen')).toBeVisible();
-  expect(await page.locator('.format-grid').evaluate((node) => getComputedStyle(node).display)).toBe('grid');
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  await expect(page.locator('.bottom-nav button[data-roxy-customer-route="home"]')).toBeVisible();
+  await expect(page.locator('.bottom-nav button[data-roxy-customer-route="home"] small')).toHaveText('Каталог');
+  await expect(page.getByRole('heading', { name: 'Что создаём?' })).toBeHidden();
+  expect(await page.locator('.format-grid').evaluate((node) => getComputedStyle(node).display)).toBe('none');
   const shellWidth = await page.locator('.main-shell').evaluate((node) => node.getBoundingClientRect().width);
   expect(shellWidth).toBeGreaterThan(780);
 });
