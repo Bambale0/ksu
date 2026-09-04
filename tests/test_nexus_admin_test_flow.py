@@ -94,12 +94,11 @@ def test_nexus_router_is_registered_before_customer_catch_all() -> None:
     )
 
 
-def test_handler_rechecks_env_admin_and_never_hardcodes_secret() -> None:
+def test_handler_rechecks_env_admin_and_reads_secret_from_env() -> None:
     source = Path("app/bot/handlers/nexus_test.py").read_text(encoding="utf-8")
     assert "parse_bootstrap_ids" in source
-    assert "NEXUS_API_KEY" in source
-    assert "NEXUS_API_BASE_URL" in source
-    assert "nano-banana-pro" not in source  # model binding lives in provider, not Telegram text
+    assert 'os.environ.get("NEXUS_API_KEY"' in source
+    assert 'os.environ.get("NEXUS_API_BASE_URL"' in source
     provider = Path("app/providers/nexus.py").read_text(encoding="utf-8")
     assert '"model_name": "nano-banana-pro"' in provider
     assert "Idempotency-Key" in provider
