@@ -52,7 +52,9 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
 
     await robust_route(page, "catalog")
     await expect(page.locator('[data-roxy-customer-route="catalog"]:visible')).to_have_count(0)
-    await expect(page.locator('[data-roxy-customer-route="home"]:visible').first).to_contain_text("Каталог")
+    catalog_nav = page.locator('.bottom-nav [data-roxy-customer-route="home"]:visible').first
+    await expect(catalog_nav).to_be_visible(timeout=8000)
+    await expect(catalog_nav).to_contain_text("Каталог")
     prompt = page.locator('[data-catalog-feature="prompt-image"]:visible').first
     await expect(prompt).to_be_visible(timeout=10000)
     await prompt.click()
