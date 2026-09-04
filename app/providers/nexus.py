@@ -31,13 +31,14 @@ class NexusClient:
         *,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        if not api_key.strip():
+        clean_key = api_key.strip()
+        if not clean_key:
             raise NexusProviderError("NEXUS_API_KEY is not configured")
+        self._authorization = f"Bearer {clean_key}"
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
             timeout=httpx.Timeout(30.0, connect=10.0),
-            headers={"Authorization": f"Bearer {api_key.strip()}"},
         )
 
     async def aclose(self) -> None:
@@ -62,7 +63,10 @@ class NexusClient:
 
         response = await self._client.post(
             "/generate",
-            headers={"Idempotency-Key": idempotency_key or str(uuid.uuid4())},
+            headers={
+                "Authorization": self._authorization,
+                "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
+            },
             json={
                 "params": {
                     "model_name": "nano-banana-pro",
@@ -80,7 +84,10 @@ class NexusClient:
         return str(task_id)
 
     async def get_task(self, task_id: str) -> NexusTask:
-        response = await self._client.get(f"/tasks/{task_id}")
+        response = await self._client.get(
+            f"/tasks/{task_id}",
+            headers={"Authorization": self._authorization},
+        )
         response.raise_for_status()
         payload = response.json()
         status = str(payload.get("status") or "unknown").lower()
