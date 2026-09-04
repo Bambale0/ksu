@@ -53,19 +53,25 @@ function hideLegacyHomeSections(home: HTMLElement): void {
 function syncNavigation(): void {
   const homeButton = document.querySelector<HTMLButtonElement>(".bottom-nav button[data-roxy-customer-route='home']");
   const catalogButton = document.querySelector<HTMLButtonElement>(".bottom-nav button[data-roxy-customer-route='catalog']");
-  const homeLabel = homeButton?.querySelector<HTMLElement>("small");
-  if (homeLabel && homeLabel.textContent !== "Каталог") homeLabel.textContent = "Каталог";
+  const route = new URL(window.location.href).searchParams.get("route") || "home";
+  const atCatalogRoot = route === "home";
+
   if (homeButton) {
-    homeButton.hidden = false;
-    homeButton.removeAttribute("aria-hidden");
-    if (homeButton.tabIndex < 0) homeButton.tabIndex = 0;
-    homeButton.setAttribute("aria-label", "Каталог");
-    homeButton.dataset.homeCatalog = "true";
+    homeButton.hidden = true;
+    homeButton.tabIndex = -1;
+    homeButton.setAttribute("aria-hidden", "true");
+    homeButton.classList.remove("active");
   }
+
   if (catalogButton) {
-    catalogButton.hidden = true;
-    catalogButton.tabIndex = -1;
-    catalogButton.setAttribute("aria-hidden", "true");
+    catalogButton.hidden = false;
+    catalogButton.removeAttribute("aria-hidden");
+    catalogButton.tabIndex = 0;
+    catalogButton.dataset.homeCatalog = "true";
+    catalogButton.setAttribute("aria-label", "Каталог");
+    catalogButton.classList.toggle("active", atCatalogRoot);
+    if (atCatalogRoot) catalogButton.setAttribute("aria-current", "page");
+    else catalogButton.removeAttribute("aria-current");
   }
 
   const brand = document.querySelector<HTMLButtonElement>(".topbar .brand[data-roxy-customer-route='home']");
@@ -98,9 +104,6 @@ function nativeBackHide(): (() => void) | null {
   const button = window.Telegram?.WebApp?.BackButton as ({ hide?: () => void } & object) | undefined;
   if (!button) return null;
   const prototype = Object.getPrototypeOf(button) as { hide?: () => void } | null;
-  // telegram.ts wraps the SDK BackButton with Object.create(raw). Calling the
-  // prototype's hide bypasses the managed adapter that intentionally keeps Back
-  // visible on non-root routes. Fall back to the current object before wrapping.
   const nativeButton = prototype?.hide ? prototype : button;
   return nativeButton.hide ? nativeButton.hide.bind(nativeButton) : null;
 }
@@ -134,19 +137,34 @@ export function HomeCatalogContract() {
       frame = requestAnimationFrame(() => syncHomeCatalog(rawHide));
     };
 
+    const openCanonicalCatalog = (event: MouseEvent) => {
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>(".bottom-nav button[data-roxy-customer-route='catalog']")
+        : null;
+      if (!target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      document.querySelector<HTMLButtonElement>(
+        ".bottom-nav button[data-roxy-customer-route='home']",
+      )?.click();
+      schedule();
+    };
+
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    document.addEventListener("click", openCanonicalCatalog, true);
     window.addEventListener("popstate", schedule);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      document.removeEventListener("click", openCanonicalCatalog, true);
       window.removeEventListener("popstate", schedule);
     };
   }, []);
 
   return <style jsx global>{`
-    .bottom-nav button[data-home-catalog="true"] { display: grid !important; }
-    .bottom-nav button[data-roxy-customer-route="catalog"] { display: none !important; }
+    .bottom-nav button[data-roxy-customer-route="home"] { display: none !important; }
+    .bottom-nav button[data-roxy-customer-route="catalog"][data-home-catalog="true"] { display: grid !important; }
   `}</style>;
 }
