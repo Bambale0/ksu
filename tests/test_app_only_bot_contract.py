@@ -10,14 +10,18 @@ def _read(path: str) -> str:
 
 def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher() -> None:
     dispatcher = _read("app/bot/dispatcher.py")
-    assert "from app.bot.handlers import admin, admin_extensions, launcher" in dispatcher
+    assert "admin, admin_extensions, launcher, nexus_test" in dispatcher
     assert "dispatcher.include_router(admin.router)" in dispatcher
     assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
+    assert "dispatcher.include_router(nexus_test.router)" in dispatcher
     assert "dispatcher.include_router(launcher.router)" in dispatcher
     assert dispatcher.index("dispatcher.include_router(admin.router)") < dispatcher.index(
         "dispatcher.include_router(launcher.router)"
     )
     assert dispatcher.index("dispatcher.include_router(admin_extensions.router)") < dispatcher.index(
+        "dispatcher.include_router(launcher.router)"
+    )
+    assert dispatcher.index("dispatcher.include_router(nexus_test.router)") < dispatcher.index(
         "dispatcher.include_router(launcher.router)"
     )
     for retired_customer_router in (
@@ -31,12 +35,13 @@ def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher
         assert retired_customer_router not in dispatcher
 
 
-def test_launcher_uses_inline_app_button_and_clean_reply_keyboard() -> None:
+def test_launcher_uses_inline_app_button_and_admin_aware_reply_keyboard() -> None:
     launcher = _read("app/bot/handlers/launcher.py")
     keyboards = _read("app/bot/keyboards.py")
     assert "app_launcher_menu" in launcher
     assert "reply_markup=app_launcher_menu" in launcher
-    assert "reply_markup=quick_menu()" in launcher
+    assert "reply_markup=_quick_menu_for(message)" in launcher
+    assert "parse_bootstrap_ids" in launcher
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher
     assert "Do not expose a parallel text UI" in launcher
@@ -45,14 +50,16 @@ def test_launcher_uses_inline_app_button_and_clean_reply_keyboard() -> None:
     assert "def app_launcher_menu" in keyboards
     assert "InlineKeyboardMarkup" in keyboards
     assert "inline_keyboard=[[_open_app_inline_button" in keyboards
-    assert "def app_reply_menu" in keyboards
+    assert "def app_reply_menu(*, is_admin: bool = False)" in keyboards
     assert "ReplyKeyboardMarkup" in keyboards
     assert "KeyboardButton" in keyboards
     assert "web_app=WebAppInfo" in keyboards
     assert 'OPEN_APP_TEXT = "🚀 Открыть ROXY"' in keyboards
     assert 'QUICK_MENU_TEXT = "🏠 Меню"' in keyboards
     assert 'QUICK_SUPPORT_TEXT = "🆘 Поддержка"' in keyboards
-    assert "keyboard=[[KeyboardButton(text=QUICK_MENU_TEXT), KeyboardButton(text=QUICK_SUPPORT_TEXT)]]" in keyboards
+    assert 'QUICK_TEST_TEXT = "🧪 Тест"' in keyboards
+    assert "if is_admin:" in keyboards
+    assert "rows.append([KeyboardButton(text=QUICK_TEST_TEXT)])" in keyboards
     assert 'query["start_payload"] = start_payload' in keyboards
 
 
