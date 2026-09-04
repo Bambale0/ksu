@@ -6,7 +6,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import (
@@ -97,7 +97,7 @@ def _support_line() -> str:
     return "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY"
 
 
-def _quick_menu_for(message: Message):
+def _quick_menu_for(message: Message) -> ReplyKeyboardMarkup:
     telegram_id = message.from_user.id if message.from_user else None
     return quick_menu(is_admin=telegram_id is not None and telegram_id in parse_bootstrap_ids())
 
