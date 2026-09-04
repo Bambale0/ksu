@@ -44,14 +44,15 @@ async function mockHomeCatalog(page) {
 }
 
 async function expectCanonicalCatalog(page) {
-  const home = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
-  const legacyCatalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+  const oldHome = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
+  const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
 
-  await expect(home).toBeVisible();
-  await expect(home.locator('small')).toHaveText('Каталог');
-  await expect(home).toHaveAttribute('aria-current', 'page');
-  await expect(home).toHaveAttribute('data-home-catalog', 'true');
-  await expect(legacyCatalog).toBeHidden();
+  await expect(oldHome).toBeHidden();
+  await expect(catalog).toBeVisible();
+  await expect(catalog.locator('small')).toHaveText('Каталог');
+  await expect(catalog).toHaveAttribute('aria-current', 'page');
+  await expect(catalog).toHaveAttribute('data-home-catalog', 'true');
+  await expect(catalog).toHaveClass(/active/);
   await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
   await expect(page.locator('#roxy-home-live-trends')).toBeVisible();
   await expect(page.locator('#roxy-home-trend-folders')).toBeVisible();
@@ -60,7 +61,7 @@ async function expectCanonicalCatalog(page) {
   await expect(page.locator('#roxy-catalog-trend-folders')).toHaveCount(0);
 }
 
-test('Home is the only visible catalog root', async ({ page }) => {
+test('bot startup opens the same visible Catalog root', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockHomeCatalog(page);
   await page.goto('/mini-app/?route=home');
@@ -69,7 +70,23 @@ test('Home is the only visible catalog root', async ({ page }) => {
   await expectCanonicalCatalog(page);
 });
 
-test('legacy route=catalog normalizes to Home catalog without a second tab', async ({ page }) => {
+test('tapping visible Catalog always opens canonical home instead of the old catalog screen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockHomeCatalog(page);
+  await page.goto('/mini-app/?route=home');
+
+  await page.locator('.bottom-nav button[data-roxy-customer-route="create"]').click();
+  await expect(page).toHaveURL(/[?&]route=create(?:&|$)/);
+
+  const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+  await expect(catalog).toBeVisible();
+  await catalog.click();
+
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+  await expectCanonicalCatalog(page);
+});
+
+test('legacy route=catalog normalizes to the same visible Catalog root', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockHomeCatalog(page);
   await page.goto('/mini-app/?route=catalog');
