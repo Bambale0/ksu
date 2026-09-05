@@ -71,7 +71,14 @@ class GenerationWorkerService:
                 return True
 
             if generation.external_id and generation.status in {"generating", "submitting"}:
-                await GenerationOutboxService.complete(session, claim.outbox_id)
+                if generation.action_type == "pinterest_repeat":
+                    await GenerationOutboxService.complete_submission_stage(
+                        session,
+                        claim.outbox_id,
+                        generation.id,
+                    )
+                else:
+                    await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
@@ -154,7 +161,14 @@ class GenerationWorkerService:
                     result.error or "Generation failed",
                 )
             elif result.external_id or result.status in {"generating", "succeeded"}:
-                await GenerationOutboxService.complete(session, claim.outbox_id)
+                if result.action_type == "pinterest_repeat":
+                    await GenerationOutboxService.complete_submission_stage(
+                        session,
+                        claim.outbox_id,
+                        result.id,
+                    )
+                else:
+                    await GenerationOutboxService.complete(session, claim.outbox_id)
             else:
                 await GenerationOutboxService.release(
                     session,
