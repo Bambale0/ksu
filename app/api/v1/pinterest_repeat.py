@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
 from decimal import Decimal
+from functools import partial
+from io import BytesIO
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
+from app.services.media_probe import probe_media_stream
 from app.services.model_catalog import InvalidModelParametersError, UnknownModelError
 from app.services.pinterest_repeat import (
     PinterestRepeatError,
     PinterestRepeatGenerationRequest,
     PinterestRepeatService,
 )
+from app.services.reference_static import ReferenceStaticStorage, ReferenceStaticStorageError
+from app.services.references import ReferenceService
 from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/pinterest-repeat", tags=["pinterest-repeat"])
@@ -53,15 +61,74 @@ def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
 @router.post("/resolve")
 async def resolve_pinterest_reference(
     payload: PinterestResolveRequest,
-    _user: CurrentUserDep,
+    user: CurrentUserDep,
+    redis: RedisDep,
+    session: SessionDep,
 ) -> dict[str, str]:
     try:
         resolved = await PinterestRepeatService.resolve_reference(payload.url)
+        downloaded = await PinterestRepeatService.download_reference_image(resolved.reference_url)
     except PinterestRepeatError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    size_bytes = len(downloaded.content)
+    await AbuseProtectionService.upload_rate_and_bytes(
+        redis,
+        user_id=user.id,
+        size_bytes=size_bytes,
+    )
+    file_hash = hashlib.sha256(downloaded.content).hexdigest()
+    existing = await ReferenceService.get_by_hash(
+        session,
+        user_id=user.id,
+        kind="image",
+        file_hash=file_hash,
+    )
+    if existing is not None and ReferenceStaticStorage.local_url_exists(existing.source_url):
+        return {
+            "source_url": resolved.source_url,
+            "reference_url": existing.source_url,
+        }
+
+    stream = BytesIO(downloaded.content)
+    probe = await asyncio.to_thread(probe_media_stream, stream, downloaded.filename)
+    try:
+        local_url, _path, stored_size = await asyncio.to_thread(
+            partial(
+                ReferenceStaticStorage.persist_stream,
+                stream,
+                user_id=user.id,
+                kind="image",
+                file_hash=file_hash,
+                filename=downloaded.filename,
+                content_type=downloaded.content_type,
+                expected_size=size_bytes,
+            )
+        )
+    except ReferenceStaticStorageError as exc:
+        raise HTTPException(status_code=500, detail="Reference storage failed") from exc
+
+    reference, _replayed = await ReferenceService.register(
+        session,
+        user_id=user.id,
+        source_url=local_url,
+        kind="image",
+        label="Pinterest",
+        original_filename=downloaded.filename,
+        content_type=downloaded.content_type,
+        file_hash=file_hash,
+        source="pinterest_repeat",
+    )
+    reference.size_bytes = stored_size
+    reference.width = probe.width
+    reference.height = probe.height
+    reference.container = probe.container
+    reference.probe_status = probe.status
+    await session.commit()
+
     return {
         "source_url": resolved.source_url,
-        "reference_url": resolved.reference_url,
+        "reference_url": reference.source_url,
     }
 
 
