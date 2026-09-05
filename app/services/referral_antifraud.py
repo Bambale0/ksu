@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import ReferralRelation, User
 from app.db.referral_models import ReferralEvent
+from app.services.referral_audit import log_referral_admission
 from app.services.wallet import WalletService
 
 
@@ -49,6 +50,15 @@ class ReferralAntifraudService:
         )
         session.add(event)
         await session.flush()
+        log_referral_admission(
+            visitor_telegram_id=visitor.telegram_id,
+            inviter_telegram_id=(
+                inviter.telegram_id if inviter is not None else inviter_telegram_id
+            ),
+            attached=attached,
+            reason=reason,
+            inviter_user_id=inviter.id if inviter is not None else None,
+        )
         return event
 
     @staticmethod
