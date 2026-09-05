@@ -34,12 +34,16 @@ export type PinterestResolvedReference = {
   reference_url: string;
 };
 
-async function post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+async function post<T>(
+  path: string,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
     credentials: "same-origin",
     cache: "no-store",
-    headers: { ...telegramHeaders(true), ...(headers || {}) },
+    headers: { ...telegramHeaders(true), ...extraHeaders },
     body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => null) as { detail?: string } | null;
