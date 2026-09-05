@@ -11,9 +11,10 @@ from app.core.telegram_security import validate_webapp_auth_date
 from app.db.models import User
 from app.db.session import get_session
 from app.services.feed import FeedNotFoundError, FeedService
-from app.services.feed_links import parse_feed_deep_link
+from app.services.feed_links import FeedDeepLink, parse_feed_deep_link
 from app.services.inline_admin import ensure_bootstrap_admin
 from app.services.onboarding import OnboardingService
+from app.services.referral_audit import log_signed_referral_validation
 from app.services.trends import TrendService
 from app.services.users import UserService
 
@@ -110,6 +111,39 @@ async def _validated_startapp_inviter(
     return link.referral_telegram_id
 
 
+async def _audit_signed_referral_once(
+    request: Request,
+    *,
+    visitor_telegram_id: int,
+    link: FeedDeepLink,
+    accepted: bool,
+) -> None:
+    """Log one safe referral receipt per launch burst without touching auth success."""
+
+    if link.referral_telegram_id <= 0:
+        return
+    should_log = True
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        key = (
+            "referral-audit:startapp:"
+            f"{visitor_telegram_id}:{link.referral_telegram_id}:{link.action}:{int(accepted)}"
+        )
+        try:
+            should_log = bool(await redis.set(key, "1", ex=60, nx=True))
+        except Exception:
+            # Diagnostics must never make a valid Telegram launch fail.
+            should_log = True
+    if should_log:
+        log_signed_referral_validation(
+            visitor_telegram_id=visitor_telegram_id,
+            inviter_telegram_id=link.referral_telegram_id,
+            action=link.action,
+            accepted=accepted,
+            reason="validated" if accepted else "source_validation_failed",
+        )
+
+
 async def get_current_user(
     request: Request,
     session: SessionDep,
@@ -148,7 +182,15 @@ async def get_current_user(
     # but it is client-controlled and must never assign money-bearing referrals.
     _ = x_telegram_start_param
     signed_start_param = str(getattr(init_data, "start_param", None) or "").strip()
+    parsed_start_link = parse_feed_deep_link(signed_start_param or None)
     inviter_telegram_id = await _validated_startapp_inviter(session, signed_start_param or None)
+    if parsed_start_link is not None and parsed_start_link.referral_telegram_id > 0:
+        await _audit_signed_referral_once(
+            request,
+            visitor_telegram_id=tg_user.id,
+            link=parsed_start_link,
+            accepted=inviter_telegram_id is not None,
+        )
     user = await UserService.get_or_create(
         session,
         tg_user,
