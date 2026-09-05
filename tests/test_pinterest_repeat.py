@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
 from app.services.pinterest_repeat import PinterestRepeatError, PinterestRepeatService
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_build_request_keeps_scene_and_identity_roles_separate() -> None:
@@ -35,6 +40,22 @@ def test_build_request_keeps_scene_and_identity_roles_separate() -> None:
     assert "55 kg" in request.prompt
     assert "спокойная уверенность" in request.prompt
     assert "DO NOT copy the face or personal identity" in request.prompt
+
+
+def test_build_request_accepts_scene_plus_five_identity_photos() -> None:
+    identities = [f"https://cdn.example.com/me-{index}.jpg" for index in range(5)]
+    request = PinterestRepeatService.build_request(
+        scene_reference_url="https://cdn.example.com/scene.jpg",
+        identity_reference_urls=identities,
+        height_cm=170,
+        weight_kg=70,
+    )
+
+    assert request.parameters["image_input"] == [
+        "https://cdn.example.com/scene.jpg",
+        *identities,
+    ]
+    assert "IMAGES 2-6 = PERSON_IDENTITY" in request.prompt
 
 
 def test_build_request_rejects_more_than_five_identity_photos() -> None:
@@ -91,3 +112,22 @@ async def test_resolve_reference_blocks_redirect_outside_pinterest() -> None:
                 "https://pin.it/example",
                 client=client,
             )
+
+
+def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
+    catalog = (ROOT / "frontend/mini-app/components/catalog-feature-hub.tsx").read_text(
+        encoding="utf-8"
+    )
+    page = (ROOT / "frontend/mini-app/app/pinterest-repeat/page.tsx").read_text(encoding="utf-8")
+    api = (ROOT / "frontend/mini-app/lib/pinterest-repeat-api.ts").read_text(encoding="utf-8")
+    router = (ROOT / "app/api/router.py").read_text(encoding="utf-8")
+
+    assert 'id: "pinterest-repeat"' in catalog
+    assert 'href: "/mini-app/pinterest-repeat/"' in catalog
+    assert 'title="Повтори фото с Pinterest"' in page
+    assert "identityPhotos.length <= 5" in page
+    assert 'accept="image/*,.heic,.heif"' in page
+    assert '"/api/v1/pinterest-repeat/resolve"' in api
+    assert '"/api/v1/pinterest-repeat/quote"' in api
+    assert '"/api/v1/pinterest-repeat/run"' in api
+    assert "api_router.include_router(pinterest_repeat.router)" in router
