@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
@@ -12,6 +12,7 @@ import {
 import { haptic } from "@/lib/telegram";
 
 type UploadedPhoto = { url: string; name: string };
+type SubmissionIdentity = { requestKey: string; idempotencyKey: string };
 
 function money(value?: string | null): string {
   const number = Number(value || 0);
@@ -21,6 +22,11 @@ function money(value?: string | null): string {
 
 function isImageFile(file: File): boolean {
   return file.type.startsWith("image/") || /\.(heic|heif)$/i.test(file.name);
+}
+
+function createIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  return `pin-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 export default function PinterestRepeatPage() {
@@ -38,6 +44,7 @@ export default function PinterestRepeatPage() {
   const [quotedRequestKey, setQuotedRequestKey] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const submissionRef = useRef<SubmissionIdentity | null>(null);
 
   const parsedHeight = Number(heightCm);
   const parsedWeight = Number(weightKg);
@@ -67,6 +74,7 @@ export default function PinterestRepeatPage() {
   const quoteIsCurrent = Boolean(quote && requestKey && quotedRequestKey === requestKey);
 
   useEffect(() => {
+    submissionRef.current = null;
     if (!requestBody || !requestKey) {
       setQuote(null);
       setQuotedRequestKey("");
@@ -162,14 +170,21 @@ export default function PinterestRepeatPage() {
   };
 
   const run = async () => {
-    if (!requestBody || !quoteIsCurrent || running) return;
+    if (!requestBody || !requestKey || !quoteIsCurrent || running) return;
     setRunning(true);
     setError("");
     haptic("medium");
+    let submission = submissionRef.current;
+    if (!submission || submission.requestKey !== requestKey) {
+      submission = { requestKey, idempotencyKey: createIdempotencyKey() };
+      submissionRef.current = submission;
+    }
     try {
-      const result = await pinterestRepeatApi.run(requestBody);
+      const result = await pinterestRepeatApi.run(requestBody, submission.idempotencyKey);
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (cause) {
+      // Keep the key for this exact request: a retry after a lost/timeout response
+      // must replay the same paid generation rather than creating a second one.
       setError(cause instanceof Error ? cause.message : "Не удалось запустить генерацию");
       setRunning(false);
     }
