@@ -100,6 +100,7 @@ def test_provider_payload_strips_all_internal_identity_and_billing_fields() -> N
     class GenerationStub:
         prompt = "hello"
         input_url = None
+        action_type = None
         parameters = {
             "prompt": "hello",
             "aspect_ratio": "1:1",
