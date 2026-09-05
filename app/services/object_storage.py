@@ -17,21 +17,35 @@ class ObjectStorageNotConfigured(RuntimeError):
 
 
 class ObjectStorage:
+    """Optional S3-compatible backend retained for legacy media rows.
+
+    New generation media is stored on the KSU host. Construction stays cheap and
+    non-failing when S3 is absent so callers can render local media without an S3
+    deployment dependency. Actual S3 operations still fail closed when the legacy
+    backend is not configured.
+    """
+
     def __init__(self) -> None:
         self.bucket = settings.s3_bucket.strip()
-        if not self.bucket:
-            raise ObjectStorageNotConfigured("S3_BUCKET is not configured")
-        self._client = self._build_client()
-        self._transfer = TransferConfig(
-            multipart_threshold=max(5 * 1024 * 1024, settings.s3_multipart_threshold_bytes),
-            multipart_chunksize=max(5 * 1024 * 1024, settings.s3_multipart_chunk_bytes),
-            max_concurrency=max(1, settings.s3_max_concurrency),
-            use_threads=True,
-        )
+        self._client: BaseClient | None = None
+        self._transfer: TransferConfig | None = None
+        if self.bucket:
+            self._client = self._build_client()
+            self._transfer = TransferConfig(
+                multipart_threshold=max(5 * 1024 * 1024, settings.s3_multipart_threshold_bytes),
+                multipart_chunksize=max(5 * 1024 * 1024, settings.s3_multipart_chunk_bytes),
+                max_concurrency=max(1, settings.s3_max_concurrency),
+                use_threads=True,
+            )
 
     @staticmethod
     def configured() -> bool:
         return bool(settings.s3_bucket.strip())
+
+    def _require_configured(self) -> tuple[BaseClient, TransferConfig]:
+        if not self.bucket or self._client is None or self._transfer is None:
+            raise ObjectStorageNotConfigured("S3_BUCKET is not configured")
+        return self._client, self._transfer
 
     @staticmethod
     def _build_client() -> BaseClient:
@@ -61,8 +75,10 @@ class ObjectStorage:
         content_type: str,
         metadata: dict[str, str],
     ) -> dict[str, Any]:
+        client, transfer = self._require_configured()
+
         def _upload() -> dict[str, Any]:
-            self._client.upload_file(
+            client.upload_file(
                 str(path),
                 self.bucket,
                 key,
@@ -70,9 +86,9 @@ class ObjectStorage:
                     "ContentType": content_type,
                     "Metadata": metadata,
                 },
-                Config=self._transfer,
+                Config=transfer,
             )
-            return self._client.head_object(Bucket=self.bucket, Key=key)
+            return client.head_object(Bucket=self.bucket, Key=key)
 
         return await asyncio.to_thread(_upload)
 
@@ -83,12 +99,14 @@ class ObjectStorage:
         key: str,
         bucket: str | None = None,
     ) -> None:
+        client, transfer = self._require_configured()
+
         def _download() -> None:
-            self._client.download_file(
+            client.download_file(
                 bucket or self.bucket,
                 key,
                 str(path),
-                Config=self._transfer,
+                Config=transfer,
             )
 
         await asyncio.to_thread(_download)
@@ -101,6 +119,7 @@ class ObjectStorage:
         expires_seconds: int | None = None,
         download_filename: str | None = None,
     ) -> str:
+        client, _transfer = self._require_configured()
         params: dict[str, Any] = {
             "Bucket": bucket or self.bucket,
             "Key": key,
@@ -109,7 +128,7 @@ class ObjectStorage:
             safe_name = download_filename.replace('"', "").replace("\r", "").replace("\n", "")
             params["ResponseContentDisposition"] = f'attachment; filename="{safe_name}"'
         return str(
-            self._client.generate_presigned_url(
+            client.generate_presigned_url(
                 "get_object",
                 Params=params,
                 ExpiresIn=max(60, expires_seconds or settings.media_presign_ttl_seconds),
