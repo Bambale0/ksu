@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from typing import Annotated
+from decimal import Decimal
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_user, db_session, redis_client
-from app.models.user import User
+from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.services.billing_access import BillingAccessService
-from app.services.generation import GenerationService, InsufficientBalanceError
-from app.services.pinterest_repeat import PinterestRepeatError, PinterestRepeatService
+from app.services.credits import InternalCreditService
+from app.services.generations import GenerationService
+from app.services.model_catalog import InvalidModelParametersError, UnknownModelError
+from app.services.pinterest_repeat import (
+    PinterestRepeatError,
+    PinterestRepeatGenerationRequest,
+    PinterestRepeatService,
+)
+from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/pinterest-repeat", tags=["pinterest-repeat"])
 
@@ -28,7 +33,11 @@ class PinterestRepeatRequest(BaseModel):
     expression: str | None = Field(default=None, max_length=240)
 
 
-def _build(payload: PinterestRepeatRequest):
+def _amount(value: Decimal | str | int | float) -> str:
+    return format(Decimal(str(value)), ".2f")
+
+
+def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
     try:
         return PinterestRepeatService.build_request(
             scene_reference_url=payload.scene_reference_url,
@@ -38,7 +47,7 @@ def _build(payload: PinterestRepeatRequest):
             expression=payload.expression,
         )
     except PinterestRepeatError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/resolve")
@@ -46,7 +55,7 @@ async def resolve_pinterest_reference(payload: PinterestResolveRequest) -> dict[
     try:
         resolved = await PinterestRepeatService.resolve_reference(payload.url)
     except PinterestRepeatError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "source_url": resolved.source_url,
         "reference_url": resolved.reference_url,
@@ -56,41 +65,46 @@ async def resolve_pinterest_reference(payload: PinterestResolveRequest) -> dict[
 @router.post("/quote")
 async def quote_pinterest_repeat(
     payload: PinterestRepeatRequest,
-    user: Annotated[User, Depends(current_user)],
-    session: Annotated[AsyncSession, Depends(db_session)],
-) -> dict[str, object]:
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, Any]:
     recipe = _build(payload)
-    spec, _clean, retail_cost, seconds, retail_unit_price = await GenerationService.prepare_request(
-        session=session,
-        model_id=recipe.model_id,
-        prompt=recipe.prompt,
-        parameters=recipe.parameters,
-    )
+    try:
+        spec, _clean, retail_cost, seconds, retail_unit_price = await GenerationService.prepare_request(
+            session,
+            model_id=recipe.model_id,
+            prompt=recipe.prompt,
+            parameters=recipe.parameters,
+        )
+    except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     billing = await BillingAccessService.decision(
         session,
-        user=user,
-        requested_cost=retail_cost,
+        user_id=user.id,
+        retail_cost=retail_cost,
     )
+    effective = billing.effective_cost
     return {
         "mode": "pinterest_repeat",
-        "model_id": recipe.model_id,
-        "unit_price_rox": str(retail_unit_price),
-        "cost_rox": str(retail_cost),
-        "effective_cost_rox": str(billing.effective_cost),
-        "cost_rub": str(spec.price_rub),
-        "retail_cost_rox": str(retail_cost),
+        "model_id": spec.id,
+        "unit_price_rox": _amount(retail_unit_price),
+        "cost_rox": _amount(retail_cost),
+        "effective_cost_rox": _amount(effective),
+        "cost_rub": _amount(InternalCreditService.rubles_for(effective)),
+        "retail_cost_rox": _amount(retail_cost),
         "billing_seconds": seconds,
         "admin_free": billing.admin_free,
     }
 
 
-@router.post("/run", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/run", status_code=202)
 async def run_pinterest_repeat(
     payload: PinterestRepeatRequest,
-    user: Annotated[User, Depends(current_user)],
-    session: Annotated[AsyncSession, Depends(db_session)],
-    redis: Annotated[Redis, Depends(redis_client)],
-) -> dict[str, object]:
+    user: CurrentUserDep,
+    session: SessionDep,
+    redis: RedisDep,
+) -> dict[str, Any]:
     recipe = _build(payload)
     try:
         generation = await GenerationService.create(
@@ -102,13 +116,15 @@ async def run_pinterest_repeat(
             parameters=recipe.parameters,
             action_type="pinterest_repeat",
         )
+    except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except InsufficientBalanceError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Недостаточно ROX") from exc
+        raise HTTPException(status_code=409, detail="Недостаточно ROX") from exc
 
     return {
         "id": str(generation.id),
         "status": generation.status,
         "mode": "pinterest_repeat",
-        "cost_rox": str(generation.cost_credits),
-        "admin_free": generation.cost_credits == 0,
+        "cost_rox": _amount(generation.cost_rox),
+        "admin_free": bool((generation.parameters or {}).get("_admin_free")),
     }
