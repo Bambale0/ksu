@@ -6,7 +6,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import (
@@ -20,6 +20,7 @@ from app.bot.keyboards import (
 )
 from app.bot.support_links import direct_support_handle
 from app.core.config import settings
+from app.services.admin_security import parse_bootstrap_ids
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
 from app.services.trends import TrendService
@@ -96,11 +97,16 @@ def _support_line() -> str:
     return "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY"
 
 
+def _quick_menu_for(message: Message) -> ReplyKeyboardMarkup:
+    telegram_id = message.from_user.id if message.from_user else None
+    return quick_menu(is_admin=telegram_id is not None and telegram_id in parse_bootstrap_ids())
+
+
 async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
     try:
         await message.answer(
             "Меню и поддержка закреплены снизу.",
-            reply_markup=quick_menu(),
+            reply_markup=_quick_menu_for(message),
         )
         await message.answer(
             "<b>Добро пожаловать в ROXY ✨</b>\n\n"
@@ -178,7 +184,7 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
         await message.answer(
             "Поддержка ROXY всегда рядом.\n\n"
             f"Напишите {handle} — поможем с оплатой, балансом, созданием работ, описаниями и публикациями.",
-            reply_markup=quick_menu(),
+            reply_markup=_quick_menu_for(message),
         )
         return
 
@@ -198,7 +204,10 @@ async def retired_prompt_shortcut(message: Message, session: AsyncSession, state
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
-    await message.answer("Меню обновлено: снизу только меню и поддержка.", reply_markup=quick_menu())
+    await message.answer(
+        "Меню обновлено: снизу только меню и поддержка.",
+        reply_markup=_quick_menu_for(message),
+    )
     await message.answer(
         "Инструменты для описаний открываются внутри ROXY или кнопками ниже.",
         reply_markup=prompt_tools_menu(),
