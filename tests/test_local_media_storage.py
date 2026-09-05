@@ -97,13 +97,12 @@ async def test_media_ingest_persists_on_host_without_s3(
         await session.commit()
 
         assert await MediaIngestService.process_one(session) is True
-        refreshed = await session.get(MediaAsset, asset.id)
-        assert refreshed is not None
-        assert refreshed.status == "ready"
-        assert refreshed.bucket == LOCAL_MEDIA_BUCKET
-        assert refreshed.object_key is not None
-        assert LocalMediaStorage.path_for_key(refreshed.object_key).is_file()
-        assert refreshed.sha256 == "a" * 64
+        await session.refresh(asset)
+        assert asset.status == "ready"
+        assert asset.bucket == LOCAL_MEDIA_BUCKET
+        assert asset.object_key is not None
+        assert LocalMediaStorage.path_for_key(asset.object_key).is_file()
+        assert asset.sha256 == "a" * 64
 
 
 @pytest.mark.asyncio
