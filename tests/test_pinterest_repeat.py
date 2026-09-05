@@ -114,6 +114,23 @@ async def test_resolve_reference_blocks_redirect_outside_pinterest() -> None:
             )
 
 
+@pytest.mark.asyncio
+async def test_resolve_reference_rejects_oversized_pinterest_page() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"x" * (PinterestRepeatService.MAX_PINTEREST_HTML_BYTES + 1),
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(PinterestRepeatError, match="слишком большая"):
+            await PinterestRepeatService.resolve_reference(
+                "https://www.pinterest.com/pin/123/",
+                client=client,
+            )
+
+
 def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     catalog = (ROOT / "frontend/mini-app/components/catalog-feature-hub.tsx").read_text(
         encoding="utf-8"
