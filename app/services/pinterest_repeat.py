@@ -99,34 +99,38 @@ class PinterestRepeatService:
         )
         try:
             for _ in range(cls.MAX_REDIRECTS + 1):
-                response = await http_client.get(current_url)
-                if response.status_code in {301, 302, 303, 307, 308}:
-                    location = response.headers.get("location")
-                    if not location:
-                        raise PinterestRepeatError("Pinterest вернул пустой redirect")
-                    current_url = cls.validate_pinterest_url(urljoin(current_url, location))
-                    continue
+                async with http_client.stream("GET", current_url) as response:
+                    if response.status_code in {301, 302, 303, 307, 308}:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise PinterestRepeatError("Pinterest вернул пустой redirect")
+                        current_url = cls.validate_pinterest_url(urljoin(current_url, location))
+                        continue
 
-                response.raise_for_status()
-                content_length = response.headers.get("content-length")
-                if content_length:
-                    try:
-                        declared_size = int(content_length)
-                    except ValueError:
-                        declared_size = 0
-                    if declared_size > cls.MAX_PINTEREST_HTML_BYTES:
-                        raise PinterestRepeatError("Страница Pinterest слишком большая")
-                if len(response.content) > cls.MAX_PINTEREST_HTML_BYTES:
-                    raise PinterestRepeatError("Страница Pinterest слишком большая")
+                    response.raise_for_status()
+                    content_length = response.headers.get("content-length")
+                    if content_length:
+                        try:
+                            declared_size = int(content_length)
+                        except ValueError:
+                            declared_size = 0
+                        if declared_size > cls.MAX_PINTEREST_HTML_BYTES:
+                            raise PinterestRepeatError("Страница Pinterest слишком большая")
 
-                parser = _OpenGraphImageParser()
-                parser.feed(response.text)
-                if not parser.image_url:
-                    raise PinterestRepeatError("Не удалось найти фото на странице Pinterest")
-                return PinterestResolvedReference(
-                    source_url=current_url,
-                    reference_url=cls._validate_pin_image_url(parser.image_url),
-                )
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(body) + len(chunk) > cls.MAX_PINTEREST_HTML_BYTES:
+                            raise PinterestRepeatError("Страница Pinterest слишком большая")
+                        body.extend(chunk)
+
+                    parser = _OpenGraphImageParser()
+                    parser.feed(body.decode("utf-8", errors="replace"))
+                    if not parser.image_url:
+                        raise PinterestRepeatError("Не удалось найти фото на странице Pinterest")
+                    return PinterestResolvedReference(
+                        source_url=current_url,
+                        reference_url=cls._validate_pin_image_url(parser.image_url),
+                    )
         except httpx.HTTPStatusError as exc:
             raise PinterestRepeatError(
                 f"Pinterest недоступен: HTTP {exc.response.status_code}"
