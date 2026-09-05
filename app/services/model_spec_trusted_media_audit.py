@@ -423,6 +423,7 @@ def install_model_spec_trusted_media_audit() -> None:
         source_feed_gen_id: uuid.UUID | None = None,
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
+        generation_id: uuid.UUID | None = None,
     ):
         source_parameters = dict(parameters or {})
         if prompt and not source_parameters.get("prompt"):
@@ -446,6 +447,7 @@ def install_model_spec_trusted_media_audit() -> None:
             source_feed_gen_id=source_feed_gen_id,
             parent_generation_id=parent_generation_id,
             action_type=action_type,
+            generation_id=generation_id,
         )
 
     GenerationService.create = trusted_create

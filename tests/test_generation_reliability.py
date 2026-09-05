@@ -1,4 +1,5 @@
 import random
+import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -79,6 +80,43 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert generation.cost_rox == Decimal("25.00")
         assert wallet.balance == Decimal("75.00")
 
+        await GenerationOutboxService.mark_generation_terminal(
+            session,
+            generation.id,
+            failed=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_generation_create_accepts_explicit_generation_id_through_trusted_media_wrapper() -> None:
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=random.randint(2_100_000_000_000, 2_199_999_999_999),
+            first_name="Explicit generation id",
+        )
+        session.add(user)
+        await session.flush()
+        await WalletService.ensure_wallet(session, user.id)
+        await WalletService.credit(
+            session,
+            user_id=user.id,
+            amount=Decimal("100"),
+            kind="test_credit",
+            idempotency_key=f"explicit-generation-id-credit:{user.id}",
+        )
+        await session.commit()
+
+        expected_id = uuid.uuid4()
+        generation = await GenerationService.create(
+            session,
+            BrokenWakeRedis(),  # type: ignore[arg-type]
+            user_id=user.id,
+            model_id="nano-banana-pro",
+            prompt="pinterest repeat compatible create",
+            generation_id=expected_id,
+        )
+
+        assert generation.id == expected_id
         await GenerationOutboxService.mark_generation_terminal(
             session,
             generation.id,

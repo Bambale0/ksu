@@ -1,4 +1,5 @@
 import random
+import socket
 from decimal import Decimal
 
 import pytest
@@ -172,6 +173,19 @@ async def test_media_source_rejects_private_and_plain_http() -> None:
     with pytest.raises(UnsafeMediaSource):
         await MediaIngestService._validate_public_https_url("http://8.8.8.8/public.png")
     await MediaIngestService._validate_public_https_url("https://8.8.8.8/public.png")
+
+
+@pytest.mark.asyncio
+async def test_media_source_treats_dns_failure_as_unsafe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_dns(*_args: object, **_kwargs: object) -> list[object]:
+        raise socket.gaierror(-2, "Name or service not known")
+
+    monkeypatch.setattr("app.services.media_assets.socket.getaddrinfo", fail_dns)
+
+    with pytest.raises(UnsafeMediaSource, match="hostname did not resolve"):
+        await MediaIngestService._validate_public_https_url(
+            "https://example.invalid/source.png"
+        )
 
 
 @pytest.mark.asyncio

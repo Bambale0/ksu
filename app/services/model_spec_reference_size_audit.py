@@ -35,6 +35,7 @@ def install_model_spec_reference_size_audit() -> None:
         source_feed_gen_id: uuid.UUID | None = None,
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
+        generation_id: uuid.UUID | None = None,
     ):
         routed = resolve_model_request(model_id, parameters or {}, input_url=input_url)
         await validate_owned_reference_sizes(
@@ -55,6 +56,7 @@ def install_model_spec_reference_size_audit() -> None:
             source_feed_gen_id=source_feed_gen_id,
             parent_generation_id=parent_generation_id,
             action_type=action_type,
+            generation_id=generation_id,
         )
 
     GenerationService.create = audited_create
