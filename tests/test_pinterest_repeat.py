@@ -206,4 +206,5 @@ def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     assert '"/api/v1/pinterest-repeat/run"' in api
     assert "api_router.include_router(pinterest_repeat.router)" in router
     assert "ReferenceStaticStorage.persist_stream" in endpoint
-    assert 'source="pinterest_repeat"' in endpoint
+    assert "ReferenceService.register" not in endpoint
+    assert "ReferenceService.get_by_hash" not in endpoint
