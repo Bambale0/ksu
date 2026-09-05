@@ -63,6 +63,7 @@ async function mockApi(page) {
         mode: 'pinterest_repeat',
         cost_rox: '18.00',
         admin_free: false,
+        idempotency_replayed: false,
       }, 202);
     }
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
@@ -140,6 +141,7 @@ test('Pinterest repeat keeps scene and identity separate and blocks stale-quote 
     height_cm: 180,
     weight_kg: 55,
   });
+  expect(runRequest.headers()['idempotency-key']).toBeTruthy();
   await expect.poll(() => runBodies.length).toBe(1);
 });
 
@@ -168,4 +170,76 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
     'src',
     'https://i.pinimg.com/originals/aa/bb/scene.jpg',
   );
+});
+
+test('retry after a lost run response reuses the same Idempotency-Key', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installTelegram(page);
+  let uploadIndex = 0;
+  const runKeys = [];
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+
+    if (path === '/api/v1/me') {
+      return json({ id: 'user-1', telegram_id: 777, first_name: 'QA', balance_rox: '100.00' });
+    }
+    if (path === '/api/v1/uploads/kie' && request.method() === 'POST') {
+      uploadIndex += 1;
+      return json({
+        url: uploadIndex === 1 ? 'https://media.example.test/scene.jpg' : 'https://media.example.test/me.jpg',
+        name: uploadIndex === 1 ? 'scene.jpg' : 'me.jpg',
+        mime_type: 'image/jpeg',
+      }, 201);
+    }
+    if (path === '/api/v1/pinterest-repeat/quote') {
+      return json({
+        mode: 'pinterest_repeat',
+        model_id: 'nano-banana-pro',
+        unit_price_rox: '12.00',
+        cost_rox: '12.00',
+        effective_cost_rox: '12.00',
+        retail_cost_rox: '12.00',
+        cost_rub: '12.00',
+        billing_seconds: null,
+        admin_free: false,
+      });
+    }
+    if (path === '/api/v1/pinterest-repeat/run' && request.method() === 'POST') {
+      runKeys.push(request.headers()['idempotency-key']);
+      if (runKeys.length === 1) {
+        return json({ detail: 'Временная ошибка сети' }, 503);
+      }
+      return json({
+        id: 'gen-repeat-replayed',
+        status: 'queued',
+        mode: 'pinterest_repeat',
+        cost_rox: '12.00',
+        admin_free: false,
+        idempotency_replayed: true,
+      }, 202);
+    }
+    return json({ items: [] });
+  });
+
+  await page.goto('/mini-app/pinterest-repeat/');
+  await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
+  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+
+  const create = page.getByRole('button', { name: 'Создать' });
+  await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
+  await create.click();
+  await expect(page.getByRole('alert')).toContainText('Временная ошибка сети');
+  await expect(create).toBeEnabled();
+
+  await create.click();
+  await expect.poll(() => runKeys.length).toBe(2);
+  expect(runKeys[0]).toBeTruthy();
+  expect(runKeys[1]).toBe(runKeys[0]);
 });
