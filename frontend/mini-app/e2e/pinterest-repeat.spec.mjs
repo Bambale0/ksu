@@ -111,7 +111,10 @@ test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit
   // Once the reference upload control disappears, the first remaining file input
   // is the identity picker. Empty MIME + .heic mirrors iOS/WebView uploads.
   await page.locator('input[type="file"]').first().setInputFiles(identityFile);
-  await expect(page.getByAltText('Ваш ракурс 1')).toBeVisible();
+  const identityPreviews = page.getByAltText('Ваш ракурс 1');
+  await expect(identityPreviews).toHaveCount(2);
+  await expect(identityPreviews.nth(0)).toBeVisible();
+  await expect(identityPreviews.nth(1)).toBeVisible();
   await expect(page.getByText('1–5 ракурсов одного человека · сейчас 1/5')).toBeVisible();
   await expect(page.getByText('эмоция и направление взгляда наследуются с референса')).toBeVisible();
 
@@ -163,7 +166,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
       expect(request.postDataJSON()).toEqual({ url: 'https://pin.it/example' });
       return json({
         source_url: 'https://www.pinterest.com/pin/123/',
-        reference_url: 'https://i.pinimg.com/originals/aa/bb/scene.jpg',
+        reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
       });
     }
     return json({ items: [] });
@@ -174,7 +177,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
   await page.getByRole('button', { name: 'Загрузить' }).click();
   await expect(page.getByAltText('Референс сцены')).toHaveAttribute(
     'src',
-    'https://i.pinimg.com/originals/aa/bb/scene.jpg',
+    'https://media.example.test/references/pinterest-scene.jpg',
   );
   await expect(page.getByText('https://www.pinterest.com/pin/123/')).toBeVisible();
 });
