@@ -12,6 +12,23 @@ class NexusProviderError(RuntimeError):
     pass
 
 
+NANO_BANANA_PRO_ASPECT_RATIOS = {
+    "auto",
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "5:4",
+    "4:5",
+    "21:9",
+}
+NANO_BANANA_PRO_IMAGE_SIZES = {"1K", "2K", "4K"}
+NANO_BANANA_PRO_MAX_REFERENCES = 4
+
+
 @dataclass(slots=True)
 class NexusTask:
     task_id: str
@@ -51,15 +68,36 @@ class NexusClient:
         prompt: str,
         aspect_ratio: str = "1:1",
         image_size: str = "2K",
+        image_urls: list[str] | None = None,
         idempotency_key: str | None = None,
     ) -> str:
         clean_prompt = prompt.strip()
         if not clean_prompt:
             raise NexusProviderError("Prompt must not be empty")
-        if aspect_ratio not in {"1:1", "16:9", "9:16", "4:3", "3:4"}:
+        if aspect_ratio not in NANO_BANANA_PRO_ASPECT_RATIOS:
             raise NexusProviderError("Unsupported Nano Banana Pro aspect ratio")
-        if image_size not in {"1K", "2K", "4K"}:
+        if image_size not in NANO_BANANA_PRO_IMAGE_SIZES:
             raise NexusProviderError("Unsupported Nano Banana Pro image size")
+
+        references: list[str] = []
+        for raw in image_urls or []:
+            value = str(raw or "").strip()
+            if not value:
+                raise NexusProviderError("Nano Banana Pro reference must not be empty")
+            references.append(value)
+        if len(references) > NANO_BANANA_PRO_MAX_REFERENCES:
+            raise NexusProviderError(
+                f"Nano Banana Pro accepts at most {NANO_BANANA_PRO_MAX_REFERENCES} references"
+            )
+
+        params: dict[str, Any] = {
+            "model_name": "nano-banana-pro",
+            "prompt": clean_prompt,
+            "aspect_ratio": aspect_ratio,
+            "image_size": image_size,
+        }
+        if references:
+            params["image_urls"] = references
 
         response = await self._client.post(
             "/generate",
@@ -67,14 +105,7 @@ class NexusClient:
                 "Authorization": self._authorization,
                 "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
             },
-            json={
-                "params": {
-                    "model_name": "nano-banana-pro",
-                    "prompt": clean_prompt,
-                    "aspect_ratio": aspect_ratio,
-                    "image_size": image_size,
-                }
-            },
+            json={"params": params},
         )
         response.raise_for_status()
         payload = response.json()
@@ -105,7 +136,7 @@ class NexusClient:
         self,
         task_id: str,
         *,
-        timeout_seconds: float = 90.0,
+        timeout_seconds: float = 240.0,
         poll_interval_seconds: float = 2.0,
     ) -> NexusTask:
         loop = asyncio.get_running_loop()
