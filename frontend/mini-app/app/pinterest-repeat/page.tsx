@@ -35,6 +35,7 @@ export default function PinterestRepeatPage() {
   const [resolving, setResolving] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quote, setQuote] = useState<PinterestRepeatQuote | null>(null);
+  const [quotedRequestKey, setQuotedRequestKey] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,25 +63,32 @@ export default function PinterestRepeatPage() {
       expression: expression.trim() || undefined,
     };
   }, [expression, identityPhotos, parsedHeight, parsedWeight, ready, reference]);
+  const requestKey = useMemo(() => requestBody ? JSON.stringify(requestBody) : "", [requestBody]);
+  const quoteIsCurrent = Boolean(quote && requestKey && quotedRequestKey === requestKey);
 
   useEffect(() => {
-    if (!requestBody) {
+    if (!requestBody || !requestKey) {
       setQuote(null);
+      setQuotedRequestKey("");
       setQuoting(false);
       return;
     }
     let active = true;
+    setQuoting(true);
+    setQuote(null);
+    setQuotedRequestKey("");
     const timer = window.setTimeout(() => {
-      setQuoting(true);
       void pinterestRepeatApi.quote(requestBody)
         .then((result) => {
           if (!active) return;
           setQuote(result);
+          setQuotedRequestKey(requestKey);
           setError("");
         })
         .catch((cause) => {
           if (!active) return;
           setQuote(null);
+          setQuotedRequestKey("");
           setError(cause instanceof Error ? cause.message : "Не удалось рассчитать стоимость");
         })
         .finally(() => {
@@ -91,7 +99,7 @@ export default function PinterestRepeatPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [requestBody]);
+  }, [requestBody, requestKey]);
 
   const uploadReference = async (file: File | undefined) => {
     if (!file || uploadingReference) return;
@@ -154,7 +162,7 @@ export default function PinterestRepeatPage() {
   };
 
   const run = async () => {
-    if (!requestBody || running) return;
+    if (!requestBody || !quoteIsCurrent || running) return;
     setRunning(true);
     setError("");
     haptic("medium");
@@ -187,7 +195,7 @@ export default function PinterestRepeatPage() {
           {reference ? (
             <div className="pin-reference-preview">
               <img src={reference.url} alt="Референс сцены" />
-              <button className="pin-reference-remove" type="button" aria-label="Удалить референс" onClick={() => { setReference(null); setQuote(null); }}>×</button>
+              <button className="pin-reference-remove" type="button" aria-label="Удалить референс" onClick={() => { setReference(null); setQuote(null); setQuotedRequestKey(""); }}>×</button>
             </div>
           ) : (
             <label className="pin-upload">
@@ -254,9 +262,9 @@ export default function PinterestRepeatPage() {
 
         <div className="pin-summary">
           <span>Стоимость</span>
-          <strong>{quoting ? "Считаем…" : quote ? (quote.admin_free ? "Бесплатно" : `${money(quote.effective_cost_rox)} ROX`) : "—"}</strong>
+          <strong>{quoting || (requestBody && !quoteIsCurrent) ? "Считаем…" : quoteIsCurrent && quote ? (quote.admin_free ? "Бесплатно" : `${money(quote.effective_cost_rox)} ROX`) : "—"}</strong>
         </div>
-        <button className="pin-run" type="button" disabled={!requestBody || !quote || quoting || running || uploadingReference || uploadingIdentity || resolving} onClick={() => void run()}>{running ? "Создаём…" : "Создать"}</button>
+        <button className="pin-run" type="button" disabled={!requestBody || !quoteIsCurrent || quoting || running || uploadingReference || uploadingIdentity || resolving} onClick={() => void run()}>{running ? "Создаём…" : "Создать"}</button>
         <p className="pin-footnote">После запуска задача появится в истории. Можно закрыть Mini App — генерация продолжится на сервере.</p>
       </div>
     </StandaloneShell>
