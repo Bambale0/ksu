@@ -1,11 +1,25 @@
 import { telegramHeaders } from "./telegram";
 
+export type PinterestSceneAnalysis = {
+  scene: string;
+  composition: string;
+  camera: string;
+  pose: string;
+  lighting: string;
+  environment: string;
+  wardrobe: string;
+  expression: string;
+  gaze: string;
+  must_preserve: string[];
+};
+
 export type PinterestRepeatRequest = {
   scene_reference_url: string;
   identity_reference_urls: string[];
   height_cm: number;
   weight_kg: number;
   expression?: string;
+  scene_analysis?: PinterestSceneAnalysis;
 };
 
 export type PinterestRepeatQuote = {
@@ -34,6 +48,12 @@ export type PinterestResolvedReference = {
   reference_url: string;
 };
 
+export type PinterestAnalysisResponse = {
+  analysis: PinterestSceneAnalysis;
+  model: string;
+  cached: boolean;
+};
+
 async function post<T>(
   path: string,
   body: unknown,
@@ -55,6 +75,10 @@ async function post<T>(
 
 export const pinterestRepeatApi = {
   resolve: (url: string) => post<PinterestResolvedReference>("/api/v1/pinterest-repeat/resolve", { url }),
+  analyze: (sceneReferenceUrl: string) => post<PinterestAnalysisResponse>(
+    "/api/v1/pinterest-repeat/analyze",
+    { scene_reference_url: sceneReferenceUrl },
+  ),
   quote: (body: PinterestRepeatRequest) => post<PinterestRepeatQuote>("/api/v1/pinterest-repeat/quote", body),
   run: (body: PinterestRepeatRequest, idempotencyKey: string) => post<PinterestRepeatRun>(
     "/api/v1/pinterest-repeat/run",
