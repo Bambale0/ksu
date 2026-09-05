@@ -131,6 +131,62 @@ async def test_resolve_reference_rejects_oversized_pinterest_page() -> None:
             )
 
 
+@pytest.mark.asyncio
+async def test_download_reference_image_accepts_only_pinimg_images() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b"fake-image-bytes",
+            headers={"content-type": "image/jpeg"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        downloaded = await PinterestRepeatService.download_reference_image(
+            "https://i.pinimg.com/originals/aa/bb/photo.jpg",
+            client=client,
+        )
+
+    assert downloaded.content == b"fake-image-bytes"
+    assert downloaded.content_type == "image/jpeg"
+    assert downloaded.filename == "photo.jpg"
+
+
+@pytest.mark.asyncio
+async def test_download_reference_image_blocks_redirect_outside_pinimg() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            headers={"location": "https://example.com/redirected.jpg"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(PinterestRepeatError, match="неподдерживаемую ссылку"):
+            await PinterestRepeatService.download_reference_image(
+                "https://i.pinimg.com/originals/aa/bb/photo.jpg",
+                client=client,
+            )
+
+
+@pytest.mark.asyncio
+async def test_download_reference_image_rejects_non_image_payload() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            text="<html>not an image</html>",
+            headers={"content-type": "text/html"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(PinterestRepeatError, match="формат изображения"):
+            await PinterestRepeatService.download_reference_image(
+                "https://i.pinimg.com/originals/aa/bb/photo.jpg",
+                client=client,
+            )
+
+
 def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     catalog = (ROOT / "frontend/mini-app/components/catalog-feature-hub.tsx").read_text(
         encoding="utf-8"
@@ -138,6 +194,7 @@ def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     page = (ROOT / "frontend/mini-app/app/pinterest-repeat/page.tsx").read_text(encoding="utf-8")
     api = (ROOT / "frontend/mini-app/lib/pinterest-repeat-api.ts").read_text(encoding="utf-8")
     router = (ROOT / "app/api/router.py").read_text(encoding="utf-8")
+    endpoint = (ROOT / "app/api/v1/pinterest_repeat.py").read_text(encoding="utf-8")
 
     assert 'id: "pinterest-repeat"' in catalog
     assert 'href: "/mini-app/pinterest-repeat/"' in catalog
@@ -148,3 +205,5 @@ def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     assert '"/api/v1/pinterest-repeat/quote"' in api
     assert '"/api/v1/pinterest-repeat/run"' in api
     assert "api_router.include_router(pinterest_repeat.router)" in router
+    assert "ReferenceStaticStorage.persist_stream" in endpoint
+    assert 'source="pinterest_repeat"' in endpoint
