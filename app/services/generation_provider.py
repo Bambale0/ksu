@@ -131,6 +131,94 @@ class GenerationProviderService:
         parameters.pop("_submission_uncertain_at", None)
         generation.parameters = parameters
 
+    @staticmethod
+    def _is_rejected_quality_task(generation: Generation, task_id: str) -> bool:
+        if generation.action_type != "pinterest_repeat":
+            return False
+        rejected = (generation.parameters or {}).get("_quality_rejected_task_ids") or []
+        return task_id in {str(item) for item in rejected if str(item)}
+
+    @staticmethod
+    def _has_quality_fallback(generation: Generation) -> bool:
+        params = generation.parameters or {}
+        urls = params.get("_quality_initial_result_urls")
+        return bool(
+            generation.action_type == "pinterest_repeat"
+            and int(params.get("_quality_retry_count") or 0) >= 1
+            and isinstance(urls, list)
+            and any(str(item).strip() for item in urls)
+        )
+
+    @classmethod
+    async def _finalize_quality_fallback(
+        cls,
+        session: AsyncSession,
+        generation: Generation,
+        *,
+        reason: str,
+    ) -> None:
+        params = dict(generation.parameters or {})
+        initial_urls_raw = params.get("_quality_initial_result_urls") or []
+        initial_urls = [str(item).strip() for item in initial_urls_raw if str(item).strip()]
+        if not initial_urls:
+            return
+        initial_evaluation = params.get("_quality_initial_evaluation")
+        initial_task_id = str(params.get("_quality_initial_task_id") or "")
+        params["_result_urls"] = initial_urls
+        params["_quality_pending"] = False
+        params["_quality_gate"] = {
+            "status": "retry_failed",
+            "selected": "initial",
+            "retry_count": 1,
+            "reason": reason[:600],
+            "evaluations": [initial_evaluation] if isinstance(initial_evaluation, dict) else [],
+            "selected_task_id": initial_task_id,
+        }
+        for key in (
+            "_quality_candidate_result_urls",
+            "_quality_candidate_task_id",
+            "_quality_retry_instruction",
+            "_quality_initial_result_urls",
+            "_quality_initial_task_id",
+            "_quality_initial_evaluation",
+        ):
+            params.pop(key, None)
+        generation.parameters = params
+        generation.status = "succeeded"
+        generation.error = None
+        generation.result_url = initial_urls[0]
+        generation.updated_at = datetime.now(timezone.utc)
+        await MediaAssetService.enqueue_results(session, generation, initial_urls)
+        await session.commit()
+        await GenerationOutboxService.mark_generation_terminal(
+            session,
+            generation.id,
+            failed=False,
+        )
+
+    @classmethod
+    async def _stage_pinterest_quality_candidate(
+        cls,
+        session: AsyncSession,
+        generation: Generation,
+        task: KieTask,
+    ) -> None:
+        parameters = dict(generation.parameters or {})
+        parameters["_quality_pending"] = True
+        parameters["_quality_candidate_task_id"] = task.task_id
+        parameters["_quality_candidate_result_urls"] = list(task.result_urls)
+        generation.parameters = parameters
+        generation.status = "retry"
+        generation.error = None
+        generation.result_url = None
+        generation.updated_at = datetime.now(timezone.utc)
+        await session.commit()
+        await GenerationOutboxService.requeue_generation(
+            session,
+            generation.id,
+            reason="Pinterest quality candidate is ready",
+        )
+
     @classmethod
     async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
         """Submit a generation to the exact provider model frozen on creation."""
@@ -236,6 +324,8 @@ class GenerationProviderService:
             candidate = await session.scalar(
                 select(Generation).where(Generation.id == generation_id).with_for_update()
             )
+            if candidate is not None and cls._is_rejected_quality_task(candidate, task_id):
+                return candidate
             if (
                 candidate is not None
                 and candidate.external_id is None
@@ -322,6 +412,10 @@ class GenerationProviderService:
                 await session.commit()
                 return
 
+            if generation.action_type == "pinterest_repeat":
+                await cls._stage_pinterest_quality_candidate(session, generation, task)
+                return
+
             generation.status = "succeeded"
             generation.error = None
             generation.updated_at = datetime.now(timezone.utc)
@@ -374,6 +468,9 @@ class GenerationProviderService:
             return
         if generation.status == "succeeded":
             return
+        if cls._has_quality_fallback(generation):
+            await cls._finalize_quality_fallback(session, generation, reason=error)
+            return
         if generation.status == "failed":
             await GenerationOutboxService.mark_generation_terminal(
                 session,
@@ -406,4 +503,18 @@ class GenerationProviderService:
 
     @staticmethod
     def _input_for(generation: Generation) -> dict[str, Any]:
-        return ReferenceResolver.generation_context(generation).provider_input
+        provider_input = dict(ReferenceResolver.generation_context(generation).provider_input)
+        if generation.action_type != "pinterest_repeat":
+            return provider_input
+        instruction = str((generation.parameters or {}).get("_quality_retry_instruction") or "").strip()
+        if not instruction:
+            return provider_input
+        base_prompt = str(provider_input.get("prompt") or generation.prompt or "").strip()
+        provider_input["prompt"] = (
+            f"{base_prompt}\n\n"
+            "CORRECTIVE RETRY — the previous generated candidate was evaluated against the supplied "
+            "SCENE_REFERENCE and PERSON_IDENTITY. Correct only the reported visual drift while "
+            "preserving the same identity-reference contract and original scene target.\n"
+            f"Quality correction: {instruction}"
+        )
+        return provider_input

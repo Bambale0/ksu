@@ -130,6 +130,48 @@ class GenerationOutboxService:
         await session.commit()
 
     @staticmethod
+    async def complete_submission_stage(
+        session: AsyncSession,
+        outbox_id: uuid.UUID,
+        generation_id: uuid.UUID,
+    ) -> None:
+        """Complete provider-submit without erasing a concurrent quality stage.
+
+        Lock order deliberately matches callback processing: generation first,
+        then outbox. If a fast KIE callback already staged Pinterest quality,
+        leave (or restore) the outbox as pending. If this method wins the lock,
+        the callback runs afterwards and requeues normally.
+        """
+
+        generation = await session.scalar(
+            select(Generation).where(Generation.id == generation_id).with_for_update()
+        )
+        row = await session.scalar(
+            select(GenerationOutbox)
+            .where(GenerationOutbox.id == outbox_id)
+            .with_for_update()
+        )
+        if row is None:
+            return
+        quality_pending = bool(
+            generation is not None
+            and generation.action_type == "pinterest_repeat"
+            and (generation.parameters or {}).get("_quality_pending")
+        )
+        row.lease_until = None
+        if quality_pending:
+            row.status = "pending"
+            row.attempts = 0
+            row.available_at = utcnow()
+            row.completed_at = None
+            row.last_error = "Pinterest quality candidate is ready"
+        else:
+            row.status = "completed"
+            row.completed_at = utcnow()
+            row.last_error = None
+        await session.commit()
+
+    @staticmethod
     async def fail(session: AsyncSession, outbox_id: uuid.UUID, error: str) -> None:
         row = await session.scalar(
             select(GenerationOutbox)
@@ -164,6 +206,37 @@ class GenerationOutboxService:
         row.lease_until = None
         row.available_at = utcnow() + timedelta(seconds=delay)
         row.last_error = error[:4000] or None
+        await session.commit()
+
+    @staticmethod
+    async def requeue_generation(
+        session: AsyncSession,
+        generation_id: uuid.UUID,
+        *,
+        reason: str = "",
+    ) -> None:
+        """Open a fresh durable stage for an already-submitted generation.
+
+        Pinterest Repeat uses this after a provider callback has produced a candidate
+        that still needs AI quality evaluation. Resetting attempts is intentional:
+        the provider submission stage already completed successfully and quality
+        evaluation/corrective submission is a new bounded stage.
+        """
+
+        row = await session.scalar(
+            select(GenerationOutbox)
+            .where(GenerationOutbox.generation_id == generation_id)
+            .with_for_update()
+        )
+        if row is None:
+            row = GenerationOutbox(generation_id=generation_id)
+            session.add(row)
+        row.status = "pending"
+        row.attempts = 0
+        row.available_at = utcnow()
+        row.lease_until = None
+        row.completed_at = None
+        row.last_error = reason[:4000] or None
         await session.commit()
 
     @staticmethod

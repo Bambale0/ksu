@@ -12,6 +12,7 @@ from app.db.session import SessionFactory
 from app.services.abuse_protection import AbuseProtectionService, ResourcePolicyError
 from app.services.generation_provider import GenerationProviderService
 from app.services.generation_reliability import GenerationOutboxService, utcnow
+from app.services.pinterest_quality_gate import PinterestRepeatQualityGate
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,40 @@ class GenerationWorkerService:
                     generation.error or "Generation failed",
                 )
                 return True
+
+            if PinterestRepeatQualityGate.is_pending(generation):
+                try:
+                    outcome = await PinterestRepeatQualityGate.process_pending(
+                        session,
+                        redis,
+                        generation,
+                    )
+                except ResourcePolicyError as exc:
+                    await GenerationOutboxService.release(
+                        session,
+                        claim.outbox_id,
+                        error=str(exc),
+                        delay_seconds=exc.retry_after,
+                    )
+                    return True
+                if outcome == "retry_generation":
+                    await GenerationOutboxService.release(
+                        session,
+                        claim.outbox_id,
+                        error="Pinterest quality gate scheduled one corrective retry",
+                        delay_seconds=1,
+                    )
+                return True
+
             if generation.external_id and generation.status in {"generating", "submitting"}:
-                await GenerationOutboxService.complete(session, claim.outbox_id)
+                if generation.action_type == "pinterest_repeat":
+                    await GenerationOutboxService.complete_submission_stage(
+                        session,
+                        claim.outbox_id,
+                        generation.id,
+                    )
+                else:
+                    await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
@@ -128,7 +161,14 @@ class GenerationWorkerService:
                     result.error or "Generation failed",
                 )
             elif result.external_id or result.status in {"generating", "succeeded"}:
-                await GenerationOutboxService.complete(session, claim.outbox_id)
+                if result.action_type == "pinterest_repeat":
+                    await GenerationOutboxService.complete_submission_stage(
+                        session,
+                        claim.outbox_id,
+                        result.id,
+                    )
+                else:
+                    await GenerationOutboxService.complete(session, claim.outbox_id)
             else:
                 await GenerationOutboxService.release(
                     session,

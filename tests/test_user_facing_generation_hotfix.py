@@ -69,6 +69,7 @@ async def test_reference_switches_public_product_contract_before_quote(
 
         provider_input = GenerationProviderService._input_for(
             SimpleNamespace(
+                action_type="generation",
                 parameters={**ref_clean, "_model_id": ref_spec.id},
                 prompt="Keep the person from the reference",
                 input_url=None,
@@ -99,6 +100,7 @@ async def test_nano_banana_2_keeps_all_selected_references_in_provider_payload()
 
         provider_input = GenerationProviderService._input_for(
             SimpleNamespace(
+                action_type="generation",
                 parameters={**clean, "_model_id": spec.id},
                 prompt="Use both references",
                 input_url=None,
