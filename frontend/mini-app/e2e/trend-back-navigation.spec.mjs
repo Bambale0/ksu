@@ -98,9 +98,12 @@ test('shared trend keeps Back through the gate and native Back returns once to H
 
   await pressTelegramBack(page);
   await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
-  const home = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
-  await expect(home).toHaveAttribute('aria-current', 'page');
-  await expect(home.locator('small')).toHaveText('Каталог');
+  const oldHome = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
+  const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+  await expect(oldHome).toBeHidden();
+  await expect(catalog).toBeVisible();
+  await expect(catalog).toHaveAttribute('aria-current', 'page');
+  await expect(catalog.locator('small')).toHaveText('Каталог');
   await page.waitForTimeout(500);
   await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
   await expect(page.getByText('Открываю тренд…')).toHaveCount(0);
