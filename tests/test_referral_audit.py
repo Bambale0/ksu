@@ -29,7 +29,8 @@ async def test_signed_referral_audit_is_deduplicated_and_never_logs_raw_init_dat
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     redis = _FakeRedis()
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=redis)))
+    app = SimpleNamespace(state=SimpleNamespace(redis=redis))
+    request = SimpleNamespace(scope={"app": app})
     link = FeedDeepLink(action="ref", referral_telegram_id=339795159)
 
     with caplog.at_level(logging.INFO, logger="ksu.referrals"):
@@ -57,6 +58,26 @@ async def test_signed_referral_audit_is_deduplicated_and_never_logs_raw_init_dat
     assert "hash=" not in message
     assert "user=" not in message
     assert redis.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_signed_referral_audit_stays_fail_open_without_app_scope(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    request = SimpleNamespace(scope={})
+    link = FeedDeepLink(action="ref", referral_telegram_id=339795159)
+
+    with caplog.at_level(logging.INFO, logger="ksu.referrals"):
+        await _audit_signed_referral_once(
+            request,
+            visitor_telegram_id=123456789,
+            link=link,
+            accepted=True,
+        )
+
+    records = [record for record in caplog.records if record.name == "ksu.referrals"]
+    assert len(records) == 1
+    assert records[0].referral_reason == "validated"
 
 
 def test_referral_admission_audit_exposes_outcome_without_credentials(
