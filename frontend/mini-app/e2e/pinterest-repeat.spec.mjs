@@ -92,24 +92,30 @@ const identityFile = {
   buffer: Buffer.from('fake-identity-image'),
 };
 
-test('Pinterest repeat keeps scene and identity separate and blocks stale-quote submit', async ({ page }) => {
+test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const { runBodies } = await mockApi(page);
   await page.goto('/mini-app/pinterest-repeat/');
 
   await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Референс' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Ваши ракурсы' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Референс' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ваши ракурсы' })).toBeVisible();
+  await expect(page.getByText('РЕФЕРЕНС')).toBeVisible();
+  await expect(page.getByText('ТЫ')).toBeVisible();
+  await expect(page.getByText('КОГО ВСТАВЛЯЕМ')).toBeVisible();
+  await expect(page.getByLabel('Желаемое выражение лица')).toHaveCount(0);
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
 
-  // After the reference uploader disappears, the first remaining file input is
-  // the identity picker. Empty MIME + .heic mirrors iOS/WebView uploads.
+  // Once the reference upload control disappears, the first remaining file input
+  // is the identity picker. Empty MIME + .heic mirrors iOS/WebView uploads.
   await page.locator('input[type="file"]').first().setInputFiles(identityFile);
   await expect(page.getByAltText('Ваш ракурс 1')).toBeVisible();
+  await expect(page.getByText('1–5 ракурсов одного человека · сейчас 1/5')).toBeVisible();
+  await expect(page.getByText('эмоция и направление взгляда наследуются с референса')).toBeVisible();
 
-  const create = page.getByRole('button', { name: 'Создать' });
+  const create = page.getByRole('button', { name: 'Создать →' });
   const price = page.locator('.pin-summary strong');
   await expect(price).toHaveText('12 ROX');
   await expect(create).toBeEnabled();
@@ -164,12 +170,13 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
-  await page.getByPlaceholder('https://pin.it/…').fill('https://pin.it/example');
+  await page.getByPlaceholder('ссылка на пин с Pinterest').fill('https://pin.it/example');
   await page.getByRole('button', { name: 'Загрузить' }).click();
   await expect(page.getByAltText('Референс сцены')).toHaveAttribute(
     'src',
     'https://i.pinimg.com/originals/aa/bb/scene.jpg',
   );
+  await expect(page.getByText('https://www.pinterest.com/pin/123/')).toBeVisible();
 });
 
 test('retry after a lost run response reuses the same Idempotency-Key', async ({ page }) => {
@@ -232,7 +239,7 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await page.locator('input[type="file"]').first().setInputFiles(identityFile);
 
-  const create = page.getByRole('button', { name: 'Создать' });
+  const create = page.getByRole('button', { name: 'Создать →' });
   await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
   await create.click();
   await expect(page.locator('.pin-error')).toContainText('Временная ошибка сети');
