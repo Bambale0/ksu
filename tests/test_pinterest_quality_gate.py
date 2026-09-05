@@ -94,7 +94,10 @@ async def test_quality_provider_sends_scene_identity_and_candidate_roles() -> No
             request=request,
         )
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://api.kie.test",
+    ) as http_client:
         client = KiePinterestQualityClient("", client=http_client)
         result = await client.evaluate(
             scene_url="https://cdn.example/scene.jpg",
