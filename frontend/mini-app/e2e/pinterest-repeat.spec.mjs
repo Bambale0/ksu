@@ -235,7 +235,7 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   const create = page.getByRole('button', { name: 'Создать' });
   await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
   await create.click();
-  await expect(page.getByRole('alert')).toContainText('Временная ошибка сети');
+  await expect(page.locator('.pin-error')).toContainText('Временная ошибка сети');
   await expect(create).toBeEnabled();
 
   await create.click();
