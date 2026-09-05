@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import uuid
 from decimal import Decimal
 from functools import partial
 from io import BytesIO
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
+from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
@@ -25,6 +28,8 @@ from app.services.reference_static import ReferenceStaticStorage, ReferenceStati
 from app.services.wallet import InsufficientBalanceError
 
 router = APIRouter(prefix="/pinterest-repeat", tags=["pinterest-repeat"])
+
+PINTEREST_REPEAT_IDEMPOTENCY_NAMESPACE = uuid.UUID("f26d4567-a043-46ef-a229-eed93f2df31a")
 
 
 class PinterestResolveRequest(BaseModel):
@@ -54,6 +59,38 @@ def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
         )
     except PinterestRepeatError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _run_view(generation: Generation, *, replayed: bool = False) -> dict[str, Any]:
+    return {
+        "id": str(generation.id),
+        "status": generation.status,
+        "mode": "pinterest_repeat",
+        "cost_rox": _amount(generation.cost_rox),
+        "admin_free": bool((generation.parameters or {}).get("_admin_free")),
+        "idempotency_replayed": replayed,
+    }
+
+
+def _idempotent_generation_id(user_id: uuid.UUID, idempotency_key: str) -> uuid.UUID:
+    clean_key = idempotency_key.strip()
+    if len(clean_key) < 8 or len(clean_key) > 128:
+        raise HTTPException(status_code=422, detail="Idempotency-Key должен содержать 8–128 символов")
+    return uuid.uuid5(PINTEREST_REPEAT_IDEMPOTENCY_NAMESPACE, f"{user_id}:{clean_key}")
+
+
+async def _replayed_generation(
+    session: SessionDep,
+    *,
+    generation_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Generation | None:
+    generation = await session.get(Generation, generation_id)
+    if generation is None:
+        return None
+    if generation.user_id != user_id or generation.action_type != "pinterest_repeat":
+        raise HTTPException(status_code=409, detail="Idempotency-Key уже использован")
+    return generation
 
 
 @router.post("/resolve")
@@ -143,8 +180,18 @@ async def run_pinterest_repeat(
     user: CurrentUserDep,
     session: SessionDep,
     redis: RedisDep,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, Any]:
     recipe = _build(payload)
+    generation_id = _idempotent_generation_id(user.id, idempotency_key)
+    existing = await _replayed_generation(
+        session,
+        generation_id=generation_id,
+        user_id=user.id,
+    )
+    if existing is not None:
+        return _run_view(existing, replayed=True)
+
     try:
         generation = await GenerationService.create(
             session,
@@ -154,16 +201,24 @@ async def run_pinterest_repeat(
             prompt=recipe.prompt,
             parameters=recipe.parameters,
             action_type="pinterest_repeat",
+            generation_id=generation_id,
         )
+    except IntegrityError:
+        # A concurrent retry can race the first request between the initial read
+        # and INSERT. The deterministic primary key makes the loser fail before
+        # wallet debit; after rollback it simply replays the already-created task.
+        await session.rollback()
+        replayed = await _replayed_generation(
+            session,
+            generation_id=generation_id,
+            user_id=user.id,
+        )
+        if replayed is None:
+            raise HTTPException(status_code=409, detail="Не удалось подтвердить повтор запроса")
+        return _run_view(replayed, replayed=True)
     except (UnknownModelError, InvalidModelParametersError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except InsufficientBalanceError as exc:
         raise HTTPException(status_code=409, detail="Недостаточно ROX") from exc
 
-    return {
-        "id": str(generation.id),
-        "status": generation.status,
-        "mode": "pinterest_repeat",
-        "cost_rox": _amount(generation.cost_rox),
-        "admin_free": bool((generation.parameters or {}).get("_admin_free")),
-    }
+    return _run_view(generation)
