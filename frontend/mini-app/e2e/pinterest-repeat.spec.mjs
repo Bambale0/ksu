@@ -100,9 +100,9 @@ test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit
   await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Референс' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Ваши ракурсы' })).toBeVisible();
-  await expect(page.getByText('РЕФЕРЕНС')).toBeVisible();
-  await expect(page.getByText('ТЫ')).toBeVisible();
-  await expect(page.getByText('КОГО ВСТАВЛЯЕМ')).toBeVisible();
+  await expect(page.getByText('РЕФЕРЕНС', { exact: true })).toBeVisible();
+  await expect(page.getByText('ТЫ', { exact: true })).toBeVisible();
+  await expect(page.getByText('КОГО ВСТАВЛЯЕМ', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Желаемое выражение лица')).toHaveCount(0);
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
