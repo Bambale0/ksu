@@ -97,6 +97,7 @@ def test_first_frame_is_folded_into_references_not_kept_as_frame() -> None:
 
 def test_provider_input_does_not_shadow_explicit_multimodal_refs_with_legacy_input_url() -> None:
     generation = SimpleNamespace(
+        action_type="generation",
         parameters={
             "prompt": "follow the references",
             "reference_image_urls": ["https://cdn.example/look.png"],
@@ -116,6 +117,7 @@ def test_provider_input_does_not_shadow_explicit_multimodal_refs_with_legacy_inp
 
 def test_provider_input_keeps_legacy_input_url_fallback_without_explicit_media() -> None:
     generation = SimpleNamespace(
+        action_type="generation",
         parameters={"prompt": "animate source", "_model_id": "legacy-model"},
         prompt="animate source",
         input_url="https://cdn.example/legacy-source.png",
