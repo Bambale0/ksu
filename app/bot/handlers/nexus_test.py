@@ -24,7 +24,19 @@ from app.services.admin_security import parse_bootstrap_ids
 
 router = Router(name="nexus-admin-test")
 
-NEXUS_TEST_ASPECT_RATIOS = ("1:1", "4:3", "3:4", "16:9", "9:16")
+NEXUS_TEST_ASPECT_RATIOS = (
+    "auto",
+    "1:1",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "5:4",
+    "4:5",
+    "16:9",
+    "9:16",
+    "21:9",
+)
 NEXUS_TEST_IMAGE_SIZES = ("2K", "4K")
 MAX_REFERENCE_FILE_BYTES = 8 * 1024 * 1024
 MAX_REFERENCE_TOTAL_BYTES = 24 * 1024 * 1024
@@ -68,19 +80,30 @@ def _references_keyboard(count: int) -> InlineKeyboardMarkup:
 
 
 def _aspect_ratio_keyboard() -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(text="1:1", callback_data="nexus-test:ratio:1:1"),
-            InlineKeyboardButton(text="4:3", callback_data="nexus-test:ratio:4:3"),
-            InlineKeyboardButton(text="3:4", callback_data="nexus-test:ratio:3:4"),
-        ],
-        [
-            InlineKeyboardButton(text="16:9", callback_data="nexus-test:ratio:16:9"),
-            InlineKeyboardButton(text="9:16", callback_data="nexus-test:ratio:9:16"),
-        ],
-        [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Auto", callback_data="nexus-test:ratio:auto"),
+                InlineKeyboardButton(text="1:1", callback_data="nexus-test:ratio:1:1"),
+                InlineKeyboardButton(text="4:3", callback_data="nexus-test:ratio:4:3"),
+            ],
+            [
+                InlineKeyboardButton(text="3:4", callback_data="nexus-test:ratio:3:4"),
+                InlineKeyboardButton(text="3:2", callback_data="nexus-test:ratio:3:2"),
+                InlineKeyboardButton(text="2:3", callback_data="nexus-test:ratio:2:3"),
+            ],
+            [
+                InlineKeyboardButton(text="5:4", callback_data="nexus-test:ratio:5:4"),
+                InlineKeyboardButton(text="4:5", callback_data="nexus-test:ratio:4:5"),
+                InlineKeyboardButton(text="16:9", callback_data="nexus-test:ratio:16:9"),
+            ],
+            [
+                InlineKeyboardButton(text="9:16", callback_data="nexus-test:ratio:9:16"),
+                InlineKeyboardButton(text="21:9", callback_data="nexus-test:ratio:21:9"),
+            ],
+            [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
+        ]
+    )
 
 
 def _image_size_keyboard() -> InlineKeyboardMarkup:
