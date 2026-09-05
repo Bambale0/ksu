@@ -317,7 +317,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
     setError("");
     try {
       const serialized = serializeParameters(fields, parameters);
-      const result = await request<{ id: string; status: string }>(`/api/v1/generations/${encodeURIComponent(generationId)}/actions/${encodeURIComponent(actionId)}`, {
+      const result = await request<{ id: string; status: string }>(`/api/v1/generations/${encodeURIComponent(context.generation.id)}/actions/${encodeURIComponent(actionId)}`, {
         method: "POST",
         body: JSON.stringify({
           model_id: model.id,
@@ -371,8 +371,8 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
 
   return <div className="roxy-app generation-action-app">
     <header className="topbar action-topbar">
-      <button className="brand" type="button" onClick={() => goToGeneration(generationId)} aria-label="Вернуться к работе"><span className="action-back">‹</span><span className="brand-copy"><strong>ROXY</strong><small>{context.action.label}</small></span></button>
-      <button className="balance-button" type="button" onClick={() => goToGeneration(generationId)}><span>Исходник</span><strong>Открыть</strong></button>
+      <button className="brand" type="button" onClick={() => goToGeneration(context.generation.id)} aria-label="Вернуться к работе"><span className="action-back">‹</span><span className="brand-copy"><strong>ROXY</strong><small>{context.action.label}</small></span></button>
+      <button className="balance-button" type="button" onClick={() => goToGeneration(context.generation.id)}><span>Исходник</span><strong>Открыть</strong></button>
     </header>
     <main className="main-shell"><section className="screen generation-action-screen">
       <div className="action-source panel">
@@ -391,7 +391,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
           {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить настройки" : "Настройки работы"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
           {model?.ui_schema?.billing_seconds && <div className="panel"><label className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={model.ui_schema.billing_seconds.min || 1} max={model.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></div>}
         </div>
-        <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(generationId)}>Отмена</button></aside>
+        <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(context.generation.id)}>Отмена</button></aside>
       </div>}
       {error && <div className="action-error" role="alert">{error}</div>}
     </section></main>
