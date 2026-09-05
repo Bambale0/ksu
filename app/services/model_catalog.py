@@ -407,6 +407,8 @@ class ModelCatalog:
     ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
         spec = cls.get(model_id)
         clean = {k: v for k, v in parameters.items() if not k.startswith("_")}
+        if "nsfw_checker" in spec.known_fields and "nsfw_checker" not in clean:
+            clean["nsfw_checker"] = False
         for field in spec.required_fields:
             if clean.get(field) in (None, "", []):
                 raise InvalidModelParametersError(f"Missing required field: {field}")

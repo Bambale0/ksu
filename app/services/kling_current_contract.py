@@ -357,7 +357,7 @@ def _install_ui_contracts() -> None:
                     "duration": "5",
                     "aspect_ratio": "16:9",
                     "cfg_scale": 0.5,
-                    "nsfw_checker": True,
+                    "nsfw_checker": False,
                 },
                 "field_overrides": {
                     **kling_25_common,
@@ -370,7 +370,7 @@ def _install_ui_contracts() -> None:
                 "defaults": {
                     "duration": "5",
                     "cfg_scale": 0.5,
-                    "nsfw_checker": True,
+                    "nsfw_checker": False,
                 },
                 "field_overrides": {
                     **kling_25_common,

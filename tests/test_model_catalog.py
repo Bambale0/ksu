@@ -105,3 +105,23 @@ def test_pricing_can_be_overridden_server_side() -> None:
     assert unit_price == Decimal("7.25")
     assert seconds == 4
     assert cost == Decimal("29.00")
+
+
+def test_nsfw_checker_defaults_off_but_explicit_true_is_preserved() -> None:
+    model_id = "seedream-4.5-t2i"
+    _spec, default_clean, *_ = ModelCatalog.prepare(
+        model_id,
+        {"prompt": "portrait", "aspect_ratio": "1:1", "quality": "basic"},
+    )
+    assert default_clean["nsfw_checker"] is False
+
+    _spec, explicit_clean, *_ = ModelCatalog.prepare(
+        model_id,
+        {
+            "prompt": "portrait",
+            "aspect_ratio": "1:1",
+            "quality": "basic",
+            "nsfw_checker": True,
+        },
+    )
+    assert explicit_clean["nsfw_checker"] is True

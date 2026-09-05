@@ -183,7 +183,7 @@ def install_provider_contract_sync() -> None:
     for model_id in ("seedance-2.0", "seedance-2.0-fast"):
         ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault(model_id, {})["aspect_ratio"] = seedance_ratios
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["aspect_ratio"] = "16:9"
-        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = True
+        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = False
     ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("seedance-2.0", {})[
         "resolution"
     ] = ["480p", "720p", "1080p"]
@@ -193,7 +193,7 @@ def install_provider_contract_sync() -> None:
     ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("seedance-2.0-mini", {})[
         "resolution"
     ] = ["480p", "720p"]
-    ui_contract.MODEL_DEFAULTS.setdefault("seedance-2.0-mini", {})["nsfw_checker"] = True
+    ui_contract.MODEL_DEFAULTS.setdefault("seedance-2.0-mini", {})["nsfw_checker"] = False
 
     # Full documented integer ranges instead of example-only 5/10/15 choices.
     for model_id in ("seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"):
@@ -213,12 +213,12 @@ def install_provider_contract_sync() -> None:
             "aspect_ratio"
         ] = ui_contract.WAN_IMAGE_RATIOS
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["aspect_ratio"] = "1:1"
-        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = True
+        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = False
     ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("wan-2.7-t2v", {})[
         "ratio"
     ] = ["16:9", "9:16", "1:1", "4:3", "3:4"]
     for model_id in ("wan-2.7-t2v", "wan-2.7-i2v", "wan-2.7-video-edit", "wan-2.7-r2v"):
-        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = True
+        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = False
     ui_contract.KIE_DURATION_OPTIONS["wan-2.7-video-edit"] = [0, *range(2, 11)]
     ui_contract.KIE_DURATION_OPTIONS["wan-2.7-r2v"] = list(range(2, 11))
     ui_contract.MODEL_DEFAULTS.setdefault("wan-2.7-video-edit", {})["duration"] = 5
@@ -254,7 +254,7 @@ def install_provider_contract_sync() -> None:
         fields["resolution"] = ["480p", "720p", "1080p"]
         fields["aspect_ratio"] = grok_ratios
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {}).update(
-            {"mode": "normal", "resolution": "480p", "aspect_ratio": "16:9", "nsfw_checker": True}
+            {"mode": "normal", "resolution": "480p", "aspect_ratio": "16:9", "nsfw_checker": False}
         )
         ui_contract.KIE_DURATION_OPTIONS[model_id] = list(range(1, 31))
 
@@ -262,7 +262,7 @@ def install_provider_contract_sync() -> None:
     grok15["aspect_ratio"] = ["auto", "1:1", "16:9", "9:16", "3:2", "2:3"]
     grok15["resolution"] = ["480p", "720p", "1080p"]
     ui_contract.MODEL_DEFAULTS.setdefault("grok-video-1.5", {}).update(
-        {"aspect_ratio": "auto", "resolution": "480p", "duration": 8, "nsfw_checker": True}
+        {"aspect_ratio": "auto", "resolution": "480p", "duration": 8, "nsfw_checker": False}
     )
     ui_contract.KIE_DURATION_OPTIONS["grok-video-1.5"] = list(range(1, 16))
     ui_contract.MODEL_FIELD_OVERRIDES.setdefault("grok-video-1.5", {})[
@@ -287,9 +287,9 @@ def install_provider_contract_sync() -> None:
     ] = {"control": "combobox", "label": "Продлить на", "group": "output", "suffix": "с"}
 
     ui_contract.MODEL_DEFAULTS.setdefault("grok-image-t2i", {}).update(
-        {"enable_pro": False, "nsfw_checker": True}
+        {"enable_pro": False, "nsfw_checker": False}
     )
-    ui_contract.MODEL_DEFAULTS.setdefault("grok-image-i2i", {})["nsfw_checker"] = True
+    ui_contract.MODEL_DEFAULTS.setdefault("grok-image-i2i", {})["nsfw_checker"] = False
 
     # `task_id + index` is a real Grok I2V reference source even though it is not
     # an uploaded image URL. Keep automatic T2V/I2V product routing aware of it.
