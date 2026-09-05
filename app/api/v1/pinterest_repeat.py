@@ -51,7 +51,10 @@ def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
 
 
 @router.post("/resolve")
-async def resolve_pinterest_reference(payload: PinterestResolveRequest) -> dict[str, str]:
+async def resolve_pinterest_reference(
+    payload: PinterestResolveRequest,
+    _user: CurrentUserDep,
+) -> dict[str, str]:
     try:
         resolved = await PinterestRepeatService.resolve_reference(payload.url)
     except PinterestRepeatError as exc:
