@@ -324,3 +324,59 @@ async def test_concurrent_referrals_are_serialized_under_same_inviter(
     assert wallet is not None
     assert wallet.balance == 30
     assert sorted(reasons) == ["attached", "hourly_limit"]
+
+
+@pytest.mark.asyncio
+async def test_existing_unattributed_user_can_attach_later_and_is_never_reassigned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "start_balance_rox", 0)
+    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
+    _disable_burst(monkeypatch)
+
+    first_inviter_tg, first_inviter_id = await _create_inviter("Late first")
+    second_inviter_tg, second_inviter_id = await _create_inviter("Late second")
+    visitor_tg = _telegram_user("Existing visitor")
+
+    async with SessionFactory() as session:
+        visitor = await UserService.get_or_create(session, visitor_tg)
+        await session.commit()
+        visitor_id = visitor.id
+
+    async with SessionFactory() as session:
+        await UserService.get_or_create(
+            session,
+            visitor_tg,
+            inviter_telegram_id=first_inviter_tg,
+        )
+        await session.commit()
+
+    async with SessionFactory() as session:
+        await UserService.get_or_create(
+            session,
+            visitor_tg,
+            inviter_telegram_id=second_inviter_tg,
+        )
+        await session.commit()
+
+    async with SessionFactory() as session:
+        relation = await session.get(ReferralRelation, visitor_id)
+        first_wallet = await session.get(Wallet, first_inviter_id)
+        second_wallet = await session.get(Wallet, second_inviter_id)
+        events = list(
+            (
+                await session.scalars(
+                    select(ReferralEvent).where(
+                        ReferralEvent.visitor_user_id == visitor_id,
+                    )
+                )
+            ).all()
+        )
+
+    assert relation is not None
+    assert relation.inviter_user_id == first_inviter_id
+    assert first_wallet is not None and first_wallet.balance == 30
+    assert second_wallet is not None and second_wallet.balance == 0
+    assert [event.reason for event in events] == ["attached"]

@@ -118,7 +118,15 @@ async def list_trend_collections(
     collections = [dict(item) for item in state["collections"] if item.get("is_active")]
     by_id = {item["id"]: item for item in collections}
     for item in collections:
-        item.update({"item_count": 0, "photo_count": 0, "video_count": 0, "preview_url": None})
+        item.update(
+            {
+                "item_count": 0,
+                "photo_count": 0,
+                "video_count": 0,
+                "preview_url": None,
+                "preview_media_type": None,
+            }
+        )
 
     rows = list(
         (
@@ -140,8 +148,19 @@ async def list_trend_collections(
             continue
         collection["item_count"] += 1
         collection["photo_count" if media_type == "image" else "video_count"] += 1
-        if not collection["preview_url"]:
-            collection["preview_url"] = trend_payload.get("preview_url")
+        preview_url = trend_payload.get("preview_url")
+        if preview_url and (
+            not collection["preview_url"]
+            or (
+                media_type == "image"
+                and collection.get("preview_media_type") != "image"
+            )
+        ):
+            # Prefer a still image for category covers when one exists. Video-only
+            # categories still expose their real server-hosted video preview and
+            # the Mini App renders it as <video> instead of a broken <img>.
+            collection["preview_url"] = preview_url
+            collection["preview_media_type"] = media_type
 
     return {"items": collections}
 
