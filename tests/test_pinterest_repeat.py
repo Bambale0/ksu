@@ -135,6 +135,43 @@ async def test_resolve_reference_follows_only_pinterest_redirects_and_reads_og_i
 
 
 @pytest.mark.asyncio
+async def test_resolve_reference_falls_back_to_widget_when_pin_page_is_blocked() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "pin.it":
+            return httpx.Response(
+                302,
+                headers={"location": "https://www.pinterest.com/pin/1234567890/"},
+                request=request,
+            )
+        if request.url.host == "widgets.pinterest.com":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "success",
+                    "code": 0,
+                    "data": [{
+                        "id": "1234567890",
+                        "images": {
+                            "236x": {"width": 236, "height": 354, "url": "https://i.pinimg.com/236x/aa/bb/photo.jpg"},
+                            "564x": {"width": 564, "height": 847, "url": "https://i.pinimg.com/564x/aa/bb/photo.jpg"},
+                        },
+                    }],
+                },
+                request=request,
+            )
+        return httpx.Response(403, request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        resolved = await PinterestRepeatService.resolve_reference(
+            "https://pin.it/example",
+            client=client,
+        )
+
+    assert resolved.source_url == "https://www.pinterest.com/pin/1234567890/"
+    assert resolved.reference_url == "https://i.pinimg.com/564x/aa/bb/photo.jpg"
+
+
+@pytest.mark.asyncio
 async def test_resolve_reference_blocks_redirect_outside_pinterest() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
