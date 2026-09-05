@@ -24,6 +24,10 @@ from app.services.pinterest_repeat import (
     PinterestRepeatGenerationRequest,
     PinterestRepeatService,
 )
+from app.services.pinterest_scene_analysis import (
+    PinterestSceneAnalysisError,
+    PinterestSceneAnalysisService,
+)
 from app.services.reference_static import ReferenceStaticStorage, ReferenceStaticStorageError
 from app.services.wallet import InsufficientBalanceError
 
@@ -36,21 +40,58 @@ class PinterestResolveRequest(BaseModel):
     url: str = Field(min_length=8, max_length=2048)
 
 
+class PinterestAnalyzeRequest(BaseModel):
+    scene_reference_url: str = Field(min_length=8, max_length=4096)
+
+
+class PinterestSceneAnalysis(BaseModel):
+    scene: str = Field(min_length=1, max_length=800)
+    composition: str = Field(min_length=1, max_length=800)
+    camera: str = Field(min_length=1, max_length=800)
+    pose: str = Field(min_length=1, max_length=800)
+    lighting: str = Field(min_length=1, max_length=800)
+    environment: str = Field(min_length=1, max_length=800)
+    wardrobe: str = Field(min_length=1, max_length=800)
+    expression: str = Field(min_length=1, max_length=800)
+    gaze: str = Field(min_length=1, max_length=800)
+    must_preserve: list[str] = Field(default_factory=list, max_length=10)
+
+
 class PinterestRepeatRequest(BaseModel):
     scene_reference_url: str = Field(min_length=8, max_length=4096)
     identity_reference_urls: list[str] = Field(min_length=1, max_length=5)
     height_cm: int = Field(ge=120, le=230)
     weight_kg: int = Field(ge=30, le=250)
     expression: str | None = Field(default=None, max_length=240)
+    scene_analysis: PinterestSceneAnalysis | None = None
 
 
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
 
+def _analysis_prompt_fragment(analysis: PinterestSceneAnalysis) -> str:
+    preserve = "; ".join(item.strip() for item in analysis.must_preserve if item.strip())
+    return f"""
+
+ANALYZED SCENE BLUEPRINT — derived from IMAGE 1 and subordinate to the role contract above:
+- Scene: {analysis.scene}
+- Composition: {analysis.composition}
+- Camera/framing: {analysis.camera}
+- Pose and body geometry: {analysis.pose}
+- Lighting: {analysis.lighting}
+- Environment/background: {analysis.environment}
+- Wardrobe silhouette/palette: {analysis.wardrobe}
+- Expression: {analysis.expression}
+- Gaze: {analysis.gaze}
+- Must preserve: {preserve or "the dominant visible composition, pose, lighting and camera constraints"}
+
+Use this blueprint to reduce scene drift. It describes only IMAGE 1. Never use it to override PERSON_IDENTITY facial identity or natural body proportions."""
+
+
 def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
     try:
-        return PinterestRepeatService.build_request(
+        recipe = PinterestRepeatService.build_request(
             scene_reference_url=payload.scene_reference_url,
             identity_reference_urls=payload.identity_reference_urls,
             height_cm=payload.height_cm,
@@ -59,6 +100,13 @@ def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
         )
     except PinterestRepeatError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if payload.scene_analysis is None:
+        return recipe
+    return PinterestRepeatGenerationRequest(
+        model_id=recipe.model_id,
+        prompt=f"{recipe.prompt}{_analysis_prompt_fragment(payload.scene_analysis)}",
+        parameters=recipe.parameters,
+    )
 
 
 def _run_view(generation: Generation, *, replayed: bool = False) -> dict[str, Any]:
@@ -156,6 +204,27 @@ async def resolve_pinterest_reference(
     return {
         "source_url": resolved.source_url,
         "reference_url": local_url,
+    }
+
+
+@router.post("/analyze")
+async def analyze_pinterest_reference(
+    payload: PinterestAnalyzeRequest,
+    user: CurrentUserDep,
+    redis: RedisDep,
+) -> dict[str, Any]:
+    try:
+        analysis, model, cached = await PinterestSceneAnalysisService.analyze(
+            redis,
+            user_id=user.id,
+            image_url=payload.scene_reference_url,
+        )
+    except PinterestSceneAnalysisError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "analysis": analysis,
+        "model": model,
+        "cached": cached,
     }
 
 
