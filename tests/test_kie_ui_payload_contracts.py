@@ -74,6 +74,7 @@ def test_prompt_is_always_present_in_provider_payload() -> None:
         parameters={"_model_id": "nano-banana-2", "resolution": "1K"},
         prompt="пикачу",
         input_url=None,
+        action_type=None,
     )
 
     payload = GenerationProviderService._input_for(generation)
