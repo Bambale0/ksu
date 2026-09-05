@@ -123,7 +123,8 @@ async def _audit_signed_referral_once(
     if link.referral_telegram_id <= 0:
         return
     should_log = True
-    app = request.scope.get("app")
+    scope = getattr(request, "scope", {})
+    app = scope.get("app") if isinstance(scope, dict) else None
     state = getattr(app, "state", None)
     redis = getattr(state, "redis", None)
     if redis is not None:
