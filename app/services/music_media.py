@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import mimetypes
 import tempfile
@@ -17,8 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.media_models import MediaAsset, MediaIngestJob
 from app.db.models import Generation
+from app.services.local_media_storage import (
+    LOCAL_MEDIA_BUCKET,
+    LocalMediaStorage,
+    LocalMediaStorageError,
+)
 from app.services.media_assets import MediaIngestError, MediaIngestService
-from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
 _ALLOWED_AUDIO_SUFFIXES = {".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".opus"}
@@ -202,20 +207,13 @@ class MusicMediaIngestService:
             return True
 
         try:
-            storage = ObjectStorage()
             downloaded = await cls._download(asset.source_url)
             try:
                 key = cls._object_key(asset, downloaded)
-                head = await storage.upload_file(
+                await asyncio.to_thread(
+                    LocalMediaStorage.persist_file,
                     downloaded.path,
                     key=key,
-                    content_type=downloaded.content_type,
-                    metadata={
-                        "asset-id": str(asset.id),
-                        "generation-id": str(asset.generation_id),
-                        "sha256": downloaded.sha256,
-                        "media-type": "audio",
-                    },
                 )
             finally:
                 downloaded.path.unlink(missing_ok=True)
@@ -224,17 +222,17 @@ class MusicMediaIngestService:
             if locked_asset is None:
                 return True
             locked_asset.status = "ready"
-            locked_asset.bucket = storage.bucket
+            locked_asset.bucket = LOCAL_MEDIA_BUCKET
             locked_asset.object_key = key
             locked_asset.content_type = downloaded.content_type
             locked_asset.size_bytes = downloaded.size_bytes
             locked_asset.sha256 = downloaded.sha256
-            locked_asset.etag = str(head.get("ETag") or "").strip('"') or None
+            locked_asset.etag = None
             locked_asset.error = None
             await session.commit()
             await MusicMediaIngestQueue.complete(session, asset.id)
             return True
-        except ObjectStorageNotConfigured as exc:
+        except LocalMediaStorageError as exc:
             await MusicMediaIngestQueue.defer_without_attempt(
                 session,
                 asset_id=claim.asset_id,

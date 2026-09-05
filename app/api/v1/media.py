@@ -4,12 +4,13 @@ import re
 import uuid
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.db.admin_content_models import GenerationModerationState
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
+from app.services.local_media_storage import LocalMediaStorage, LocalMediaStorageError
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 router = APIRouter(prefix="/media", tags=["media"])
@@ -37,7 +38,44 @@ def _filename(asset: MediaAsset) -> str:
     return f"generation-{asset.generation_id}-{asset.ordinal + 1}{suffix}"
 
 
-def _storage_redirect(asset: MediaAsset, *, download: bool) -> RedirectResponse:
+def _local_file_response(
+    asset: MediaAsset,
+    *,
+    download: bool,
+    public: bool = False,
+) -> FileResponse:
+    try:
+        path = LocalMediaStorage.path_for_key(asset.object_key or "")
+    except LocalMediaStorageError as exc:
+        raise HTTPException(status_code=503, detail="Media storage is unavailable") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=503, detail="Media file is missing from server storage")
+    headers = {
+        "Cache-Control": (
+            "public, max-age=31536000, immutable"
+            if public
+            else "private, max-age=60"
+        )
+    }
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{_filename(asset)}"'
+    return FileResponse(
+        path=path,
+        media_type=asset.content_type or None,
+        headers=headers,
+    )
+
+
+def _storage_response(
+    asset: MediaAsset,
+    *,
+    download: bool,
+    public: bool = False,
+) -> Response:
+    if LocalMediaStorage.is_local_bucket(asset.bucket):
+        return _local_file_response(asset, download=download, public=public)
+    if not ObjectStorage.configured():
+        raise HTTPException(status_code=503, detail="Legacy media storage is unavailable")
     try:
         storage = ObjectStorage()
         url = storage.presign_get(
@@ -46,7 +84,7 @@ def _storage_redirect(asset: MediaAsset, *, download: bool) -> RedirectResponse:
             download_filename=_filename(asset) if download else None,
         )
     except ObjectStorageNotConfigured as exc:
-        raise HTTPException(status_code=503, detail="Media storage is unavailable") from exc
+        raise HTTPException(status_code=503, detail="Legacy media storage is unavailable") from exc
     return RedirectResponse(url=url, status_code=307)
 
 
@@ -90,9 +128,33 @@ async def download_media_asset(
     asset_id: uuid.UUID,
     user: CurrentUserDep,
     session: SessionDep,
-) -> RedirectResponse:
+) -> Response:
     asset = _ready_asset(_owned_asset(asset_id, user.id, await session.get(MediaAsset, asset_id)))
-    return _storage_redirect(asset, download=True)
+    return _storage_response(asset, download=True)
+
+
+@router.get("/{asset_id}/signed/{expires}/{signature}")
+async def signed_media_asset(
+    asset_id: uuid.UUID,
+    expires: int,
+    signature: str,
+    session: SessionDep,
+) -> Response:
+    asset = _ready_asset(await session.get(MediaAsset, asset_id))
+    if not LocalMediaStorage.is_local_bucket(asset.bucket):
+        raise HTTPException(status_code=404, detail="Media asset not found")
+    try:
+        valid = LocalMediaStorage.verify_view_signature(
+            asset_id=asset.id,
+            key=asset.object_key or "",
+            expires=expires,
+            signature=signature,
+        )
+    except LocalMediaStorageError as exc:
+        raise HTTPException(status_code=503, detail="Media storage is unavailable") from exc
+    if not valid:
+        raise HTTPException(status_code=404, detail="Media asset not found")
+    return _storage_response(asset, download=False)
 
 
 @router.get("/{asset_id}/public")
@@ -101,9 +163,9 @@ async def public_media_asset(
     asset_id: uuid.UUID,
     session: SessionDep,
     filename: str | None = None,
-) -> RedirectResponse:
+) -> Response:
     asset = _ready_asset(await session.get(MediaAsset, asset_id))
     generation = await session.get(Generation, asset.generation_id)
     moderation = await session.get(GenerationModerationState, asset.generation_id)
     _public_generation(generation, moderation)
-    return _storage_redirect(asset, download=False)
+    return _storage_response(asset, download=False, public=True)

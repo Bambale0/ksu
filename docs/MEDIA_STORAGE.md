@@ -1,12 +1,10 @@
 # Durable media storage
 
-**Status:** runtime contract for product-owned generation media introduced with migration `0006_durable_media_storage`.
+**Status:** runtime contract for product-owned generation media introduced with migration `0006_durable_media_storage` and stored on the KSU host.
 
-## Why this exists
+## Runtime contract
 
-Provider result URLs are treated as temporary ingestion sources, not permanent product storage. When Kie reports a successful generation, KSU writes `media_assets` and `media_ingest_jobs` rows in the same PostgreSQL transaction that marks the generation succeeded. A dedicated `media-worker` then copies each provider result into a private S3-compatible bucket.
-
-The durable source of truth is PostgreSQL:
+Provider result URLs are temporary ingestion sources, never the durable product copy. When Kie reports a successful generation, KSU writes `media_assets` and `media_ingest_jobs` in the same PostgreSQL transaction that marks the generation succeeded. The dedicated `media-worker` downloads each result and persists it below the server-owned media root.
 
 ```text
 Kie success callback / reconciliation
@@ -18,26 +16,46 @@ Generation + MediaAsset + MediaIngestJob COMMIT
 media-worker claim (FOR UPDATE SKIP LOCKED)
         |
         +--> validated public HTTPS download
-        +--> bounded temporary file
-        +--> S3 managed upload / multipart when needed
+        +--> bounded temporary file + SHA-256
+        +--> atomic copy into static/uploads/media
         |
         v
-MediaAsset status=ready + object key/hash/size
+MediaAsset status=ready + local object key/hash/size
 ```
 
-If the worker dies after the object upload but before the database commit, the retry uses a deterministic object key derived from generation, ordinal and SHA-256. Re-uploading therefore converges on the same object rather than creating a new object per attempt.
+The Docker runtime already bind-mounts `./static/uploads:/app/static/uploads` into the API and media worker, so generated files survive container recreation on the production host just like feed/reference files. `static/uploads/media` is intentionally **not** mounted with FastAPI `StaticFiles`: unpublished user generations remain private.
+
+The default root is:
+
+```dotenv
+MEDIA_LOCAL_ROOT=static/uploads/media
+```
+
+`MEDIA_LOCAL_ROOT` is optional; the default above is used when it is absent.
+
+## Private and public delivery
+
+Local media has two delivery modes:
+
+- private/history result URLs are short-lived HMAC-signed KSU URLs;
+- published feed/profile media is served through `/api/v1/media/{asset_id}/public`, which re-checks publication scope and moderation before reading the file.
+
+The HMAC key is domain-separated from the persistent production `ADMIN_SECURITY_KEY`, which the deployment workflow already guarantees. No extra media secret is required.
+
+Authenticated downloads use:
+
+```text
+GET /api/v1/media/{asset_id}/download
+```
+
+Ownership failures return 404. Signed URLs expire according to `MEDIA_PRESIGN_TTL_SECONDS`; the setting name is retained for backward compatibility with legacy S3 media.
 
 ## Required configuration
 
-```dotenv
-S3_BUCKET=ksu-production-media
-S3_REGION=us-east-1
-S3_ENDPOINT_URL=
-S3_ACCESS_KEY_ID=
-S3_SECRET_ACCESS_KEY=
-S3_SESSION_TOKEN=
-S3_ADDRESSING_STYLE=auto
+Host-local storage does not require S3 credentials. Relevant runtime settings are:
 
+```dotenv
+MEDIA_LOCAL_ROOT=static/uploads/media
 MEDIA_WORKER_POLL_SECONDS=5
 MEDIA_INGEST_LEASE_SECONDS=600
 MEDIA_INGEST_MAX_ATTEMPTS=5
@@ -49,70 +67,19 @@ MEDIA_PRESIGN_TTL_SECONDS=900
 MEDIA_LEGACY_RECONCILE_SECONDS=60
 ```
 
-For AWS S3, prefer workload/IAM credentials instead of static keys. Leave `S3_ENDPOINT_URL` empty. For an S3-compatible provider, set its HTTPS endpoint and addressing style required by that provider.
+The production host must retain and back up `static/uploads`. A container/image rebuild must never be treated as the media backup. The directory should be included in host snapshots or encrypted off-host backups together with the database backup policy.
 
-The application does not make the bucket public. Result/history APIs generate short-lived `GetObject` presigned URLs only for media belonging to the authenticated user.
+## Atomicity and retries
 
-## Bucket policy
-
-The runtime identity needs only the bucket/object operations required by the media pipeline. Keep permissions scoped to the product bucket/prefix. Typical permissions are:
+Downloaded provider media is streamed into a temporary file while SHA-256 and size are calculated. The worker then copies into a temporary file inside the destination directory and uses an atomic rename to the deterministic final key:
 
 ```text
-s3:GetObject
-s3:PutObject
-s3:AbortMultipartUpload
-s3:ListBucketMultipartUploads
-s3:ListMultipartUploadParts
+generations/<user_id>/<generation_id>/<ordinal>-<sha-prefix>.<ext>
 ```
 
-Do not grant public `s3:GetObject`.
+If the worker dies after the file write but before the database commit, the retry converges on the same deterministic path rather than creating a new product object.
 
-## CORS for Telegram native downloads
-
-Telegram Mini Apps `downloadFile` expects the downloadable response to support Telegram Web and recommends an attachment `Content-Disposition` header plus:
-
-```http
-Access-Control-Allow-Origin: https://web.telegram.org
-```
-
-Presigned download URLs generated by KSU request an attachment `Content-Disposition`. Configure bucket CORS to permit `GET`/`HEAD` from the Telegram Web origin if the Mini App will use native downloads.
-
-Example AWS S3 CORS configuration:
-
-```json
-[
-  {
-    "AllowedOrigins": ["https://web.telegram.org"],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["Content-Disposition", "Content-Length", "Content-Type", "ETag"],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
-
-If the product is also served as a normal website, add the exact production web origin rather than using a wildcard.
-
-## Multipart lifecycle rule
-
-Managed S3 transfers automatically switch to multipart uploads for large files. An interrupted multipart upload can leave chargeable parts in the bucket until it is completed or aborted.
-
-Configure an S3 Lifecycle rule with `AbortIncompleteMultipartUpload`. AWS recommends this as a storage-cost best practice. Seven days is a practical default:
-
-```json
-{
-  "Rules": [
-    {
-      "ID": "abort-incomplete-multipart-uploads",
-      "Status": "Enabled",
-      "Filter": {"Prefix": "generations/"},
-      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7}
-    }
-  ]
-}
-```
-
-This action removes incomplete multipart parts; it does not delete completed generation objects.
+A host-storage failure is treated as an operational delivery problem. It does not turn a successfully paid generation into a provider failure and does not issue a generation refund. The ingest job is retried while the temporary provider URL remains available.
 
 ## Source-download safety
 
@@ -123,33 +90,46 @@ The media worker does not blindly fetch arbitrary URLs. Every source and redirec
 - resolve to public IP addresses;
 - stay within the configured redirect count;
 - fit under `MEDIA_INGEST_MAX_BYTES`;
-- return an image/video type, or a recognized media extension with `application/octet-stream`.
+- return an image/video type, recognized media extension, or the supported audio types handled by the music ingest worker.
 
-Downloads are streamed to a temporary file while SHA-256 and size are calculated. The process does not buffer a full video in application memory.
+The process does not buffer a full video/audio file in application memory.
 
 ## API behavior
 
-Generation detail/history endpoints behave as follows:
+Generation detail/history behaves as follows:
 
-1. while no owned asset is ready, `result_url` / `result_urls` remain compatible with the provider URL;
-2. when at least one owned asset is ready, owned presigned URLs take precedence;
+1. before the server-owned asset is ready, the provider URL remains a compatibility fallback;
+2. once the local asset is ready, the KSU signed URL takes precedence;
 3. `result_storage` becomes `owned`;
-4. `media[]` contains asset id, temporary view URL, download endpoint, MIME type, size and ordinal.
+4. `media[]` contains asset id, view URL, authenticated download endpoint, MIME type, size and ordinal.
 
-Additional authenticated endpoints:
+Published feed/profile serializers use the stable publication-gated KSU route instead of a private signed URL.
 
-```text
-GET /api/v1/media/{asset_id}
-GET /api/v1/media/{asset_id}/download
+## Legacy S3 compatibility
+
+Older `media_assets` rows may still contain a real S3 bucket and object key. KSU keeps the S3 reader/presigner for those rows only. `S3_BUCKET`, region/endpoint and credentials are therefore **optional legacy configuration**, not a prerequisite for new generations.
+
+If legacy S3 remains configured, its private-bucket rules still apply. Do not grant public `s3:GetObject`. Telegram Web downloads may require the legacy bucket CORS response:
+
+```http
+Access-Control-Allow-Origin: https://web.telegram.org
 ```
 
-Ownership failures return 404 so callers cannot use the endpoint to enumerate another user's media identifiers.
+Old S3 installations that use multipart upload should retain a lifecycle rule with `AbortIncompleteMultipartUpload` so abandoned multipart parts do not accumulate. These rules do not apply to new host-local generation media.
+
+When legacy S3 configuration is deliberately removed, history can temporarily fall back to the original provider URL for old S3 rows if that URL is still alive. New local rows are unaffected.
 
 ## Recovery
 
-`media-worker` periodically repairs legacy succeeded generations that have a provider result URL but no `MediaAsset` rows. Queue claims use `FOR UPDATE SKIP LOCKED`; expired leases are reclaimable. Jobs back off between attempts and become terminal `failed` after `MEDIA_INGEST_MAX_ATTEMPTS`.
+`media-worker` periodically repairs succeeded generations that have a provider result URL but no `MediaAsset` rows. Queue claims use `FOR UPDATE SKIP LOCKED`; expired leases are reclaimable. Image/video and audio ingest both target the same private host-local root.
 
-A failed media ingest does **not** convert a successful paid generation into a failed generation and does not issue a generation refund. The provider result remains available as fallback while it is still valid. Storage failure is an operational incident in the delivery layer, not a provider-generation failure.
+The production deploy keeps the existing bind mount:
+
+```text
+./static/uploads:/app/static/uploads
+```
+
+That mount must remain present for `app`, `generation-worker`, `media-worker`, and any worker that writes reference/feed media.
 
 ## Monitoring
 
@@ -167,4 +147,4 @@ ksu_distributed_event_count{event="media_reconcile_failure"}
 ksu_distributed_event_count{event="media_worker_loop_error"}
 ```
 
-Alert if the media worker heartbeat is stale or the oldest pending/processing ingest job remains old enough to threaten provider URL expiry.
+Alert if the media worker heartbeat is stale or the oldest pending/processing ingest remains old enough to threaten provider URL expiry. Also monitor host disk utilization because generated media now intentionally lives on the KSU server.
