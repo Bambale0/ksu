@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
@@ -55,6 +56,7 @@ class PinterestRepeatService:
     MAX_REDIRECTS = 5
     MAX_PINTEREST_HTML_BYTES = 2_000_000
     MAX_PINTEREST_IMAGE_BYTES = 25 * 1024 * 1024
+    MAX_PINTEREST_WIDGET_BYTES = 512 * 1024
     PINTEREST_IMAGE_TYPES = {
         "image/jpeg",
         "image/png",
@@ -93,6 +95,69 @@ class PinterestRepeatService:
             raise PinterestRepeatError("Pinterest вернул неподдерживаемую ссылку на изображение")
         return cleaned
 
+    @staticmethod
+    def _pin_id_from_url(value: str) -> str | None:
+        parsed = urlparse(value)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2 and parts[0].lower() == "pin" and parts[1].isdigit():
+            return parts[1]
+        return None
+
+    @classmethod
+    async def _resolve_reference_from_widget(
+        cls,
+        source_url: str,
+        http_client: httpx.AsyncClient,
+    ) -> PinterestResolvedReference | None:
+        pin_id = cls._pin_id_from_url(source_url)
+        if not pin_id:
+            return None
+        widget_url = f"https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids={pin_id}"
+        try:
+            async with http_client.stream("GET", widget_url, headers={"Accept": "application/json"}) as response:
+                response.raise_for_status()
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    try:
+                        declared_size = int(content_length)
+                    except ValueError:
+                        declared_size = 0
+                    if declared_size > cls.MAX_PINTEREST_WIDGET_BYTES:
+                        return None
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > cls.MAX_PINTEREST_WIDGET_BYTES:
+                        return None
+                    body.extend(chunk)
+            payload = json.loads(body.decode("utf-8"))
+        except (httpx.HTTPError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        data = payload.get("data") if isinstance(payload, dict) else None
+        item = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else None
+        images = item.get("images") if isinstance(item, dict) else None
+        if not isinstance(images, dict):
+            return None
+        candidates: list[tuple[int, str]] = []
+        for image in images.values():
+            if not isinstance(image, dict) or not image.get("url"):
+                continue
+            try:
+                image_url = cls._validate_pin_image_url(str(image["url"]))
+            except PinterestRepeatError:
+                continue
+            try:
+                width = max(1, int(image.get("width") or 1))
+                height = max(1, int(image.get("height") or 1))
+            except (TypeError, ValueError):
+                width = height = 1
+            candidates.append((width * height, image_url))
+        if not candidates:
+            return None
+        return PinterestResolvedReference(
+            source_url=source_url,
+            reference_url=max(candidates, key=lambda item: item[0])[1],
+        )
+
     @classmethod
     async def resolve_reference(
         cls,
@@ -124,6 +189,10 @@ class PinterestRepeatService:
                         current_url = cls.validate_pinterest_url(urljoin(current_url, location))
                         continue
 
+                    if response.status_code >= 400:
+                        widget = await cls._resolve_reference_from_widget(current_url, http_client)
+                        if widget is not None:
+                            return widget
                     response.raise_for_status()
                     content_length = response.headers.get("content-length")
                     if content_length:
@@ -143,6 +212,9 @@ class PinterestRepeatService:
                     parser = _OpenGraphImageParser()
                     parser.feed(body.decode("utf-8", errors="replace"))
                     if not parser.image_url:
+                        widget = await cls._resolve_reference_from_widget(current_url, http_client)
+                        if widget is not None:
+                            return widget
                         raise PinterestRepeatError("Не удалось найти фото на странице Pinterest")
                     return PinterestResolvedReference(
                         source_url=current_url,
