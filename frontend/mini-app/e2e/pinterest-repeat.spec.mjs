@@ -97,8 +97,8 @@ test('Pinterest repeat keeps scene and identity separate and blocks stale-quote 
   await page.goto('/mini-app/pinterest-repeat/');
 
   await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
-  await expect(page.getByText('1. Референс', { exact: false })).toBeVisible();
-  await expect(page.getByText('Ваши ракурсы')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Референс' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ваши ракурсы' })).toBeVisible();
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
