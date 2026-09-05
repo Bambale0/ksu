@@ -480,12 +480,15 @@ class MediaIngestService:
             direct = ipaddress.ip_address(host)
             addresses = [direct]
         except ValueError:
-            infos = await asyncio.to_thread(
-                socket.getaddrinfo,
-                host,
-                parsed.port or 443,
-                type=socket.SOCK_STREAM,
-            )
+            try:
+                infos = await asyncio.to_thread(
+                    socket.getaddrinfo,
+                    host,
+                    parsed.port or 443,
+                    type=socket.SOCK_STREAM,
+                )
+            except socket.gaierror as exc:
+                raise UnsafeMediaSource("Media source hostname did not resolve") from exc
             addresses = []
             for info in infos:
                 try:
