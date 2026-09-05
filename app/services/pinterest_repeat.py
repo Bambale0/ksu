@@ -111,10 +111,11 @@ class PinterestRepeatService:
                 content_length = response.headers.get("content-length")
                 if content_length:
                     try:
-                        if int(content_length) > cls.MAX_PINTEREST_HTML_BYTES:
-                            raise PinterestRepeatError("Страница Pinterest слишком большая")
+                        declared_size = int(content_length)
                     except ValueError:
-                        pass
+                        declared_size = 0
+                    if declared_size > cls.MAX_PINTEREST_HTML_BYTES:
+                        raise PinterestRepeatError("Страница Pinterest слишком большая")
                 if len(response.content) > cls.MAX_PINTEREST_HTML_BYTES:
                     raise PinterestRepeatError("Страница Pinterest слишком большая")
 
