@@ -9,24 +9,33 @@ from e2e import roxy_browser_e2e_v2 as suite
 
 
 async def robust_route(page: Page, name: str) -> None:
-    target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
-    try:
-        await expect(target).to_be_visible(timeout=10000)
-        await target.click()
-    except Exception:
+    canonical = "home" if name == "catalog" else name
+    if name == "catalog":
+        # Catalog is a backward-compatible URL alias only. It must normalize to
+        # the canonical Home catalog instead of becoming a second root screen.
         await page.goto(
-            f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
+            f"{suite.legacy.BASE_URL}/mini-app/?route=catalog",
             wait_until="domcontentloaded",
         )
+    else:
+        target = page.locator(f'[data-roxy-customer-route="{name}"]:visible').first
+        try:
+            await expect(target).to_be_visible(timeout=10000)
+            await target.click()
+        except Exception:
+            await page.goto(
+                f"{suite.legacy.BASE_URL}/mini-app/?route={name}",
+                wait_until="domcontentloaded",
+            )
     await expect(page).to_have_url(
-        re.compile(rf"[?&]route={re.escape(name)}(?:&|$)"),
+        re.compile(rf"[?&]route={re.escape(canonical)}(?:&|$)"),
         timeout=8000,
     )
     ready = {
         "home": ".home-screen",
         "create": ".create-screen",
         "profile": ".profile-screen",
-    }.get(name, "main .screen")
+    }.get(canonical, "main .screen")
     await expect(page.locator(ready).first).to_be_visible(timeout=10000)
 
 
@@ -37,11 +46,20 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     )
     await expect(page).to_have_title(re.compile("ROXY"))
     await expect(page.locator('[data-roxy-customer-route="home"]')).to_have_count(2, timeout=8000)
-    for route in ("home", "catalog", "create", "history", "profile"):
+    home_tab = page.locator('.bottom-nav button[data-roxy-customer-route="home"]')
+    await expect(home_tab).to_have_count(1)
+    await expect(home_tab.locator("small")).to_have_text("Каталог")
+    await expect(home_tab).to_have_attribute("data-home-catalog", "true")
+    await expect(home_tab).to_have_attribute("aria-current", "page")
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]')).to_have_count(1)
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]')).to_be_hidden()
+
+    for route in ("home", "create", "history", "profile"):
         await robust_route(page, route)
         report.controls_seen.add(f"primary:{route}")
 
     await robust_route(page, "catalog")
+    report.controls_seen.add("legacy:catalog->home")
     prompt = page.locator('[data-catalog-feature="prompt-image"]:visible').first
     await expect(prompt).to_be_visible(timeout=10000)
     await prompt.click()
@@ -51,11 +69,11 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
     )
     await page.go_back()
     await expect(page).to_have_url(
-        re.compile(r"[?&]route=catalog(?:&|$)"),
+        re.compile(r"[?&]route=home(?:&|$)"),
         timeout=7000,
     )
     report.controls_seen.add("catalog:prompt-tools/back")
-    report.ok("boot + canonical navigation + Back")
+    report.ok("boot + Home catalog navigation + legacy alias + Back")
 
 
 async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
@@ -137,11 +155,15 @@ async def scenario_profile_support_partner(page: Page, report: suite.legacy.Repo
 
 
 async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None:
-    for route in ("feed", "catalog", "create", "history", "profile", "partners"):
+    for route in ("feed", "create", "history", "profile", "partners"):
         await robust_route(page, route)
         await expect(page.locator("main")).to_be_visible(timeout=10000)
         assert (await page.locator("main").inner_text()).strip(), f"route {route} rendered empty"
         report.controls_seen.add(f"route:{route}")
+
+    await robust_route(page, "catalog")
+    await expect(page.locator("#roxy-catalog-feature-hub")).to_be_visible(timeout=10000)
+    report.controls_seen.add("route:legacy-catalog->home")
 
     for path, expected in (
         ("prompt-tools/?mode=image", re.compile(r"описан|промпт|иде", re.I)),
@@ -154,7 +176,7 @@ async def scenario_child_routes(page: Page, report: suite.legacy.Report) -> None
 
 
 async def inventory_visible_controls(page: Page, report: suite.legacy.Report) -> None:
-    for route in ("home", "feed", "catalog", "create", "history", "profile", "partners"):
+    for route in ("home", "feed", "create", "history", "profile", "partners"):
         await robust_route(page, route)
         controls = await page.locator("button:visible").evaluate_all(
             """nodes => nodes.map((node) => ({
@@ -167,6 +189,10 @@ async def inventory_visible_controls(page: Page, report: suite.legacy.Report) ->
             signature = control["id"] or control["aria"] or control["text"] or control["route"]
             if signature:
                 report.controls_seen.add(f"inventory:{route}:{signature}")
+
+    await robust_route(page, "catalog")
+    assert await page.locator("button:visible").count() > 0
+    report.controls_seen.add("inventory:home-catalog")
 
     await page.goto(f"{suite.legacy.BASE_URL}/mini-app/?route=home", wait_until="domcontentloaded")
     await expect(page.locator("#balance")).to_be_visible(timeout=10000)
