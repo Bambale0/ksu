@@ -19,6 +19,10 @@ function money(value?: string | null): string {
   return number.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(heic|heif)$/i.test(file.name);
+}
+
 export default function PinterestRepeatPage() {
   const [reference, setReference] = useState<UploadedPhoto | null>(null);
   const [pinterestUrl, setPinterestUrl] = useState("");
@@ -91,7 +95,7 @@ export default function PinterestRepeatPage() {
 
   const uploadReference = async (file: File | undefined) => {
     if (!file || uploadingReference) return;
-    if (!file.type.startsWith("image/")) {
+    if (!isImageFile(file)) {
       setError("Выберите фотографию");
       return;
     }
@@ -127,7 +131,7 @@ export default function PinterestRepeatPage() {
   const addIdentityPhotos = async (files: File[]) => {
     if (!files.length || uploadingIdentity) return;
     const remaining = Math.max(0, 5 - identityPhotos.length);
-    const images = files.filter((file) => file.type.startsWith("image/")).slice(0, remaining);
+    const images = files.filter(isImageFile).slice(0, remaining);
     if (!images.length) {
       setError(identityPhotos.length >= 5 ? "Можно добавить не больше 5 фото" : "Выберите фотографии");
       return;
@@ -187,7 +191,7 @@ export default function PinterestRepeatPage() {
             </div>
           ) : (
             <label className="pin-upload">
-              <input type="file" accept="image/*" onChange={(event) => void uploadReference(event.target.files?.[0])} />
+              <input type="file" accept="image/*,.heic,.heif" onChange={(event) => void uploadReference(event.target.files?.[0])} />
               <span>{uploadingReference ? "Загружаем…" : "+ Загрузить фото"}<small>JPEG, PNG, WEBP, HEIC — один исходный кадр</small></span>
             </label>
           )}
@@ -216,7 +220,7 @@ export default function PinterestRepeatPage() {
             ))}
             {identityPhotos.length < 5 ? (
               <label className="pin-photo-add" aria-label="Добавить свои фото">
-                <input type="file" accept="image/*" multiple onChange={(event) => void addIdentityPhotos(Array.from(event.target.files || []))} />
+                <input type="file" accept="image/*,.heic,.heif" multiple onChange={(event) => void addIdentityPhotos(Array.from(event.target.files || []))} />
                 <span>{uploadingIdentity ? "…" : "+"}</span>
               </label>
             ) : null}
