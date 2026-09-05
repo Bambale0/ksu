@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html.parser import HTMLParser
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -25,6 +26,14 @@ class PinterestResolvedReference:
     reference_url: str
 
 
+@dataclass(frozen=True, slots=True)
+class PinterestDownloadedReference:
+    source_url: str
+    content: bytes
+    content_type: str
+    filename: str
+
+
 class _OpenGraphImageParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -45,6 +54,14 @@ class PinterestRepeatService:
     MAX_EXPRESSION_LENGTH = 240
     MAX_REDIRECTS = 5
     MAX_PINTEREST_HTML_BYTES = 2_000_000
+    MAX_PINTEREST_IMAGE_BYTES = 25 * 1024 * 1024
+    PINTEREST_IMAGE_TYPES = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/avif",
+    }
 
     @staticmethod
     def _clean_url(value: str, *, label: str) -> str:
@@ -142,6 +159,73 @@ class PinterestRepeatService:
                 await http_client.aclose()
 
         raise PinterestRepeatError("Слишком много перенаправлений Pinterest")
+
+    @classmethod
+    async def download_reference_image(
+        cls,
+        value: str,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> PinterestDownloadedReference:
+        current_url = cls._validate_pin_image_url(value)
+        owns_client = client is None
+        http_client = client or httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=5.0),
+            headers={"Accept": "image/avif,image/webp,image/png,image/jpeg,image/gif"},
+            follow_redirects=False,
+        )
+        try:
+            for _ in range(cls.MAX_REDIRECTS + 1):
+                async with http_client.stream("GET", current_url) as response:
+                    if response.status_code in {301, 302, 303, 307, 308}:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise PinterestRepeatError("Pinterest image вернул пустой redirect")
+                        current_url = cls._validate_pin_image_url(urljoin(current_url, location))
+                        continue
+
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                    if content_type not in cls.PINTEREST_IMAGE_TYPES:
+                        raise PinterestRepeatError("Pinterest вернул неподдерживаемый формат изображения")
+
+                    content_length = response.headers.get("content-length")
+                    if content_length:
+                        try:
+                            declared_size = int(content_length)
+                        except ValueError:
+                            declared_size = 0
+                        if declared_size > cls.MAX_PINTEREST_IMAGE_BYTES:
+                            raise PinterestRepeatError("Изображение Pinterest слишком большое")
+
+                    body = bytearray()
+                    async for chunk in response.aiter_bytes(1024 * 1024):
+                        if not chunk:
+                            continue
+                        if len(body) + len(chunk) > cls.MAX_PINTEREST_IMAGE_BYTES:
+                            raise PinterestRepeatError("Изображение Pinterest слишком большое")
+                        body.extend(chunk)
+                    if not body:
+                        raise PinterestRepeatError("Pinterest вернул пустое изображение")
+
+                    name = PurePosixPath(urlparse(current_url).path).name or "pinterest-reference"
+                    return PinterestDownloadedReference(
+                        source_url=current_url,
+                        content=bytes(body),
+                        content_type=content_type,
+                        filename=name[:255],
+                    )
+        except httpx.HTTPStatusError as exc:
+            raise PinterestRepeatError(
+                f"Изображение Pinterest недоступно: HTTP {exc.response.status_code}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise PinterestRepeatError("Не удалось загрузить изображение Pinterest") from exc
+        finally:
+            if owns_client:
+                await http_client.aclose()
+
+        raise PinterestRepeatError("Слишком много перенаправлений изображения Pinterest")
 
     @classmethod
     def build_request(
