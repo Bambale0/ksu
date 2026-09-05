@@ -148,6 +148,14 @@ export function CatalogFeatureHub() {
         media: "audio",
       },
       {
+        id: "pinterest-repeat",
+        title: "Повтори фото",
+        copy: "Сцена, свет и поза из Pinterest — с вашей внешностью",
+        icon: "image",
+        badge: "Новое",
+        href: "/mini-app/pinterest-repeat/",
+      },
+      {
         id: "prompt-image",
         title: "Описание по фото",
         copy: "Разобрать фото или усилить идею перед генерацией",

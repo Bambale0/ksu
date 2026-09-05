@@ -363,7 +363,7 @@ async function runFeed(page, check) {
 async function runCatalog(page, check) {
   if (check === 'shell') {
     await expect(page.getByText('Все фичи ROXY')).toBeVisible();
-    await expect(page.locator('[data-catalog-feature]')).toHaveCount(11);
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
     await expect(page.getByText('Описание по фото')).toBeVisible();
     await expect(page.getByText('Описание по видео').first()).toBeVisible();
     await expect(page.getByText('Сценарий для видео')).toBeVisible();

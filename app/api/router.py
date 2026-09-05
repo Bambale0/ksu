@@ -32,6 +32,7 @@ from app.api.v1 import (
     onboarding,
     partner_rox_transfers,
     payments,
+    pinterest_repeat,
     promocodes,
     prompt_tools,
     reference_presets,
@@ -48,6 +49,7 @@ api_router.include_router(me.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(browser_auth.router)
 api_router.include_router(ai_reference.router)
+api_router.include_router(pinterest_repeat.router)
 api_router.include_router(promocodes.router)
 api_router.include_router(referrals.router)
 api_router.include_router(partner_rox_transfers.router)

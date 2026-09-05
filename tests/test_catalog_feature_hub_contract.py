@@ -43,7 +43,7 @@ def test_backend_router_does_not_expose_pinterest_services_namespace() -> None:
     assert "/services/pinterest" not in router
 
 
-def test_catalog_lists_bot_features_not_model_choice_or_service_promo() -> None:
+def test_catalog_lists_bot_features_not_model_choice_or_legacy_service_promo() -> None:
     hub = _read(FRONTEND / "components" / "catalog-feature-hub.tsx")
 
     assert "Все фичи ROXY" in hub
@@ -52,11 +52,12 @@ def test_catalog_lists_bot_features_not_model_choice_or_service_promo() -> None:
     assert "create-image" in hub
     assert "create-video" in hub
     assert "create-audio" in hub
+    assert 'id: "pinterest-repeat"' in hub
+    assert 'href: "/mini-app/pinterest-repeat/"' in hub
     assert "prompt-image" in hub
     assert "batch" in hub
     assert "/mini-app/batch/" in hub
     assert "/mini-app/prompt-tools/?mode=image" in hub
     assert "/mini-app/prompt-tools/?mode=video" in hub
-    assert "Pinterest" not in hub
     assert "Сервисы" not in hub
     assert "/mini-app/services/" not in hub
