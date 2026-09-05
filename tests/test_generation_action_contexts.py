@@ -231,5 +231,5 @@ def test_animate_context_uses_grok_i2v_model_defaults() -> None:
         "mode": "normal",
         "duration": 6,
         "resolution": "480p",
-        "nsfw_checker": True,
+        "nsfw_checker": False,
     }

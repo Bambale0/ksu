@@ -59,7 +59,7 @@ def install_model_spec_image_audit() -> None:
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["resolution"] = "1K"
 
     for model_id in nsfw_image_ids:
-        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = True
+        ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = False
 
     # Current Kie upload limits. These are surfaced to every dynamic client via
     # ui_schema instead of being reimplemented in the Mini App.

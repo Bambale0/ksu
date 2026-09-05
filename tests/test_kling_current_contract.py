@@ -265,7 +265,7 @@ def test_current_kling_ui_schema_matches_upload_and_duration_contracts() -> None
     assert t2v_fields["duration"]["control"] == "combobox"
     assert t2v_fields["duration"]["suggestions"] == ["5", "10"]
     assert t2v_fields["aspect_ratio"]["suggestions"] == ["16:9", "9:16", "1:1"]
-    assert t2v_schema["defaults"]["nsfw_checker"] is True
+    assert t2v_schema["defaults"]["nsfw_checker"] is False
 
     i2v_schema = build_model_ui_schema(_public_model(I2V_ID))
     i2v_fields = {item["name"]: item for item in i2v_schema["fields"]}

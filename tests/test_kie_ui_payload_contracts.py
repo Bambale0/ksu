@@ -66,7 +66,7 @@ def test_nano_banana_public_contract_exposes_provider_nsfw_toggle() -> None:
     for model_id in ("nano-banana", "nano-banana-edit"):
         field = _field(model_id, "nsfw_checker")
         assert field["control"] == "toggle"
-        assert _schema(model_id)["defaults"]["nsfw_checker"] is True
+        assert _schema(model_id)["defaults"]["nsfw_checker"] is False
 
 
 def test_prompt_is_always_present_in_provider_payload() -> None:
