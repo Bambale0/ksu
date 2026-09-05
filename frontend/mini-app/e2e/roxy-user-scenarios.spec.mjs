@@ -336,8 +336,9 @@ async function runHome(page, check) {
   } else if (check === 'batch') {
     await expect(feature('batch')).toContainText('Пакетная обработка');
   } else if (check === 'trends') {
-    await expect(page.locator('#roxy-home-live-trends')).toBeVisible();
-    await expect(page.getByText('Неоновый портрет').first()).toBeVisible();
+    const liveTrends = page.locator('#roxy-home-live-trends');
+    await expect(liveTrends).toBeVisible();
+    await expect(liveTrends.getByRole('button', { name: /Неоновый портрет/ })).toBeVisible();
   } else if (check === 'categories') {
     await expect(page.locator('#roxy-home-trend-folders')).toBeVisible();
     await expect(page.locator('#roxy-catalog-trend-folders')).toHaveCount(0);
