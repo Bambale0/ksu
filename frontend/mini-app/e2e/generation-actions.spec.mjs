@@ -142,6 +142,9 @@ async function mockActionApp(page, { rejectContext = false } = {}) {
     const path = url.pathname;
     const method = route.request().method();
 
+    if (path === '/api/v1/generation-action-contexts/ctx_animate') {
+      return json(route, contextFor('animate'));
+    }
     if (path.endsWith('/action-context')) {
       if (rejectContext) return json(route, { detail: 'Action is not available for this generation' }, 409);
       return json(route, contextFor(url.searchParams.get('action')));
@@ -217,6 +220,21 @@ test('Animate opens an I2V model with the generated image as the source', async 
   await expect(page.getByRole('heading', { name: 'Grok Imagine · Image to Video' })).toBeVisible();
   await page.getByPlaceholder('Например: плавный поворот головы, лёгкое движение камеры').fill('Лёгкий поворот головы');
   await expect(page.getByText('25 ROX')).toBeVisible();
+});
+
+test('Animate action-context short link submits against the restored source generation', async ({ page }) => {
+  await mockActionApp(page);
+  await page.goto('/mini-app/?route=generation-action&action_context_id=ctx_animate');
+  await expect(page.getByRole('heading', { name: 'Как оживить кадр?' })).toBeVisible();
+  await page.getByPlaceholder('Например: плавный поворот головы, лёгкое движение камеры').fill('Лёгкий поворот головы');
+  await expect(page.getByText('25 ROX')).toBeVisible();
+
+  const submitted = page.waitForRequest((request) => request.url().includes('/actions/animate') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Оживить/ }).last().click();
+  const request = await submitted;
+
+  expect(new URL(request.url()).pathname).toBe('/api/v1/generations/gen_source/actions/animate');
+  expect(request.postDataJSON().action_context_id).toBe('ctx_animate');
 });
 
 test('Publish controls target the exact generation and preserve hidden references', async ({ page }) => {
