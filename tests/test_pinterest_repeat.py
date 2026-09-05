@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from app.api.v1.pinterest_repeat import _generation_matches_recipe, _idempotent_generation_id
 from app.services.pinterest_repeat import PinterestRepeatError, PinterestRepeatService
 
 
@@ -66,6 +69,40 @@ def test_build_request_rejects_more_than_five_identity_photos() -> None:
             height_cm=170,
             weight_kg=70,
         )
+
+
+def test_idempotency_generation_id_is_stable_and_user_scoped() -> None:
+    user_a = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    user_b = uuid.UUID("22222222-2222-2222-2222-222222222222")
+
+    first = _idempotent_generation_id(user_a, "retry-key-123")
+    replay = _idempotent_generation_id(user_a, "retry-key-123")
+    other_user = _idempotent_generation_id(user_b, "retry-key-123")
+
+    assert first == replay
+    assert first != other_user
+
+
+def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
+    recipe = PinterestRepeatService.build_request(
+        scene_reference_url="https://cdn.example.com/scene.jpg",
+        identity_reference_urls=["https://cdn.example.com/me.jpg"],
+        height_cm=170,
+        weight_kg=70,
+    )
+    stored = SimpleNamespace(
+        prompt=recipe.prompt,
+        parameters={"_requested_model_id": recipe.model_id, **recipe.parameters},
+    )
+    assert _generation_matches_recipe(stored, recipe)
+
+    changed = PinterestRepeatService.build_request(
+        scene_reference_url="https://cdn.example.com/scene.jpg",
+        identity_reference_urls=["https://cdn.example.com/me.jpg"],
+        height_cm=170,
+        weight_kg=71,
+    )
+    assert not _generation_matches_recipe(stored, changed)
 
 
 @pytest.mark.asyncio
@@ -204,7 +241,9 @@ def test_pinterest_repeat_surface_is_wired_into_catalog_and_api() -> None:
     assert '"/api/v1/pinterest-repeat/resolve"' in api
     assert '"/api/v1/pinterest-repeat/quote"' in api
     assert '"/api/v1/pinterest-repeat/run"' in api
+    assert '"Idempotency-Key"' in api
     assert "api_router.include_router(pinterest_repeat.router)" in router
     assert "ReferenceStaticStorage.persist_stream" in endpoint
     assert "ReferenceService.register" not in endpoint
     assert "ReferenceService.get_by_hash" not in endpoint
+    assert "_generation_matches_recipe" in endpoint
