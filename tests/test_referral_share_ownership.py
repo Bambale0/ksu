@@ -53,15 +53,18 @@ def test_registered_bot_launcher_has_same_sharer_semantics_and_supports_trends()
     assert "author.telegram_id != link.referral_telegram_id" not in block
 
 
-def test_existing_user_referrer_is_never_reassigned_by_new_share_link() -> None:
-    source = _source("app/services/users.py")
-    existing_branch = source.split("if user is not None:", 1)[1].split(
+def test_existing_unattributed_user_can_attach_once_without_allowing_reassignment() -> None:
+    users = _source("app/services/users.py")
+    antifraud = _source("app/services/referral_antifraud.py")
+    existing_branch = users.split("if user is not None:", 1)[1].split(
         "# A Mini App cold boot", 1
     )[0]
 
     assert "return user" in existing_branch
-    assert "inviter_telegram_id" not in existing_branch
-    assert "referrer" not in existing_branch
+    assert "inviter_telegram_id" in existing_branch
+    assert "ReferralAntifraudService.attach_new_user" in existing_branch
+    assert '"already_attributed"' in antifraud
+    assert ".on_conflict_do_nothing" in antifraud
 
 
 def test_repeat_composer_can_copy_current_partner_repeat_link() -> None:

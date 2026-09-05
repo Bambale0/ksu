@@ -138,3 +138,17 @@ def test_top_live_trends_are_real_api_cards_not_legacy_model_sections() -> None:
     assert "roxy-home-live-trends" in source
     assert 'window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`)' in source
     assert "HomeTrendOrder" not in page
+
+
+def test_category_cover_contract_handles_server_video_sources_without_broken_images() -> None:
+    api = _source("app/api/v1/trend_collections.py")
+    client = _source("frontend/mini-app/lib/trend-collections-api.ts")
+    home = _source("frontend/mini-app/components/home-trend-folders.tsx")
+
+    assert '"preview_media_type": None' in api
+    assert 'media_type == "image"' in api
+    assert 'collection["preview_media_type"] = media_type' in api
+    assert 'preview_media_type?: "image" | "video" | null' in client
+    assert 'folder.preview_media_type === "video"' in home
+    assert '<video' in home
+    assert 'onError={(event) => { event.currentTarget.style.display = "none"; }}' in home

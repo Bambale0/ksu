@@ -183,7 +183,19 @@ export function HomeTrendFolders() {
 
       {!selected ? loadingCollections ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <div className="home-trend-folder-grid">
         {collections.map((folder) => <button className="home-trend-folder" type="button" key={folder.id} onClick={() => openFolder(folder)}>
-          {folder.preview_url ? <img className="home-trend-folder-preview" src={folder.preview_url} alt="" loading="lazy" /> : null}
+          {folder.preview_url ? folder.preview_media_type === "video"
+            ? <video
+                className="home-trend-folder-preview"
+                src={folder.preview_url}
+                muted
+                autoPlay
+                loop
+                playsInline
+                preload="metadata"
+                onError={(event) => { event.currentTarget.style.display = "none"; }}
+              />
+            : <img className="home-trend-folder-preview" src={folder.preview_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} />
+          : null}
           <span className="home-trend-folder-card-copy">
             <strong>{folder.title}</strong>
             {folder.description ? <small>{folder.description}</small> : null}

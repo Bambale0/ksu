@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -82,6 +83,17 @@ class ReferralAntifraudService:
         if not inviter_telegram_id:
             return ReferralAdmissionResult(False, "no_referral")
 
+        # Referral ownership is immutable. Existing users may attach on their
+        # first Telegram-signed referral launch, but a relation already present
+        # for this user must never be replaced by a later share link.
+        existing_relation = await session.get(ReferralRelation, visitor.id)
+        if existing_relation is not None:
+            return ReferralAdmissionResult(
+                False,
+                "already_attributed",
+                existing_relation.inviter_user_id,
+            )
+
         if inviter_telegram_id == visitor.telegram_id:
             await cls._record(
                 session,
@@ -116,6 +128,16 @@ class ReferralAntifraudService:
                 reason="blocked_referrer",
             )
             return ReferralAdmissionResult(False, "blocked_referrer", inviter.id)
+
+        # Same-inviter cold-boot requests serialize on this row. Re-check after
+        # acquiring the lock so only the first one runs admission/accounting.
+        existing_relation = await session.get(ReferralRelation, visitor.id)
+        if existing_relation is not None:
+            return ReferralAdmissionResult(
+                False,
+                "already_attributed",
+                existing_relation.inviter_user_id,
+            )
 
         now = datetime.now(timezone.utc)
         hourly_limit = max(0, int(settings.referral_antifraud_max_per_hour))
@@ -187,11 +209,26 @@ class ReferralAntifraudService:
                 )
                 return ReferralAdmissionResult(False, reason, inviter.id)
 
-        relation = ReferralRelation(
-            referred_user_id=visitor.id,
-            inviter_user_id=inviter.id,
-        )
-        session.add(relation)
+        attached_user_id = (
+            await session.execute(
+                insert(ReferralRelation)
+                .values(
+                    referred_user_id=visitor.id,
+                    inviter_user_id=inviter.id,
+                )
+                .on_conflict_do_nothing(index_elements=[ReferralRelation.referred_user_id])
+                .returning(ReferralRelation.referred_user_id)
+            )
+        ).scalar_one_or_none()
+        if attached_user_id is None:
+            # A different inviter may have won a concurrent first-attribution
+            # race. Keep the first relation and do not award this inviter.
+            relation = await session.get(ReferralRelation, visitor.id)
+            return ReferralAdmissionResult(
+                False,
+                "already_attributed",
+                relation.inviter_user_id if relation is not None else None,
+            )
         await session.flush()
 
         if settings.invite_bonus_rox > Decimal("0"):

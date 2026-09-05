@@ -15,6 +15,7 @@ export type TrendCollection = {
   photo_count?: number;
   video_count?: number;
   preview_url?: string | null;
+  preview_media_type?: "image" | "video" | null;
 };
 
 export type TrendCollectionState = {
