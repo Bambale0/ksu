@@ -237,10 +237,13 @@ class GenerationService:
         source_feed_gen_id: uuid.UUID | None = None,
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
+        generation_id: uuid.UUID | None = None,
     ) -> list[Generation]:
         requested = int(quantity)
         if requested < 1 or requested > MAX_GENERATION_QUANTITY:
             raise ValueError(f"Generation quantity must be between 1 and {MAX_GENERATION_QUANTITY}")
+        if generation_id is not None and requested != 1:
+            raise ValueError("Explicit generation_id is supported only for single generation requests")
 
         spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
             session,
@@ -273,6 +276,7 @@ class GenerationService:
         generations: list[Generation] = []
         for index in range(1, requested + 1):
             generation = Generation(
+                id=generation_id if generation_id is not None else uuid.uuid4(),
                 user_id=user_id,
                 kind=spec.operation,
                 prompt=str(clean.get("prompt") or prompt or ""),
@@ -345,6 +349,7 @@ class GenerationService:
         source_feed_gen_id: uuid.UUID | None = None,
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
+        generation_id: uuid.UUID | None = None,
     ) -> Generation:
         generations = await cls.create_many(
             session,
@@ -359,5 +364,6 @@ class GenerationService:
             source_feed_gen_id=source_feed_gen_id,
             parent_generation_id=parent_generation_id,
             action_type=action_type,
+            generation_id=generation_id,
         )
         return generations[0]
