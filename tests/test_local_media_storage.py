@@ -18,7 +18,13 @@ from app.services.local_media_storage import (
     LocalMediaStorage,
     LocalMediaStorageError,
 )
-from app.services.media_assets import DownloadedMedia, MediaAssetService, MediaIngestService
+from app.services.media_assets import (
+    ClaimedMediaJob,
+    DownloadedMedia,
+    MediaAssetService,
+    MediaIngestQueue,
+    MediaIngestService,
+)
 
 
 def _telegram_id() -> int:
@@ -95,6 +101,11 @@ async def test_media_ingest_persists_on_host_without_s3(
         await session.flush()
         session.add(MediaIngestJob(asset_id=asset.id, status="pending", attempts=0))
         await session.commit()
+
+        async def claim_created_asset(_session: object) -> ClaimedMediaJob:
+            return ClaimedMediaJob(asset_id=asset.id, attempts=1)
+
+        monkeypatch.setattr(MediaIngestQueue, "claim", staticmethod(claim_created_asset))
 
         assert await MediaIngestService.process_one(session) is True
         await session.refresh(asset)
