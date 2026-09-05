@@ -13,7 +13,7 @@ from app.providers.kie_pinterest_quality import (
     KiePinterestQualityClient,
     PinterestQualityProviderError,
 )
-from app.services.abuse_protection import AbuseProtectionService
+from app.services.abuse_protection import AbuseProtectionService, ResourcePolicyError
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
 from app.services.provider_media_transport import (
@@ -247,6 +247,8 @@ class PinterestRepeatQualityGate:
                 identity_urls=identity_urls,
                 candidate_url=candidate_urls[0],
             )
+        except ResourcePolicyError:
+            raise
         except Exception as exc:
             if AbuseProtectionService.availability_failure(exc):
                 await AbuseProtectionService.record_provider_failure(
