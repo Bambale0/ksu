@@ -12,7 +12,19 @@ class NexusProviderError(RuntimeError):
     pass
 
 
-NANO_BANANA_PRO_ASPECT_RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4"}
+NANO_BANANA_PRO_ASPECT_RATIOS = {
+    "auto",
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "5:4",
+    "4:5",
+    "21:9",
+}
 NANO_BANANA_PRO_IMAGE_SIZES = {"1K", "2K", "4K"}
 NANO_BANANA_PRO_MAX_REFERENCES = 4
 
