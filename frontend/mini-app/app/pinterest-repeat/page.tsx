@@ -8,6 +8,7 @@ import {
   pinterestRepeatApi,
   type PinterestRepeatQuote,
   type PinterestRepeatRequest,
+  type PinterestSceneAnalysis,
 } from "@/lib/pinterest-repeat-api";
 import { haptic } from "@/lib/telegram";
 
@@ -39,6 +40,9 @@ export default function PinterestRepeatPage() {
   const [uploadingReference, setUploadingReference] = useState(false);
   const [uploadingIdentity, setUploadingIdentity] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [analysis, setAnalysis] = useState<PinterestSceneAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const [quoting, setQuoting] = useState(false);
   const [quote, setQuote] = useState<PinterestRepeatQuote | null>(null);
   const [quotedRequestKey, setQuotedRequestKey] = useState("");
@@ -67,10 +71,40 @@ export default function PinterestRepeatPage() {
       identity_reference_urls: identityPhotos.map((item) => item.url),
       height_cm: parsedHeight,
       weight_kg: parsedWeight,
+      ...(analysis ? { scene_analysis: analysis } : {}),
     };
-  }, [identityPhotos, parsedHeight, parsedWeight, ready, reference]);
+  }, [analysis, identityPhotos, parsedHeight, parsedWeight, ready, reference]);
   const requestKey = useMemo(() => requestBody ? JSON.stringify(requestBody) : "", [requestBody]);
   const quoteIsCurrent = Boolean(quote && requestKey && quotedRequestKey === requestKey);
+
+  useEffect(() => {
+    const imageUrl = reference?.url || "";
+    setAnalysis(null);
+    setAnalysisError("");
+    if (!imageUrl) {
+      setAnalyzing(false);
+      return;
+    }
+    let active = true;
+    setAnalyzing(true);
+    void pinterestRepeatApi.analyze(imageUrl)
+      .then((result) => {
+        if (!active) return;
+        setAnalysis(result.analysis);
+        setAnalysisError("");
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setAnalysis(null);
+        setAnalysisError(cause instanceof Error ? cause.message : "AI-анализ сцены недоступен");
+      })
+      .finally(() => {
+        if (active) setAnalyzing(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reference?.url]);
 
   useEffect(() => {
     submissionRef.current = null;
@@ -178,7 +212,7 @@ export default function PinterestRepeatPage() {
   };
 
   const run = async () => {
-    if (!requestBody || !requestKey || !quoteIsCurrent || running) return;
+    if (!requestBody || !requestKey || !quoteIsCurrent || running || analyzing) return;
     setRunning(true);
     setError("");
     haptic("medium");
@@ -267,7 +301,8 @@ export default function PinterestRepeatPage() {
           </div>
         ) : null}
 
-        {resolving ? <div className="pin-helper">Разбираем сцену на референсе…</div> : null}
+        {resolving ? <div className="pin-helper">Загружаем референс из Pinterest…</div> : null}
+        {analyzing ? <div className="pin-helper">Разбираем сцену, позу, свет и эмоцию…</div> : null}
 
         {identityPhotos.length > 0 ? (
           <>
@@ -289,11 +324,15 @@ export default function PinterestRepeatPage() {
           </>
         ) : null}
 
-        {reference ? (
+        {analysis ? (
           <div className="pin-status">
-            <div className="pin-status-line">сцена, свет и поза берутся с референса</div>
-            <div className="pin-status-line">эмоция и направление взгляда наследуются с референса</div>
+            <div className="pin-status-line">сцена, свет и поза считаны с референса</div>
+            <div className="pin-status-line">эмоция: {analysis.expression} · взгляд: {analysis.gaze}</div>
+            <div className="pin-status-line">камера: {analysis.camera}</div>
           </div>
+        ) : null}
+        {reference && analysisError && !analyzing ? (
+          <div className="pin-helper">AI-разбор недоступен — повторим сцену напрямую по референсу.</div>
         ) : null}
 
         <div className="pin-fields">
@@ -314,7 +353,7 @@ export default function PinterestRepeatPage() {
           <span>Стоимость · формат наследуется с референса</span>
           <strong>{quoting || (requestBody && !quoteIsCurrent) ? "Считаем…" : quoteIsCurrent && quote ? (quote.admin_free ? "Бесплатно" : `${money(quote.effective_cost_rox)} ROX`) : "—"}</strong>
         </div>
-        <button className="pin-run" type="button" disabled={!requestBody || !quoteIsCurrent || quoting || running || uploadingReference || uploadingIdentity || resolving} onClick={() => void run()}>{running ? "Создаём…" : "Создать →"}</button>
+        <button className="pin-run" type="button" disabled={!requestBody || !quoteIsCurrent || quoting || running || analyzing || uploadingReference || uploadingIdentity || resolving} onClick={() => void run()}>{running ? "Создаём…" : analyzing ? "Разбираем референс…" : "Создать →"}</button>
         <p className="pin-footnote">После запуска задача появится в истории. Можно закрыть Mini App — генерация продолжится на сервере.</p>
       </div>
     </StandaloneShell>
