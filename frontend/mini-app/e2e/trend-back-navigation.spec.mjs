@@ -63,14 +63,16 @@ async function mockStickyTrendWebView(page) {
     });
     if (path === '/api/v1/me') return json({
       id: 'user_1', telegram_id: 777, first_name: 'QA', balance_rox: '150.00',
-      profile_link: 'https://t.me/roxy?start=profile_777',
+      profile_link: 'https://t.me/roxy?start=profile_777', is_admin: false,
     });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [family] });
     if (path === '/api/v1/generations' && method === 'GET') return json({ items: [], has_more: false, next_before: null });
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
+    if (path === '/api/v1/trend-collections') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
+    if (path === '/api/v1/prompt-tools') return json({ admin_free: false, items: [] });
     if (path === '/api/v1/referrals/stats') return json({ referral_link: '', profile_link: '', first_line: 0, second_line: 0, partner_balance_rub: '0' });
     if (path === '/api/v1/referrals/rewards' || path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
@@ -84,7 +86,7 @@ async function pressTelegramBack(page) {
   await page.evaluate(() => window.__pressTelegramBack());
 }
 
-test('shared trend keeps Back through the gate and native Back returns once to Catalog', async ({ page }) => {
+test('shared trend keeps Back through the gate and native Back returns once to Home catalog', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await mockStickyTrendWebView(page);
 
@@ -95,10 +97,15 @@ test('shared trend keeps Back through the gate and native Back returns once to C
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('__trend_back_events') || '')).toMatch(/^S/);
 
   await pressTelegramBack(page);
-  await expect(page).toHaveURL(/\/mini-app\/\?route=catalog$/);
-  await expect(page.locator('button[data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+  const oldHome = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
+  const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+  await expect(oldHome).toBeHidden();
+  await expect(catalog).toBeVisible();
+  await expect(catalog).toHaveAttribute('aria-current', 'page');
+  await expect(catalog.locator('small')).toHaveText('Каталог');
   await page.waitForTimeout(500);
-  await expect(page).toHaveURL(/\/mini-app\/\?route=catalog$/);
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
   await expect(page.getByText('Открываю тренд…')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
 });
