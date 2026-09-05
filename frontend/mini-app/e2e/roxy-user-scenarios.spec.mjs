@@ -314,11 +314,13 @@ async function runHome(page, check) {
     await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
     await expect(page.locator('.tiktok-feed-card')).toHaveCount(1);
   } else if (check === 'canonical-nav') {
-    const home = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
-    await expect(home).toBeVisible();
-    await expect(home.locator('small')).toHaveText('Каталог');
-    await expect(home).toHaveAttribute('aria-current', 'page');
-    await expect(home).toHaveAttribute('data-home-catalog', 'true');
+    const oldHome = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
+    const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+    await expect(oldHome).toBeHidden();
+    await expect(catalog).toBeVisible();
+    await expect(catalog.locator('small')).toHaveText('Каталог');
+    await expect(catalog).toHaveAttribute('aria-current', 'page');
+    await expect(catalog).toHaveAttribute('data-home-catalog', 'true');
   } else if (check === 'legacy-alias') {
     await page.goto('/mini-app/?route=catalog', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
@@ -345,7 +347,8 @@ async function runHome(page, check) {
   } else if (check === 'no-legacy-studio') {
     await expect(page.getByRole('heading', { name: 'Что создаём?' })).toBeHidden();
   } else if (check === 'no-duplicate-catalog') {
-    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]')).toBeHidden();
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="home"]')).toBeHidden();
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]')).toBeVisible();
     await expect(page.locator('.bottom-nav button:visible').filter({ hasText: 'Каталог' })).toHaveCount(1);
   }
 }
