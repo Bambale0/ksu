@@ -20,6 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.media_models import MediaAsset, MediaIngestJob
 from app.db.models import Generation
+from app.services.local_media_storage import (
+    LOCAL_MEDIA_BUCKET,
+    LocalMediaStorage,
+    LocalMediaStorageError,
+)
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
@@ -176,11 +181,28 @@ class MediaAssetService:
             raise MediaIngestError("Media asset is not ready")
         route_url = f"/api/v1/media/{asset.id}/public"
         download_url = f"/api/v1/media/{asset.id}/download"
-        if server_route:
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            url = (
+                route_url
+                if server_route
+                else LocalMediaStorage.signed_view_url(
+                    asset_id=asset.id,
+                    key=asset.object_key,
+                )
+            )
+        elif server_route:
             url = route_url
-        else:
+        elif ObjectStorage.configured():
             storage = storage or ObjectStorage()
-            url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+            try:
+                url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+            except ObjectStorageNotConfigured:
+                url = asset.source_url
+        else:
+            # Old S3 rows stay backwards-compatible when an operator intentionally
+            # removes legacy S3 configuration: use the original provider URL while
+            # it remains alive instead of hiding an otherwise successful result.
+            url = asset.source_url
         return {
             "id": str(asset.id),
             "url": url,
@@ -295,19 +317,13 @@ class MediaIngestService:
             return True
 
         try:
-            storage = ObjectStorage()
             downloaded = await cls._download(asset.source_url)
             try:
                 key = cls._object_key(asset, downloaded)
-                head = await storage.upload_file(
+                await asyncio.to_thread(
+                    LocalMediaStorage.persist_file,
                     downloaded.path,
                     key=key,
-                    content_type=downloaded.content_type,
-                    metadata={
-                        "asset-id": str(asset.id),
-                        "generation-id": str(asset.generation_id),
-                        "sha256": downloaded.sha256,
-                    },
                 )
             finally:
                 downloaded.path.unlink(missing_ok=True)
@@ -316,19 +332,19 @@ class MediaIngestService:
             if locked_asset is None:
                 return True
             locked_asset.status = "ready"
-            locked_asset.bucket = storage.bucket
+            locked_asset.bucket = LOCAL_MEDIA_BUCKET
             locked_asset.object_key = key
             locked_asset.content_type = downloaded.content_type
             locked_asset.size_bytes = downloaded.size_bytes
             locked_asset.sha256 = downloaded.sha256
-            locked_asset.etag = str(head.get("ETag") or "").strip('"') or None
+            locked_asset.etag = None
             locked_asset.error = None
             await session.commit()
             await MediaIngestQueue.complete(session, asset.id)
             return True
-        except ObjectStorageNotConfigured as exc:
-            # Missing S3 configuration is an operator/deployment state, not an asset defect.
-            # Do not burn the retry budget while waiting for the bucket to be configured.
+        except LocalMediaStorageError as exc:
+            # Host storage availability is an operator state. Keep retrying without
+            # burning the media retry budget while the provider URL is still usable.
             await MediaIngestQueue.defer_without_attempt(
                 session,
                 asset_id=claim.asset_id,
