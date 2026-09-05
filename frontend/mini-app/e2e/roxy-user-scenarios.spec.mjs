@@ -70,7 +70,7 @@ const families = [
     media_types: ['audio'],
     variant_count: 1,
     price_from_rox: '100.00',
-    variants: [{ id: 'roxy-music', title: 'ROXY Music', version: 'Music', media_type: 'audio', operation: 'auto', price_rox: '100.00' }],
+    variants: [{ id: 'roxy-music', title: 'ROXY Music', version: 'Music', media_type: 'audio', operation: 'text_to_audio', price_rox: '100.00' }],
   },
 ];
 
