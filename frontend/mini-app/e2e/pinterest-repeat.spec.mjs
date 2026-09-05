@@ -14,6 +14,19 @@ async function installTelegram(page) {
   });
 }
 
+const sceneAnalysis = {
+  scene: 'woman standing beside a stone balcony in an Italian street',
+  composition: 'vertical medium-full portrait, subject slightly right of center',
+  camera: 'eye-level camera, natural portrait perspective',
+  pose: 'weight on right leg, left knee relaxed, torso slightly rotated',
+  lighting: 'soft warm daylight from camera-left',
+  environment: 'warm stone walls and narrow European street',
+  wardrobe: 'light fitted top with dark straight-leg trousers',
+  expression: 'calm confidence',
+  gaze: 'directly into camera',
+  must_preserve: ['hand placement', 'head angle', 'subject scale', 'background geometry'],
+};
+
 async function mockApi(page) {
   await installTelegram(page);
   let uploadIndex = 0;
@@ -37,6 +50,11 @@ async function mockApi(page) {
         ? 'https://media.example.test/scene.jpg'
         : `https://media.example.test/me-${uploadIndex - 1}.jpg`;
       return json({ url, name: uploadIndex === 1 ? 'scene.jpg' : 'me.jpg', mime_type: 'image/jpeg' }, 201);
+    }
+    if (path === '/api/v1/pinterest-repeat/analyze') {
+      expect(request.postDataJSON()).toEqual({ scene_reference_url: 'https://media.example.test/scene.jpg' });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return json({ analysis: sceneAnalysis, model: 'gemini-2.5-pro', cached: false });
     }
     if (path === '/api/v1/pinterest-repeat/quote') {
       const body = request.postDataJSON();
@@ -92,7 +110,7 @@ const identityFile = {
   buffer: Buffer.from('fake-identity-image'),
 };
 
-test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit', async ({ page }) => {
+test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const { runBodies } = await mockApi(page);
   await page.goto('/mini-app/pinterest-repeat/');
@@ -107,6 +125,7 @@ test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
+  await expect(page.getByText('Разбираем сцену, позу, свет и эмоцию…')).toBeVisible();
 
   // Once the reference upload control disappears, the first remaining file input
   // is the identity picker. Empty MIME + .heic mirrors iOS/WebView uploads.
@@ -116,7 +135,9 @@ test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit
   await expect(identityPreviews.nth(0)).toBeVisible();
   await expect(identityPreviews.nth(1)).toBeVisible();
   await expect(page.getByText('1–5 ракурсов одного человека · сейчас 1/5')).toBeVisible();
-  await expect(page.getByText('эмоция и направление взгляда наследуются с референса')).toBeVisible();
+  await expect(page.getByText('сцена, свет и поза считаны с референса')).toBeVisible();
+  await expect(page.getByText('эмоция: calm confidence · взгляд: directly into camera')).toBeVisible();
+  await expect(page.getByText('камера: eye-level camera, natural portrait perspective')).toBeVisible();
 
   const create = page.getByRole('button', { name: 'Создать →' });
   const price = page.locator('.pin-summary strong');
@@ -149,6 +170,7 @@ test('Pinterest repeat mirrors reference/person UX and blocks stale-quote submit
     identity_reference_urls: ['https://media.example.test/me-1.jpg'],
     height_cm: 180,
     weight_kg: 55,
+    scene_analysis: sceneAnalysis,
   });
   expect(runRequest.headers()['idempotency-key']).toBeTruthy();
   await expect.poll(() => runBodies.length).toBe(1);
@@ -169,6 +191,12 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
         reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
       });
     }
+    if (path === '/api/v1/pinterest-repeat/analyze') {
+      expect(request.postDataJSON()).toEqual({
+        scene_reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
+      });
+      return json({ analysis: sceneAnalysis, model: 'gemini-2.5-pro', cached: true });
+    }
     return json({ items: [] });
   });
 
@@ -180,6 +208,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
     'https://media.example.test/references/pinterest-scene.jpg',
   );
   await expect(page.getByText('https://www.pinterest.com/pin/123/')).toBeVisible();
+  await expect(page.getByText('эмоция: calm confidence · взгляд: directly into camera')).toBeVisible();
 });
 
 test('retry after a lost run response reuses the same Idempotency-Key', async ({ page }) => {
@@ -207,6 +236,9 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
         name: uploadIndex === 1 ? 'scene.jpg' : 'me.jpg',
         mime_type: 'image/jpeg',
       }, 201);
+    }
+    if (path === '/api/v1/pinterest-repeat/analyze') {
+      return json({ analysis: sceneAnalysis, model: 'gemini-2.5-pro', cached: false });
     }
     if (path === '/api/v1/pinterest-repeat/quote') {
       return json({
@@ -242,6 +274,7 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await page.locator('input[type="file"]').first().setInputFiles(identityFile);
 
+  await expect(page.getByText('сцена, свет и поза считаны с референса')).toBeVisible();
   const create = page.getByRole('button', { name: 'Создать →' });
   await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
   await create.click();
