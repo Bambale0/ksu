@@ -79,17 +79,38 @@ def _idempotent_generation_id(user_id: uuid.UUID, idempotency_key: str) -> uuid.
     return uuid.uuid5(PINTEREST_REPEAT_IDEMPOTENCY_NAMESPACE, f"{user_id}:{clean_key}")
 
 
+def _generation_matches_recipe(
+    generation: Generation,
+    recipe: PinterestRepeatGenerationRequest,
+) -> bool:
+    parameters = generation.parameters or {}
+    stored_model_id = str(
+        parameters.get("_requested_model_id")
+        or parameters.get("_model_id")
+        or ""
+    )
+    if stored_model_id != recipe.model_id or generation.prompt != recipe.prompt:
+        return False
+    return all(parameters.get(key) == value for key, value in recipe.parameters.items())
+
+
 async def _replayed_generation(
     session: SessionDep,
     *,
     generation_id: uuid.UUID,
     user_id: uuid.UUID,
+    recipe: PinterestRepeatGenerationRequest,
 ) -> Generation | None:
     generation = await session.get(Generation, generation_id)
     if generation is None:
         return None
     if generation.user_id != user_id or generation.action_type != "pinterest_repeat":
         raise HTTPException(status_code=409, detail="Idempotency-Key уже использован")
+    if not _generation_matches_recipe(generation, recipe):
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency-Key уже использован с другими параметрами",
+        )
     return generation
 
 
@@ -188,6 +209,7 @@ async def run_pinterest_repeat(
         session,
         generation_id=generation_id,
         user_id=user.id,
+        recipe=recipe,
     )
     if existing is not None:
         return _run_view(existing, replayed=True)
@@ -206,12 +228,13 @@ async def run_pinterest_repeat(
     except IntegrityError:
         # A concurrent retry can race the first request between the initial read
         # and INSERT. The deterministic primary key makes the loser fail before
-        # wallet debit; after rollback it simply replays the already-created task.
+        # wallet debit; after rollback it replays only if the request is identical.
         await session.rollback()
         replayed = await _replayed_generation(
             session,
             generation_id=generation_id,
             user_id=user.id,
+            recipe=recipe,
         )
         if replayed is None:
             raise HTTPException(status_code=409, detail="Не удалось подтвердить повтор запроса")
