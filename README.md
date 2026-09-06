@@ -13,7 +13,7 @@ This repository is one of the main portfolio projects in this GitHub profile bec
 - **FastAPI + aiogram 3** application with signed Telegram `initData` authentication.
 - **PostgreSQL + async SQLAlchemy + Alembic** for durable business state.
 - **Redis** for FSM/cache/wake-up/operational coordination.
-- **Transactional outbox** for reliable generation submission.
+- PostgreSQL **transactional outbox** for reliable generation submission.
 - Dedicated **generation, media and payment workers** with leased jobs and idempotent processing.
 - Multi-provider AI catalog: Nano Banana, Seedream, GPT Image, WAN, Seedance, Kling, Veo, Grok and Gemini families.
 - Server-side quote/debit pipeline so the client never becomes the pricing source of truth.
@@ -27,7 +27,7 @@ This repository is one of the main portfolio projects in this GitHub profile bec
 
 ### Customer Mini App
 
-The Mini App provides:
+The customer product is served from `/mini-app/` and provides:
 
 - photo and video generation;
 - dynamic model-specific forms driven by backend `ui_schema`;
@@ -108,6 +108,15 @@ POST   /api/v1/payments
 
 The backend model catalog is authoritative. Client applications consume model metadata and UI schemas instead of hardcoding provider parameter matrices.
 
+## Runtime configuration contracts
+
+Production configuration is environment-driven. Important runtime contracts include:
+
+- `KIE_UPLOAD_BASE_URL` — server-side KIE upload endpoint/base configuration; provider credentials remain server-side.
+- `ADMIN_SECURITY_KEY` — dedicated secret material for the privileged admin security contour.
+
+Real values belong in deployment secrets and are never committed to the repository.
+
 ## Stack
 
 | Area | Technology |
@@ -143,6 +152,7 @@ The root README is intentionally a portfolio-level overview. Detailed engineerin
 
 - [`docs/README.md`](docs/README.md)
 - [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
+- [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md)
 - [`docs/GENERATION_MINI_APP.md`](docs/GENERATION_MINI_APP.md)
 - [`docs/ADMIN_SECURITY.md`](docs/ADMIN_SECURITY.md)
 - [`docs/ADMIN_RUNBOOK.md`](docs/ADMIN_RUNBOOK.md)
