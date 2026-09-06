@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { haptic } from "@/lib/telegram";
+import { TrendCategoryAdmin } from "@/components/trend-category-admin";
+import { TrendCollectionAdmin } from "@/components/trend-collection-admin";
 import { trendCollectionsApi, type TrendCollection } from "@/lib/trend-collections-api";
 import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem } from "@/lib/types";
@@ -67,24 +69,24 @@ export function CatalogTrendFolders() {
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, []);
 
+  const refreshCollections = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await trendCollectionsApi.list();
+      setCollections((response.items || []).filter((folder) => folder.system_key !== "trends"));
+      setError("");
+    } catch (cause) {
+      setCollections([]);
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить категории");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!host) return;
-    let alive = true;
-    setLoading(true);
-    void trendCollectionsApi.list()
-      .then((response) => {
-        if (!alive) return;
-        setCollections((response.items || []).filter((folder) => folder.system_key !== "trends"));
-        setError("");
-      })
-      .catch((cause) => {
-        if (!alive) return;
-        setCollections([]);
-        setError(cause instanceof Error ? cause.message : "Не удалось загрузить категории");
-      })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [host]);
+    void refreshCollections();
+  }, [host, refreshCollections]);
 
   const selected = useMemo(
     () => collections.find((folder) => folder.id === selectedId) || null,
@@ -130,7 +132,9 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folders-copy{display:grid;gap:4px;min-width:0}
         .catalog-trend-folders .home-trend-folders-copy h2{margin:0;font-size:24px;line-height:1;letter-spacing:-.04em}
         .catalog-trend-folders .home-trend-folders-copy p{margin:2px 0 0;color:var(--muted);font-size:12px;line-height:1.4}
+        .catalog-trend-folders .home-trend-folders-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
         .catalog-trend-folders .home-trend-folders-back{border:1px solid rgba(255,255,255,.11);background:#17131d;color:#fff;border-radius:999px;padding:8px 11px;font-weight:850;flex-shrink:0}
+        .catalog-trend-folders .home-trend-folders-admin{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-height:0}
         .catalog-trend-folders .home-trend-folder-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
         .catalog-trend-folders .home-trend-folder{position:relative;min-height:158px;overflow:hidden;border:1px solid rgba(190,117,255,.24);border-radius:23px;background:radial-gradient(circle at 80% 12%,rgba(170,74,255,.2),transparent 42%),linear-gradient(145deg,#15101e,#09070d);color:#fff;padding:0;text-align:left;box-shadow:0 16px 38px rgba(0,0,0,.2)}
         .catalog-trend-folders .home-trend-folder-preview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.52}
@@ -161,8 +165,14 @@ export function CatalogTrendFolders() {
           <h2>{selected.title}</h2>
           {selected.description ? <p>{selected.description}</p> : null}
         </div>
-        <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Категории</button>
-      </div> : null}
+        <div className="home-trend-folders-actions">
+          <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Категории</button>
+          <TrendCollectionAdmin onChanged={refreshCollections} />
+        </div>
+      </div> : <div className="home-trend-folders-admin" aria-label="Управление шаблонами и категориями">
+        <TrendCollectionAdmin onChanged={refreshCollections} />
+        <TrendCategoryAdmin onChanged={refreshCollections} />
+      </div>}
       {error ? <div className="home-trend-folders-error" role="alert">{error}</div> : null}
       {!selected ? loading ? <div className="home-trend-folders-empty">Загружаю категории…</div> : collections.length ? <div className="home-trend-folder-grid">
         {collections.map((folder) => <button className="home-trend-folder" type="button" key={folder.id} onClick={() => {
@@ -170,7 +180,10 @@ export function CatalogTrendFolders() {
           setSelectedId(folder.id);
           setMediaType(Number(folder.photo_count || 0) > 0 || Number(folder.video_count || 0) === 0 ? "image" : "video");
         }}>
-          {folder.preview_url ? <img className="home-trend-folder-preview" src={folder.preview_url} alt="" loading="lazy" /> : null}
+          {folder.preview_url ? folder.preview_media_type === "video"
+            ? <video className="home-trend-folder-preview" src={folder.preview_url} muted autoPlay loop playsInline preload="metadata" />
+            : <img className="home-trend-folder-preview" src={folder.preview_url} alt="" loading="lazy" />
+            : null}
           <span className="home-trend-folder-card-copy">
             <strong>{folder.title}</strong>
             {folder.description ? <small>{folder.description}</small> : null}
