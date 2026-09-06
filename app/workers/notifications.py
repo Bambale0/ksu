@@ -237,10 +237,10 @@ async def _generation_for_notification(
 ) -> Generation | None:
     if notification.kind not in _GENERATION_NOTIFICATION_KINDS:
         return None
-    # Generation notifications use Generation.id as Notification.id, which gives
-    # the durable outbox a stable domain reference. Older queued rows with random
-    # notification UUIDs deliberately fall back to the generic text sender.
-    generation = await session.get(Generation, notification.id)
+    # New rows carry an explicit generation FK. Keep a fallback for legacy rows
+    # created before that column existed, where Notification.id == Generation.id.
+    generation_id = notification.generation_id or notification.id
+    generation = await session.get(Generation, generation_id)
     if generation is None or generation.user_id != notification.user_id:
         return None
     return generation
