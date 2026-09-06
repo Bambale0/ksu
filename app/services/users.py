@@ -34,16 +34,9 @@ class UserService:
         user = await cls.get_by_telegram_id(session, telegram_user.id)
         if user is not None:
             cls._sync_telegram_profile(user, telegram_user)
-            # A signed Telegram startapp referral may be the user's first
-            # attributed visit even if they opened ROXY earlier without a link.
-            # Attach only when no relation exists; ReferralAntifraudService is
-            # idempotent and never reassigns an already attributed user.
-            if inviter_telegram_id:
-                await ReferralAntifraudService.attach_new_user(
-                    session,
-                    visitor=user,
-                    inviter_telegram_id=inviter_telegram_id,
-                )
+            # Referral attribution is registration-only. A later startapp/share
+            # link must never attach an already existing account, even when that
+            # account currently has no referral relation.
             return user
 
         # A Mini App cold boot fan-outs several authenticated requests at once.
