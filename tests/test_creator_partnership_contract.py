@@ -73,6 +73,10 @@ def test_creator_worker_is_deployed_and_periodic() -> None:
     assert "python -m app.workers.creator_partnership" in compose
     assert "CreatorPartnershipService.grant_due_current_period" in worker
     assert "creator_partnership_grant_interval_seconds" in worker
+    assert "settings.worker_stale_after_seconds // 3" in worker
+    assert "next_grant_at = 0.0" in worker
+    assert "now = time.monotonic()" in worker
+    assert "await asyncio.sleep(heartbeat_interval)" in worker
     assert "creator_partnership_grant_interval_seconds: int = 3600" in config
     assert "CREATOR_PARTNERSHIP_GRANT_INTERVAL_SECONDS=3600" in env
 
