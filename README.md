@@ -1,211 +1,143 @@
-# KSU / ROXY
+# ROXY AI Platform
 
-Production Telegram AI content platform: Telegram bot + ROXY Mini App + FastAPI backend + PostgreSQL/Redis workers + Kie generation pipeline + payments + privileged admin console + verified PostgreSQL backup operations.
+> **Production AI content platform** · FastAPI · PostgreSQL · Redis · Telegram Mini App · async workers · payments · object storage · CI/CD
+>
+> Repository codename: `ksu`.
 
-**Documentation status:** synchronized with the production code baseline on **2026-08-20**. Start with [`docs/README.md`](docs/README.md).
+ROXY is a production-grade platform for AI image and video generation. It combines a Telegram bot, a customer Mini App, a FastAPI backend, durable background workers, billing, creator/referral mechanics, a privileged admin console, and production operations in one system.
 
-## Current product
+This repository is one of the main portfolio projects in this GitHub profile because it demonstrates not only AI API integration, but also backend architecture, reliability, security, payments, observability, and deployment.
 
-### User Mini App
+## Engineering highlights
 
-- `/mini-app/` is the ROXY user product.
-- Primary customer navigation: Create, Prompts, My ROX, Earn, Profile, with additional Studio/history/discovery surfaces mounted inside the same shell.
-- Create opens a media-first chooser and then independent **Photo** or **Video** generation flows. Selecting Video no longer routes through the home screen.
-- Model/product cards feed the existing dynamic builder. The backend `ui_schema` remains the source of truth for fields, scenarios, validation hints and billing duration.
-- Quote: `POST /api/v1/generations/quote`.
-- Create: `POST /api/v1/generations` with signed Telegram `initData`.
-- Local media upload: `POST /api/v1/uploads/kie`; provider credentials never reach the browser.
-- Product-owned media ingestion, result polling, history/reuse, wallet, profile, referrals, creator/partner flows, feed/trends and prompt tools are implemented in the same product shell.
+- **FastAPI + aiogram 3** application with signed Telegram `initData` authentication.
+- **PostgreSQL + async SQLAlchemy + Alembic** for durable business state.
+- **Redis** for FSM/cache/wake-up/operational coordination.
+- PostgreSQL **transactional outbox** for reliable generation submission.
+- Dedicated **generation, media and payment workers** with leased jobs and idempotent processing.
+- Multi-provider AI catalog: Nano Banana, Seedream, GPT Image, WAN, Seedance, Kling, Veo, Grok and Gemini families.
+- Server-side quote/debit pipeline so the client never becomes the pricing source of truth.
+- Product-owned **S3-compatible media storage** instead of relying on temporary provider URLs.
+- Protected admin application with **RBAC, TOTP MFA, step-up confirmation and audit trail**.
+- Prometheus metrics, operational health checks and optional OpenTelemetry tracing.
+- Automated PostgreSQL backups with validation, checksums and pre-migration backup gates.
+- GitHub Actions release flow with exact-SHA deployment and production verification.
 
-### Generation catalog
+## Product surfaces
 
-Current backend families include Nano Banana, Seedream, GPT Image, WAN, Seedance, Kling, Veo, Grok and Gemini variants implemented in `ModelCatalog`.
+### Customer Mini App
 
-WAN 2.7 includes both video generation/editing and a photo generation/editing product backed by Kie `wan/2-7-image`.
+The customer product is served from `/mini-app/` and provides:
 
-Current Kling coverage includes:
+- photo and video generation;
+- dynamic model-specific forms driven by backend `ui_schema`;
+- uploads and reference-based generation;
+- generation history and reuse;
+- wallet and payments;
+- public feed and trends;
+- prompt marketplace/tools;
+- referrals, creator and partner flows;
+- profile and account surfaces.
 
-- Kling 2.5 Turbo Pro Text to Video (`kling/v2-5-turbo-text-to-video-pro`);
-- Kling 2.5 Turbo Pro Image to Video (`kling/v2-5-turbo-image-to-video-pro`), including the current optional tail frame;
-- Kling AI Avatar Standard (`kling/ai-avatar-standard`);
-- Kling AI Avatar Pro (`kling/ai-avatar-pro`).
+### Telegram bot
 
-These are implemented from the current Kie callable contracts rather than copied from the historical Tanya payloads. Avatar billing uses ROXY `billing_seconds` for the source-audio duration and does not send a fake provider `duration` field. See `docs/KLING_25_AVATAR_CONTRACT.md`.
+Telegram acts as a native product channel and entry point while the generation/business logic remains in the backend rather than being tied to chat handlers.
 
-The runtime model catalog is authoritative:
+### Admin console
 
-```text
-GET /api/v1/generations/models
-```
+A separate privileged interface covers user, generation, payment, withdrawal, referral, promo, pricing and security operations. High-impact actions are protected by explicit permissions and MFA policies.
 
-Do not hardcode provider parameter matrices in clients. The Mini App consumes the returned model metadata and `ui_schema`.
-
-### ROX and generation pricing
-
-Public denomination:
-
-```text
-1 ROX = 1 RUB
-```
-
-Generation billing is server-side:
-
-```text
-flat image:       cost_rox = flat_price_rox
-per-second video: cost_rox = unit_price_rox × billing_seconds
-```
-
-Current public pricing baseline:
-
-| Product | Public price |
-| --- | ---: |
-| Nano Banana PRO | 25 ROX |
-| WAN 2.7 photo | 20 ROX |
-| GPT Image 2 | 20 ROX |
-| Nano Banana 2 | 25 ROX |
-| Nano Banana 2 Lite | 25 ROX |
-| Seedream 4.5 | 20 ROX |
-| Seedream 5 Pro | 20 ROX |
-| Seedance 2.0 480p / 720p / 1080p | 40 / 50 / 60 ROX/s |
-| Seedance 2.5 480p / 720p / 1080p | 50 / 60 / 70 ROX/s |
-| Seedance 2.5 4K | 90 ROX/s, reserved until callable provider support is exposed |
-| Kling 2.5 Turbo Pro 5s / 10s | 40 / 80 ROX |
-| Kling AI Avatar Standard / Pro | 100 / 150 ROX/s |
-| Kling 3.0 | 30 ROX/s |
-| Veo 3.1 | 35 ROX/s |
-| Grok | 15 ROX/s |
-| Grok Imagine 1.5 | 30 ROX/s |
-| Gemini Omni | from 30 ROX/s |
-| Kling Motion 2.6 720p / 1080p | 20 / 30 ROX/s |
-| Kling Motion 3.0 720p / 1080p | 60 / 80 ROX/s |
-
-Exact model IDs and live values come from the backend catalog and published pricing overrides. If a model has multiple variants, the server resolves the applicable model/parameter price tier before both quote and debit.
-
-### Live admin pricing
-
-`/admin-app/` is the separate privileged operations console. The Admin Tariffs contour can publish `generation_pricing` overrides.
-
-Important guarantees:
-
-- published generation pricing becomes effective in runtime without a client deploy;
-- quote and actual wallet debit use the same pricing resolver;
-- the most recent published pricing is restored from PostgreSQL after application restart;
-- invalid model IDs, incompatible price modes and unsupported tier parameters are rejected;
-- publish requires `pricing.manage`, explicit confirmation and fresh MFA step-up according to the admin security policy.
-
-See `docs/ADMIN_CONSOLE.md`, `docs/ADMIN_RUNBOOK.md` and `docs/GENERATION_MINI_APP.md`.
-
-### Promo slides / assets
-
-The ROXY home promo carousel uses repository-owned user-supplied artwork. Runtime sources:
+## Architecture
 
 ```text
-app/web/mini_app/roxy-partner-referrals-slide-source.webp
-app/web/mini_app/roxy-creator-rewards-slide-source.webp
-```
-
-Documentation mirrors are stored under `docs/assets/roxy-promo/`. The approved compositions must be preserved exactly: no generative redraw, restyling, re-typesetting or crop. The carousel uses contain-style rendering and no visual filter/transform processing.
-
-## Generation reliability
-
-- Kie Market unified task API + `recordInfo` reconciliation.
-- Kie callback HMAC verification.
-- PostgreSQL **transactional outbox** for durable generation submission.
-- `generation-worker` uses leased rows and `FOR UPDATE SKIP LOCKED`.
-- Redis wake-up is latency optimization; PostgreSQL is durable work state.
-- Recovery for stale submission/generation states and idempotent refunds on unrecoverable provider failure.
-- Successful results create durable media ingest work; `media-worker` copies bounded HTTPS sources into private product-owned S3-compatible storage.
-- Deterministic storage keys make retries converge safely.
-
-## PostgreSQL backup operations
-
-- Production deploy creates a **pre-migration** PostgreSQL custom-format archive before Alembic.
-- The pre-deploy archive must be non-empty, parse successfully through `pg_restore --list` and receive a SHA-256 sidecar before migration continues.
-- `backup-worker` runs from `postgres:17-alpine` with a private `db_backups` volume.
-- Periodic archives default to every 3 hours, newest 16 retained, with backup-on-start enabled.
-- A periodic archive is published only after custom-format validation and checksum generation; failed attempts retry after 60 seconds until success.
-- Dump files are created with private permissions (`umask 077`).
-- Production deploy explicitly starts/verifies `backup-worker`; customer app startup does not wait for a long backup to complete.
-- Local Docker-volume retention is **not** off-host disaster recovery. Encrypted off-host copies/snapshots and restore drills remain mandatory operations work.
-- Database dumps are not sent through Telegram/chat by this implementation.
-
-See `docs/DATABASE_BACKUPS.md` and `docs/GITHUB_PRODUCTION_DEPLOY.md`.
-
-## Payments and economy
-
-- **1 ROX = 1 RUB**.
-- 50 ROX welcome bonus.
-- 30 ROX inviter bonus.
-- 5 ROX paid prompt-repeat reward to the original author; no self-reward.
-- Referral top-up rewards: 30% level 1, 5% level 2.
-- Minimum partner withdrawal: 3,000 ROX.
-- Internal spend ROX and withdrawable partner earnings remain separate accounting domains.
-- Payment intents are idempotent and provider reconciliation is durable.
-- The active customer checkout is the hosted card route backed by Lava Top and exposed publicly as `card` / “Оплата картой”; Crypto Pay, T-Bank and YooKassa code paths remain reserve integrations documented in the payment/runbook docs.
-
-## Admin/security
-
-The repository ships a protected visual admin application at `/admin-app/` plus the privileged API/security contour:
-
-- separate admin identities/sessions;
-- deny-by-default RBAC;
-- TOTP MFA and recovery codes;
-- fresh step-up for high-impact actions;
-- audit trail;
-- user/support/generation/payment/withdrawal/promo/referral/security operations;
-- live tariff publishing and rollback workflow.
-
-The admin bearer token is held in memory by the client and is not persisted to browser storage.
-
-## Stack
-
-- Python 3.12
-- FastAPI + aiogram 3
-- PostgreSQL 17 + async SQLAlchemy 2
-- Redis 7.4
-- Alembic
-- private S3-compatible object storage
-- vanilla HTML/CSS/JavaScript Telegram Mini Apps
-- Prometheus + optional OpenTelemetry
-- GitHub Actions CI / production deploy workflow
-
-## Runtime topology
-
-```text
-Telegram / browser
+Telegram / Mini App
         |
         v
  HTTPS reverse proxy
         |
         v
- FastAPI app :8000 --------------------> PostgreSQL
-    |                                      |-- business state
-    |                                      |-- generation outbox
-    |                                      |-- published tariffs/admin audit
-    |                                      |-- media/payment/history/referral state
-    |
-    +--> Redis --------------------------> limits / FSM / wake / telemetry
-    |          |
-    |          +--> generation-worker --------> Kie.ai
-    |          +--> media-worker -------------> private object storage
-    |          +--> payment-worker -----------> payment providers
-    |
-    +--> /mini-app/   ROXY customer UI
-    +--> /admin-app/  privileged operator UI
+ FastAPI application
+    |        |          |
+    |        |          +--> Admin API / Admin App
+    |        |
+    |        +--> Redis -----------------------+
+    |                                          |
+    v                                          v
+PostgreSQL                              background workers
+  |                                     |-- generation-worker --> AI providers
+  |                                     |-- media-worker ------> object storage
+  |                                     +-- payment-worker ----> payment providers
+  |
+  +-- users / wallet / generations / outbox
+  +-- pricing / payments / referrals
+  +-- audit / admin / operational state
 
- backup-worker --------------------------> PostgreSQL
-       |
-       +---------------------------------> private db_backups volume
+backup-worker --> validated PostgreSQL archives
 ```
+
+## Reliability model
+
+External AI generation is asynchronous and failure-prone by nature, so the project treats provider calls as durable jobs rather than request/response-only operations.
+
+Key guarantees include:
+
+- durable submission state in PostgreSQL;
+- leased worker rows and safe concurrent processing;
+- callback verification;
+- recovery of stale generation states;
+- idempotent refunds and payment reconciliation;
+- deterministic media ingest keys so retries converge safely;
+- exact-SHA production deploys;
+- health and revision verification after deployment.
+
+## API examples
+
+```text
+GET    /health/live
+GET    /health/ready
+GET    /health/operational
+GET    /metrics
+GET    /api/v1/generations/models
+POST   /api/v1/generations/quote
+POST   /api/v1/generations
+GET    /api/v1/generations/{generation_id}
+POST   /api/v1/uploads/kie
+GET    /api/v1/payments/packages
+POST   /api/v1/payments
+```
+
+The backend model catalog is authoritative. Client applications consume model metadata and UI schemas instead of hardcoding provider parameter matrices.
+
+## Runtime configuration contracts
+
+Production configuration is environment-driven. Important runtime contracts include:
+
+- `KIE_UPLOAD_BASE_URL` — server-side KIE upload endpoint/base configuration; provider credentials remain server-side.
+- `ADMIN_SECURITY_KEY` — dedicated secret material for the privileged admin security contour.
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` — optional OpenTelemetry trace exporter endpoint.
+
+Real values belong in deployment secrets and are never committed to the repository.
 
 ## Observability
 
-- `GET /metrics` exposes Prometheus metrics (protect it with `METRICS_BEARER_TOKEN` when configured).
-- `GET /health/operational` reports operational readiness/worker health.
-- OpenTelemetry traces are exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` when configured.
-- Production alert rules live in `ops/prometheus-alerts.yml`.
-- Detailed metrics, worker heartbeat and high-cardinality guidance are in `docs/OBSERVABILITY.md`.
-- Database backup freshness/restore drills are operational checks documented in `docs/DATABASE_BACKUPS.md`.
+- `GET /metrics` exposes Prometheus metrics.
+- `GET /health/operational` reports operational worker/readiness state.
+- OpenTelemetry traces can be exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`.
+- Production alert rules live in [`ops/prometheus-alerts.yml`](ops/prometheus-alerts.yml).
+- Detailed metric and worker-heartbeat contracts are documented in [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+
+## Stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | Python 3.12, FastAPI, aiogram 3 |
+| Database | PostgreSQL 17, async SQLAlchemy 2, Alembic |
+| Runtime coordination | Redis 7 |
+| Storage | private S3-compatible object storage |
+| Frontend | Telegram Mini App, HTML/CSS/JavaScript |
+| Observability | Prometheus, optional OpenTelemetry |
+| Delivery | Docker, GitHub Actions, exact-SHA production deploy |
+| Testing | pytest + focused contract/regression suites |
 
 ## Local development
 
@@ -214,61 +146,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Useful endpoints:
-
-```text
-GET    /health/live
-GET    /health/ready
-GET    /health/operational
-GET    /metrics
-GET    /mini-app/
-GET    /admin-app/
-GET    /api/v1/generations/models
-POST   /api/v1/generations/quote
-POST   /api/v1/generations
-GET    /api/v1/generations
-GET    /api/v1/generations/{generation_id}
-POST   /api/v1/uploads/kie
-GET    /api/v1/payments/packages
-POST   /api/v1/payments
-```
-
-Swagger/ReDoc are disabled in production.
-
-## Core production configuration
-
-Start from `.env.example`. Key groups:
-
-```dotenv
-APP_ENV=production
-PUBLIC_BASE_URL=https://api.example.com
-DATABASE_URL=postgresql+asyncpg://...
-REDIS_URL=redis://...
-BOT_TOKEN=...
-TELEGRAM_WEBHOOK_SECRET=...
-
-DB_BACKUP_INTERVAL_SECONDS=10800
-DB_BACKUP_RETENTION_COUNT=16
-DB_BACKUP_ON_START=true
-
-INTERNAL_CREDIT_RUB=1
-KIE_API_KEY=...
-KIE_UPLOAD_BASE_URL=...
-KIE_WEBHOOK_HMAC_KEY=...
-GENERATION_PRICING_JSON={}
-
-METRICS_BEARER_TOKEN=...
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=...
-
-ADMIN_SECURITY_KEY=<dedicated-random-secret-32+-chars>
-ADMIN_REQUIRE_MFA=true
-```
-
-`KIE_UPLOAD_BASE_URL` controls the configured Kie upload base used by the server-side upload integration; it is not exposed as a provider credential to the Mini App.
-
-A published admin tariff can override generation pricing at runtime; `GENERATION_PRICING_JSON` is therefore not the only production pricing source. See the admin runbook before changing pricing manually in environment configuration.
-
-## Migrations / CI
+Core verification:
 
 ```bash
 alembic upgrade head
@@ -277,22 +155,20 @@ python -m compileall -q app tests
 pytest -q
 ```
 
-CI also syntax-checks Mini App/Admin JavaScript and executes focused ROXY/admin/generation/operations contracts before full regression.
-
 ## Documentation
 
-Canonical documentation and operations references:
+The root README is intentionally a portfolio-level overview. Detailed engineering and operational documentation lives in `docs/`:
 
-- `docs/README.md`
-- `docs/API_REFERENCE.md`
-- `docs/OPERATIONS_RUNBOOK.md`
-- `docs/GITHUB_PRODUCTION_DEPLOY.md`
-- `docs/DATABASE_BACKUPS.md`
-- `docs/GENERATION_MINI_APP.md`
-- `docs/KLING_25_AVATAR_CONTRACT.md`
-- `docs/ADMIN_SECURITY.md`
-- `docs/ADMIN_RUNBOOK.md`
-- `docs/OBSERVABILITY.md`
-- `docs/ROXY_RELEASE_ACCEPTANCE.md`
+- [`docs/README.md`](docs/README.md)
+- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)
+- [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md)
+- [`docs/GENERATION_MINI_APP.md`](docs/GENERATION_MINI_APP.md)
+- [`docs/ADMIN_SECURITY.md`](docs/ADMIN_SECURITY.md)
+- [`docs/ADMIN_RUNBOOK.md`](docs/ADMIN_RUNBOOK.md)
+- [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md)
+- [`docs/DATABASE_BACKUPS.md`](docs/DATABASE_BACKUPS.md)
+- [`docs/GITHUB_PRODUCTION_DEPLOY.md`](docs/GITHUB_PRODUCTION_DEPLOY.md)
 
-Historical `parity-*` files are implementation records, not current pricing/model/navigation/operations authority.
+## Portfolio note
+
+The interesting part of ROXY is not a single model integration. The project demonstrates how to turn unreliable external AI APIs into a production product with durable jobs, accounting, media ownership, security controls, operational visibility, backups and repeatable releases.
