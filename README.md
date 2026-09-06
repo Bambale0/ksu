@@ -114,8 +114,17 @@ Production configuration is environment-driven. Important runtime contracts incl
 
 - `KIE_UPLOAD_BASE_URL` — server-side KIE upload endpoint/base configuration; provider credentials remain server-side.
 - `ADMIN_SECURITY_KEY` — dedicated secret material for the privileged admin security contour.
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` — optional OpenTelemetry trace exporter endpoint.
 
 Real values belong in deployment secrets and are never committed to the repository.
+
+## Observability
+
+- `GET /metrics` exposes Prometheus metrics.
+- `GET /health/operational` reports operational worker/readiness state.
+- OpenTelemetry traces can be exported through `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`.
+- Production alert rules live in [`ops/prometheus-alerts.yml`](ops/prometheus-alerts.yml).
+- Detailed metric and worker-heartbeat contracts are documented in [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
 
 ## Stack
 
