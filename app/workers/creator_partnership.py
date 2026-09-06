@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -40,6 +41,9 @@ async def run_once() -> int:
 
 async def run() -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    grant_interval = max(60, settings.creator_partnership_grant_interval_seconds)
+    heartbeat_interval = max(5, min(30, max(1, settings.worker_stale_after_seconds // 3)))
+    next_grant_at = 0.0
     try:
         while True:
             try:
@@ -47,17 +51,21 @@ async def run() -> None:
             except RedisError:
                 logger.warning("Could not publish creator partnership worker heartbeat")
 
-            try:
-                created = await run_once()
-                if created:
-                    logger.info("Created %s creator partnership monthly grants", created)
-                    await _event(redis, "creator_partnership_grant_success")
-            except Exception:
-                WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
-                logger.exception("Creator partnership grant pass failed")
-                await _event(redis, "creator_partnership_grant_failure")
-                await _event(redis, "creator_partnership_worker_loop_error")
-            await asyncio.sleep(max(60, settings.creator_partnership_grant_interval_seconds))
+            now = time.monotonic()
+            if now >= next_grant_at:
+                try:
+                    created = await run_once()
+                    if created:
+                        logger.info("Created %s creator partnership monthly grants", created)
+                        await _event(redis, "creator_partnership_grant_success")
+                except Exception:
+                    WORKER_LOOP_ERRORS.labels(worker=WORKER_NAME).inc()
+                    logger.exception("Creator partnership grant pass failed")
+                    await _event(redis, "creator_partnership_grant_failure")
+                    await _event(redis, "creator_partnership_worker_loop_error")
+                next_grant_at = now + grant_interval
+
+            await asyncio.sleep(heartbeat_interval)
     finally:
         await redis.aclose()
         await engine.dispose()
