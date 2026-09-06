@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { api } from "@/lib/api";
+import { resolveAdminAccess } from "@/lib/admin-access";
 import {
   clearTrendCollectionTarget,
   setTrendCollectionTarget,
@@ -113,9 +113,9 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
 
   useEffect(() => {
     let alive = true;
-    void api.me()
-      .then((me) => { if (alive) setIsAdmin(Boolean(me.is_admin)); })
-      .catch(() => { if (alive) setIsAdmin(false); });
+    void resolveAdminAccess().then((admin) => {
+      if (alive) setIsAdmin(admin);
+    });
     return () => { alive = false; };
   }, []);
 

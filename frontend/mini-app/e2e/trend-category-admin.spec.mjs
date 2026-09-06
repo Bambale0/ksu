@@ -77,12 +77,13 @@ const adsTrend = {
   },
 };
 
-async function mockAdminHome(page, { meFailures = 0 } = {}) {
+async function mockAdminHome(page, { meFailures = 0, meFailureWindowMs = 0 } = {}) {
   const state = {
     categories: [systemCategory, ugcCategory, adsCategory],
     assignments: { trend_ugc: 'ugc', trend_ads: 'ads' },
     createdBody: null,
     meCalls: 0,
+    firstMeAt: 0,
   };
 
   await page.addInitScript(() => {
@@ -107,7 +108,9 @@ async function mockAdminHome(page, { meFailures = 0 } = {}) {
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
     if (path === '/api/v1/me') {
       state.meCalls += 1;
-      if (state.meCalls <= meFailures) return json({ detail: 'Telegram WebView bootstrap is not ready yet' }, 503);
+      if (!state.firstMeAt) state.firstMeAt = Date.now();
+      const bootstrapWindowActive = meFailureWindowMs > 0 && Date.now() - state.firstMeAt < meFailureWindowMs;
+      if (state.meCalls <= meFailures || bootstrapWindowActive) return json({ detail: 'Telegram WebView bootstrap is not ready yet' }, 503);
       return json({ id: 'admin_1', telegram_id: 777, first_name: 'Admin', username: 'admin_user', balance_rox: '150.00', is_admin: true });
     }
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
@@ -154,6 +157,14 @@ test('admin can search categories and trends by hashtag, assign a result, and cr
   await page.goto('/mini-app/?route=home');
 
   const folders = page.locator('#roxy-home-trend-folders');
+  const templates = folders.getByRole('button', { name: 'Шаблоны', exact: true });
+  await expect(templates).toBeVisible();
+  await templates.click();
+  const templatesDialog = page.getByRole('dialog', { name: 'Управление готовыми шаблонами' });
+  await expect(templatesDialog).toBeVisible();
+  await expect(templatesDialog.getByRole('button', { name: '＋ Новый тренд' })).toBeVisible();
+  await templatesDialog.getByRole('button', { name: 'Закрыть' }).click();
+
   const manage = folders.getByTestId('trend-category-admin-open');
   await expect(manage).toBeVisible();
   await expect(manage).toHaveText('Управлять');
@@ -191,12 +202,14 @@ test('admin can search categories and trends by hashtag, assign a result, and cr
   await expect(dialog.getByTestId('trend-category-admin-card-beauty')).toBeVisible();
 });
 
-test('iPhone admin recovers the trend management control after a transient /me bootstrap failure', async ({ page }) => {
+test('iPhone admin recovers template and category management after a transient /me bootstrap failure', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const state = await mockAdminHome(page, { meFailures: 1 });
+  const state = await mockAdminHome(page, { meFailureWindowMs: 320 });
   await page.goto('/mini-app/?route=home');
 
-  const manage = page.locator('#roxy-home-trend-folders').getByTestId('trend-category-admin-open');
+  const folders = page.locator('#roxy-home-trend-folders');
+  await expect(folders.getByRole('button', { name: 'Шаблоны', exact: true })).toBeVisible({ timeout: 6_000 });
+  const manage = folders.getByTestId('trend-category-admin-open');
   await expect(manage).toBeVisible({ timeout: 6_000 });
   await expect(manage).toHaveText('Управлять');
   await expect.poll(() => state.meCalls).toBeGreaterThanOrEqual(2);
@@ -214,4 +227,5 @@ test('category management is hidden from non-admin users', async ({ page }) => {
   await page.goto('/mini-app/?route=home');
 
   await expect(page.getByTestId('trend-category-admin-open')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Шаблоны', exact: true })).toHaveCount(0);
 });

@@ -115,9 +115,12 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
 
 def test_mini_app_admin_can_edit_reassign_and_hide_existing_trends() -> None:
     admin = _source("frontend/mini-app/components/trend-collection-admin.tsx")
+    access = _source("frontend/mini-app/lib/admin-access.ts")
     client = _source("frontend/mini-app/lib/trend-admin-api.ts")
 
-    assert "Boolean(me.is_admin)" in admin
+    assert "resolveAdminAccess" in admin
+    assert "Boolean(me.is_admin)" in access
+    assert "attempts = 4" in access
     assert "trendAdminApi.update(original.id" in admin
     assert "...original.payload" in admin
     assert "tags: parseTags(editingTrend.tags)" in admin
