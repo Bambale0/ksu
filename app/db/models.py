@@ -260,6 +260,9 @@ class Notification(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    generation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("generations.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     kind: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)

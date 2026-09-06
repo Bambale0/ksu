@@ -180,3 +180,30 @@ async def test_lava_incorrect_email_is_user_validation_error() -> None:
             )
     finally:
         await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_deterministic_lava_400_is_validation_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v3/invoice"
+        return httpx.Response(
+            400,
+            request=request,
+            json={"error": "Product with offer id = 'fixed' is not dynamic price"},
+        )
+
+    client = CardCheckoutClient("key", "https://gate.lava.top")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://gate.lava.top", transport=httpx.MockTransport(handler)
+    )
+    try:
+        with pytest.raises(PaymentProviderValidationError, match="отклонила запрос оплаты"):
+            await client.create_invoice(
+                email="buyer@example.com",
+                offer_id="fixed",
+                currency="RUB",
+                amount=Decimal("108.70"),
+            )
+    finally:
+        await client.aclose()

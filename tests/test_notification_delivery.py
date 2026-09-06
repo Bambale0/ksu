@@ -139,12 +139,16 @@ async def test_generation_success_transition_queues_domain_linked_delivery() -> 
         }
         await session.commit()
 
-        notification = await session.get(Notification, generation.id)
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
         assert notification is not None
+        assert notification.id != generation.id
+        assert notification.generation_id == generation.id
         assert notification.kind == "generation_succeeded"
         delivery = await session.scalar(
             select(NotificationDelivery).where(
-                NotificationDelivery.notification_id == generation.id
+                NotificationDelivery.notification_id == notification.id
             )
         )
         assert delivery is not None
@@ -182,9 +186,13 @@ async def test_generation_result_is_delivered_as_media_and_recorded(monkeypatch:
         }
         await session.commit()
 
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
+        assert notification is not None
         delivery = await session.scalar(
             select(NotificationDelivery).where(
-                NotificationDelivery.notification_id == generation.id
+                NotificationDelivery.notification_id == notification.id
             )
         )
         assert delivery is not None
@@ -248,9 +256,13 @@ async def test_generation_delivery_guard_does_not_send_media_twice() -> None:
         }
         await session.commit()
 
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
+        assert notification is not None
         delivery = await session.scalar(
             select(NotificationDelivery).where(
-                NotificationDelivery.notification_id == generation.id
+                NotificationDelivery.notification_id == notification.id
             )
         )
         assert delivery is not None
@@ -271,6 +283,72 @@ async def test_generation_delivery_guard_does_not_send_media_twice() -> None:
         assert delivery is not None
         assert delivery.status == "sent"
         assert delivery.external_message_id == "991"
+
+
+@pytest.mark.asyncio
+async def test_generation_can_emit_multiple_terminal_notifications_without_pk_collision() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=970000000000011, first_name="Retry lifecycle")
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="image",
+            status="queued",
+            prompt="retry me",
+            cost_rox=Decimal("25.00"),
+            parameters={"_model_id": "nano-banana-pro"},
+        )
+        session.add(generation)
+        await session.commit()
+
+        # Reproduce the production shape from before the migration: a notification
+        # already owns the generation UUID. New terminal events must not reuse it.
+        session.add(
+            Notification(
+                id=generation.id,
+                user_id=user.id,
+                generation_id=None,
+                kind="generation_succeeded",
+                title="Legacy generation notification",
+                body="legacy",
+                is_read=False,
+            )
+        )
+        await session.commit()
+
+        generation.status = "failed"
+        generation.error = "temporary provider error"
+        await session.commit()
+
+        generation.status = "queued"
+        await session.commit()
+        generation.status = "succeeded"
+        generation.error = None
+        generation.result_url = "https://cdn.example/recovered.png"
+        await session.commit()
+
+        notifications = list(
+            (
+                await session.scalars(
+                    select(Notification)
+                    .where(Notification.generation_id == generation.id)
+                    .order_by(Notification.created_at.asc())
+                )
+            ).all()
+        )
+        assert [item.kind for item in notifications] == [
+            "generation_failed",
+            "generation_succeeded",
+        ]
+        assert len({item.id for item in notifications}) == 2
+        assert all(item.id != generation.id for item in notifications)
+        delivery_count = await session.scalar(
+            select(func.count()).select_from(NotificationDelivery).where(
+                NotificationDelivery.notification_id.in_([item.id for item in notifications])
+            )
+        )
+        assert int(delivery_count or 0) == 2
 
 
 @pytest.mark.asyncio

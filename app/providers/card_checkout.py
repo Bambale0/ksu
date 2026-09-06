@@ -103,15 +103,21 @@ class CardCheckoutClient:
             raw = response.json()
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:1000].replace("\n", " ")
-            if (
-                exc.response.status_code == 400
-                and "incorrect email to purchase" in body.lower()
-            ):
+            status = exc.response.status_code
+            if status == 400 and "incorrect email to purchase" in body.lower():
                 raise PaymentProviderValidationError(
                     "Lava Top не приняла этот email. Укажите другой email для чека."
                 ) from exc
+            # These are deterministic request/configuration rejections. Retrying the
+            # exact same create request cannot recover them, so do not leave a local
+            # payment in creation_unknown forever. Timeout/conflict/rate-limit statuses
+            # remain recoverable because the provider may have accepted the invoice.
+            if 400 <= status < 500 and status not in {408, 409, 425, 429}:
+                raise PaymentProviderValidationError(
+                    "Lava Top отклонила запрос оплаты. Попробуйте другой способ оплаты."
+                ) from exc
             raise PaymentProviderError(
-                f"Card checkout invoice creation failed: HTTP {exc.response.status_code}: {body}"
+                f"Card checkout invoice creation failed: HTTP {status}: {body}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Card checkout transport failed") from exc

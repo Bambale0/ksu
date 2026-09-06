@@ -36,18 +36,17 @@ def _add_notification(
     kind: str,
     title: str,
     body: str,
-    notification_id: uuid.UUID | None = None,
+    generation_id: uuid.UUID | None = None,
 ) -> None:
-    # Generation notifications intentionally reuse the generation UUID. This gives
-    # the durable notification outbox a stable domain reference without adding a
-    # second nullable metadata column or doing an unsafe "latest generation" lookup
-    # when several jobs finish at the same time. Other notification kinds keep a
-    # normal independent UUID.
-    notification_id = notification_id or uuid.uuid4()
+    # Notification rows always own their UUID. Domain linkage lives in an explicit
+    # nullable FK so a generation can emit more than one terminal notification over
+    # its lifetime (for example failed -> retry -> succeeded) without a PK collision.
+    notification_id = uuid.uuid4()
     session.add(
         Notification(
             id=notification_id,
             user_id=user_id,
+            generation_id=generation_id,
             kind=kind,
             title=title,
             body=body,
@@ -161,7 +160,7 @@ def _queue_generation_notification(
     generation.telegram_message_id = None
     _add_notification(
         session,
-        notification_id=generation.id,
+        generation_id=generation.id,
         user_id=generation.user_id,
         kind=kind,
         title=title,

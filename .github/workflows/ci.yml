@@ -44,6 +44,7 @@ jobs:
 
     env:
       APP_ENV: test
+      KSU_ALLOW_TEST_DATABASE: "1"
       DATABASE_URL: postgresql+asyncpg://ksu:ksu@127.0.0.1:5432/ksu
       REDIS_URL: redis://127.0.0.1:6379/0
       BOT_TOKEN: ""
