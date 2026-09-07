@@ -189,14 +189,13 @@ export type FeedComment = {
 export type TrendUserField = {
   key: string;
   label: string;
-  type: "text" | "number";
+  type: "text" | "number" | "date";
   required?: boolean;
   placeholder?: string;
   min?: number;
   max?: number;
   max_length?: number;
   suffix?: string;
-  default_value?: string;
 };
 
 export type TrendItem = {

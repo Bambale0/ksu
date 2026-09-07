@@ -24,15 +24,8 @@ function money(value?: string | null): string {
 function userFieldValid(field: TrendUserField, value: string): boolean {
   const clean = value.trim();
   if (!clean) return field.required === false;
-  if (field.type === "number") {
-    if (!TREND_USER_NUMBER_RE.test(clean)) return false;
-    const number = Number(clean.replace(",", "."));
-    if (!Number.isFinite(number)) return false;
-    if (typeof field.min === "number" && number < field.min) return false;
-    if (typeof field.max === "number" && number > field.max) return false;
-    return true;
-  }
-  return clean.length <= Math.max(1, Math.min(160, field.max_length || 80));
+  if (field.type === "number") return TREND_USER_NUMBER_RE.test(clean);
+  return clean.length <= Math.max(1, Math.min(160, field.max_length || 160));
 }
 
 function previewIsVideo(trend: TrendItem): boolean {
@@ -61,7 +54,7 @@ export default function TrendPage() {
     void api.trend(id)
       .then((item) => {
         setTrend(item);
-        setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, field.default_value || ""])));
+        setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, ""])));
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть тренд"))
       .finally(() => setLoading(false));
@@ -207,14 +200,18 @@ export default function TrendPage() {
                     <span>{field.label}{field.required === false ? "" : " *"}</span>
                     <div className="trend-user-field-input">
                       <input
-                        type="text"
+                        type={field.type === "date" ? "date" : "text"}
                         inputMode={field.type === "number" ? "decimal" : "text"}
                         value={value}
-                        maxLength={field.type === "text" ? Math.max(1, Math.min(160, field.max_length || 80)) : 32}
+                        maxLength={field.type === "date" ? undefined : Math.max(1, Math.min(160, field.max_length || 160))}
                         placeholder={field.placeholder || ""}
                         aria-invalid={Boolean(value) && !valid}
                         disabled={running}
-                        onChange={(event) => setUserValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                        onChange={(event) => {
+                          let nextValue = event.target.value;
+                          if (field.type === "number") nextValue = nextValue.replace(/[^0-9.,-]/g, "").slice(0, 160);
+                          setUserValues((current) => ({ ...current, [field.key]: nextValue }));
+                        }}
                       />
                       {field.suffix ? <span>{field.suffix}</span> : null}
                     </div>

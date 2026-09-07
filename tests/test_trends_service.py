@@ -140,51 +140,147 @@ async def test_usage_counter_failure_does_not_fail_created_generation(monkeypatc
     session.rollback.assert_awaited_once()
 
 
-def test_normalize_recipe_keeps_safe_user_fields_and_requires_placeholder() -> None:
+
+def test_normalize_recipe_uses_admin_selected_names_and_infers_field_types() -> None:
     recipe = TrendService.normalize_recipe("Birthday", {
-        "model_id": "nano-banana-pro", "prompt": "Happy birthday {{Возраст}}",
+        "model_id": "nano-banana-pro", "prompt": "Birthday portrait with festive typography",
         "preview_url": "https://cdn.example.invalid/birthday.jpg", "media_type": "image",
         "input_mode": "image", "min_references": 1, "max_references": 1,
         "parameters": {"aspect_ratio": "1:1", "resolution": "1K", "output_format": "png"},
-        "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}],
+        "user_fields": [
+            {"key": "Возраст", "label": "Возраст", "type": "text", "min": 1, "max": 120, "default_value": "28"},
+            {"key": "Имя", "label": "Имя", "type": "number"},
+            {"key": "Дата", "label": "Дата"},
+        ],
     })
-    assert recipe["user_fields"] == [{"key": "Возраст", "label": "Возраст", "type": "number", "required": True, "placeholder": "", "min": 1, "max": 120}]
-    with pytest.raises(TrendRecipeError, match="Возраст"):
-        TrendService.normalize_recipe("Broken", {
-            "model_id": "nano-banana-pro", "prompt": "No variable here",
-            "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
-            "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number"}],
-        })
-    with pytest.raises(TrendRecipeError, match="style"):
-        TrendService.normalize_recipe("Undeclared", {
-            "model_id": "nano-banana-pro", "prompt": "Happy birthday {{Возраст}} in {{style}}",
-            "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
-            "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number"}],
-        })
+    assert recipe["user_fields"] == [
+        {"key": "Возраст", "label": "Возраст", "type": "number", "required": True, "max_length": 160},
+        {"key": "Имя", "label": "Имя", "type": "text", "required": True, "max_length": 160},
+        {"key": "Дата", "label": "Дата", "type": "date", "required": True, "max_length": 160},
+    ]
+
+
+def test_normalize_recipe_keeps_legacy_prompt_tokens_working() -> None:
+    recipe = TrendService.normalize_recipe("Legacy", {
+        "model_id": "nano-banana-pro", "prompt": "Happy birthday {{Возраст}}, {{Имя}}!",
+        "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
+        "input_mode": "image", "min_references": 1, "max_references": 1,
+        "parameters": {"aspect_ratio": "1:1", "resolution": "1K", "output_format": "png"},
+    })
+    assert [field["key"] for field in recipe["user_fields"]] == ["Возраст", "Имя"]
+    assert recipe["user_fields"][0]["type"] == "number"
+    assert recipe["user_fields"][1]["type"] == "text"
 
 
 @pytest.mark.asyncio
-async def test_run_renders_declared_user_value_server_side_and_rejects_unknown(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_run_applies_admin_selected_values_as_server_side_overrides(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     item = _item()
-    item.payload["prompt"] = "Happy birthday {{Возраст}}"
-    item.payload["user_fields"] = [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}]
+    item.payload["prompt"] = "Birthday portrait with a cake and text from the original recipe"
+    item.payload["user_fields"] = [
+        {"key": "Возраст", "label": "Возраст", "type": "text"},
+        {"key": "Надпись", "label": "Надпись", "type": "number"},
+    ]
     session = AsyncMock()
     session.get.return_value = item
     session.scalar.return_value = item
     generation = _generation()
     create = AsyncMock(return_value=generation)
     monkeypatch.setattr(GenerationService, "create", create)
-    await TrendService.run(session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/user.jpg"], user_values={"Возраст": "28"})
-    assert create.await_args.kwargs["prompt"] == "Happy birthday 28"
+
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=["https://cdn.example.invalid/user.jpg"],
+        user_values={"Возраст": "31", "Надпись": "С юбилеем!"},
+    )
+    rendered = create.await_args.kwargs["prompt"]
+    assert rendered.startswith("Birthday portrait with a cake and text from the original recipe")
+    assert "- Возраст: 31" in rendered
+    assert "- Надпись: С юбилеем!" in rendered
+    assert "имеют приоритет" in rendered
+    assert "{{" not in rendered
+
     with pytest.raises(TrendRecipeError, match="лишние"):
-        await TrendService.run(session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/user.jpg"], user_values={"Возраст": "28", "prompt": "steal"})
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=["https://cdn.example.invalid/user.jpg"],
+            user_values={"Возраст": "31", "Надпись": "С юбилеем!", "prompt": "steal"},
+        )
 
 
 @pytest.mark.asyncio
-async def test_public_view_exposes_only_user_field_schema_not_hidden_prompt() -> None:
+async def test_run_validates_auto_number_without_admin_ranges(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     item = _item()
-    item.payload["prompt"] = "Happy birthday {{Возраст}}"
-    item.payload["user_fields"] = [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}]
+    item.payload["prompt"] = "Birthday portrait"
+    item.payload["user_fields"] = [{"key": "Возраст", "label": "Возраст", "min": 1, "max": 120}]
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=["https://cdn.example.invalid/user.jpg"],
+        user_values={"Возраст": "121"},
+    )
+    assert "- Возраст: 121" in create.await_args.kwargs["prompt"]
+
+    with pytest.raises(TrendRecipeError, match="должно быть числом"):
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=["https://cdn.example.invalid/user.jpg"],
+            user_values={"Возраст": "тридцать"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_substitutes_legacy_tokens_and_keeps_overrides(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _item()
+    item.payload["prompt"] = "На торте должно быть {{Возраст}} свечей, подпись {{Имя}}"
+    item.payload.pop("user_fields", None)
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=["https://cdn.example.invalid/user.jpg"],
+        user_values={"Возраст": "31", "Имя": "Игорь"},
+    )
+    rendered = create.await_args.kwargs["prompt"]
+    assert "На торте должно быть 31 свечей, подпись Игорь" in rendered
+    assert "- Возраст: 31" in rendered
+    assert "- Имя: Игорь" in rendered
+
+
+@pytest.mark.asyncio
+async def test_public_view_exposes_safe_empty_field_schema_not_hidden_prompt_or_defaults() -> None:
+    item = _item()
+    item.payload["prompt"] = "Birthday portrait"
+    item.payload["user_fields"] = [
+        {"key": "Возраст", "label": "Возраст", "type": "text", "min": 1, "max": 120, "default_value": "28"}
+    ]
     view = await TrendService.public_view(AsyncMock(), item)
-    assert view["user_fields"][0]["key"] == "Возраст"
-    assert "prompt" not in view and "Happy birthday" not in repr(view)
+    assert view["user_fields"] == [
+        {"key": "Возраст", "label": "Возраст", "type": "number", "required": True, "max_length": 160}
+    ]
+    assert "prompt" not in view and "Birthday portrait" not in repr(view)
+    assert "default_value" not in repr(view["user_fields"])
+    assert "min" not in view["user_fields"][0] and "max" not in view["user_fields"][0]

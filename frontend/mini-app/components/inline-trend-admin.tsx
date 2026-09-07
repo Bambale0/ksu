@@ -21,6 +21,26 @@ const REFERENCE_FIELDS = new Set([
   "first_frame",
 ]);
 const SINGLE_REFERENCE_FIELDS = new Set(["image_url", "first_frame_url", "first_frame"]);
+const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
+const NUMBER_FIELD_HINTS = ["возраст", "число", "цифр", "количество", "номер", "рост", "вес", "лет", "год", "свеч"];
+const DATE_FIELD_HINTS = ["дата", "date", "день рождения", "birthday"];
+
+function inferTemplateFieldType(field: string): TrendUserField["type"] {
+  const normalized = field.trim().toLowerCase();
+  if (DATE_FIELD_HINTS.some((hint) => normalized.includes(hint))) return "date";
+  return NUMBER_FIELD_HINTS.some((hint) => normalized.includes(hint)) ? "number" : "text";
+}
+
+function normalizedAdminField(label: string): TrendUserField {
+  const clean = label.replace(/[{}]/g, "").trim().slice(0, 48);
+  return {
+    key: clean,
+    label: clean,
+    type: inferTemplateFieldType(clean),
+    required: true,
+    max_length: 160,
+  };
+}
 
 function previewIsVideo(url: string): boolean {
   return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url);
@@ -120,6 +140,7 @@ export function InlineTrendAdmin() {
   const [models, setModels] = useState<TrendAdminModel[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
+  const [customFieldName, setCustomFieldName] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -188,6 +209,7 @@ export function InlineTrendAdmin() {
     const modelId = models[0]?.id || "";
     setEditingId(null);
     setDraft(emptyDraft(modelId));
+    setCustomFieldName("");
     setError("");
     setFormOpen(true);
   };
@@ -195,6 +217,7 @@ export function InlineTrendAdmin() {
   const beginEdit = (item: TrendAdminItem, duplicate = false) => {
     setEditingId(duplicate ? null : item.id);
     setDraft(draftFrom(item, duplicate));
+    setCustomFieldName("");
     setError("");
     setFormOpen(true);
   };
@@ -217,6 +240,26 @@ export function InlineTrendAdmin() {
       inputMode,
       minReferences: inputMode === "image" ? 1 : 0,
       maxReferences: inputMode === "image" ? Math.min(capacity, Math.max(1, current.maxReferences || capacity)) : 0,
+    }));
+  };
+
+  const addUserField = (label: string) => {
+    const field = normalizedAdminField(label);
+    if (!field.key) return;
+    setDraft((current) => {
+      if (
+        current.userFields.length >= 6
+        || current.userFields.some((item) => item.key.toLowerCase() === field.key.toLowerCase())
+      ) return current;
+      return { ...current, userFields: [...current.userFields, field] };
+    });
+    setCustomFieldName("");
+  };
+
+  const removeUserField = (key: string) => {
+    setDraft((current) => ({
+      ...current,
+      userFields: current.userFields.filter((field) => field.key !== key),
     }));
   };
 
@@ -263,26 +306,15 @@ export function InlineTrendAdmin() {
       setError("Длительность должна быть положительным числом секунд");
       return;
     }
-    const userFields = draft.userFields.map((field) => ({
-      ...field,
-      key: field.label.trim(),
-      label: field.label.trim(),
-      required: field.required !== false,
-      placeholder: String(field.placeholder || "").trim(),
-      max_length: field.type === "text" ? Math.max(1, Math.min(160, field.max_length || 80)) : undefined,
-      min: field.type === "number" ? field.min : undefined,
-      max: field.type === "number" ? field.max : undefined,
-    }));
-    if (userFields.some((field) => !field.key || field.key.includes("{{") || field.key.includes("}}"))) {
-      setError("Укажите корректное название каждого пользовательского поля"); return;
+    const userFields = draft.userFields.map((field) => normalizedAdminField(field.label));
+    if (userFields.some((field) => !field.key)) {
+      setError("Укажите название поля шаблона");
+      return;
     }
-    if (new Set(userFields.map((field) => field.key)).size !== userFields.length) {
-      setError("Названия пользовательских полей не должны повторяться"); return;
+    if (new Set(userFields.map((field) => field.key.toLowerCase())).size !== userFields.length) {
+      setError("Названия полей шаблона не должны повторяться");
+      return;
     }
-    const missingField = userFields.find((field) => !draft.prompt.includes(`{{${field.key}}}`));
-    if (missingField) { setError(`Добавьте {{${missingField.key}}} в скрытый промпт`); return; }
-    const invalidRange = userFields.find((field) => field.type === "number" && typeof field.min === "number" && typeof field.max === "number" && field.min > field.max);
-    if (invalidRange) { setError(`Проверьте диапазон поля «${invalidRange.label}»`); return; }
 
     const payload: TrendAdminPayload = {
       description: draft.description.trim(),
@@ -415,15 +447,39 @@ export function InlineTrendAdmin() {
         <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
 
         <div className="inline-trend-user-fields-admin">
-          <div className="inline-trend-admin-card-title"><strong>Поля пользователя</strong><button type="button" disabled={draft.userFields.length >= 6} onClick={() => setDraft((current) => ({ ...current, userFields: [...current.userFields, { key: `Поле ${current.userFields.length + 1}`, label: `Поле ${current.userFields.length + 1}`, type: "text", required: true, max_length: 80 }] }))}>＋ Поле</button></div>
-          <small>Необязательно. Для birthday-шаблона добавьте «Возраст», а в скрытом промпте используйте {`{{Возраст}}`}.</small>
-          {draft.userFields.map((field, index) => <div className="inline-trend-two-cols" key={index}>
-            <label><span>Название</span><input value={field.label} maxLength={48} placeholder="Возраст" onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, key: event.target.value, label: event.target.value } : item) }))} /></label>
-            <label><span>Тип</span><select value={field.type} onChange={(event) => { const type = event.target.value as "text" | "number"; setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, type, min: type === "number" ? (item.min ?? 1) : undefined, max: type === "number" ? (item.max ?? 120) : undefined, max_length: type === "text" ? 80 : undefined, placeholder: item.placeholder || (type === "number" ? "28" : "") } : item) })); }}><option value="text">Текст</option><option value="number">Число</option></select></label>
-            {field.type === "number" ? <><label><span>Минимум</span><input type="number" value={field.min ?? ""} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, min: event.target.value === "" ? undefined : Number(event.target.value) } : item) }))} /></label><label><span>Максимум</span><input type="number" value={field.max ?? ""} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, max: event.target.value === "" ? undefined : Number(event.target.value) } : item) }))} /></label></> : null}
-            <label><span>Подсказка</span><input value={field.placeholder || ""} maxLength={80} placeholder={field.type === "number" ? "28" : "Например, Анна"} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, placeholder: event.target.value } : item) }))} /></label>
-            <button className="inline-trend-secondary" type="button" onClick={() => setDraft((current) => ({ ...current, userFields: current.userFields.filter((_, i) => i !== index) }))}>Удалить поле</button>
-          </div>)}
+          <div>
+            <strong>Поля шаблона</strong>
+            <small>Выберите только то, что пользователь сможет поменять. При повторе он увидит пустые поля с этими названиями и введёт свои значения. Остальное ROXY соберёт автоматически.</small>
+          </div>
+
+          <div className="inline-trend-field-presets">
+            {TEMPLATE_FIELD_PRESETS.map((preset) => {
+              const active = draft.userFields.some((field) => field.key.toLowerCase() === preset.toLowerCase());
+              return <button className="inline-trend-secondary" key={preset} type="button" disabled={active || draft.userFields.length >= 6} onClick={() => addUserField(preset)}>＋ {preset}</button>;
+            })}
+          </div>
+
+          <div className="inline-trend-custom-field">
+            <input
+              value={customFieldName}
+              onChange={(event) => setCustomFieldName(event.target.value.slice(0, 48))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addUserField(customFieldName);
+                }
+              }}
+              placeholder="Другое поле, например: Цвет волос"
+            />
+            <button className="inline-trend-secondary" type="button" disabled={!customFieldName.trim() || draft.userFields.length >= 6} onClick={() => addUserField(customFieldName)}>Добавить</button>
+          </div>
+
+          {draft.userFields.length ? <div className="inline-trend-selected-fields">
+            {draft.userFields.map((field) => <div className="inline-trend-selected-field" key={field.key}>
+              <div><small>Название поля</small><strong>{field.label}</strong></div>
+              <button className="inline-trend-secondary" type="button" aria-label={`Удалить поле ${field.label}`} onClick={() => removeUserField(field.key)}>Удалить</button>
+            </div>)}
+          </div> : <small>Если пользователь ничего менять не должен — оставьте блок пустым.</small>}
         </div>
 
         <div className="inline-trend-two-cols">
@@ -481,6 +537,16 @@ export function InlineTrendAdmin() {
       .inline-trend-form input:not([type=checkbox]),.inline-trend-form textarea,.inline-trend-form select { width:100%; border:1px solid rgba(255,255,255,.1); background:#15111b; color:#fff; border-radius:12px; padding:11px 12px; outline:none; font:inherit; }
       .inline-trend-form input:focus,.inline-trend-form textarea:focus,.inline-trend-form select:focus { border-color:rgba(203,105,255,.65); box-shadow:0 0 0 3px rgba(174,72,255,.09); }
       .inline-trend-two-cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .inline-trend-user-fields-admin { display:grid; gap:10px; border:1px solid rgba(255,255,255,.08); border-radius:16px; background:#100d15; padding:12px; }
+      .inline-trend-user-fields-admin>div:first-child { display:grid; gap:5px; }
+      .inline-trend-user-fields-admin small { color:#81798b; font-weight:500; }
+      .inline-trend-field-presets { display:flex; flex-wrap:wrap; gap:7px; }
+      .inline-trend-field-presets .inline-trend-secondary { min-height:36px; padding:0 11px; font-size:11px; }
+      .inline-trend-custom-field { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
+      .inline-trend-selected-fields { display:grid; gap:8px; }
+      .inline-trend-selected-field { display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid rgba(255,255,255,.08); border-radius:12px; background:#15111b; padding:10px; }
+      .inline-trend-selected-field>div { min-width:0; display:grid; gap:2px; }
+      .inline-trend-selected-field strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .inline-trend-form-preview { max-height:260px; overflow:hidden; border-radius:16px; background:#050407; }
       .inline-trend-form-preview img,.inline-trend-form-preview video { width:100%; max-height:260px; object-fit:contain; display:block; }
       .inline-trend-advanced { border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:11px 12px; }
@@ -489,7 +555,7 @@ export function InlineTrendAdmin() {
       .inline-trend-checkbox { display:flex!important; grid-template-columns:none!important; align-items:center; gap:9px!important; }
       .inline-trend-checkbox input { width:18px; height:18px; accent-color:#b455ff; }
       .inline-trend-form-actions { justify-content:flex-end; margin-bottom:0; }
-      @media (max-width:520px) { .inline-trend-two-cols { grid-template-columns:1fr; } .inline-trend-admin-card { grid-template-columns:88px minmax(0,1fr); } }
+      @media (max-width:520px) { .inline-trend-two-cols,.inline-trend-custom-field { grid-template-columns:1fr; } .inline-trend-admin-card { grid-template-columns:88px minmax(0,1fr); } }
     `}</style>
   </>;
 }
