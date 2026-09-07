@@ -12,8 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import ReferralRelation, User
 from app.db.referral_models import ReferralEvent
+from app.services.notifications import NotificationService
 from app.services.referral_audit import log_referral_admission
 from app.services.wallet import WalletService
+
+
+def _money(value: Decimal | object) -> str:
+    try:
+        return f"{Decimal(value):.2f}".rstrip("0").rstrip(".")
+    except Exception:  # noqa: BLE001 - notification copy must not break referral admission
+        return str(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,6 +259,31 @@ class ReferralAntifraudService:
                 reference_id=str(visitor.id),
                 idempotency_key=f"invite-bonus:{visitor.id}",
             )
+
+        display_name = " ".join(
+            part for part in (visitor.first_name, visitor.last_name or "") if part
+        ).strip()
+        if display_name and visitor.username:
+            referred_name = f"{display_name} (@{visitor.username})"
+        elif display_name:
+            referred_name = display_name
+        elif visitor.username:
+            referred_name = f"@{visitor.username}"
+        else:
+            referred_name = "Новый пользователь ROXY"
+        bonus = Decimal(settings.invite_bonus_rox)
+        bonus_line = f"За приглашение начислено +{_money(bonus)} ROX.\n" if bonus > 0 else ""
+        await NotificationService.create(
+            session,
+            user_id=inviter.id,
+            kind="referral_joined",
+            title="🎉 Новый реферал",
+            body=(
+                f"К вам присоединился: {referred_name}.\n"
+                f"{bonus_line}"
+                "Начисления с его пополнений будут приходить отдельными уведомлениями."
+            ),
+        )
 
         await cls._record(
             session,
