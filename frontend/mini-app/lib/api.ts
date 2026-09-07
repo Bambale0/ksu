@@ -239,9 +239,9 @@ export const api = {
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = []) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
-    body: JSON.stringify({ reference_urls: referenceUrls }),
+    body: JSON.stringify({ reference_urls: referenceUrls, ...(Object.keys(userValues).length ? { user_values: userValues } : {}) }),
   }),
   promptTools: () => request<{ admin_free: boolean; items: PromptToolCatalogItem[] }>("/api/v1/prompt-tools"),
   promptToolTask: (id: string) => request<PromptToolTask>(`/api/v1/prompt-tools/${encodeURIComponent(id)}`),

@@ -28,6 +28,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 
 class RunTrendRequest(BaseModel):
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
+    user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
 
 
 class InlineTrendWriteRequest(BaseModel):
@@ -375,6 +376,7 @@ async def run_trend(
             user_id=user.id,
             trend_id=trend_id,
             reference_urls=payload.reference_urls,
+            user_values=payload.user_values,
         )
     except Exception as exc:
         await session.rollback()

@@ -186,6 +186,18 @@ export type FeedComment = {
   author?: FeedAuthor;
 };
 
+export type TrendUserField = {
+  key: string;
+  label: string;
+  type: "text" | "number" | "date";
+  required?: boolean;
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  max_length?: number;
+  suffix?: string;
+};
+
 export type TrendItem = {
   id: string;
   title: string;
@@ -199,6 +211,7 @@ export type TrendItem = {
   admin_free?: boolean;
   billing_seconds?: number | null;
   reference_requirements?: { kind?: string; min?: number; max?: number };
+  user_fields?: TrendUserField[];
   tags?: string[];
   usage_count?: number;
   created_at?: string;

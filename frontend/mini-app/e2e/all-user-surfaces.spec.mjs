@@ -91,6 +91,23 @@ const simpleTrend = {
   prompt_actions_allowed: false,
 };
 
+const personalizedTrend = {
+  id: 'trend_personalized',
+  title: 'День рождения',
+  description: 'Персональный сценарий',
+  media_type: 'image',
+  model: { id: model.id, title: model.title, family: model.family },
+  cost_rox: '15.00',
+  reference_requirements: { kind: 'none', min: 0, max: 0 },
+  user_fields: [
+    { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
+    { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
+    { key: 'Дата', label: 'Дата', type: 'date', required: true, max_length: 160 },
+  ],
+  prompt_hidden: true,
+  prompt_actions_allowed: false,
+};
+
 const viewports = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
@@ -143,9 +160,10 @@ async function mockApi(page, { onboarding = false, bootDelay = 0 } = {}) {
     if (path.includes('/comments')) return json({ items: [] });
     if (path.includes('/publish')) return json({ item: feedCard, publication_scope: 'feed' });
 
-    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend] });
+    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend, personalizedTrend] });
     if (path === '/api/v1/trends/trend_ref') return json(referenceTrend);
     if (path === '/api/v1/trends/trend_simple') return json(simpleTrend);
+    if (path === '/api/v1/trends/trend_personalized') return json(personalizedTrend);
     if (path.startsWith('/api/v1/trends/') && path.endsWith('/run')) return json({ id: 'trend_generation', status: 'queued', cost_rox: '15.00' }, 202);
 
     if (path === '/api/v1/prompt-tools') return json({ items: [
@@ -253,6 +271,40 @@ test('Home and Catalog trend cards open the trend launcher', async ({ page }) =>
   await page.goto('/mini-app/?route=catalog');
   const catalogTrend = page.locator("[data-trend-launch='true']", { hasText: referenceTrend.title });
   await expect(catalogTrend).toBeVisible();
+});
+
+test('personalized trend shows empty tanyapi-style fields and submits only user values', async ({ page }) => {
+  await mockApi(page);
+  let runBody = null;
+  await page.route('**/api/v1/trends/trend_personalized/run', async (route) => {
+    runBody = route.request().postDataJSON();
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'trend_generation', status: 'queued' }) });
+  });
+
+  await page.goto('/mini-app/trend/?id=trend_personalized');
+  const generate = page.getByRole('button', { name: /Сгенерировать/ });
+  const age = page.getByRole('textbox', { name: /Возраст/ });
+  const caption = page.getByRole('textbox', { name: /Надпись/ });
+  const date = page.locator('label.trend-user-field', { hasText: 'Дата' }).locator('input');
+
+  await expect(age).toHaveValue('');
+  await expect(caption).toHaveValue('');
+  await expect(date).toHaveValue('');
+  await expect(generate).toBeDisabled();
+
+  await age.fill('31');
+  await caption.fill('С юбилеем!');
+  await date.fill('2026-09-07');
+  await expect(generate).toBeEnabled();
+  expect(runBody).toBeNull();
+
+  await generate.click();
+  await expect.poll(() => runBody?.user_values?.['Возраст'] || '').toBe('31');
+  expect(runBody).toEqual({
+    reference_urls: [],
+    user_values: { Возраст: '31', Надпись: 'С юбилеем!', Дата: '2026-09-07' },
+  });
+  await expect(page.getByText(/hidden prompt|скрытый prompt/i)).toHaveCount(0);
 });
 
 test('reference trend waits for all files and sends them only on explicit Generate', async ({ page }) => {
