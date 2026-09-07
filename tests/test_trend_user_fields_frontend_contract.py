@@ -2,8 +2,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
 
 def test_personalized_trend_fields_stay_private_and_server_owned() -> None:
     service = read("app/services/trends.py")
@@ -19,6 +21,15 @@ def test_personalized_trend_fields_stay_private_and_server_owned() -> None:
     assert 'user_fields: userFields.length ? userFields : undefined' in admin
     assert '{{${field.key}}}' in admin
     assert 'prompt:' not in client[client.index('runTrend:'):client.index('promptTools:')]
+
+
+def test_personalized_number_validation_matches_backend_decimal_grammar() -> None:
+    page = read("frontend/mini-app/app/trend/page.tsx")
+    backend = read("app/services/trend_user_fields.py")
+    assert 'const TREND_USER_NUMBER_RE = /^-?\\d+(?:[.,]\\d+)?$/;' in page
+    assert 'if (!TREND_USER_NUMBER_RE.test(clean)) return false;' in page
+    assert '_NUMBER_RE = re.compile(r"^-?\\d+(?:[\\.,]\\d+)?$")' in backend
+
 
 def test_existing_trend_can_be_upgraded_with_user_fields_without_new_id() -> None:
     admin = read("frontend/mini-app/components/inline-trend-admin.tsx")
