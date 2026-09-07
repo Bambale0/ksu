@@ -5,9 +5,9 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.models import (
     Notification,
-    ReferralRelation,
     ReferralReward,
     User,
     WalletTransaction,
@@ -15,12 +15,20 @@ from app.db.models import (
 from app.db.notification_models import NotificationDelivery
 from app.db.session import SessionFactory
 from app.services.notification_events import register_notification_events
+from app.services.referral_antifraud import ReferralAntifraudService
 
 register_notification_events()
 
 
 @pytest.mark.asyncio
-async def test_new_referral_queues_partner_telegram_notification() -> None:
+async def test_new_referral_queues_partner_telegram_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_burst_max", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 0)
+
     async with SessionFactory() as session:
         inviter = User(
             telegram_id=980000000000101,
@@ -36,12 +44,12 @@ async def test_new_referral_queues_partner_telegram_notification() -> None:
         session.add_all([inviter, referred])
         await session.flush()
 
-        session.add(
-            ReferralRelation(
-                referred_user_id=referred.id,
-                inviter_user_id=inviter.id,
-            )
+        result = await ReferralAntifraudService.attach_new_user(
+            session,
+            visitor=referred,
+            inviter_telegram_id=inviter.telegram_id,
         )
+        assert result.attached is True
         await session.commit()
 
         notification = await session.scalar(
