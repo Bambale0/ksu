@@ -8,6 +8,8 @@ import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegr
 import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem, TrendUserField } from "@/lib/types";
 
+const TREND_USER_NUMBER_RE = /^-?\d+(?:[.,]\d+)?$/;
+
 function trendId(): string {
   if (typeof window === "undefined") return "";
   return new URL(window.location.href).searchParams.get("id") || "";
@@ -23,6 +25,7 @@ function userFieldValid(field: TrendUserField, value: string): boolean {
   const clean = value.trim();
   if (!clean) return field.required === false;
   if (field.type === "number") {
+    if (!TREND_USER_NUMBER_RE.test(clean)) return false;
     const number = Number(clean.replace(",", "."));
     if (!Number.isFinite(number)) return false;
     if (typeof field.min === "number" && number < field.min) return false;
