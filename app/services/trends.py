@@ -16,6 +16,11 @@ from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.trend_collections import TrendCollectionService
+from app.services.trend_user_fields import (
+    TrendUserFieldsError,
+    normalize_trend_user_fields,
+    render_trend_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +59,10 @@ class TrendService:
         prompt = str(payload.get("prompt") or payload.get("prompt_text") or "").strip()
         if not prompt or len(prompt) > 8000:
             raise TrendRecipeError("Hidden trend prompt must contain 1..8000 characters")
+        try:
+            user_fields = normalize_trend_user_fields(payload.get("user_fields"), prompt=prompt)
+        except TrendUserFieldsError as exc:
+            raise TrendRecipeError(str(exc)) from exc
         preview_url = TrendService._safe_http_url(payload.get("preview_url"), field="preview_url")
         media_type = str(payload.get("media_type") or spec.media_type).strip().lower()
         if media_type not in {"image", "video"} or media_type != spec.media_type:
@@ -118,6 +127,7 @@ class TrendService:
             "preview_url": preview_url,
             "model_id": spec.id,
             "prompt": prompt,
+            "user_fields": user_fields,
             "parameters": parameters,
             "billing_seconds": billing_seconds,
             "input_mode": input_mode,
@@ -227,6 +237,7 @@ class TrendService:
                 "min": recipe["min_references"],
                 "max": recipe["max_references"],
             },
+            "user_fields": recipe["user_fields"],
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
             "sort_order": recipe["sort_order"],
@@ -243,6 +254,7 @@ class TrendService:
         user_id: uuid.UUID,
         trend_id: uuid.UUID,
         reference_urls: list[str],
+        user_values: dict[str, str] | None = None,
     ) -> tuple[Generation, dict[str, Any]]:
         item = await session.get(AdminTrend, trend_id)
         if item is None or not item.is_active:
@@ -256,12 +268,16 @@ class TrendService:
         if recipe["input_mode"] == "none" and refs:
             raise TrendRecipeError("This trend does not accept reference images")
         parameters = TrendService._parameters_with_references(recipe, refs)
+        try:
+            rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
+        except TrendUserFieldsError as exc:
+            raise TrendRecipeError(str(exc)) from exc
         generation = await GenerationService.create(
             session,
             redis,
             user_id=user_id,
             model_id=recipe["model_id"],
-            prompt=recipe["prompt"],
+            prompt=rendered_prompt,
             parameters=parameters,
             billing_seconds=recipe["billing_seconds"],
             action_type="trend",

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "@/lib/api";
+import type { TrendUserField } from "@/lib/types";
 import {
   trendAdminApi,
   type TrendAdminItem,
@@ -52,6 +53,7 @@ type Draft = {
   previewUrl: string;
   modelId: string;
   prompt: string;
+  userFields: TrendUserField[];
   inputMode: "none" | "image";
   minReferences: number;
   maxReferences: number;
@@ -69,6 +71,7 @@ function emptyDraft(modelId = ""): Draft {
     previewUrl: "",
     modelId,
     prompt: "",
+    userFields: [],
     inputMode: "none",
     minReferences: 0,
     maxReferences: 0,
@@ -96,6 +99,7 @@ function draftFrom(item: TrendAdminItem, duplicate = false): Draft {
     previewUrl: String(payload.preview_url || ""),
     modelId: String(payload.model_id || ""),
     prompt: String(payload.prompt || ""),
+    userFields: Array.isArray(payload.user_fields) ? payload.user_fields.slice(0, 6) : [],
     inputMode: payload.input_mode === "image" ? "image" : "none",
     minReferences: Number(payload.min_references || 0),
     maxReferences: Number(payload.max_references || 0),
@@ -259,12 +263,34 @@ export function InlineTrendAdmin() {
       setError("Длительность должна быть положительным числом секунд");
       return;
     }
+    const userFields = draft.userFields.map((field) => ({
+      ...field,
+      key: field.label.trim(),
+      label: field.label.trim(),
+      required: field.required !== false,
+      placeholder: String(field.placeholder || "").trim(),
+      max_length: field.type === "text" ? Math.max(1, Math.min(160, field.max_length || 80)) : undefined,
+      min: field.type === "number" ? field.min : undefined,
+      max: field.type === "number" ? field.max : undefined,
+    }));
+    if (userFields.some((field) => !field.key || field.key.includes("{{") || field.key.includes("}}"))) {
+      setError("Укажите корректное название каждого пользовательского поля"); return;
+    }
+    if (new Set(userFields.map((field) => field.key)).size !== userFields.length) {
+      setError("Названия пользовательских полей не должны повторяться"); return;
+    }
+    const missingField = userFields.find((field) => !draft.prompt.includes(`{{${field.key}}}`));
+    if (missingField) { setError(`Добавьте {{${missingField.key}}} в скрытый промпт`); return; }
+    const invalidRange = userFields.find((field) => field.type === "number" && typeof field.min === "number" && typeof field.max === "number" && field.min > field.max);
+    if (invalidRange) { setError(`Проверьте диапазон поля «${invalidRange.label}»`); return; }
+
     const payload: TrendAdminPayload = {
       description: draft.description.trim(),
       preview_url: draft.previewUrl.trim(),
       media_type: model.media_type,
       model_id: model.id,
       prompt: draft.prompt.trim(),
+      user_fields: userFields.length ? userFields : undefined,
       parameters,
       input_mode: draft.inputMode,
       min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
@@ -387,6 +413,18 @@ export function InlineTrendAdmin() {
         <label><span>URL превью</span><input type="url" value={draft.previewUrl} onChange={(event) => setDraft((current) => ({ ...current, previewUrl: event.target.value }))} placeholder="https://…" required /></label>
 
         <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+
+        <div className="inline-trend-user-fields-admin">
+          <div className="inline-trend-admin-card-title"><strong>Поля пользователя</strong><button type="button" disabled={draft.userFields.length >= 6} onClick={() => setDraft((current) => ({ ...current, userFields: [...current.userFields, { key: `Поле ${current.userFields.length + 1}`, label: `Поле ${current.userFields.length + 1}`, type: "text", required: true, max_length: 80 }] }))}>＋ Поле</button></div>
+          <small>Необязательно. Для birthday-шаблона добавьте «Возраст», а в скрытом промпте используйте {`{{Возраст}}`}.</small>
+          {draft.userFields.map((field, index) => <div className="inline-trend-two-cols" key={index}>
+            <label><span>Название</span><input value={field.label} maxLength={48} placeholder="Возраст" onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, key: event.target.value, label: event.target.value } : item) }))} /></label>
+            <label><span>Тип</span><select value={field.type} onChange={(event) => { const type = event.target.value as "text" | "number"; setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, type, min: type === "number" ? (item.min ?? 1) : undefined, max: type === "number" ? (item.max ?? 120) : undefined, max_length: type === "text" ? 80 : undefined, placeholder: item.placeholder || (type === "number" ? "28" : "") } : item) })); }}><option value="text">Текст</option><option value="number">Число</option></select></label>
+            {field.type === "number" ? <><label><span>Минимум</span><input type="number" value={field.min ?? ""} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, min: event.target.value === "" ? undefined : Number(event.target.value) } : item) }))} /></label><label><span>Максимум</span><input type="number" value={field.max ?? ""} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, max: event.target.value === "" ? undefined : Number(event.target.value) } : item) }))} /></label></> : null}
+            <label><span>Подсказка</span><input value={field.placeholder || ""} maxLength={80} placeholder={field.type === "number" ? "28" : "Например, Анна"} onChange={(event) => setDraft((current) => ({ ...current, userFields: current.userFields.map((item, i) => i === index ? { ...item, placeholder: event.target.value } : item) }))} /></label>
+            <button className="inline-trend-secondary" type="button" onClick={() => setDraft((current) => ({ ...current, userFields: current.userFields.filter((_, i) => i !== index) }))}>Удалить поле</button>
+          </div>)}
+        </div>
 
         <div className="inline-trend-two-cols">
           <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none">Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>

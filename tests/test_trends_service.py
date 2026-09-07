@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.services.generations import GenerationService
-from app.services.trends import TrendService
+from app.services.trends import TrendRecipeError, TrendService
 
 
 def _item() -> SimpleNamespace:
@@ -138,3 +138,47 @@ async def test_usage_counter_failure_does_not_fail_created_generation(monkeypatc
     assert returned is generation
     assert meta["prompt_hidden"] is True
     session.rollback.assert_awaited_once()
+
+
+def test_normalize_recipe_keeps_safe_user_fields_and_requires_placeholder() -> None:
+    recipe = TrendService.normalize_recipe("Birthday", {
+        "model_id": "nano-banana-pro", "prompt": "Happy birthday {{Возраст}}",
+        "preview_url": "https://cdn.example.invalid/birthday.jpg", "media_type": "image",
+        "input_mode": "image", "min_references": 1, "max_references": 1,
+        "parameters": {"aspect_ratio": "1:1", "resolution": "1K", "output_format": "png"},
+        "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}],
+    })
+    assert recipe["user_fields"] == [{"key": "Возраст", "label": "Возраст", "type": "number", "required": True, "placeholder": "", "min": 1, "max": 120}]
+    with pytest.raises(TrendRecipeError, match="Возраст"):
+        TrendService.normalize_recipe("Broken", {
+            "model_id": "nano-banana-pro", "prompt": "No variable here",
+            "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
+            "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number"}],
+        })
+
+
+@pytest.mark.asyncio
+async def test_run_renders_declared_user_value_server_side_and_rejects_unknown(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _item()
+    item.payload["prompt"] = "Happy birthday {{Возраст}}"
+    item.payload["user_fields"] = [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}]
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    generation = _generation()
+    create = AsyncMock(return_value=generation)
+    monkeypatch.setattr(GenerationService, "create", create)
+    await TrendService.run(session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/user.jpg"], user_values={"Возраст": "28"})
+    assert create.await_args.kwargs["prompt"] == "Happy birthday 28"
+    with pytest.raises(TrendRecipeError, match="лишние"):
+        await TrendService.run(session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=["https://cdn.example.invalid/user.jpg"], user_values={"Возраст": "28", "prompt": "steal"})
+
+
+@pytest.mark.asyncio
+async def test_public_view_exposes_only_user_field_schema_not_hidden_prompt() -> None:
+    item = _item()
+    item.payload["prompt"] = "Happy birthday {{Возраст}}"
+    item.payload["user_fields"] = [{"key": "Возраст", "label": "Возраст", "type": "number", "min": 1, "max": 120}]
+    view = await TrendService.public_view(AsyncMock(), item)
+    assert view["user_fields"][0]["key"] == "Возраст"
+    assert "prompt" not in view and "Happy birthday" not in repr(view)

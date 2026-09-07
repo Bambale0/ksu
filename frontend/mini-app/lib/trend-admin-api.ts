@@ -1,7 +1,7 @@
 "use client";
 
 import { telegramHeaders } from "./telegram";
-import type { GenerationModel } from "./types";
+import type { GenerationModel, TrendUserField } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
 const INLINE_HASHTAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
@@ -30,6 +30,7 @@ export type TrendAdminPayload = {
   preview_url: string;
   model_id: string;
   prompt: string;
+  user_fields?: TrendUserField[];
   parameters?: Record<string, unknown>;
   billing_seconds?: number | null;
   input_mode?: "none" | "image" | string;

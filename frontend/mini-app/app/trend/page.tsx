@@ -6,7 +6,7 @@ import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
-import type { TrendItem } from "@/lib/types";
+import type { TrendItem, TrendUserField } from "@/lib/types";
 
 function trendId(): string {
   if (typeof window === "undefined") return "";
@@ -17,6 +17,19 @@ function money(value?: string | null): string {
   if (!value) return "—";
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : value;
+}
+
+function userFieldValid(field: TrendUserField, value: string): boolean {
+  const clean = value.trim();
+  if (!clean) return field.required === false;
+  if (field.type === "number") {
+    const number = Number(clean.replace(",", "."));
+    if (!Number.isFinite(number)) return false;
+    if (typeof field.min === "number" && number < field.min) return false;
+    if (typeof field.max === "number" && number > field.max) return false;
+    return true;
+  }
+  return clean.length <= Math.max(1, Math.min(160, field.max_length || 80));
 }
 
 function previewIsVideo(trend: TrendItem): boolean {
@@ -32,6 +45,7 @@ export default function TrendPage() {
   const [sharing, setSharing] = useState(false);
   const [copying, setCopying] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
+  const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,14 +56,19 @@ export default function TrendPage() {
       return;
     }
     void api.trend(id)
-      .then(setTrend)
+      .then((item) => {
+        setTrend(item);
+        setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, field.default_value || ""])));
+      })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть тренд"))
       .finally(() => setLoading(false));
   }, []);
 
   const minimum = Number(trend?.reference_requirements?.min || 0);
   const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
-  const ready = references.length >= minimum && (!maximum || references.length <= maximum);
+  const userFields = (trend?.user_fields || []).slice(0, 6);
+  const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
+  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";
     if (!minimum) return "Референсы не нужны — сценарий можно запустить сразу.";
@@ -118,7 +137,7 @@ export default function TrendPage() {
     setRunning(true);
     setError("");
     try {
-      const result = await api.runTrend(trend.id, references.map((item) => item.url));
+      const result = await api.runTrend(trend.id, references.map((item) => item.url), userValues);
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось запустить тренд");
@@ -172,6 +191,34 @@ export default function TrendPage() {
                   ))}
                 </div>
               </>
+            ) : null}
+
+            {userFields.length ? (
+              <div className="trend-user-fields">
+                <strong>Персонализируйте шаблон</strong>
+                <p className="muted">Заполните только свои данные. Скрытый промпт останется скрытым.</p>
+                {userFields.map((field) => {
+                  const value = userValues[field.key] || "";
+                  const valid = userFieldValid(field, value);
+                  return <label key={field.key} className="trend-user-field">
+                    <span>{field.label}{field.required === false ? "" : " *"}</span>
+                    <div className="trend-user-field-input">
+                      <input
+                        type="text"
+                        inputMode={field.type === "number" ? "decimal" : "text"}
+                        value={value}
+                        maxLength={field.type === "text" ? Math.max(1, Math.min(160, field.max_length || 80)) : 32}
+                        placeholder={field.placeholder || ""}
+                        aria-invalid={Boolean(value) && !valid}
+                        disabled={running}
+                        onChange={(event) => setUserValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                      />
+                      {field.suffix ? <span>{field.suffix}</span> : null}
+                    </div>
+                    {value && !valid ? <small className="action-error">Проверьте значение поля «{field.label}»</small> : null}
+                  </label>;
+                })}
+              </div>
             ) : null}
 
             {error ? <div className="action-error" role="alert">{error}</div> : null}
