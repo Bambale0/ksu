@@ -155,6 +155,12 @@ def test_normalize_recipe_keeps_safe_user_fields_and_requires_placeholder() -> N
             "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
             "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number"}],
         })
+    with pytest.raises(TrendRecipeError, match="style"):
+        TrendService.normalize_recipe("Undeclared", {
+            "model_id": "nano-banana-pro", "prompt": "Happy birthday {{Возраст}} in {{style}}",
+            "preview_url": "https://cdn.example.invalid/x.jpg", "media_type": "image",
+            "user_fields": [{"key": "Возраст", "label": "Возраст", "type": "number"}],
+        })
 
 
 @pytest.mark.asyncio
