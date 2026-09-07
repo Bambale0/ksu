@@ -124,6 +124,11 @@ def test_mini_app_admin_can_edit_reassign_and_hide_existing_trends() -> None:
     assert "trendAdminApi.update(original.id" in admin
     assert "...original.payload" in admin
     assert "tags: parseTags(editingTrend.tags)" in admin
+    assert "user_fields: editingTrend.userFields.map" in admin
+    assert "Поля для пользователя" in admin
+    assert "TEMPLATE_FIELD_PRESETS" in admin
+    assert "legacyUserFieldsFromPrompt" in admin
+    assert "trend-admin-user-fields-${trend.id}" in admin
     assert "trendCollectionsApi.assign(trendId, collectionId)" in admin
     assert "trendAdminApi.hide(trend.id)" in admin
     assert "trendAdminApi.activate(trend.id)" in admin
