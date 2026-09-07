@@ -14,6 +14,7 @@ from app.core.observability import (
     record_worker_heartbeat,
 )
 from app.db.session import engine
+from app.services.notification_events import register_notification_events
 from app.services.payment_reconciliation import PaymentReconciliationService
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ async def run() -> None:
 
 def main() -> None:
     configure_logging()
+    register_notification_events()
     asyncio.run(run())
 
 
