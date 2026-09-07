@@ -41,6 +41,7 @@ def normalize_trend_user_fields(raw_fields: Any, *, prompt: str) -> list[dict[st
         except (TypeError, ValueError):
             max_length = DEFAULT_TEXT_MAX_LENGTH
         max_length = max(1, min(MAX_FIELD_VALUE_LENGTH, max_length))
+
         def decimal(name: str) -> Decimal | None:
             value = raw.get(name)
             if value in (None, ""):
@@ -49,6 +50,7 @@ def normalize_trend_user_fields(raw_fields: Any, *, prompt: str) -> list[dict[st
                 return Decimal(str(value))
             except (InvalidOperation, ValueError):
                 raise TrendUserFieldsError(f"Некорректные ограничения поля «{label}»") from None
+
         min_value = decimal("min")
         max_value = decimal("max")
         if min_value is not None and max_value is not None and min_value > max_value:
@@ -73,6 +75,21 @@ def normalize_trend_user_fields(raw_fields: Any, *, prompt: str) -> list[dict[st
             item["default_value"] = str(raw.get("default_value"))[:MAX_FIELD_VALUE_LENGTH]
         normalized.append(item)
         seen.add(key)
+    if normalized:
+        declared = {str(item["key"]) for item in normalized}
+        undeclared = sorted(
+            {
+                match.group(1).strip()
+                for match in _TEMPLATE_RE.finditer(prompt)
+                if match.group(1).strip() not in declared
+            }
+        )
+        if undeclared:
+            key = undeclared[0]
+            token = "{{" + key + "}}"
+            raise TrendUserFieldsError(
+                f"Добавьте поле пользователя «{key}» или удалите {token} из скрытого промпта"
+            )
     return normalized
 
 
