@@ -9,6 +9,7 @@ import {
   trendAdminApi,
   type TrendAdminItem,
 } from "@/lib/trend-admin-api";
+import type { TrendUserField } from "@/lib/types";
 import {
   trendCollectionsApi,
   type TrendCollection,
@@ -31,7 +32,44 @@ type TrendDraft = {
   title: string;
   description: string;
   tags: string;
+  userFields: TrendUserField[];
 };
+
+const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
+const NUMBER_FIELD_HINTS = ["возраст", "число", "цифр", "количество", "номер", "рост", "вес", "лет", "год", "свеч"];
+const DATE_FIELD_HINTS = ["дата", "date", "день рождения", "birthday"];
+const TEMPLATE_FIELD_RE = /\{\{([^{}]+)\}\}/g;
+
+function inferTemplateFieldType(field: string): TrendUserField["type"] {
+  const normalized = field.trim().toLowerCase();
+  if (DATE_FIELD_HINTS.some((hint) => normalized.includes(hint))) return "date";
+  return NUMBER_FIELD_HINTS.some((hint) => normalized.includes(hint)) ? "number" : "text";
+}
+
+function normalizedAdminField(label: string): TrendUserField {
+  const clean = label.replace(/[{}]/g, "").trim().slice(0, 48);
+  return {
+    key: clean,
+    label: clean,
+    type: inferTemplateFieldType(clean),
+    required: true,
+    max_length: 160,
+  };
+}
+
+function legacyUserFieldsFromPrompt(prompt: string | undefined): TrendUserField[] {
+  const fields: TrendUserField[] = [];
+  const seen = new Set<string>();
+  for (const match of String(prompt || "").matchAll(TEMPLATE_FIELD_RE)) {
+    const field = normalizedAdminField(match[1] || "");
+    const dedupe = field.key.toLowerCase();
+    if (!field.key || seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    fields.push(field);
+    if (fields.length >= 6) break;
+  }
+  return fields;
+}
 
 const emptyDraft = (): FolderDraft => ({
   title: "",
@@ -60,6 +98,9 @@ function trendDraft(trend: TrendAdminItem): TrendDraft {
     title: trend.title,
     description: trend.payload?.description || "",
     tags: tagsInput(trend.payload?.tags),
+    userFields: Array.isArray(trend.payload?.user_fields) && trend.payload.user_fields.length
+      ? trend.payload.user_fields.map((field) => normalizedAdminField(field.label || field.key)).slice(0, 6)
+      : legacyUserFieldsFromPrompt(trend.payload?.prompt),
   };
 }
 
@@ -106,6 +147,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
   const [trends, setTrends] = useState<TrendAdminItem[]>([]);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [editingTrend, setEditingTrend] = useState<TrendDraft | null>(null);
+  const [customTrendFieldName, setCustomTrendFieldName] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState("");
@@ -240,10 +282,12 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
           ...original.payload,
           description: editingTrend.description.trim(),
           tags: parseTags(editingTrend.tags),
+          user_fields: editingTrend.userFields.map((field) => normalizedAdminField(field.label || field.key)),
         },
         is_active: original.is_active,
       });
       setEditingTrend(null);
+      setCustomTrendFieldName("");
       await refresh();
       onChanged?.();
     } catch (cause) {
@@ -251,6 +295,26 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
     } finally {
       setBusy("");
     }
+  };
+
+  const addTrendUserField = (label: string) => {
+    const field = normalizedAdminField(label);
+    if (!field.key) return;
+    setEditingTrend((current) => {
+      if (
+        !current
+        || current.userFields.length >= 6
+        || current.userFields.some((item) => item.key.toLowerCase() === field.key.toLowerCase())
+      ) return current;
+      return { ...current, userFields: [...current.userFields, field] };
+    });
+    setCustomTrendFieldName("");
+  };
+
+  const removeTrendUserField = (key: string) => {
+    setEditingTrend((current) => current
+      ? { ...current, userFields: current.userFields.filter((field) => field.key !== key) }
+      : current);
   };
 
   const toggleTrend = async (trend: TrendAdminItem) => {
@@ -290,7 +354,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
       <section className="trend-folder-admin-panel">
         <header className="trend-folder-admin-head">
           <div><span className="kicker">Админ</span><h2>Готовые шаблоны</h2><p>Добавляйте и удаляйте категории, задавайте им хэштеги и раскладывайте шаблоны. Совпавший хэштег сам отправит новый тренд в нужную категорию.</p></div>
-          <button type="button" onClick={() => { setOpen(false); setDraft(null); setEditingTrend(null); }} aria-label="Закрыть">×</button>
+          <button type="button" onClick={() => { setOpen(false); setDraft(null); setEditingTrend(null); setCustomTrendFieldName(""); }} aria-label="Закрыть">×</button>
         </header>
 
         <div className="trend-folder-admin-toolbar">
@@ -340,8 +404,29 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
                 <label><span>Название</span><input value={editingTrend.title} maxLength={120} onChange={(event) => setEditingTrend((current) => current ? { ...current, title: event.target.value } : current)} /></label>
                 <label><span>Описание</span><textarea value={editingTrend.description} rows={2} onChange={(event) => setEditingTrend((current) => current ? { ...current, description: event.target.value } : current)} /></label>
                 <label><span>Хэштеги</span><input value={editingTrend.tags} onChange={(event) => setEditingTrend((current) => current ? { ...current, tags: event.target.value } : current)} placeholder="#др #birthday" /></label>
+                <div className="trend-folder-admin-user-fields" data-testid={`trend-admin-user-fields-${trend.id}`}>
+                  <div><strong>Поля для пользователя</strong><small>Выберите, что человек сможет изменить перед запуском готового тренда. Тип поля ROXY определит автоматически.</small></div>
+                  <div className="trend-folder-admin-field-presets">
+                    {TEMPLATE_FIELD_PRESETS.map((preset) => {
+                      const active = editingTrend.userFields.some((field) => field.key.toLowerCase() === preset.toLowerCase());
+                      return <button type="button" key={preset} disabled={active || editingTrend.userFields.length >= 6} onClick={() => addTrendUserField(preset)}>＋ {preset}</button>;
+                    })}
+                  </div>
+                  <div className="trend-folder-admin-custom-field">
+                    <input value={customTrendFieldName} maxLength={48} onChange={(event) => setCustomTrendFieldName(event.target.value)} onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addTrendUserField(customTrendFieldName);
+                      }
+                    }} placeholder="Другое поле, например: Цвет волос" />
+                    <button type="button" disabled={!customTrendFieldName.trim() || editingTrend.userFields.length >= 6} onClick={() => addTrendUserField(customTrendFieldName)}>Добавить</button>
+                  </div>
+                  {editingTrend.userFields.length ? <div className="trend-folder-admin-selected-fields">
+                    {editingTrend.userFields.map((field) => <div key={field.key}><span>{field.label}</span><button type="button" aria-label={`Удалить поле ${field.label}`} onClick={() => removeTrendUserField(field.key)}>×</button></div>)}
+                  </div> : <small>Если менять ничего не нужно — оставьте блок пустым.</small>}
+                </div>
                 <div className="actions">
-                  <button type="button" onClick={() => setEditingTrend(null)}>Отмена</button>
+                  <button type="button" onClick={() => { setEditingTrend(null); setCustomTrendFieldName(""); }}>Отмена</button>
                   <button className="primary" type="submit" data-testid={`trend-admin-save-${trend.id}`} disabled={busy === `trend-save:${trend.id}`}>{busy === `trend-save:${trend.id}` ? "Сохраняю…" : "Сохранить"}</button>
                 </div>
               </form> : <>
@@ -353,7 +438,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
                 <select aria-label={`Категория для ${trend.title}`} data-testid={`trend-admin-category-${trend.id}`} value={collectionById.has(currentId) ? currentId : "trends"} disabled={busy === `trend:${trend.id}`} onChange={(event) => void assign(trend.id, event.target.value)}>
                   {collections.map((folder) => <option key={folder.id} value={folder.id}>{folder.title}{folder.is_active ? "" : " · скрыта"}</option>)}
                 </select>
-                <button type="button" data-testid={`trend-admin-edit-${trend.id}`} onClick={() => setEditingTrend(trendDraft(trend))}>Редактировать</button>
+                <button type="button" data-testid={`trend-admin-edit-${trend.id}`} onClick={() => { setEditingTrend(trendDraft(trend)); setCustomTrendFieldName(""); }}>Редактировать</button>
                 <button type="button" data-testid={`trend-admin-visibility-${trend.id}`} className={trend.is_active ? "danger" : ""} disabled={busy === `trend-status:${trend.id}`} onClick={() => void toggleTrend(trend)}>{busy === `trend-status:${trend.id}` ? "…" : trend.is_active ? "Скрыть" : "Опубликовать"}</button>
               </div>
             </article>;
@@ -368,6 +453,7 @@ export function TrendCollectionAdmin({ onChanged }: Props) {
         .trend-folder-admin-toolbar,.trend-folder-admin-form .actions,.trend-folder-admin-card .actions,.trend-folder-admin-trend-form .actions,.trend-folder-admin-controls{display:flex;gap:9px;flex-wrap:wrap}.trend-folder-admin-toolbar{margin:16px 0}.trend-folder-admin-toolbar button,.trend-folder-admin-form button,.trend-folder-admin-card button,.trend-folder-admin-trend button{min-height:40px;border:1px solid rgba(255,255,255,.11);background:#17131d;color:#fff;border-radius:12px;padding:0 13px;font-weight:800}.trend-folder-admin-toolbar .primary,.trend-folder-admin-form .primary,.trend-folder-admin-trend-form .primary{border:0;background:linear-gradient(135deg,#a84dff,#d66cff)}
         .trend-folder-admin-error{margin:10px 0;padding:11px 12px;border-radius:13px;background:rgba(255,74,110,.1);color:#ffc5d1}.trend-folder-admin-empty{color:#aaa2b4;padding:14px}
         .trend-folder-admin-form,.trend-folder-admin-trend-form{display:grid;gap:10px;margin:12px 0 18px;padding:14px;border:1px solid rgba(190,120,255,.25);border-radius:18px;background:#110e16}.trend-folder-admin-form label,.trend-folder-admin-trend-form label{display:grid;gap:6px}.trend-folder-admin-form label span,.trend-folder-admin-trend-form label span{font-size:11px;color:#bbb2c5;font-weight:800}.trend-folder-admin-form label small{font-size:10px;color:#817888}.trend-folder-admin-form input,.trend-folder-admin-form textarea,.trend-folder-admin-trend-form input,.trend-folder-admin-trend-form textarea{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:#08070b;color:#fff;padding:11px 12px;font:inherit}
+        .trend-folder-admin-user-fields{display:grid;gap:10px;padding:12px;border:1px solid rgba(190,120,255,.2);border-radius:14px;background:rgba(169,91,255,.05)}.trend-folder-admin-user-fields>div:first-child{display:grid;gap:3px}.trend-folder-admin-user-fields small{color:#92899d;font-size:10px;line-height:1.4}.trend-folder-admin-field-presets{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-field-presets button{min-height:34px;padding:0 10px}.trend-folder-admin-custom-field{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.trend-folder-admin-custom-field button{min-height:40px}.trend-folder-admin-selected-fields{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-selected-fields>div{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 9px;border:1px solid rgba(190,120,255,.23);border-radius:999px;background:rgba(169,91,255,.1);color:#e3c8ff;font-size:11px;font-weight:800}.trend-folder-admin-selected-fields button{min-height:26px;width:26px;padding:0;border-radius:50%}
         .trend-folder-admin-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.trend-folder-admin-card{padding:13px;border:1px solid rgba(255,255,255,.09);border-radius:17px;background:#110e16}.trend-folder-admin-card.is-hidden,.trend-folder-admin-trend.is-hidden{opacity:.62}.trend-folder-admin-card>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:8px}.trend-folder-admin-card small{color:#9d93a8;font-size:10px}.trend-folder-admin-card p{min-height:34px;color:#aaa2b4;font-size:12px;line-height:1.4}.trend-folder-admin-card .danger,.trend-folder-admin-trend .danger{color:#ffbdca;border-color:rgba(255,100,130,.3)}.trend-folder-admin-no-tags{display:block;margin:8px 0}.category-tags{margin:8px 0}
         .trend-folder-admin-assign{display:grid;gap:9px;margin-top:22px}.trend-folder-admin-assign h3{margin:4px 0;font-size:20px}.trend-folder-admin-trend{display:grid;gap:10px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;background:#100d14}.trend-folder-admin-trend-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.trend-folder-admin-trend-head>span:first-child{display:grid;min-width:0}.trend-folder-admin-trend-head strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trend-folder-admin-trend-head small{color:#9d93a8}.trend-folder-admin-status{flex:0 0 auto;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:5px 8px;color:#aaa2b4;font-size:10px;font-weight:800}.trend-folder-admin-status.is-live{border-color:rgba(139,255,201,.2);color:#9ff3c9}.trend-folder-admin-trend-description{margin:0;color:#aaa2b4;font-size:12px;line-height:1.45}.trend-folder-admin-tags{display:flex;gap:6px;flex-wrap:wrap}.trend-folder-admin-tags span{padding:4px 7px;border-radius:999px;background:rgba(169,91,255,.12);color:#d9b5ff;font-size:11px}.trend-folder-admin-controls{align-items:center}.trend-folder-admin-controls select{flex:1 1 190px;min-width:0;border:1px solid rgba(255,255,255,.11);border-radius:11px;background:#08070b;color:#fff;padding:10px}
         @media(max-width:520px){.trend-folder-admin-list{grid-template-columns:1fr}.trend-folder-admin-trend-head{align-items:center}.trend-folder-admin-controls{display:grid;grid-template-columns:1fr 1fr}.trend-folder-admin-controls select{grid-column:1/-1;width:100%}}

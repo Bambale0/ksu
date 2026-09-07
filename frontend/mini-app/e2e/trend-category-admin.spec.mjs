@@ -56,7 +56,7 @@ const ugcTrend = {
     media_type: 'video',
     preview_url: '/ugc.mp4',
     model_id: model.id,
-    prompt: 'ugc prompt',
+    prompt: 'ugc prompt {{Возраст}}',
     description: 'Живой отзыв о продукте',
     tags: ['ugc', 'review'],
   },
@@ -82,6 +82,7 @@ async function mockAdminHome(page, { meFailures = 0, meFailureWindowMs = 0 } = {
     categories: [systemCategory, ugcCategory, adsCategory],
     assignments: { trend_ugc: 'ugc', trend_ads: 'ads' },
     createdBody: null,
+    updatedTrendBody: null,
     meCalls: 0,
     firstMeAt: 0,
   };
@@ -117,6 +118,10 @@ async function mockAdminHome(page, { meFailures = 0, meFailureWindowMs = 0 } = {
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
     if (path === '/api/v1/trends/manage') return json({ items: [ugcTrend, adsTrend], models: [model] });
+    if (path === '/api/v1/trends/manage/trend_ugc' && method === 'PATCH') {
+      state.updatedTrendBody = request.postDataJSON();
+      return json({ ...ugcTrend, ...state.updatedTrendBody });
+    }
     if (path === '/api/v1/trend-collections' && method === 'GET') return json({ items: state.categories });
     if (path === '/api/v1/trend-collections/manage' && method === 'GET') {
       return json({ schema_version: 1, initialized: true, collections: state.categories, assignments: state.assignments });
@@ -200,6 +205,30 @@ test('admin can search categories and trends by hashtag, assign a result, and cr
     is_active: true,
   });
   await expect(dialog.getByTestId('trend-category-admin-card-beauty')).toBeVisible();
+});
+
+test('admin can edit personalized fields on an existing trend', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await mockAdminHome(page);
+  await page.goto('/mini-app/?route=home');
+
+  const folders = page.locator('#roxy-home-trend-folders');
+  await folders.getByRole('button', { name: 'Шаблоны', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Управление готовыми шаблонами' });
+  await dialog.getByTestId('trend-admin-edit-trend_ugc').click();
+
+  const fields = dialog.getByTestId('trend-admin-user-fields-trend_ugc');
+  await expect(fields).toBeVisible();
+  await expect(fields.getByText('Возраст', { exact: true })).toBeVisible();
+  const mobileLayout = await dialog.evaluate((node) => ({ scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }));
+  expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.clientWidth + 1);
+  await fields.getByRole('button', { name: '＋ Надпись' }).click();
+  await dialog.getByTestId('trend-admin-save-trend_ugc').click();
+
+  await expect.poll(() => state.updatedTrendBody?.payload?.user_fields).toEqual([
+    { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
+    { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
+  ]);
 });
 
 test('iPhone admin recovers template and category management after a transient /me bootstrap failure', async ({ page }) => {
