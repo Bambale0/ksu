@@ -58,7 +58,7 @@ function initialProvider(): Provider {
     if (requested === "cryptobot") return "cryptobot";
     if (requested === "2328") return "2328";
   }
-  return "card";
+  return "yookassa";
 }
 
 function paymentProviderLabel(payment: Payment): string {
@@ -86,20 +86,21 @@ export default function PaymentsPage() {
   const load = async () => {
     setError("");
     try {
-      const [cardResult, yooKassaResult, cryptoBotResult, crypto2328Result, paymentsResult] = await Promise.all([
-        customerRequest<PackageResponse>("/api/v1/payments/card/packages"),
+      const [yooKassaResult, cryptoBotResult, crypto2328Result, paymentsResult] = await Promise.all([
         customerRequest<PackageResponse>("/api/v1/payments/yookassa/packages"),
         customerRequest<PackageResponse>("/api/v1/payments/crypto/packages"),
         customerRequest<PackageResponse>("/api/v1/payments/crypto/2328/packages"),
         customerRequest<{ items: Payment[] }>("/api/v1/payments?limit=50"),
       ]);
-      setCardCatalog(cardResult);
+      // Lava Top is intentionally hidden from new checkout UX. Historical
+      // card payments stay supported below so already-created invoices can
+      // still reconcile and remain visible in payment history.
+      setCardCatalog(null);
       setYooKassaCatalog(yooKassaResult);
       setCryptoBotCatalog(cryptoBotResult);
       setCrypto2328Catalog(crypto2328Result);
       setPayments(paymentsResult.items || []);
 
-      const cardAvailable = Object.keys(cardResult.packages || {}).length > 0;
       const yooKassaAvailable = Boolean(
         yooKassaResult.configured && Object.keys(yooKassaResult.packages || {}).length > 0,
       );
@@ -110,15 +111,13 @@ export default function PaymentsPage() {
         crypto2328Result.configured && Object.keys(crypto2328Result.packages || {}).length > 0,
       );
       setProvider((current) => {
-        if (current === "card" && cardAvailable) return current;
         if (current === "yookassa" && yooKassaAvailable) return current;
         if (current === "cryptobot" && cryptoBotAvailable) return current;
         if (current === "2328" && crypto2328Available) return current;
-        if (cardAvailable) return "card";
         if (yooKassaAvailable) return "yookassa";
         if (cryptoBotAvailable) return "cryptobot";
         if (crypto2328Available) return "2328";
-        return "card";
+        return "yookassa";
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить оплаты");
@@ -310,7 +309,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="Оплатить в рублях можно через Lava Top или ЮKassa. Для криптовалюты основной способ — CryptoBot, дополнительный — 2328."
+      copy="Оплатить в рублях можно через ЮKassa. Для криптовалюты основной способ — CryptoBot, дополнительный — 2328."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -318,7 +317,6 @@ export default function PaymentsPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
         <div className="segmented providers" aria-label="Способ оплаты">
-          {cardAvailable ? <button type="button" className={provider === "card" ? "active" : ""} onClick={() => setProvider("card")}>Lava Top</button> : null}
           {yooKassaAvailable ? <button type="button" className={provider === "yookassa" ? "active" : ""} onClick={() => setProvider("yookassa")}>ЮKassa</button> : null}
           {cryptoBotAvailable ? <button type="button" className={provider === "cryptobot" ? "active" : ""} onClick={() => setProvider("cryptobot")}>CryptoBot</button> : null}
           {crypto2328Available ? <button type="button" className={provider === "2328" ? "active" : ""} onClick={() => setProvider("2328")}>2328</button> : null}

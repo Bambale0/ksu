@@ -57,6 +57,13 @@ async function mockApi(page) {
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
+    if (path === '/api/v1/payments/yookassa/packages') return json({
+      provider: 'yookassa',
+      label: 'ЮKassa',
+      configured: true,
+      currencies: ['RUB'],
+      packages: cryptoPackages,
+    });
     if (path === '/api/v1/payments/crypto/packages') return json({
       provider: 'cryptobot',
       label: 'CryptoBot',
@@ -97,7 +104,8 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
@@ -112,7 +120,8 @@ test('quick wallet exposes CryptoBot as primary crypto and keeps 2328 without bi
 
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
 
   const cryptoBotButton = page.getByRole('button', { name: 'CryptoBot', exact: true });
   const provider2328Button = page.getByRole('button', { name: '2328', exact: true });
