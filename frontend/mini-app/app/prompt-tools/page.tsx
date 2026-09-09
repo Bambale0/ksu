@@ -28,6 +28,15 @@ type PendingPromptTask = {
 };
 
 class PromptToolPendingTimeout extends Error {}
+class PromptToolTerminalFailure extends Error {}
+
+function removePendingPromptTaskStorage(): void {
+  try {
+    window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+  } catch {
+    // Telegram/WebKit may expose localStorage but deny access to it.
+  }
+}
 
 function readPendingPromptTask(): PendingPromptTask | null {
   try {
@@ -41,12 +50,11 @@ function readPendingPromptTask(): PendingPromptTask | null {
       || typeof parsed.createdAt !== "number"
       || Date.now() - parsed.createdAt > PROMPT_TOOL_PENDING_MAX_AGE_MS
     ) {
-      window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+      removePendingPromptTaskStorage();
       return null;
     }
     return parsed as PendingPromptTask;
   } catch {
-    window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
     return null;
   }
 }
@@ -60,16 +68,12 @@ function savePendingPromptTask(task: PendingPromptTask): void {
 }
 
 function clearPendingPromptTask(id?: string): void {
-  try {
-    if (!id) {
-      window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
-      return;
-    }
-    const pending = readPendingPromptTask();
-    if (!pending || pending.id === id) window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
-  } catch {
-    // Storage cleanup must never break result rendering.
+  if (!id) {
+    removePendingPromptTaskStorage();
+    return;
   }
+  const pending = readPendingPromptTask();
+  if (!pending || pending.id === id) removePendingPromptTaskStorage();
 }
 
 function initialMode(): Mode {
@@ -120,9 +124,17 @@ function isPromptEntry(label: string): boolean {
 
 async function waitForTask(id: string): Promise<PromptToolTask> {
   for (let attempt = 0; attempt < PROMPT_TOOL_MAX_POLL_ATTEMPTS; attempt += 1) {
-    const task = await api.promptToolTask(id);
-    if (task.status === "succeeded") return task;
-    if (task.status === "failed") throw new Error(promptToolError(task.error, "Не удалось подготовить промпт"));
+    try {
+      const task = await api.promptToolTask(id);
+      if (task.status === "succeeded") return task;
+      if (task.status === "failed") {
+        throw new PromptToolTerminalFailure(promptToolError(task.error, "Не удалось подготовить промпт"));
+      }
+    } catch (reason) {
+      if (reason instanceof PromptToolTerminalFailure) throw reason;
+      // Temporary network/5xx/WebView failures must not orphan a paid task.
+      // Keep polling and preserve its recovery pointer for a later reopen.
+    }
     await new Promise((resolve) => window.setTimeout(resolve, PROMPT_TOOL_POLL_INTERVAL_MS));
   }
   throw new PromptToolPendingTimeout("Промпт всё ещё готовится. Можно закрыть окно — результат восстановится при следующем открытии.");
@@ -160,7 +172,7 @@ export default function PromptToolsPage() {
       })
       .catch((reason) => {
         if (cancelled) return;
-        if (!(reason instanceof PromptToolPendingTimeout)) clearPendingPromptTask(pending.id);
+        if (reason instanceof PromptToolTerminalFailure) clearPendingPromptTask(pending.id);
         setError(promptToolError(reason, "Не удалось восстановить промпт"));
       })
       .finally(() => {
@@ -245,7 +257,7 @@ export default function PromptToolsPage() {
       clearPendingPromptTask(task.id);
       setResult((done.result || {}) as PromptResult);
     } catch (reason) {
-      if (pendingTaskId && !(reason instanceof PromptToolPendingTimeout)) {
+      if (pendingTaskId && reason instanceof PromptToolTerminalFailure) {
         clearPendingPromptTask(pendingTaskId);
       }
       setError(promptToolError(reason, "Не удалось подготовить промпт"));

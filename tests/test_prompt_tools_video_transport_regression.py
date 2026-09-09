@@ -104,3 +104,14 @@ def test_prompt_tools_recover_slow_video_prompt_after_reopen() -> None:
     assert "waitForTask(pending.id)" in page
     assert "clearPendingPromptTask(task.id)" in page
     assert "результат восстановится при следующем открытии" in page
+
+
+def test_prompt_tools_recovery_survives_storage_and_network_failures() -> None:
+    root = Path(__file__).resolve().parents[1] / "frontend/mini-app"
+    page = (root / "app/prompt-tools/page.tsx").read_text(encoding="utf-8")
+
+    assert "function removePendingPromptTaskStorage" in page
+    assert "Telegram/WebKit may expose localStorage but deny access" in page
+    assert "class PromptToolTerminalFailure extends Error" in page
+    assert "Temporary network/5xx/WebView failures must not orphan a paid task" in page
+    assert "reason instanceof PromptToolTerminalFailure" in page
