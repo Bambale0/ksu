@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -22,9 +23,25 @@ class FakeBot:
     def __init__(self) -> None:
         self.calls: list[tuple[int, str]] = []
         self.media_calls: list[dict[str, object]] = []
+        self.message_calls: list[dict[str, object]] = []
 
-    async def send_message(self, *, chat_id: int, text: str, reply_markup=None):  # type: ignore[no-untyped-def]
+    async def send_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        reply_markup=None,
+        parse_mode=None,
+    ):  # type: ignore[no-untyped-def]
         self.calls.append((chat_id, text))
+        self.message_calls.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+        )
         if reply_markup is not None:
             self.media_calls.append(
                 {
@@ -501,6 +518,54 @@ async def test_worker_marks_success_and_records_telegram_message_id() -> None:
         assert delivery.external_message_id == "777"
         assert delivery.sent_at is not None
     assert bot.calls == [(telegram_id, "Готово\n\nРезультат готов")]
+
+
+@pytest.mark.asyncio
+async def test_prompt_tool_delivery_sends_full_copyable_telegram_code_block() -> None:
+    bot = FakeBot()
+    prompt = (
+        "Кинематографичный портрет <героя> & мягкий контровой свет. "
+        "Камера плавно приближается, сохраняя естественное движение. "
+    ) * 12
+    assert len(prompt) > 256
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=970000000000012, first_name="Prompt delivery")
+        session.add(user)
+        await session.flush()
+        notification = await NotificationService.create(
+            session,
+            user_id=user.id,
+            kind="prompt_tool_video_succeeded",
+            title="🎬 Промпт по видео готов",
+            body=prompt,
+        )
+        await session.commit()
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 1
+        await session.commit()
+        delivery_id = delivery.id
+
+    await _process_delivery(bot, delivery_id)  # type: ignore[arg-type]
+
+    assert len(bot.message_calls) == 1
+    call = bot.message_calls[0]
+    assert call["parse_mode"] == "HTML"
+    text = str(call["text"])
+    assert '<pre><code class="language-text">' in text
+    assert html.escape(prompt) in text
+    assert "🎬 Промпт по видео готов" in text
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        assert delivery is not None
+        assert delivery.status == "sent"
+        assert delivery.external_message_id == "777"
 
 
 @pytest.mark.asyncio

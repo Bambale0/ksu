@@ -10,7 +10,8 @@ from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.db.admin_models import TariffVersion
-from app.db.models import AdminAccount, User, Wallet
+from app.db.models import AdminAccount, Notification, User, Wallet
+from app.db.notification_models import NotificationDelivery
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.db.session import SessionFactory
 from app.providers.kie_prompt_tools import PromptToolProviderError, PromptToolProviderResult
@@ -180,6 +181,70 @@ async def test_prompt_tool_worker_persists_structured_success(
             "prompt_en": "English prompt",
         }
         assert Decimal(refreshed.provider_credits or 0) == Decimal("0.1234")
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.kind.like("prompt_tool_%"),
+            )
+        )
+        assert notification is None
+
+
+@pytest.mark.asyncio
+async def test_image_prompt_success_queues_full_prompt_for_telegram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "abuse_protection_enabled", False)
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        async def aclose(self) -> None:
+            return None
+
+        async def analyze_image(self, **_kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
+            return PromptToolProviderResult(
+                model="gpt-5-4",
+                payload={
+                    "prompt_ru": "Полный русский промпт по фотографии <без сокращения>",
+                    "prompt_en": "Full English photo prompt",
+                },
+            )
+
+    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FakeClient)
+
+    async with SessionFactory() as session:
+        user, _admin = await _fixture_user_and_tariff(session)
+        task, _ = await PromptToolService.create_task(
+            session,
+            AsyncMock(),
+            user_id=user.id,
+            tool="image_analysis",
+            payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
+            idempotency_key=f"photo-chat-{uuid.uuid4()}",
+        )
+        claimed = await PromptToolOutboxService.claim(session)
+        assert claimed is not None
+        assert claimed.task_id == task.id
+        await PromptToolProcessor.process(session, AsyncMock(), claimed)
+
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.kind == "prompt_tool_photo_succeeded",
+            )
+        )
+        assert notification is not None
+        assert notification.title == "🖼️ Промпт по фото готов"
+        assert notification.body == "Полный русский промпт по фотографии <без сокращения>"
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        assert delivery.status == "pending"
 
 
 @pytest.mark.asyncio
@@ -240,6 +305,22 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
         assert refreshed.status == "succeeded"
         assert refreshed.result_payload["camera"] == "slow dolly in"
         assert refreshed.result_payload["negative_prompt"] == "blur, jitter, artifacts"
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.kind == "prompt_tool_video_succeeded",
+            )
+        )
+        assert notification is not None
+        assert notification.title == "🎬 Промпт по видео готов"
+        assert notification.body == "Русский видео prompt"
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        assert delivery.status == "pending"
 
 
 @pytest.mark.asyncio
