@@ -363,7 +363,7 @@ def test_wallet_bonus_badges_are_backend_driven_in_mini_app() -> None:
     assert 'import "./wallet-bonuses.css";' in layout
     assert 'import { WalletParity } from "@/components/wallet-parity";' in page
     assert "<WalletParity />" in page
-    assert 'customerRequest<PackageCatalog>("/api/v1/payments/card/packages")' in wallet
+    assert 'customerRequest<PackageCatalog>("/api/v1/payments/yookassa/packages")' in wallet
     assert "bonus_credits" in wallet
     assert "package-bonus-live" in wallet
     assert ".package-bonus-live" in css

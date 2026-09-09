@@ -66,10 +66,13 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
 
     await expect(page).to_have_url(re.compile(r"/mini-app/payments/?"), timeout=8000)
     await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
-    lava_tab = page.get_by_role("button", name="Lava Top").first
-    await expect(lava_tab).to_have_class(re.compile(r"active"), timeout=8000)
+    yookassa_tab = page.get_by_role("button", name="ЮKassa").first
+    await expect(yookassa_tab).to_have_class(re.compile(r"active"), timeout=8000)
+    await expect(page.get_by_role("button", name="Lava Top")).to_have_count(0)
+    await expect(page.get_by_role("button", name="CryptoBot")).to_have_count(0)
+    await expect(page.get_by_role("button", name="2328")).to_have_count(0)
     report.controls_seen.add("wallet:payments-page")
-    report.controls_seen.add("wallet:method:lava")
+    report.controls_seen.add("wallet:method:yookassa")
 
     package = page.locator(
         ".package-grid .package:visible, .primary-card-package:visible, #paymentPackageGrid .payment-package:visible"
@@ -77,33 +80,20 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(package).to_be_visible(timeout=8000)
     await package.click()
     report.controls_seen.add("wallet:package")
-
-    email = page.locator(
-        'input[type="email"]:visible, input[inputmode="email"]:visible, .primary-card-section input[inputmode="email"]:visible'
-    ).first
-    await expect(email).to_be_visible(timeout=8000)
-    await email.fill("e2e@example.com")
-
     pay = page.locator("button:visible").filter(
-        has_text=re.compile(r"Перейти к оплате|Создать оплату|через Lava Top", re.I)
+        has_text=re.compile(r"Перейти к оплате|Создать оплату|через ЮKassa", re.I)
     ).first
     await expect(pay).to_be_enabled(timeout=8000)
     async with page.expect_response(
-        lambda response: "/api/v1/payments/card/checkout" in response.url
+        lambda response: "/api/v1/payments" in response.url
         and response.request.method == "POST",
         timeout=10000,
     ) as checkout_pending:
         await pay.click()
     checkout_response = await checkout_pending.value
-    assert checkout_response.ok, f"card checkout: {checkout_response.status} {await checkout_response.text()}"
-    report.controls_seen.add("wallet:card:checkout")
-
-    crypto_tab = page.get_by_role("button", name="CryptoBot").first
-    if await crypto_tab.count():
-        await crypto_tab.click()
-        report.controls_seen.add("wallet:method:crypto")
-
-    report.ok("payments page + Lava Top checkout")
+    assert checkout_response.ok, f"yookassa checkout: {checkout_response.status} {await checkout_response.text()}"
+    report.controls_seen.add("wallet:yookassa:checkout")
+    report.ok("payments page + YooKassa checkout")
 
 
 async def scenario_profile_support_partner(page: Page, report: suite.legacy.Report) -> None:

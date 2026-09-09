@@ -126,12 +126,9 @@ async def scenario_wallet(page: Page, report: legacy.Report) -> None:
     else:
         await page.goto(f"{legacy.BASE_URL}/mini-app/?route=wallet", wait_until="domcontentloaded")
     main = page.locator("main")
-    await expect(main).to_contain_text(re.compile("Баланс|Оплат|ROX|Lava|Crypto", re.I), timeout=10000)
-    for method in ("lava", "crypto"):
-        tab = page.locator(f'[data-checkout-method="{method}"]')
-        if await tab.count() and await tab.first.is_visible():
-            await tab.first.click()
-            report.controls_seen.add(f"wallet:method:{method}")
+    await expect(main).to_contain_text(re.compile("Баланс|Оплат|ROX|ЮKassa", re.I), timeout=10000)
+    for hidden_label in ("Lava Top", "CryptoBot", "2328"):
+        await expect(page.get_by_role("button", name=hidden_label)).to_have_count(0)
     report.ok("wallet route and checkout controls")
 
 
