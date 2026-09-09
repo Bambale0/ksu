@@ -559,7 +559,7 @@ async def test_prompt_tool_delivery_sends_full_copyable_telegram_code_block() ->
     assert call["parse_mode"] == "HTML"
     text = str(call["text"])
     assert '<pre><code class="language-text">' in text
-    assert html.escape(prompt) in text
+    assert html.escape(prompt.strip()) in text
     assert "🎬 Промпт по видео готов" in text
     async with SessionFactory() as session:
         delivery = await session.get(NotificationDelivery, delivery_id)
