@@ -196,9 +196,9 @@ async function mockSystem(page, { admin = false } = {}) {
     if (path === '/api/v1/referrals/rewards') return json(route, { items: [{ id: 'reward_1', line: 1, status: 'completed', amount: '75.00', amount_rox: '75.00', net_amount_rox: '75.00', created_at: '2026-08-27T11:00:00Z', source_user: { first_name: 'Анна', username: 'anna' } }] });
 
     if (path === '/api/v1/me/transactions') return json(route, []);
-    if (path === '/api/v1/payments/card/packages') return json(route, { provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
-    if (path === '/api/v1/payments/card/checkout') return json(route, { id: 'pay_1', status: 'pending', payment_url: 'https://pay.roxy.local/checkout' });
-    if (path === '/api/v1/payments') return json(route, { items: [] });
+    if (path === '/api/v1/payments/yookassa/packages') return json(route, { provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments' && request.method() === 'GET') return json(route, { items: [] });
+    if (path === '/api/v1/payments' && request.method() === 'POST') return json(route, { id: 'pay_1', status: 'pending', provider: 'yookassa', label: 'ЮKassa', package_id: 'starter', amount: '100', currency: 'RUB', credits: '100', payment_url: 'https://pay.roxy.local/checkout' }, 201);
 
     return json(route, { items: [] });
   });
@@ -387,7 +387,7 @@ const cases = [
     await request;
     await expect(page.getByText('Работа опубликована в ленте и профиле')).toBeVisible();
   } },
-  { name: 'wallet-card-package', route: 'home', run: async (page) => {
+  { name: 'wallet-yookassa-package', route: 'home', run: async (page) => {
     await page.locator('.balance-button').click();
     await expect(page.getByText('Выберите пакет')).toBeVisible();
     await expect(page.getByText(/100 ROX/).first()).toBeVisible();

@@ -226,8 +226,9 @@ async function mockRoxy(page) {
 
     if (path === '/api/v1/me/transactions') return json(route, []);
     if (path === '/api/v1/payments/card/packages') return json(route, { provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
-    if (path === '/api/v1/payments/card/checkout') return json(route, { id: 'pay_1', status: 'pending', payment_url: 'https://pay.roxy.local/checkout' });
-    if (path === '/api/v1/payments') return json(route, { items: [] });
+    if (path === '/api/v1/payments/yookassa/packages') return json(route, { provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments' && route.request().method() === 'GET') return json(route, { items: [] });
+    if (path === '/api/v1/payments' && route.request().method() === 'POST') return json(route, { id: 'pay_1', status: 'pending', provider: 'yookassa', label: 'ЮKassa', package_id: 'starter', amount: '100', currency: 'RUB', credits: '100', payment_url: 'https://pay.roxy.local/checkout' }, 201);
 
     return json(route, { items: [] });
   });
@@ -301,7 +302,8 @@ async function runHome(page, check) {
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
-    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile') {
     await bottomButton(page, 'Профиль').click();
     await expect(page.getByText('QA').first()).toBeVisible();
@@ -519,7 +521,8 @@ async function runProfile(page, check) {
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
-    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile-link') {
     await bottomButton(page, 'Партнёры').click();
     await expect(page.getByRole('button', { name: 'Скопировать профиль' })).toBeVisible();

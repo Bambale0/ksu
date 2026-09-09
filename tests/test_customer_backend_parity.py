@@ -28,7 +28,7 @@ def test_customer_parity_pages_cover_backend_capabilities() -> None:
         "actions": "/api/v1/generations/",
         "creator-partnership": "/api/v1/creator-partnership",
         "presets": "/api/v1/presets",
-        "payments": "/api/v1/payments/card/packages",
+        "payments": "/api/v1/payments/yookassa/packages",
         "downloads": "download_url",
     }
 
@@ -85,7 +85,7 @@ def test_wallet_bonus_badges_follow_backend_catalog() -> None:
     component = (root / "components/wallet-parity.tsx").read_text(encoding="utf-8")
     styles = (root / "app/wallet-bonuses.css").read_text(encoding="utf-8")
 
-    assert "/api/v1/payments/card/packages" in component
+    assert "/api/v1/payments/yookassa/packages" in component
     assert "bonus_credits" in component
     assert "package-bonus-live" in component
     assert "/mini-app/payments/" in component

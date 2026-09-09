@@ -57,6 +57,13 @@ async function mockApi(page) {
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
+    if (path === '/api/v1/payments/yookassa/packages') return json({
+      provider: 'yookassa',
+      label: 'ЮKassa',
+      configured: true,
+      currencies: ['RUB'],
+      packages: cryptoPackages,
+    });
     if (path === '/api/v1/payments/crypto/packages') return json({
       provider: 'cryptobot',
       label: 'CryptoBot',
@@ -97,54 +104,32 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
 
-test('quick wallet exposes CryptoBot as primary crypto and keeps 2328 without billing email', async ({ page }) => {
+test('quick wallet exposes only YooKassa while keeping hidden provider backends untouched', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  const hiddenCatalogRequests = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/v1/payments/card/packages' || path === '/api/v1/payments/crypto/packages' || path === '/api/v1/payments/crypto/2328/packages') {
+      hiddenCatalogRequests.push(path);
+    }
+  });
   await mockApi(page);
   await page.goto('/mini-app/?route=profile');
-  await expect(page.locator('.profile-screen')).toBeVisible();
-
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveClass(/active/);
 
-  const cryptoBotButton = page.getByRole('button', { name: 'CryptoBot', exact: true });
-  const provider2328Button = page.getByRole('button', { name: '2328', exact: true });
-  await expect(cryptoBotButton).toBeVisible();
-  await expect(provider2328Button).toBeVisible();
-  const cryptoBotBox = await cryptoBotButton.boundingBox();
-  const provider2328Box = await provider2328Button.boundingBox();
-  expect(cryptoBotBox).not.toBeNull();
-  expect(provider2328Box).not.toBeNull();
-  expect(cryptoBotBox.x).toBeLessThan(provider2328Box.x);
-
-  await cryptoBotButton.click();
-  await expect(cryptoBotButton).toHaveClass(/active/);
-  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
-  await expect(page.getByText(/CryptoBot — основной крипто-способ/)).toBeVisible();
-
-  const cryptoBotCheckout = page.waitForRequest((request) =>
-    new URL(request.url()).pathname === '/api/v1/payments/crypto/checkout' && request.method() === 'POST'
-  );
-  await page.getByRole('button', { name: /Оплатить .* RUB через CryptoBot/ }).click();
-  const cryptoBotRequest = await cryptoBotCheckout;
-  expect(JSON.parse(cryptoBotRequest.postData() || '{}')).toEqual({ package_id: 'starter' });
-
-  await provider2328Button.click();
-  await expect(provider2328Button).toHaveClass(/active/);
-  await expect(page.getByPlaceholder('you@example.com')).toHaveCount(0);
-  await expect(page.getByText(/2328 — дополнительный крипто-способ/)).toBeVisible();
-
-  const provider2328Checkout = page.waitForRequest((request) =>
-    new URL(request.url()).pathname === '/api/v1/payments/crypto/2328/checkout' && request.method() === 'POST'
-  );
-  await page.getByRole('button', { name: /Оплатить .* RUB через 2328/ }).click();
-  const provider2328Request = await provider2328Checkout;
-  expect(JSON.parse(provider2328Request.postData() || '{}')).toEqual({ package_id: 'starter' });
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Пополнение ROX сейчас доступно через ЮKassa.')).toHaveCount(1);
+  expect(hiddenCatalogRequests).toEqual([]);
 });

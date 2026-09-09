@@ -701,15 +701,13 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
   const [packages, setPackages] = useState<Record<string, { credits: string; prices: Record<string, string> }>>({});
   const [transactions, setTransactions] = useState<Array<{ id: string; kind: string; amount: string; balance_after: string; status: string; created_at: string }>>([]);
   const [selected, setSelected] = useState("");
-  const [currency, setCurrency] = useState<"RUB" | "USD" | "EUR">("RUB");
-  const [email, setEmail] = useState("");
   const [paying, setPaying] = useState(false);
   useEffect(() => { void Promise.allSettled([api.paymentPackages().then((data) => { setPackages(data.packages || {}); setSelected((current) => current || Object.keys(data.packages || {})[0] || ""); }), api.transactions().then(setTransactions)]); }, []);
   const pay = async () => {
     if (!selected) return;
     setPaying(true);
     try {
-      const payment = await api.createPayment(selected, currency, email);
+      const payment = await api.createPayment(selected);
       if (!payment.payment_url) throw new Error("Платёжная ссылка не получена");
       const tg = telegram();
       if (tg?.openLink) tg.openLink(payment.payment_url);
@@ -719,7 +717,7 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
     } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось создать платёж"); }
     finally { setPaying(false); }
   };
-  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices[currency] || 0)} {currency}</small></button>)}</div><div className="segmented providers"><button type="button" className="active">Оплата картой</button></div><div className="segmented scrollable">{(["RUB", "USD", "EUR"] as const).filter((item) => Object.values(packages).some((pack) => pack.prices[item])).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div><input className="wallet-input" type="email" inputMode="email" autoComplete="email" placeholder="Email без + и дефиса" value={email} onChange={(event) => setEmail(event.target.value)} /><button className="primary wide" type="button" disabled={!selected || !email.trim() || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
+  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices.RUB || 0)} RUB</small></button>)}</div><div className="segmented providers"><button type="button" className="active">ЮKassa</button></div><button className="primary wide" type="button" disabled={!selected || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
 }
 
 function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
