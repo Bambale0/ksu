@@ -61,6 +61,19 @@ The dedicated `prompt-tool-worker`:
 
 Provider-side chat calls do not currently expose a KSU-controlled idempotency key. A worker crash after the external provider accepted a request but before the DB result commit may therefore repeat provider consumption on recovery; the user is never charged twice. This is an explicit provider-boundary compromise.
 
+## Telegram result delivery
+
+Successful `image_analysis` and `video_prompt` tasks enqueue a transactional `Notification` plus `NotificationDelivery` in the same database transaction that completes the prompt task. Telegram delivery therefore reuses the existing notification-worker lease/retry path instead of sending directly from the provider worker. The prompt task remains the source of truth and the Mini App polling contract is unchanged.
+
+The chat message contains the primary user-facing `prompt_ru`, falling back to `prompt_en` only when needed. The prompt is rendered as a language-tagged Telegram `<pre><code>` block so current Telegram clients expose their native whole-block copy control. This is intentional: Bot API `CopyTextButton.text` is limited to 256 characters while production photo/video prompts are normally much longer.
+
+Only the media-analysis tools push prompt results to chat:
+
+- `image_analysis` → `prompt_tool_photo_succeeded`;
+- `video_prompt` → `prompt_tool_video_succeeded`.
+
+`prompt_builder` keeps its existing Mini App-only result behavior.
+
 ## API
 
 Authenticated endpoints:

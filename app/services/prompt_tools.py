@@ -20,6 +20,7 @@ from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
+from app.services.notifications import NotificationService
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,10 @@ _DEFAULT_COSTS = {
 _FIXED_COST_TOOLS = {"image_analysis", "prompt_builder"}
 _ALLOWED_DURATIONS = {5, 10, 15}
 _TASK_NAMESPACE = uuid.UUID("b9346c9a-31c2-4de6-b2dd-0c76c359dd7f")
+_CHAT_NOTIFICATION_BY_TOOL = {
+    "image_analysis": ("prompt_tool_photo_succeeded", "🖼️ Промпт по фото готов"),
+    "video_prompt": ("prompt_tool_video_succeeded", "🎬 Промпт по видео готов"),
+}
 
 
 class PromptToolUnavailable(RuntimeError):
@@ -67,6 +72,14 @@ def _utcnow() -> datetime:
 
 def _retry_delay(attempt: int) -> int:
     return min(180, 2 ** max(1, min(attempt, 7)))
+
+
+def _primary_prompt(result: dict[str, Any]) -> str:
+    for key in ("prompt_ru", "prompt_en"):
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 class PromptToolPricingService:
@@ -356,16 +369,45 @@ class PromptToolOutboxService:
         return ClaimedPromptTool(row.id, row.task_id, row.attempts)
 
     @staticmethod
+    async def _lock_current_claim(
+        session: AsyncSession,
+        claimed: ClaimedPromptTool,
+    ) -> tuple[PromptToolTask, PromptToolOutbox] | None:
+        row = await session.scalar(
+            select(PromptToolOutbox)
+            .where(PromptToolOutbox.id == claimed.outbox_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if (
+            row is None
+            or row.task_id != claimed.task_id
+            or row.status != "processing"
+            or row.attempts != claimed.attempts
+        ):
+            return None
+        task = await session.scalar(
+            select(PromptToolTask)
+            .where(PromptToolTask.id == claimed.task_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if task is None:
+            return None
+        return task, row
+
+    @staticmethod
     async def release(session: AsyncSession, claimed: ClaimedPromptTool, error: str) -> None:
-        row = await session.get(PromptToolOutbox, claimed.outbox_id)
-        if row is None:
+        locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
+        if locked is None:
+            await session.rollback()
             return
+        task, row = locked
         row.status = "pending"
         row.lease_until = None
         row.available_at = _utcnow() + timedelta(seconds=_retry_delay(claimed.attempts))
         row.last_error = error[:4000]
-        task = await session.get(PromptToolTask, claimed.task_id)
-        if task is not None:
+        if task.status in {"queued", "processing"}:
             task.status = "queued"
         await session.commit()
 
@@ -378,11 +420,12 @@ class PromptToolOutboxService:
         model: str,
         provider_credits: Decimal | None,
     ) -> None:
-        now = _utcnow()
-        task = await session.get(PromptToolTask, claimed.task_id)
-        row = await session.get(PromptToolOutbox, claimed.outbox_id)
-        if task is None or row is None:
+        locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
+        if locked is None:
+            await session.rollback()
             return
+        task, row = locked
+        now = _utcnow()
         task.status = "succeeded"
         task.model = model
         task.result_payload = result
@@ -393,6 +436,18 @@ class PromptToolOutboxService:
         row.lease_until = None
         row.completed_at = now
         row.last_error = None
+        notification_config = _CHAT_NOTIFICATION_BY_TOOL.get(task.tool)
+        if notification_config is not None:
+            prompt = _primary_prompt(result)
+            if prompt:
+                kind, title = notification_config
+                await NotificationService.create(
+                    session,
+                    user_id=task.user_id,
+                    kind=kind,
+                    title=title,
+                    body=prompt,
+                )
         await session.commit()
 
     @staticmethod
@@ -402,11 +457,12 @@ class PromptToolOutboxService:
         *,
         error: str,
     ) -> None:
-        now = _utcnow()
-        task = await session.get(PromptToolTask, claimed.task_id)
-        row = await session.get(PromptToolOutbox, claimed.outbox_id)
-        if task is None or row is None:
+        locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
+        if locked is None:
+            await session.rollback()
             return
+        task, row = locked
+        now = _utcnow()
         task.status = "failed"
         task.error = error[:4000]
         task.completed_at = now

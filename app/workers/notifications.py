@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import uuid
 from decimal import Decimal
@@ -29,6 +30,10 @@ logger = logging.getLogger(__name__)
 WORKER_NAME = "notification-worker"
 
 _GENERATION_NOTIFICATION_KINDS = {"generation_succeeded", "generation_failed"}
+_PROMPT_TOOL_NOTIFICATION_KINDS = {
+    "prompt_tool_photo_succeeded",
+    "prompt_tool_video_succeeded",
+}
 
 
 async def _heartbeat(redis: Redis) -> None:
@@ -44,6 +49,16 @@ def _notification_text(notification: Notification) -> str:
     if title and body:
         return f"{title}\n\n{body}"
     return title or body or "У вас новое уведомление."
+
+
+def _prompt_tool_notification_text(notification: Notification) -> str:
+    title = html.escape(notification.title.strip() or "Промпт готов")
+    prompt = html.escape(notification.body.strip())
+    if not prompt:
+        return f"<b>{title}</b>"
+    # A language-tagged pre block gets Telegram's native whole-block copy control.
+    # This preserves long production prompts that cannot fit CopyTextButton's 256-char limit.
+    return f'<b>{title}</b>\n\n<pre><code class="language-text">{prompt}</code></pre>'
 
 
 def _money(value: Decimal | object) -> str:
@@ -392,6 +407,12 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                     notification=notification,
                     generation=generation,
                     action_context_ids=action_context_ids,
+                )
+            elif notification.kind in _PROMPT_TOOL_NOTIFICATION_KINDS:
+                message = await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=_prompt_tool_notification_text(notification),
+                    parse_mode="HTML",
                 )
             else:
                 message = await bot.send_message(
