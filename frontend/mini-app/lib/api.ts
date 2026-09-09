@@ -274,13 +274,14 @@ export const api = {
   paymentPackages: () => request<{
     provider: string;
     label: string;
+    configured?: boolean;
     currencies: string[];
-    packages: Record<string, { credits: string; prices: Record<string, string> }>;
-  }>("/api/v1/payments/card/packages"),
+    packages: Record<string, { credits: string; bonus_credits?: string; total_credits?: string; prices: Record<string, string> }>;
+  }>("/api/v1/payments/yookassa/packages"),
   payments: () => request<{ items: Array<{ id: string; status: string; provider: string; amount: string; currency: string; rox: string; payment_url: string; created_at: string }> }>("/api/v1/payments?limit=20"),
-  createPayment: (packageId: string, currency: "RUB" | "USD" | "EUR", billingEmail: string) => request<{ id: string; status: string; payment_url: string }>("/api/v1/payments/card/checkout", {
+  createPayment: (packageId: string) => request<{ id: string; status: string; payment_url: string }>("/api/v1/payments", {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ package_id: packageId, currency, billing_email: billingEmail }),
+    body: JSON.stringify({ provider: "yookassa", package_id: packageId }),
   }),
 };

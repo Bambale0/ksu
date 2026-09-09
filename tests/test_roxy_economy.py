@@ -259,8 +259,10 @@ def test_react_wallet_keeps_rox_separate_from_partner_rubles() -> None:
     assert 'api.paymentPackages()' in app
     assert 'api.transactions()' in app
     assert '"/api/v1/me/transactions"' in api
-    assert '"/api/v1/payments/card/packages"' in api
-    assert '"/api/v1/payments/card/checkout"' in api
+    assert '"/api/v1/payments/yookassa/packages"' in api
+    assert 'body: JSON.stringify({ provider: "yookassa", package_id: packageId })' in api
+    assert '"/api/v1/payments/card/packages"' not in api
+    assert '"/api/v1/payments/card/checkout"' not in api
 
     # Partner cash accounting is a separate backend domain and must never be
     # presented as spendable ROX in the customer wallet.

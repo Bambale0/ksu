@@ -91,7 +91,7 @@ async function mockApp(page, { onboarding = false, bootDelay = 0 } = {}) {
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ packages: { starter: { credits: '100', prices: { RUB: '100' } }, plus: { credits: '500', prices: { RUB: '450' } } } });
+    if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } }, plus: { credits: '500', bonus_credits: '0', total_credits: '500', prices: { RUB: '450' } } } });
     if (path === '/api/v1/batch-generations' && method === 'GET') return json({ items: [] });
     if (path === '/api/v1/batch-generations/quote') return json({ input_count: 2, per_item_cost_credits: '15.00', total_cost_credits: '30.00' });
     if (path === '/api/v1/batch-generations' && method === 'POST') return json({ id: 'batch_1', status: 'running', model_id: model.id, prompt: 'x', input_count: 2, succeeded_count: 0, failed_count: 0, active_count: 2, progress_percent: 0, total_charged_credits: '30.00', items: [] }, 202);

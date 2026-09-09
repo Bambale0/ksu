@@ -93,8 +93,9 @@ async function mockApi(page) {
     if (path === '/api/v1/presets') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
 
-    if (path === '/api/v1/payments/card/packages') return json({ provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } } } });
-    if (path === '/api/v1/payments') return json({ items: [] });
+    if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } } } });
+    if (path === '/api/v1/payments' && request.method() === 'GET') return json({ items: [] });
+    if (path === '/api/v1/payments' && request.method() === 'POST') return json({ id: 'pay_1', status: 'pending', provider: 'yookassa', payment_url: 'https://pay.roxy.local/checkout' }, 201);
 
     if (path === '/api/v1/discovery/home') return json({ slides: [] });
     return json({ items: [] });

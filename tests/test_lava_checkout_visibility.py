@@ -22,6 +22,19 @@ def test_only_yookassa_is_exposed_for_new_mini_app_checkout() -> None:
     assert '/api/v1/payments/yookassa/packages' in quick_wallet
     assert 'Пополнить через ЮKassa' in quick_wallet
 
+    root_api = (ROOT / "frontend/mini-app/lib/api.ts").read_text(encoding="utf-8")
+    root_wallet = (ROOT / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")
+    social_wallet = (ROOT / "frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
+    assert '"/api/v1/payments/yookassa/packages"' in root_api
+    assert '"/api/v1/payments/card/packages"' not in root_api
+    assert '"/api/v1/payments/card/checkout"' not in root_api
+    assert 'body: JSON.stringify({ provider: "yookassa", package_id: packageId })' in root_api
+    for wallet in (root_wallet, social_wallet):
+        assert '>ЮKassa</button>' in wallet
+        assert '>Оплата картой</button>' not in wallet
+        assert 'api.createPayment(selected, currency, email)' not in wallet
+        assert 'placeholder="Email без + и дефиса"' not in wallet
+
 
 def test_historical_hidden_provider_payments_remain_readable() -> None:
     source = (ROOT / "frontend/mini-app/app/payments/page.tsx").read_text(encoding="utf-8")
