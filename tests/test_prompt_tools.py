@@ -256,17 +256,19 @@ async def test_prompt_tool_reclaimed_lease_fences_stale_worker_and_notifies_once
 
     async with SessionFactory() as session:
         user, _admin = await _fixture_user_and_tariff(session)
+        user_id = user.id
         task, _ = await PromptToolService.create_task(
             session,
             AsyncMock(),
-            user_id=user.id,
+            user_id=user_id,
             tool="image_analysis",
             payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
             idempotency_key=f"photo-fencing-{uuid.uuid4()}",
         )
+        task_id = task.id
         first_claim = await PromptToolOutboxService.claim(session)
         assert first_claim is not None
-        assert first_claim.task_id == task.id
+        assert first_claim.task_id == task_id
 
         row = await session.get(PromptToolOutbox, first_claim.outbox_id)
         assert row is not None
@@ -289,7 +291,7 @@ async def test_prompt_tool_reclaimed_lease_fences_stale_worker_and_notifies_once
             (
                 await session.scalars(
                     select(Notification).where(
-                        Notification.user_id == user.id,
+                        Notification.user_id == user_id,
                         Notification.kind == "prompt_tool_photo_succeeded",
                     )
                 )
@@ -311,14 +313,14 @@ async def test_prompt_tool_reclaimed_lease_fences_stale_worker_and_notifies_once
             error="late stale terminal failure",
         )
 
-        refreshed = await session.get(PromptToolTask, task.id, populate_existing=True)
+        refreshed = await session.get(PromptToolTask, task_id, populate_existing=True)
         outbox = await session.get(PromptToolOutbox, first_claim.outbox_id, populate_existing=True)
-        wallet = await session.get(Wallet, user.id, populate_existing=True)
+        wallet = await session.get(Wallet, user_id, populate_existing=True)
         notifications = list(
             (
                 await session.scalars(
                     select(Notification).where(
-                        Notification.user_id == user.id,
+                        Notification.user_id == user_id,
                         Notification.kind == "prompt_tool_photo_succeeded",
                     )
                 )
