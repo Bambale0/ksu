@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -245,6 +246,94 @@ async def test_image_prompt_success_queues_full_prompt_for_telegram(
         )
         assert delivery is not None
         assert delivery.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_prompt_tool_reclaimed_lease_fences_stale_worker_and_notifies_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "abuse_protection_enabled", False)
+
+    async with SessionFactory() as session:
+        user, _admin = await _fixture_user_and_tariff(session)
+        task, _ = await PromptToolService.create_task(
+            session,
+            AsyncMock(),
+            user_id=user.id,
+            tool="image_analysis",
+            payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
+            idempotency_key=f"photo-fencing-{uuid.uuid4()}",
+        )
+        first_claim = await PromptToolOutboxService.claim(session)
+        assert first_claim is not None
+        assert first_claim.task_id == task.id
+
+        row = await session.get(PromptToolOutbox, first_claim.outbox_id)
+        assert row is not None
+        row.lease_until = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+        second_claim = await PromptToolOutboxService.claim(session)
+        assert second_claim is not None
+        assert second_claim.outbox_id == first_claim.outbox_id
+        assert second_claim.attempts == first_claim.attempts + 1
+
+        await PromptToolOutboxService.complete(
+            session,
+            first_claim,
+            result={"prompt_ru": "Устаревший результат", "prompt_en": "Stale result"},
+            model="gpt-5-4",
+            provider_credits=None,
+        )
+        stale_notifications = list(
+            (
+                await session.scalars(
+                    select(Notification).where(
+                        Notification.user_id == user.id,
+                        Notification.kind == "prompt_tool_photo_succeeded",
+                    )
+                )
+            ).all()
+        )
+        assert stale_notifications == []
+
+        await PromptToolOutboxService.complete(
+            session,
+            second_claim,
+            result={"prompt_ru": "Актуальный результат", "prompt_en": "Current result"},
+            model="gpt-5-4",
+            provider_credits=None,
+        )
+        await PromptToolOutboxService.release(session, first_claim, "late stale failure")
+        await PromptToolOutboxService.fail_and_refund(
+            session,
+            first_claim,
+            error="late stale terminal failure",
+        )
+
+        refreshed = await session.get(PromptToolTask, task.id, populate_existing=True)
+        outbox = await session.get(PromptToolOutbox, first_claim.outbox_id, populate_existing=True)
+        wallet = await session.get(Wallet, user.id, populate_existing=True)
+        notifications = list(
+            (
+                await session.scalars(
+                    select(Notification).where(
+                        Notification.user_id == user.id,
+                        Notification.kind == "prompt_tool_photo_succeeded",
+                    )
+                )
+            ).all()
+        )
+        assert refreshed is not None
+        assert refreshed.status == "succeeded"
+        assert refreshed.result_payload["prompt_ru"] == "Актуальный результат"
+        assert outbox is not None
+        assert outbox.status == "completed"
+        assert outbox.attempts == second_claim.attempts
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal("39.00")
+        assert len(notifications) == 1
+        assert notifications[0].body == "Актуальный результат"
 
 
 @pytest.mark.asyncio
