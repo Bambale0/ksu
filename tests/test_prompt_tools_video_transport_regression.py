@@ -90,3 +90,17 @@ def test_prompt_tools_mobile_error_contract_prevents_horizontal_overflow() -> No
     assert ".primary.wide{min-width:0;max-width:100%;white-space:normal}" in styles
     assert "function promptToolError" in page
     assert "Не удалось обработать файл. Загрузите его ещё раз и повторите." in page
+
+
+def test_prompt_tools_recover_slow_video_prompt_after_reopen() -> None:
+    root = Path(__file__).resolve().parents[1] / "frontend/mini-app"
+    page = (root / "app/prompt-tools/page.tsx").read_text(encoding="utf-8")
+
+    assert "PROMPT_TOOL_POLL_INTERVAL_MS = 2000" in page
+    assert "PROMPT_TOOL_MAX_POLL_ATTEMPTS = 450" in page
+    assert "PROMPT_TOOL_PENDING_KEY" in page
+    assert "window.localStorage.setItem(PROMPT_TOOL_PENDING_KEY" in page
+    assert "const pending = readPendingPromptTask()" in page
+    assert "waitForTask(pending.id)" in page
+    assert "clearPendingPromptTask(task.id)" in page
+    assert "результат восстановится при следующем открытии" in page

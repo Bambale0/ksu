@@ -16,6 +16,62 @@ const SEEDANCE_PRICES: Record<5 | 10 | 15, number> = {
   15: 90,
 };
 
+const PROMPT_TOOL_PENDING_KEY = "roxy.prompt-tools.pending.v1";
+const PROMPT_TOOL_POLL_INTERVAL_MS = 2000;
+const PROMPT_TOOL_MAX_POLL_ATTEMPTS = 450;
+const PROMPT_TOOL_PENDING_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type PendingPromptTask = {
+  id: string;
+  mode: Mode;
+  createdAt: number;
+};
+
+class PromptToolPendingTimeout extends Error {}
+
+function readPendingPromptTask(): PendingPromptTask | null {
+  try {
+    const raw = window.localStorage.getItem(PROMPT_TOOL_PENDING_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingPromptTask>;
+    if (
+      typeof parsed.id !== "string"
+      || !parsed.id
+      || (parsed.mode !== "image" && parsed.mode !== "video" && parsed.mode !== "seedance")
+      || typeof parsed.createdAt !== "number"
+      || Date.now() - parsed.createdAt > PROMPT_TOOL_PENDING_MAX_AGE_MS
+    ) {
+      window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+      return null;
+    }
+    return parsed as PendingPromptTask;
+  } catch {
+    window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+    return null;
+  }
+}
+
+function savePendingPromptTask(task: PendingPromptTask): void {
+  try {
+    window.localStorage.setItem(PROMPT_TOOL_PENDING_KEY, JSON.stringify(task));
+  } catch {
+    // Recovery is best-effort. The current page still keeps polling normally.
+  }
+}
+
+function clearPendingPromptTask(id?: string): void {
+  try {
+    if (!id) {
+      window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+      return;
+    }
+    const pending = readPendingPromptTask();
+    if (!pending || pending.id === id) window.localStorage.removeItem(PROMPT_TOOL_PENDING_KEY);
+  } catch {
+    // Storage cleanup must never break result rendering.
+  }
+}
+
 function initialMode(): Mode {
   if (typeof window === "undefined") return "image";
   const value = new URL(window.location.href).searchParams.get("mode");
@@ -63,13 +119,13 @@ function isPromptEntry(label: string): boolean {
 }
 
 async function waitForTask(id: string): Promise<PromptToolTask> {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
+  for (let attempt = 0; attempt < PROMPT_TOOL_MAX_POLL_ATTEMPTS; attempt += 1) {
     const task = await api.promptToolTask(id);
     if (task.status === "succeeded") return task;
     if (task.status === "failed") throw new Error(promptToolError(task.error, "Не удалось подготовить промпт"));
-    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    await new Promise((resolve) => window.setTimeout(resolve, PROMPT_TOOL_POLL_INTERVAL_MS));
   }
-  throw new Error("Промпт ещё готовится. Откройте этот инструмент чуть позже.");
+  throw new PromptToolPendingTimeout("Промпт всё ещё готовится. Можно закрыть окно — результат восстановится при следующем открытии.");
 }
 
 export default function PromptToolsPage() {
@@ -88,6 +144,32 @@ export default function PromptToolsPage() {
   useEffect(() => {
     setMode(initialMode());
     void api.promptTools().then((payload) => setTools(payload.items || [])).catch(() => setTools([]));
+
+    const pending = readPendingPromptTask();
+    if (!pending) return;
+
+    let cancelled = false;
+    setMode(pending.mode);
+    setBusy(true);
+    setError("");
+    void waitForTask(pending.id)
+      .then((done) => {
+        if (cancelled) return;
+        clearPendingPromptTask(pending.id);
+        setResult((done.result || {}) as PromptResult);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        if (!(reason instanceof PromptToolPendingTimeout)) clearPendingPromptTask(pending.id);
+        setError(promptToolError(reason, "Не удалось восстановить промпт"));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const toolById = useMemo(() => new Map(tools.map((item) => [item.id, item])), [tools]);
@@ -140,6 +222,7 @@ export default function PromptToolsPage() {
     setError("");
     setResult(null);
     setCopiedLabel("");
+    let pendingTaskId = "";
     try {
       let task: PromptToolTask;
       if (mode === "video") {
@@ -156,9 +239,15 @@ export default function PromptToolsPage() {
           duration_seconds: mode === "seedance" ? duration : null,
         });
       }
+      pendingTaskId = task.id;
+      savePendingPromptTask({ id: task.id, mode, createdAt: Date.now() });
       const done = await waitForTask(task.id);
+      clearPendingPromptTask(task.id);
       setResult((done.result || {}) as PromptResult);
     } catch (reason) {
+      if (pendingTaskId && !(reason instanceof PromptToolPendingTimeout)) {
+        clearPendingPromptTask(pendingTaskId);
+      }
       setError(promptToolError(reason, "Не удалось подготовить промпт"));
     } finally {
       setBusy(false);
