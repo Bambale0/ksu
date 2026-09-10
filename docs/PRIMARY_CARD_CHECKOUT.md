@@ -1,14 +1,19 @@
 # Primary hosted card checkout
 
-**Status:** synchronized with current runtime/provider contract on 2026-08-20.
+**Status:** synchronized with current runtime/provider contract on 2026-09-10.
 
-The user-facing payment method is always named:
+YooKassa is the primary RUB checkout. The hosted card provider is exposed in
+the Mini App only as a deliberately secondary fallback named:
 
 ```text
-Оплата картой · USD / EUR / RUB / СБП
+Lava Top · резерв
 ```
 
-Do not expose the upstream payment platform brand in bot messages, Mini App labels, public payment API responses, payment history labels or public webhook paths.
+This is an intentional product-label exception. The provider code, API routes,
+webhook route, storage values and public API `label` remain neutral and must not
+be renamed from `card` / `Оплата картой` to a Lava-specific technical contract.
+The Lava brand is allowed only in customer-facing Mini App copy that clearly
+marks it as the reserve checkout.
 
 ## Public contract
 
@@ -19,8 +24,8 @@ card
 ```
 
 The current upstream implementation is Lava Top (`CARD_API_BASE_URL=https://gate.lava.top`).
-This is an internal provider route: the Mini App and public API copy keep using
-the neutral card checkout name.
+The implementation remains behind the neutral `card` API contract even though
+the Mini App identifies the reserve option by brand for user clarity.
 
 Endpoints:
 

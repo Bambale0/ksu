@@ -117,7 +117,7 @@ async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments/card/packages') return json({ configured: true, packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/batch-generations') return json({ items: [] });
     if (path === '/api/v1/batch-generations/quote') return json({ input_count: 1, per_item_cost_credits: '15.00', total_cost_credits: '15.00' });
@@ -212,7 +212,7 @@ test('tablet balance button opens payments page inside viewport', async ({ page 
   await expect(page.locator('.roxy-app')).toBeVisible();
   await page.locator('.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

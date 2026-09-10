@@ -30,12 +30,32 @@ function ensureHost(sheet: HTMLElement): HTMLElement {
 export function WalletParity() {
   const [catalog, setCatalog] = useState<PackageCatalog | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [lavaAvailable, setLavaAvailable] = useState(false);
+  const [cryptoBotAvailable, setCryptoBotAvailable] = useState(false);
   useEffect(() => {
-    void customerRequest<PackageCatalog>("/api/v1/payments/yookassa/packages")
-      .then((result) => {
-        setCatalog(result.configured && Object.keys(result.packages || {}).length ? result : null);
-      })
-      .catch(() => setCatalog(null));
+    void Promise.allSettled([
+      customerRequest<PackageCatalog>("/api/v1/payments/yookassa/packages"),
+      customerRequest<PackageCatalog>("/api/v1/payments/card/packages"),
+      customerRequest<PackageCatalog>("/api/v1/payments/crypto/packages"),
+    ]).then(([yooKassa, lava, cryptoBot]) => {
+      setCatalog(
+        yooKassa.status === "fulfilled"
+        && yooKassa.value.configured
+        && Object.keys(yooKassa.value.packages || {}).length
+          ? yooKassa.value
+          : null,
+      );
+      setLavaAvailable(Boolean(
+        lava.status === "fulfilled"
+        && lava.value.configured
+        && Object.keys(lava.value.packages || {}).length,
+      ));
+      setCryptoBotAvailable(Boolean(
+        cryptoBot.status === "fulfilled"
+        && cryptoBot.value.configured
+        && Object.keys(cryptoBot.value.packages || {}).length,
+      ));
+    });
   }, []);
 
   const packages = useMemo(() => catalog?.packages || {}, [catalog]);
@@ -80,8 +100,9 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
-      <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/")}>Пополнить через ЮKassa</button>
-      <small>Пакеты и бонусы ROX синхронизированы с текущим способом оплаты.</small>
+      {lavaAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button> : null}
+      {cryptoBotAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить криптой · CryptoBot</button> : null}
+      <small>ЮKassa остаётся основным способом. Lava Top — резерв для карты, CryptoBot — для криптовалюты.</small>
     </div>,
     host,
   );

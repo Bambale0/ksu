@@ -18,7 +18,7 @@ const cryptoPackages = {
   starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
 };
 
-async function mockApi(page) {
+async function mockApi(page, { paymentsFail = false } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -54,6 +54,7 @@ async function mockApi(page) {
     if (path === '/api/v1/payments/card/packages') return json({
       provider: 'kassa',
       label: 'Оплата картой',
+      configured: true,
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
@@ -78,6 +79,9 @@ async function mockApi(page) {
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
+    if (path === '/api/v1/payments' && request.method() === 'GET') {
+      return paymentsFail ? json({ detail: 'history unavailable' }, 503) : json({ items: [] });
+    }
     if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
       id: 'crypto-payment-1',
       status: 'pending',
@@ -104,7 +108,7 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
@@ -112,13 +116,13 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 });
 
 
-test('quick wallet exposes only YooKassa while keeping hidden provider backends untouched', async ({ page }) => {
+test('quick wallet keeps YooKassa primary with Lava reserve and CryptoBot available', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const hiddenCatalogRequests = [];
+  const providerCatalogRequests = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (path === '/api/v1/payments/card/packages' || path === '/api/v1/payments/crypto/packages' || path === '/api/v1/payments/crypto/2328/packages') {
-      hiddenCatalogRequests.push(path);
+      providerCatalogRequests.push(path);
     }
   });
   await mockApi(page);
@@ -127,9 +131,62 @@ test('quick wallet exposes only YooKassa while keeping hidden provider backends 
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
 
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Пополнение ROX сейчас доступно через ЮKassa.')).toHaveCount(1);
-  expect(hiddenCatalogRequests).toEqual([]);
+  await expect(page.getByText('ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой.')).toHaveCount(1);
+  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(2);
+  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/crypto/packages')).toHaveLength(2);
+  expect(providerCatalogRequests).not.toContain('/api/v1/payments/crypto/2328/packages');
+});
+
+
+test('payment history failure is surfaced without disabling checkout', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { paymentsFail: true });
+  await page.goto('/mini-app/payments/');
+
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ })).toBeVisible();
+});
+
+
+test('reserve Lava deep link selects card checkout while CryptoBot remains available', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/payments/?provider=card');
+
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).not.toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: /Email для чека/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+test('CryptoBot deep link selects crypto checkout while 2328 stays hidden', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/payments/?provider=cryptobot');
+
+  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).not.toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Оплатить .* RUB через CryptoBot/ })).toBeVisible();
+});
+
+test('Lava automatically becomes active when YooKassa is unavailable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.route('**/api/v1/payments/yookassa/packages', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ provider: 'yookassa', label: 'ЮKassa', configured: false, currencies: ['RUB'], packages: {} }),
+  }));
+  await page.goto('/mini-app/payments/');
+
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('ЮKassa сейчас недоступна — включён резервный способ Lava Top.')).toBeVisible();
 });

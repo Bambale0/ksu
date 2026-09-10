@@ -138,5 +138,5 @@ test('shared standalone Balance opens payments instead of the profile', async ({
 
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
   await expect(page.getByRole('heading', { name: 'Пополнения ROX' })).toBeVisible();
-  await expect(page.getByText('Пополнение сейчас недоступно.')).toBeVisible();
+  await expect(page.getByText('Пополнение сейчас недоступно.', { exact: true })).toBeVisible();
 });

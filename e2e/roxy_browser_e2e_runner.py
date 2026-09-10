@@ -68,11 +68,13 @@ async def scenario_wallet(page: Page, report: suite.legacy.Report) -> None:
     await expect(page.get_by_role("heading", name="Пополнения ROX")).to_be_visible(timeout=8000)
     yookassa_tab = page.get_by_role("button", name="ЮKassa").first
     await expect(yookassa_tab).to_have_class(re.compile(r"active"), timeout=8000)
-    await expect(page.get_by_role("button", name="Lava Top")).to_have_count(0)
-    await expect(page.get_by_role("button", name="CryptoBot")).to_have_count(0)
+    await expect(page.get_by_role("button", name="Lava Top · резерв")).to_be_visible(timeout=8000)
+    await expect(page.get_by_role("button", name="CryptoBot")).to_be_visible(timeout=8000)
     await expect(page.get_by_role("button", name="2328")).to_have_count(0)
     report.controls_seen.add("wallet:payments-page")
     report.controls_seen.add("wallet:method:yookassa")
+    report.controls_seen.add("wallet:method:lava-reserve")
+    report.controls_seen.add("wallet:method:cryptobot")
 
     package = page.locator(
         ".package-grid .package:visible, .primary-card-package:visible, #paymentPackageGrid .payment-package:visible"
