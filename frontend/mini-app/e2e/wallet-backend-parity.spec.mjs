@@ -104,7 +104,7 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 
   await page.locator('button.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
@@ -112,13 +112,13 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
 });
 
 
-test('quick wallet exposes only YooKassa while keeping hidden provider backends untouched', async ({ page }) => {
+test('quick wallet keeps YooKassa primary and exposes Lava only as reserve', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const hiddenCatalogRequests = [];
+  const providerCatalogRequests = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
     if (path === '/api/v1/payments/card/packages' || path === '/api/v1/payments/crypto/packages' || path === '/api/v1/payments/crypto/2328/packages') {
-      hiddenCatalogRequests.push(path);
+      providerCatalogRequests.push(path);
     }
   });
   await mockApi(page);
@@ -127,9 +127,38 @@ test('quick wallet exposes only YooKassa while keeping hidden provider backends 
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
 
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Пополнение ROX сейчас доступно через ЮKassa.')).toHaveCount(1);
-  expect(hiddenCatalogRequests).toEqual([]);
+  await expect(page.getByText('ЮKassa — основной способ оплаты. Lava Top доступна как резерв, если основной способ временно не проходит.')).toHaveCount(1);
+  expect(providerCatalogRequests).toEqual(['/api/v1/payments/card/packages']);
+});
+
+
+test('reserve Lava deep link selects card checkout without exposing crypto', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/payments/?provider=card');
+
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).not.toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: /Email для чека/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+test('Lava automatically becomes active when YooKassa is unavailable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.route('**/api/v1/payments/yookassa/packages', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ provider: 'yookassa', label: 'ЮKassa', configured: false, currencies: ['RUB'], packages: {} }),
+  }));
+  await page.goto('/mini-app/payments/');
+
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('ЮKassa сейчас недоступна — включён резервный способ Lava Top.')).toBeVisible();
 });

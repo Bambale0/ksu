@@ -52,6 +52,10 @@ const CRYPTOBOT_PROVIDER = "cryptobot";
 const AMBIGUOUS_CREATION = new Set(["creating", "creation_unknown"]);
 
 function initialProvider(): Provider {
+  if (typeof window !== "undefined") {
+    const requested = new URLSearchParams(window.location.search).get("provider");
+    if (requested === "card") return "card";
+  }
   return "yookassa";
 }
 
@@ -79,22 +83,36 @@ export default function PaymentsPage() {
 
   const load = async () => {
     setError("");
-    try {
-      const [yooKassaResult, paymentsResult] = await Promise.all([
-        customerRequest<PackageResponse>("/api/v1/payments/yookassa/packages"),
-        customerRequest<{ items: Payment[] }>("/api/v1/payments?limit=50"),
-      ]);
-      // Lava and crypto providers are intentionally hidden from new checkout
-      // UX. Their backend lifecycle stays alive so historical invoices can
-      // still reconcile and remain visible in payment history.
-      setCardCatalog(null);
-      setCryptoBotCatalog(null);
-      setCrypto2328Catalog(null);
-      setYooKassaCatalog(yooKassaResult);
-      setPayments(paymentsResult.items || []);
-      setProvider("yookassa");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить оплаты");
+    const [cardResult, yooKassaResult, paymentsResult] = await Promise.allSettled([
+      customerRequest<PackageResponse>("/api/v1/payments/card/packages"),
+      customerRequest<PackageResponse>("/api/v1/payments/yookassa/packages"),
+      customerRequest<{ items: Payment[] }>("/api/v1/payments?limit=50"),
+    ]);
+
+    const nextCardCatalog = cardResult.status === "fulfilled" ? cardResult.value : null;
+    const nextYooKassaCatalog = yooKassaResult.status === "fulfilled" ? yooKassaResult.value : null;
+    const cardReady = Boolean(nextCardCatalog && Object.keys(nextCardCatalog.packages || {}).length);
+    const yooKassaReady = Boolean(
+      nextYooKassaCatalog?.configured && Object.keys(nextYooKassaCatalog.packages || {}).length,
+    );
+
+    // YooKassa is the primary checkout. Lava Top is intentionally available
+    // only as a reserve path and becomes the automatic fallback when YooKassa
+    // is unavailable. Crypto backends remain hidden from new checkout UX.
+    setCardCatalog(nextCardCatalog);
+    setYooKassaCatalog(nextYooKassaCatalog);
+    setCryptoBotCatalog(null);
+    setCrypto2328Catalog(null);
+    if (paymentsResult.status === "fulfilled") setPayments(paymentsResult.value.items || []);
+    setProvider((current) => {
+      if (current === "card" && cardReady) return "card";
+      if (yooKassaReady) return "yookassa";
+      if (cardReady) return "card";
+      return "yookassa";
+    });
+
+    if (!yooKassaReady && !cardReady) {
+      setError("Пополнение сейчас недоступно. Попробуйте ещё раз позже.");
     }
   };
 
@@ -283,7 +301,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="Пополнение ROX сейчас доступно через ЮKassa."
+      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, если основной способ временно не проходит."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -292,9 +310,12 @@ export default function PaymentsPage() {
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
         <div className="segmented providers" aria-label="Способ оплаты">
           {yooKassaAvailable ? <button type="button" className={provider === "yookassa" ? "active" : ""} onClick={() => setProvider("yookassa")}>ЮKassa</button> : null}
+          {cardAvailable ? <button type="button" className={provider === "card" ? "active" : ""} onClick={() => setProvider("card")}>Lava Top · резерв</button> : null}
         </div>
 
-        {!yooKassaAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
+        {yooKassaAvailable && cardAvailable ? <p className="muted">Основной способ — ЮKassa. Lava Top используйте как резерв, если основной платёж не проходит.</p> : null}
+        {!yooKassaAvailable && cardAvailable ? <p className="muted">ЮKassa сейчас недоступна — включён резервный способ Lava Top.</p> : null}
+        {!yooKassaAvailable && !cardAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>

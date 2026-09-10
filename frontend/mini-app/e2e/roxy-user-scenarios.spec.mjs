@@ -302,7 +302,7 @@ async function runHome(page, check) {
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
-    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile') {
     await bottomButton(page, 'Профиль').click();
@@ -521,7 +521,7 @@ async function runProfile(page, check) {
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
-    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile-link') {
     await bottomButton(page, 'Партнёры').click();

@@ -256,7 +256,7 @@ for (const viewport of viewports) {
     await page.goto('/mini-app/?route=home');
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
-    await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
     await assertViewport(page);
   });

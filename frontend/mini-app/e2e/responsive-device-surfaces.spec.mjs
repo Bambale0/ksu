@@ -212,7 +212,7 @@ test('tablet balance button opens payments page inside viewport', async ({ page 
   await expect(page.locator('.roxy-app')).toBeVisible();
   await page.locator('.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
-  await expect(page.getByRole('button', { name: 'Lava Top', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

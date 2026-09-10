@@ -80,8 +80,8 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
-      <button className="primary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/")}>Пополнить через ЮKassa</button>
-      <small>Пакеты и бонусы ROX синхронизированы с текущим способом оплаты.</small>
+      <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button>
+      <small>ЮKassa остаётся основным способом. Lava Top — резерв, если основной платёж временно не проходит.</small>
     </div>,
     host,
   );
