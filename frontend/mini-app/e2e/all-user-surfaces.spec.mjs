@@ -181,7 +181,7 @@ async function mockApi(page, { onboarding = false, bootDelay = 0 } = {}) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
 
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments/card/packages') return json({ configured: true, packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments/card/checkout') return json({ payment_url: 'https://pay.test' });
 

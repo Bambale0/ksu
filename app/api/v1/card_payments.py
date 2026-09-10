@@ -57,6 +57,7 @@ async def packages() -> dict[str, object]:
     return {
         "provider": CardPaymentService.PROVIDER,
         "label": CardPaymentService.PUBLIC_LABEL,
+        "configured": CardPaymentService.provider_configured(),
         "currencies": currencies,
         "packages": {
             package_id: {

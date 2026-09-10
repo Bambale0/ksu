@@ -18,7 +18,7 @@ const cryptoPackages = {
   starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
 };
 
-async function mockApi(page) {
+async function mockApi(page, { paymentsFail = false } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -54,6 +54,7 @@ async function mockApi(page) {
     if (path === '/api/v1/payments/card/packages') return json({
       provider: 'kassa',
       label: 'Оплата картой',
+      configured: true,
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
@@ -78,6 +79,9 @@ async function mockApi(page) {
       currencies: ['RUB'],
       packages: cryptoPackages,
     });
+    if (path === '/api/v1/payments' && request.method() === 'GET') {
+      return paymentsFail ? json({ detail: 'history unavailable' }, 503) : json({ items: [] });
+    }
     if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
       id: 'crypto-payment-1',
       status: 'pending',
@@ -131,9 +135,20 @@ test('quick wallet keeps YooKassa primary with Lava reserve and CryptoBot availa
   await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
   await expect(page.getByText('ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой.')).toHaveCount(1);
-  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(1);
+  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(2);
   expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/crypto/packages')).toHaveLength(2);
   expect(providerCatalogRequests).not.toContain('/api/v1/payments/crypto/2328/packages');
+});
+
+
+test('payment history failure is surfaced without disabling checkout', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { paymentsFail: true });
+  await page.goto('/mini-app/payments/');
+
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ })).toBeVisible();
 });
 
 

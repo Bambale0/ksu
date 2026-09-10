@@ -225,7 +225,7 @@ async function mockRoxy(page) {
     if (path === '/api/v1/referrals/rewards') return json(route, { items: [{ id: 'reward_1', line: 1, status: 'completed', amount: '75.00', amount_rox: '75.00', net_amount_rox: '75.00', created_at: '2026-08-20T11:00:00Z', source_user: { first_name: 'Анна', username: 'anna' } }] });
 
     if (path === '/api/v1/me/transactions') return json(route, []);
-    if (path === '/api/v1/payments/card/packages') return json(route, { provider: 'card', label: 'Оплата картой', currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments/card/packages') return json(route, { provider: 'card', label: 'Оплата картой', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments/yookassa/packages') return json(route, { provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments' && route.request().method() === 'GET') return json(route, { items: [] });
     if (path === '/api/v1/payments' && route.request().method() === 'POST') return json(route, { id: 'pay_1', status: 'pending', provider: 'yookassa', label: 'ЮKassa', package_id: 'starter', amount: '100', currency: 'RUB', credits: '100', payment_url: 'https://pay.roxy.local/checkout' }, 201);

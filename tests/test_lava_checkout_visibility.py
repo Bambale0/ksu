@@ -10,6 +10,8 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     assert 'customerRequest<PackageResponse>("/api/v1/payments/card/packages")' in source
     assert 'customerRequest<PackageResponse>("/api/v1/payments/crypto/packages")' in source
     assert 'customerRequest<PackageResponse>("/api/v1/payments/crypto/2328/packages")' not in source
+    assert 'cardCatalog?.configured && Object.keys(cardCatalog.packages || {}).length' in source
+    assert 'Не удалось загрузить историю пополнений.' in source
     assert '>Lava Top · резерв</button>' in source
     assert '>CryptoBot</button>' in source
     assert '>2328</button>' not in source
@@ -18,7 +20,8 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     assert 'if (requested === "card") return "card";' in source
     assert 'if (requested === "cryptobot") return "cryptobot";' in source
     assert 'return "yookassa";' in source
-    assert '/api/v1/payments/card/packages' not in quick_wallet
+    assert '/api/v1/payments/card/packages' in quick_wallet
+    assert 'lavaAvailable ? <button' in quick_wallet
     assert '/api/v1/payments/crypto/packages' in quick_wallet
     assert '/api/v1/payments/crypto/2328/packages' not in quick_wallet
     assert '/api/v1/payments/yookassa/packages' in quick_wallet

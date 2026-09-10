@@ -43,8 +43,10 @@ async def test_card_package_endpoint_exposes_rox_gift_bonuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "card_packages_json", PACKAGES_JSON)
+    monkeypatch.setattr(settings, "card_api_key", "configured-test-key")
 
     payload = await package_view()
+    assert payload["configured"] is True
     packages = payload["packages"]
 
     assert packages["p100"]["bonus_credits"] == "0"
@@ -59,6 +61,19 @@ async def test_card_package_endpoint_exposes_rox_gift_bonuses(
     assert packages["p2000"]["total_credits"] == "2200"
     assert packages["p5000"]["bonus_credits"] == "500"
     assert packages["p5000"]["total_credits"] == "5500"
+
+
+@pytest.mark.asyncio
+async def test_card_package_endpoint_marks_unconfigured_provider_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "card_packages_json", PACKAGES_JSON)
+    monkeypatch.setattr(settings, "card_api_key", "")
+
+    payload = await package_view()
+
+    assert payload["configured"] is False
+    assert payload["packages"]
 
 
 @pytest.mark.asyncio

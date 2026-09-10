@@ -94,7 +94,9 @@ export default function PaymentsPage() {
     const nextCardCatalog = cardResult.status === "fulfilled" ? cardResult.value : null;
     const nextYooKassaCatalog = yooKassaResult.status === "fulfilled" ? yooKassaResult.value : null;
     const nextCryptoBotCatalog = cryptoBotResult.status === "fulfilled" ? cryptoBotResult.value : null;
-    const cardReady = Boolean(nextCardCatalog && Object.keys(nextCardCatalog.packages || {}).length);
+    const cardReady = Boolean(
+      nextCardCatalog?.configured && Object.keys(nextCardCatalog.packages || {}).length,
+    );
     const yooKassaReady = Boolean(
       nextYooKassaCatalog?.configured && Object.keys(nextYooKassaCatalog.packages || {}).length,
     );
@@ -108,7 +110,9 @@ export default function PaymentsPage() {
     setYooKassaCatalog(nextYooKassaCatalog);
     setCryptoBotCatalog(nextCryptoBotCatalog);
     setCrypto2328Catalog(null);
-    if (paymentsResult.status === "fulfilled") setPayments(paymentsResult.value.items || []);
+    if (paymentsResult.status === "fulfilled") {
+      setPayments(paymentsResult.value.items || []);
+    }
     setProvider((current) => {
       if (current === "card" && cardReady) return "card";
       if (current === "cryptobot" && cryptoBotReady) return "cryptobot";
@@ -118,9 +122,14 @@ export default function PaymentsPage() {
       return "yookassa";
     });
 
+    const loadErrors: string[] = [];
     if (!yooKassaReady && !cardReady && !cryptoBotReady) {
-      setError("Пополнение сейчас недоступно. Попробуйте ещё раз позже.");
+      loadErrors.push("Пополнение сейчас недоступно. Попробуйте ещё раз позже.");
     }
+    if (paymentsResult.status === "rejected") {
+      loadErrors.push("Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.");
+    }
+    setError(loadErrors.join(" "));
   };
 
   useEffect(() => {
@@ -139,7 +148,9 @@ export default function PaymentsPage() {
         ? cryptoBotCatalog
         : crypto2328Catalog;
   const activeCurrency: Currency = provider === "card" ? currency : "RUB";
-  const cardAvailable = Boolean(cardCatalog && Object.keys(cardCatalog.packages || {}).length);
+  const cardAvailable = Boolean(
+    cardCatalog?.configured && Object.keys(cardCatalog.packages || {}).length,
+  );
   const yooKassaAvailable = Boolean(
     yooKassaCatalog?.configured && Object.keys(yooKassaCatalog.packages || {}).length,
   );

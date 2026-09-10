@@ -30,12 +30,14 @@ function ensureHost(sheet: HTMLElement): HTMLElement {
 export function WalletParity() {
   const [catalog, setCatalog] = useState<PackageCatalog | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [lavaAvailable, setLavaAvailable] = useState(false);
   const [cryptoBotAvailable, setCryptoBotAvailable] = useState(false);
   useEffect(() => {
     void Promise.allSettled([
       customerRequest<PackageCatalog>("/api/v1/payments/yookassa/packages"),
+      customerRequest<PackageCatalog>("/api/v1/payments/card/packages"),
       customerRequest<PackageCatalog>("/api/v1/payments/crypto/packages"),
-    ]).then(([yooKassa, cryptoBot]) => {
+    ]).then(([yooKassa, lava, cryptoBot]) => {
       setCatalog(
         yooKassa.status === "fulfilled"
         && yooKassa.value.configured
@@ -43,6 +45,11 @@ export function WalletParity() {
           ? yooKassa.value
           : null,
       );
+      setLavaAvailable(Boolean(
+        lava.status === "fulfilled"
+        && lava.value.configured
+        && Object.keys(lava.value.packages || {}).length,
+      ));
       setCryptoBotAvailable(Boolean(
         cryptoBot.status === "fulfilled"
         && cryptoBot.value.configured
@@ -93,7 +100,7 @@ export function WalletParity() {
   if (!host) return null;
   return createPortal(
     <div className="wallet-parity-link">
-      <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button>
+      {lavaAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button> : null}
       {cryptoBotAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить криптой · CryptoBot</button> : null}
       <small>ЮKassa остаётся основным способом. Lava Top — резерв для карты, CryptoBot — для криптовалюты.</small>
     </div>,

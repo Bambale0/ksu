@@ -117,7 +117,7 @@ async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/me/transactions') return json([]);
-    if (path === '/api/v1/payments/card/packages') return json({ packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
+    if (path === '/api/v1/payments/card/packages') return json({ configured: true, packages: { starter: { credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100', bonus_credits: '0', total_credits: '100', prices: { RUB: '100' } } } });
     if (path === '/api/v1/batch-generations') return json({ items: [] });
     if (path === '/api/v1/batch-generations/quote') return json({ input_count: 1, per_item_cost_credits: '15.00', total_cost_credits: '15.00' });
