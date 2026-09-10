@@ -22,7 +22,7 @@ router = APIRouter(prefix="/batch-generations", tags=["batch-generations"])
 
 class BatchWrite(BaseModel):
     model_id: str = Field(min_length=1, max_length=128)
-    prompt: str = Field(default="", max_length=8000)
+    prompt: str = Field(default="", max_length=30000)
     parameters: dict[str, Any] = Field(default_factory=dict)
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     input_urls: list[str] = Field(default_factory=list, max_length=20)

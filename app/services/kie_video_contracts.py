@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.services.seedance_prompt_limits import validate_prompt_length
+
 
 class KieVideoContractError(ValueError):
     pass
@@ -156,6 +158,11 @@ def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
 
 
 def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
+    if model in SEEDANCE_2_MODELS:
+        try:
+            validate_prompt_length(model, payload.get("prompt", ""))
+        except ValueError as exc:
+            raise KieVideoContractError(str(exc)) from exc
     # Kie's published Seedance 2.0 example briefly contained a trailing-space
     # typo in this key. Accept old saved payloads, but only send the canonical
     # field to the provider.

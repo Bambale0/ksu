@@ -26,7 +26,7 @@ router = APIRouter(prefix="/generations", tags=["generation-actions"])
 
 class DeriveGenerationRequest(BaseModel):
     model_id: str = Field(min_length=1, max_length=100)
-    prompt: str = Field(default="", max_length=8000)
+    prompt: str = Field(default="", max_length=30000)
     parameters: dict[str, Any] = Field(default_factory=dict)
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     edit_kind: str | None = Field(default=None, max_length=32)

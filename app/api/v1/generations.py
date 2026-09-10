@@ -40,7 +40,7 @@ MAX_REQUEST_QUANTITY = min(MAX_GENERATION_QUANTITY, MAX_MUSIC_GENERATION_QUANTIT
 
 class CreateGenerationRequest(BaseModel):
     model_id: str = Field(min_length=1, max_length=100)
-    prompt: str = Field(default="", max_length=8000)
+    prompt: str = Field(default="", max_length=30000)
     input_url: str | None = Field(default=None, max_length=4000)
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     parameters: dict[str, Any] = Field(default_factory=dict)
