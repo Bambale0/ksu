@@ -8,21 +8,24 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     quick_wallet = (ROOT / "frontend/mini-app/components/wallet-parity.tsx").read_text(encoding="utf-8")
 
     assert 'customerRequest<PackageResponse>("/api/v1/payments/card/packages")' in source
-    assert 'customerRequest<PackageResponse>("/api/v1/payments/crypto/packages")' not in source
+    assert 'customerRequest<PackageResponse>("/api/v1/payments/crypto/packages")' in source
     assert 'customerRequest<PackageResponse>("/api/v1/payments/crypto/2328/packages")' not in source
     assert '>Lava Top · резерв</button>' in source
-    assert '>CryptoBot</button>' not in source
+    assert '>CryptoBot</button>' in source
     assert '>2328</button>' not in source
     assert '>ЮKassa</button>' in source
-    assert 'copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, если основной способ временно не проходит."' in source
+    assert 'copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой."' in source
     assert 'if (requested === "card") return "card";' in source
+    assert 'if (requested === "cryptobot") return "cryptobot";' in source
     assert 'return "yookassa";' in source
     assert '/api/v1/payments/card/packages' not in quick_wallet
-    assert '/api/v1/payments/crypto/packages' not in quick_wallet
+    assert '/api/v1/payments/crypto/packages' in quick_wallet
     assert '/api/v1/payments/crypto/2328/packages' not in quick_wallet
     assert '/api/v1/payments/yookassa/packages' in quick_wallet
     assert 'Резервная оплата · Lava Top' in quick_wallet
     assert '/mini-app/payments/?provider=card' in quick_wallet
+    assert '/mini-app/payments/?provider=cryptobot' in quick_wallet
+    assert 'Оплатить криптой · CryptoBot' in quick_wallet
 
     root_api = (ROOT / "frontend/mini-app/lib/api.ts").read_text(encoding="utf-8")
     root_wallet = (ROOT / "frontend/mini-app/components/roxy-app.tsx").read_text(encoding="utf-8")

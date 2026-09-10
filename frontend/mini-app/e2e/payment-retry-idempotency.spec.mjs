@@ -69,7 +69,7 @@ async function mockPayments(page) {
 test('ambiguous checkout retry reuses the same idempotency key', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const checkoutKeys = await mockPayments(page);
-  await page.goto('/mini-app/payments/?provider=cryptobot');
+  await page.goto('/mini-app/payments/');
 
   const pay = page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ });
   await expect(pay).toBeVisible();
