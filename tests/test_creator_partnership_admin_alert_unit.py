@@ -44,6 +44,8 @@ async def test_bootstrap_admin_alert_uses_durable_notification_outbox(monkeypatc
     active_admin = _user(telegram_id=9101)
     bootstrap_without_row = _user(telegram_id=9102)
     revoked_admin = _user(telegram_id=9103)
+    support_admin = _user(telegram_id=9104)
+    denied_admin = _user(telegram_id=9105)
 
     active_account = AdminAccount(
         id=uuid.uuid4(),
@@ -57,11 +59,26 @@ async def test_bootstrap_admin_alert_uses_durable_notification_outbox(monkeypatc
         role="owner",
         is_active=False,
     )
+    support_account = AdminAccount(
+        id=uuid.uuid4(),
+        user_id=support_admin.id,
+        role="support",
+        is_active=True,
+    )
+    denied_account = AdminAccount(
+        id=uuid.uuid4(),
+        user_id=denied_admin.id,
+        role="owner",
+        is_active=True,
+        permission_overrides={"deny": ["partners.read"]},
+    )
     session = _Session(
         [
             (active_admin, active_account),
             (bootstrap_without_row, None),
             (revoked_admin, revoked_account),
+            (support_admin, support_account),
+            (denied_admin, denied_account),
         ]
     )
     application = SimpleNamespace(
@@ -75,7 +92,11 @@ async def test_bootstrap_admin_alert_uses_durable_notification_outbox(monkeypatc
         created_at=datetime(2026, 9, 9, 9, 9, 28, tzinfo=UTC),
     )
 
-    monkeypatch.setattr(creator_module, "parse_bootstrap_ids", lambda: {9101, 9102, 9103})
+    monkeypatch.setattr(
+        creator_module,
+        "parse_bootstrap_ids",
+        lambda: {9101, 9102, 9103, 9104, 9105},
+    )
     create = AsyncMock()
     monkeypatch.setattr(creator_module.NotificationService, "create", create)
 

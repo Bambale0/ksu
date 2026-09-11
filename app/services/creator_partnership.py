@@ -200,9 +200,13 @@ class CreatorPartnershipService:
         )
 
         for admin_user, admin_account in rows:
-            # Bootstrap membership grants initial admin access, but an explicit
-            # deactivation in the admin domain must continue to win.
-            if admin_account is not None and not admin_account.is_active:
+            # A bootstrap user with no materialized admin row is still an owner
+            # candidate. Once an AdminAccount exists, the admin domain is the
+            # authority: revocation, role changes and explicit denies must all win.
+            if (
+                admin_account is not None
+                and not AdminPolicy.has_permission(admin_account, "partners.read")
+            ):
                 continue
             await NotificationService.create(
                 session,
