@@ -24,6 +24,7 @@ import type {
   UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { LanguageSwitcher } from "./language-switcher";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
@@ -547,9 +548,12 @@ export function RoxySocialApp() {
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button id="balance" className="balance-button" type="button" onClick={openPayments}>
-          <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
-        </button>
+        <div className="topbar-actions">
+          <LanguageSwitcher />
+          <button id="balance" className="balance-button" type="button" onClick={openPayments}>
+            <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
+          </button>
+        </div>
       </header>
 
       <main className="main-shell">
