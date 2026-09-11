@@ -2,7 +2,17 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
-  const state = { token: null, me: null, applications: [], agreements: [] };
+  const launchParams = new URLSearchParams(window.location.search);
+  const requestedAction = launchParams.get("action");
+  const state = {
+    token: null,
+    me: null,
+    applications: [],
+    agreements: [],
+    targetApplicationId: launchParams.get("application") || "",
+    targetAction: requestedAction === "approved" || requestedAction === "rejected" ? requestedAction : "",
+    targetFocused: false,
+  };
   const byId = (id) => document.getElementById(id);
 
   function el(tag, className = "", text = "") {
@@ -160,10 +170,28 @@
       return;
     }
     state.applications.forEach((item) => root.appendChild(applicationCard(item)));
+    focusTargetApplication();
+  }
+
+  function focusTargetApplication() {
+    if (!state.targetApplicationId || state.targetFocused) return;
+    const card = document.getElementById(`application-${state.targetApplicationId}`);
+    if (!card) return;
+    state.targetFocused = true;
+    window.requestAnimationFrame(() => {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (state.targetAction === "approved") {
+        card.querySelector('input[type="number"]')?.focus();
+      } else if (state.targetAction === "rejected") {
+        card.querySelector('textarea[placeholder="Комментарий решения"]')?.focus();
+      }
+    });
   }
 
   function applicationCard(item) {
     const card = el("article", "card");
+    card.id = `application-${item.id}`;
+    if (item.id === state.targetApplicationId) card.classList.add("targeted");
     const head = el("div", "card-head");
     const who = el("div");
     who.append(el("strong", "", item.channel_name), el("small", "", item.user?.username ? `@${item.user.username}` : `TG ${item.user?.telegram_id || "—"}`));

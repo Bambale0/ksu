@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 import uuid
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -34,6 +35,76 @@ _PROMPT_TOOL_NOTIFICATION_KINDS = {
     "prompt_tool_photo_succeeded",
     "prompt_tool_video_succeeded",
 }
+_ADMIN_OPERATIONAL_NOTIFICATION_KINDS = {
+    "creator_partnership_admin_application",
+}
+
+
+_CREATOR_APPLICATION_ID_RE = re.compile(
+    r"(?m)^Application ID: (?P<application_id>[0-9a-fA-F-]{36})$"
+)
+_CREATOR_CHANNEL_URL_RE = re.compile(r"(?m)^Ссылка: (?P<url>https://\S+)$")
+_CREATOR_USERNAME_RE = re.compile(r"(?m)^Telegram: @(?P<username>[A-Za-z0-9_]{5,32})$")
+
+
+def _creator_partnership_admin_keyboard(notification: Notification) -> InlineKeyboardMarkup | None:
+    if notification.kind != "creator_partnership_admin_application":
+        return None
+    application_match = _CREATOR_APPLICATION_ID_RE.search(notification.body or "")
+    if application_match is None:
+        return None
+
+    base_url = settings.public_base_url.rstrip("/")
+    if not base_url:
+        return None
+    application_id = application_match.group("application_id")
+    admin_base = f"{base_url}/admin-app/creator-partnership.html"
+
+    def admin_url(action: str | None = None) -> str:
+        params = {"application": application_id}
+        if action:
+            params["action"] = action
+        return f"{admin_base}?{urlencode(params)}"
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text="🛠 Открыть заявку",
+                web_app=WebAppInfo(url=admin_url()),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✅ Рассмотреть одобрение",
+                web_app=WebAppInfo(url=admin_url("approved")),
+            ),
+            InlineKeyboardButton(
+                text="❌ Рассмотреть отказ",
+                web_app=WebAppInfo(url=admin_url("rejected")),
+            ),
+        ],
+    ]
+    channel_match = _CREATOR_CHANNEL_URL_RE.search(notification.body or "")
+    if channel_match is not None:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="📣 Открыть площадку",
+                    url=channel_match.group("url"),
+                )
+            ]
+        )
+    username_match = _CREATOR_USERNAME_RE.search(notification.body or "")
+    if username_match is not None:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="💬 Написать автору",
+                    url=f"https://t.me/{username_match.group('username')}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _heartbeat(redis: Redis) -> None:
@@ -370,7 +441,11 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             await session.commit()
             return
         preference = await session.get(UserPreference, user.id)
-        if preference is not None and not preference.notifications_enabled:
+        if (
+            preference is not None
+            and not preference.notifications_enabled
+            and notification.kind not in _ADMIN_OPERATIONAL_NOTIFICATION_KINDS
+        ):
             await NotificationDeliveryService.mark_terminal(
                 session,
                 delivery,
@@ -413,6 +488,12 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                     chat_id=user.telegram_id,
                     text=_prompt_tool_notification_text(notification),
                     parse_mode="HTML",
+                )
+            elif notification.kind in _ADMIN_OPERATIONAL_NOTIFICATION_KINDS:
+                message = await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=_notification_text(notification),
+                    reply_markup=_creator_partnership_admin_keyboard(notification),
                 )
             else:
                 message = await bot.send_message(

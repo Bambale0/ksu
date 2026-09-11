@@ -18,7 +18,7 @@ from app.db.creator_partner_models import (
 from app.db.models import AdminAccount, AdminSession, User
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
-from app.services.admin_security import AdminAuditService
+from app.services.admin_security import AdminAuditService, parse_bootstrap_ids
 from app.services.notifications import NotificationService
 from app.services.wallet import WalletService
 
@@ -135,6 +135,88 @@ class CreatorPartnershipService:
         }
 
     @classmethod
+    async def _notify_bootstrap_admins(
+        cls,
+        session: AsyncSession,
+        *,
+        applicant: User,
+        application: CreatorPartnershipApplication,
+    ) -> None:
+        bootstrap_ids = parse_bootstrap_ids()
+        if not bootstrap_ids:
+            return
+
+        rows = (
+            await session.execute(
+                select(User, AdminAccount)
+                .outerjoin(AdminAccount, AdminAccount.user_id == User.id)
+                .where(
+                    User.telegram_id.in_(bootstrap_ids),
+                    User.is_active.is_(True),
+                )
+            )
+        ).all()
+
+        username = (applicant.username or "").strip()
+        applicant_label = f"@{username}" if username else f"Telegram ID {applicant.telegram_id}"
+        audience = f"{application.audience_size:,}".replace(",", " ")
+        average_views = (
+            "—"
+            if application.average_views is None
+            else f"{application.average_views:,}".replace(",", " ")
+        )
+        created_at = application.created_at or utcnow()
+        submitted_at = created_at.astimezone(UTC).strftime("%d.%m.%Y %H:%M UTC")
+        author_message = (application.message or "").strip()
+        if len(author_message) > 1000:
+            author_message = f"{author_message[:997]}…"
+        body = "\n".join(
+            [
+                f"👤 Автор: {applicant_label} · {(applicant.first_name or '').strip() or '—'}",
+                f"🆔 Telegram ID: {applicant.telegram_id}",
+                f"📣 Канал / площадка: {application.channel_name}",
+                f"👥 Аудитория: {audience}",
+                f"👁 Средние просмотры: {average_views}",
+                f"🤝 Формат: {application.cooperation_format}",
+                f"🕒 Создана: {submitted_at}",
+                "📌 Статус: pending",
+                "",
+                "💬 Комментарий автора:",
+                author_message or "—",
+                "",
+                "Что можно сделать:",
+                "✅ ОДОБРИТЬ — открыть заявку, указать персональные условия, ROX в месяц, дату начала и комментарий решения. После подтверждения создаётся соглашение.",
+                "",
+                "❌ ОТКЛОНИТЬ — открыть заявку и сохранить отказ с причиной/комментарием.",
+                "",
+                "⏳ ОСТАВИТЬ НА РАССМОТРЕНИИ — ничего не менять; заявка останется pending.",
+                "",
+                "🔎 ПЕРЕД РЕШЕНИЕМ — проверить площадку, фактический контент/охваты и при необходимости связаться с автором.",
+                "",
+                f"Ссылка: {application.channel_url}",
+                f"Telegram: @{username}" if username else "Telegram: —",
+                f"Application ID: {application.id}",
+            ]
+        )
+
+        for admin_user, admin_account in rows:
+            # A bootstrap user with no materialized admin row is still an owner
+            # candidate. Once an AdminAccount exists, the admin domain is the
+            # authority: revocation, role changes and explicit denies must all win.
+            if (
+                admin_account is not None
+                and not AdminPolicy.has_permission(admin_account, "partners.read")
+            ):
+                continue
+            await NotificationService.create(
+                session,
+                user_id=admin_user.id,
+                kind="creator_partnership_admin_application",
+                title="Новая заявка на партнёрство",
+                body=body,
+            )
+
+    @classmethod
     async def submit_application(
         cls,
         session: AsyncSession,
@@ -223,6 +305,11 @@ class CreatorPartnershipService:
             kind="creator_partnership_application",
             title="Заявка на партнёрство принята",
             body="ROXY получила заявку. Условия будут рассчитаны индивидуально после проверки канала.",
+        )
+        await cls._notify_bootstrap_admins(
+            session,
+            applicant=locked_user,
+            application=item,
         )
         return item, False
 
