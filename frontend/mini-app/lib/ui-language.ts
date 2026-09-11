@@ -644,6 +644,81 @@ Object.assign(RU_TO_EN, {
   "← Выбрать другой сценарий": "← Choose another scenario"
 });
 
+
+Object.assign(RU_TO_EN, {
+  "NSFW-проверка": "NSFW check",
+  "Авторасширение промпта": "Auto-expand prompt",
+  "В простом режиме Suno промпт должен быть не длиннее 500 символов": "In Suno simple mode, the prompt must be no longer than 500 characters",
+  "Вернуть последний кадр": "Return last frame",
+  "Видео движения": "Motion video",
+  "Видео-референсы": "Video references",
+  "Водяной знак": "Watermark",
+  "Детали": "Details",
+  "Длительность для расчёта": "Billing duration",
+  "Длительность референс-видео": "Reference video duration",
+  "Дополнительно": "Advanced",
+  "Загрузить изображение": "Upload image",
+  "Зафиксировать камеру": "Lock camera",
+  "Из Grok-задачи": "From Grok task",
+  "Изображение": "Image",
+  "Изображения": "Images",
+  "Источник фона": "Background source",
+  "Исходная Kie-задача": "Source Kie task",
+  "Исходный клип": "Source clip",
+  "Качество": "Quality",
+  "Количество вариантов": "Number of variants",
+  "Количество изображений": "Number of images",
+  "Количество расширений": "Number of extensions",
+  "Мультиреференсы": "Multiple references",
+  "Настройки аудио": "Audio settings",
+  "Негативный промпт": "Negative prompt",
+  "Ногти": "Nails",
+  "Одежда": "Clothing",
+  "Опишите желаемый результат": "Describe the desired result",
+  "Оплачиваемая длина расширения": "Billable extension length",
+  "Ориентация персонажа": "Character orientation",
+  "Первый + последний": "First + last",
+  "Первый кадр": "First frame",
+  "Последний кадр": "Last frame",
+  "Последовательная генерация": "Sequential generation",
+  "Причёска": "Hairstyle",
+  "Продолжить видео": "Extend video",
+  "Размер": "Size",
+  "Размер изображения": "Image size",
+  "Разрешение": "Resolution",
+  "Разрешение изображения": "Image resolution",
+  "Референс-аудио": "Audio reference",
+  "Референс-видео": "Video reference",
+  "Референс-голос": "Voice reference",
+  "Референс-изображение": "Image reference",
+  "Референс-изображения": "Image references",
+  "Референсы": "References",
+  "Своё": "Custom",
+  "Сгенерировать звук": "Generate audio",
+  "Случайный": "Random",
+  "Соотношение сторон": "Aspect ratio",
+  "Текст": "Text",
+  "Точка расширения": "Extension point",
+  "Управляющее аудио": "Control audio",
+  "Фон": "Background",
+  "Формат результата": "Output format",
+  "Фото персонажа": "Character photo",
+  "Цвет волос": "Hair color",
+  "Что исключить из результата": "What to exclude from the result",
+  "с": "s"
+});
+
+
+Object.assign(RU_TO_EN, {
+  "Партнёрская программа": "Partner program",
+  "Создавай фото и видео": "Create photos and videos",
+  "Шаблоны, тренды и работы сообщества": "Templates, trends, and community works",
+  "Расширенные настройки": "Advanced settings",
+  "День рождения": "Birthday",
+  "То, что сейчас гуляет в Instagram": "What's trending on Instagram right now",
+  "Фото и видео для поздравлений и праздничных сюжетов": "Photos and videos for greetings and festive stories"
+});
+
 const EN_TO_RU = Object.fromEntries(Object.entries(RU_TO_EN).map(([ru, en]) => [en, ru])) as Record<string, string>;
 
 type Pattern = [RegExp, (match: RegExpMatchArray) => string];
