@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -64,11 +65,14 @@ async def test_bootstrap_admin_alert_uses_durable_notification_outbox(monkeypatc
         ]
     )
     application = SimpleNamespace(
+        id=uuid.uuid4(),
         channel_name="Instagram",
         channel_url="https://instagram.com/creator",
         audience_size=12_345,
         average_views=6_789,
         cooperation_format="Обзоры",
+        message="Делаю генерации в ROXY и зову аудиторию повторять их.",
+        created_at=datetime(2026, 9, 9, 9, 9, 28, tzinfo=UTC),
     )
 
     monkeypatch.setattr(creator_module, "parse_bootstrap_ids", lambda: {9101, 9102, 9103})
@@ -87,8 +91,15 @@ async def test_bootstrap_admin_alert_uses_durable_notification_outbox(monkeypatc
     for call in create.await_args_list:
         assert call.kwargs["kind"] == "creator_partnership_admin_application"
         assert call.kwargs["title"] == "Новая заявка на партнёрство"
-        assert "@creator" in call.kwargs["body"]
-        assert "Аудитория: 12 345" in call.kwargs["body"]
+        body = call.kwargs["body"]
+        assert "@creator" in body
+        assert "Аудитория: 12 345" in body
+        assert "Средние просмотры: 6 789" in body
+        assert "✅ ОДОБРИТЬ" in body
+        assert "❌ ОТКЛОНИТЬ" in body
+        assert "⏳ ОСТАВИТЬ НА РАССМОТРЕНИИ" in body
+        assert "Ссылка: https://instagram.com/creator" in body
+        assert f"Application ID: {application.id}" in body
 
     # The service only creates durable notification rows. It has no Bot API
     # dependency in the request path, so Telegram downtime is handled later by

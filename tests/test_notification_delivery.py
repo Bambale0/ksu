@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -8,13 +9,14 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.db.models import Generation, Notification, Payment, SupportMessage, SupportTicket, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
 from app.services.notification_events import register_notification_events
 from app.services.notifications import NotificationDeliveryService, NotificationService
-from app.workers.notifications import _process_delivery
+from app.workers.notifications import _creator_partnership_admin_keyboard, _process_delivery
 
 register_notification_events()
 
@@ -638,3 +640,36 @@ async def test_worker_delivers_creator_admin_alert_even_when_user_notifications_
                 "Новая заявка на партнёрство\n\n@creator\nКанал: Instagram",
             )
         ]
+
+
+def test_creator_admin_keyboard_opens_exact_application_and_safe_decision_flows(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    application_id = uuid.uuid4()
+    notification = Notification(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        kind="creator_partnership_admin_application",
+        title="Новая заявка на партнёрство",
+        body=(
+            "👤 Автор: @creator\n"
+            "Ссылка: https://instagram.com/creator\n"
+            "Telegram: @creator\n"
+            f"Application ID: {application_id}"
+        ),
+        is_read=False,
+    )
+
+    keyboard = _creator_partnership_admin_keyboard(notification)
+
+    assert keyboard is not None
+    rows = keyboard.inline_keyboard
+    assert rows[0][0].text == "🛠 Открыть заявку"
+    assert f"application={application_id}" in rows[0][0].web_app.url
+    assert "action=" not in rows[0][0].web_app.url
+    assert rows[1][0].text == "✅ Рассмотреть одобрение"
+    assert f"application={application_id}" in rows[1][0].web_app.url
+    assert "action=approved" in rows[1][0].web_app.url
+    assert rows[1][1].text == "❌ Рассмотреть отказ"
+    assert "action=rejected" in rows[1][1].web_app.url
+    assert rows[2][0].url == "https://instagram.com/creator"
+    assert rows[3][0].url == "https://t.me/creator"

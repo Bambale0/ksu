@@ -109,6 +109,10 @@ def test_creator_admin_console_is_real_privileged_surface() -> None:
     assert "/api/v1/admin/creator-partnership/agreements" in js
     assert '"X-Confirm-Action": "confirmed"' in js
     assert "/api/v1/admin/auth/step-up" in js
+    assert 'new URLSearchParams(window.location.search)' in js
+    assert 'launchParams.get("application")' in js
+    assert 'launchParams.get("action")' in js
+    assert 'scrollIntoView({ behavior: "smooth", block: "center" })' in js
     assert "localStorage" not in js
     assert "sessionStorage" not in js
     assert "innerHTML" not in js

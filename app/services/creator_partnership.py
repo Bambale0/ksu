@@ -160,22 +160,44 @@ class CreatorPartnershipService:
         username = (applicant.username or "").strip()
         applicant_label = f"@{username}" if username else f"Telegram ID {applicant.telegram_id}"
         audience = f"{application.audience_size:,}".replace(",", " ")
-        details = [
-            applicant_label,
-            f"Канал: {application.channel_name}",
-            f"Аудитория: {audience}",
-        ]
-        if application.average_views is not None:
-            average_views = f"{application.average_views:,}".replace(",", " ")
-            details.append(f"Средние просмотры: {average_views}")
-        details.extend(
+        average_views = (
+            "—"
+            if application.average_views is None
+            else f"{application.average_views:,}".replace(",", " ")
+        )
+        created_at = application.created_at or utcnow()
+        submitted_at = created_at.astimezone(UTC).strftime("%d.%m.%Y %H:%M UTC")
+        author_message = (application.message or "").strip()
+        if len(author_message) > 1000:
+            author_message = f"{author_message[:997]}…"
+        body = "\n".join(
             [
-                f"Формат: {application.cooperation_format}",
-                application.channel_url,
-                "Админка → Партнёрство → Заявки",
+                f"👤 Автор: {applicant_label} · {(applicant.first_name or '').strip() or '—'}",
+                f"🆔 Telegram ID: {applicant.telegram_id}",
+                f"📣 Канал / площадка: {application.channel_name}",
+                f"👥 Аудитория: {audience}",
+                f"👁 Средние просмотры: {average_views}",
+                f"🤝 Формат: {application.cooperation_format}",
+                f"🕒 Создана: {submitted_at}",
+                "📌 Статус: pending",
+                "",
+                "💬 Комментарий автора:",
+                author_message or "—",
+                "",
+                "Что можно сделать:",
+                "✅ ОДОБРИТЬ — открыть заявку, указать персональные условия, ROX в месяц, дату начала и комментарий решения. После подтверждения создаётся соглашение.",
+                "",
+                "❌ ОТКЛОНИТЬ — открыть заявку и сохранить отказ с причиной/комментарием.",
+                "",
+                "⏳ ОСТАВИТЬ НА РАССМОТРЕНИИ — ничего не менять; заявка останется pending.",
+                "",
+                "🔎 ПЕРЕД РЕШЕНИЕМ — проверить площадку, фактический контент/охваты и при необходимости связаться с автором.",
+                "",
+                f"Ссылка: {application.channel_url}",
+                f"Telegram: @{username}" if username else "Telegram: —",
+                f"Application ID: {application.id}",
             ]
         )
-        body = "\n".join(details)
 
         for admin_user, admin_account in rows:
             # Bootstrap membership grants initial admin access, but an explicit

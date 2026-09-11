@@ -322,10 +322,12 @@ async def test_creator_application_notifies_bootstrap_admins_once_via_outbox(mon
         assert {item.user_id for item in admin_notifications} == {admin_one.id, admin_two.id}
         assert all(item.title == "Новая заявка на партнёрство" for item in admin_notifications)
         assert all("@creator_alert_test" in item.body for item in admin_notifications)
-        assert all("Канал: Instagram" in item.body for item in admin_notifications)
+        assert all("Канал / площадка: Instagram" in item.body for item in admin_notifications)
         assert all("Аудитория: 12 345" in item.body for item in admin_notifications)
         assert all("Средние просмотры: 6 789" in item.body for item in admin_notifications)
-        assert all("Админка → Партнёрство → Заявки" in item.body for item in admin_notifications)
+        assert all("✅ ОДОБРИТЬ" in item.body for item in admin_notifications)
+        assert all("❌ ОТКЛОНИТЬ" in item.body for item in admin_notifications)
+        assert all(f"Application ID: {application.id}" in item.body for item in admin_notifications)
 
         delivery_count = await session.scalar(
             select(func.count())
