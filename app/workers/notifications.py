@@ -34,6 +34,9 @@ _PROMPT_TOOL_NOTIFICATION_KINDS = {
     "prompt_tool_photo_succeeded",
     "prompt_tool_video_succeeded",
 }
+_ADMIN_OPERATIONAL_NOTIFICATION_KINDS = {
+    "creator_partnership_admin_application",
+}
 
 
 async def _heartbeat(redis: Redis) -> None:
@@ -370,7 +373,11 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             await session.commit()
             return
         preference = await session.get(UserPreference, user.id)
-        if preference is not None and not preference.notifications_enabled:
+        if (
+            preference is not None
+            and not preference.notifications_enabled
+            and notification.kind not in _ADMIN_OPERATIONAL_NOTIFICATION_KINDS
+        ):
             await NotificationDeliveryService.mark_terminal(
                 session,
                 delivery,

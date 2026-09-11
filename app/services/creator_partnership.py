@@ -18,7 +18,7 @@ from app.db.creator_partner_models import (
 from app.db.models import AdminAccount, AdminSession, User
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
-from app.services.admin_security import AdminAuditService
+from app.services.admin_security import AdminAuditService, parse_bootstrap_ids
 from app.services.notifications import NotificationService
 from app.services.wallet import WalletService
 
@@ -135,6 +135,62 @@ class CreatorPartnershipService:
         }
 
     @classmethod
+    async def _notify_bootstrap_admins(
+        cls,
+        session: AsyncSession,
+        *,
+        applicant: User,
+        application: CreatorPartnershipApplication,
+    ) -> None:
+        bootstrap_ids = parse_bootstrap_ids()
+        if not bootstrap_ids:
+            return
+
+        rows = (
+            await session.execute(
+                select(User, AdminAccount)
+                .outerjoin(AdminAccount, AdminAccount.user_id == User.id)
+                .where(
+                    User.telegram_id.in_(bootstrap_ids),
+                    User.is_active.is_(True),
+                )
+            )
+        ).all()
+
+        username = (applicant.username or "").strip()
+        applicant_label = f"@{username}" if username else f"Telegram ID {applicant.telegram_id}"
+        audience = f"{application.audience_size:,}".replace(",", " ")
+        details = [
+            applicant_label,
+            f"Канал: {application.channel_name}",
+            f"Аудитория: {audience}",
+        ]
+        if application.average_views is not None:
+            average_views = f"{application.average_views:,}".replace(",", " ")
+            details.append(f"Средние просмотры: {average_views}")
+        details.extend(
+            [
+                f"Формат: {application.cooperation_format}",
+                application.channel_url,
+                "Админка → Партнёрство → Заявки",
+            ]
+        )
+        body = "\n".join(details)
+
+        for admin_user, admin_account in rows:
+            # Bootstrap membership grants initial admin access, but an explicit
+            # deactivation in the admin domain must continue to win.
+            if admin_account is not None and not admin_account.is_active:
+                continue
+            await NotificationService.create(
+                session,
+                user_id=admin_user.id,
+                kind="creator_partnership_admin_application",
+                title="Новая заявка на партнёрство",
+                body=body,
+            )
+
+    @classmethod
     async def submit_application(
         cls,
         session: AsyncSession,
@@ -223,6 +279,11 @@ class CreatorPartnershipService:
             kind="creator_partnership_application",
             title="Заявка на партнёрство принята",
             body="ROXY получила заявку. Условия будут рассчитаны индивидуально после проверки канала.",
+        )
+        await cls._notify_bootstrap_admins(
+            session,
+            applicant=locked_user,
+            application=item,
         )
         return item, False
 

@@ -9,7 +9,9 @@ from app.db.creator_partner_models import (
     CreatorPartnershipAgreement,
     CreatorPartnershipApplication,
 )
-from app.db.models import AdminAccount, ReferralReward, User, Wallet, WalletTransaction
+from app.core.config import settings
+from app.db.models import AdminAccount, Notification, ReferralReward, User, Wallet, WalletTransaction
+from app.db.notification_models import NotificationDelivery
 from app.db.session import SessionFactory
 from app.services.creator_partnership import (
     CreatorPartnershipConflict,
@@ -247,3 +249,118 @@ async def test_creator_status_exposes_agreement_and_grant_history() -> None:
         assert Decimal(payload["agreement"]["monthly_rox"]) == Decimal("500.00")
         assert Decimal(payload["total_granted_rox"]) == Decimal("500.00")
         assert len(payload["grants"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_creator_application_notifies_bootstrap_admins_once_via_outbox(monkeypatch) -> None:
+    admin_one_tid = _telegram_id()
+    admin_two_tid = _telegram_id()
+    revoked_tid = _telegram_id()
+    monkeypatch.setattr(
+        settings,
+        "admin_bootstrap_telegram_ids",
+        f"{admin_one_tid},{admin_two_tid},{revoked_tid}",
+    )
+
+    async with SessionFactory() as session:
+        applicant = User(
+            telegram_id=_telegram_id(),
+            username="creator_alert_test",
+            first_name="Creator",
+        )
+        admin_one = User(telegram_id=admin_one_tid, first_name="Admin One")
+        admin_two = User(telegram_id=admin_two_tid, first_name="Admin Two")
+        revoked_user = User(telegram_id=revoked_tid, first_name="Revoked")
+        session.add_all([applicant, admin_one, admin_two, revoked_user])
+        await session.flush()
+
+        session.add_all(
+            [
+                AdminAccount(user_id=admin_one.id, role="owner", is_active=True),
+                AdminAccount(user_id=revoked_user.id, role="owner", is_active=False),
+            ]
+        )
+        await session.flush()
+
+        key = f"creator-admin-alert:{applicant.id}"
+        application, replayed = await CreatorPartnershipService.submit_application(
+            session,
+            user_id=applicant.id,
+            channel_name="Instagram",
+            channel_url="https://instagram.com/creator_alert_test",
+            audience_size=12_345,
+            average_views=6_789,
+            cooperation_format="Обзоры",
+            message="Готова к сотрудничеству",
+            idempotency_key=key,
+        )
+        replay, replayed_again = await CreatorPartnershipService.submit_application(
+            session,
+            user_id=applicant.id,
+            channel_name="Instagram",
+            channel_url="https://instagram.com/creator_alert_test",
+            audience_size=12_345,
+            average_views=6_789,
+            cooperation_format="Обзоры",
+            message="Готова к сотрудничеству",
+            idempotency_key=key,
+        )
+
+        assert not replayed
+        assert replayed_again
+        assert replay.id == application.id
+
+        admin_notifications = list(
+            (
+                await session.scalars(
+                    select(Notification)
+                    .where(Notification.kind == "creator_partnership_admin_application")
+                    .order_by(Notification.user_id)
+                )
+            ).all()
+        )
+        assert {item.user_id for item in admin_notifications} == {admin_one.id, admin_two.id}
+        assert all(item.title == "Новая заявка на партнёрство" for item in admin_notifications)
+        assert all("@creator_alert_test" in item.body for item in admin_notifications)
+        assert all("Канал: Instagram" in item.body for item in admin_notifications)
+        assert all("Аудитория: 12 345" in item.body for item in admin_notifications)
+        assert all("Средние просмотры: 6 789" in item.body for item in admin_notifications)
+        assert all("Админка → Партнёрство → Заявки" in item.body for item in admin_notifications)
+
+        delivery_count = await session.scalar(
+            select(func.count())
+            .select_from(NotificationDelivery)
+            .where(
+                NotificationDelivery.notification_id.in_(
+                    [item.id for item in admin_notifications]
+                )
+            )
+        )
+        assert int(delivery_count or 0) == 2
+
+        applicant_notification_count = await session.scalar(
+            select(func.count())
+            .select_from(Notification)
+            .where(
+                Notification.user_id == applicant.id,
+                Notification.kind == "creator_partnership_application",
+            )
+        )
+        assert int(applicant_notification_count or 0) == 1
+
+        # No Telegram call happens in the request path: delivery remains queued
+        # for the retry-capable notification worker, so Bot API downtime cannot
+        # make application submission fail.
+        queued = list(
+            (
+                await session.scalars(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.notification_id.in_(
+                            [item.id for item in admin_notifications]
+                        )
+                    )
+                )
+            ).all()
+        )
+        assert all(item.status == "pending" for item in queued)
+        await session.rollback()

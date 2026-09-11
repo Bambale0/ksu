@@ -597,3 +597,44 @@ async def test_retry_becomes_terminal_after_attempt_limit(monkeypatch: pytest.Mo
         await session.commit()
         assert delivery.status == "failed"
         assert delivery.last_error == "network"
+
+
+@pytest.mark.asyncio
+async def test_worker_delivers_creator_admin_alert_even_when_user_notifications_are_disabled() -> None:
+    bot = FakeBot()
+    async with SessionFactory() as session:
+        user = User(telegram_id=970000000000006, first_name="Admin")
+        session.add(user)
+        await session.flush()
+        session.add(UserPreference(user_id=user.id, notifications_enabled=False))
+        notification = await NotificationService.create(
+            session,
+            user_id=user.id,
+            kind="creator_partnership_admin_application",
+            title="Новая заявка на партнёрство",
+            body="@creator\nКанал: Instagram",
+        )
+        await session.commit()
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 1
+        await session.commit()
+        delivery_id = delivery.id
+
+    await _process_delivery(bot, delivery_id)  # type: ignore[arg-type]
+
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        assert delivery is not None
+        assert delivery.status == "sent"
+        assert bot.calls == [
+            (
+                970000000000006,
+                "Новая заявка на партнёрство\n\n@creator\nКанал: Instagram",
+            )
+        ]
