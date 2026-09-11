@@ -605,7 +605,7 @@ async def test_retry_becomes_terminal_after_attempt_limit(monkeypatch: pytest.Mo
 async def test_worker_delivers_creator_admin_alert_even_when_user_notifications_are_disabled() -> None:
     bot = FakeBot()
     async with SessionFactory() as session:
-        user = User(telegram_id=970000000000006, first_name="Admin")
+        user = User(telegram_id=970000000000099, first_name="Admin")
         session.add(user)
         await session.flush()
         session.add(UserPreference(user_id=user.id, notifications_enabled=False))
@@ -636,7 +636,7 @@ async def test_worker_delivers_creator_admin_alert_even_when_user_notifications_
         assert delivery.status == "sent"
         assert bot.calls == [
             (
-                970000000000006,
+                970000000000099,
                 "Новая заявка на партнёрство\n\n@creator\nКанал: Instagram",
             )
         ]
