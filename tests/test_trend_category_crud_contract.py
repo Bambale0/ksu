@@ -8,6 +8,10 @@ import pytest
 from app.services.trend_collections import TrendCollectionError, TrendCollectionService
 
 
+def _source(path: str) -> str:
+    return (Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8")
+
+
 def test_category_hashtags_normalize_hash_prefix_and_case() -> None:
     collection = TrendCollectionService.normalize_collection(
         {
