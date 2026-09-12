@@ -1,6 +1,6 @@
 """normalize trend collections into relational tables
 
-Revision ID: 0036_trend_collections_relational
+Revision ID: 0036_trend_collections
 Revises: 0035_generation_integrity
 """
 
@@ -14,7 +14,7 @@ from typing import Any
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0036_trend_collections_relational"
+revision: str = "0036_trend_collections"
 down_revision: str | None = "0035_generation_integrity"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
