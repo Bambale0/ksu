@@ -185,7 +185,9 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/v1/me') return json({ id: 'user-1', telegram_id: 777, first_name: 'QA', balance_rox: '100.00' });
     if (path === '/api/v1/pinterest-repeat/resolve') {
-      expect(request.postDataJSON()).toEqual({ url: 'https://pin.it/example' });
+      expect(request.postDataJSON()).toEqual({
+        url: 'Посмотри в Pinterest https://pin.it/example — хочу повторить',
+      });
       return json({
         source_url: 'https://www.pinterest.com/pin/123/',
         reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
@@ -201,7 +203,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
-  await page.getByPlaceholder('ссылка на пин с Pinterest').fill('https://pin.it/example');
+  await page.getByPlaceholder('ссылка или текст из Pinterest').fill('Посмотри в Pinterest https://pin.it/example — хочу повторить');
   await page.getByRole('button', { name: 'Загрузить' }).click();
   await expect(page.getByAltText('Референс сцены')).toHaveAttribute(
     'src',

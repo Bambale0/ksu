@@ -105,6 +105,64 @@ def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
     assert not _generation_matches_recipe(stored, changed)
 
 
+def test_validate_pinterest_url_accepts_share_text_and_extracts_supported_link() -> None:
+    value = (
+        "Посмотри, что я нашёл в Pinterest ✨ "
+        "https://pin.it/AbCdEf12 — хочу повторить это фото"
+    )
+
+    assert PinterestRepeatService.validate_pinterest_url(value) == "https://pin.it/AbCdEf12"
+
+
+def test_validate_pinterest_url_accepts_direct_pinimg_image() -> None:
+    value = "https://i.pinimg.com/736x/aa/bb/cc/photo.jpg"
+
+    assert PinterestRepeatService.validate_pinterest_url(value) == value
+
+
+def test_validate_pinterest_url_rejects_nested_untrusted_redirect_url() -> None:
+    value = "https://evil.example/?next=https://pin.it/AbCdEf12"
+
+    with pytest.raises(PinterestRepeatError, match="Не нашли ссылку Pinterest"):
+        PinterestRepeatService.validate_pinterest_url(value)
+
+
+@pytest.mark.asyncio
+async def test_resolve_reference_returns_direct_pinimg_without_page_fetch() -> None:
+    requested: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(500, request=request)
+
+    direct = "https://i.pinimg.com/originals/aa/bb/cc/photo.jpg"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        resolved = await PinterestRepeatService.resolve_reference(direct, client=client)
+
+    assert resolved.source_url == direct
+    assert resolved.reference_url == direct
+    assert requested == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_reference_accepts_pinterest_redirect_to_pinimg() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            headers={"location": "https://i.pinimg.com/originals/aa/bb/cc/photo.jpg"},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        resolved = await PinterestRepeatService.resolve_reference(
+            "https://pin.it/example",
+            client=client,
+        )
+
+    assert resolved.source_url == "https://i.pinimg.com/originals/aa/bb/cc/photo.jpg"
+    assert resolved.reference_url == "https://i.pinimg.com/originals/aa/bb/cc/photo.jpg"
+
+
 @pytest.mark.asyncio
 async def test_resolve_reference_follows_only_pinterest_redirects_and_reads_og_image() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -181,7 +239,7 @@ async def test_resolve_reference_blocks_redirect_outside_pinterest() -> None:
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(PinterestRepeatError, match="pinterest.com и pin.it"):
+        with pytest.raises(PinterestRepeatError, match="Не нашли ссылку Pinterest"):
             await PinterestRepeatService.resolve_reference(
                 "https://pin.it/example",
                 client=client,
