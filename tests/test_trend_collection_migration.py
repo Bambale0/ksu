@@ -59,3 +59,42 @@ def test_v1_backfill_seeds_legacy_defaults() -> None:
     assert [item["id"] for item in collections] == ["trends", "birthday"]
     assert assignments == {}
     assert automatic == set()
+
+
+def test_relational_state_serializes_back_to_legacy_shape_for_downgrade() -> None:
+    module = _migration_module()
+    trend_id = uuid.uuid4()
+    state = module._legacy_state_from_relational(
+        [
+            {
+                "id": "party",
+                "system_key": None,
+                "title": "Party",
+                "description": "Ideas",
+                "aliases": ["party"],
+                "sort_order": 20,
+                "is_active": False,
+            },
+            {
+                "id": "trends",
+                "system_key": "trends",
+                "title": "Тренды",
+                "description": "Live",
+                "aliases": [],
+                "sort_order": 0,
+                "is_active": True,
+            },
+        ],
+        [
+            {
+                "trend_id": trend_id,
+                "collection_id": "party",
+                "automatic": True,
+            }
+        ],
+    )
+
+    assert [item["id"] for item in state["collections"]] == ["trends", "party"]
+    assert state["assignments"] == {str(trend_id): "party"}
+    assert state["auto_assignments"] == [str(trend_id)]
+    assert state["collections"][1]["is_active"] is False
