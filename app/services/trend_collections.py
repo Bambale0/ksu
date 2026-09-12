@@ -404,6 +404,10 @@ class TrendCollectionService:
         )
         affected_auto = [item.trend_id for item in affected if item.automatic]
         title = existing.title
+        # Delete loaded assignment rows explicitly so the ORM identity map stays
+        # consistent before any automatic reassignment reuses the same trend PK.
+        for assignment in affected:
+            await session.delete(assignment)
         await session.delete(existing)
         await session.flush()
 
