@@ -148,6 +148,7 @@ class PaymentCreationLifecycle:
         created: CreatedPayment,
         payload_updates: Mapping[str, Any] | None = None,
         missing_message: str = "Payment disappeared after provider creation",
+        refresh: bool = False,
     ) -> Payment:
         payment = await session.get(Payment, payment_id)
         request_row = await session.get(PaymentRequest, request_id)
@@ -165,7 +166,8 @@ class PaymentCreationLifecycle:
         request_row.status = "completed"
         request_row.last_error = None
         await session.commit()
-        await session.refresh(payment)
+        if refresh:
+            await session.refresh(payment)
         return payment
 
     @classmethod
