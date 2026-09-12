@@ -435,7 +435,7 @@ class CardPaymentService:
             provider=cls.PROVIDER,
             package_id=package_id,
             request_key=request_key,
-            payment_match=lambda existing: existing.currency.upper() == currency,
+            currency=currency,
         )
         if not creation.created:
             return creation.payment
