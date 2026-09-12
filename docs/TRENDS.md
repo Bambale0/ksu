@@ -98,7 +98,7 @@ Template categories are stored relationally:
 - no assignment means the trend appears in the live `Тренды` root;
 - an explicit manual assignment, including a manual move to `Тренды`, is authoritative over hashtag routing.
 
-Migration `0036_trend_collections_relational` copies the previous
+Migration `0036_trend_collections` copies the previous
 `admin_runtime_settings.trend_collections_v1` JSON state into these tables.
 The legacy setting is intentionally retained as rollback evidence, but runtime reads and
 writes use the relational tables only. Category mutation remains admin-only.
