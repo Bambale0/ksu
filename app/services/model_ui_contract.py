@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.services.seedance_prompt_limits import prompt_max_chars
+
 from app.services.model_routing import PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
 from app.services.model_ui import build_model_ui_schema
 
@@ -229,6 +231,7 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
     _apply_model_contract(schema, model_id)
     if model_id in SEEDANCE_MODELS:
         _patch_seedance_multiref_schema(schema, model_id)
+        _patch_field(schema, "prompt", max_length=prompt_max_chars(model_id))
 
     if model_id in PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS:
         # These public cards are automatic product entries: without refs the

@@ -43,6 +43,7 @@ export type UiField = {
   accept?: string;
   max_items?: number;
   max_size_mb?: number;
+  max_length?: number;
   min?: number;
   max?: number;
   step?: number;
