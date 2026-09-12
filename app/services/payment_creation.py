@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,9 +16,6 @@ from app.providers.payments import CreatedPayment
 
 class PaymentIdempotencyConflict(ValueError):
     pass
-
-
-PaymentMatch = Callable[[Payment], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +50,7 @@ class PaymentCreationLifecycle:
         provider: str,
         package_id: str,
         request_key: str,
-        payment_match: PaymentMatch | None = None,
+        currency: str | None = None,
     ) -> PaymentCreationResult:
         cls.validate_request_key(request_key)
 
@@ -63,7 +60,7 @@ class PaymentCreationLifecycle:
             provider=provider,
             package_id=package_id,
             request_key=request_key,
-            payment_match=payment_match,
+            currency=currency,
         )
         if existing is not None:
             return PaymentCreationResult(existing, None, False)
@@ -90,7 +87,7 @@ class PaymentCreationLifecycle:
                 provider=provider,
                 package_id=package_id,
                 request_key=request_key,
-                payment_match=payment_match,
+                currency=currency,
             )
             if winner is None:
                 raise
@@ -151,7 +148,6 @@ class PaymentCreationLifecycle:
         created: CreatedPayment,
         payload_updates: Mapping[str, Any] | None = None,
         missing_message: str = "Payment disappeared after provider creation",
-        refresh: bool = False,
     ) -> Payment:
         payment = await session.get(Payment, payment_id)
         request_row = await session.get(PaymentRequest, request_id)
@@ -169,8 +165,7 @@ class PaymentCreationLifecycle:
         request_row.status = "completed"
         request_row.last_error = None
         await session.commit()
-        if refresh:
-            await session.refresh(payment)
+        await session.refresh(payment)
         return payment
 
     @classmethod
@@ -182,7 +177,7 @@ class PaymentCreationLifecycle:
         provider: str,
         package_id: str,
         request_key: str,
-        payment_match: PaymentMatch | None,
+        currency: str | None,
     ) -> Payment | None:
         request_row = await session.scalar(
             select(PaymentRequest).where(
@@ -200,7 +195,7 @@ class PaymentCreationLifecycle:
         payment = await session.get(Payment, request_row.payment_id)
         if payment is None:
             raise LookupError("Idempotent payment record is inconsistent")
-        if payment_match is not None and not payment_match(payment):
+        if currency is not None and payment.currency.upper() != currency.upper():
             raise PaymentIdempotencyConflict(
                 "The idempotency key was already used for another payment intent"
             )
