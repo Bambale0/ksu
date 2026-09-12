@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -238,7 +239,7 @@ class TrendCollection(TimestampMixin, Base):
             "uq_trend_collections_system_key",
             "system_key",
             unique=True,
-            postgresql_where=Text("system_key IS NOT NULL"),
+            postgresql_where=text("system_key IS NOT NULL"),
         ),
     )
 
