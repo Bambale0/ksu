@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
@@ -78,20 +79,54 @@ class PinterestRepeatService:
         host = hostname.lower().rstrip(".")
         return host == "pin.it" or host == "pinterest.com" or host.endswith(".pinterest.com")
 
+    @staticmethod
+    def _is_pinimg_host(hostname: str) -> bool:
+        host = hostname.lower().rstrip(".")
+        return host == "pinimg.com" or host.endswith(".pinimg.com")
+
+    @classmethod
+    def _extract_supported_pinterest_url(cls, value: str) -> str:
+        raw = value.strip()
+        if not raw:
+            raise PinterestRepeatError(
+                "Вставьте ссылку Pinterest: pinterest.com, pin.it или i.pinimg.com"
+            )
+
+        candidates = [
+            match.rstrip(".,;:!?)]}")
+            for match in re.findall(r'https://[^\s<>"\']+', raw, flags=re.IGNORECASE)
+        ]
+        if not candidates:
+            candidates.append(raw.rstrip(".,;:!?)]}"))
+        seen: set[str] = set()
+        for candidate in candidates:
+            cleaned = candidate.strip()
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            parsed = urlparse(cleaned)
+            if parsed.scheme != "https" or not parsed.hostname:
+                continue
+            if cls._is_pinterest_host(parsed.hostname) or cls._is_pinimg_host(parsed.hostname):
+                return cleaned
+
+        raise PinterestRepeatError(
+            "Не нашли ссылку Pinterest. Подойдут pinterest.com, pin.it или i.pinimg.com"
+        )
+
     @classmethod
     def validate_pinterest_url(cls, value: str) -> str:
-        cleaned = cls._clean_url(value, label="Ссылка Pinterest")
-        parsed = urlparse(cleaned)
-        if parsed.scheme != "https" or not parsed.hostname or not cls._is_pinterest_host(parsed.hostname):
-            raise PinterestRepeatError("Поддерживаются только HTTPS-ссылки pinterest.com и pin.it")
-        return cleaned
+        return cls._extract_supported_pinterest_url(value)
 
-    @staticmethod
-    def _validate_pin_image_url(value: str) -> str:
+    @classmethod
+    def _validate_pin_image_url(cls, value: str) -> str:
         cleaned = value.strip()
         parsed = urlparse(cleaned)
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if parsed.scheme != "https" or not (host == "pinimg.com" or host.endswith(".pinimg.com")):
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or not cls._is_pinimg_host(parsed.hostname)
+        ):
             raise PinterestRepeatError("Pinterest вернул неподдерживаемую ссылку на изображение")
         return cleaned
 
@@ -166,6 +201,14 @@ class PinterestRepeatService:
         client: httpx.AsyncClient | None = None,
     ) -> PinterestResolvedReference:
         source_url = cls.validate_pinterest_url(value)
+        source_host = (urlparse(source_url).hostname or "").lower().rstrip(".")
+        if cls._is_pinimg_host(source_host):
+            image_url = cls._validate_pin_image_url(source_url)
+            return PinterestResolvedReference(
+                source_url=image_url,
+                reference_url=image_url,
+            )
+
         current_url = source_url
         owns_client = client is None
         http_client = client or httpx.AsyncClient(
@@ -187,6 +230,13 @@ class PinterestRepeatService:
                         if not location:
                             raise PinterestRepeatError("Pinterest вернул пустой redirect")
                         current_url = cls.validate_pinterest_url(urljoin(current_url, location))
+                        redirect_host = (urlparse(current_url).hostname or "").lower().rstrip(".")
+                        if cls._is_pinimg_host(redirect_host):
+                            image_url = cls._validate_pin_image_url(current_url)
+                            return PinterestResolvedReference(
+                                source_url=image_url,
+                                reference_url=image_url,
+                            )
                         continue
 
                     if response.status_code >= 400:

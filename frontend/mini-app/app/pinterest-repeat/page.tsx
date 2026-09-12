@@ -289,10 +289,10 @@ export default function PinterestRepeatPage() {
 
         <div className="pin-section-label">ИЛИ ВСТАВЬ ССЫЛКУ</div>
         <div className="pin-url-row">
-          <input className="pin-input" type="url" inputMode="url" placeholder="ссылка на пин с Pinterest" value={pinterestUrl} onChange={(event) => setPinterestUrl(event.target.value)} />
+          <input className="pin-input" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="ссылка или текст из Pinterest" value={pinterestUrl} onChange={(event) => setPinterestUrl(event.target.value)} />
           <button className="pin-url-button" type="button" disabled={!pinterestUrl.trim() || resolving} onClick={() => void resolvePinterest()}>{resolving ? "…" : "Загрузить"}</button>
         </div>
-        <p className="pin-helper">Вставь ссылку на пин (pinterest.com/pin/... или pin.it/...) — сами вытащим картинку и используем её как сцену.</p>
+        <p className="pin-helper">Можно вставить ссылку на пин, короткую pin.it, прямую картинку i.pinimg.com или целиком текст из «Поделиться» — ссылку найдём сами.</p>
 
         {sourceUrl ? (
           <div className="pin-source">
