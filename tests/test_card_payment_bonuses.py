@@ -17,6 +17,7 @@ from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import CreatedPayment, PaymentProviderValidationError
 from app.services.card_payments import CardPackage, CardPackageCatalog, CardPaymentService
 from app.services.payment_bonuses import TopUpBonusService
+from app.services.payments import PaymentIdempotencyConflict
 from app.services.referrals import ReferralService
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -391,3 +392,81 @@ def test_wallet_bonus_badges_are_backend_driven_in_mini_app() -> None:
         "+500 ROX 🎁",
     ):
         assert token not in css
+
+
+@pytest.mark.asyncio
+async def test_card_checkout_idempotency_key_is_bound_to_currency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "card_packages_json",
+        '{"multi":{"credits":"300","prices":{"RUB":"326.1","USD":"6.00"},"dynamic_amount":true}}',
+    )
+    monkeypatch.setattr(settings, "card_offer_id", "offer-multi")
+    calls: list[str] = []
+
+    async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
+        return {
+            "items": [
+                {
+                    "id": "product-multi",
+                    "offers": [{"id": "offer-multi", "isDynamicPrice": True}],
+                }
+            ]
+        }
+
+    async def fake_create_invoice(
+        self: CardCheckoutClient,
+        *,
+        email: str,
+        offer_id: str,
+        currency: str,
+        amount: Decimal | None,
+        payment_provider: str | None = None,
+    ) -> CreatedPayment:
+        calls.append(currency)
+        return CreatedPayment(
+            external_id=f"card-idempotency-{uuid.uuid4()}",
+            payment_url="https://pay.example/idempotency",
+            raw={"status": "pending"},
+        )
+
+    monkeypatch.setattr(CardCheckoutClient, "get_products", fake_get_products)
+    monkeypatch.setattr(CardCheckoutClient, "create_invoice", fake_create_invoice)
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="ROX Idempotency")
+        session.add(user)
+        await session.commit()
+        request_key = str(uuid.uuid4())
+
+        first = await CardPaymentService.create(
+            session,
+            user_id=user.id,
+            package_id="multi",
+            currency="RUB",
+            billing_email="buyer@example.com",
+            request_key=request_key,
+        )
+        repeated = await CardPaymentService.create(
+            session,
+            user_id=user.id,
+            package_id="multi",
+            currency="RUB",
+            billing_email="buyer@example.com",
+            request_key=request_key,
+        )
+        assert repeated.id == first.id
+
+        with pytest.raises(PaymentIdempotencyConflict):
+            await CardPaymentService.create(
+                session,
+                user_id=user.id,
+                package_id="multi",
+                currency="USD",
+                billing_email="buyer@example.com",
+                request_key=request_key,
+            )
+
+    assert calls == ["RUB"]
