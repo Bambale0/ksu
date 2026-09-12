@@ -399,6 +399,7 @@ class CardPaymentService:
         currency = currency.upper()
         if currency not in CardCheckoutClient.SUPPORTED_CURRENCIES:
             raise ValueError("Поддерживаются только RUB, USD и EUR")
+        PaymentCreationLifecycle.validate_request_key(request_key)
         email = cls._email(billing_email)
         package = await CardPackageCatalog.provider_package(package_id)
         amount = package.prices.get(currency)
