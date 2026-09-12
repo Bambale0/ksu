@@ -7,6 +7,7 @@ Revises: 0035_generation_integrity
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Sequence
 from typing import Any
 
@@ -180,7 +181,7 @@ def upgrade() -> None:
 
     op.create_table(
         "trend_collection_assignments",
-        sa.Column("trend_id", sa.UUID(), nullable=False),
+        sa.Column("trend_id", sa.Uuid(), nullable=False),
         sa.Column("collection_id", sa.String(length=64), nullable=False),
         sa.Column("automatic", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -229,7 +230,7 @@ def upgrade() -> None:
     }
     assignment_rows = [
         {
-            "trend_id": trend_id,
+            "trend_id": uuid.UUID(trend_id),
             "collection_id": collection_id,
             "automatic": trend_id in automatic,
         }
@@ -239,7 +240,7 @@ def upgrade() -> None:
     if assignment_rows:
         assignment_table = sa.table(
             "trend_collection_assignments",
-            sa.column("trend_id", sa.UUID()),
+            sa.column("trend_id", sa.Uuid()),
             sa.column("collection_id", sa.String()),
             sa.column("automatic", sa.Boolean()),
         )
