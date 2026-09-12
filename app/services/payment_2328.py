@@ -18,6 +18,7 @@ from app.providers.payment_2328 import (
     Payment2328Client,
 )
 from app.providers.payments import PaymentProviderError
+from app.services.admin_security import utcnow
 from app.services.card_payments import CardPackage, CardPackageCatalog
 from app.services.credits import InternalCreditService
 from app.services.payment_bonuses import TopUpBonusService
@@ -32,6 +33,9 @@ class Payment2328Service:
     PROVIDER = "2328"
     PUBLIC_LABEL = "Криптовалюта"
     CURRENCY = "RUB"
+    RECONCILABLE_STATUSES = frozenset(
+        {"creating", "creation_unknown", "pending", "refund_review"}
+    )
 
     @staticmethod
     def provider_configured() -> bool:
@@ -207,6 +211,46 @@ class Payment2328Service:
         finally:
             await client.aclose()
         if state is None:
+            # 2328 checkout invoices are created with a one-hour TTL. A 404 is
+            # recoverable immediately after an ambiguous create, but treating it as
+            # recoverable forever leaves stale intents in the polling queue.
+            #
+            # Reload and lock after the network call: a webhook can complete/refund
+            # the payment while we are waiting for the provider. Never overwrite a
+            # terminal state with "expired".
+            payment = await session.get(
+                Payment,
+                payment_id,
+                populate_existing=True,
+                with_for_update=True,
+            )
+            if payment is None:
+                raise LookupError("Payment not found")
+            if payment.status not in cls.RECONCILABLE_STATUSES:
+                return payment
+
+            age_seconds = max(
+                0.0,
+                (utcnow() - payment.created_at).total_seconds(),
+            )
+            if age_seconds >= max(0, settings.payment_2328_missing_grace_seconds):
+                error = "2328.io payment was not found after the recovery grace period"
+                payment.status = "expired"
+                payment.payload = {
+                    **(payment.payload or {}),
+                    "reconciliation_terminal_error": {
+                        "reason": "provider_not_found_after_grace",
+                        "error": error,
+                        "recorded_at": utcnow().isoformat(),
+                    },
+                }
+                request_row = await session.scalar(
+                    select(PaymentRequest).where(PaymentRequest.payment_id == payment.id)
+                )
+                if request_row is not None and request_row.status in {"creating", "unknown"}:
+                    request_row.status = "failed"
+                    request_row.last_error = error
+                await session.commit()
             return payment
         return await cls.apply_state(session, payment=payment, provider_payload=state)
 
