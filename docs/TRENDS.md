@@ -87,3 +87,18 @@ The Mini App Trends runner:
 Existing legacy `admin_trends` rows are not migrated automatically. Public listing skips active rows that cannot be normalized against the current recipe contract. Operators should recreate or update such entries through the validated admin path before relying on them in production.
 
 No Alembic migration is required for this epic because the existing `admin_trends` table is reused.
+
+
+## Template categories
+
+Template categories are stored relationally:
+
+- `trend_collections` owns category metadata, ordering, visibility and hashtag aliases;
+- `trend_collection_assignments` links one `admin_trends` row to one category and records whether that move was automatic;
+- no assignment means the trend appears in the live `Тренды` root;
+- an explicit manual assignment, including a manual move to `Тренды`, is authoritative over hashtag routing.
+
+Migration `0036_trend_collections_relational` copies the previous
+`admin_runtime_settings.trend_collections_v1` JSON state into these tables.
+The legacy setting is intentionally retained as rollback evidence, but runtime reads and
+writes use the relational tables only. Category mutation remains admin-only.
