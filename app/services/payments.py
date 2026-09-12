@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Payment, WalletTransaction
-from app.db.payment_models import PaymentRefundRequest, PaymentRequest, PaymentReversal
+from app.db.payment_models import PaymentRefundRequest, PaymentReversal
 from app.providers.payments import (
     CreatedPayment,
     CryptoPayClient,
@@ -133,6 +133,7 @@ class PaymentService:
     ) -> Payment:
         if provider not in cls.PROVIDERS:
             raise UnknownPaymentProviderError(provider)
+        PaymentCreationLifecycle.validate_request_key(request_key)
         package = cls.package(package_id)
 
         payment = Payment(
