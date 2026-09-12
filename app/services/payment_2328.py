@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -22,11 +21,8 @@ from app.services.admin_security import utcnow
 from app.services.card_payments import CardPackage, CardPackageCatalog
 from app.services.credits import InternalCreditService
 from app.services.payment_bonuses import TopUpBonusService
-from app.services.payments import (
-    PaymentIdempotencyConflict,
-    PaymentService,
-    UnknownPaymentPackageError,
-)
+from app.services.payment_creation import PaymentCreationLifecycle
+from app.services.payments import PaymentService, UnknownPaymentPackageError
 
 
 class Payment2328Service:
@@ -72,8 +68,6 @@ class Payment2328Service:
     ) -> Payment:
         if not cls.provider_configured():
             raise PaymentProviderError("2328.io is not configured")
-        if not request_key or len(request_key) > 64:
-            raise ValueError("Idempotency key must contain 1-64 characters")
 
         package = await cls.provider_package(package_id)
         amount = package.prices.get(cls.CURRENCY)
@@ -83,25 +77,6 @@ class Payment2328Service:
         base_credits = Decimal(package.credits)
         bonus_credits = TopUpBonusService.bonus_for(base_credits)
         credited_credits = base_credits + bonus_credits
-
-        existing_request = await session.scalar(
-            select(PaymentRequest).where(
-                PaymentRequest.user_id == user_id,
-                PaymentRequest.request_key == request_key,
-            )
-        )
-        if existing_request is not None:
-            existing_payment = await session.get(Payment, existing_request.payment_id)
-            if (
-                existing_request.provider != cls.PROVIDER
-                or existing_request.package_id != package_id
-                or existing_payment is None
-            ):
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            return existing_payment
-
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
@@ -118,41 +93,18 @@ class Payment2328Service:
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
-        session.add(payment)
-        await session.flush()
-        request_row = PaymentRequest(
+        creation = await PaymentCreationLifecycle.begin(
+            session,
+            payment=payment,
             user_id=user_id,
-            payment_id=payment.id,
-            request_key=request_key,
             provider=cls.PROVIDER,
             package_id=package_id,
-            status="creating",
+            request_key=request_key,
         )
-        session.add(request_row)
-        try:
-            # 2328.io uses order_id as its creation idempotency key. Persist the
-            # local UUID first and use it unchanged for every retry/reconciliation.
-            await session.commit()
-        except IntegrityError:
-            await session.rollback()
-            winner = await session.scalar(
-                select(PaymentRequest).where(
-                    PaymentRequest.user_id == user_id,
-                    PaymentRequest.request_key == request_key,
-                )
-            )
-            if winner is None:
-                raise
-            existing_payment = await session.get(Payment, winner.payment_id)
-            if (
-                winner.provider != cls.PROVIDER
-                or winner.package_id != package_id
-                or existing_payment is None
-            ):
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            return existing_payment
+        if not creation.created:
+            return creation.payment
+        assert creation.request_id is not None
+        payment = creation.payment
 
         client = cls._client()
         try:
@@ -164,35 +116,24 @@ class Payment2328Service:
                 callback_url=settings.webhook_url("webhooks/payments/2328"),
             )
         except Exception as exc:
-            payment = await session.get(Payment, payment.id)
-            request_row = await session.get(PaymentRequest, request_row.id)
-            if payment is not None:
-                payment.status = "creation_unknown"
-                payment.payload = {**payment.payload, "create_error": str(exc)}
-            if request_row is not None:
-                request_row.status = "unknown"
-                request_row.last_error = str(exc)[:4000]
-            await session.commit()
+            await PaymentCreationLifecycle.mark_unknown(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+            )
             raise
         finally:
             await client.aclose()
 
-        payment = await session.get(Payment, payment.id)
-        request_row = await session.get(PaymentRequest, request_row.id)
-        if payment is None or request_row is None:
-            raise LookupError("Payment disappeared after 2328.io payment creation")
-        payment.external_id = created.external_id
-        payment.status = "pending"
-        payment.payload = {
-            **payment.payload,
-            "payment_url": created.payment_url,
-            "provider_response": created.raw,
-        }
-        request_row.status = "completed"
-        request_row.last_error = None
-        await session.commit()
-        await session.refresh(payment)
-        return payment
+        return await PaymentCreationLifecycle.mark_pending(
+            session,
+            payment_id=payment.id,
+            request_id=creation.request_id,
+            created=created,
+            missing_message="Payment disappeared after 2328.io payment creation",
+            refresh=True,
+        )
 
     @classmethod
     async def reconcile(cls, session: AsyncSession, *, payment_id: uuid.UUID) -> Payment:
