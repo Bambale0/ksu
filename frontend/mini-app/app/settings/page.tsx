@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
+import { useUiLanguage } from "@/components/ui-language-provider";
 import { customerRequest } from "@/lib/customer-api";
 
 type Preferences = {
@@ -24,12 +25,17 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const { language } = useUiLanguage();
 
   useEffect(() => {
     void customerRequest<Preferences>("/api/v1/me/preferences")
-      .then(setValue)
+      .then((preferences) => setValue({ ...preferences, ui_language: language }))
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить настройки"));
   }, []);
+
+  useEffect(() => {
+    setValue((current) => ({ ...current, ui_language: language }));
+  }, [language]);
 
   const save = async () => {
     setBusy(true);
@@ -38,7 +44,7 @@ export default function SettingsPage() {
     try {
       const next = await customerRequest<Preferences>("/api/v1/me/preferences", {
         method: "PUT",
-        body: JSON.stringify(value),
+        body: JSON.stringify({ ...value, ui_language: language }),
       });
       setValue(next);
       setSaved(true);
@@ -59,17 +65,9 @@ export default function SettingsPage() {
   );
 
   return (
-    <StandaloneShell kicker="Настройки" title="Аккаунт ROXY" copy="Управляйте уведомлениями, языком и видимостью профиля. Telegram-имя и username остаются синхронизированы с Telegram.">
+    <StandaloneShell kicker="Настройки" title="Аккаунт ROXY" copy="Язык переключается сверху рядом с балансом. Здесь можно настроить уведомления и видимость профиля.">
       <div className="panel tool-panel">
         <div className="form-stack">
-          <label className="field">
-            <span className="label">Язык интерфейса</span>
-            <select className="control" value={value.ui_language} onChange={(event) => { setSaved(false); setValue((current) => ({ ...current, ui_language: event.target.value })); }}>
-              <option value="auto">Как в Telegram</option>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </label>
           {toggle("notifications_enabled")}
           {toggle("marketing_notifications")}
           {toggle("profile_discoverable")}

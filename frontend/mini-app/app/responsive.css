@@ -181,9 +181,25 @@ small {
     display: none;
   }
 
+  .topbar-actions {
+    gap: 5px;
+  }
+
+  .language-switcher {
+    min-height: 34px;
+    padding: 2px;
+    border-radius: 12px;
+  }
+
+  .language-switcher button {
+    min-width: 27px;
+    height: 28px;
+    padding-inline: 4px;
+  }
+
   .balance-button {
     min-width: 84px;
-    max-width: 124px;
+    max-width: 112px;
     min-height: 42px;
     padding: 6px 9px;
     border-radius: 14px;

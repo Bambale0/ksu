@@ -55,7 +55,7 @@ async function installTelegram(page) {
   });
 }
 
-async function mockApi(page) {
+async function mockApi(page, { language = 'auto' } = {}) {
   await installTelegram(page);
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -66,7 +66,7 @@ async function mockApi(page) {
 
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' });
     if (path === '/api/v1/me/overview') return json(overview);
-    if (path === '/api/v1/me/preferences') return json(overview.preferences);
+    if (path === '/api/v1/me/preferences') return json({ ...overview.preferences, ui_language: language });
     if (path === '/api/v1/notifications') return json({ items: [{ id: '33333333-3333-4333-8333-333333333333', kind: 'generation_done', title: 'Готово', body: 'Ваша работа готова', is_read: false, created_at: '2026-08-26T05:10:00Z' }], unread_count: 1 });
     if (path === '/api/v1/notifications/read-all') return json({ updated: 1 });
     if (/^\/api\/v1\/notifications\/[^/]+\/read$/.test(path)) return json({ is_read: true });
@@ -144,4 +144,33 @@ test('notifications can be marked read in the customer center', async ({ page })
   await page.goto('/mini-app/notifications/');
   await page.getByRole('button', { name: /Прочитать все/ }).click();
   await expect(page.locator('.standalone-screen h1')).toHaveText('Всё просмотрено');
+});
+
+
+const englishSurfaces = [
+  ['/mini-app/account/', 'QA'],
+  ['/mini-app/notifications/', '1 unread'],
+  ['/mini-app/support/', 'ROXY help'],
+  ['/mini-app/settings/', 'ROXY account'],
+  ['/mini-app/promocodes/', 'Get ROX'],
+  ['/mini-app/partner-wallet/', 'Earnings and payouts'],
+  ['/mini-app/subscriptions/', 'My subscriptions'],
+  ['/mini-app/history-manager/', 'Manage works'],
+  ['/mini-app/actions/', 'Result actions'],
+  ['/mini-app/creator-partnership/', 'Creator partnership'],
+  ['/mini-app/presets/', 'My presets'],
+  ['/mini-app/payments/', 'ROX top-ups'],
+  ['/mini-app/downloads/', 'Download results'],
+];
+
+test('saved English is honored across standalone customer surfaces', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, { language: 'en' });
+
+  for (const [url, title] of englishSurfaces) {
+    await page.goto(url);
+    await expect(page.locator('.standalone-screen h1')).toContainText(title);
+    await expect(page.getByRole('group', { name: 'Interface language' }).getByRole('button', { name: 'EN' }))
+      .toHaveAttribute('aria-pressed', 'true');
+  }
 });
