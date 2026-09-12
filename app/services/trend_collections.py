@@ -245,15 +245,9 @@ class TrendCollectionService:
 
     @classmethod
     async def state(cls, session: AsyncSession) -> dict[str, Any]:
-        collections = list(
-            (
-                await session.scalars(
-                    select(TrendCollection).order_by(
-                        TrendCollection.sort_order.asc(),
-                        TrendCollection.title.asc(),
-                    )
-                )
-            ).all()
+        collections = list((await session.scalars(select(TrendCollection))).all())
+        collections.sort(
+            key=lambda item: (item.sort_order, item.title.casefold()),
         )
         if not collections:
             # Migration 0036 seeds relational defaults. This fallback keeps read
@@ -363,15 +357,16 @@ class TrendCollectionService:
         cid = str(collection_id or "").strip().lower()
         if cid == cls.DEFAULT_COLLECTION_ID and not active:
             raise TrendCollectionError("Категорию «Тренды» нельзя скрыть")
-        existing = await session.get(TrendCollection, cid)
+        del admin_id
+        await cls._lock_mutations(session)
+        existing = await session.scalar(
+            select(TrendCollection).where(TrendCollection.id == cid).with_for_update()
+        )
         if existing is None:
             raise LookupError("Folder not found")
-        return await cls.upsert_collection(
-            session,
-            admin_id=admin_id,
-            collection_id=cid,
-            payload={**cls._collection_view(existing), "is_active": active},
-        )
+        existing.is_active = active
+        await session.flush()
+        return cls._collection_view(existing)
 
     @classmethod
     async def delete_collection(
