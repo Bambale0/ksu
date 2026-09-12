@@ -115,5 +115,6 @@ class CryptoBotPaymentService:
             request_id=creation.request_id,
             created=created,
             missing_message="Payment disappeared after Crypto Pay invoice creation",
+            refresh=True,
         )
 
