@@ -51,6 +51,7 @@ class CryptoBotPaymentService:
     ) -> Payment:
         if not cls.provider_configured():
             raise PaymentProviderError("CryptoBot is not configured")
+        PaymentCreationLifecycle.validate_request_key(request_key)
 
         package = await cls.provider_package(package_id)
         amount = package.prices.get(cls.CURRENCY)
