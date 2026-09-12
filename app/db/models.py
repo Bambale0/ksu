@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -152,9 +153,22 @@ class Generation(TimestampMixin, Base):
             "feed_published_at",
         ),
         Index("ix_generations_source_feed", "source_feed_gen_id"),
+        Index(
+            "uq_generations_provider_external",
+            "provider",
+            "external_id",
+            unique=True,
+            postgresql_where=text("provider IS NOT NULL AND external_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "publication_scope IN ('private', 'profile', 'feed')",
             name="ck_generations_publication_scope",
+        ),
+        CheckConstraint(
+            "(publication_scope = 'private' AND is_public_feed = false AND is_profile_visible = false) OR "
+            "(publication_scope = 'profile' AND is_public_feed = false AND is_profile_visible = true) OR "
+            "(publication_scope = 'feed' AND is_public_feed = true AND is_profile_visible = true)",
+            name="ck_generations_publication_state",
         ),
     )
 
@@ -359,8 +373,8 @@ class AdminUserNote(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    admin_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_accounts.id", ondelete="SET NULL"), nullable=False
+    admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

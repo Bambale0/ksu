@@ -93,6 +93,12 @@ jobs:
       - name: Apply migrations
         run: alembic upgrade head
 
+      - name: Verify ORM migration parity
+        run: alembic check
+
+      - name: Entity integrity contracts
+        run: pytest -q tests/test_entity_integrity.py
+
       - name: Next Mini App architecture contract
         run: pytest -q tests/test_next_mini_app_contract.py
 
