@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.core.config import settings
 from app.db.models import Payment
@@ -33,10 +33,17 @@ class PaymentReconciliationService:
             payments = list(
                 (
                     await session.execute(
-                        select(Payment.id, Payment.provider)
+                        select(Payment.id, Payment.provider, Payment.external_id)
                         .where(
                             Payment.status.in_(cls.RECONCILABLE_STATUSES),
                             Payment.updated_at < cutoff,
+                            # Card intents without a provider invoice id cannot be
+                            # recovered by polling. They are intentionally recovered
+                            # from an authoritative Lava webhook instead.
+                            or_(
+                                Payment.provider != CardPaymentService.PROVIDER,
+                                Payment.external_id.is_not(None),
+                            ),
                         )
                         .order_by(Payment.updated_at.asc())
                         .limit(settings.payment_reconcile_batch_size)
@@ -45,8 +52,10 @@ class PaymentReconciliationService:
             )
 
         processed = 0
-        for payment_id, provider in payments:
+        for payment_id, provider, external_id in payments:
             if provider == CardPaymentService.PROVIDER:
+                if not external_id:
+                    continue
                 if not CardPaymentService.provider_configured():
                     logger.debug(
                         "Skipping card payment reconciliation because provider is not configured"

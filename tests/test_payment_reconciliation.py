@@ -6,21 +6,24 @@ import pytest
 
 from app.core.config import settings
 from app.db.models import Payment
+from app.providers.card_checkout import CardCheckoutClient
+from app.providers.payments import PaymentProviderValidationError
 from app.services import payment_reconciliation
+from app.services.card_payments import CardPaymentService
 from app.services.payment_reconciliation import PaymentReconciliationService
 from app.services.payments import PaymentService
 
 
 class _Rows:
-    def __init__(self, rows: list[tuple[uuid.UUID, str]]) -> None:
+    def __init__(self, rows: list[tuple[uuid.UUID, str, str | None]]) -> None:
         self._rows = rows
 
-    def all(self) -> list[tuple[uuid.UUID, str]]:
+    def all(self) -> list[tuple[uuid.UUID, str, str | None]]:
         return self._rows
 
 
 class _Session:
-    def __init__(self, rows: list[tuple[uuid.UUID, str]]) -> None:
+    def __init__(self, rows: list[tuple[uuid.UUID, str, str | None]]) -> None:
         self._rows = rows
 
     async def __aenter__(self) -> "_Session":
@@ -61,6 +64,20 @@ def _payment(*, external_id: str | None, package_id: str = "starter") -> Payment
     )
 
 
+def _card_payment(*, external_id: str) -> Payment:
+    return Payment(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        provider="card",
+        external_id=external_id,
+        amount=Decimal("300.00"),
+        currency="RUB",
+        rox_amount=Decimal("300.00"),
+        status="pending",
+        payload={"package_id": "starter"},
+    )
+
+
 def test_provider_configured_reflects_tbank_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "tbank_terminal_key", "")
     monkeypatch.setattr(settings, "tbank_password", "")
@@ -83,7 +100,7 @@ async def test_reconciliation_skips_unconfigured_legacy_provider(
     monkeypatch.setattr(
         payment_reconciliation,
         "SessionFactory",
-        lambda: _Session([(payment_id, "tbank")]),
+        lambda: _Session([(payment_id, "tbank", "provider-id")]),
     )
 
     async def fake_reconcile(*args: object, **kwargs: object) -> None:
@@ -93,6 +110,75 @@ async def test_reconciliation_skips_unconfigured_legacy_provider(
 
     assert await PaymentReconciliationService.run_once() == 0
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_skips_card_intent_without_external_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment_id = uuid.uuid4()
+    calls: list[uuid.UUID] = []
+
+    monkeypatch.setattr(settings, "card_api_key", "key")
+    monkeypatch.setattr(
+        payment_reconciliation,
+        "SessionFactory",
+        lambda: _Session([(payment_id, "card", None)]),
+    )
+
+    async def fake_reconcile(*args: object, **kwargs: object) -> None:
+        calls.append(payment_id)
+
+    monkeypatch.setattr(CardPaymentService, "reconcile", fake_reconcile)
+
+    assert await PaymentReconciliationService.run_once() == 0
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_card_lookup_rejection_becomes_terminal_reconciliation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _card_payment(external_id="invalid-provider-id")
+    session = _PaymentSession(payment)
+
+    class _RejectedCardClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        async def get_invoice(self, external_id: str) -> dict[str, object]:
+            raise PaymentProviderValidationError(
+                "Card checkout invoice lookup rejected: HTTP 400"
+            )
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.services.card_payments.CardCheckoutClient", _RejectedCardClient)
+
+    result = await CardPaymentService.reconcile(session, payment_id=payment.id)
+
+    assert result.status == "failed"
+    assert session.commits == 1
+    assert result.payload["reconciliation_terminal_error"]["reason"] == "provider_lookup_rejected"
+
+
+@pytest.mark.asyncio
+async def test_card_client_classifies_deterministic_lookup_4xx_as_validation_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "Invalid request"}, request=request)
+
+    client = CardCheckoutClient("key", "https://gate.lava.test")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://gate.lava.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(PaymentProviderValidationError, match="lookup rejected: HTTP 400"):
+            await client.get_invoice("bad-id")
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.asyncio

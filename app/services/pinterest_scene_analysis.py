@@ -30,6 +30,7 @@ class PinterestSceneAnalysisError(RuntimeError):
 
 class PinterestSceneAnalysisService:
     CACHE_TTL_SECONDS = 24 * 60 * 60
+    PROVIDER_ATTEMPTS = 2
     MAX_TEXT_LENGTH = 800
     MAX_PRESERVE_ITEMS = 10
     MAX_PRESERVE_ITEM_LENGTH = 240
@@ -84,6 +85,31 @@ class PinterestSceneAnalysisService:
         return result
 
     @classmethod
+    async def _analyze_provider(
+        cls,
+        client: KiePinterestAnalysisClient,
+        *,
+        image_url: str,
+        user_id: uuid.UUID,
+    ) -> tuple[dict[str, Any], Any]:
+        last_error: Exception | None = None
+        for attempt in range(1, cls.PROVIDER_ATTEMPTS + 1):
+            try:
+                provider_result = await client.analyze(image_url=image_url)
+                return cls._normalize(provider_result.payload), provider_result
+            except (PinterestSceneAnalysisProviderError, PinterestSceneAnalysisError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Pinterest scene analysis provider attempt %s/%s failed for user %s: %s",
+                    attempt,
+                    cls.PROVIDER_ATTEMPTS,
+                    user_id,
+                    exc,
+                )
+        assert last_error is not None
+        raise PinterestSceneAnalysisError("Не удалось разобрать сцену референса") from last_error
+
+    @classmethod
     async def analyze(
         cls,
         redis: Redis,
@@ -125,10 +151,13 @@ class PinterestSceneAnalysisService:
 
             client = KiePinterestAnalysisClient(settings.kie_api_key, settings.kie_base_url)
             try:
-                provider_result = await client.analyze(image_url=provider_url)
+                analysis, provider_result = await cls._analyze_provider(
+                    client,
+                    image_url=provider_url,
+                    user_id=user_id,
+                )
             finally:
                 await client.aclose()
-            analysis = cls._normalize(provider_result.payload)
             await AbuseProtectionService.record_provider_success(redis, "kie-pinterest-repeat-analysis")
         except PinterestSceneAnalysisError:
             await AbuseProtectionService.record_provider_failure(redis, "kie-pinterest-repeat-analysis")
