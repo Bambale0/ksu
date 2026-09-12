@@ -7,7 +7,7 @@ from typing import Any, Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.admin_models import AdminRuntimeSetting, AdminTrend
+from app.db.admin_models import AdminTrend, TrendCollection, TrendCollectionAssignment
 
 
 class TrendCollectionError(ValueError):
@@ -17,6 +17,7 @@ class TrendCollectionError(ValueError):
 class TrendCollectionService:
     """Admin-owned categories for curated ROXY templates."""
 
+    # Kept only as the identifier of the legacy JSON source copied by migration 0036.
     SETTING_KEY = "trend_collections_v1"
     DEFAULT_COLLECTION_ID = "trends"
     SCHEMA_VERSION = 2
@@ -167,13 +168,12 @@ class TrendCollectionService:
 
     @classmethod
     def merge_state(cls, raw: dict[str, Any] | None) -> dict[str, Any]:
+        """Normalize the legacy JSON shape used by migration/backward-compatible tests."""
+
         value = raw if isinstance(raw, dict) else {}
         stored = value.get("collections")
         stored_items = stored if isinstance(stored, list) else []
 
-        # Schema v1 always re-seeded defaults, so deleting "birthday" made it
-        # reappear. An initialized v2 state is authoritative: only the mandatory
-        # live-trends root is seeded, every other category is genuinely admin-owned.
         initialized = bool(value.get("initialized")) or int(value.get("schema_version") or 0) >= cls.SCHEMA_VERSION
         defaults = cls.default_collections()
         if initialized:
@@ -230,27 +230,85 @@ class TrendCollectionService:
             "auto_assignments": auto_assignments,
         }
 
-    @classmethod
-    async def state(cls, session: AsyncSession) -> dict[str, Any]:
-        item = await session.get(AdminRuntimeSetting, cls.SETTING_KEY)
-        return cls.merge_state(item.value if item else None)
+    @staticmethod
+    def _collection_view(item: TrendCollection) -> dict[str, Any]:
+        aliases = item.aliases if isinstance(item.aliases, list) else []
+        return {
+            "id": item.id,
+            "system_key": item.system_key,
+            "title": item.title,
+            "description": item.description,
+            "aliases": list(aliases),
+            "sort_order": item.sort_order,
+            "is_active": item.is_active,
+        }
 
     @classmethod
-    async def _locked_setting(cls, session: AsyncSession, *, admin_id: uuid.UUID) -> AdminRuntimeSetting:
-        item = await session.scalar(
-            select(AdminRuntimeSetting)
-            .where(AdminRuntimeSetting.key == cls.SETTING_KEY)
+    async def state(cls, session: AsyncSession) -> dict[str, Any]:
+        collections = list(
+            (
+                await session.scalars(
+                    select(TrendCollection).order_by(
+                        TrendCollection.sort_order.asc(),
+                        TrendCollection.title.asc(),
+                    )
+                )
+            ).all()
+        )
+        if not collections:
+            # Migration 0036 seeds relational defaults. This fallback keeps read
+            # behavior safe during tests or a partially initialized environment
+            # without silently writing from a public GET path.
+            return cls.merge_state(None)
+
+        assignment_rows = list((await session.scalars(select(TrendCollectionAssignment))).all())
+        assignments = {
+            str(item.trend_id): item.collection_id
+            for item in assignment_rows
+        }
+        auto_assignments = sorted(
+            str(item.trend_id)
+            for item in assignment_rows
+            if item.automatic
+        )
+        return {
+            "schema_version": cls.SCHEMA_VERSION,
+            "initialized": True,
+            "collections": [cls._collection_view(item) for item in collections],
+            "assignments": assignments,
+            "auto_assignments": auto_assignments,
+        }
+
+    @classmethod
+    async def _lock_mutations(cls, session: AsyncSession) -> TrendCollection:
+        root = await session.scalar(
+            select(TrendCollection)
+            .where(TrendCollection.id == cls.DEFAULT_COLLECTION_ID)
             .with_for_update()
         )
-        if item is None:
-            item = AdminRuntimeSetting(
-                key=cls.SETTING_KEY,
-                value=cls.merge_state(None),
-                updated_by_admin_id=admin_id,
+        if root is not None:
+            return root
+
+        # Defensive bootstrap only. Normal installations receive these rows from
+        # migration 0036. Mutations serialize on the mandatory root row.
+        for payload in cls.default_collections():
+            normalized = cls.normalize_collection(payload, collection_id=str(payload["id"]))
+            session.add(
+                TrendCollection(
+                    id=normalized["id"],
+                    system_key=normalized["system_key"],
+                    title=normalized["title"],
+                    description=normalized["description"],
+                    aliases=normalized["aliases"],
+                    sort_order=normalized["sort_order"],
+                    is_active=normalized["is_active"],
+                )
             )
-            session.add(item)
-            await session.flush()
-        return item
+        await session.flush()
+        root = await session.get(TrendCollection, cls.DEFAULT_COLLECTION_ID)
+        if root is None:
+            raise RuntimeError("Trend collection root could not be initialized")
+        return root
 
     @classmethod
     async def upsert_collection(
@@ -261,22 +319,35 @@ class TrendCollectionService:
         payload: dict[str, Any],
         collection_id: str | None = None,
     ) -> dict[str, Any]:
-        setting = await cls._locked_setting(session, admin_id=admin_id)
-        state = cls.merge_state(setting.value)
-        existing = next((item for item in state["collections"] if item["id"] == collection_id), None)
-        system_key = existing.get("system_key") if existing else None
+        del admin_id
+        await cls._lock_mutations(session)
+        cid = str(collection_id or payload.get("id") or "").strip().lower() or None
+        existing = await session.get(TrendCollection, cid) if cid else None
+        existing_view = cls._collection_view(existing) if existing is not None else {}
         normalized = cls.normalize_collection(
-            {**(existing or {}), **payload},
-            collection_id=collection_id,
-            system_key=system_key,
+            {**existing_view, **payload},
+            collection_id=cid,
+            system_key=existing.system_key if existing is not None else None,
         )
-        collections = [item for item in state["collections"] if item["id"] != normalized["id"]]
-        collections.append(normalized)
-        cls._validate_unique_hashtags(collections)
-        state["collections"] = collections
-        state["initialized"] = True
-        setting.value = cls.merge_state(state)
-        setting.updated_by_admin_id = admin_id
+
+        rows = list((await session.scalars(select(TrendCollection))).all())
+        candidate = [
+            cls._collection_view(row)
+            for row in rows
+            if row.id != normalized["id"]
+        ]
+        candidate.append(normalized)
+        cls._validate_unique_hashtags(candidate)
+
+        if existing is None:
+            existing = TrendCollection(id=normalized["id"])
+            session.add(existing)
+        existing.system_key = normalized["system_key"]
+        existing.title = normalized["title"]
+        existing.description = normalized["description"]
+        existing.aliases = normalized["aliases"]
+        existing.sort_order = normalized["sort_order"]
+        existing.is_active = normalized["is_active"]
         await session.flush()
         return normalized
 
@@ -292,15 +363,14 @@ class TrendCollectionService:
         cid = str(collection_id or "").strip().lower()
         if cid == cls.DEFAULT_COLLECTION_ID and not active:
             raise TrendCollectionError("Категорию «Тренды» нельзя скрыть")
-        state = await cls.state(session)
-        existing = next((item for item in state["collections"] if item["id"] == cid), None)
+        existing = await session.get(TrendCollection, cid)
         if existing is None:
             raise LookupError("Folder not found")
         return await cls.upsert_collection(
             session,
             admin_id=admin_id,
             collection_id=cid,
-            payload={**existing, "is_active": active},
+            payload={**cls._collection_view(existing), "is_active": active},
         )
 
     @classmethod
@@ -311,58 +381,62 @@ class TrendCollectionService:
         admin_id: uuid.UUID,
         collection_id: str,
     ) -> dict[str, Any]:
+        del admin_id
         cid = str(collection_id or "").strip().lower()
         if cid == cls.DEFAULT_COLLECTION_ID:
             raise TrendCollectionError("Категорию «Тренды» нельзя удалить")
 
-        setting = await cls._locked_setting(session, admin_id=admin_id)
-        state = cls.merge_state(setting.value)
-        existing = next((item for item in state["collections"] if item["id"] == cid), None)
+        await cls._lock_mutations(session)
+        existing = await session.scalar(
+            select(TrendCollection).where(TrendCollection.id == cid).with_for_update()
+        )
         if existing is None:
             raise LookupError("Folder not found")
 
-        assignments = state["assignments"]
-        auto = set(state.get("auto_assignments") or [])
-        affected = [tid for tid, target in assignments.items() if target == cid]
-        affected_auto = {tid for tid in affected if tid in auto}
-        for tid in affected:
-            assignments.pop(tid, None)
-            auto.discard(tid)
-
-        state["collections"] = [item for item in state["collections"] if item["id"] != cid]
-        state["auto_assignments"] = sorted(auto)
-        state["initialized"] = True
-        state = cls.merge_state(state)
+        affected = list(
+            (
+                await session.scalars(
+                    select(TrendCollectionAssignment)
+                    .where(TrendCollectionAssignment.collection_id == cid)
+                    .with_for_update()
+                )
+            ).all()
+        )
+        affected_auto = [item.trend_id for item in affected if item.automatic]
+        title = existing.title
+        await session.delete(existing)
+        await session.flush()
 
         reassigned = 0
-        trend_ids: list[uuid.UUID] = []
-        for tid in affected_auto:
-            try:
-                trend_ids.append(uuid.UUID(tid))
-            except (TypeError, ValueError):
-                continue
-        if trend_ids:
-            rows = list((await session.scalars(select(AdminTrend).where(AdminTrend.id.in_(trend_ids)))).all())
-            auto = set(state.get("auto_assignments") or [])
-            for trend in rows:
+        if affected_auto:
+            state = await cls.state(session)
+            trends = list(
+                (
+                    await session.scalars(
+                        select(AdminTrend).where(AdminTrend.id.in_(affected_auto))
+                    )
+                ).all()
+            )
+            for trend in trends:
                 payload = trend.payload if isinstance(trend.payload, dict) else {}
                 tags = payload.get("tags") or []
                 if isinstance(tags, str):
                     tags = [tags]
                 target = cls.matching_collection(state, tags)
                 if target:
-                    tid = str(trend.id)
-                    state["assignments"][tid] = target
-                    auto.add(tid)
+                    session.add(
+                        TrendCollectionAssignment(
+                            trend_id=trend.id,
+                            collection_id=target,
+                            automatic=True,
+                        )
+                    )
                     reassigned += 1
-            state["auto_assignments"] = sorted(auto)
+            await session.flush()
 
-        setting.value = cls.merge_state(state)
-        setting.updated_by_admin_id = admin_id
-        await session.flush()
         return {
             "id": cid,
-            "title": existing.get("title") or cid,
+            "title": title or cid,
             "deleted": True,
             "released_items": len(affected),
             "auto_reassigned": reassigned,
@@ -378,26 +452,33 @@ class TrendCollectionService:
         collection_id: str,
         automatic: bool = False,
     ) -> dict[str, str]:
+        del admin_id
+        await cls._lock_mutations(session)
         trend = await session.get(AdminTrend, trend_id)
         if trend is None:
             raise LookupError("Trend not found")
-        setting = await cls._locked_setting(session, admin_id=admin_id)
-        state = cls.merge_state(setting.value)
         cid = str(collection_id or "").strip().lower()
-        if not any(item["id"] == cid for item in state["collections"]):
+        collection = await session.get(TrendCollection, cid)
+        if collection is None:
             raise LookupError("Folder not found")
-        tid = str(trend_id)
-        state["assignments"][tid] = cid
-        auto = set(state.get("auto_assignments") or [])
-        if automatic:
-            auto.add(tid)
+
+        assignment = await session.scalar(
+            select(TrendCollectionAssignment)
+            .where(TrendCollectionAssignment.trend_id == trend_id)
+            .with_for_update()
+        )
+        if assignment is None:
+            assignment = TrendCollectionAssignment(
+                trend_id=trend_id,
+                collection_id=cid,
+                automatic=automatic,
+            )
+            session.add(assignment)
         else:
-            auto.discard(tid)
-        state["auto_assignments"] = sorted(auto)
-        setting.value = state
-        setting.updated_by_admin_id = admin_id
+            assignment.collection_id = cid
+            assignment.automatic = automatic
         await session.flush()
-        return {"trend_id": tid, "collection_id": cid}
+        return {"trend_id": str(trend_id), "collection_id": cid}
 
     @classmethod
     async def _clear_auto_assignment(
@@ -407,17 +488,16 @@ class TrendCollectionService:
         admin_id: uuid.UUID,
         trend_id: uuid.UUID,
     ) -> bool:
-        setting = await cls._locked_setting(session, admin_id=admin_id)
-        state = cls.merge_state(setting.value)
-        tid = str(trend_id)
-        auto = set(state.get("auto_assignments") or [])
-        if tid not in auto:
+        del admin_id
+        await cls._lock_mutations(session)
+        assignment = await session.scalar(
+            select(TrendCollectionAssignment)
+            .where(TrendCollectionAssignment.trend_id == trend_id)
+            .with_for_update()
+        )
+        if assignment is None or not assignment.automatic:
             return False
-        state["assignments"].pop(tid, None)
-        auto.discard(tid)
-        state["auto_assignments"] = sorted(auto)
-        setting.value = state
-        setting.updated_by_admin_id = admin_id
+        await session.delete(assignment)
         await session.flush()
         return True
 
@@ -430,32 +510,38 @@ class TrendCollectionService:
         trend_id: uuid.UUID,
         tags: Iterable[object],
     ) -> str | None:
-        setting = await cls._locked_setting(session, admin_id=admin_id)
-        state = cls.merge_state(setting.value)
-        tid = str(trend_id)
-        assignments = state["assignments"]
-        auto = set(state.get("auto_assignments") or [])
-        current = str(assignments.get(tid) or "").strip().lower()
+        del admin_id
+        await cls._lock_mutations(session)
+        assignment = await session.scalar(
+            select(TrendCollectionAssignment)
+            .where(TrendCollectionAssignment.trend_id == trend_id)
+            .with_for_update()
+        )
 
         # A manual move is authoritative. Editing the recipe must not silently
         # convert that assignment into an automatic one just because a tag still
-        # happens to match the same (or another) collection.
-        if current and tid not in auto:
-            return current
+        # happens to match the same (or another) category.
+        if assignment is not None and not assignment.automatic:
+            return assignment.collection_id
 
+        state = await cls.state(session)
         collection_id = cls.matching_collection(state, tags)
         if collection_id is None:
-            if tid not in auto:
-                return None
-            assignments.pop(tid, None)
-            auto.discard(tid)
-        else:
-            assignments[tid] = collection_id
-            auto.add(tid)
+            if assignment is not None:
+                await session.delete(assignment)
+                await session.flush()
+            return None
 
-        state["auto_assignments"] = sorted(auto)
-        setting.value = state
-        setting.updated_by_admin_id = admin_id
+        if assignment is None:
+            assignment = TrendCollectionAssignment(
+                trend_id=trend_id,
+                collection_id=collection_id,
+                automatic=True,
+            )
+            session.add(assignment)
+        else:
+            assignment.collection_id = collection_id
+            assignment.automatic = True
         await session.flush()
         return collection_id
 
