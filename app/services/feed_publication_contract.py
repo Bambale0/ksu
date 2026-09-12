@@ -282,9 +282,7 @@ def install_feed_publication_contract() -> None:
         if generation.is_adult_content and scope == "feed":
             scope = "profile"
         derivative = generation.source_feed_gen_id is not None
-        generation.publication_scope = scope
-        generation.is_public_feed = scope == "feed"
-        generation.is_profile_visible = scope in {"feed", "profile"}
+        FeedService.apply_publication_scope(generation, scope)  # type: ignore[arg-type]
         generation.feed_prompt_visible = bool(prompt_visible and not derivative)
         generation.feed_references_visible = bool(references_visible and not derivative)
         generation.feed_published_at = datetime.now(UTC)

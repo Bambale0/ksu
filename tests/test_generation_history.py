@@ -214,7 +214,7 @@ async def test_recreate_payload_strips_provider_private_and_unknown_fields() -> 
             result_url="https://example.invalid/result.png",
             cost_rox=Decimal("8"),
             provider="kie",
-            external_id="task-secret",
+            external_id="task-secret-image-recreate",
             parameters={
                 "_model_id": "nano-banana",
                 "_kie_model": "provider/slug",
@@ -253,7 +253,7 @@ async def test_recreate_payload_of_seedance_parent_demands_fresh_references() ->
             result_url="https://example.invalid/result.mp4",
             cost_rox=Decimal("60"),
             provider="kie",
-            external_id="task-secret",
+            external_id="task-secret-seedance-reference",
             parameters={
                 "_model_id": "seedance-2.0",
                 "_billing_mode": "per_second",
@@ -298,7 +298,7 @@ async def test_recreate_payload_of_text_only_seedance_parent_has_no_reference_fl
             result_url="https://example.invalid/result.mp4",
             cost_rox=Decimal("55"),
             provider="kie",
-            external_id="task-secret",
+            external_id="task-secret-seedance-text",
             parameters={
                 "_model_id": "seedance-2.5",
                 "resolution": "720p",

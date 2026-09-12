@@ -315,7 +315,12 @@ class GenerationProviderService:
         """Synchronize a Kie task using the model's actual status API."""
 
         generation = await session.scalar(
-            select(Generation).where(Generation.external_id == task_id).with_for_update()
+            select(Generation)
+            .where(
+                Generation.provider == "kie",
+                Generation.external_id == task_id,
+            )
+            .with_for_update()
         )
         if generation is not None and generation.status in _TERMINAL_STATUSES:
             return generation

@@ -106,7 +106,10 @@ async def _task_source(
 ):
     from app.db.models import Generation
 
-    statement = select(Generation).where(Generation.external_id == task_id)
+    statement = select(Generation).where(
+        Generation.provider == "kie",
+        Generation.external_id == task_id,
+    )
     if user_id is not None:
         statement = statement.where(Generation.user_id == user_id)
     return await session.scalar(statement.limit(1))

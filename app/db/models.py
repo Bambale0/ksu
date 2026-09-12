@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,9 +28,13 @@ from app.db.base import Base, TimestampMixin
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("telegram_id"),
+        Index("ix_users_telegram_id", "telegram_id", unique=True),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str] = mapped_column(String(255), default="")
     last_name: Mapped[str | None] = mapped_column(String(255))
@@ -75,9 +80,13 @@ class WalletTransaction(Base):
 
 class PromoCode(TimestampMixin, Base):
     __tablename__ = "promo_codes"
+    __table_args__ = (
+        UniqueConstraint("code"),
+        Index("ix_promo_codes_code", "code", unique=True),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
     reward_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     max_uses: Mapped[int | None] = mapped_column(Integer)
     uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -152,9 +161,22 @@ class Generation(TimestampMixin, Base):
             "feed_published_at",
         ),
         Index("ix_generations_source_feed", "source_feed_gen_id"),
+        Index(
+            "uq_generations_provider_external",
+            "provider",
+            "external_id",
+            unique=True,
+            postgresql_where=text("provider IS NOT NULL AND external_id IS NOT NULL"),
+        ),
         CheckConstraint(
             "publication_scope IN ('private', 'profile', 'feed')",
             name="ck_generations_publication_scope",
+        ),
+        CheckConstraint(
+            "(publication_scope = 'private' AND is_public_feed = false AND is_profile_visible = false) OR "
+            "(publication_scope = 'profile' AND is_public_feed = false AND is_profile_visible = true) OR "
+            "(publication_scope = 'feed' AND is_public_feed = true AND is_profile_visible = true)",
+            name="ck_generations_publication_state",
         ),
     )
 
@@ -274,11 +296,15 @@ class Notification(Base):
 
 class AdminAccount(TimestampMixin, Base):
     __tablename__ = "admin_accounts"
-    __table_args__ = (Index("ix_admin_accounts_role_active", "role", "is_active"),)
+    __table_args__ = (
+        UniqueConstraint("user_id"),
+        Index("ix_admin_accounts_user_id", "user_id", unique=True),
+        Index("ix_admin_accounts_role_active", "role", "is_active"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="auditor")
     permission_overrides: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -359,8 +385,8 @@ class AdminUserNote(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    admin_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("admin_accounts.id", ondelete="SET NULL"), nullable=False
+    admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -99,6 +99,14 @@ class FeedService:
     def _moderation_visible(state: str | None) -> bool:
         return state != "removed"
 
+    @staticmethod
+    def apply_publication_scope(generation: Generation, scope: PublicationScope) -> None:
+        """Apply canonical publication scope and its derived compatibility flags."""
+
+        generation.publication_scope = scope
+        generation.is_public_feed = scope == "feed"
+        generation.is_profile_visible = scope in {"feed", "profile"}
+
     @classmethod
     def _surface_visible(
         cls,
@@ -721,9 +729,7 @@ class FeedService:
         if generation.is_adult_content and scope == "feed":
             scope = "profile"
         derivative = generation.source_feed_gen_id is not None
-        generation.publication_scope = scope
-        generation.is_public_feed = scope == "feed"
-        generation.is_profile_visible = scope in {"feed", "profile"}
+        cls.apply_publication_scope(generation, scope)
         generation.feed_prompt_visible = bool(prompt_visible and not derivative)
         generation.feed_references_visible = bool(references_visible and not derivative)
         generation.feed_published_at = datetime.now(UTC)
@@ -748,9 +754,7 @@ class FeedService:
         )
         if generation is None:
             raise FeedNotFoundError("Generation not found")
-        generation.publication_scope = target_scope
-        generation.is_public_feed = False
-        generation.is_profile_visible = target_scope == "profile"
+        cls.apply_publication_scope(generation, target_scope)  # type: ignore[arg-type]
         if target_scope == "private":
             generation.feed_prompt_visible = False
             generation.feed_references_visible = False
