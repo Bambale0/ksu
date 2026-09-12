@@ -45,7 +45,7 @@ class FeedRemixEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     source_generation_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("generations.id", ondelete="RESTRICT"), index=True, nullable=False
+        ForeignKey("generations.id", ondelete="RESTRICT"), nullable=False
     )
     remix_generation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("generations.id", ondelete="RESTRICT"), unique=True, nullable=False

@@ -106,9 +106,13 @@ class SupportTicketAdminState(TimestampMixin, Base):
 
 class CmsDocument(TimestampMixin, Base):
     __tablename__ = "cms_documents"
+    __table_args__ = (
+        UniqueConstraint("slug"),
+        Index("ix_cms_documents_slug", "slug"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    slug: Mapped[str] = mapped_column(String(160), unique=True, index=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(160), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="draft", nullable=False)
 
