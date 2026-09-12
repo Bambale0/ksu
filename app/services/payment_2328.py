@@ -133,7 +133,6 @@ class Payment2328Service:
             request_id=creation.request_id,
             created=created,
             missing_message="Payment disappeared after 2328.io payment creation",
-            refresh=True,
         )
 
     @classmethod
