@@ -84,7 +84,7 @@ async function pressTelegramBack(page) {
   await page.evaluate(() => window.__pressTelegramBack());
 }
 
-test('shared trend keeps Back through the gate and native Back returns once to Catalog', async ({ page }) => {
+test('shared trend keeps Back through the gate and native Back returns once to Home catalog', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await mockStickyTrendWebView(page);
 
@@ -95,10 +95,11 @@ test('shared trend keeps Back through the gate and native Back returns once to C
   await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('__trend_back_events') || '')).toMatch(/^S/);
 
   await pressTelegramBack(page);
-  await expect(page).toHaveURL(/\/mini-app\/\?route=catalog$/);
-  await expect(page.locator('button[data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+  await expect(page.locator('button[data-roxy-customer-route="home"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('button[data-roxy-customer-route="home"] small')).toHaveText('Каталог');
   await page.waitForTimeout(500);
-  await expect(page).toHaveURL(/\/mini-app\/\?route=catalog$/);
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
   await expect(page.getByText('Открываю тренд…')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
 });
