@@ -33,7 +33,13 @@ async def _admin_and_trend(session, *, tags: list[str]) -> tuple[AdminAccount, A
     return admin, trend
 
 
-async def _category(session, *, admin_id: uuid.UUID, tag: str) -> str:  # type: ignore[no-untyped-def]
+async def _category(
+    session,
+    *,
+    admin_id: uuid.UUID,
+    tag: str,
+    sort_order: int = 100,
+) -> str:  # type: ignore[no-untyped-def]
     category_id = f"folder-{uuid.uuid4().hex[:12]}"
     await TrendCollectionService.upsert_collection(
         session,
@@ -43,7 +49,7 @@ async def _category(session, *, admin_id: uuid.UUID, tag: str) -> str:  # type: 
             "title": f"Категория {category_id[-6:]}",
             "description": "",
             "aliases": [tag],
-            "sort_order": 100,
+            "sort_order": sort_order,
             "is_active": True,
         },
     )
@@ -174,3 +180,47 @@ async def test_manual_move_to_live_trends_remains_authoritative() -> None:
         # assignment—not lack of a match—blocked automatic movement.
         state = await TrendCollectionService.state(session)
         assert TrendCollectionService.matching_collection(state, [tag]) == category_id
+
+
+@pytest.mark.asyncio
+async def test_deleting_auto_category_reassigns_using_remaining_tags() -> None:
+    primary_tag = f"primary-{uuid.uuid4().hex[:10]}"
+    fallback_tag = f"fallback-{uuid.uuid4().hex[:10]}"
+    async with SessionFactory() as session:
+        admin, trend = await _admin_and_trend(
+            session,
+            tags=[primary_tag, fallback_tag],
+        )
+        primary_id = await _category(
+            session,
+            admin_id=admin.id,
+            tag=primary_tag,
+            sort_order=20,
+        )
+        fallback_id = await _category(
+            session,
+            admin_id=admin.id,
+            tag=fallback_tag,
+            sort_order=30,
+        )
+
+        assigned = await TrendCollectionService.assign_from_tags(
+            session,
+            admin_id=admin.id,
+            trend_id=trend.id,
+            tags=[primary_tag, fallback_tag],
+        )
+        assert assigned == primary_id
+
+        result = await TrendCollectionService.delete_collection(
+            session,
+            admin_id=admin.id,
+            collection_id=primary_id,
+        )
+        assert result["released_items"] == 1
+        assert result["auto_reassigned"] == 1
+
+        row = await session.get(TrendCollectionAssignment, trend.id)
+        assert row is not None
+        assert row.collection_id == fallback_id
+        assert row.automatic is True
