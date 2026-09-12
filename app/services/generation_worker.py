@@ -202,6 +202,7 @@ class GenerationWorkerService:
                     await session.scalars(
                         select(Generation.id)
                         .where(
+                            Generation.provider == "kie",
                             Generation.status == "submitting",
                             Generation.external_id.is_(None),
                             Generation.updated_at < cutoff,
@@ -217,6 +218,7 @@ class GenerationWorkerService:
                 generation = await session.get(Generation, generation_id)
                 if (
                     generation is None
+                    or generation.provider != "kie"
                     or generation.status != "submitting"
                     or generation.external_id is not None
                     or generation.updated_at >= cutoff
@@ -259,6 +261,7 @@ class GenerationWorkerService:
                     await session.scalars(
                         select(Generation.id)
                         .where(
+                            Generation.provider == "kie",
                             Generation.status.in_(("generating", "submitting")),
                             Generation.created_at < cutoff,
                         )
@@ -271,7 +274,11 @@ class GenerationWorkerService:
         for generation_id in ids:
             async with SessionFactory() as session:
                 generation = await session.get(Generation, generation_id)
-                if generation is None or generation.status not in {"generating", "submitting"}:
+                if (
+                    generation is None
+                    or generation.provider != "kie"
+                    or generation.status not in {"generating", "submitting"}
+                ):
                     continue
                 if cls._provider_started_at(generation) >= cutoff:
                     continue
@@ -290,6 +297,7 @@ class GenerationWorkerService:
                     await session.execute(
                         select(Generation.id, Generation.external_id)
                         .where(
+                            Generation.provider == "kie",
                             Generation.status == "generating",
                             Generation.external_id.is_not(None),
                             Generation.updated_at < cutoff,

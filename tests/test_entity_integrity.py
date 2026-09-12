@@ -11,6 +11,8 @@ from app.db.models import AdminUserNote, Generation, User
 from app.db.session import SessionFactory
 from app.providers.kie import KieTask
 from app.services.generation_provider import GenerationProviderService
+from app.services.generations import GenerationService
+from app.services.model_spec_trusted_media_audit import resolve_trusted_billing_seconds
 
 
 def _generation(
@@ -149,3 +151,43 @@ async def test_admin_user_note_allows_null_admin_for_set_null_history() -> None:
             )
         )
         await session.commit()
+
+
+
+@pytest.mark.asyncio
+async def test_grok_task_readers_use_kie_provider_identity() -> None:
+    task_id = f"task-{uuid.uuid4()}"
+    async with SessionFactory() as session:
+        user = await _user(session)
+        other = _generation(user_id=user.id, provider="other", external_id=task_id)
+        other.status = "success"
+        other.parameters = {
+            "_model_id": "grok-video-t2v",
+            "_model_family": "grok",
+            "_billing_seconds": 99,
+        }
+        kie = _generation(user_id=user.id, provider="kie", external_id=task_id)
+        kie.status = "success"
+        kie.parameters = {
+            "_model_id": "grok-video-t2v",
+            "_model_family": "grok",
+            "_billing_seconds": 7,
+        }
+        session.add_all([other, kie])
+        await session.commit()
+
+        legacy_seconds = await GenerationService._resolve_billing_seconds(
+            session,
+            model_id="grok-video-upscale",
+            parameters={"task_id": task_id},
+            billing_seconds=None,
+        )
+        trusted_seconds = await resolve_trusted_billing_seconds(
+            session,
+            model_id="grok-video-upscale",
+            parameters={"task_id": task_id},
+            client_billing_seconds=None,
+        )
+
+        assert legacy_seconds == 7
+        assert trusted_seconds == 7

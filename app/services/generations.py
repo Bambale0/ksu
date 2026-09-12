@@ -47,7 +47,12 @@ class GenerationService:
         task_id = str(parameters.get("task_id") or "")
         if not task_id:
             return None
-        source = await session.scalar(select(Generation).where(Generation.external_id == task_id))
+        source = await session.scalar(
+            select(Generation).where(
+                Generation.provider == "kie",
+                Generation.external_id == task_id,
+            )
+        )
         if source is None:
             return None
         source_seconds = (source.parameters or {}).get("_billing_seconds")
