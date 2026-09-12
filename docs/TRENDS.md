@@ -100,5 +100,7 @@ Template categories are stored relationally:
 
 Migration `0036_trend_collections` copies the previous
 `admin_runtime_settings.trend_collections_v1` JSON state into these tables.
-The legacy setting is intentionally retained as rollback evidence, but runtime reads and
-writes use the relational tables only. Category mutation remains admin-only.
+The legacy setting is retained as a pre-migration fallback, while runtime reads and writes
+use the relational tables only. If migration 0036 is downgraded, the current relational
+category state is serialized back into that legacy setting before the tables are removed.
+Category mutation remains admin-only.
