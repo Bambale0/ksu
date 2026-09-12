@@ -16,6 +16,7 @@ from app.db import history_models  # noqa: F401
 from app.db import media_models  # noqa: F401
 from app.db import models  # noqa: F401
 from app.db import notification_models  # noqa: F401
+from app.db import nexus_models  # noqa: F401
 from app.db import onboarding_models  # noqa: F401
 from app.db import partner_wallet_models  # noqa: F401
 from app.db import payment_models  # noqa: F401
