@@ -139,6 +139,7 @@ class Settings(BaseSettings):
     payment_reconcile_interval_seconds: int = 60
     payment_reconcile_stale_seconds: int = 30
     payment_reconcile_batch_size: int = 100
+    payment_2328_missing_grace_seconds: int = 2 * 60 * 60
 
     creator_partnership_grant_interval_seconds: int = 3600
 
