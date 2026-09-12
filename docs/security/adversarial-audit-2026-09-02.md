@@ -38,7 +38,7 @@ The audit covers the full product surface:
 | ADV-004 | Medium | Private repeat / legacy compatibility | Legacy generations whose source reference lives in top-level `input_url` could not be satisfied by the repeat UI because `input_url` is not a model UI field. | Merged in PR #387; 6/6 PR workflows green | Playwright covers a synthetic recipient upload for `reference_fields: ["input_url"]`. |
 | ADV-005 | Medium | Private repeat / validation | `references_required=true` with no explicit `reference_fields` did not force the backend to receive a reference; an empty payload could reach model validation/provider logic. | Merged in PR #387; 6/6 PR workflows green | Server-side merge rejects missing required recipient media before quote/launch. |
 | ADV-006 | Low/Design | Private repeat capability | Repeat token is replayable, has no explicit expiry/revocation, and embeds the source generation UUID plus an HMAC. The signature prevents forgery, but possession is a durable bearer capability and reveals an opaque source identifier. | Open design review | Decide whether durable share links are intended; if not, migrate to opaque revocable capability records. |
-| ADV-007 | High | KIE webhook authentication | KIE callback URLs included the long-lived shared `KIE_WEBHOOK_HMAC_KEY` as `?token=...`, turning a URL-log leak into a global bearer credential. | Remediation in progress | Future callback URLs contain only `generation_id` plus a scoped HMAC binding; the global secret is never placed in the URL and only official KIE signature headers authenticate callbacks. |
+| ADV-007 | High | KIE webhook authentication | KIE callback URLs included the long-lived shared `KIE_WEBHOOK_HMAC_KEY` as `?token=...`, turning a URL-log leak into a global bearer credential. | Remediated in PR #446 | Callback URLs contain only `generation_id` plus a scoped HMAC binding; the global secret is never placed in the URL. Official KIE signature headers are preferred. If those headers are absent/invalid, the scoped binding may authorize only a task ID already persisted on that exact generation; the server then fetches authoritative task state from KIE. |
 | ADV-008 | Medium | Public webhooks / availability | Multiple webhook handlers parse JSON/body before enforcing a small request-body limit. Invalid callers can force unnecessary memory/JSON work before HMAC/API-key rejection on some endpoints. | Confirmed; remediation planned | Add a bounded request-body helper or middleware for webhook routes and tests for oversized payload rejection. |
 | ADV-009 | Review | Reference media privacy | Product-owned reusable references are mounted directly under `/uploads/refs` as bearer static URLs. Paths have strong entropy and traversal protections, but anyone possessing a URL can fetch the media without application auth. | Contract review | Confirm this is an intentional provider-transport contract; otherwise introduce signed/expiring delivery URLs or an authenticated media proxy. |
 | ADV-010 | High | KIE webhook fail-closed | `verify_kie_webhook()` returned `True` when `KIE_WEBHOOK_HMAC_KEY` was empty. A production misconfiguration could therefore accept unsigned KIE callback requests and let attacker-controlled task IDs reach recovery logic. | Remediation in progress | Verification now returns false without a key; production startup refuses KIE+public callback configuration without `KIE_WEBHOOK_HMAC_KEY`; regression covers the fail-closed case. |
@@ -92,10 +92,14 @@ Current implementation matches the signature algorithm, validates local `order_i
 
 KIE's current webhook security contract signs `taskId + "." + timestamp` with HMAC-SHA256 and sends `X-Webhook-Timestamp` / `X-Webhook-Signature`. The shared HMAC key is meant to stay secret and does not need to be placed in the callback URL.
 
-The hardened design therefore uses two independent checks:
+The hardened design uses the official provider HMAC whenever it is present and valid. A separate HMAC value in the callback URL authenticates the local `generation_id` recovery hint; it is derived from the webhook secret, is not the secret itself, and is scoped to one generation.
 
-1. KIE's documented header HMAC authenticates the provider callback and provides the replay window.
-2. A separate HMAC value in the callback URL authenticates only the local `generation_id` recovery hint. It is derived from the webhook secret but is not the secret itself and is scoped to one generation.
+For resilience during provider HMAC rollout/misconfiguration, an unsigned callback is accepted only when **both** of these server-side conditions hold:
+
+1. the scoped `generation_id` binding validates; and
+2. the callback `taskId` is already persisted as the KIE `external_id` of that exact generation.
+
+That fallback cannot bind a new attacker-controlled task ID. The callback body is not treated as authoritative result data: synchronization re-fetches task state from KIE's `recordInfo` API. Invalid bindings, missing generation hints, or task/generation mismatches still fail closed with 403.
 
 Legacy callback query `token` values are no longer authentication inputs.
 

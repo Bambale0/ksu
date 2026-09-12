@@ -1,17 +1,18 @@
 import hmac
 import json
+import logging
 import uuid
 from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl
 
 from aiogram.types import Update
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models import Payment
+from app.db.models import Generation, Payment
 from app.db.payment_models import PaymentRefundRequest
 from app.db.session import SessionFactory
 from app.providers.kie import (
@@ -24,6 +25,19 @@ from app.services.generation_provider import GenerationProviderService
 from app.services.payments import PaymentService
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
+
+
+async def _sync_kie_callback_task(*, task_id: str, generation_id: uuid.UUID | None) -> None:
+    try:
+        async with SessionFactory() as session:
+            await GenerationProviderService.sync_kie_task(
+                session,
+                task_id=task_id,
+                generation_id=generation_id,
+            )
+    except Exception:
+        logger.exception("Kie callback background sync failed", extra={"task_id": task_id})
 
 
 @router.post("/telegram", include_in_schema=False)
@@ -49,6 +63,7 @@ async def telegram_webhook(
 @router.post("/kie", include_in_schema=False)
 async def kie_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_webhook_timestamp: str | None = Header(default=None),
     x_webhook_signature: str | None = Header(default=None),
 ) -> dict[str, bool]:
@@ -57,18 +72,15 @@ async def kie_webhook(
     if not task_id:
         raise HTTPException(status_code=400, detail="Missing Kie task id")
 
-    # KIE signs taskId.timestamp in headers. Never treat a query parameter as an
-    # alternative bearer credential: callback URLs are routinely copied into
-    # provider/proxy logs and are not an appropriate place for a global secret.
-    if not verify_kie_webhook(
+    provider_signature_valid = verify_kie_webhook(
         task_id=task_id,
         timestamp=x_webhook_timestamp,
         signature=x_webhook_signature,
         hmac_key=settings.kie_webhook_hmac_key,
-    ):
-        raise HTTPException(status_code=403, detail="Invalid Kie webhook signature")
+    )
 
     generation_id: uuid.UUID | None = None
+    binding_valid = False
     raw_generation_id = request.query_params.get("generation_id")
     binding = request.query_params.get("binding")
     if raw_generation_id:
@@ -78,23 +90,43 @@ async def kie_webhook(
             raise HTTPException(status_code=400, detail="Invalid generation id") from exc
 
         if binding:
-            if not verify_kie_generation_binding(
+            binding_valid = verify_kie_generation_binding(
                 candidate_generation_id,
                 binding,
                 settings.kie_webhook_hmac_key,
-            ):
+            )
+            if not binding_valid:
                 raise HTTPException(status_code=403, detail="Invalid Kie generation binding")
             generation_id = candidate_generation_id
         # Legacy callbacks may still carry an unsigned generation_id and the old
-        # token query parameter. Ignore that recovery hint instead of trusting it;
-        # task_id lookup still completes callbacks whose external_id was persisted.
+        # token query parameter. Ignore that recovery hint instead of trusting it.
 
-    async with SessionFactory() as session:
-        await GenerationProviderService.sync_kie_task(
-            session,
-            task_id=task_id,
-            generation_id=generation_id,
-        )
+    if not provider_signature_valid:
+        # KIE provider-level HMAC is preferred. During key rollout/misconfiguration,
+        # a scoped callback binding may be used only for a task already persisted on
+        # this exact generation. This cannot bind an attacker-controlled task, and
+        # the background sync still fetches authoritative state from KIE.
+        if generation_id is None or not binding_valid:
+            raise HTTPException(status_code=403, detail="Invalid Kie webhook signature")
+        async with SessionFactory() as session:
+            bound_generation_id = await session.scalar(
+                select(Generation.id).where(
+                    Generation.id == generation_id,
+                    Generation.provider == "kie",
+                    Generation.external_id == task_id,
+                )
+            )
+        if bound_generation_id is None:
+            raise HTTPException(status_code=403, detail="Invalid Kie webhook signature")
+
+    # Acknowledge the provider immediately. KIE callbacks have a short timeout;
+    # recordInfo/provider I/O belongs after the HTTP response. The regular poller
+    # remains the durable fallback if this process exits before the task completes.
+    background_tasks.add_task(
+        _sync_kie_callback_task,
+        task_id=task_id,
+        generation_id=generation_id,
+    )
     return {"ok": True}
 
 
