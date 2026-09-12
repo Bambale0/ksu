@@ -8,17 +8,16 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Payment, WalletTransaction
-from app.db.payment_models import PaymentRequest
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
 from app.services.payment_bonuses import TopUpBonusService
-from app.services.payments import PaymentIdempotencyConflict, PaymentService, UnknownPaymentPackageError
+from app.services.payment_creation import PaymentCreationLifecycle
+from app.services.payments import PaymentService, UnknownPaymentPackageError
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
@@ -400,8 +399,6 @@ class CardPaymentService:
         currency = currency.upper()
         if currency not in CardCheckoutClient.SUPPORTED_CURRENCIES:
             raise ValueError("Поддерживаются только RUB, USD и EUR")
-        if not request_key or len(request_key) > 64:
-            raise ValueError("Idempotency key must contain 1-64 characters")
         email = cls._email(billing_email)
         package = await CardPackageCatalog.provider_package(package_id)
         amount = package.prices.get(currency)
@@ -412,25 +409,6 @@ class CardPaymentService:
         CardCheckoutClient.validate_amount(currency, amount)
         bonus_credits = TopUpBonusService.bonus_for(package.credits)
         credited_credits = package.credits + bonus_credits
-
-        existing_request = await session.scalar(
-            select(PaymentRequest).where(
-                PaymentRequest.user_id == user_id,
-                PaymentRequest.request_key == request_key,
-            )
-        )
-        if existing_request is not None:
-            existing_payment = await session.get(Payment, existing_request.payment_id)
-            if (
-                existing_request.provider != cls.PROVIDER
-                or existing_request.package_id != package_id
-                or existing_payment is None
-                or existing_payment.currency.upper() != currency
-            ):
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            return existing_payment
 
         payment = Payment(
             user_id=user_id,
@@ -449,40 +427,19 @@ class CardPaymentService:
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
-        session.add(payment)
-        await session.flush()
-        request_row = PaymentRequest(
+        creation = await PaymentCreationLifecycle.begin(
+            session,
+            payment=payment,
             user_id=user_id,
-            payment_id=payment.id,
-            request_key=request_key,
             provider=cls.PROVIDER,
             package_id=package_id,
-            status="creating",
+            request_key=request_key,
+            payment_match=lambda existing: existing.currency.upper() == currency,
         )
-        session.add(request_row)
-        try:
-            await session.commit()
-        except IntegrityError:
-            await session.rollback()
-            winner = await session.scalar(
-                select(PaymentRequest).where(
-                    PaymentRequest.user_id == user_id,
-                    PaymentRequest.request_key == request_key,
-                )
-            )
-            if winner is None:
-                raise
-            existing_payment = await session.get(Payment, winner.payment_id)
-            if (
-                winner.provider != cls.PROVIDER
-                or winner.package_id != package_id
-                or existing_payment is None
-                or existing_payment.currency.upper() != currency
-            ):
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            return existing_payment
+        if not creation.created:
+            return creation.payment
+        assert creation.request_id is not None
+        payment = creation.payment
 
         route = cls._route_for(currency)
         client = CardCheckoutClient(
@@ -505,52 +462,37 @@ class CardPaymentService:
                 payment_provider=route,
             )
         except PaymentProviderValidationError as exc:
-            payment = await session.get(Payment, payment.id)
-            request_row = await session.get(PaymentRequest, request_row.id)
-            if payment is not None:
-                payment.status = "failed"
-                payment.payload = {
-                    **payment.payload,
-                    "create_error": str(exc),
-                    "provider_error_type": "validation",
-                }
-            if request_row is not None:
-                request_row.status = "failed"
-                request_row.last_error = str(exc)[:4000]
-            await session.commit()
+            await PaymentCreationLifecycle.mark_failed(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+                payload_updates={"provider_error_type": "validation"},
+            )
             raise
         except Exception as exc:
-            payment = await session.get(Payment, payment.id)
-            request_row = await session.get(PaymentRequest, request_row.id)
-            if payment is not None:
-                payment.status = "creation_unknown"
-                payment.payload = {**payment.payload, "create_error": str(exc)}
-            if request_row is not None:
-                request_row.status = "unknown"
-                request_row.last_error = str(exc)[:4000]
-            await session.commit()
+            await PaymentCreationLifecycle.mark_unknown(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+            )
             raise
         finally:
             await client.aclose()
 
-        payment = await session.get(Payment, payment.id)
-        request_row = await session.get(PaymentRequest, request_row.id)
-        if payment is None or request_row is None:
-            raise LookupError("Payment disappeared after external invoice creation")
-        payment.external_id = created.external_id
-        payment.status = "pending"
-        payment.payload = {
-            **payment.payload,
-            "payment_url": created.payment_url,
-            "route": route or "hosted_checkout",
-            "offer_id": offer.offer_id,
-            "offer_id_source": offer.source,
-            "provider_response": created.raw,
-        }
-        request_row.status = "completed"
-        request_row.last_error = None
-        await session.commit()
-        return payment
+        return await PaymentCreationLifecycle.mark_pending(
+            session,
+            payment_id=payment.id,
+            request_id=creation.request_id,
+            created=created,
+            payload_updates={
+                "route": route or "hosted_checkout",
+                "offer_id": offer.offer_id,
+                "offer_id_source": offer.source,
+            },
+            missing_message="Payment disappeared after external invoice creation",
+        )
 
     @classmethod
     async def complete(
