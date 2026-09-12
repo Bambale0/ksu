@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -226,3 +227,44 @@ class AdminTrend(TimestampMixin, Base):
     created_by_admin_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("admin_accounts.id", ondelete="RESTRICT"), nullable=False
     )
+
+
+class TrendCollection(TimestampMixin, Base):
+    """Admin-owned category for curated trend templates."""
+
+    __tablename__ = "trend_collections"
+    __table_args__ = (
+        Index("ix_trend_collections_active_order", "is_active", "sort_order"),
+        Index(
+            "uq_trend_collections_system_key",
+            "system_key",
+            unique=True,
+            postgresql_where=text("system_key IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    system_key: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str] = mapped_column(String(240), default="", nullable=False)
+    aliases: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+
+class TrendCollectionAssignment(TimestampMixin, Base):
+    """Assignment of one curated trend to one category."""
+
+    __tablename__ = "trend_collection_assignments"
+    __table_args__ = (
+        Index("ix_trend_collection_assignments_collection", "collection_id"),
+        Index("ix_trend_collection_assignments_auto_collection", "automatic", "collection_id"),
+    )
+
+    trend_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("admin_trends.id", ondelete="CASCADE"), primary_key=True
+    )
+    collection_id: Mapped[str] = mapped_column(
+        ForeignKey("trend_collections.id", ondelete="CASCADE"), nullable=False
+    )
+    automatic: Mapped[bool] = mapped_column(default=False, nullable=False)

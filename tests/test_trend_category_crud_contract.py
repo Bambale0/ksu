@@ -8,6 +8,10 @@ import pytest
 from app.services.trend_collections import TrendCollectionError, TrendCollectionService
 
 
+def _source(path: str) -> str:
+    return (Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8")
+
+
 def test_category_hashtags_normalize_hash_prefix_and_case() -> None:
     collection = TrendCollectionService.normalize_collection(
         {
@@ -86,3 +90,13 @@ def test_admin_api_and_ui_expose_real_category_delete_and_hashtags() -> None:
     assert "hashtags: parseTags(draft.hashtags)" in ui
     assert "trendCollectionsApi.remove(folder.id)" in ui
     assert "Удалить категорию" in ui
+
+
+def test_trend_collection_runtime_uses_relational_source_of_truth() -> None:
+    service = _source("app/services/trend_collections.py")
+    migration = _source("alembic/versions/0036_trend_collections_relational.py")
+
+    assert "TrendCollectionAssignment" in service
+    assert "AdminRuntimeSetting" not in service
+    assert "trend_collections_v1" in migration
+    assert "trend_collection_assignments" in migration
