@@ -151,6 +151,43 @@ def _merged_legacy_state(raw: object) -> tuple[list[dict[str, Any]], dict[str, s
     return collections, assignments, automatic
 
 
+def _legacy_state_from_relational(
+    collections: list[dict[str, Any]],
+    assignments: list[dict[str, Any]],
+) -> dict[str, Any]:
+    ordered_collections = sorted(
+        (
+            {
+                "id": str(item["id"]),
+                "system_key": item.get("system_key"),
+                "title": str(item["title"]),
+                "description": str(item.get("description") or ""),
+                "aliases": list(item.get("aliases") or []),
+                "sort_order": int(item.get("sort_order") or 0),
+                "is_active": bool(item.get("is_active", True)),
+            }
+            for item in collections
+        ),
+        key=lambda item: (item["sort_order"], item["title"].casefold(), item["id"]),
+    )
+    assignment_map = {
+        str(item["trend_id"]): str(item["collection_id"])
+        for item in assignments
+    }
+    automatic = sorted(
+        str(item["trend_id"])
+        for item in assignments
+        if bool(item.get("automatic"))
+    )
+    return {
+        "schema_version": _SCHEMA_VERSION,
+        "initialized": True,
+        "collections": ordered_collections,
+        "assignments": assignment_map,
+        "auto_assignments": automatic,
+    }
+
+
 def upgrade() -> None:
     op.create_table(
         "trend_collections",
@@ -248,6 +285,50 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+
+    # Preserve any category edits made after upgrade before returning to the
+    # legacy JSON-backed runtime. Clean installs without the legacy row simply
+    # fall back to the old service defaults after downgrade.
+    legacy_exists = bind.execute(
+        sa.text("SELECT 1 FROM admin_runtime_settings WHERE key = :key"),
+        {"key": _SETTING_KEY},
+    ).first()
+    if legacy_exists is not None:
+        collections = [
+            dict(row._mapping)
+            for row in bind.execute(
+                sa.text(
+                    """
+                    SELECT id, system_key, title, description, aliases, sort_order, is_active
+                    FROM trend_collections
+                    """
+                )
+            ).all()
+        ]
+        assignments = [
+            dict(row._mapping)
+            for row in bind.execute(
+                sa.text(
+                    """
+                    SELECT trend_id, collection_id, automatic
+                    FROM trend_collection_assignments
+                    """
+                )
+            ).all()
+        ]
+        legacy_state = _legacy_state_from_relational(collections, assignments)
+        settings_table = sa.table(
+            "admin_runtime_settings",
+            sa.column("key", sa.String()),
+            sa.column("value", sa.JSON()),
+        )
+        bind.execute(
+            sa.update(settings_table)
+            .where(settings_table.c.key == _SETTING_KEY)
+            .values(value=legacy_state)
+        )
+
     op.drop_index(
         "ix_trend_collection_assignments_auto_collection",
         table_name="trend_collection_assignments",
