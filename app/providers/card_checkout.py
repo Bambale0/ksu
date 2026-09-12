@@ -146,8 +146,17 @@ class CardCheckoutClient:
             response.raise_for_status()
             raw = response.json()
         except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            # Lookup 4xx responses caused by an invalid/missing invoice are
+            # deterministic. Retrying them every reconciliation pass only creates
+            # an infinite retry storm. Authentication/rate-limit/conflict statuses
+            # remain recoverable because fixing configuration or waiting can help.
+            if 400 <= status < 500 and status not in {401, 403, 408, 409, 425, 429}:
+                raise PaymentProviderValidationError(
+                    f"Card checkout invoice lookup rejected: HTTP {status}"
+                ) from exc
             raise PaymentProviderError(
-                f"Card checkout invoice lookup failed: HTTP {exc.response.status_code}"
+                f"Card checkout invoice lookup failed: HTTP {status}"
             ) from exc
         except httpx.HTTPError as exc:
             raise PaymentProviderError("Card checkout transport failed") from exc

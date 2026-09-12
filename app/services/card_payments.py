@@ -623,7 +623,15 @@ class CardPaymentService:
             settings.card_webhook_key,
         )
         try:
-            invoice = await client.get_invoice(str(payment.external_id))
+            try:
+                invoice = await client.get_invoice(str(payment.external_id))
+            except PaymentProviderValidationError as exc:
+                return await PaymentService.mark_reconciliation_failed(
+                    session,
+                    payment,
+                    reason="provider_lookup_rejected",
+                    error=str(exc),
+                )
         finally:
             await client.aclose()
 

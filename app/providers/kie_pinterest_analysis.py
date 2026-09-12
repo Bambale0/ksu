@@ -117,7 +117,9 @@ class KiePinterestAnalysisClient:
             response = await self._client.post("/gemini-2.5-pro/v1/chat/completions", json=body)
             response.raise_for_status()
             data = response.json()
-            content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content"))
+            message = (data.get("choices") or [{}])[0].get("message") or {}
+            parsed = message.get("parsed")
+            content = parsed if isinstance(parsed, dict) else message.get("content")
             payload = _parse_json_object(content)
             return PinterestSceneAnalysisProviderResult(model=self.MODEL, payload=payload)
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
@@ -129,6 +131,18 @@ class KiePinterestAnalysisClient:
 def _parse_json_object(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            text_part = item.get("text")
+            if isinstance(text_part, str):
+                parts.append(text_part)
+        value = "\n".join(parts)
     if not isinstance(value, str):
         raise ValueError("Provider returned no JSON object")
     text = value.strip()
@@ -139,7 +153,16 @@ def _parse_json_object(value: Any) -> dict[str, Any]:
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         text = "\n".join(lines).strip()
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        # Structured-output providers occasionally wrap otherwise valid JSON in a
+        # short explanatory prefix/suffix. Recover the first complete JSON object
+        # instead of turning a successful provider response into a 502.
+        start = text.find("{")
+        if start < 0:
+            raise
+        parsed, _ = json.JSONDecoder().raw_decode(text[start:])
     if not isinstance(parsed, dict):
         raise ValueError("Provider JSON must be an object")
     return parsed

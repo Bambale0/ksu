@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 
 import httpx
@@ -11,7 +12,12 @@ from app.api.v1.pinterest_repeat import (
     PinterestSceneAnalysis,
     _build,
 )
-from app.providers.kie_pinterest_analysis import KiePinterestAnalysisClient
+from app.providers.kie_pinterest_analysis import (
+    KiePinterestAnalysisClient,
+    PinterestSceneAnalysisProviderError,
+    PinterestSceneAnalysisProviderResult,
+    _parse_json_object,
+)
 from app.services.pinterest_scene_analysis import (
     PinterestSceneAnalysisError,
     PinterestSceneAnalysisService,
@@ -78,6 +84,51 @@ def test_scene_analysis_normalizer_bounds_provider_output() -> None:
         len(item) <= PinterestSceneAnalysisService.MAX_PRESERVE_ITEM_LENGTH
         for item in normalized["must_preserve"]
     )
+
+
+def test_kie_parser_accepts_openai_text_content_blocks() -> None:
+    analysis = sample_analysis().model_dump()
+    payload = _parse_json_object([{"type": "text", "text": json.dumps(analysis)}])
+
+    assert payload["scene"] == analysis["scene"]
+    assert payload["gaze"] == analysis["gaze"]
+
+
+def test_kie_parser_recovers_json_wrapped_in_provider_text() -> None:
+    analysis = sample_analysis().model_dump()
+    payload = _parse_json_object(
+        "Structured result follows:\n" + json.dumps(analysis) + "\nDone."
+    )
+
+    assert payload["composition"] == analysis["composition"]
+    assert payload["must_preserve"] == analysis["must_preserve"]
+
+
+@pytest.mark.asyncio
+async def test_scene_analysis_retries_one_malformed_provider_response() -> None:
+    class _FlakyClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def analyze(self, *, image_url: str) -> PinterestSceneAnalysisProviderResult:
+            self.calls += 1
+            if self.calls == 1:
+                raise PinterestSceneAnalysisProviderError("provider returned no JSON object")
+            return PinterestSceneAnalysisProviderResult(
+                model="gemini-2.5-pro",
+                payload=sample_analysis().model_dump(),
+            )
+
+    client = _FlakyClient()
+    analysis, provider_result = await PinterestSceneAnalysisService._analyze_provider(
+        client,  # type: ignore[arg-type]
+        image_url="https://cdn.example.com/scene.jpg",
+        user_id=uuid.uuid4(),
+    )
+
+    assert client.calls == 2
+    assert analysis["pose"].startswith("weight on right leg")
+    assert provider_result.model == "gemini-2.5-pro"
 
 
 @pytest.mark.asyncio
