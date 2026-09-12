@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Payment, WalletTransaction
-from app.db.payment_models import PaymentRefundRequest, PaymentRequest, PaymentReversal
+from app.db.payment_models import PaymentRefundRequest, PaymentReversal
 from app.providers.payments import (
     CreatedPayment,
     CryptoPayClient,
@@ -22,6 +22,7 @@ from app.providers.payments import (
     YooKassaClient,
 )
 from app.services.credits import InternalCreditService
+from app.services.payment_creation import PaymentCreationLifecycle, PaymentIdempotencyConflict
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
@@ -31,10 +32,6 @@ class UnknownPaymentPackageError(ValueError):
 
 
 class UnknownPaymentProviderError(ValueError):
-    pass
-
-
-class PaymentIdempotencyConflict(ValueError):
     pass
 
 
@@ -136,25 +133,8 @@ class PaymentService:
     ) -> Payment:
         if provider not in cls.PROVIDERS:
             raise UnknownPaymentProviderError(provider)
-        if not request_key or len(request_key) > 64:
-            raise ValueError("Idempotency key must contain 1-64 characters")
+        PaymentCreationLifecycle.validate_request_key(request_key)
         package = cls.package(package_id)
-
-        existing_request = await session.scalar(
-            select(PaymentRequest).where(
-                PaymentRequest.user_id == user_id,
-                PaymentRequest.request_key == request_key,
-            )
-        )
-        if existing_request is not None:
-            if existing_request.provider != provider or existing_request.package_id != package_id:
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            existing_payment = await session.get(Payment, existing_request.payment_id)
-            if existing_payment is None:
-                raise LookupError("Idempotent payment record is inconsistent")
-            return existing_payment
 
         payment = Payment(
             user_id=user_id,
@@ -169,38 +149,18 @@ class PaymentService:
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
-        session.add(payment)
-        await session.flush()
-        payment_request = PaymentRequest(
+        creation = await PaymentCreationLifecycle.begin(
+            session,
+            payment=payment,
             user_id=user_id,
-            payment_id=payment.id,
-            request_key=request_key,
             provider=provider,
             package_id=package_id,
-            status="creating",
+            request_key=request_key,
         )
-        session.add(payment_request)
-        try:
-            # The local intent becomes durable before the external side effect.
-            await session.commit()
-        except IntegrityError:
-            await session.rollback()
-            winner = await session.scalar(
-                select(PaymentRequest).where(
-                    PaymentRequest.user_id == user_id,
-                    PaymentRequest.request_key == request_key,
-                )
-            )
-            if winner is None:
-                raise
-            if winner.provider != provider or winner.package_id != package_id:
-                raise PaymentIdempotencyConflict(
-                    "The idempotency key was already used for another payment intent"
-                )
-            existing_payment = await session.get(Payment, winner.payment_id)
-            if existing_payment is None:
-                raise LookupError("Idempotent payment record is inconsistent")
-            return existing_payment
+        if not creation.created:
+            return creation.payment
+        assert creation.request_id is not None
+        payment = creation.payment
 
         description = f"Internal credits: {package.credits}"
         try:
@@ -211,32 +171,20 @@ class PaymentService:
                 description=description,
             )
         except Exception as exc:
-            payment = await session.get(Payment, payment.id)
-            request_row = await session.get(PaymentRequest, payment_request.id)
-            if payment is not None:
-                payment.status = "creation_unknown"
-                payment.payload = {**payment.payload, "create_error": str(exc)}
-            if request_row is not None:
-                request_row.status = "unknown"
-                request_row.last_error = str(exc)[:4000]
-            await session.commit()
+            await PaymentCreationLifecycle.mark_unknown(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+            )
             raise
 
-        payment = await session.get(Payment, payment.id)
-        request_row = await session.get(PaymentRequest, payment_request.id)
-        if payment is None or request_row is None:
-            raise LookupError("Payment disappeared after provider creation")
-        payment.external_id = created.external_id
-        payment.status = "pending"
-        payment.payload = {
-            **payment.payload,
-            "payment_url": created.payment_url,
-            "provider_response": created.raw,
-        }
-        request_row.status = "completed"
-        request_row.last_error = None
-        await session.commit()
-        return payment
+        return await PaymentCreationLifecycle.mark_pending(
+            session,
+            payment_id=payment.id,
+            request_id=creation.request_id,
+            created=created,
+        )
 
     @staticmethod
     async def _create_external(
