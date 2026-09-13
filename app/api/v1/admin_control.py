@@ -78,6 +78,10 @@ class PromoCreateRequest(BaseModel):
     expires_at: datetime | None = None
 
 
+class PromoStateRequest(BaseModel):
+    is_active: bool
+
+
 def _confirm(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "confirm", "confirmed"}
 
@@ -526,6 +530,31 @@ async def control_promocode_create(
             reward_credits=payload.reward_credits,
             max_uses=payload.max_uses,
             expires_at=payload.expires_at,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/promocodes/{promo_id}/state")
+async def control_promocode_state(
+    promo_id: uuid.UUID,
+    payload: PromoStateRequest,
+    request: Request,
+    context: PromosManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.set_active(
+            session,
+            admin=context.account,
+            promo_id=promo_id,
+            is_active=payload.is_active,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),

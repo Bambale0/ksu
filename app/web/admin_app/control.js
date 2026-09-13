@@ -846,7 +846,7 @@
         row.is_active ? "active" : "inactive",
         actions(button(row.is_active ? "Deactivate" : "Activate", "table-action", async () => {
           try {
-            await mutate(`/api/v1/admin/promocodes/${row.id}/state`, {
+            await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
               body: { is_active: !row.is_active },
               label: `${row.is_active ? "Deactivate" : "Activate"} promo ${row.code}?`,
             });
