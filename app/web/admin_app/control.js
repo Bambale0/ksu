@@ -817,12 +817,18 @@
       title: "Create promo code",
       fields: [
         { name: "code", label: "Code" },
-        { name: "reward_credits", label: "Reward credits", type: "number", step: "0.01" },
-        { name: "max_uses", label: "Max uses (optional)", type: "number", required: false },
+        { name: "reward_credits", label: "Reward ROX", type: "number", step: "0.01" },
+        { name: "max_uses", label: "Successful activations limit", type: "number", required: false },
+        { name: "expires_at", label: "Expires at (optional)", type: "datetime-local", required: false },
       ],
-      onSubmit: async ({ code, reward_credits, max_uses }) => {
+      onSubmit: async ({ code, reward_credits, max_uses, expires_at }) => {
         await mutate("/api/v1/admin/control/promocodes", {
-          body: { code, reward_credits, max_uses: max_uses ? Number(max_uses) : null },
+          body: {
+            code,
+            reward_credits,
+            max_uses: max_uses ? Number(max_uses) : null,
+            expires_at: expires_at ? new Date(expires_at).toISOString() : null,
+          },
           label: `Create promo ${code}?`,
         });
         toast("Promo created", "ok");
@@ -830,12 +836,13 @@
       },
     }));
     const promoTable = table(
-      ["Code", "Reward", "Usage", "Status", "Actions"],
+      ["Code", "Reward", "Usage", "Expires", "Status", "Actions"],
       data.items || [],
       (row) => [
         row.code,
         row.reward_credits,
         `${row.uses_count}/${row.max_uses || "∞"}`,
+        row.expires_at ? new Date(row.expires_at).toLocaleString("ru-RU") : "∞",
         row.is_active ? "active" : "inactive",
         actions(button(row.is_active ? "Deactivate" : "Activate", "table-action", async () => {
           try {
