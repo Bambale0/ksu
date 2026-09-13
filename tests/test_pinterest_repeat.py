@@ -85,6 +85,7 @@ def test_build_request_requires_identity_rights_confirmation() -> None:
             confirmed=False,
         )
 
+
 def test_idempotency_generation_id_is_stable_and_user_scoped() -> None:
     user_a = uuid.UUID("11111111-1111-1111-1111-111111111111")
     user_b = uuid.UUID("22222222-2222-2222-2222-222222222222")
