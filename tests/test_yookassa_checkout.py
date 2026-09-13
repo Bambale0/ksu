@@ -79,6 +79,8 @@ def test_yookassa_setup_is_documented() -> None:
     docs = YOOKASSA_DOCS.read_text(encoding="utf-8")
     assert "YOOKASSA_SHOP_ID=" in env_example
     assert "YOOKASSA_SECRET_KEY=" in env_example
+    assert "самозанятый без ИП" in docs
+    assert "не передаёт `receipt`" in docs
     assert "/webhooks/payments/yookassa" in docs
     assert "payment.succeeded" in docs
     assert "payment.canceled" in docs

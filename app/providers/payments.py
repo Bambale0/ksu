@@ -279,6 +279,10 @@ class YooKassaClient:
                 "/v3/payments",
                 headers={"Idempotence-Key": local_id},
                 json={
+                    # This checkout is payment-only. Do not attach 54-FZ receipt
+                    # fields here: KSU also serves merchants operating as
+                    # self-employed individuals on NPD, where fiscalization is
+                    # handled outside this payment payload.
                     "amount": {"value": _money(amount), "currency": currency},
                     "capture": True,
                     "confirmation": confirmation,
