@@ -179,6 +179,31 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
   await expect.poll(() => runBodies.length).toBe(1);
 });
 
+test('changing identity photos revokes the previous rights confirmation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/pinterest-repeat/');
+
+  await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
+  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+
+  const consent = page.getByLabel('Подтверждаю права на фото');
+  const create = page.getByRole('button', { name: 'Создать →' });
+  await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
+  await consent.check();
+  await expect(consent).toBeChecked();
+  await expect(create).toBeEnabled();
+
+  await page.locator('label[aria-label="Добавить свои фото"] input[type="file"]').setInputFiles({
+    ...identityFile,
+    name: 'me-2.heic',
+  });
+
+  await expect(consent).not.toBeChecked();
+  await expect(page.getByText('1–5 ракурсов одного человека · сейчас 2/5')).toBeVisible();
+  await expect(create).toBeDisabled();
+});
+
 test('Pinterest URL resolver is wired as an alternative scene source', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installTelegram(page);

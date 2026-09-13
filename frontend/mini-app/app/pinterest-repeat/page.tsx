@@ -79,6 +79,10 @@ export default function PinterestRepeatPage() {
   const quoteIsCurrent = Boolean(quote && requestKey && quotedRequestKey === requestKey);
 
   useEffect(() => {
+    setConfirmed(false);
+  }, [identityPhotos]);
+
+  useEffect(() => {
     const imageUrl = reference?.url || "";
     setAnalysis(null);
     setAnalysisError("");
