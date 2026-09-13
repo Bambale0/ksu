@@ -22,6 +22,10 @@ export type PinterestRepeatRequest = {
   scene_analysis?: PinterestSceneAnalysis;
 };
 
+export type PinterestRepeatRunRequest = PinterestRepeatRequest & {
+  confirmed: true;
+};
+
 export type PinterestRepeatQuote = {
   mode: "pinterest_repeat";
   model_id: string;
@@ -80,7 +84,7 @@ export const pinterestRepeatApi = {
     { scene_reference_url: sceneReferenceUrl },
   ),
   quote: (body: PinterestRepeatRequest) => post<PinterestRepeatQuote>("/api/v1/pinterest-repeat/quote", body),
-  run: (body: PinterestRepeatRequest, idempotencyKey: string) => post<PinterestRepeatRun>(
+  run: (body: PinterestRepeatRunRequest, idempotencyKey: string) => post<PinterestRepeatRun>(
     "/api/v1/pinterest-repeat/run",
     body,
     { "Idempotency-Key": idempotencyKey },
