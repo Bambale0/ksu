@@ -7,7 +7,6 @@ FRONTEND = ROOT / "frontend" / "mini-app"
 
 REMOVED_PINTEREST_SERVICE_SURFACES = (
     FRONTEND / "app" / "services" / "page.tsx",
-    FRONTEND / "app" / "pinterest-flow" / "page.tsx",
     FRONTEND / "components" / "services-launcher.tsx",
     FRONTEND / "app" / "services.css",
     ROOT / "app" / "api" / "v1" / "pinterest_flow.py",
@@ -31,9 +30,16 @@ def test_catalog_uses_feature_hub_not_services_launcher() -> None:
     assert 'import "./services.css";' not in layout
 
 
-def test_removed_pinterest_services_stay_removed() -> None:
+def test_removed_legacy_pinterest_service_stack_stays_removed() -> None:
     for path in REMOVED_PINTEREST_SERVICE_SURFACES:
         assert not path.exists(), f"{path.relative_to(ROOT)} should stay removed"
+
+
+def test_legacy_pinterest_flow_route_reuses_canonical_repeat() -> None:
+    alias = _read(FRONTEND / "app" / "pinterest-flow" / "page.tsx")
+
+    assert "../pinterest-repeat/page" in alias
+    assert "PinterestRepeatPage" in alias
 
 
 def test_backend_router_does_not_expose_pinterest_services_namespace() -> None:
