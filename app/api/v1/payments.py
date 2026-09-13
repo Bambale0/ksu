@@ -236,11 +236,14 @@ async def create_2328_crypto_payment(
             user_id=user.id,
             package_id=payload.package_id,
             request_key=request_key,
+            promo_code=payload.promo_code,
         )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Этот пакет недоступен в 2328") from exc
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PromoCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PaymentProviderError as exc:
@@ -357,6 +360,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         elif payload.provider == Payment2328Service.PROVIDER:
             payment = await Payment2328Service.create(
@@ -364,6 +368,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         elif payload.provider == YooKassaPaymentService.PROVIDER:
             payment = await YooKassaPaymentService.create(
@@ -371,6 +376,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         else:
             payment = await PaymentService.create(
@@ -379,6 +385,7 @@ async def create_payment(
                 provider=payload.provider,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Unknown internal credit package") from exc
