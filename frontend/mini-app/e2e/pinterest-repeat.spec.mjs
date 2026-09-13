@@ -305,3 +305,12 @@ test('legacy Pinterest Flow route opens the canonical Pinterest Repeat experienc
   await expect(page.getByPlaceholder('ссылка или текст из Pinterest')).toBeVisible();
   await expect(page.getByLabel('Подтверждаю права на фото')).toBeVisible();
 });
+
+
+test('legacy Pinterest Flow trend link keeps the selected curated template', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/pinterest-flow/?id=trend-legacy-123');
+
+  await page.waitForURL('**/mini-app/trend/?id=trend-legacy-123');
+});
