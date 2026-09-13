@@ -50,7 +50,7 @@ def test_scene_analysis_is_embedded_into_generation_recipe() -> None:
         scene_analysis=sample_analysis(),
     )
 
-    recipe = _build(payload)
+    recipe = _build(payload, confirmed=True)
 
     assert "ANALYZED SCENE BLUEPRINT" in recipe.prompt
     assert "weight on right leg" in recipe.prompt
