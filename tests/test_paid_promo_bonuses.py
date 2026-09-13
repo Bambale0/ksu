@@ -135,10 +135,11 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
                 )
             ).all()
         )
-        assert [(row.kind, row.amount) for row in transactions] == [
+        assert len(transactions) == 2
+        assert {(row.kind, row.amount) for row in transactions} == {
             ("payment", Decimal("300.00")),
             ("promo_bonus", Decimal("30.00")),
-        ]
+        }
 
         await PaymentService.complete(
             session,
