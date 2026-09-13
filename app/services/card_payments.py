@@ -481,6 +481,11 @@ class CardPaymentService:
                 payment_provider=route,
             )
         except PaymentProviderValidationError as exc:
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason="provider_validation_failed",
+            )
             await PaymentCreationLifecycle.mark_failed(
                 session,
                 payment_id=payment.id,
@@ -608,6 +613,11 @@ class CardPaymentService:
             )
         elif normalized_event == "payment.failed" or status in cls.FAILED_STATUSES:
             if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason="provider_failed",
+                )
                 payment.status = "failed"
                 payment.payload = {**payment.payload, "last_provider_state": invoice}
                 await session.commit()
