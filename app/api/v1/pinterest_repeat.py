@@ -66,6 +66,10 @@ class PinterestRepeatRequest(BaseModel):
     scene_analysis: PinterestSceneAnalysis | None = None
 
 
+class PinterestRepeatRunRequest(PinterestRepeatRequest):
+    confirmed: bool
+
+
 def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
@@ -89,13 +93,18 @@ ANALYZED SCENE BLUEPRINT — derived from IMAGE 1 and subordinate to the role co
 Use this blueprint to reduce scene drift. It describes only IMAGE 1. Never use it to override PERSON_IDENTITY facial identity or natural body proportions."""
 
 
-def _build(payload: PinterestRepeatRequest) -> PinterestRepeatGenerationRequest:
+def _build(
+    payload: PinterestRepeatRequest,
+    *,
+    confirmed: bool,
+) -> PinterestRepeatGenerationRequest:
     try:
         recipe = PinterestRepeatService.build_request(
             scene_reference_url=payload.scene_reference_url,
             identity_reference_urls=payload.identity_reference_urls,
             height_cm=payload.height_cm,
             weight_kg=payload.weight_kg,
+            confirmed=confirmed,
             expression=payload.expression,
         )
     except PinterestRepeatError as exc:
@@ -234,7 +243,7 @@ async def quote_pinterest_repeat(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, Any]:
-    recipe = _build(payload)
+    recipe = _build(payload, confirmed=True)
     try:
         spec, _clean, retail_cost, seconds, retail_unit_price = await GenerationService.prepare_request(
             session,
@@ -266,13 +275,13 @@ async def quote_pinterest_repeat(
 
 @router.post("/run", status_code=202)
 async def run_pinterest_repeat(
-    payload: PinterestRepeatRequest,
+    payload: PinterestRepeatRunRequest,
     user: CurrentUserDep,
     session: SessionDep,
     redis: RedisDep,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, Any]:
-    recipe = _build(payload)
+    recipe = _build(payload, confirmed=payload.confirmed)
     generation_id = _idempotent_generation_id(user.id, idempotency_key)
     existing = await _replayed_generation(
         session,
