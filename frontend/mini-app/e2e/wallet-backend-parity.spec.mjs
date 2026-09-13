@@ -178,13 +178,13 @@ test('promo code previews a bonus but only attaches it to checkout', async ({ pa
         }),
       });
     }
-    return route.continue();
+    return route.fallback();
   });
   await page.goto('/mini-app/payments/?promo=KSENIA25');
 
   await expect(page.getByText('по промокоду KSENIA25')).toBeVisible();
   await expect(page.getByText('125', { exact: true })).toBeVisible();
-  await expect(page.getByText(/только после успешной оплаты/)).toBeVisible();
+  await expect(page.getByText(/только после успешной оплаты/).first()).toBeVisible();
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
   await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
 });
