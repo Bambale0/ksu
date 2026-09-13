@@ -24,7 +24,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "promo_redemptions",
-        sa.Column("status", sa.String(length=16), server_default="applied", nullable=False),
+        sa.Column("status", sa.String(length=16), server_default="pending", nullable=False),
     )
     op.add_column(
         "promo_redemptions",
