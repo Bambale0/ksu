@@ -225,6 +225,9 @@ class PromoCodeService:
         payment: Payment,
         reason: str,
     ) -> None:
+        payload = payment.payload or {}
+        if not payload.get("promo_code") and not payload.get("promo_id"):
+            return
         redemption = await session.scalar(
             select(PromoRedemption)
             .where(PromoRedemption.payment_id == payment.id)
