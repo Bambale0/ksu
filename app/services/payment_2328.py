@@ -20,9 +20,9 @@ from app.providers.payments import PaymentProviderError
 from app.services.admin_security import utcnow
 from app.services.card_payments import CardPackage, CardPackageCatalog
 from app.services.credits import InternalCreditService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import PaymentService, UnknownPaymentPackageError
+from app.services.promocodes import PromoCodeError, PromoCodeService
 
 
 class Payment2328Service:
@@ -65,6 +65,7 @@ class Payment2328Service:
         user_id: uuid.UUID,
         package_id: str,
         request_key: str,
+        promo_code: str | None = None,
     ) -> Payment:
         if not cls.provider_configured():
             raise PaymentProviderError("2328.io is not configured")
@@ -76,20 +77,19 @@ class Payment2328Service:
             raise UnknownPaymentPackageError(package_id)
 
         base_credits = Decimal(package.credits)
-        bonus_credits = TopUpBonusService.bonus_for(base_credits)
-        credited_credits = base_credits + bonus_credits
+        credited_credits = base_credits
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=cls.CURRENCY,
-            rox_amount=credited_credits,
+            rox_amount=base_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "base_credits": str(base_credits),
-                "bonus_credits": str(bonus_credits),
+                "bonus_credits": "0",
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
@@ -103,9 +103,27 @@ class Payment2328Service:
             request_key=request_key,
         )
         if not creation.created:
+            PromoCodeService.assert_payment_code(creation.payment, promo_code)
             return creation.payment
         assert creation.request_id is not None
         payment = creation.payment
+
+        try:
+            await PromoCodeService.reserve_for_payment(
+                session,
+                payment=payment,
+                code=promo_code,
+            )
+            await session.commit()
+        except PromoCodeError as exc:
+            await PaymentCreationLifecycle.mark_failed(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+                payload_updates={"promo_error": exc.code},
+            )
+            raise
 
         client = cls._client()
         try:
@@ -192,6 +210,11 @@ class Payment2328Service:
                 if request_row is not None and request_row.status in {"creating", "unknown"}:
                     request_row.status = "failed"
                     request_row.last_error = error
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason="provider_expired",
+                )
                 await session.commit()
             return payment
         return await cls.apply_state(session, payment=payment, provider_payload=state)
@@ -252,6 +275,12 @@ class Payment2328Service:
                 **(payment.payload or {}),
                 "last_provider_state": provider_payload,
             }
+            if payment.status in {"failed", "expired", "canceled"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason=f"provider_{payment.status}",
+                )
             await session.commit()
         return payment
 

@@ -15,10 +15,10 @@ const model = {
 };
 
 const cryptoPackages = {
-  starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
+  starter: { credits: '100.00', bonus_credits: '0', total_credits: '100.00', prices: { RUB: '100.00' } },
 };
 
-async function mockApi(page, { paymentsFail = false } = {}) {
+async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -51,6 +51,14 @@ async function mockApi(page, { paymentsFail = false } = {}) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
     if (path === '/api/v1/discovery/home') return json({ slides: [] });
+    if (path === '/api/v1/promocodes/validate' && request.method() === 'POST') return json({
+      status: 'valid',
+      code: 'KSENIA25',
+      reward_rox: '25.00',
+      remaining_uses: 999,
+      expires_at: '2026-10-13T00:00:00+00:00',
+      message: 'После успешной оплаты начислим +25 ROX',
+    });
     if (path === '/api/v1/payments/card/packages') return json({
       provider: 'kassa',
       label: 'Оплата картой',
@@ -80,7 +88,7 @@ async function mockApi(page, { paymentsFail = false } = {}) {
       packages: cryptoPackages,
     });
     if (path === '/api/v1/payments' && request.method() === 'GET') {
-      return paymentsFail ? json({ detail: 'history unavailable' }, 503) : json({ items: [] });
+      return paymentsFail ? json({ detail: 'history unavailable' }, 503) : json({ items: payments });
     }
     if (path === '/api/v1/payments/crypto/checkout' && request.method() === 'POST') return json({
       id: 'crypto-payment-1',
@@ -100,7 +108,7 @@ async function mockApi(page, { paymentsFail = false } = {}) {
   });
 }
 
-test('quick wallet uses backend bonus values and links to payment lifecycle', async ({ page }) => {
+test('quick wallet shows exact package ROX without automatic bonuses', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=profile');
@@ -110,8 +118,9 @@ test('quick wallet uses backend bonus values and links to payment lifecycle', as
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
   await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
-  await expect(page.getByRole('button', { name: /100 \+ 10 бонус/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /\+50 бонус/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /100 ROX/ })).toBeVisible();
+  await expect(page.getByText(/\+10 бонус/)).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
@@ -134,10 +143,77 @@ test('quick wallet keeps YooKassa primary with Lava reserve and CryptoBot availa
   await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
-  await expect(page.getByText('ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой.')).toHaveCount(1);
+  await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toBeVisible();
   expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(2);
   expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/crypto/packages')).toHaveLength(2);
   expect(providerCatalogRequests).not.toContain('/api/v1/payments/crypto/2328/packages');
+});
+
+
+test('promo code previews a bonus but only attaches it to checkout', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  let checkoutBody = null;
+  await mockApi(page);
+  await page.route('**/api/v1/payments', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      checkoutBody = request.postDataJSON();
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'yoo-promo-payment',
+          status: 'pending',
+          provider: 'yookassa',
+          label: 'ЮKassa',
+          package_id: 'starter',
+          amount: '100.00',
+          currency: 'RUB',
+          credits: '125.00',
+          base_credits: '100.00',
+          bonus_credits: '25.00',
+          promo_code: 'KSENIA25',
+          promo_bonus_status: 'reserved',
+          payment_url: 'https://pay.example/promo',
+        }),
+      });
+    }
+    return route.fallback();
+  });
+  await page.goto('/mini-app/payments/?promo=KSENIA25');
+
+  await expect(page.getByText('по промокоду KSENIA25')).toBeVisible();
+  await expect(page.getByText('125', { exact: true })).toBeVisible();
+  await expect(page.getByText(/только после успешной оплаты/).first()).toBeVisible();
+  await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
+  await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
+});
+
+test('released promo is not rendered as credited bonus in payment history', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page, {
+    payments: [{
+      id: 'released-promo-payment',
+      status: 'failed',
+      provider: 'yookassa',
+      label: 'ЮKassa',
+      package_id: 'starter',
+      amount: '100.00',
+      currency: 'RUB',
+      credits: '125.00',
+      base_credits: '100.00',
+      bonus_credits: '25.00',
+      promo_code: 'KSENIA25',
+      promo_bonus_status: 'released',
+      created_at: '2026-09-13T10:00:00Z',
+    }],
+  });
+  await page.goto('/mini-app/payments/');
+
+  const row = page.locator('.transaction').filter({ hasText: 'failed' }).first();
+  await expect(row).toContainText('100 ROX');
+  await expect(row).not.toContainText('125 ROX');
+  await expect(row).not.toContainText('+25');
 });
 
 

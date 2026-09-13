@@ -96,7 +96,11 @@ class PromoCode(TimestampMixin, Base):
 
 class PromoRedemption(Base):
     __tablename__ = "promo_redemptions"
-    __table_args__ = (UniqueConstraint("promo_id", "user_id", name="uq_promo_user"),)
+    __table_args__ = (
+        UniqueConstraint("promo_id", "user_id", name="uq_promo_user"),
+        UniqueConstraint("payment_id", name="uq_promo_payment"),
+        Index("ix_promo_redemptions_status_reserved", "promo_id", "status", "reserved_until"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     promo_id: Mapped[uuid.UUID] = mapped_column(
@@ -105,6 +109,14 @@ class PromoRedemption(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("payments.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending", nullable=False
+    )
+    reserved_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

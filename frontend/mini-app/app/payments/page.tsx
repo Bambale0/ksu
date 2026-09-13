@@ -30,6 +30,14 @@ type PackageResponse = {
   currencies: Currency[];
   packages: Record<string, Package>;
 };
+type PromoPreview = {
+  status: "valid";
+  code: string;
+  reward_rox: string;
+  remaining_uses?: number | null;
+  expires_at?: string | null;
+  message?: string;
+};
 type Payment = {
   id: string;
   status: string;
@@ -42,6 +50,8 @@ type Payment = {
   rox?: string;
   base_credits?: string;
   bonus_credits?: string;
+  promo_code?: string;
+  promo_bonus_status?: string;
   payment_url?: string;
   created_at?: string;
   updated_at?: string;
@@ -60,12 +70,33 @@ function initialProvider(): Provider {
   return "yookassa";
 }
 
+function initialPromoCode(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("promo")?.trim().toUpperCase() || "";
+}
+
 function paymentProviderLabel(payment: Payment): string {
   if (payment.label) return payment.label;
   if (payment.provider === "yookassa") return "ЮKassa";
   if (payment.provider === CRYPTOBOT_PROVIDER) return "CryptoBot";
   if (payment.provider === "2328") return "2328";
   return "Lava Top";
+}
+
+function paymentRoxSummary(payment: Payment): string {
+  const hasPromo = Boolean(payment.promo_code);
+  const promoApplied = hasPromo && payment.promo_bonus_status === "applied";
+  const credited = hasPromo && !promoApplied
+    ? payment.base_credits || payment.rox || payment.credits
+    : payment.credits || payment.rox || payment.base_credits;
+  const bonus = Number(payment.bonus_credits || 0);
+  let bonusLabel = "";
+  if (bonus > 0 && promoApplied) {
+    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code}`;
+  } else if (bonus > 0 && !hasPromo) {
+    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} бонус`;
+  }
+  return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${bonusLabel}`;
 }
 
 export default function PaymentsPage() {
@@ -78,6 +109,8 @@ export default function PaymentsPage() {
   const [packageId, setPackageId] = useState("");
   const [currency, setCurrency] = useState<Currency>("RUB");
   const [email, setEmail] = useState("");
+  const [promoCode, setPromoCode] = useState(initialPromoCode);
+  const [promo, setPromo] = useState<PromoPreview | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -104,8 +137,6 @@ export default function PaymentsPage() {
       nextCryptoBotCatalog?.configured && Object.keys(nextCryptoBotCatalog.packages || {}).length,
     );
 
-    // YooKassa is the primary checkout. Lava Top is the reserve card path.
-    // CryptoBot is available as the explicit crypto option. 2328 stays hidden.
     setCardCatalog(nextCardCatalog);
     setYooKassaCatalog(nextYooKassaCatalog);
     setCryptoBotCatalog(nextCryptoBotCatalog);
@@ -132,12 +163,48 @@ export default function PaymentsPage() {
     setError(loadErrors.join(" "));
   };
 
+  const validatePromo = async (rawCode = promoCode) => {
+    const normalized = rawCode.trim().toUpperCase();
+    if (!normalized || busy) return;
+    setBusy("promo");
+    setError("");
+    setNotice("");
+    try {
+      const next = await customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
+        method: "POST",
+        body: JSON.stringify({ code: normalized }),
+      });
+      setPromo(next);
+      setPromoCode(next.code);
+      setNotice(next.message || `Промокод применён. После успешной оплаты получите +${compactNumber(next.reward_rox)} ROX.`);
+    } catch (reason) {
+      setPromo(null);
+      setError(reason instanceof Error ? reason.message : "Не удалось проверить промокод");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   useEffect(() => {
     const savedEmail = typeof localStorage !== "undefined"
       ? localStorage.getItem("roxy-billing-email") || ""
       : "";
     setEmail(savedEmail);
     void load();
+
+    const code = initialPromoCode();
+    if (code) {
+      void customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }).then((next) => {
+        setPromo(next);
+        setPromoCode(next.code);
+        setNotice(next.message || `Промокод применён. После успешной оплаты получите +${compactNumber(next.reward_rox)} ROX.`);
+      }).catch(() => {
+        setPromo(null);
+      });
+    }
   }, []);
 
   const catalog = provider === "card"
@@ -169,6 +236,8 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
+  const promoReward = Number(promo?.reward_rox || 0);
+  const totalRox = Number(selected?.credits || 0) + promoReward;
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
@@ -191,11 +260,17 @@ export default function PaymentsPage() {
 
   const checkout = async () => {
     if (!packageId || !price || busy || (provider === "card" && !email.trim())) return;
+    if (promoCode.trim() && !promo) {
+      setError("Сначала примените промокод или очистите поле.");
+      return;
+    }
+    const activePromo = promo?.code || "";
     const intent: CheckoutIntent = {
       provider,
       packageId,
       currency: activeCurrency,
       billingEmail: provider === "card" ? email.trim() : "",
+      promoCode: activePromo,
     };
     const requestKey = checkoutIdempotencyKey(intent);
 
@@ -208,19 +283,23 @@ export default function PaymentsPage() {
         payment = await customerRequest<Payment>("/api/v1/payments", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ provider: "yookassa", package_id: packageId }),
+          body: JSON.stringify({
+            provider: "yookassa",
+            package_id: packageId,
+            promo_code: activePromo || null,
+          }),
         });
       } else if (provider === "cryptobot") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId }),
+          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
         });
       } else if (provider === "2328") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId }),
+          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
         });
       } else {
         payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", {
@@ -230,6 +309,7 @@ export default function PaymentsPage() {
             package_id: packageId,
             currency,
             billing_email: email.trim(),
+            promo_code: activePromo || null,
           }),
         });
         localStorage.setItem("roxy-billing-email", email.trim());
@@ -267,14 +347,13 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
+      const promoHint = activePromo ? ` Промобонус +${compactNumber(promo?.reward_rox)} ROX начислится только после успешной оплаты.` : "";
       setNotice(
         provider === "card"
-          ? "Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус»."
-          : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.`,
+          ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
+          : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.${promoHint}`,
       );
     } catch (reason) {
-      // Keep the request key for an ambiguous transport/provider failure. A retry
-      // must target the same local payment intent instead of creating another bill.
       setError(reason instanceof Error ? reason.message : "Не удалось создать оплату");
     } finally {
       setBusy(null);
@@ -319,7 +398,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой."
+      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Пакеты начисляют ровно указанное количество ROX. Дополнительные ROX доступны только по промокоду после успешной оплаты."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -339,16 +418,39 @@ export default function PaymentsPage() {
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
-            <strong>{compactNumber(item.total_credits || item.credits)} ROX</strong>
-            <small>{Number(item.bonus_credits || 0) > 0 ? `${compactNumber(item.credits)} + ${compactNumber(item.bonus_credits)} бонус` : `${compactNumber(item.credits)} ROX`}</small>
+            <strong>{compactNumber(item.credits)} ROX</strong>
             <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
           </button>)}</div>
 
           {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
 
-          {selected ? <div className="profile-stats"><div><strong>{compactNumber(selected.credits)}</strong><span>базовые ROX</span></div><div><strong>+{compactNumber(selected.bonus_credits || 0)}</strong><span>бонус</span></div><div><strong>{compactNumber(selected.total_credits || selected.credits)}</strong><span>итого ROX</span></div></div> : null}
+          {selected ? <div className="profile-stats">
+            <div><strong>{compactNumber(selected.credits)}</strong><span>ROX в пакете</span></div>
+            {promo ? <div><strong>+{compactNumber(promo.reward_rox)}</strong><span>по промокоду {promo.code}</span></div> : null}
+            <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
+          </div> : null}
 
           <div className="form-stack">
+            <label className="field">
+              <span className="label">Есть промокод?</span>
+              <input
+                className="control"
+                maxLength={64}
+                value={promoCode}
+                onChange={(event) => {
+                  setPromoCode(event.target.value.toUpperCase());
+                  setPromo(null);
+                  setNotice("");
+                }}
+                placeholder="Например, KSENIA50"
+                autoCapitalize="characters"
+              />
+            </label>
+            <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
+              {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : "Применить промокод"}
+            </button>
+            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты.</small> : null}
+
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>
           </div>
@@ -358,7 +460,11 @@ export default function PaymentsPage() {
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">История</span><h2>Пополнения</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
         <div className="transaction-list">{supportedPayments.length ? supportedPayments.map((payment) => <div className="transaction" key={payment.id}>
-          <div><strong>{compactNumber(payment.amount)} {payment.currency}</strong><small>{paymentProviderLabel(payment)} · {dateTime(payment.created_at)} · {payment.status}</small><small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}</small></div>
+          <div>
+            <strong>{compactNumber(payment.amount)} {payment.currency}</strong>
+            <small>{paymentProviderLabel(payment)} · {dateTime(payment.created_at)} · {payment.status}</small>
+            <small>{paymentRoxSummary(payment)}</small>
+          </div>
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {payment.payment_url && !TERMINAL.has(payment.status) ? <button type="button" onClick={() => { if (!openPaymentLink(payment.payment_url || "")) setError("Не удалось открыть платёжную ссылку"); }}>Оплатить</button> : null}
             {!TERMINAL.has(payment.status) ? <button type="button" disabled={busy === payment.id} onClick={() => void reconcile(payment)}>{busy === payment.id ? "…" : "Проверить статус"}</button> : <strong>{payment.status === "succeeded" ? "✓" : payment.status}</strong>}

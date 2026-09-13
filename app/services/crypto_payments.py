@@ -10,9 +10,9 @@ from app.db.models import Payment
 from app.providers.payments import CryptoPayClient, PaymentProviderError
 from app.services.card_payments import CardPackage, CardPackageCatalog
 from app.services.credits import InternalCreditService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import UnknownPaymentPackageError
+from app.services.promocodes import PromoCodeError, PromoCodeService
 
 
 class CryptoBotPaymentService:
@@ -48,6 +48,7 @@ class CryptoBotPaymentService:
         user_id: uuid.UUID,
         package_id: str,
         request_key: str,
+        promo_code: str | None = None,
     ) -> Payment:
         if not cls.provider_configured():
             raise PaymentProviderError("CryptoBot is not configured")
@@ -59,20 +60,19 @@ class CryptoBotPaymentService:
             raise UnknownPaymentPackageError(package_id)
 
         base_credits = Decimal(package.credits)
-        bonus_credits = TopUpBonusService.bonus_for(base_credits)
-        credited_credits = base_credits + bonus_credits
+        credited_credits = base_credits
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=cls.CURRENCY,
-            rox_amount=credited_credits,
+            rox_amount=base_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "base_credits": str(base_credits),
-                "bonus_credits": str(bonus_credits),
+                "bonus_credits": "0",
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
@@ -86,9 +86,27 @@ class CryptoBotPaymentService:
             request_key=request_key,
         )
         if not creation.created:
+            PromoCodeService.assert_payment_code(creation.payment, promo_code)
             return creation.payment
         assert creation.request_id is not None
         payment = creation.payment
+
+        try:
+            await PromoCodeService.reserve_for_payment(
+                session,
+                payment=payment,
+                code=promo_code,
+            )
+            await session.commit()
+        except PromoCodeError as exc:
+            await PaymentCreationLifecycle.mark_failed(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+                payload_updates={"promo_error": exc.code},
+            )
+            raise
 
         client = CryptoPayClient(settings.cryptopay_api_token, settings.cryptopay_base_url)
         try:

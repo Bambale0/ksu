@@ -21,7 +21,7 @@ def test_customer_parity_pages_cover_backend_capabilities() -> None:
         "notifications": "/api/v1/notifications",
         "support": "/api/v1/support/tickets",
         "settings": "/api/v1/me/preferences",
-        "promocodes": "/api/v1/promocodes/redeem",
+        "promocodes": "/api/v1/promocodes/validate",
         "partner-wallet": "/api/v1/referrals/wallet-transfers",
         "subscriptions": "/api/v1/social/subscriptions/feed",
         "history-manager": "/api/v1/generation-history/hidden",
@@ -80,14 +80,15 @@ def test_project_promo_assets_remain_canonical() -> None:
     assert 'style.display = "none"' not in parity_hub
 
 
-def test_wallet_bonus_badges_follow_backend_catalog() -> None:
+def test_wallet_promos_are_explicit_and_never_render_automatic_bonus_badges() -> None:
     root = ROOT / "frontend/mini-app"
     component = (root / "components/wallet-parity.tsx").read_text(encoding="utf-8")
-    styles = (root / "app/wallet-bonuses.css").read_text(encoding="utf-8")
+    payments = (root / "app/payments/page.tsx").read_text(encoding="utf-8")
 
-    assert "/api/v1/payments/yookassa/packages" in component
-    assert "bonus_credits" in component
-    assert "package-bonus-live" in component
+    assert "package-bonus-live" not in component
+    assert "bonus_credits" not in component
+    assert "/mini-app/promocodes/" in component
     assert "/mini-app/payments/" in component
-    assert ":nth-child" not in styles
-    assert 'content: "+' not in styles
+    assert "/api/v1/promocodes/validate" in payments
+    assert "promo_code" in payments
+    assert "Дополнительные ROX доступны только по промокоду" in payments

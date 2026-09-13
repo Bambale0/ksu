@@ -40,7 +40,7 @@ def _telegram_id() -> int:
 
 
 @pytest.mark.asyncio
-async def test_card_package_endpoint_exposes_rox_gift_bonuses(
+async def test_card_package_endpoint_has_no_automatic_rox_gift_bonuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "card_packages_json", PACKAGES_JSON)
@@ -52,16 +52,16 @@ async def test_card_package_endpoint_exposes_rox_gift_bonuses(
 
     assert packages["p100"]["bonus_credits"] == "0"
     assert packages["p100"]["total_credits"] == "100"
-    assert packages["p300"]["bonus_credits"] == "50"
-    assert packages["p300"]["total_credits"] == "350"
-    assert packages["p500"]["bonus_credits"] == "100"
-    assert packages["p500"]["total_credits"] == "600"
-    assert packages["p1000"]["bonus_credits"] == "150"
-    assert packages["p1000"]["total_credits"] == "1150"
-    assert packages["p2000"]["bonus_credits"] == "200"
-    assert packages["p2000"]["total_credits"] == "2200"
-    assert packages["p5000"]["bonus_credits"] == "500"
-    assert packages["p5000"]["total_credits"] == "5500"
+    assert packages["p300"]["bonus_credits"] == "0"
+    assert packages["p300"]["total_credits"] == "300"
+    assert packages["p500"]["bonus_credits"] == "0"
+    assert packages["p500"]["total_credits"] == "500"
+    assert packages["p1000"]["bonus_credits"] == "0"
+    assert packages["p1000"]["total_credits"] == "1000"
+    assert packages["p2000"]["bonus_credits"] == "0"
+    assert packages["p2000"]["total_credits"] == "2000"
+    assert packages["p5000"]["bonus_credits"] == "0"
+    assert packages["p5000"]["total_credits"] == "5000"
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_card_package_endpoint_marks_unconfigured_provider_unavailable(
 
 
 @pytest.mark.asyncio
-async def test_successful_card_payment_credits_paid_rox_plus_bonus(
+async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -156,10 +156,10 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
             "payment_provider": None,
         }
         assert Decimal(payment.amount) == Decimal("326.1")
-        assert Decimal(payment.rox_amount) == Decimal("350")
+        assert Decimal(payment.rox_amount) == Decimal("300")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["bonus_credits"] == "50"
-        assert payment.payload["credited_credits"] == "350"
+        assert payment.payload["bonus_credits"] == "0"
+        assert payment.payload["credited_credits"] == "300"
 
         await CardPaymentService.complete(
             session,
@@ -169,7 +169,7 @@ async def test_successful_card_payment_credits_paid_rox_plus_bonus(
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("350.00")
+        assert wallet.balance == Decimal("300.00")
         assert seen["referral_basis"] == Decimal("300")
 
 
@@ -361,37 +361,23 @@ def test_card_checkout_response_accepts_lava_payment_url_aliases() -> None:
     assert CardCheckoutClient.extract_payment_url(data) == "https://pay.example/1"
 
 
-def test_top_up_bonus_catalog_matches_public_promo() -> None:
-    assert TopUpBonusService.bonus_for(100) == Decimal("0")
-    assert TopUpBonusService.bonus_for(300) == Decimal("50")
-    assert TopUpBonusService.bonus_for(500) == Decimal("100")
-    assert TopUpBonusService.bonus_for(1000) == Decimal("150")
-    assert TopUpBonusService.bonus_for(2000) == Decimal("200")
-    assert TopUpBonusService.bonus_for(5000) == Decimal("500")
+def test_top_up_packages_never_add_automatic_bonus() -> None:
+    for amount in (100, 300, 500, 1000, 2000, 5000):
+        assert TopUpBonusService.bonus_for(amount) == Decimal("0")
+        assert TopUpBonusService.total_for(amount) == Decimal(str(amount))
 
 
-def test_wallet_bonus_badges_are_backend_driven_in_mini_app() -> None:
-    layout = (FRONTEND / "app" / "layout.tsx").read_text(encoding="utf-8")
+def test_wallet_does_not_render_automatic_bonus_badges() -> None:
     page = (FRONTEND / "app" / "page.tsx").read_text(encoding="utf-8")
-    css = (FRONTEND / "app" / "wallet-bonuses.css").read_text(encoding="utf-8")
     wallet = (FRONTEND / "components" / "wallet-parity.tsx").read_text(encoding="utf-8")
+    payments = (FRONTEND / "app" / "payments" / "page.tsx").read_text(encoding="utf-8")
 
-    assert 'import "./wallet-bonuses.css";' in layout
     assert 'import { WalletParity } from "@/components/wallet-parity";' in page
     assert "<WalletParity />" in page
-    assert 'customerRequest<PackageCatalog>("/api/v1/payments/yookassa/packages")' in wallet
-    assert "bonus_credits" in wallet
-    assert "package-bonus-live" in wallet
-    assert ".package-bonus-live" in css
-    assert ":nth-child(" not in css
-    for token in (
-        "+50 ROX 🎁",
-        "+100 ROX 🎁",
-        "+150 ROX 🎁",
-        "+200 ROX 🎁",
-        "+500 ROX 🎁",
-    ):
-        assert token not in css
+    assert "package-bonus-live" not in wallet
+    assert "bonus_credits" not in wallet
+    assert "Дополнительные ROX доступны только по промокоду" in payments
+    assert "Есть промокод?" in wallet
 
 
 @pytest.mark.asyncio

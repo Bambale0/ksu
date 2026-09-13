@@ -35,7 +35,7 @@ def test_customer_ui_exposes_cryptobot_but_keeps_2328_hidden() -> None:
     assert '>2328</button>' not in payments_source
     assert '>ЮKassa</button>' in payments_source
 
-    assert '"/api/v1/payments/yookassa/packages"' in wallet_source
+    assert "ЮKassa остаётся основным способом" in wallet_source
     assert '"/api/v1/payments/crypto/packages"' in wallet_source
     assert '"/api/v1/payments/crypto/2328/packages"' not in wallet_source
     assert "/mini-app/payments/?provider=cryptobot" in wallet_source

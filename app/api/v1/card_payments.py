@@ -11,9 +11,9 @@ from app.db.models import Payment
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_email import validate_billing_email
 from app.services.payments import PaymentIdempotencyConflict, UnknownPaymentPackageError
+from app.services.promocodes import PromoCodeError
 
 router = APIRouter(prefix="/payments/card", tags=["payments"])
 
@@ -22,6 +22,7 @@ class CardCheckoutRequest(BaseModel):
     package_id: str = Field(min_length=1, max_length=64)
     currency: Literal["RUB", "USD", "EUR"]
     billing_email: str = Field(min_length=3, max_length=254)
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 def _view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]:
@@ -36,9 +37,11 @@ def _view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]
         "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
-        "credits": str(payment.rox_amount),
+        "credits": str(payload.get("credited_credits") or payment.rox_amount),
         "base_credits": base_credits,
         "bonus_credits": bonus_credits,
+        "promo_code": str(payload.get("promo_code") or ""),
+        "promo_bonus_status": str(payload.get("promo_bonus_status") or ""),
         "payment_url": str(payload.get("payment_url") or ""),
         "idempotency_key": request_key or str(payload.get("request_key") or ""),
     }
@@ -62,8 +65,8 @@ async def packages() -> dict[str, object]:
         "packages": {
             package_id: {
                 "credits": str(package.credits),
-                "bonus_credits": str(TopUpBonusService.bonus_for(package.credits)),
-                "total_credits": str(TopUpBonusService.total_for(package.credits)),
+                "bonus_credits": "0",
+                "total_credits": str(package.credits),
                 "prices": {
                     currency: str(amount)
                     for currency, amount in sorted(package.prices.items())
@@ -102,6 +105,7 @@ async def checkout(
             currency=payload.currency,
             billing_email=billing_email,
             request_key=request_key,
+            promo_code=payload.promo_code,
         )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(
@@ -110,6 +114,8 @@ async def checkout(
         ) from exc
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PromoCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PaymentProviderValidationError as exc:

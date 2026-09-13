@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import httpx
@@ -15,6 +16,51 @@ async def _replace_transport(
         base_url="https://api.yookassa.ru",
         transport=httpx.MockTransport(handler),
     )
+
+
+@pytest.mark.asyncio
+async def test_yookassa_npd_checkout_omits_54fz_receipt_fields() -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(
+            200,
+            json={
+                "id": "provider-payment-1",
+                "confirmation": {
+                    "confirmation_url": "https://yookassa.example/checkout"
+                },
+            },
+            request=request,
+        )
+
+    local_id = "00000000-0000-0000-0000-000000000010"
+    client = YooKassaClient("shop", "secret")
+    await _replace_transport(client, handler)
+    try:
+        await client.create_payment(
+            local_id=local_id,
+            amount=Decimal("300"),
+            currency="RUB",
+            description="ROX top-up",
+            return_url="https://example.invalid/return",
+        )
+    finally:
+        await client.aclose()
+
+    request = captured["request"]
+    assert isinstance(request, httpx.Request)
+    payload = json.loads(request.content.decode("utf-8"))
+
+    assert request.headers["Idempotence-Key"] == local_id
+    assert payload["amount"] == {"value": "300.00", "currency": "RUB"}
+    assert payload["capture"] is True
+    assert payload["metadata"] == {"payment_id": local_id}
+    assert payload["description"] == "ROX top-up"
+    assert "receipt" not in payload
+    assert "tax_system_code" not in payload
+    assert "customer" not in payload
 
 
 @pytest.mark.asyncio

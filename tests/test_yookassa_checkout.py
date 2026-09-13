@@ -35,8 +35,8 @@ async def test_yookassa_catalog_exposes_configured_rub_rox_packages(
     assert catalog["packages"] == {
         "starter": {
             "credits": "300",
-            "bonus_credits": "50",
-            "total_credits": "350",
+            "bonus_credits": "0",
+            "total_credits": "300",
             "prices": {"RUB": "300"},
         }
     }
@@ -69,6 +69,7 @@ def test_mini_app_exposes_yookassa_checkout_and_reconciliation() -> None:
         'provider: "yookassa"',
         '/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile',
         'payment.provider === "yookassa"',
+        'promo_code: activePromo || null',
         '>ЮKassa</button>',
     ):
         assert token in page
@@ -79,6 +80,8 @@ def test_yookassa_setup_is_documented() -> None:
     docs = YOOKASSA_DOCS.read_text(encoding="utf-8")
     assert "YOOKASSA_SHOP_ID=" in env_example
     assert "YOOKASSA_SECRET_KEY=" in env_example
+    assert "самозанятый без ИП" in docs
+    assert "не передаёт `receipt`" in docs
     assert "/webhooks/payments/yookassa" in docs
     assert "payment.succeeded" in docs
     assert "payment.canceled" in docs
