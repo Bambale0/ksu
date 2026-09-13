@@ -354,6 +354,7 @@ export default function PinterestRepeatPage() {
         <label className="pin-consent">
           <input
             type="checkbox"
+            aria-label="Подтверждаю права на фото"
             checked={confirmed}
             onChange={(event) => setConfirmed(event.target.checked)}
           />
