@@ -33,35 +33,51 @@ The modal displays the FSM fields:
 
 The recovery banner is enabled only after a later authoritative `/me` response shows enough balance. The user must press `Вернуться к генерации`, then explicitly press `Создать` again. The recovery module never submits a replacement generation automatically, so a payment cannot cause an implicit second charge.
 
-## Promo-code redemption
+## Promo-code bonuses
 
-Existing endpoint:
+Promo codes are a payment-bound marketing instrument. A code never credits ROX merely because the user entered it.
+
+Validation endpoints:
 
 ```text
-POST /api/v1/promocodes/redeem
+POST /api/v1/promocodes/validate
+POST /api/v1/promocodes/redeem   # compatibility alias; validates only
 ```
 
-The service now exposes stable error categories:
+Stable error categories:
 
 ```text
 invalid
 expired
 usage_limit_reached
 already_used
+already_reserved
 ```
 
-The API converts these to user-facing Russian messages while preserving the machine-readable code in `detail.code`.
+The API converts these to user-facing Russian messages while preserving a stable machine-readable category in validation errors.
 
-A successful redemption is one database transaction containing:
+A valid code exposes a fixed ROX reward, but the reward is only **reserved** when a payment intent is created with `promo_code`. The final bonus settlement happens only after the payment provider confirms success:
 
-1. promo redemption record;
-2. promo use-count update;
-3. wallet credit through the immutable wallet ledger;
-4. success notification.
+1. the paid package credits exactly its base ROX;
+2. the reserved promo reward is credited as a separate `promo_bonus` wallet transaction;
+3. the promo successful-use counter increments;
+4. the reservation becomes `applied`.
 
-The response includes the credited amount and authoritative new wallet balance. The Profile promo form updates displayed balance only from that server response.
+Failed, canceled or expired payments release their promo reservation. Active reservations count against `max_uses`, preventing concurrent checkouts from oversubscribing a limited campaign. One user can successfully use a given promo code only once.
 
-The current promo schema supports global activation, expiration and usage limits plus one redemption per user. The product document mentions a possible "unavailable for this account" state but does not define account-targeting criteria; no invented targeting business rule was added. Inactive/nonexistent codes use the safe `invalid`/unavailable state.
+Promo campaign controls are server-owned:
+
+- fixed reward in ROX;
+- active/inactive state;
+- successful activation limit (`max_uses`);
+- expiration timestamp;
+- immediate operator shutdown.
+
+This supports partner campaigns such as `KSENIA50` with 1,000 successful activations for one month or 5,000 activations for a three-month campaign. The counter tracks paid activations, not code-entry attempts.
+
+Automatic package bonuses are disabled. Package catalogs return `bonus_credits=0` and `total_credits=credits`; extra ROX can only originate from a valid promo attached to a successful payment.
+
+Full and partial payment refunds also reverse the applied promo bonus proportionally through the wallet accounting ledger.
 
 ## Transaction-history empty state
 
