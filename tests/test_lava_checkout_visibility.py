@@ -16,7 +16,8 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     assert '>CryptoBot</button>' in source
     assert '>2328</button>' not in source
     assert '>ЮKassa</button>' in source
-    assert 'copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой."' in source
+    assert "ЮKassa — основной способ оплаты." in source
+    assert "Дополнительные ROX доступны только по промокоду после успешной оплаты." in source
     assert 'if (requested === "card") return "card";' in source
     assert 'if (requested === "cryptobot") return "cryptobot";' in source
     assert 'return "yookassa";' in source
@@ -24,7 +25,7 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     assert 'lavaAvailable ? <button' in quick_wallet
     assert '/api/v1/payments/crypto/packages' in quick_wallet
     assert '/api/v1/payments/crypto/2328/packages' not in quick_wallet
-    assert '/api/v1/payments/yookassa/packages' in quick_wallet
+    assert 'ЮKassa остаётся основным способом' in quick_wallet
     assert 'Резервная оплата · Lava Top' in quick_wallet
     assert '/mini-app/payments/?provider=card' in quick_wallet
     assert '/mini-app/payments/?provider=cryptobot' in quick_wallet
