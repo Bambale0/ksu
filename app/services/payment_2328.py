@@ -210,6 +210,11 @@ class Payment2328Service:
                 if request_row is not None and request_row.status in {"creating", "unknown"}:
                     request_row.status = "failed"
                     request_row.last_error = error
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason="provider_expired",
+                )
                 await session.commit()
             return payment
         return await cls.apply_state(session, payment=payment, provider_payload=state)
@@ -270,6 +275,12 @@ class Payment2328Service:
                 **(payment.payload or {}),
                 "last_provider_state": provider_payload,
             }
+            if payment.status in {"failed", "expired", "canceled"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason=f"provider_{payment.status}",
+                )
             await session.commit()
         return payment
 
