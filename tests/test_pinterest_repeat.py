@@ -74,7 +74,6 @@ def test_build_request_rejects_more_than_five_identity_photos() -> None:
         )
 
 
-
 def test_build_request_requires_identity_rights_confirmation() -> None:
     with pytest.raises(PinterestRepeatError, match="Подтвердите"):
         PinterestRepeatService.build_request(
