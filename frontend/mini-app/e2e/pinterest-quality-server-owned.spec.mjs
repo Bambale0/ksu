@@ -107,7 +107,11 @@ test('Pinterest quality retry is server-owned and the client submits one paid ge
 
   await expect(page.getByText('сцена, свет и поза считаны с референса')).toBeVisible();
   await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
-  await page.getByRole('button', { name: 'Создать →' }).click();
+  const create = page.getByRole('button', { name: 'Создать →' });
+  await expect(create).toBeDisabled();
+  await page.getByLabel('Подтверждаю права на фото').check();
+  await expect(create).toBeEnabled();
+  await create.click();
 
   await expect.poll(() => runCount).toBe(1);
   await page.waitForTimeout(400);
