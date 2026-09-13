@@ -13,6 +13,7 @@ from app.db.models import (
     AdminAccount,
     PartnerWithdrawal,
     Payment,
+    PromoCode,
     ReferralRelation,
     ReferralReward,
     User,
@@ -168,7 +169,7 @@ async def test_bonus_rox_cannot_become_referral_cash_even_if_accrual_is_called(
 
 
 @pytest.mark.asyncio
-async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_proportional(
+async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are_proportional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -213,8 +214,16 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
         second_line = await _user(session, "Second line")
         first_line = await _user(session, "First line")
         buyer = await _user(session, "Buyer")
+        promo = PromoCode(
+            code=f"REFERRAL{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("50"),
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
         session.add_all(
             [
+                promo,
                 ReferralRelation(
                     referred_user_id=first_line.id,
                     inviter_user_id=second_line.id,
@@ -234,6 +243,7 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
             currency="RUB",
             billing_email="buyer@example.com",
             request_key=str(uuid.uuid4()),
+            promo_code=promo.code,
         )
         await CardPaymentService.complete(
             session,
@@ -255,7 +265,7 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
             ).all()
         )
         # Referral cash is based on the actual 326.10 RUB payment, never on the
-        # 300 purchased ROX or the extra 50 gift ROX credited to the wallet.
+        # 300 purchased ROX or the extra 50 promo ROX credited to the wallet.
         assert [(item.level, Decimal(item.amount)) for item in rewards] == [
             (1, Decimal("97.83")),
             (2, Decimal("16.31")),
@@ -287,6 +297,8 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
             reason="e2e partial refund",
             provider_payload={"refunded": "163.05"},
         )
+        await session.refresh(wallet)
+        assert Decimal(wallet.balance) == Decimal("175.00")
         first_accounting = await PartnerService.accounting(session, first_line.id)
         second_accounting = await PartnerService.accounting(session, second_line.id)
         assert first_accounting["total_earned"] == Decimal("48.91")
@@ -321,6 +333,8 @@ async def test_card_gift_rox_never_increase_referral_commission_and_refunds_are_
         assert (await PartnerService.accounting(session, second_line.id))["total_earned"] == Decimal(
             "0.00"
         )
+        await session.refresh(wallet)
+        assert Decimal(wallet.balance) == Decimal("0.00")
 
 
 @pytest.mark.asyncio

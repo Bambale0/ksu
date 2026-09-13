@@ -19,7 +19,7 @@ def _telegram_id() -> int:
 
 
 @pytest.mark.asyncio
-async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
+async def test_yookassa_payment_credits_exact_package_rox_without_automatic_bonus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -57,10 +57,10 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
         )
 
         assert Decimal(payment.amount) == Decimal("300")
-        assert Decimal(payment.rox_amount) == Decimal("350")
+        assert Decimal(payment.rox_amount) == Decimal("300")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["bonus_credits"] == "50"
-        assert payment.payload["credited_credits"] == "350"
+        assert payment.payload["bonus_credits"] == "0"
+        assert payment.payload["credited_credits"] == "300"
 
         # Regression: server-side onupdate used to leave updated_at expired
         # after create/commit, so reading it in an async session raised
@@ -81,4 +81,4 @@ async def test_yookassa_payment_credits_base_rox_plus_package_bonus(
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("350.00")
+        assert wallet.balance == Decimal("300.00")

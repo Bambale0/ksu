@@ -15,9 +15,9 @@ from app.db.models import Payment, WalletTransaction
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import PaymentService, UnknownPaymentPackageError
+from app.services.promocodes import PromoCodeError, PromoCodeService
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
@@ -395,6 +395,7 @@ class CardPaymentService:
         currency: str,
         billing_email: str,
         request_key: str,
+        promo_code: str | None = None,
     ) -> Payment:
         currency = currency.upper()
         if currency not in CardCheckoutClient.SUPPORTED_CURRENCIES:
@@ -408,22 +409,21 @@ class CardPaymentService:
         # Validate the operator-owned package before committing a local payment intent.
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
-        bonus_credits = TopUpBonusService.bonus_for(package.credits)
-        credited_credits = package.credits + bonus_credits
+        credited_credits = package.credits
 
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=currency,
-            rox_amount=credited_credits,
+            rox_amount=package.credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "billing_email": email,
                 "base_credits": str(package.credits),
-                "bonus_credits": str(bonus_credits),
+                "bonus_credits": "0",
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
@@ -438,9 +438,27 @@ class CardPaymentService:
             currency=currency,
         )
         if not creation.created:
+            PromoCodeService.assert_payment_code(creation.payment, promo_code)
             return creation.payment
         assert creation.request_id is not None
         payment = creation.payment
+
+        try:
+            await PromoCodeService.reserve_for_payment(
+                session,
+                payment=payment,
+                code=promo_code,
+            )
+            await session.commit()
+        except PromoCodeError as exc:
+            await PaymentCreationLifecycle.mark_failed(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+                payload_updates={"promo_error": exc.code},
+            )
+            raise
 
         route = cls._route_for(currency)
         client = CardCheckoutClient(
@@ -463,6 +481,11 @@ class CardPaymentService:
                 payment_provider=route,
             )
         except PaymentProviderValidationError as exc:
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason="provider_validation_failed",
+            )
             await PaymentCreationLifecycle.mark_failed(
                 session,
                 payment_id=payment.id,
@@ -522,8 +545,9 @@ class CardPaymentService:
             reference_id=str(payment.id),
             idempotency_key=f"payment:{payment.id}:credit",
         )
+        await PromoCodeService.apply_payment_bonus(session, payment=payment)
         # Referral accounting is RUB-denominated. Never treat a USD/EUR numeric
-        # amount as RUB; use the product's paid ROX basis, excluding gift bonuses.
+        # amount as RUB; use only the paid package ROX basis, excluding promo gifts.
         payload = payment.payload or {}
         referral_credits = Decimal(str(payload.get("base_credits") or payment.rox_amount))
         reward_basis_rub = InternalCreditService.rubles_for(referral_credits)
@@ -589,6 +613,11 @@ class CardPaymentService:
             )
         elif normalized_event == "payment.failed" or status in cls.FAILED_STATUSES:
             if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason="provider_failed",
+                )
                 payment.status = "failed"
                 payment.payload = {**payment.payload, "last_provider_state": invoice}
                 await session.commit()

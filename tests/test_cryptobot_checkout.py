@@ -89,9 +89,10 @@ async def test_cryptobot_checkout_reuses_existing_service_and_is_idempotent(
         assert first.provider == "cryptobot"
         assert first.amount == Decimal("326.09")
         assert first.currency == "RUB"
-        assert first.rox_amount == Decimal("350")
+        assert first.rox_amount == Decimal("300")
         assert first.payload["base_credits"] == "300"
-        assert first.payload["bonus_credits"] == "50"
+        assert first.payload["bonus_credits"] == "0"
+        assert first.payload["credited_credits"] == "300"
         assert first.payload["payment_url"].startswith("https://t.me/CryptoBot")
         assert calls == [
             {

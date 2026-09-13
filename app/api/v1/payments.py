@@ -14,7 +14,6 @@ from app.services.card_payments import CardPackage
 from app.services.credits import InternalCreditService
 from app.services.crypto_payments import CryptoBotPaymentService
 from app.services.payment_2328 import Payment2328Service
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import (
     PaymentIdempotencyConflict,
     PaymentPackage,
@@ -22,6 +21,7 @@ from app.services.payments import (
     UnknownPaymentPackageError,
     UnknownPaymentProviderError,
 )
+from app.services.promocodes import PromoCodeError
 from app.services.yookassa_payments import YooKassaPaymentService
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -30,10 +30,12 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 class CreatePaymentRequest(BaseModel):
     provider: Literal["cryptobot", "2328", "tbank", "yookassa"]
     package_id: str = Field(min_length=1, max_length=64)
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 class CryptoCheckoutRequest(BaseModel):
     package_id: str = Field(min_length=1, max_length=64)
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 def _payment_label(payment: Payment) -> str:
@@ -81,10 +83,12 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "package_id": str(payload.get("package_id") or ""),
         "amount": str(payment.amount),
         "currency": payment.currency,
-        "credits": str(payment.rox_amount),
-        "rox": str(payment.rox_amount),
+        "credits": str(payload.get("credited_credits") or payment.rox_amount),
+        "rox": str(payload.get("credited_credits") or payment.rox_amount),
         "base_credits": str(payload.get("base_credits") or payment.rox_amount),
         "bonus_credits": str(payload.get("bonus_credits") or "0"),
+        "promo_code": str(payload.get("promo_code") or ""),
+        "promo_bonus_status": str(payload.get("promo_bonus_status") or ""),
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
         "payment_url": _recovered_payment_url(payment, payload),
         "idempotency_key": request_key or str(payload.get("request_key") or ""),
@@ -97,8 +101,8 @@ def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object
     credits = package.credits
     return {
         "credits": str(credits),
-        "bonus_credits": str(TopUpBonusService.bonus_for(credits)),
-        "total_credits": str(TopUpBonusService.total_for(credits)),
+        "bonus_credits": "0",
+        "total_credits": str(credits),
         "prices": {currency: str(package.prices[currency])},
     }
 
@@ -107,8 +111,8 @@ def _yookassa_catalog_package(package: PaymentPackage) -> dict[str, object]:
     credits = package.credits
     return {
         "credits": str(credits),
-        "bonus_credits": str(TopUpBonusService.bonus_for(credits)),
-        "total_credits": str(TopUpBonusService.total_for(credits)),
+        "bonus_credits": "0",
+        "total_credits": str(credits),
         "prices": {package.currency: str(package.amount)},
     }
 
@@ -198,11 +202,14 @@ async def create_crypto_payment(
             user_id=user.id,
             package_id=payload.package_id,
             request_key=request_key,
+            promo_code=payload.promo_code,
         )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Этот пакет недоступен в CryptoBot") from exc
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PromoCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PaymentProviderError as exc:
@@ -229,11 +236,14 @@ async def create_2328_crypto_payment(
             user_id=user.id,
             package_id=payload.package_id,
             request_key=request_key,
+            promo_code=payload.promo_code,
         )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Этот пакет недоступен в 2328") from exc
     except PaymentIdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PromoCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PaymentProviderError as exc:
@@ -350,6 +360,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         elif payload.provider == Payment2328Service.PROVIDER:
             payment = await Payment2328Service.create(
@@ -357,6 +368,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         elif payload.provider == YooKassaPaymentService.PROVIDER:
             payment = await YooKassaPaymentService.create(
@@ -364,6 +376,7 @@ async def create_payment(
                 user_id=user.id,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
         else:
             payment = await PaymentService.create(
@@ -372,9 +385,12 @@ async def create_payment(
                 provider=payload.provider,
                 package_id=payload.package_id,
                 request_key=request_key,
+                promo_code=payload.promo_code,
             )
     except UnknownPaymentPackageError as exc:
         raise HTTPException(status_code=404, detail="Unknown internal credit package") from exc
+    except PromoCodeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except UnknownPaymentProviderError as exc:
         raise HTTPException(status_code=400, detail="Unsupported payment provider") from exc
     except PaymentIdempotencyConflict as exc:

@@ -23,6 +23,7 @@ from app.providers.payments import (
 )
 from app.services.credits import InternalCreditService
 from app.services.payment_creation import PaymentCreationLifecycle, PaymentIdempotencyConflict
+from app.services.promocodes import PromoCodeError, PromoCodeService
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
@@ -130,6 +131,7 @@ class PaymentService:
         provider: str,
         package_id: str,
         request_key: str,
+        promo_code: str | None = None,
     ) -> Payment:
         if provider not in cls.PROVIDERS:
             raise UnknownPaymentProviderError(provider)
@@ -146,6 +148,9 @@ class PaymentService:
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
+                "base_credits": str(package.credits),
+                "bonus_credits": "0",
+                "credited_credits": str(package.credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
@@ -158,9 +163,27 @@ class PaymentService:
             request_key=request_key,
         )
         if not creation.created:
+            PromoCodeService.assert_payment_code(creation.payment, promo_code)
             return creation.payment
         assert creation.request_id is not None
         payment = creation.payment
+
+        try:
+            await PromoCodeService.reserve_for_payment(
+                session,
+                payment=payment,
+                code=promo_code,
+            )
+            await session.commit()
+        except PromoCodeError as exc:
+            await PaymentCreationLifecycle.mark_failed(
+                session,
+                payment_id=payment.id,
+                request_id=creation.request_id,
+                error=exc,
+                payload_updates={"promo_error": exc.code},
+            )
+            raise
 
         description = f"Internal credits: {package.credits}"
         try:
@@ -278,6 +301,7 @@ class PaymentService:
             source_transaction_id=wallet_tx.id,
             payment_amount=Decimal(payment.amount),
         )
+        await PromoCodeService.apply_payment_bonus(session, payment=payment)
         payment.status = "succeeded"
         payment.payload = {**payment.payload, "last_provider_state": provider_payload}
         await session.commit()
@@ -367,6 +391,37 @@ class PaymentService:
                 idempotency_key=f"payment:{payment.id}:reversal:{reversal.id}",
             )
 
+        payment_payload = payment.payload or {}
+        promo_bonus = (
+            Decimal(str(payment_payload.get("promo_reward_credits") or "0"))
+            if payment_payload.get("promo_bonus_status") == "applied"
+            else Decimal("0")
+        )
+        already_promo_reversed = Decimal(
+            str(payment_payload.get("promo_bonus_reversed") or "0")
+        )
+        if cumulative_amount >= Decimal(payment.amount):
+            target_promo_reversed = promo_bonus
+        else:
+            target_promo_reversed = (promo_bonus * ratio).quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
+        incremental_promo_reversal = max(
+            Decimal("0"),
+            target_promo_reversed - already_promo_reversed,
+        )
+        if incremental_promo_reversal > 0:
+            await WalletService.accounting_debit(
+                session,
+                user_id=payment.user_id,
+                amount=incremental_promo_reversal,
+                kind="promo_bonus_reversal",
+                reference_type="payment_reversal",
+                reference_id=str(reversal.id),
+                idempotency_key=f"payment:{payment.id}:promo-reversal:{reversal.id}",
+            )
+
         source_transaction = await session.scalar(
             select(WalletTransaction).where(
                 WalletTransaction.user_id == payment.user_id,
@@ -387,10 +442,11 @@ class PaymentService:
             "refunded" if cumulative_amount >= Decimal(payment.amount) else "partially_refunded"
         )
         payment.payload = {
-            **payment.payload,
+            **(payment.payload or {}),
             "last_reversal": provider_payload,
             "refunded_amount": str(cumulative_amount),
             "refunded_credits": str(target_credits),
+            "promo_bonus_reversed": str(target_promo_reversed),
         }
         await session.commit()
         return payment
@@ -569,6 +625,12 @@ class PaymentService:
             if payment.status not in cls.TERMINAL_STATUSES:
                 payment.status = "expired" if status == "expired" else "pending"
                 payment.payload = {**payment.payload, "last_provider_state": invoice}
+                if payment.status == "expired":
+                    await PromoCodeService.release_payment_reservation(
+                        session,
+                        payment=payment,
+                        reason="provider_expired",
+                    )
                 await session.commit()
             return payment
 
@@ -669,6 +731,11 @@ class PaymentService:
                 "error": error[:1000],
             },
         }
+        await PromoCodeService.release_payment_reservation(
+            session,
+            payment=payment,
+            reason=reason,
+        )
         await session.commit()
         return payment
 
@@ -714,6 +781,11 @@ class PaymentService:
         }:
             payment.status = "canceled"
             payment.payload = {**payment.payload, "last_provider_state": authoritative}
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason="provider_canceled",
+            )
             await session.commit()
         elif payment.status not in cls.TERMINAL_STATUSES and payment.status != "partially_refunded":
             payment.status = "pending"
@@ -804,6 +876,12 @@ class PaymentService:
         elif payment.status not in cls.TERMINAL_STATUSES:
             payment.status = "pending"
         payment.payload = {**payment.payload, "last_provider_state": provider_payload}
+        if payment.status in {"failed", "canceled", "expired"}:
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason=f"provider_{payment.status}",
+            )
         await session.commit()
         return payment
 
@@ -835,6 +913,12 @@ class PaymentService:
         if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
             payment.status = status
             payment.payload = {**payment.payload, "last_provider_state": provider_payload}
+            if status in {"failed", "canceled", "expired"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason=f"provider_{status}",
+                )
             await session.commit()
         return payment
 

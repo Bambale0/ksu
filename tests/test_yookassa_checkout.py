@@ -35,8 +35,8 @@ async def test_yookassa_catalog_exposes_configured_rub_rox_packages(
     assert catalog["packages"] == {
         "starter": {
             "credits": "300",
-            "bonus_credits": "50",
-            "total_credits": "350",
+            "bonus_credits": "0",
+            "total_credits": "300",
             "prices": {"RUB": "300"},
         }
     }
@@ -69,6 +69,7 @@ def test_mini_app_exposes_yookassa_checkout_and_reconciliation() -> None:
         'provider: "yookassa"',
         '/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile',
         'payment.provider === "yookassa"',
+        'promo_code: activePromo || null',
         '>ЮKassa</button>',
     ):
         assert token in page
