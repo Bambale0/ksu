@@ -68,7 +68,7 @@ export function WalletParity() {
       <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/promocodes/")}>Есть промокод?</button>
       {lavaAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=card")}>Резервная оплата · Lava Top</button> : null}
       {cryptoBotAvailable ? <button className="secondary wide" type="button" onClick={() => window.location.assign("/mini-app/payments/?provider=cryptobot")}>Оплатить криптой · CryptoBot</button> : null}
-      <small>Пакет начисляет ровно указанное количество ROX. Бонусные ROX доступны только по промокоду и только после успешной оплаты.</small>
+      <small>ЮKassa остаётся основным способом. Пакет начисляет ровно указанное количество ROX. Lava Top — резерв для карты, CryptoBot — для криптовалюты. Бонусные ROX доступны только по промокоду и только после успешной оплаты.</small>
     </div>,
     host,
   );
