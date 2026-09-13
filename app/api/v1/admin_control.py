@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -74,6 +75,7 @@ class PromoCreateRequest(BaseModel):
     code: str = Field(min_length=3, max_length=64)
     reward_credits: Decimal = Field(gt=0, le=100_000)
     max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
+    expires_at: datetime | None = None
 
 
 def _confirm(value: str | None) -> bool:
@@ -523,7 +525,7 @@ async def control_promocode_create(
             code=payload.code,
             reward_credits=payload.reward_credits,
             max_uses=payload.max_uses,
-            expires_at=None,
+            expires_at=payload.expires_at,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),
