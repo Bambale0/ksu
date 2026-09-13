@@ -731,6 +731,11 @@ class PaymentService:
                 "error": error[:1000],
             },
         }
+        await PromoCodeService.release_payment_reservation(
+            session,
+            payment=payment,
+            reason=reason,
+        )
         await session.commit()
         return payment
 
