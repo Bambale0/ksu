@@ -14,6 +14,7 @@ export type CheckoutIntent = {
   packageId: string;
   currency: string;
   billingEmail?: string;
+  promoCode?: string;
 };
 
 let memoryIntent: StoredIntent | null = null;
@@ -29,6 +30,7 @@ function fingerprint(intent: CheckoutIntent): string {
     packageId: intent.packageId,
     currency: intent.currency.toUpperCase(),
     billingEmail: (intent.billingEmail || "").trim().toLowerCase(),
+    promoCode: (intent.promoCode || "").trim().toUpperCase(),
   });
 }
 
