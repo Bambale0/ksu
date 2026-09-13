@@ -76,7 +76,14 @@ async function mockApi(page) {
     if (/^\/api\/v1\/support\/tickets\/[^/]+$/.test(path)) return json({ id: '44444444-4444-4444-8444-444444444444', topic: 'Оплата', status: 'open', created_at: '2026-08-26T04:00:00Z', updated_at: '2026-08-26T05:00:00Z', can_reply: true, can_close: true, can_reopen: false, messages: [{ id: 'm1', body: 'Помогите', author: 'user', created_at: '2026-08-26T04:00:00Z' }] });
     if (path.startsWith('/api/v1/support/tickets/')) return json({ status: 'ok' });
 
-    if (path === '/api/v1/promocodes/redeem') return json({ status: 'ok', reward_rox: '25.00', balance_rox: '175.00' });
+    if (path === '/api/v1/promocodes/validate') return json({
+      status: 'valid',
+      code: 'WELCOME',
+      reward_rox: '25.00',
+      remaining_uses: 99,
+      expires_at: '2026-10-13T00:00:00+00:00',
+      message: 'После успешной оплаты начислим +25 ROX',
+    });
     if (path === '/api/v1/referrals/stats') return json({ partner_balance_rub: '1200.00', pending: '300.00', total_earned: '5000.00', transferred_to_rox: '1000.00', pending_withdrawals: '0.00', minimum_withdrawal: '500.00', rub_per_rox: '1.00' });
     if (path === '/api/v1/referrals/withdrawals') return json({ items: [] });
     if (path === '/api/v1/referrals/wallet-transfers') return json({ items: [] });
@@ -93,7 +100,7 @@ async function mockApi(page) {
     if (path === '/api/v1/presets') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
 
-    if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } } } });
+    if (path === '/api/v1/payments/yookassa/packages') return json({ provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'], packages: { starter: { credits: '100.00', bonus_credits: '0', total_credits: '100.00', prices: { RUB: '100.00' } } } });
     if (path === '/api/v1/payments' && request.method() === 'GET') return json({ items: [] });
     if (path === '/api/v1/payments' && request.method() === 'POST') return json({ id: 'pay_1', status: 'pending', provider: 'yookassa', payment_url: 'https://pay.roxy.local/checkout' }, 201);
 
@@ -109,7 +116,7 @@ const surfaces = [
   ['/mini-app/notifications/', '1 непрочитанных'],
   ['/mini-app/support/', 'Помощь ROXY'],
   ['/mini-app/settings/', 'Аккаунт ROXY'],
-  ['/mini-app/promocodes/', 'Получить ROX'],
+  ['/mini-app/promocodes/', 'Бонус к пополнению'],
   ['/mini-app/partner-wallet/', 'Доход и выплаты'],
   ['/mini-app/subscriptions/', 'Мои подписки'],
   ['/mini-app/history-manager/', 'Управление работами'],
@@ -130,13 +137,17 @@ for (const [url, title] of surfaces) {
   });
 }
 
-test('promo redemption is wired to backend and updates balance result', async ({ page }) => {
+test('promo validation previews a paid bonus without crediting the wallet', async ({ page }) => {
   await mockApi(page);
   await page.goto('/mini-app/promocodes/');
-  await page.getByPlaceholder('ROXY2026').fill('WELCOME');
-  await page.getByRole('button', { name: 'Применить промокод' }).click();
-  await expect(page.getByText('+25')).toBeVisible();
-  await expect(page.getByText('175')).toBeVisible();
+  await page.getByPlaceholder('Например, KSENIA50').fill('WELCOME');
+  await page.getByRole('button', { name: 'Проверить промокод' }).click();
+  await expect(page.getByText('+25', { exact: true })).toBeVisible();
+  await expect(page.getByText('ROX после оплаты', { exact: true })).toBeVisible();
+  await expect(page.getByText(/начислен только после подтверждения оплаты/)).toBeVisible();
+  await expect(page.getByText('175', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /Перейти к пополнению/ }).click();
+  await expect(page).toHaveURL(/\/mini-app\/payments\/\?promo=WELCOME/);
 });
 
 test('notifications can be marked read in the customer center', async ({ page }) => {

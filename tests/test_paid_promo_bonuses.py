@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -151,6 +152,72 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("blocked_by", "expected_status"),
+    [
+        ("reservation_expired", "reservation_expired"),
+        ("campaign_inactive", "inactive"),
+        ("campaign_expired", "expired"),
+    ],
+)
+async def test_reserved_promo_is_not_credited_after_shutdown(
+    blocked_by: str,
+    expected_status: str,
+) -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="Promo Shutdown")
+        promo = PromoCode(
+            code=f"SHUT{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("30"),
+            max_uses=1000,
+            uses_count=0,
+            is_active=True,
+        )
+        session.add_all([user, promo])
+        await session.flush()
+        payment = _payment(user_id=user.id)
+        session.add(payment)
+        await session.commit()
+
+        await PromoCodeService.reserve_for_payment(
+            session,
+            payment=payment,
+            code=promo.code,
+        )
+        await session.commit()
+
+        redemption = await session.scalar(
+            select(PromoRedemption).where(PromoRedemption.payment_id == payment.id)
+        )
+        assert redemption is not None
+
+        if blocked_by == "reservation_expired":
+            redemption.reserved_until = datetime.now(UTC) - timedelta(seconds=1)
+        elif blocked_by == "campaign_inactive":
+            promo.is_active = False
+        else:
+            promo.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await session.commit()
+
+        completed = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        await session.refresh(promo)
+        await session.refresh(redemption)
+        assert wallet is not None
+        assert wallet.balance == Decimal("300.00")
+        assert promo.uses_count == 0
+        assert redemption.status == "released"
+        assert completed.payload["promo_bonus_status"] == expected_status
+        assert completed.payload["bonus_credits"] == "0"
+        assert Decimal(str(completed.payload["credited_credits"])) == Decimal("300")
+
+
+@pytest.mark.asyncio
 async def test_pending_reservation_respects_campaign_limit_and_releases_on_failure() -> None:
     async with SessionFactory() as session:
         first = User(telegram_id=_telegram_id(), first_name="Promo First")
@@ -189,6 +256,9 @@ async def test_pending_reservation_respects_campaign_limit_and_releases_on_failu
             payment=first_payment,
             reason="provider_failed",
         )
+        assert first_payment.payload["promo_bonus_status"] == "released"
+        assert first_payment.payload["bonus_credits"] == "0"
+        assert Decimal(str(first_payment.payload["credited_credits"])) == Decimal("500")
         await session.commit()
 
         preview = await PromoCodeService.preview(

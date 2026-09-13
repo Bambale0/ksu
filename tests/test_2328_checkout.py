@@ -356,9 +356,10 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
         assert first.provider == "2328"
         assert first.amount == Decimal("326.09")
         assert first.currency == "RUB"
-        assert first.rox_amount == Decimal("350")
+        assert first.rox_amount == Decimal("300")
         assert first.payload["base_credits"] == "300"
-        assert first.payload["bonus_credits"] == "50"
+        assert first.payload["bonus_credits"] == "0"
+        assert first.payload["credited_credits"] == "300"
         assert first.payload["payment_url"].startswith("https://go.2328.io/")
         assert first.created_at.isoformat()
         assert first.updated_at.isoformat()

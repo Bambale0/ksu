@@ -150,29 +150,49 @@ class PromoCodeService:
             select(PromoCode).where(PromoCode.id == redemption.promo_id).with_for_update()
         )
         if promo is None:
-            redemption.status = "released"
-            redemption.reserved_until = None
-            payment.payload = {**payload, "promo_bonus_status": "unavailable"}
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="unavailable",
+                reason="campaign_missing",
+            )
             return Decimal("0")
 
         now = datetime.now(UTC)
-        if (
-            redemption.reserved_until is not None
-            and redemption.reserved_until <= now
-            and promo.max_uses is not None
-            and promo.uses_count >= promo.max_uses
-        ):
-            redemption.status = "released"
-            redemption.reserved_until = None
-            payment.payload = {**payload, "promo_bonus_status": "limit_reached"}
+        if redemption.reserved_until is None or redemption.reserved_until <= now:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="reservation_expired",
+                reason="reservation_expired",
+            )
+            return Decimal("0")
+        if not promo.is_active:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="inactive",
+                reason="campaign_inactive",
+            )
+            return Decimal("0")
+        if promo.expires_at is not None and promo.expires_at <= now:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="expired",
+                reason="campaign_expired",
+            )
             return Decimal("0")
 
         if reward <= 0:
             reward = Decimal(promo.reward_amount)
         if reward <= 0:
-            redemption.status = "released"
-            redemption.reserved_until = None
-            payment.payload = {**payload, "promo_bonus_status": "unavailable"}
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="unavailable",
+                reason="invalid_reward",
+            )
             return Decimal("0")
 
         await WalletService.credit(
@@ -212,13 +232,34 @@ class PromoCodeService:
         )
         if redemption is None or redemption.status != "pending":
             return
+        cls._release_bonus(
+            payment=payment,
+            redemption=redemption,
+            status="released",
+            reason=reason,
+        )
+
+    @staticmethod
+    def _release_bonus(
+        *,
+        payment: Payment,
+        redemption: PromoRedemption,
+        status: str,
+        reason: str | None = None,
+    ) -> None:
+        payload = payment.payload or {}
+        base_credits = str(payload.get("base_credits") or payment.rox_amount)
         redemption.status = "released"
         redemption.reserved_until = None
-        payment.payload = {
-            **(payment.payload or {}),
-            "promo_bonus_status": "released",
-            "promo_release_reason": reason[:64],
+        redemption.redeemed_at = None
+        updates: dict[str, object] = {
+            "promo_bonus_status": status,
+            "bonus_credits": "0",
+            "credited_credits": base_credits,
         }
+        if reason:
+            updates["promo_release_reason"] = reason[:64]
+        payment.payload = {**payload, **updates}
 
     @classmethod
     async def _validate_available(

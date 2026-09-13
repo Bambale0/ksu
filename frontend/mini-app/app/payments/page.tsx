@@ -83,6 +83,22 @@ function paymentProviderLabel(payment: Payment): string {
   return "Lava Top";
 }
 
+function paymentRoxSummary(payment: Payment): string {
+  const hasPromo = Boolean(payment.promo_code);
+  const promoApplied = hasPromo && payment.promo_bonus_status === "applied";
+  const credited = hasPromo && !promoApplied
+    ? payment.base_credits || payment.rox || payment.credits
+    : payment.credits || payment.rox || payment.base_credits;
+  const bonus = Number(payment.bonus_credits || 0);
+  let bonusLabel = "";
+  if (bonus > 0 && promoApplied) {
+    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code}`;
+  } else if (bonus > 0 && !hasPromo) {
+    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} бонус`;
+  }
+  return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${bonusLabel}`;
+}
+
 export default function PaymentsPage() {
   const [cardCatalog, setCardCatalog] = useState<PackageResponse | null>(null);
   const [yooKassaCatalog, setYooKassaCatalog] = useState<PackageResponse | null>(null);
@@ -447,7 +463,7 @@ export default function PaymentsPage() {
           <div>
             <strong>{compactNumber(payment.amount)} {payment.currency}</strong>
             <small>{paymentProviderLabel(payment)} · {dateTime(payment.created_at)} · {payment.status}</small>
-            <small>{payment.credits || payment.rox ? `${compactNumber(payment.credits || payment.rox)} ROX` : payment.package_id}{Number(payment.bonus_credits || 0) > 0 ? ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code || "промокоду"}` : ""}</small>
+            <small>{paymentRoxSummary(payment)}</small>
           </div>
           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {payment.payment_url && !TERMINAL.has(payment.status) ? <button type="button" onClick={() => { if (!openPaymentLink(payment.payment_url || "")) setError("Не удалось открыть платёжную ссылку"); }}>Оплатить</button> : null}
