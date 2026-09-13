@@ -23,6 +23,7 @@ def test_build_request_keeps_scene_and_identity_roles_separate() -> None:
         ],
         height_cm=165,
         weight_kg=55,
+        confirmed=True,
         expression="спокойная уверенность",
     )
 
@@ -52,6 +53,7 @@ def test_build_request_accepts_scene_plus_five_identity_photos() -> None:
         identity_reference_urls=identities,
         height_cm=170,
         weight_kg=70,
+        confirmed=True,
     )
 
     assert request.parameters["image_input"] == [
@@ -68,6 +70,18 @@ def test_build_request_rejects_more_than_five_identity_photos() -> None:
             identity_reference_urls=[f"https://cdn.example.com/me-{index}.jpg" for index in range(6)],
             height_cm=170,
             weight_kg=70,
+            confirmed=True,
+        )
+
+
+def test_build_request_requires_identity_rights_confirmation() -> None:
+    with pytest.raises(PinterestRepeatError, match="Подтвердите"):
+        PinterestRepeatService.build_request(
+            scene_reference_url="https://cdn.example.com/scene.jpg",
+            identity_reference_urls=["https://cdn.example.com/me.jpg"],
+            height_cm=170,
+            weight_kg=70,
+            confirmed=False,
         )
 
 
@@ -89,6 +103,7 @@ def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
         identity_reference_urls=["https://cdn.example.com/me.jpg"],
         height_cm=170,
         weight_kg=70,
+        confirmed=True,
     )
     stored = SimpleNamespace(
         prompt=recipe.prompt,
@@ -101,6 +116,7 @@ def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
         identity_reference_urls=["https://cdn.example.com/me.jpg"],
         height_cm=170,
         weight_kg=71,
+        confirmed=True,
     )
     assert not _generation_matches_recipe(stored, changed)
 

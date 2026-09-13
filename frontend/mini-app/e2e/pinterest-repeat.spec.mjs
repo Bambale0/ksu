@@ -142,6 +142,8 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
   const create = page.getByRole('button', { name: 'Создать →' });
   const price = page.locator('.pin-summary strong');
   await expect(price).toHaveText('12 ROX');
+  await expect(create).toBeDisabled();
+  await page.getByLabel('Подтверждаю права на фото').check();
   await expect(create).toBeEnabled();
 
   await page.getByLabel('Рост').fill('180');
@@ -171,6 +173,7 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
     height_cm: 180,
     weight_kg: 55,
     scene_analysis: sceneAnalysis,
+    confirmed: true,
   });
   expect(runRequest.headers()['idempotency-key']).toBeTruthy();
   await expect.poll(() => runBodies.length).toBe(1);
@@ -279,6 +282,9 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   await expect(page.getByText('сцена, свет и поза считаны с референса')).toBeVisible();
   const create = page.getByRole('button', { name: 'Создать →' });
   await expect(page.locator('.pin-summary strong')).toHaveText('12 ROX');
+  await expect(create).toBeDisabled();
+  await page.getByLabel('Подтверждаю права на фото').check();
+  await expect(create).toBeEnabled();
   await create.click();
   await expect(page.locator('.pin-error')).toContainText('Временная ошибка сети');
   await expect(create).toBeEnabled();
@@ -287,4 +293,24 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   await expect.poll(() => runKeys.length).toBe(2);
   expect(runKeys[0]).toBeTruthy();
   expect(runKeys[1]).toBe(runKeys[0]);
+});
+
+
+test('legacy Pinterest Flow route opens the canonical Pinterest Repeat experience', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/pinterest-flow/');
+
+  await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
+  await expect(page.getByPlaceholder('ссылка или текст из Pinterest')).toBeVisible();
+  await expect(page.getByLabel('Подтверждаю права на фото')).toBeVisible();
+});
+
+
+test('legacy Pinterest Flow trend link keeps the selected curated template', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  await page.goto('/mini-app/pinterest-flow/?id=trend-legacy-123');
+
+  await page.waitForURL('**/mini-app/trend/?id=trend-legacy-123');
 });
