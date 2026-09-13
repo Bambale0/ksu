@@ -357,6 +357,7 @@ class PinterestRepeatService:
         identity_reference_urls: list[str],
         height_cm: int,
         weight_kg: int,
+        confirmed: bool,
         expression: str | None = None,
     ) -> PinterestRepeatGenerationRequest:
         scene = cls._clean_url(scene_reference_url, label="Референс")
@@ -375,6 +376,10 @@ class PinterestRepeatService:
             raise PinterestRepeatError("Рост должен быть от 120 до 230 см")
         if not 30 <= weight_kg <= 250:
             raise PinterestRepeatError("Вес должен быть от 30 до 250 кг")
+        if confirmed is not True:
+            raise PinterestRepeatError(
+                "Подтвердите, что у вас есть право использовать загруженные фото человека"
+            )
 
         expression_text = (expression or "").strip()
         if len(expression_text) > cls.MAX_EXPRESSION_LENGTH:
