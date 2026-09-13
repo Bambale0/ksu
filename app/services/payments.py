@@ -625,6 +625,12 @@ class PaymentService:
             if payment.status not in cls.TERMINAL_STATUSES:
                 payment.status = "expired" if status == "expired" else "pending"
                 payment.payload = {**payment.payload, "last_provider_state": invoice}
+                if payment.status == "expired":
+                    await PromoCodeService.release_payment_reservation(
+                        session,
+                        payment=payment,
+                        reason="provider_expired",
+                    )
                 await session.commit()
             return payment
 
@@ -770,6 +776,11 @@ class PaymentService:
         }:
             payment.status = "canceled"
             payment.payload = {**payment.payload, "last_provider_state": authoritative}
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason="provider_canceled",
+            )
             await session.commit()
         elif payment.status not in cls.TERMINAL_STATUSES and payment.status != "partially_refunded":
             payment.status = "pending"
@@ -860,6 +871,12 @@ class PaymentService:
         elif payment.status not in cls.TERMINAL_STATUSES:
             payment.status = "pending"
         payment.payload = {**payment.payload, "last_provider_state": provider_payload}
+        if payment.status in {"failed", "canceled", "expired"}:
+            await PromoCodeService.release_payment_reservation(
+                session,
+                payment=payment,
+                reason=f"provider_{payment.status}",
+            )
         await session.commit()
         return payment
 
@@ -891,6 +908,12 @@ class PaymentService:
         if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
             payment.status = status
             payment.payload = {**payment.payload, "last_provider_state": provider_payload}
+            if status in {"failed", "canceled", "expired"}:
+                await PromoCodeService.release_payment_reservation(
+                    session,
+                    payment=payment,
+                    reason=f"provider_{status}",
+                )
             await session.commit()
         return payment
 
