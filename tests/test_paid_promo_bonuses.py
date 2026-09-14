@@ -32,7 +32,7 @@ def _telegram_id() -> int:
 def _payment(
     *,
     user_id: uuid.UUID,
-    amount: str = "300",
+    amount: str = "1000",
     package_id: str | None = None,
 ) -> Payment:
     return Payment(
@@ -112,10 +112,10 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
         assert redemption.status == "pending"
         assert promo.uses_count == 0
         assert await session.get(Wallet, user.id) is None
-        assert payment.rox_amount == Decimal("300")
+        assert payment.rox_amount == Decimal("1000")
         assert payment.payload["promo_bonus_status"] == "reserved"
         assert payment.payload["bonus_credits"] == "30"
-        assert payment.payload["credited_credits"] == "330"
+        assert payment.payload["credited_credits"] == "1030"
 
         completed = await PaymentService.complete(
             session,
@@ -127,10 +127,10 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
         await session.refresh(promo)
         await session.refresh(redemption)
         assert wallet is not None
-        assert wallet.balance == Decimal("330.00")
-        assert completed.rox_amount == Decimal("300")
+        assert wallet.balance == Decimal("1030.00")
+        assert completed.rox_amount == Decimal("1000")
         assert completed.payload["promo_bonus_status"] == "applied"
-        assert completed.payload["credited_credits"] == "330"
+        assert completed.payload["credited_credits"] == "1030"
         assert promo.uses_count == 1
         assert redemption.status == "applied"
         assert redemption.redeemed_at is not None
@@ -146,7 +146,7 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
         )
         assert len(transactions) == 2
         assert {(row.kind, row.amount) for row in transactions} == {
-            ("payment", Decimal("300.00")),
+            ("payment", Decimal("1000.00")),
             ("promo_bonus", Decimal("30.00")),
         }
 
@@ -219,12 +219,12 @@ async def test_reserved_promo_is_not_credited_after_shutdown(
         await session.refresh(promo)
         await session.refresh(redemption)
         assert wallet is not None
-        assert wallet.balance == Decimal("300.00")
+        assert wallet.balance == Decimal("1000.00")
         assert promo.uses_count == 0
         assert redemption.status == "released"
         assert completed.payload["promo_bonus_status"] == expected_status
         assert completed.payload["bonus_credits"] == "0"
-        assert Decimal(str(completed.payload["credited_credits"])) == Decimal("300")
+        assert Decimal(str(completed.payload["credited_credits"])) == Decimal("1000")
 
 
 @pytest.mark.asyncio
@@ -241,8 +241,8 @@ async def test_pending_reservation_respects_campaign_limit_and_releases_on_failu
         )
         session.add_all([first, second, promo])
         await session.flush()
-        first_payment = _payment(user_id=first.id, amount="500")
-        second_payment = _payment(user_id=second.id, amount="500")
+        first_payment = _payment(user_id=first.id, amount="1000")
+        second_payment = _payment(user_id=second.id, amount="1000")
         session.add_all([first_payment, second_payment])
         await session.commit()
 
@@ -268,7 +268,7 @@ async def test_pending_reservation_respects_campaign_limit_and_releases_on_failu
         )
         assert first_payment.payload["promo_bonus_status"] == "released"
         assert first_payment.payload["bonus_credits"] == "0"
-        assert Decimal(str(first_payment.payload["credited_credits"])) == Decimal("500")
+        assert Decimal(str(first_payment.payload["credited_credits"])) == Decimal("1000")
         await session.commit()
 
         preview = await PromoCodeService.preview(
@@ -304,7 +304,7 @@ async def test_full_refund_reverses_paid_rox_and_promo_bonus() -> None:
         )
         session.add_all([user, promo])
         await session.flush()
-        payment = _payment(user_id=user.id, amount="100")
+        payment = _payment(user_id=user.id, amount="1000")
         session.add(payment)
         await session.commit()
 
@@ -322,12 +322,12 @@ async def test_full_refund_reverses_paid_rox_and_promo_bonus() -> None:
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("120.00")
+        assert wallet.balance == Decimal("1020.00")
 
         refunded = await PaymentService.apply_reversal(
             session,
             payment_id=payment.id,
-            amount=Decimal("100"),
+            amount=Decimal("1000"),
             provider="yookassa",
             idempotency_key=f"test-promo-refund:{payment.id}",
             reason="refund",
@@ -352,7 +352,7 @@ async def test_preview_rejects_live_reservation_but_same_payment_retry_stays_ide
         )
         session.add_all([user, promo])
         await session.flush()
-        payment = _payment(user_id=user.id, amount="300")
+        payment = _payment(user_id=user.id, amount="1000")
         session.add(payment)
         await session.commit()
 
@@ -564,14 +564,14 @@ async def test_package_bound_promo_rejects_other_package_before_reservation() ->
         promo = PromoCode(
             code=f"PKG{uuid.uuid4().hex[:8].upper()}",
             reward_amount=Decimal("40"),
-            package_id="p500",
+            package_id="p1500",
             max_uses=100,
             uses_count=0,
             is_active=True,
         )
         session.add_all([user, promo])
         await session.flush()
-        payment = _payment(user_id=user.id, amount="300", package_id="p300")
+        payment = _payment(user_id=user.id, amount="1000", package_id="p1000")
         session.add(payment)
         await session.commit()
 
@@ -598,14 +598,14 @@ async def test_package_bound_promo_credits_only_matching_package() -> None:
         promo = PromoCode(
             code=f"PKGOK{uuid.uuid4().hex[:8].upper()}",
             reward_amount=Decimal("40"),
-            package_id="p500",
+            package_id="p1000",
             max_uses=100,
             uses_count=0,
             is_active=True,
         )
         session.add_all([user, promo])
         await session.flush()
-        payment = _payment(user_id=user.id, amount="500", package_id="p500")
+        payment = _payment(user_id=user.id, amount="1000", package_id="p1000")
         session.add(payment)
         await session.commit()
 
@@ -615,7 +615,7 @@ async def test_package_bound_promo_credits_only_matching_package() -> None:
             code=promo.code,
         )
         await session.commit()
-        assert payment.payload["promo_package_id"] == "p500"
+        assert payment.payload["promo_package_id"] == "p1000"
 
         completed = await PaymentService.complete(
             session,
@@ -624,7 +624,7 @@ async def test_package_bound_promo_credits_only_matching_package() -> None:
         )
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("540.00")
+        assert wallet.balance == Decimal("1040.00")
         assert completed.payload["promo_bonus_status"] == "applied"
 
 
@@ -683,21 +683,21 @@ async def test_rebinding_package_invalidates_existing_reservation_at_settlement(
         promo = PromoCode(
             code=f"REBIND{uuid.uuid4().hex[:8].upper()}",
             reward_amount=Decimal("20"),
-            package_id="p300",
+            package_id="p1000",
             max_uses=100,
             uses_count=0,
             is_active=True,
         )
         session.add_all([user, promo])
         await session.flush()
-        payment = _payment(user_id=user.id, amount="300", package_id="p300")
+        payment = _payment(user_id=user.id, amount="1000", package_id="p1000")
         session.add(payment)
         await session.commit()
 
         await PromoCodeService.reserve_for_payment(session, payment=payment, code=promo.code)
         await session.commit()
 
-        promo.package_id = "p500"
+        promo.package_id = "p1500"
         await session.commit()
 
         completed = await PaymentService.complete(
