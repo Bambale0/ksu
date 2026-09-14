@@ -100,11 +100,14 @@ function paymentProviderLabel(payment: Payment): string {
 }
 
 function paymentRoxSummary(payment: Payment): string {
-  const total = payment.credits || payment.rox || payment.base_credits;
-  const packageBonus = Number(payment.package_bonus_credits || 0);
+  const failed = new Set(["failed", "canceled", "expired"]).has(payment.status);
+  const packageBonus = failed ? 0 : Number(payment.package_bonus_credits || 0);
+  const total = failed
+    ? payment.base_credits || payment.rox || payment.credits
+    : payment.credits || payment.rox || payment.base_credits;
   const labels: string[] = [];
   if (packageBonus > 0) labels.push(`+${compactNumber(packageBonus)} подарок`);
-  if (payment.promo_code && payment.promo_bonus_status === "applied") {
+  if (!failed && payment.promo_code && payment.promo_bonus_status === "applied") {
     const allBonus = Number(payment.bonus_credits || 0);
     const promoBonus = Math.max(0, allBonus - packageBonus);
     if (promoBonus > 0) labels.push(`+${compactNumber(promoBonus)} по ${payment.promo_code}`);
@@ -212,8 +215,9 @@ export default function PaymentsPage() {
   const crypto2328Available = Boolean(crypto2328Catalog?.configured && Object.keys(crypto2328Catalog.packages || {}).length);
 
   useEffect(() => {
-    const ids = Object.keys(catalog?.packages || {});
-    setPackageId((current) => current && catalog?.packages[current] ? current : ids[0] || "");
+    if (!catalog) return;
+    const ids = Object.keys(catalog.packages || {});
+    setPackageId((current) => current && catalog.packages[current] ? current : ids[0] || "");
     if (provider !== "card") setCurrency("RUB");
   }, [catalog, provider]);
 
@@ -343,7 +347,7 @@ export default function PaymentsPage() {
           {selected ? <div className="profile-stats">
             <div><strong>{compactNumber(selectedBase)}</strong><span>ROX в пакете</span></div>
             <div><strong>+{compactNumber(selectedGift)}</strong><span>подарок 🎁</span></div>
-            {promo ? <div><strong>+{compactNumber(promo.reward_rox)}</strong><span>промокод {promo.code}</span></div> : null}
+            {promo ? <div><strong>+{compactNumber(promo.reward_rox)}</strong><span>по промокоду {promo.code}</span></div> : null}
             <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
           </div> : null}
 
