@@ -507,7 +507,7 @@ async def control_ticket_reply(
 async def control_promocode_packages(
     context: PromosReadDep,
 ) -> dict[str, Any]:
-    return AdminPromoService.package_catalog(admin=context.account)
+    return await AdminPromoService.package_catalog(admin=context.account)
 
 
 @router.get("/promocodes")
