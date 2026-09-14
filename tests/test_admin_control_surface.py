@@ -119,3 +119,15 @@ def test_telegram_admin_extensions_recheck_admin_for_commands_and_callbacks() ->
     assert 'Command("admin_prompt")' in source
     assert 'Command("admin_generation")' in source
     assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
+
+
+def test_nexus_test_and_quick_menu_use_active_database_admins() -> None:
+    launcher = _read(ROOT / "app" / "bot" / "handlers" / "launcher.py")
+    nexus = _read(ROOT / "app" / "bot" / "handlers" / "nexus_test.py")
+
+    assert "await _admin_account(session, telegram_id)" in launcher
+    assert "admin is not None or telegram_id in parse_bootstrap_ids()" in launcher
+    assert "async def _is_admin(session: AsyncSession" in nexus
+    assert "return await _admin_account(session, telegram_id) is not None" in nexus
+    assert "admin_telegram_id" in nexus
+    assert "await _state_authorized(state, callback.from_user.id)" in nexus
