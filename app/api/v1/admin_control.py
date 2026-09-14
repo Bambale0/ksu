@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
+from app.services.admin_entities import AdminEntityService
 from app.services.admin_exports import AdminExportService
 from app.services.admin_generation_operations import AdminGenerationOperationService
 from app.services.admin_payments import AdminPaymentService
@@ -43,6 +44,11 @@ SupportManageDep = Annotated[AdminContext, Depends(require_permission("support.m
 PromosReadDep = Annotated[AdminContext, Depends(require_permission("promocodes.read"))]
 PromosManageDep = Annotated[AdminContext, Depends(require_permission("promocodes.manage"))]
 FinanceReadDep = Annotated[AdminContext, Depends(require_permission("finance.read"))]
+EntitiesReadDep = Annotated[AdminContext, Depends(require_permission("entities.read"))]
+EntitiesManageDep = Annotated[
+    AdminContext,
+    Depends(require_permission("entities.manage", step_up=True)),
+]
 
 
 class UserReasonRequest(BaseModel):
@@ -56,6 +62,15 @@ class BalanceRequest(BaseModel):
 
 class RefundRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
+
+
+class PaymentRefundRequestBody(BaseModel):
+    amount: Decimal = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=255)
+
+
+class EntityUpdateRequest(BaseModel):
+    changes: dict[str, Any] = Field(default_factory=dict)
 
 
 class SupportAssignRequest(BaseModel):
@@ -298,6 +313,33 @@ async def control_payment_reprocess(
             session,
             admin=context.account,
             payment_id=payment_id,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/payments/{payment_id}/refund")
+async def control_payment_refund(
+    payment_id: uuid.UUID,
+    payload: PaymentRefundRequestBody,
+    request: Request,
+    context: PaymentsManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPaymentService.refund(
+            session,
+            admin=context.account,
+            payment_id=payment_id,
+            amount=payload.amount,
+            reason=payload.reason,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),
@@ -596,6 +638,81 @@ async def control_promocode_state(
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.get("/entities")
+async def control_entities_catalog(
+    context: EntitiesReadDep,
+) -> dict[str, Any]:
+    return AdminEntityService.catalog(admin=context.account)
+
+
+@router.get("/entities/{entity}")
+async def control_entities_rows(
+    entity: str,
+    context: EntitiesReadDep,
+    session: SessionDep,
+    q: str | None = Query(default=None, max_length=128),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, Any]:
+    try:
+        return await AdminEntityService.list_rows(
+            session,
+            admin=context.account,
+            entity=entity,
+            q=q,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.get("/entities/{entity}/{record_key}")
+async def control_entity_detail(
+    entity: str,
+    record_key: str,
+    context: EntitiesReadDep,
+    session: SessionDep,
+) -> dict[str, Any]:
+    try:
+        return await AdminEntityService.detail(
+            session,
+            admin=context.account,
+            entity=entity,
+            record_key=record_key,
+        )
+    except Exception as exc:
+        raise _error(exc) from exc
+
+
+@router.post("/entities/{entity}/{record_key}")
+async def control_entity_update(
+    entity: str,
+    record_key: str,
+    payload: EntityUpdateRequest,
+    request: Request,
+    context: EntitiesManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminEntityService.update(
+            session,
+            admin=context.account,
+            entity=entity,
+            record_key=record_key,
+            changes=payload.changes,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
         ),
     )
     return {**result, "idempotency_replayed": replayed}
