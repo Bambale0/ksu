@@ -10,6 +10,7 @@ type PromoPreview = {
   code: string;
   reward_rox: string;
   package_id?: string | null;
+  package_credits?: string | null;
   remaining_uses?: number | null;
   expires_at?: string | null;
   message?: string;
@@ -69,7 +70,7 @@ export default function PromocodesPage() {
               ? <div><strong>{compactNumber(result.remaining_uses, 0)}</strong><span>активаций осталось</span></div>
               : null}
           </div> : null}
-          {result ? <p className="muted">Промокод {result.code} проверен. Бонус будет зарезервирован при создании платежа и начислен только после подтверждения оплаты{result.package_id ? ` пакета ${result.package_id}` : ""}.</p> : null}
+          {result ? <p className="muted">Промокод {result.code} проверен. Бонус будет зарезервирован при создании платежа и начислен только после подтверждения оплаты{result.package_id ? ` пакета ${compactNumber(result.package_credits || result.package_id)} ROX` : ""}.</p> : null}
           <button className="secondary wide" type="button" disabled={busy || !code.trim()} onClick={() => void validate()}>
             {busy ? "Проверяю…" : "Проверить промокод"}
           </button>
