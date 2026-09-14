@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -21,7 +23,20 @@ PROMO_ERROR_MESSAGES = {
     "already_used": "Вы уже использовали этот промокод",
     "already_reserved": "Этот промокод уже привязан к другой незавершённой оплате",
     "package_mismatch": "Этот промокод действует для другого пакета",
+    "minimum_package_required": "Промокод даёт +50 ROX только на пакеты от 1000 ROX",
 }
+
+
+def _package_credits(package_id: str | None) -> Decimal | None:
+    if not package_id:
+        return None
+    package = PaymentService.packages().get(package_id)
+    if package is not None:
+        return Decimal(package.credits)
+    card_package = CardPackageCatalog.packages().get(package_id)
+    if card_package is not None:
+        return Decimal(card_package.credits)
+    return None
 
 
 async def _validate(
@@ -29,12 +44,14 @@ async def _validate(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
+    requested_package_credits = _package_credits(payload.package_id)
     try:
         promo = await PromoCodeService.preview(
             session,
             user_id=user.id,
             code=payload.code,
             package_id=payload.package_id,
+            base_credits=requested_package_credits,
         )
     except PromoCodeError as exc:
         raise HTTPException(
@@ -46,28 +63,19 @@ async def _validate(
         ) from exc
 
     remaining_uses = await PromoCodeService.remaining_uses(session, promo=promo)
-    package_credits = None
-    if promo.package_id:
-        payment_package = PaymentService.packages().get(promo.package_id)
-        card_package = CardPackageCatalog.packages().get(promo.package_id)
-        package = payment_package or card_package
-        if package is not None:
-            package_credits = str(package.credits)
+    bound_package_credits = _package_credits(promo.package_id)
     return {
         "status": "valid",
         "code": promo.code,
         "reward_rox": str(promo.reward_amount),
         "package_id": promo.package_id,
-        "package_credits": package_credits,
+        "package_credits": str(bound_package_credits) if bound_package_credits is not None else None,
+        "min_package_credits": str(PromoCodeService.MIN_PROMO_BASE_CREDITS),
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
         "message": (
-            f"После успешной оплаты начислим +{promo.reward_amount} ROX"
-            + (
-                f" для пакета {package_credits} ROX"
-                if package_credits
-                else (f" для пакета {promo.package_id}" if promo.package_id else "")
-            )
+            f"Промокод добавит +{promo.reward_amount} ROX сверх подарка пакета "
+            f"при оплате от {PromoCodeService.MIN_PROMO_BASE_CREDITS} ROX"
         ),
     }
 
