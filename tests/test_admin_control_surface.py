@@ -119,3 +119,24 @@ def test_telegram_admin_extensions_recheck_admin_for_commands_and_callbacks() ->
     assert 'Command("admin_prompt")' in source
     assert 'Command("admin_generation")' in source
     assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
+
+def test_promo_control_surface_manages_codes_per_pricing_package() -> None:
+    js = _read(ADMIN / "control.js")
+    backend = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
+    promo_service = _read(ROOT / "app" / "services" / "admin_promos.py")
+
+    for token in (
+        "/api/v1/admin/control/promocodes/packages",
+        "Добавить промокод",
+        "Промокоды по пакетам",
+        "/package",
+        "package_id",
+    ):
+        assert token in js, token
+
+    assert '@router.get("/promocodes/packages")' in backend
+    assert '@router.post("/promocodes/{promo_id}/package")' in backend
+    assert "package_id: str | None" in backend
+    assert "def package_catalog" in promo_service
+    assert "async def set_package" in promo_service
+
