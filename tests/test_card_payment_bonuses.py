@@ -156,10 +156,11 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
             "payment_provider": None,
         }
         assert Decimal(payment.amount) == Decimal("326.1")
-        assert Decimal(payment.rox_amount) == Decimal("300")
+        assert Decimal(payment.rox_amount) == Decimal("330.00")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["bonus_credits"] == "0"
-        assert payment.payload["credited_credits"] == "300"
+        assert payment.payload["package_bonus_credits"] == "30.00"
+        assert payment.payload["bonus_credits"] == "30.00"
+        assert payment.payload["credited_credits"] == "330.00"
 
         await CardPaymentService.complete(
             session,
@@ -169,7 +170,7 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("300.00")
+        assert wallet.balance == Decimal("330.00")
         assert seen["referral_basis"] == Decimal("300")
 
 
@@ -361,13 +362,21 @@ def test_card_checkout_response_accepts_lava_payment_url_aliases() -> None:
     assert CardCheckoutClient.extract_payment_url(data) == "https://pay.example/1"
 
 
-def test_top_up_packages_never_add_automatic_bonus() -> None:
-    for amount in (100, 300, 500, 1000, 2000, 5000):
-        assert TopUpBonusService.bonus_for(amount) == Decimal("0")
-        assert TopUpBonusService.total_for(amount) == Decimal(str(amount))
+def test_top_up_packages_add_ten_percent_gift() -> None:
+    expected = {
+        100: Decimal("10.00"),
+        300: Decimal("30.00"),
+        500: Decimal("50.00"),
+        1000: Decimal("100.00"),
+        2000: Decimal("200.00"),
+        5000: Decimal("500.00"),
+    }
+    for amount, gift in expected.items():
+        assert TopUpBonusService.bonus_for(amount) == gift
+        assert TopUpBonusService.total_for(amount) == Decimal(str(amount)) + gift
 
 
-def test_wallet_does_not_render_automatic_bonus_badges() -> None:
+def test_wallet_renders_package_gift_and_promo_copy() -> None:
     page = (FRONTEND / "app" / "page.tsx").read_text(encoding="utf-8")
     wallet = (FRONTEND / "components" / "wallet-parity.tsx").read_text(encoding="utf-8")
     payments = (FRONTEND / "app" / "payments" / "page.tsx").read_text(encoding="utf-8")
@@ -376,7 +385,9 @@ def test_wallet_does_not_render_automatic_bonus_badges() -> None:
     assert "<WalletParity />" in page
     assert "package-bonus-live" not in wallet
     assert "bonus_credits" not in wallet
-    assert "Дополнительные ROX доступны только по промокоду" in payments
+    assert "У каждого пакета есть подарок +10% ROX" in payments
+    assert "Есть промокод? +50 ROX при пакете от 1000 ROX" in payments
+    assert "ROX 🎁" in payments
     assert "Есть промокод?" in wallet
 
 

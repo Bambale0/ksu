@@ -21,10 +21,12 @@ class PromoCodeService:
     """Paid top-up promo codes.
 
     A promo code reserves a fixed ROX gift for a payment intent. The gift is
-    credited only after the provider confirms successful payment.
+    credited only after the provider confirms successful payment. Product promo
+    bonuses are intentionally limited to packages with at least 1000 base ROX.
     """
 
     RESERVATION_TTL = timedelta(days=7)
+    MIN_PROMO_BASE_CREDITS = Decimal("1000")
 
     @staticmethod
     def normalize(code: str | None) -> str:
@@ -37,6 +39,8 @@ class PromoCodeService:
         *,
         user_id: uuid.UUID,
         code: str,
+        package_id: str | None = None,
+        base_credits: Decimal | None = None,
     ) -> PromoCode:
         normalized = cls.normalize(code)
         promo = await session.scalar(select(PromoCode).where(PromoCode.code == normalized))
@@ -44,6 +48,8 @@ class PromoCodeService:
             session,
             promo=promo,
             user_id=user_id,
+            package_id=package_id,
+            base_credits=base_credits,
             allow_pending_reservation=False,
         )
         assert promo is not None
@@ -64,10 +70,15 @@ class PromoCodeService:
         promo = await session.scalar(
             select(PromoCode).where(PromoCode.code == normalized).with_for_update()
         )
+        payload = payment.payload or {}
+        payment_package_id = str(payload.get("package_id") or "").strip() or None
+        base_credits = Decimal(str(payload.get("base_credits") or payment.rox_amount))
         await cls._validate_available(
             session,
             promo=promo,
             user_id=payment.user_id,
+            package_id=payment_package_id,
+            base_credits=base_credits,
             allow_pending_reservation=True,
         )
         assert promo is not None
@@ -194,6 +205,26 @@ class PromoCodeService:
             )
             return Decimal("0")
 
+        payment_package_id = str(payload.get("package_id") or "").strip() or None
+        if promo.package_id is not None and promo.package_id != payment_package_id:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="package_mismatch",
+                reason="package_mismatch",
+            )
+            return Decimal("0")
+
+        base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        if base < cls.MIN_PROMO_BASE_CREDITS:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="minimum_package_required",
+                reason="minimum_package_required",
+            )
+            return Decimal("0")
+
         if reward <= 0:
             reward = Decimal(promo.reward_amount)
         if reward <= 0:
@@ -218,12 +249,12 @@ class PromoCodeService:
         redemption.status = "applied"
         redemption.reserved_until = None
         redemption.redeemed_at = now
-        base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        package_bonus = Decimal(str(payload.get("package_bonus_credits") or "0"))
         payment.payload = {
             **payload,
             "promo_bonus_status": "applied",
-            "bonus_credits": str(reward),
-            "credited_credits": str(base + reward),
+            "bonus_credits": str(package_bonus + reward),
+            "credited_credits": str(base + package_bonus + reward),
         }
         return reward
 
@@ -262,13 +293,15 @@ class PromoCodeService:
     ) -> None:
         payload = payment.payload or {}
         base_credits = str(payload.get("base_credits") or payment.rox_amount)
+        package_bonus = Decimal(str(payload.get("package_bonus_credits") or "0"))
+        base_total = Decimal(base_credits) + package_bonus
         redemption.status = "released"
         redemption.reserved_until = None
         redemption.redeemed_at = None
         updates: dict[str, object] = {
             "promo_bonus_status": status,
-            "bonus_credits": "0",
-            "credited_credits": base_credits,
+            "bonus_credits": str(package_bonus),
+            "credited_credits": str(base_total),
         }
         if reason:
             updates["promo_release_reason"] = reason[:64]
@@ -281,6 +314,8 @@ class PromoCodeService:
         *,
         promo: PromoCode | None,
         user_id: uuid.UUID,
+        package_id: str | None,
+        base_credits: Decimal | None,
         allow_pending_reservation: bool,
     ) -> None:
         if promo is None or not promo.is_active:
@@ -288,6 +323,13 @@ class PromoCodeService:
         now = datetime.now(UTC)
         if promo.expires_at and promo.expires_at <= now:
             raise PromoCodeError("expired", "Promo code has expired")
+        if promo.package_id is not None and package_id is not None and promo.package_id != package_id:
+            raise PromoCodeError("package_mismatch", "Promo code is not valid for this package")
+        if base_credits is not None and base_credits < cls.MIN_PROMO_BASE_CREDITS:
+            raise PromoCodeError(
+                "minimum_package_required",
+                "Promo code requires a package from 1000 ROX",
+            )
 
         existing = await session.scalar(
             select(PromoRedemption).where(
@@ -367,16 +409,18 @@ class PromoCodeService:
     def _attach_payload(payment: Payment, promo: PromoCode) -> None:
         payload = payment.payload or {}
         base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        package_bonus = Decimal(str(payload.get("package_bonus_credits") or "0"))
         reward = Decimal(promo.reward_amount)
         payment.payload = {
             **payload,
             "base_credits": str(base),
             "promo_id": str(promo.id),
             "promo_code": promo.code,
+            "promo_package_id": promo.package_id,
             "promo_reward_credits": str(reward),
             "promo_bonus_status": "reserved",
-            "bonus_credits": str(reward),
-            "credited_credits": str(base + reward),
+            "bonus_credits": str(package_bonus + reward),
+            "credited_credits": str(base + package_bonus + reward),
         }
 
     @classmethod

@@ -80,7 +80,7 @@ def test_project_promo_assets_remain_canonical() -> None:
     assert 'style.display = "none"' not in parity_hub
 
 
-def test_wallet_promos_are_explicit_and_never_render_automatic_bonus_badges() -> None:
+def test_wallet_promos_are_explicit_and_package_gifts_are_shown_at_checkout() -> None:
     root = ROOT / "frontend/mini-app"
     component = (root / "components/wallet-parity.tsx").read_text(encoding="utf-8")
     payments = (root / "app/payments/page.tsx").read_text(encoding="utf-8")
@@ -91,4 +91,6 @@ def test_wallet_promos_are_explicit_and_never_render_automatic_bonus_badges() ->
     assert "/mini-app/payments/" in component
     assert "/api/v1/promocodes/validate" in payments
     assert "promo_code" in payments
-    assert "Дополнительные ROX доступны только по промокоду" in payments
+    assert "У каждого пакета есть подарок +10% ROX" in payments
+    assert "Есть промокод? +50 ROX при пакете от 1000 ROX" in payments
+    assert "ROX 🎁" in payments

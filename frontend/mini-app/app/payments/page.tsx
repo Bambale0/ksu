@@ -34,6 +34,9 @@ type PromoPreview = {
   status: "valid";
   code: string;
   reward_rox: string;
+  package_id?: string | null;
+  package_credits?: string | null;
+  min_package_credits?: string | null;
   remaining_uses?: number | null;
   expires_at?: string | null;
   message?: string;
@@ -50,6 +53,7 @@ type Payment = {
   rox?: string;
   base_credits?: string;
   bonus_credits?: string;
+  package_bonus_credits?: string;
   promo_code?: string;
   promo_bonus_status?: string;
   payment_url?: string;
@@ -60,6 +64,13 @@ type Payment = {
 const TERMINAL = new Set(["succeeded", "refunded", "partially_refunded", "failed", "canceled", "expired"]);
 const CRYPTOBOT_PROVIDER = "cryptobot";
 const AMBIGUOUS_CREATION = new Set(["creating", "creation_unknown"]);
+const PROMO_MIN_PACKAGE_ROX = 1000;
+
+function packageGift(credits: string | number | undefined): number {
+  const base = Number(credits || 0);
+  if (!Number.isFinite(base) || base <= 0) return 0;
+  return Math.round(base * 10) / 100;
+}
 
 function initialProvider(): Provider {
   if (typeof window !== "undefined") {
@@ -75,6 +86,11 @@ function initialPromoCode(): string {
   return new URLSearchParams(window.location.search).get("promo")?.trim().toUpperCase() || "";
 }
 
+function initialPackageId(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("package")?.trim() || "";
+}
+
 function paymentProviderLabel(payment: Payment): string {
   if (payment.label) return payment.label;
   if (payment.provider === "yookassa") return "ЮKassa";
@@ -84,19 +100,19 @@ function paymentProviderLabel(payment: Payment): string {
 }
 
 function paymentRoxSummary(payment: Payment): string {
-  const hasPromo = Boolean(payment.promo_code);
-  const promoApplied = hasPromo && payment.promo_bonus_status === "applied";
-  const credited = hasPromo && !promoApplied
+  const failed = new Set(["failed", "canceled", "expired"]).has(payment.status);
+  const packageBonus = failed ? 0 : Number(payment.package_bonus_credits || 0);
+  const total = failed
     ? payment.base_credits || payment.rox || payment.credits
     : payment.credits || payment.rox || payment.base_credits;
-  const bonus = Number(payment.bonus_credits || 0);
-  let bonusLabel = "";
-  if (bonus > 0 && promoApplied) {
-    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code}`;
-  } else if (bonus > 0 && !hasPromo) {
-    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} бонус`;
+  const labels: string[] = [];
+  if (packageBonus > 0) labels.push(`+${compactNumber(packageBonus)} подарок`);
+  if (!failed && payment.promo_code && payment.promo_bonus_status === "applied") {
+    const allBonus = Number(payment.bonus_credits || 0);
+    const promoBonus = Math.max(0, allBonus - packageBonus);
+    if (promoBonus > 0) labels.push(`+${compactNumber(promoBonus)} по ${payment.promo_code}`);
   }
-  return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${bonusLabel}`;
+  return `${total ? `${compactNumber(total)} ROX` : payment.package_id}${labels.length ? ` · ${labels.join(" · ")}` : ""}`;
 }
 
 export default function PaymentsPage() {
@@ -106,7 +122,7 @@ export default function PaymentsPage() {
   const [crypto2328Catalog, setCrypto2328Catalog] = useState<PackageResponse | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [provider, setProvider] = useState<Provider>(initialProvider);
-  const [packageId, setPackageId] = useState("");
+  const [packageId, setPackageId] = useState(initialPackageId);
   const [currency, setCurrency] = useState<Currency>("RUB");
   const [email, setEmail] = useState("");
   const [promoCode, setPromoCode] = useState(initialPromoCode);
@@ -127,23 +143,15 @@ export default function PaymentsPage() {
     const nextCardCatalog = cardResult.status === "fulfilled" ? cardResult.value : null;
     const nextYooKassaCatalog = yooKassaResult.status === "fulfilled" ? yooKassaResult.value : null;
     const nextCryptoBotCatalog = cryptoBotResult.status === "fulfilled" ? cryptoBotResult.value : null;
-    const cardReady = Boolean(
-      nextCardCatalog?.configured && Object.keys(nextCardCatalog.packages || {}).length,
-    );
-    const yooKassaReady = Boolean(
-      nextYooKassaCatalog?.configured && Object.keys(nextYooKassaCatalog.packages || {}).length,
-    );
-    const cryptoBotReady = Boolean(
-      nextCryptoBotCatalog?.configured && Object.keys(nextCryptoBotCatalog.packages || {}).length,
-    );
+    const cardReady = Boolean(nextCardCatalog?.configured && Object.keys(nextCardCatalog.packages || {}).length);
+    const yooKassaReady = Boolean(nextYooKassaCatalog?.configured && Object.keys(nextYooKassaCatalog.packages || {}).length);
+    const cryptoBotReady = Boolean(nextCryptoBotCatalog?.configured && Object.keys(nextCryptoBotCatalog.packages || {}).length);
 
     setCardCatalog(nextCardCatalog);
     setYooKassaCatalog(nextYooKassaCatalog);
     setCryptoBotCatalog(nextCryptoBotCatalog);
     setCrypto2328Catalog(null);
-    if (paymentsResult.status === "fulfilled") {
-      setPayments(paymentsResult.value.items || []);
-    }
+    if (paymentsResult.status === "fulfilled") setPayments(paymentsResult.value.items || []);
     setProvider((current) => {
       if (current === "card" && cardReady) return "card";
       if (current === "cryptobot" && cryptoBotReady) return "cryptobot";
@@ -154,12 +162,8 @@ export default function PaymentsPage() {
     });
 
     const loadErrors: string[] = [];
-    if (!yooKassaReady && !cardReady && !cryptoBotReady) {
-      loadErrors.push("Пополнение сейчас недоступно. Попробуйте ещё раз позже.");
-    }
-    if (paymentsResult.status === "rejected") {
-      loadErrors.push("Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.");
-    }
+    if (!yooKassaReady && !cardReady && !cryptoBotReady) loadErrors.push("Пополнение сейчас недоступно. Попробуйте ещё раз позже.");
+    if (paymentsResult.status === "rejected") loadErrors.push("Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.");
     setError(loadErrors.join(" "));
   };
 
@@ -172,7 +176,7 @@ export default function PaymentsPage() {
     try {
       const next = await customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
         method: "POST",
-        body: JSON.stringify({ code: normalized }),
+        body: JSON.stringify({ code: normalized, package_id: packageId || null }),
       });
       setPromo(next);
       setPromoCode(next.code);
@@ -186,9 +190,7 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
-    const savedEmail = typeof localStorage !== "undefined"
-      ? localStorage.getItem("roxy-billing-email") || ""
-      : "";
+    const savedEmail = typeof localStorage !== "undefined" ? localStorage.getItem("roxy-billing-email") || "" : "";
     setEmail(savedEmail);
     void load();
 
@@ -196,82 +198,61 @@ export default function PaymentsPage() {
     if (code) {
       void customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, package_id: initialPackageId() || null }),
       }).then((next) => {
         setPromo(next);
         setPromoCode(next.code);
         setNotice(next.message || `Промокод применён. После успешной оплаты получите +${compactNumber(next.reward_rox)} ROX.`);
-      }).catch(() => {
-        setPromo(null);
-      });
+      }).catch(() => setPromo(null));
     }
   }, []);
 
-  const catalog = provider === "card"
-    ? cardCatalog
-    : provider === "yookassa"
-      ? yooKassaCatalog
-      : provider === "cryptobot"
-        ? cryptoBotCatalog
-        : crypto2328Catalog;
+  const catalog = provider === "card" ? cardCatalog : provider === "yookassa" ? yooKassaCatalog : provider === "cryptobot" ? cryptoBotCatalog : crypto2328Catalog;
   const activeCurrency: Currency = provider === "card" ? currency : "RUB";
-  const cardAvailable = Boolean(
-    cardCatalog?.configured && Object.keys(cardCatalog.packages || {}).length,
-  );
-  const yooKassaAvailable = Boolean(
-    yooKassaCatalog?.configured && Object.keys(yooKassaCatalog.packages || {}).length,
-  );
-  const cryptoBotAvailable = Boolean(
-    cryptoBotCatalog?.configured && Object.keys(cryptoBotCatalog.packages || {}).length,
-  );
-  const crypto2328Available = Boolean(
-    crypto2328Catalog?.configured && Object.keys(crypto2328Catalog.packages || {}).length,
-  );
+  const cardAvailable = Boolean(cardCatalog?.configured && Object.keys(cardCatalog.packages || {}).length);
+  const yooKassaAvailable = Boolean(yooKassaCatalog?.configured && Object.keys(yooKassaCatalog.packages || {}).length);
+  const cryptoBotAvailable = Boolean(cryptoBotCatalog?.configured && Object.keys(cryptoBotCatalog.packages || {}).length);
+  const crypto2328Available = Boolean(crypto2328Catalog?.configured && Object.keys(crypto2328Catalog.packages || {}).length);
 
   useEffect(() => {
-    const ids = Object.keys(catalog?.packages || {});
-    setPackageId((current) => current && catalog?.packages[current] ? current : ids[0] || "");
+    if (!catalog) return;
+    const ids = Object.keys(catalog.packages || {});
+    setPackageId((current) => current && catalog.packages[current] ? current : ids[0] || "");
     if (provider !== "card") setCurrency("RUB");
   }, [catalog, provider]);
 
   const selected = packageId ? catalog?.packages[packageId] : null;
+  const selectedBase = Number(selected?.credits || 0);
+  const selectedGift = packageGift(selected?.credits);
+
+  useEffect(() => {
+    if (!promo || !packageId) return;
+    if (promo.package_id && promo.package_id !== packageId) {
+      setPromo(null);
+      setNotice(`Промокод ${promo.code} действует для другого пакета. Выберите нужный пакет или примените другой код.`);
+      return;
+    }
+    if (selectedBase > 0 && selectedBase < PROMO_MIN_PACKAGE_ROX) {
+      setPromo(null);
+      setNotice(`Промокод действует только на пакеты от ${PROMO_MIN_PACKAGE_ROX} ROX.`);
+    }
+  }, [packageId, promo, selectedBase]);
+
   const price = selected?.prices[activeCurrency];
   const promoReward = Number(promo?.reward_rox || 0);
-  const totalRox = Number(selected?.credits || 0) + promoReward;
-  const providerLabel = provider === "card"
-    ? "Lava Top"
-    : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
-  const providerAvailable = provider === "card"
-    ? cardAvailable
-    : provider === "yookassa"
-      ? yooKassaAvailable
-      : provider === "cryptobot"
-        ? cryptoBotAvailable
-        : crypto2328Available;
-  const supportedPayments = useMemo(
-    () => payments.filter((item) => (
-      item.provider === "card"
-      || item.provider === "yookassa"
-      || item.provider === CRYPTOBOT_PROVIDER
-      || item.provider === "2328"
-    )),
-    [payments],
-  );
+  const totalRox = selectedBase + selectedGift + promoReward;
+  const providerLabel = provider === "card" ? "Lava Top" : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
+  const providerAvailable = provider === "card" ? cardAvailable : provider === "yookassa" ? yooKassaAvailable : provider === "cryptobot" ? cryptoBotAvailable : crypto2328Available;
+  const supportedPayments = useMemo(() => payments.filter((item) => item.provider === "card" || item.provider === "yookassa" || item.provider === CRYPTOBOT_PROVIDER || item.provider === "2328"), [payments]);
 
   const checkout = async () => {
     if (!packageId || !price || busy || (provider === "card" && !email.trim())) return;
     if (promoCode.trim() && !promo) {
-      setError("Сначала примените промокод или очистите поле.");
+      setError(`Промокод можно применить только к пакету от ${PROMO_MIN_PACKAGE_ROX} ROX. Выберите подходящий пакет или очистите поле.`);
       return;
     }
     const activePromo = promo?.code || "";
-    const intent: CheckoutIntent = {
-      provider,
-      packageId,
-      currency: activeCurrency,
-      billingEmail: provider === "card" ? email.trim() : "",
-      promoCode: activePromo,
-    };
+    const intent: CheckoutIntent = { provider, packageId, currency: activeCurrency, billingEmail: provider === "card" ? email.trim() : "", promoCode: activePromo };
     const requestKey = checkoutIdempotencyKey(intent);
 
     setBusy("checkout");
@@ -280,79 +261,34 @@ export default function PaymentsPage() {
     try {
       let payment: Payment;
       if (provider === "yookassa") {
-        payment = await customerRequest<Payment>("/api/v1/payments", {
-          method: "POST",
-          headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({
-            provider: "yookassa",
-            package_id: packageId,
-            promo_code: activePromo || null,
-          }),
-        });
+        payment = await customerRequest<Payment>("/api/v1/payments", { method: "POST", headers: { "Idempotency-Key": requestKey }, body: JSON.stringify({ provider: "yookassa", package_id: packageId, promo_code: activePromo || null }) });
       } else if (provider === "cryptobot") {
-        payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
-          method: "POST",
-          headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
-        });
+        payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", { method: "POST", headers: { "Idempotency-Key": requestKey }, body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }) });
       } else if (provider === "2328") {
-        payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", {
-          method: "POST",
-          headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
-        });
+        payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", { method: "POST", headers: { "Idempotency-Key": requestKey }, body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }) });
       } else {
-        payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", {
-          method: "POST",
-          headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({
-            package_id: packageId,
-            currency,
-            billing_email: email.trim(),
-            promo_code: activePromo || null,
-          }),
-        });
+        payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", { method: "POST", headers: { "Idempotency-Key": requestKey }, body: JSON.stringify({ package_id: packageId, currency, billing_email: email.trim(), promo_code: activePromo || null }) });
         localStorage.setItem("roxy-billing-email", email.trim());
       }
 
-      setPayments((current) => [
-        payment,
-        ...current.filter((item) => item.id !== payment.id),
-      ]);
-
+      setPayments((current) => [payment, ...current.filter((item) => item.id !== payment.id)]);
       if (AMBIGUOUS_CREATION.has(payment.status)) {
-        setNotice(
-          "Предыдущая попытка оплаты уже зарегистрирована. Второй счёт не создаём — проверьте её статус в истории ниже.",
-        );
+        setNotice("Предыдущая попытка оплаты уже зарегистрирована. Второй счёт не создаём — проверьте её статус в истории ниже.");
         return;
       }
-
       if (!payment.payment_url) {
         if (TERMINAL.has(payment.status)) {
           clearCheckoutIdempotencyKey(intent, requestKey);
-          setNotice(
-            payment.status === "succeeded"
-              ? "Оплата уже подтверждена, ROX начислены."
-              : `Текущий статус оплаты: ${payment.status}`,
-          );
+          setNotice(payment.status === "succeeded" ? "Оплата уже подтверждена, ROX начислены." : `Текущий статус оплаты: ${payment.status}`);
         } else {
-          setNotice(
-            "Оплата уже зарегистрирована, но ссылка ещё не получена. Второй счёт не создаём — проверьте статус в истории ниже.",
-          );
+          setNotice("Оплата уже зарегистрирована, но ссылка ещё не получена. Второй счёт не создаём — проверьте статус в истории ниже.");
         }
         return;
       }
-
-      if (!openPaymentLink(payment.payment_url)) {
-        throw new Error("Не удалось открыть платёжную ссылку");
-      }
+      if (!openPaymentLink(payment.payment_url)) throw new Error("Не удалось открыть платёжную ссылку");
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = activePromo ? ` Промобонус +${compactNumber(promo?.reward_rox)} ROX начислится только после успешной оплаты.` : "";
-      setNotice(
-        provider === "card"
-          ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
-          : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.${promoHint}`,
-      );
+      const promoHint = activePromo ? ` Промокод добавит ещё +${compactNumber(promo?.reward_rox)} ROX поверх подарка пакета.` : "";
+      setNotice(provider === "card" ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}` : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.${promoHint}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось создать оплату");
     } finally {
@@ -365,22 +301,10 @@ export default function PaymentsPage() {
     setError("");
     setNotice("");
     try {
-      const path = payment.provider === "yookassa"
-        ? `/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile`
-        : payment.provider === "2328"
-          ? `/api/v1/payments/crypto/2328/${encodeURIComponent(payment.id)}/reconcile`
-          : payment.provider === CRYPTOBOT_PROVIDER
-            ? `/api/v1/payments/crypto/${encodeURIComponent(payment.id)}/reconcile`
-            : `/api/v1/payments/card/${encodeURIComponent(payment.id)}/reconcile`;
+      const path = payment.provider === "yookassa" ? `/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile` : payment.provider === "2328" ? `/api/v1/payments/crypto/2328/${encodeURIComponent(payment.id)}/reconcile` : payment.provider === CRYPTOBOT_PROVIDER ? `/api/v1/payments/crypto/${encodeURIComponent(payment.id)}/reconcile` : `/api/v1/payments/card/${encodeURIComponent(payment.id)}/reconcile`;
       const next = await customerRequest<Payment>(path, { method: "POST" });
-      setPayments((current) => current.map((item) => (
-        item.id === next.id ? { ...item, ...next } : item
-      )));
-      setNotice(
-        next.status === "succeeded"
-          ? "Оплата подтверждена, ROX начислены."
-          : `Текущий статус: ${next.status}`,
-      );
+      setPayments((current) => current.map((item) => item.id === next.id ? { ...item, ...next } : item));
+      setNotice(next.status === "succeeded" ? "Оплата подтверждена, ROX начислены." : `Текущий статус: ${next.status}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось обновить статус оплаты");
     } finally {
@@ -388,18 +312,10 @@ export default function PaymentsPage() {
     }
   };
 
-  const providerHint = provider === "yookassa"
-    ? "ЮKassa — оплата в рублях. Доступный способ выберите на защищённой странице оплаты."
-    : provider === "cryptobot"
-      ? "CryptoBot — основной крипто-способ. На странице счёта выберите удобную монету и сеть."
-      : "2328 — дополнительный крипто-способ. На странице оплаты выберите удобную монету и сеть.";
+  const providerHint = provider === "yookassa" ? "ЮKassa — оплата в рублях. Доступный способ выберите на защищённой странице оплаты." : provider === "cryptobot" ? "CryptoBot — основной крипто-способ. На странице счёта выберите удобную монету и сеть." : "2328 — дополнительный крипто-способ. На странице оплаты выберите удобную монету и сеть.";
 
   return (
-    <StandaloneShell
-      kicker="Баланс"
-      title="Пополнения ROX"
-      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Пакеты начисляют ровно указанное количество ROX. Дополнительные ROX доступны только по промокоду после успешной оплаты."
-    >
+    <StandaloneShell kicker="Баланс" title="Пополнения ROX" copy="У каждого пакета есть подарок +10% ROX. Промокод даёт дополнительные +50 ROX на пакетах от 1000 ROX и складывается с подарком пакета.">
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
 
@@ -417,39 +333,33 @@ export default function PaymentsPage() {
         {!yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
-          <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
-            <strong>{compactNumber(item.credits)} ROX</strong>
-            <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
-          </button>)}</div>
+          <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => {
+            const gift = packageGift(item.credits);
+            return <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
+              <strong>{compactNumber(item.credits)} ROX</strong>
+              <small>+{compactNumber(gift)} ROX 🎁</small>
+              <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
+            </button>;
+          })}</div>
 
           {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
 
           {selected ? <div className="profile-stats">
-            <div><strong>{compactNumber(selected.credits)}</strong><span>ROX в пакете</span></div>
+            <div><strong>{compactNumber(selectedBase)}</strong><span>ROX в пакете</span></div>
+            <div><strong>+{compactNumber(selectedGift)}</strong><span>подарок 🎁</span></div>
             {promo ? <div><strong>+{compactNumber(promo.reward_rox)}</strong><span>по промокоду {promo.code}</span></div> : null}
             <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
           </div> : null}
 
           <div className="form-stack">
             <label className="field">
-              <span className="label">Есть промокод?</span>
-              <input
-                className="control"
-                maxLength={64}
-                value={promoCode}
-                onChange={(event) => {
-                  setPromoCode(event.target.value.toUpperCase());
-                  setPromo(null);
-                  setNotice("");
-                }}
-                placeholder="Например, KSENIA50"
-                autoCapitalize="characters"
-              />
+              <span className="label">Есть промокод? +50 ROX при пакете от 1000 ROX</span>
+              <input className="control" maxLength={64} value={promoCode} onChange={(event) => { setPromoCode(event.target.value.toUpperCase()); setPromo(null); setNotice(""); }} placeholder="Например, KSENIA50" autoCapitalize="characters" />
             </label>
-            <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
-              {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : "Применить промокод"}
+            <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim() || selectedBase < PROMO_MIN_PACKAGE_ROX} onClick={() => void validatePromo()}>
+              {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : selectedBase < PROMO_MIN_PACKAGE_ROX ? `Доступно от ${PROMO_MIN_PACKAGE_ROX} ROX` : "Применить промокод"}
             </button>
-            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты.</small> : null}
+            {promo ? <small className="muted">+{compactNumber(promo.reward_rox)} ROX добавятся сверх подарка пакета после успешной оплаты.</small> : null}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>

@@ -11,9 +11,57 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import AdminAccount, PromoCode
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
+from app.services.card_payments import CardPackageCatalog
+from app.services.payments import PaymentService
 
 
 class AdminPromoService:
+    @staticmethod
+    async def package_catalog(*, admin: AdminAccount) -> dict[str, Any]:
+        AdminPolicy.require_permission(admin, "promocodes.read")
+        items: dict[str, dict[str, Any]] = {}
+        for package_id, package in PaymentService.packages().items():
+            items[package_id] = {
+                "package_id": package_id,
+                "credits": str(package.credits),
+                "prices": {package.currency: str(package.amount)},
+            }
+        for package_id, package in (await CardPackageCatalog.provider_packages()).items():
+            item = items.setdefault(
+                package_id,
+                {
+                    "package_id": package_id,
+                    "credits": str(package.credits),
+                    "prices": {},
+                },
+            )
+            item["credits"] = str(package.credits)
+            item["prices"] = {
+                **dict(item.get("prices") or {}),
+                **{currency: str(amount) for currency, amount in package.prices.items()},
+            }
+        return {
+            "items": sorted(
+                items.values(),
+                key=lambda item: (Decimal(item["credits"]), item["package_id"]),
+            )
+        }
+
+    @staticmethod
+    def _normalize_package_id(package_id: str | None) -> str | None:
+        return str(package_id or "").strip() or None
+
+    @classmethod
+    async def _assert_package_known(cls, package_id: str | None) -> None:
+        if package_id is None:
+            return
+        known = {
+            *PaymentService.packages().keys(),
+            *(await CardPackageCatalog.provider_packages()).keys(),
+        }
+        if package_id not in known:
+            raise ValueError("Unknown promo package")
+
     @staticmethod
     async def list_promos(
         session: AsyncSession,
@@ -63,6 +111,7 @@ class AdminPromoService:
             "id": str(item.id),
             "code": item.code,
             "reward_credits": str(item.reward_amount),
+            "package_id": item.package_id,
             "max_uses": item.max_uses,
             "uses_count": item.uses_count,
             "is_active": item.is_active,
@@ -83,6 +132,7 @@ class AdminPromoService:
         idempotency_key: str,
         request_id: str,
         confirmed: bool,
+        package_id: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
         normalized = code.strip().upper()
@@ -92,6 +142,7 @@ class AdminPromoService:
             raise ValueError("Promo code contains unsupported characters")
         if reward_credits <= 0 or reward_credits > Decimal("100000"):
             raise ValueError("Invalid promo reward")
+        normalized_package_id = AdminPromoService._normalize_package_id(package_id)
         if max_uses is not None and not 1 <= max_uses <= 10_000_000:
             raise ValueError("Invalid promo max_uses")
         if expires_at is not None and expires_at.utcoffset() is None:
@@ -99,6 +150,7 @@ class AdminPromoService:
         payload = {
             "code": normalized,
             "reward_credits": str(reward_credits),
+            "package_id": normalized_package_id,
             "max_uses": max_uses,
             "expires_at": expires_at.isoformat() if expires_at else None,
         }
@@ -106,11 +158,13 @@ class AdminPromoService:
         async def operation() -> dict[str, Any]:
             if expires_at is not None and expires_at <= datetime.now(UTC):
                 raise ValueError("Promo expiration must be in the future")
+            await AdminPromoService._assert_package_known(normalized_package_id)
             if await session.scalar(select(PromoCode).where(PromoCode.code == normalized)):
                 raise ValueError("Promo code already exists")
             promo = PromoCode(
                 code=normalized,
                 reward_amount=reward_credits,
+                package_id=normalized_package_id,
                 max_uses=max_uses,
                 is_active=True,
                 expires_at=expires_at,
@@ -126,6 +180,44 @@ class AdminPromoService:
             request_id=request_id,
             action="promos.manage",
             target_id=normalized,
+            request_payload=payload,
+            operation=operation,
+        )
+
+    @staticmethod
+    async def set_package(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        promo_id: uuid.UUID,
+        package_id: str | None,
+        idempotency_key: str,
+        request_id: str,
+        confirmed: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
+        normalized_package_id = AdminPromoService._normalize_package_id(package_id)
+        payload = {"package_id": normalized_package_id}
+
+        async def operation() -> dict[str, Any]:
+            await AdminPromoService._assert_package_known(normalized_package_id)
+            promo = await session.scalar(
+                select(PromoCode).where(PromoCode.id == promo_id).with_for_update()
+            )
+            if promo is None:
+                raise LookupError("Promo code not found")
+            promo.package_id = normalized_package_id
+            await session.flush()
+            await session.refresh(promo)
+            return AdminPromoService._view(promo)
+
+        return await AdminCommandLedger.execute(
+            session,
+            idempotency_key=idempotency_key,
+            admin_user_id=admin.id,
+            request_id=request_id,
+            action="promos.manage",
+            target_id=str(promo_id),
             request_payload=payload,
             operation=operation,
         )

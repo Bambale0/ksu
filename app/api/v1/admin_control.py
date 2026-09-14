@@ -74,8 +74,13 @@ class SupportReplyRequest(BaseModel):
 class PromoCreateRequest(BaseModel):
     code: str = Field(min_length=3, max_length=64)
     reward_credits: Decimal = Field(gt=0, le=100_000)
+    package_id: str | None = Field(default=None, max_length=64)
     max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
     expires_at: datetime | None = None
+
+
+class PromoPackageRequest(BaseModel):
+    package_id: str | None = Field(default=None, max_length=64)
 
 
 class PromoStateRequest(BaseModel):
@@ -498,6 +503,13 @@ async def control_ticket_reply(
     return {**result, "idempotency_replayed": replayed}
 
 
+@router.get("/promocodes/packages")
+async def control_promocode_packages(
+    context: PromosReadDep,
+) -> dict[str, Any]:
+    return await AdminPromoService.package_catalog(admin=context.account)
+
+
 @router.get("/promocodes")
 async def control_promocodes(
     context: PromosReadDep,
@@ -528,8 +540,34 @@ async def control_promocode_create(
             admin=context.account,
             code=payload.code,
             reward_credits=payload.reward_credits,
+            package_id=payload.package_id,
             max_uses=payload.max_uses,
             expires_at=payload.expires_at,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/promocodes/{promo_id}/package")
+async def control_promocode_package(
+    promo_id: uuid.UUID,
+    payload: PromoPackageRequest,
+    request: Request,
+    context: PromosManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.set_package(
+            session,
+            admin=context.account,
+            promo_id=promo_id,
+            package_id=payload.package_id,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),
