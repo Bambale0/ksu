@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Payment
 from app.db.payment_models import PaymentRequest
 from app.providers.payments import CreatedPayment
+from app.services.payment_bonuses import TopUpBonusService
 
 
 class PaymentIdempotencyConflict(ValueError):
@@ -40,6 +42,20 @@ class PaymentCreationLifecycle:
         if not request_key or len(request_key) > 64:
             raise ValueError("Idempotency key must contain 1-64 characters")
 
+    @staticmethod
+    def _apply_package_bonus(payment: Payment) -> None:
+        payload = payment.payload or {}
+        base_credits = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        package_bonus = TopUpBonusService.bonus_for(base_credits)
+        payment.rox_amount = base_credits + package_bonus
+        payment.payload = {
+            **payload,
+            "base_credits": str(base_credits),
+            "package_bonus_credits": str(package_bonus),
+            "bonus_credits": str(package_bonus),
+            "credited_credits": str(base_credits + package_bonus),
+        }
+
     @classmethod
     async def begin(
         cls,
@@ -65,6 +81,7 @@ class PaymentCreationLifecycle:
         if existing is not None:
             return PaymentCreationResult(existing, None, False)
 
+        cls._apply_package_bonus(payment)
         session.add(payment)
         await session.flush()
         request_row = PaymentRequest(
