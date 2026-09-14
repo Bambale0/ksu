@@ -17,7 +17,7 @@ from app.services.payments import PaymentService
 
 class AdminPromoService:
     @staticmethod
-    def package_catalog(*, admin: AdminAccount) -> dict[str, Any]:
+    async def package_catalog(*, admin: AdminAccount) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "promocodes.read")
         items: dict[str, dict[str, Any]] = {}
         for package_id, package in PaymentService.packages().items():
@@ -26,7 +26,7 @@ class AdminPromoService:
                 "credits": str(package.credits),
                 "prices": {package.currency: str(package.amount)},
             }
-        for package_id, package in CardPackageCatalog.packages().items():
+        for package_id, package in (await CardPackageCatalog.provider_packages()).items():
             item = items.setdefault(
                 package_id,
                 {
