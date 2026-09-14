@@ -34,6 +34,7 @@ type PromoPreview = {
   status: "valid";
   code: string;
   reward_rox: string;
+  package_id?: string | null;
   remaining_uses?: number | null;
   expires_at?: string | null;
   message?: string;
@@ -75,6 +76,11 @@ function initialPromoCode(): string {
   return new URLSearchParams(window.location.search).get("promo")?.trim().toUpperCase() || "";
 }
 
+function initialPackageId(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("package")?.trim() || "";
+}
+
 function paymentProviderLabel(payment: Payment): string {
   if (payment.label) return payment.label;
   if (payment.provider === "yookassa") return "ЮKassa";
@@ -106,7 +112,7 @@ export default function PaymentsPage() {
   const [crypto2328Catalog, setCrypto2328Catalog] = useState<PackageResponse | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [provider, setProvider] = useState<Provider>(initialProvider);
-  const [packageId, setPackageId] = useState("");
+  const [packageId, setPackageId] = useState(initialPackageId);
   const [currency, setCurrency] = useState<Currency>("RUB");
   const [email, setEmail] = useState("");
   const [promoCode, setPromoCode] = useState(initialPromoCode);
@@ -172,7 +178,7 @@ export default function PaymentsPage() {
     try {
       const next = await customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
         method: "POST",
-        body: JSON.stringify({ code: normalized }),
+        body: JSON.stringify({ code: normalized, package_id: packageId || null }),
       });
       setPromo(next);
       setPromoCode(next.code);
@@ -196,7 +202,7 @@ export default function PaymentsPage() {
     if (code) {
       void customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, package_id: initialPackageId() || null }),
       }).then((next) => {
         setPromo(next);
         setPromoCode(next.code);
@@ -233,6 +239,12 @@ export default function PaymentsPage() {
     setPackageId((current) => current && catalog?.packages[current] ? current : ids[0] || "");
     if (provider !== "card") setCurrency("RUB");
   }, [catalog, provider]);
+
+  useEffect(() => {
+    if (!promo?.package_id || !packageId || promo.package_id === packageId) return;
+    setPromo(null);
+    setNotice(`Промокод ${promo.code} действует для другого пакета. Выберите нужный пакет или примените другой код.`);
+  }, [packageId, promo]);
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
@@ -449,7 +461,7 @@ export default function PaymentsPage() {
             <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
               {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : "Применить промокод"}
             </button>
-            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты.</small> : null}
+            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты{promo.package_id ? ` пакета ${promo.package_id}` : ""}.</small> : null}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>
