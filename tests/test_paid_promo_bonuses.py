@@ -157,7 +157,7 @@ async def test_promo_bonus_is_reserved_then_credited_only_after_successful_payme
         )
         await session.refresh(wallet)
         await session.refresh(promo)
-        assert wallet.balance == Decimal("330.00")
+        assert wallet.balance == Decimal("1030.00")
         assert promo.uses_count == 1
 
 
@@ -412,8 +412,8 @@ async def test_concurrent_reservations_cannot_oversubscribe_last_promo_slot() ->
         )
         session.add_all([first, second, promo])
         await session.flush()
-        first_payment = _payment(user_id=first.id, amount="500")
-        second_payment = _payment(user_id=second.id, amount="500")
+        first_payment = _payment(user_id=first.id, amount="1000")
+        second_payment = _payment(user_id=second.id, amount="1000")
         session.add_all([first_payment, second_payment])
         await session.commit()
         promo_id = promo.id
@@ -707,7 +707,7 @@ async def test_rebinding_package_invalidates_existing_reservation_at_settlement(
         )
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("300.00")
+        assert wallet.balance == Decimal("1000.00")
         assert completed.payload["promo_bonus_status"] == "package_mismatch"
         assert completed.payload["bonus_credits"] == "0"
 
