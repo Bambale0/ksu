@@ -812,50 +812,108 @@
   }
 
   async function renderPromos() {
-    const data = await api("/api/v1/admin/control/promocodes");
-    const createButton = button("Create promo", "primary", () => openForm({
-      title: "Create promo code",
+    const [data, packageData] = await Promise.all([
+      api("/api/v1/admin/control/promocodes"),
+      api("/api/v1/admin/control/promocodes/packages"),
+    ]);
+    const packages = packageData.items || [];
+    const packageOptions = [
+      ["", "Все пакеты"],
+      ...packages.map((item) => [
+        item.package_id,
+        `${item.credits} ROX · ${Object.entries(item.prices || {}).map(([currency, amount]) => `${amount} ${currency}`).join(" / ")}`,
+      ]),
+    ];
+    const promos = data.items || [];
+
+    const openPromoCreate = (presetPackageId = "") => openForm({
+      title: presetPackageId ? `Промокод для пакета ${presetPackageId}` : "Создать промокод",
       fields: [
-        { name: "code", label: "Code" },
-        { name: "reward_credits", label: "Reward ROX", type: "number", step: "0.01" },
-        { name: "max_uses", label: "Successful activations limit", type: "number", required: false },
-        { name: "expires_at", label: "Expires at (optional)", type: "datetime-local", required: false },
+        { name: "code", label: "Код" },
+        { name: "reward_credits", label: "Бонус ROX", type: "number", step: "0.01" },
+        { name: "package_id", label: "Пакет", type: "select", options: packageOptions, value: presetPackageId, required: false },
+        { name: "max_uses", label: "Лимит успешных активаций", type: "number", required: false },
+        { name: "expires_at", label: "Действует до", type: "datetime-local", required: false },
       ],
-      onSubmit: async ({ code, reward_credits, max_uses, expires_at }) => {
+      onSubmit: async ({ code, reward_credits, package_id, max_uses, expires_at }) => {
         await mutate("/api/v1/admin/control/promocodes", {
           body: {
             code,
             reward_credits,
+            package_id: package_id || null,
             max_uses: max_uses ? Number(max_uses) : null,
             expires_at: expires_at ? new Date(expires_at).toISOString() : null,
           },
-          label: `Create promo ${code}?`,
+          label: `Создать промокод ${code}${package_id ? ` для пакета ${package_id}` : ""}?`,
         });
-        toast("Promo created", "ok");
+        toast("Промокод создан", "ok");
         await renderPromos();
       },
-    }));
+    });
+
+    const packageTable = table(
+      ["Пакет", "Цена", "Промокоды", "Действия"],
+      packages,
+      (row) => {
+        const linked = promos.filter((promo) => promo.package_id === row.package_id);
+        const prices = Object.entries(row.prices || {})
+          .map(([currency, amount]) => `${amount} ${currency}`)
+          .join(" / ");
+        return [
+          `${row.credits} ROX · ${row.package_id}`,
+          prices || "—",
+          linked.length
+            ? linked.map((promo) => `${promo.code} (+${promo.reward_credits})`).join(", ")
+            : "Нет",
+          actions(button("Добавить промокод", "table-action", () => openPromoCreate(row.package_id))),
+        ];
+      },
+    );
+
+    const createButton = button("Создать промокод", "primary", () => openPromoCreate(""));
     const promoTable = table(
-      ["Code", "Reward", "Usage", "Expires", "Status", "Actions"],
-      data.items || [],
+      ["Код", "Пакет", "Бонус", "Использование", "Срок", "Статус", "Действия"],
+      promos,
       (row) => [
         row.code,
+        row.package_id || "Все пакеты",
         row.reward_credits,
         `${row.uses_count}/${row.max_uses || "∞"}`,
         row.expires_at ? new Date(row.expires_at).toLocaleString("ru-RU") : "∞",
-        row.is_active ? "active" : "inactive",
-        actions(button(row.is_active ? "Deactivate" : "Activate", "table-action", async () => {
-          try {
-            await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
-              body: { is_active: !row.is_active },
-              label: `${row.is_active ? "Deactivate" : "Activate"} promo ${row.code}?`,
-            });
-            await renderPromos();
-          } catch (error) { toast(error.message, "error"); }
-        })),
+        row.is_active ? "Активен" : "Отключён",
+        actions(
+          button("Пакет", "table-action", () => openForm({
+            title: `Привязка промокода ${row.code}`,
+            fields: [
+              { name: "package_id", label: "Пакет", type: "select", options: packageOptions, value: row.package_id || "", required: false },
+            ],
+            onSubmit: async ({ package_id }) => {
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}/package`, {
+                body: { package_id: package_id || null },
+                label: package_id
+                  ? `Привязать ${row.code} к пакету ${package_id}?`
+                  : `Разрешить ${row.code} для всех пакетов?`,
+              });
+              toast("Привязка промокода обновлена", "ok");
+              await renderPromos();
+            },
+          })),
+          button(row.is_active ? "Отключить" : "Включить", "table-action", async () => {
+            try {
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
+                body: { is_active: !row.is_active },
+                label: `${row.is_active ? "Отключить" : "Включить"} промокод ${row.code}?`,
+              });
+              await renderPromos();
+            } catch (error) { toast(error.message, "error"); }
+          }),
+        ),
       ],
     );
-    dom.controlView.replaceChildren(card("Promo management", promoTable, actions(createButton)));
+    dom.controlView.replaceChildren(
+      card("Промокоды по пакетам", packageTable, actions(createButton)),
+      card("Все промокоды", promoTable),
+    );
   }
 
   async function renderContent() {
