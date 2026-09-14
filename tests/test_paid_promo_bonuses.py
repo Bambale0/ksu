@@ -19,6 +19,7 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.db.session import SessionFactory
+import app.services.admin_promos as admin_promos_module
 from app.services.admin_promos import AdminPromoService
 from app.services.payments import PaymentService
 from app.services.promocodes import PromoCodeError, PromoCodeService
@@ -483,4 +484,62 @@ async def test_admin_promo_rejects_past_or_timezone_less_expiration(
                 request_id=f"test:{uuid.uuid4()}",
                 confirmed=True,
             )
+
+@pytest.mark.asyncio
+async def test_admin_promo_create_replay_survives_expiration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = AdminAccount(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        role="admin",
+        permission_overrides={"allow": ["promocodes.manage"]},
+        is_active=True,
+    )
+    before_expiry = datetime(2030, 1, 1, 12, tzinfo=UTC)
+    expires_at = datetime(2030, 1, 2, 12, tzinfo=UTC)
+    after_expiry = datetime(2030, 1, 3, 12, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        current = before_expiry
+
+        @classmethod
+        def now(cls, tz=None):
+            value = cls.current
+            return value if tz is None else value.astimezone(tz)
+
+    monkeypatch.setattr(admin_promos_module, "datetime", FrozenDateTime)
+
+    key = f"test-promo-replay:{uuid.uuid4()}"
+    code = f"REPLAY{uuid.uuid4().hex[:8].upper()}"
+    async with SessionFactory() as session:
+        first, replayed = await AdminPromoService.create(
+            session,
+            admin=admin,
+            code=code,
+            reward_credits=Decimal("10"),
+            max_uses=100,
+            expires_at=expires_at,
+            idempotency_key=key,
+            request_id=f"test:{uuid.uuid4()}",
+            confirmed=True,
+        )
+        await session.commit()
+        assert replayed is False
+        assert first["code"] == code
+
+        FrozenDateTime.current = after_expiry
+        second, replayed = await AdminPromoService.create(
+            session,
+            admin=admin,
+            code=code,
+            reward_credits=Decimal("10"),
+            max_uses=100,
+            expires_at=expires_at,
+            idempotency_key=key,
+            request_id=f"test:{uuid.uuid4()}",
+            confirmed=True,
+        )
+        assert replayed is True
+        assert second == first
 
