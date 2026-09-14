@@ -36,11 +36,7 @@ async def _validate(
             },
         ) from exc
 
-    remaining_uses = (
-        max(0, promo.max_uses - promo.uses_count)
-        if promo.max_uses is not None
-        else None
-    )
+    remaining_uses = await PromoCodeService.remaining_uses(session, promo=promo)
     return {
         "status": "valid",
         "code": promo.code,
