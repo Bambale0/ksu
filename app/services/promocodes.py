@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +20,9 @@ class PromoCodeError(ValueError):
 class PromoCodeService:
     """Paid top-up promo codes.
 
-    A promo code reserves a fixed ROX gift for a payment intent. The gift is
-    credited only after the provider confirms successful payment.
+    A promo code reserves a percentage-based ROX bonus for a payment intent.
+    The absolute ROX bonus is snapshotted on the payment and credited only after
+    the provider confirms successful payment.
     """
 
     RESERVATION_TTL = timedelta(days=7)
@@ -29,6 +30,14 @@ class PromoCodeService:
     @staticmethod
     def normalize(code: str | None) -> str:
         return str(code or "").strip().upper()
+
+    @staticmethod
+    def calculate_reward(*, base_credits: Decimal, reward_percent: Decimal) -> Decimal:
+        if base_credits <= 0 or reward_percent <= 0:
+            return Decimal("0")
+        return (
+            base_credits * reward_percent / Decimal("100")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @classmethod
     async def preview(
@@ -208,7 +217,11 @@ class PromoCodeService:
             return Decimal("0")
 
         if reward <= 0:
-            reward = Decimal(promo.reward_amount)
+            base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+            reward = cls.calculate_reward(
+                base_credits=base,
+                reward_percent=Decimal(promo.reward_percent),
+            )
         if reward <= 0:
             cls._release_bonus(
                 payment=payment,
@@ -379,17 +392,22 @@ class PromoCodeService:
         if promo.uses_count + pending >= promo.max_uses:
             raise PromoCodeError("usage_limit_reached", "Promo code usage limit reached")
 
-    @staticmethod
-    def _attach_payload(payment: Payment, promo: PromoCode) -> None:
+    @classmethod
+    def _attach_payload(cls, payment: Payment, promo: PromoCode) -> None:
         payload = payment.payload or {}
         base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
-        reward = Decimal(promo.reward_amount)
+        reward_percent = Decimal(promo.reward_percent)
+        reward = cls.calculate_reward(
+            base_credits=base,
+            reward_percent=reward_percent,
+        )
         payment.payload = {
             **payload,
             "base_credits": str(base),
             "promo_id": str(promo.id),
             "promo_code": promo.code,
             "promo_package_id": promo.package_id,
+            "promo_reward_percent": str(reward_percent),
             "promo_reward_credits": str(reward),
             "promo_bonus_status": "reserved",
             "bonus_credits": str(reward),
