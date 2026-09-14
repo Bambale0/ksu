@@ -464,14 +464,18 @@ async def test_concurrent_reservations_cannot_oversubscribe_last_promo_slot() ->
 async def test_admin_promo_rejects_past_or_timezone_less_expiration(
     expires_at: datetime,
 ) -> None:
-    admin = AdminAccount(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        role="admin",
-        permission_overrides={"allow": ["promocodes.manage"]},
-        is_active=True,
-    )
     async with SessionFactory() as session:
+        admin_user = User(telegram_id=_telegram_id(), first_name="Promo Admin")
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
         with pytest.raises(ValueError):
             await AdminPromoService.create(
                 session,
@@ -489,13 +493,6 @@ async def test_admin_promo_rejects_past_or_timezone_less_expiration(
 async def test_admin_promo_create_replay_survives_expiration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    admin = AdminAccount(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        role="admin",
-        permission_overrides={"allow": ["promocodes.manage"]},
-        is_active=True,
-    )
     before_expiry = datetime(2030, 1, 1, 12, tzinfo=UTC)
     expires_at = datetime(2030, 1, 2, 12, tzinfo=UTC)
     after_expiry = datetime(2030, 1, 3, 12, tzinfo=UTC)
@@ -513,6 +510,18 @@ async def test_admin_promo_create_replay_survives_expiration(
     key = f"test-promo-replay:{uuid.uuid4()}"
     code = f"REPLAY{uuid.uuid4().hex[:8].upper()}"
     async with SessionFactory() as session:
+        admin_user = User(telegram_id=_telegram_id(), first_name="Promo Replay Admin")
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
         first, replayed = await AdminPromoService.create(
             session,
             admin=admin,
