@@ -15,7 +15,8 @@ const model = {
 };
 
 const cryptoPackages = {
-  starter: { credits: '100.00', bonus_credits: '0', total_credits: '100.00', prices: { RUB: '100.00' } },
+  starter: { credits: '100.00', bonus_credits: '10.00', total_credits: '110.00', prices: { RUB: '100.00' } },
+  pro: { credits: '1000.00', bonus_credits: '100.00', total_credits: '1100.00', prices: { RUB: '1000.00' } },
 };
 
 async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
@@ -108,7 +109,7 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
   });
 }
 
-test('quick wallet shows exact package ROX without automatic bonuses', async ({ page }) => {
+test('quick wallet shows package ROX with automatic gift', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=profile');
@@ -119,7 +120,7 @@ test('quick wallet shows exact package ROX without automatic bonuses', async ({ 
   await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: /100 ROX/ })).toBeVisible();
-  await expect(page.getByText(/\+10 бонус/)).toHaveCount(0);
+  await expect(page.getByText('+10 ROX 🎁', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
@@ -166,12 +167,13 @@ test('promo code previews a bonus but only attaches it to checkout', async ({ pa
           status: 'pending',
           provider: 'yookassa',
           label: 'ЮKassa',
-          package_id: 'starter',
-          amount: '100.00',
+          package_id: 'pro',
+          amount: '1000.00',
           currency: 'RUB',
-          credits: '125.00',
-          base_credits: '100.00',
-          bonus_credits: '25.00',
+          credits: '1125.00',
+          base_credits: '1000.00',
+          package_bonus_credits: '100.00',
+          bonus_credits: '125.00',
           promo_code: 'KSENIA25',
           promo_bonus_status: 'reserved',
           payment_url: 'https://pay.example/promo',
@@ -180,11 +182,11 @@ test('promo code previews a bonus but only attaches it to checkout', async ({ pa
     }
     return route.fallback();
   });
-  await page.goto('/mini-app/payments/?promo=KSENIA25');
+  await page.goto('/mini-app/payments/?promo=KSENIA25&package=pro');
 
   await expect(page.getByText('по промокоду KSENIA25')).toBeVisible();
-  await expect(page.getByText('125', { exact: true })).toBeVisible();
-  await expect(page.getByText(/только после успешной оплаты/).first()).toBeVisible();
+  await expect(page.getByText('1125', { exact: true })).toBeVisible();
+  await expect(page.getByText(/после успешной оплаты/).first()).toBeVisible();
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
   await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
 });
