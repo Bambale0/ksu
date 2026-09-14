@@ -40,7 +40,12 @@ class PromoCodeService:
     ) -> PromoCode:
         normalized = cls.normalize(code)
         promo = await session.scalar(select(PromoCode).where(PromoCode.code == normalized))
-        await cls._validate_available(session, promo=promo, user_id=user_id)
+        await cls._validate_available(
+            session,
+            promo=promo,
+            user_id=user_id,
+            allow_pending_reservation=False,
+        )
         assert promo is not None
         return promo
 
@@ -59,7 +64,12 @@ class PromoCodeService:
         promo = await session.scalar(
             select(PromoCode).where(PromoCode.code == normalized).with_for_update()
         )
-        await cls._validate_available(session, promo=promo, user_id=payment.user_id)
+        await cls._validate_available(
+            session,
+            promo=promo,
+            user_id=payment.user_id,
+            allow_pending_reservation=True,
+        )
         assert promo is not None
 
         now = datetime.now(UTC)
@@ -271,6 +281,7 @@ class PromoCodeService:
         *,
         promo: PromoCode | None,
         user_id: uuid.UUID,
+        allow_pending_reservation: bool,
     ) -> None:
         if promo is None or not promo.is_active:
             raise PromoCodeError("invalid", "Promo code is invalid")
@@ -286,19 +297,50 @@ class PromoCodeService:
         )
         if existing is not None and existing.status == "applied":
             raise PromoCodeError("already_used", "Promo code already used")
+
+        has_live_reservation = (
+            existing is not None
+            and existing.status == "pending"
+            and existing.reserved_until is not None
+            and existing.reserved_until > now
+        )
+        if has_live_reservation and not allow_pending_reservation:
+            raise PromoCodeError(
+                "already_reserved",
+                "Promo code is already reserved for another payment",
+            )
+
         await cls._check_capacity(
             session,
             promo=promo,
             now=now,
             exclude_redemption_id=(
-                existing.id
-                if existing is not None
-                and existing.status == "pending"
-                and existing.reserved_until is not None
-                and existing.reserved_until > now
-                else None
+                existing.id if has_live_reservation and allow_pending_reservation else None
             ),
         )
+
+    @staticmethod
+    async def remaining_uses(
+        session: AsyncSession,
+        *,
+        promo: PromoCode,
+    ) -> int | None:
+        if promo.max_uses is None:
+            return None
+        now = datetime.now(UTC)
+        pending = int(
+            (
+                await session.scalar(
+                    select(func.count(PromoRedemption.id)).where(
+                        PromoRedemption.promo_id == promo.id,
+                        PromoRedemption.status == "pending",
+                        PromoRedemption.reserved_until > now,
+                    )
+                )
+            )
+            or 0
+        )
+        return max(0, promo.max_uses - promo.uses_count - pending)
 
     @staticmethod
     async def _check_capacity(
