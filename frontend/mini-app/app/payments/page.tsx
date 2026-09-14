@@ -462,7 +462,7 @@ export default function PaymentsPage() {
             <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
               {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : "Применить промокод"}
             </button>
-            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты{promo.package_id ? ` пакета ${compactNumber(promo.package_credits || selected?.credits || promo.package_id)} ROX` : ""}.</small> : null}
+            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты{promo.package_id ? ` пакета ${promo.package_credits ? `${compactNumber(promo.package_credits)} ROX` : promo.package_id}` : ""}.</small> : null}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>
