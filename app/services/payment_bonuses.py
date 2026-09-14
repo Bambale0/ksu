@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 
 class TopUpBonusService:
-    """Legacy compatibility shim.
+    """Automatic package gift shown directly on each top-up price.
 
-    Automatic package bonuses are disabled. Promotional ROX may only be granted
-    through a valid promo code attached to a successfully paid top-up.
+    Product rule: every paid package receives +10% ROX. Examples:
+    100 -> +10, 300 -> +30, 500 -> +50, 1000 -> +100.
+    Promo codes are a separate additive bonus handled by PromoCodeService.
     """
 
-    BONUS_ROX_BY_BASE_CREDITS: dict[Decimal, Decimal] = {}
+    BONUS_RATE = Decimal("0.10")
 
     @classmethod
     def bonus_for(cls, credits: Decimal | int | str) -> Decimal:
-        _ = credits
-        return Decimal("0")
+        base = Decimal(str(credits))
+        if base <= 0:
+            return Decimal("0")
+        return (base * cls.BONUS_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @classmethod
     def total_for(cls, credits: Decimal | int | str) -> Decimal:
-        return Decimal(str(credits))
+        base = Decimal(str(credits))
+        return base + cls.bonus_for(base)
