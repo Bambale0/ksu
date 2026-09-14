@@ -120,12 +120,12 @@ class AdminPromoService:
         admin: AdminAccount,
         code: str,
         reward_credits: Decimal,
-        package_id: str | None,
         max_uses: int | None,
         expires_at: datetime | None,
         idempotency_key: str,
         request_id: str,
         confirmed: bool,
+        package_id: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
         normalized = code.strip().upper()
