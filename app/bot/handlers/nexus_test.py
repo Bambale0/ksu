@@ -59,13 +59,19 @@ async def _is_admin(session: AsyncSession, telegram_id: int | None) -> bool:
     return await _admin_account(session, telegram_id) is not None
 
 
-async def _state_authorized(state: FSMContext, telegram_id: int | None) -> bool:
+async def _state_authorized(
+    state: FSMContext,
+    session: AsyncSession,
+    telegram_id: int | None,
+) -> bool:
     if telegram_id is None:
         return False
-    if telegram_id in parse_bootstrap_ids():
-        return True
     data = await state.get_data()
-    return int(data.get("admin_telegram_id") or 0) == telegram_id
+    if int(data.get("admin_telegram_id") or 0) != telegram_id:
+        return False
+    # Authorization is live, not a snapshot: a deactivated DB admin must lose
+    # access before any later step can spend provider balance.
+    return await _is_admin(session, telegram_id)
 
 
 def _cancel_keyboard() -> InlineKeyboardMarkup:
@@ -222,8 +228,12 @@ async def nexus_test_start(
 
 
 @router.callback_query(F.data == "nexus-test:cancel")
-async def nexus_test_cancel(callback: CallbackQuery, state: FSMContext) -> None:
-    if not await _state_authorized(state, callback.from_user.id):
+async def nexus_test_cancel(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    if not await _state_authorized(state, session, callback.from_user.id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
@@ -234,8 +244,12 @@ async def nexus_test_cancel(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(NexusTestStates.references, F.data == "nexus-test:refs:clear")
-async def nexus_test_clear_references(callback: CallbackQuery, state: FSMContext) -> None:
-    if not await _state_authorized(state, callback.from_user.id):
+async def nexus_test_clear_references(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    if not await _state_authorized(state, session, callback.from_user.id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
@@ -249,8 +263,12 @@ async def nexus_test_clear_references(callback: CallbackQuery, state: FSMContext
 
 
 @router.callback_query(NexusTestStates.references, F.data == "nexus-test:refs:done")
-async def nexus_test_references_done(callback: CallbackQuery, state: FSMContext) -> None:
-    if not await _state_authorized(state, callback.from_user.id):
+async def nexus_test_references_done(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    if not await _state_authorized(state, session, callback.from_user.id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
@@ -269,9 +287,13 @@ async def nexus_test_references_done(callback: CallbackQuery, state: FSMContext)
 
 
 @router.message(NexusTestStates.references)
-async def nexus_test_collect_reference(message: Message, state: FSMContext) -> None:
+async def nexus_test_collect_reference(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
     telegram_id = message.from_user.id if message.from_user else None
-    if not await _state_authorized(state, telegram_id):
+    if not await _state_authorized(state, session, telegram_id):
         await _deny(message, state)
         return
 
@@ -303,9 +325,13 @@ async def nexus_test_collect_reference(message: Message, state: FSMContext) -> N
 
 
 @router.message(NexusTestStates.prompt)
-async def nexus_test_prompt(message: Message, state: FSMContext) -> None:
+async def nexus_test_prompt(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
     telegram_id = message.from_user.id if message.from_user else None
-    if not await _state_authorized(state, telegram_id):
+    if not await _state_authorized(state, session, telegram_id):
         await _deny(message, state)
         return
 
@@ -326,8 +352,12 @@ async def nexus_test_prompt(message: Message, state: FSMContext) -> None:
 
 
 @router.callback_query(NexusTestStates.aspect_ratio, F.data.startswith("nexus-test:ratio:"))
-async def nexus_test_aspect_ratio(callback: CallbackQuery, state: FSMContext) -> None:
-    if not await _state_authorized(state, callback.from_user.id):
+async def nexus_test_aspect_ratio(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    if not await _state_authorized(state, session, callback.from_user.id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
@@ -346,8 +376,13 @@ async def nexus_test_aspect_ratio(callback: CallbackQuery, state: FSMContext) ->
 
 
 @router.callback_query(NexusTestStates.image_size, F.data.startswith("nexus-test:size:"))
-async def nexus_test_generate(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
-    if not await _state_authorized(state, callback.from_user.id):
+async def nexus_test_generate(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    session: AsyncSession,
+) -> None:
+    if not await _state_authorized(state, session, callback.from_user.id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
