@@ -16,6 +16,7 @@ def test_operational_health_covers_every_production_worker() -> None:
         "payment-worker",
         "media-worker",
         "prompt-tool-worker",
+        "nexus-test-worker",
         "notification-worker",
         "admin-support-worker",
         "admin-campaign-worker",

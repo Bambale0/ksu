@@ -12,6 +12,7 @@ OPERATIONAL_WORKERS = (
     "payment-worker",
     "media-worker",
     "prompt-tool-worker",
+    "nexus-test-worker",
     "notification-worker",
     "admin-support-worker",
     "admin-campaign-worker",

@@ -10,13 +10,13 @@ from app.bot.handlers.nexus_test import (
     NEXUS_TEST_ASPECT_RATIOS,
     NEXUS_TEST_IMAGE_SIZES,
     _aspect_ratio_keyboard,
-    _data_url,
     _image_size_keyboard,
     _is_env_admin,
     _references_keyboard,
 )
 from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
 from app.core.config import settings
+from app.services.nexus_admin_tasks import _data_url
 from app.providers.nexus import (
     NANO_BANANA_PRO_ASPECT_RATIOS,
     NANO_BANANA_PRO_MAX_REFERENCES,
@@ -185,18 +185,26 @@ def test_nexus_router_is_registered_before_customer_catch_all() -> None:
     )
 
 
-def test_handler_rechecks_env_admin_and_reads_secret_from_env() -> None:
+def test_handler_rechecks_env_admin_and_enqueues_durable_nexus_job() -> None:
     source = Path("app/bot/handlers/nexus_test.py").read_text(encoding="utf-8")
     assert "parse_bootstrap_ids" in source
-    assert 'os.environ.get("NEXUS_API_KEY"' in source
-    assert 'os.environ.get("NEXUS_API_BASE_URL"' in source
+    assert "settings.nexus_api_key" in source
     assert "NexusTestStates.references" in source
     assert "NexusTestStates.aspect_ratio" in source
     assert "NexusTestStates.image_size" in source
-    assert "image_urls=image_urls" in source
+    assert "NexusAdminTaskService.enqueue" in source
+    assert "references=references" in source
     assert "image_size=image_size" in source
     assert "aspect_ratio=aspect_ratio" in source
-    assert "timeout_seconds=240" in source
+    assert "await client.wait_for_task" not in source
+
+    worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
+    assert "NexusAdminTaskService.claim" in worker
+    assert "NexusAdminTaskService.process" in worker
+
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+    assert "nexus-test-worker:" in compose
+    assert "python -m app.workers.nexus_test" in compose
 
     provider = Path("app/providers/nexus.py").read_text(encoding="utf-8")
     assert '"model_name": "nano-banana-pro"' in provider
