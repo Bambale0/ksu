@@ -84,15 +84,11 @@ class PromoCode(TimestampMixin, Base):
         UniqueConstraint("code"),
         Index("ix_promo_codes_code", "code", unique=True),
         Index("ix_promo_codes_package_active", "package_id", "is_active"),
-        CheckConstraint(
-            "reward_percent > 0 AND reward_percent <= 1000",
-            name="ck_promo_codes_reward_percent",
-        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
-    reward_percent: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    reward_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     package_id: Mapped[str | None] = mapped_column(String(64), index=False)
     max_uses: Mapped[int | None] = mapped_column(Integer)
     uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
