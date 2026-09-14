@@ -57,10 +57,11 @@ async def test_yookassa_payment_credits_exact_package_rox_without_automatic_bonu
         )
 
         assert Decimal(payment.amount) == Decimal("300")
-        assert Decimal(payment.rox_amount) == Decimal("300")
+        assert Decimal(payment.rox_amount) == Decimal("330.00")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["bonus_credits"] == "0"
-        assert payment.payload["credited_credits"] == "300"
+        assert payment.payload["package_bonus_credits"] == "30.00"
+        assert payment.payload["bonus_credits"] == "30.00"
+        assert payment.payload["credited_credits"] == "330.00"
 
         # Regression: server-side onupdate used to leave updated_at expired
         # after create/commit, so reading it in an async session raised
@@ -81,4 +82,4 @@ async def test_yookassa_payment_credits_exact_package_rox_without_automatic_bonu
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("300.00")
+        assert wallet.balance == Decimal("330.00")
