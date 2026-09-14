@@ -33,6 +33,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(
         {
             "dashboard.read",
+            "entities.read",
+            "entities.manage",
             "users.read",
             "users.pii",
             "users.manage",
@@ -68,6 +70,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "finance": frozenset(
         {
             "dashboard.read",
+            "entities.read",
             "users.read",
             "users.pii",
             "users.wallet.adjust",
@@ -92,6 +95,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "auditor": frozenset(
         {
             "dashboard.read",
+            "entities.read",
             "users.read",
             "generations.read",
             "payments.read",
