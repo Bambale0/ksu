@@ -202,7 +202,7 @@ export default function PaymentsPage() {
     if (code) {
       void customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, package_id: initialPackageId() || null }),
       }).then((next) => {
         setPromo(next);
         setPromoCode(next.code);
