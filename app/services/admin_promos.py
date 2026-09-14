@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -94,6 +94,11 @@ class AdminPromoService:
             raise ValueError("Invalid promo reward")
         if max_uses is not None and not 1 <= max_uses <= 10_000_000:
             raise ValueError("Invalid promo max_uses")
+        if expires_at is not None:
+            if expires_at.utcoffset() is None:
+                raise ValueError("Promo expiration must include timezone")
+            if expires_at <= datetime.now(UTC):
+                raise ValueError("Promo expiration must be in the future")
         payload = {
             "code": normalized,
             "reward_credits": str(reward_credits),
