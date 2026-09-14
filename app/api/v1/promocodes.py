@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.services.card_payments import CardPackageCatalog
+from app.services.payments import PaymentService
 from app.services.promocodes import PromoCodeError, PromoCodeService
 
 router = APIRouter(prefix="/promocodes", tags=["promocodes"])
@@ -44,16 +46,28 @@ async def _validate(
         ) from exc
 
     remaining_uses = await PromoCodeService.remaining_uses(session, promo=promo)
+    package_credits = None
+    if promo.package_id:
+        payment_package = PaymentService.packages().get(promo.package_id)
+        card_package = CardPackageCatalog.packages().get(promo.package_id)
+        package = payment_package or card_package
+        if package is not None:
+            package_credits = str(package.credits)
     return {
         "status": "valid",
         "code": promo.code,
         "reward_rox": str(promo.reward_amount),
         "package_id": promo.package_id,
+        "package_credits": package_credits,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
         "message": (
             f"После успешной оплаты начислим +{promo.reward_amount} ROX"
-            + (f" для пакета {promo.package_id}" if promo.package_id else "")
+            + (
+                f" для пакета {package_credits} ROX"
+                if package_credits
+                else (f" для пакета {promo.package_id}" if promo.package_id else "")
+            )
         ),
     }
 
