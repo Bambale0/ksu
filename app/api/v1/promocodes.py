@@ -9,6 +9,7 @@ router = APIRouter(prefix="/promocodes", tags=["promocodes"])
 
 class RedeemPromoRequest(BaseModel):
     code: str = Field(min_length=1, max_length=64)
+    package_id: str | None = Field(default=None, max_length=64)
 
 
 PROMO_ERROR_MESSAGES = {
@@ -17,6 +18,7 @@ PROMO_ERROR_MESSAGES = {
     "usage_limit_reached": "Лимит активаций промокода исчерпан",
     "already_used": "Вы уже использовали этот промокод",
     "already_reserved": "Этот промокод уже привязан к другой незавершённой оплате",
+    "package_mismatch": "Этот промокод действует для другого пакета",
 }
 
 
@@ -26,7 +28,12 @@ async def _validate(
     session: SessionDep,
 ) -> dict[str, object]:
     try:
-        promo = await PromoCodeService.preview(session, user_id=user.id, code=payload.code)
+        promo = await PromoCodeService.preview(
+            session,
+            user_id=user.id,
+            code=payload.code,
+            package_id=payload.package_id,
+        )
     except PromoCodeError as exc:
         raise HTTPException(
             status_code=400,
@@ -41,9 +48,13 @@ async def _validate(
         "status": "valid",
         "code": promo.code,
         "reward_rox": str(promo.reward_amount),
+        "package_id": promo.package_id,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
-        "message": f"После успешной оплаты начислим +{promo.reward_amount} ROX",
+        "message": (
+            f"После успешной оплаты начислим +{promo.reward_amount} ROX"
+            + (f" для пакета {promo.package_id}" if promo.package_id else "")
+        ),
     }
 
 
