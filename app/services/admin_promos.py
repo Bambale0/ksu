@@ -94,11 +94,8 @@ class AdminPromoService:
             raise ValueError("Invalid promo reward")
         if max_uses is not None and not 1 <= max_uses <= 10_000_000:
             raise ValueError("Invalid promo max_uses")
-        if expires_at is not None:
-            if expires_at.utcoffset() is None:
-                raise ValueError("Promo expiration must include timezone")
-            if expires_at <= datetime.now(UTC):
-                raise ValueError("Promo expiration must be in the future")
+        if expires_at is not None and expires_at.utcoffset() is None:
+            raise ValueError("Promo expiration must include timezone")
         payload = {
             "code": normalized,
             "reward_credits": str(reward_credits),
@@ -107,6 +104,8 @@ class AdminPromoService:
         }
 
         async def operation() -> dict[str, Any]:
+            if expires_at is not None and expires_at <= datetime.now(UTC):
+                raise ValueError("Promo expiration must be in the future")
             if await session.scalar(select(PromoCode).where(PromoCode.code == normalized)):
                 raise ValueError("Promo code already exists")
             promo = PromoCode(
