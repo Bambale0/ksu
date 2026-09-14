@@ -29,7 +29,12 @@ def _telegram_id() -> int:
     return 99_800_000_000_000 + random.randint(1, 999_999_999)
 
 
-def _payment(*, user_id: uuid.UUID, amount: str = "300") -> Payment:
+def _payment(
+    *,
+    user_id: uuid.UUID,
+    amount: str = "300",
+    package_id: str | None = None,
+) -> Payment:
     return Payment(
         user_id=user_id,
         provider="yookassa",
@@ -38,7 +43,7 @@ def _payment(*, user_id: uuid.UUID, amount: str = "300") -> Payment:
         rox_amount=Decimal(amount),
         status="pending",
         payload={
-            "package_id": f"p{amount}",
+            "package_id": package_id or f"p{amount}",
             "base_credits": amount,
             "bonus_credits": "0",
             "credited_credits": amount,
@@ -464,14 +469,18 @@ async def test_concurrent_reservations_cannot_oversubscribe_last_promo_slot() ->
 async def test_admin_promo_rejects_past_or_timezone_less_expiration(
     expires_at: datetime,
 ) -> None:
-    admin = AdminAccount(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        role="admin",
-        permission_overrides={"allow": ["promocodes.manage"]},
-        is_active=True,
-    )
     async with SessionFactory() as session:
+        admin_user = User(telegram_id=_telegram_id(), first_name="Promo Admin")
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
         with pytest.raises(ValueError):
             await AdminPromoService.create(
                 session,
@@ -489,13 +498,6 @@ async def test_admin_promo_rejects_past_or_timezone_less_expiration(
 async def test_admin_promo_create_replay_survives_expiration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    admin = AdminAccount(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        role="admin",
-        permission_overrides={"allow": ["promocodes.manage"]},
-        is_active=True,
-    )
     before_expiry = datetime(2030, 1, 1, 12, tzinfo=UTC)
     expires_at = datetime(2030, 1, 2, 12, tzinfo=UTC)
     after_expiry = datetime(2030, 1, 3, 12, tzinfo=UTC)
@@ -513,6 +515,18 @@ async def test_admin_promo_create_replay_survives_expiration(
     key = f"test-promo-replay:{uuid.uuid4()}"
     code = f"REPLAY{uuid.uuid4().hex[:8].upper()}"
     async with SessionFactory() as session:
+        admin_user = User(telegram_id=_telegram_id(), first_name="Promo Replay Admin")
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
         first, replayed = await AdminPromoService.create(
             session,
             admin=admin,
@@ -542,4 +556,158 @@ async def test_admin_promo_create_replay_survives_expiration(
         )
         assert replayed is True
         assert second == first
+
+@pytest.mark.asyncio
+async def test_package_bound_promo_rejects_other_package_before_reservation() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="Promo Package Mismatch")
+        promo = PromoCode(
+            code=f"PKG{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("40"),
+            package_id="p500",
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        session.add_all([user, promo])
+        await session.flush()
+        payment = _payment(user_id=user.id, amount="300", package_id="p300")
+        session.add(payment)
+        await session.commit()
+
+        with pytest.raises(PromoCodeError) as exc_info:
+            await PromoCodeService.reserve_for_payment(
+                session,
+                payment=payment,
+                code=promo.code,
+            )
+        assert exc_info.value.code == "package_mismatch"
+        redemption = await session.scalar(
+            select(PromoRedemption).where(
+                PromoRedemption.promo_id == promo.id,
+                PromoRedemption.user_id == user.id,
+            )
+        )
+        assert redemption is None
+
+
+@pytest.mark.asyncio
+async def test_package_bound_promo_credits_only_matching_package() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="Promo Package Match")
+        promo = PromoCode(
+            code=f"PKGOK{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("40"),
+            package_id="p500",
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        session.add_all([user, promo])
+        await session.flush()
+        payment = _payment(user_id=user.id, amount="500", package_id="p500")
+        session.add(payment)
+        await session.commit()
+
+        await PromoCodeService.reserve_for_payment(
+            session,
+            payment=payment,
+            code=promo.code,
+        )
+        await session.commit()
+        assert payment.payload["promo_package_id"] == "p500"
+
+        completed = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        wallet = await session.get(Wallet, user.id)
+        assert wallet is not None
+        assert wallet.balance == Decimal("540.00")
+        assert completed.payload["promo_bonus_status"] == "applied"
+
+
+@pytest.mark.asyncio
+async def test_package_bound_promo_preview_checks_selected_package_but_legacy_global_still_works() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="Promo Package Preview")
+        restricted = PromoCode(
+            code=f"ONLY500{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("30"),
+            package_id="p500",
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        global_promo = PromoCode(
+            code=f"GLOBAL{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("15"),
+            package_id=None,
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        session.add_all([user, restricted, global_promo])
+        await session.commit()
+
+        with pytest.raises(PromoCodeError) as exc_info:
+            await PromoCodeService.preview(
+                session,
+                user_id=user.id,
+                code=restricted.code,
+                package_id="p300",
+            )
+        assert exc_info.value.code == "package_mismatch"
+
+        preview = await PromoCodeService.preview(
+            session,
+            user_id=user.id,
+            code=restricted.code,
+        )
+        assert preview.package_id == "p500"
+
+        global_preview = await PromoCodeService.preview(
+            session,
+            user_id=user.id,
+            code=global_promo.code,
+            package_id="p300",
+        )
+        assert global_preview.package_id is None
+
+
+@pytest.mark.asyncio
+async def test_rebinding_package_invalidates_existing_reservation_at_settlement() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=_telegram_id(), first_name="Promo Package Rebind")
+        promo = PromoCode(
+            code=f"REBIND{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("20"),
+            package_id="p300",
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        session.add_all([user, promo])
+        await session.flush()
+        payment = _payment(user_id=user.id, amount="300", package_id="p300")
+        session.add(payment)
+        await session.commit()
+
+        await PromoCodeService.reserve_for_payment(session, payment=payment, code=promo.code)
+        await session.commit()
+
+        promo.package_id = "p500"
+        await session.commit()
+
+        completed = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        wallet = await session.get(Wallet, user.id)
+        assert wallet is not None
+        assert wallet.balance == Decimal("300.00")
+        assert completed.payload["promo_bonus_status"] == "package_mismatch"
+        assert completed.payload["bonus_credits"] == "0"
 
