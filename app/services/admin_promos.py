@@ -40,20 +40,27 @@ class AdminPromoService:
                 **dict(item.get("prices") or {}),
                 **{currency: str(amount) for currency, amount in package.prices.items()},
             }
-        return {"items": sorted(items.values(), key=lambda item: (Decimal(item["credits"]), item["package_id"]))}
+        return {
+            "items": sorted(
+                items.values(),
+                key=lambda item: (Decimal(item["credits"]), item["package_id"]),
+            )
+        }
+
+    @staticmethod
+    def _normalize_package_id(package_id: str | None) -> str | None:
+        return str(package_id or "").strip() or None
 
     @classmethod
-    def _validate_package_id(cls, package_id: str | None) -> str | None:
-        normalized = str(package_id or "").strip() or None
-        if normalized is None:
-            return None
+    async def _assert_package_known(cls, package_id: str | None) -> None:
+        if package_id is None:
+            return
         known = {
             *PaymentService.packages().keys(),
-            *CardPackageCatalog.packages().keys(),
+            *(await CardPackageCatalog.provider_packages()).keys(),
         }
-        if normalized not in known:
+        if package_id not in known:
             raise ValueError("Unknown promo package")
-        return normalized
 
     @staticmethod
     async def list_promos(
@@ -135,7 +142,7 @@ class AdminPromoService:
             raise ValueError("Promo code contains unsupported characters")
         if reward_credits <= 0 or reward_credits > Decimal("100000"):
             raise ValueError("Invalid promo reward")
-        normalized_package_id = AdminPromoService._validate_package_id(package_id)
+        normalized_package_id = AdminPromoService._normalize_package_id(package_id)
         if max_uses is not None and not 1 <= max_uses <= 10_000_000:
             raise ValueError("Invalid promo max_uses")
         if expires_at is not None and expires_at.utcoffset() is None:
@@ -151,6 +158,7 @@ class AdminPromoService:
         async def operation() -> dict[str, Any]:
             if expires_at is not None and expires_at <= datetime.now(UTC):
                 raise ValueError("Promo expiration must be in the future")
+            await AdminPromoService._assert_package_known(normalized_package_id)
             if await session.scalar(select(PromoCode).where(PromoCode.code == normalized)):
                 raise ValueError("Promo code already exists")
             promo = PromoCode(
@@ -188,10 +196,11 @@ class AdminPromoService:
         confirmed: bool,
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
-        normalized_package_id = AdminPromoService._validate_package_id(package_id)
+        normalized_package_id = AdminPromoService._normalize_package_id(package_id)
         payload = {"package_id": normalized_package_id}
 
         async def operation() -> dict[str, Any]:
+            await AdminPromoService._assert_package_known(normalized_package_id)
             promo = await session.scalar(
                 select(PromoCode).where(PromoCode.id == promo_id).with_for_update()
             )
