@@ -21,6 +21,8 @@ ROLE_PERMISSION_SUPPLEMENTS: dict[str, frozenset[str]] = {
     "admin": frozenset(
         {
             "finance.read",
+            "entities.read",
+            "entities.manage",
             "operations.read",
             "operations.manage",
             "payments.manage",
@@ -42,6 +44,7 @@ ROLE_PERMISSION_SUPPLEMENTS: dict[str, frozenset[str]] = {
     "finance": frozenset(
         {
             "finance.read",
+            "entities.read",
             "payments.manage",
             "partners.read",
             "partners.manage",
@@ -64,6 +67,7 @@ ROLE_PERMISSION_SUPPLEMENTS: dict[str, frozenset[str]] = {
     "auditor": frozenset(
         {
             "finance.read",
+            "entities.read",
             "operations.read",
             "partners.read",
             "pricing.read",
@@ -76,6 +80,9 @@ ROLE_PERMISSION_SUPPLEMENTS: dict[str, frozenset[str]] = {
 
 
 ACTION_POLICIES: dict[str, AdminActionPolicy] = {
+    "entities.update": AdminActionPolicy(
+        "entities.manage", confirmation_required=True, step_up_required=True
+    ),
     "users.block": AdminActionPolicy("users.manage", confirmation_required=True),
     "users.unblock": AdminActionPolicy("users.manage", confirmation_required=True),
     "users.balance_adjust": AdminActionPolicy(
@@ -94,6 +101,9 @@ ACTION_POLICIES: dict[str, AdminActionPolicy] = {
         "partners.manage", confirmation_required=True, step_up_required=True
     ),
     "payments.recheck": AdminActionPolicy("payments.read"),
+    "payments.refund": AdminActionPolicy(
+        "payments.manage", confirmation_required=True, step_up_required=True
+    ),
     "payments.reprocess": AdminActionPolicy(
         "payments.manage", confirmation_required=True, step_up_required=True
     ),
