@@ -78,6 +78,29 @@ IMMUTABLE_TABLES = frozenset(
     }
 )
 
+
+DOMAIN_MANAGED_TABLES = frozenset(
+    {
+        "users",
+        "generations",
+        "support_tickets",
+        "support_messages",
+        "admin_accounts",
+        "cms_documents",
+        "cms_document_versions",
+        "notification_campaigns",
+        "notification_campaign_deliveries",
+        "prompt_library_items",
+        "admin_runtime_settings",
+        "admin_trends",
+        "trend_collections",
+        "trend_collection_assignments",
+        "creator_partnership_applications",
+        "creator_partnership_agreements",
+        "creator_partnership_grants",
+    }
+)
+
 _SENSITIVE_TOKENS = (
     "password",
     "secret",
@@ -140,7 +163,11 @@ def _column_kind(column: Any) -> str:
 
 
 def _generic_editable_columns(table_name: str, model: type[Any]) -> list[Any]:
-    if table_name in FINANCIAL_TABLES or table_name in IMMUTABLE_TABLES:
+    if (
+        table_name in FINANCIAL_TABLES
+        or table_name in IMMUTABLE_TABLES
+        or table_name in DOMAIN_MANAGED_TABLES
+    ):
         return []
     mapper = sa_inspect(model)
     result = []
@@ -260,6 +287,8 @@ class AdminEntityService:
             ]
             if table_name in FINANCIAL_TABLES:
                 edit_mode = "financial_actions"
+            elif table_name in DOMAIN_MANAGED_TABLES:
+                edit_mode = "domain_actions"
             elif editable:
                 edit_mode = "generic_patch"
             else:
@@ -300,7 +329,11 @@ class AdminEntityService:
             "edit_mode": (
                 "financial_actions"
                 if table_name in FINANCIAL_TABLES
-                else ("generic_patch" if editable else "read_only")
+                else (
+                    "domain_actions"
+                    if table_name in DOMAIN_MANAGED_TABLES
+                    else ("generic_patch" if editable else "read_only")
+                )
             ),
         }
 
