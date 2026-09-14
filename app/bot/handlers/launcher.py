@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, ReplyKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.handlers.admin import _admin_account
 from app.bot.keyboards import (
     QUICK_MENU_TEXT,
     QUICK_PROMPT_TEXT,
@@ -97,16 +98,26 @@ def _support_line() -> str:
     return "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY"
 
 
-def _quick_menu_for(message: Message) -> ReplyKeyboardMarkup:
+async def _quick_menu_for(message: Message, session: AsyncSession) -> ReplyKeyboardMarkup:
     telegram_id = message.from_user.id if message.from_user else None
-    return quick_menu(is_admin=telegram_id is not None and telegram_id in parse_bootstrap_ids())
+    if telegram_id is None:
+        return quick_menu(is_admin=False)
+    admin = await _admin_account(session, telegram_id)
+    is_admin = admin is not None or telegram_id in parse_bootstrap_ids()
+    return quick_menu(is_admin=is_admin)
 
 
-async def _send_launcher(message: Message, *, route: str, payload: str | None) -> None:
+async def _send_launcher(
+    message: Message,
+    session: AsyncSession,
+    *,
+    route: str,
+    payload: str | None,
+) -> None:
     try:
         await message.answer(
             "Меню и поддержка закреплены снизу.",
-            reply_markup=_quick_menu_for(message),
+            reply_markup=await _quick_menu_for(message, session),
         )
         await message.answer(
             "<b>Добро пожаловать в ROXY ✨</b>\n\n"
@@ -156,6 +167,7 @@ async def start_app_only(
     await session.commit()
     await _send_launcher(
         message,
+        session,
         route=_launcher_route(link),
         payload=start_payload(message.text),
     )
@@ -168,7 +180,7 @@ async def menu_shortcut(message: Message, session: AsyncSession, state: FSMConte
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
-    await _send_launcher(message, route="catalog", payload=None)
+    await _send_launcher(message, session, route="catalog", payload=None)
 
 
 @router.message(F.text == QUICK_SUPPORT_TEXT)
@@ -184,7 +196,7 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
         await message.answer(
             "Поддержка ROXY всегда рядом.\n\n"
             f"Напишите {handle} — поможем с оплатой, балансом, созданием работ, описаниями и публикациями.",
-            reply_markup=_quick_menu_for(message),
+            reply_markup=await _quick_menu_for(message, session),
         )
         return
 
@@ -206,7 +218,7 @@ async def retired_prompt_shortcut(message: Message, session: AsyncSession, state
     await session.commit()
     await message.answer(
         "Меню обновлено: снизу только меню и поддержка.",
-        reply_markup=_quick_menu_for(message),
+        reply_markup=await _quick_menu_for(message, session),
     )
     await message.answer(
         "Инструменты для описаний открываются внутри ROXY или кнопками ниже.",
@@ -226,4 +238,4 @@ async def redirect_everything_to_app(
     await state.clear()
     await UserService.get_or_create(session, message.from_user)
     await session.commit()
-    await _send_launcher(message, route="catalog", payload=None)
+    await _send_launcher(message, session, route="catalog", payload=None)

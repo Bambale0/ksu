@@ -6,13 +6,14 @@ from pathlib import Path
 import httpx
 import pytest
 
+import app.bot.handlers.nexus_test as nexus_test_module
 from app.bot.handlers.nexus_test import (
     NEXUS_TEST_ASPECT_RATIOS,
     NEXUS_TEST_IMAGE_SIZES,
     _aspect_ratio_keyboard,
     _data_url,
     _image_size_keyboard,
-    _is_env_admin,
+    _is_admin,
     _references_keyboard,
 )
 from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
@@ -39,12 +40,22 @@ def test_test_button_is_visible_only_in_admin_keyboard() -> None:
     assert QUICK_TEST_TEXT in _keyboard_texts(True)
 
 
-def test_test_flow_uses_env_admin_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_test_flow_uses_bootstrap_and_database_admins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "111, 222")
-    assert _is_env_admin(111) is True
-    assert _is_env_admin(222) is True
-    assert _is_env_admin(333) is False
-    assert _is_env_admin(None) is False
+
+    async def fake_admin(_session, telegram_id: int):
+        return object() if telegram_id == 333 else None
+
+    monkeypatch.setattr(nexus_test_module, "_admin_account", fake_admin)
+
+    assert await _is_admin(None, 111) is True
+    assert await _is_admin(None, 222) is True
+    assert await _is_admin(None, 333) is True
+    assert await _is_admin(None, 444) is False
+    assert await _is_admin(None, None) is False
 
 
 def test_reference_step_requires_at_least_one_image_before_continue() -> None:
@@ -185,9 +196,11 @@ def test_nexus_router_is_registered_before_customer_catch_all() -> None:
     )
 
 
-def test_handler_rechecks_env_admin_and_reads_secret_from_env() -> None:
+def test_handler_rechecks_live_admin_and_reads_secret_from_env() -> None:
     source = Path("app/bot/handlers/nexus_test.py").read_text(encoding="utf-8")
     assert "parse_bootstrap_ids" in source
+    assert "return await _is_admin(session, telegram_id)" in source
+    assert "_state_authorized(state, session," in source
     assert 'os.environ.get("NEXUS_API_KEY"' in source
     assert 'os.environ.get("NEXUS_API_BASE_URL"' in source
     assert "NexusTestStates.references" in source

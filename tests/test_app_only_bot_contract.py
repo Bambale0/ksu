@@ -40,7 +40,7 @@ def test_launcher_uses_inline_app_button_and_admin_aware_reply_keyboard() -> Non
     keyboards = _read("app/bot/keyboards.py")
     assert "app_launcher_menu" in launcher
     assert "reply_markup=app_launcher_menu" in launcher
-    assert "reply_markup=_quick_menu_for(message)" in launcher
+    assert "reply_markup=await _quick_menu_for(message, session)" in launcher
     assert "parse_bootstrap_ids" in launcher
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher

@@ -120,6 +120,18 @@ def test_telegram_admin_extensions_recheck_admin_for_commands_and_callbacks() ->
     assert 'Command("admin_generation")' in source
     assert "dispatcher.include_router(admin_extensions.router)" in dispatcher
 
+
+def test_nexus_test_and_quick_menu_use_active_database_admins() -> None:
+    launcher = _read(ROOT / "app" / "bot" / "handlers" / "launcher.py")
+    nexus = _read(ROOT / "app" / "bot" / "handlers" / "nexus_test.py")
+
+    assert "await _admin_account(session, telegram_id)" in launcher
+    assert "admin is not None or telegram_id in parse_bootstrap_ids()" in launcher
+    assert "async def _is_admin(session: AsyncSession" in nexus
+    assert "return await _admin_account(session, telegram_id) is not None" in nexus
+    assert "admin_telegram_id" in nexus
+    assert "await _state_authorized(state, session, callback.from_user.id)" in nexus
+
 def test_promo_control_surface_manages_codes_per_pricing_package() -> None:
     js = _read(ADMIN / "control.js")
     backend = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
@@ -139,4 +151,5 @@ def test_promo_control_surface_manages_codes_per_pricing_package() -> None:
     assert "package_id: str | None" in backend
     assert "def package_catalog" in promo_service
     assert "async def set_package" in promo_service
+
 
