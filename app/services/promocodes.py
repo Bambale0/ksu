@@ -37,6 +37,7 @@ class PromoCodeService:
         *,
         user_id: uuid.UUID,
         code: str,
+        package_id: str | None = None,
     ) -> PromoCode:
         normalized = cls.normalize(code)
         promo = await session.scalar(select(PromoCode).where(PromoCode.code == normalized))
@@ -44,6 +45,7 @@ class PromoCodeService:
             session,
             promo=promo,
             user_id=user_id,
+            package_id=package_id,
             allow_pending_reservation=False,
         )
         assert promo is not None
@@ -64,10 +66,12 @@ class PromoCodeService:
         promo = await session.scalar(
             select(PromoCode).where(PromoCode.code == normalized).with_for_update()
         )
+        payment_package_id = str((payment.payload or {}).get("package_id") or "").strip() or None
         await cls._validate_available(
             session,
             promo=promo,
             user_id=payment.user_id,
+            package_id=payment_package_id,
             allow_pending_reservation=True,
         )
         assert promo is not None
@@ -193,6 +197,15 @@ class PromoCodeService:
                 reason="campaign_expired",
             )
             return Decimal("0")
+        payment_package_id = str(payload.get("package_id") or "").strip() or None
+        if promo.package_id is not None and promo.package_id != payment_package_id:
+            cls._release_bonus(
+                payment=payment,
+                redemption=redemption,
+                status="package_mismatch",
+                reason="package_mismatch",
+            )
+            return Decimal("0")
 
         if reward <= 0:
             reward = Decimal(promo.reward_amount)
@@ -281,6 +294,7 @@ class PromoCodeService:
         *,
         promo: PromoCode | None,
         user_id: uuid.UUID,
+        package_id: str | None,
         allow_pending_reservation: bool,
     ) -> None:
         if promo is None or not promo.is_active:
@@ -288,6 +302,8 @@ class PromoCodeService:
         now = datetime.now(UTC)
         if promo.expires_at and promo.expires_at <= now:
             raise PromoCodeError("expired", "Promo code has expired")
+        if promo.package_id is not None and package_id is not None and promo.package_id != package_id:
+            raise PromoCodeError("package_mismatch", "Promo code is not valid for this package")
 
         existing = await session.scalar(
             select(PromoRedemption).where(
@@ -373,6 +389,7 @@ class PromoCodeService:
             "base_credits": str(base),
             "promo_id": str(promo.id),
             "promo_code": promo.code,
+            "promo_package_id": promo.package_id,
             "promo_reward_credits": str(reward),
             "promo_bonus_status": "reserved",
             "bonus_credits": str(reward),
