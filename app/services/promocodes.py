@@ -249,11 +249,12 @@ class PromoCodeService:
         redemption.status = "applied"
         redemption.reserved_until = None
         redemption.redeemed_at = now
+        package_bonus = Decimal(str(payload.get("package_bonus_credits") or "0"))
         payment.payload = {
             **payload,
             "promo_bonus_status": "applied",
-            "bonus_credits": str(reward),
-            "credited_credits": str(base + reward),
+            "bonus_credits": str(package_bonus + reward),
+            "credited_credits": str(base + package_bonus + reward),
         }
         return reward
 
