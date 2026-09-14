@@ -481,9 +481,11 @@
           entries || "—",
           row.edit_mode === "financial_actions"
             ? "Финансовые действия"
-            : row.edit_mode === "generic_patch"
-              ? "Редактируется"
-              : "Только чтение",
+            : row.edit_mode === "domain_actions"
+              ? "Через раздел админки"
+              : row.edit_mode === "generic_patch"
+                ? "Редактируется"
+                : "Только чтение",
           actions(button("Открыть", "table-action", () => void renderEntityDetail(selectedEntity.name, row.record_key))),
         ];
       },
@@ -526,7 +528,9 @@
       }
       const note = item.edit_mode === "financial_actions"
         ? node("p", "muted", "Финансовая сущность защищена от raw UPDATE. Используйте платежи, баланс, тарифы, промокоды и партнёрские операции в соответствующих разделах.")
-        : null;
+        : item.edit_mode === "domain_actions"
+          ? node("p", "muted", "Эта сущность управляется через доменный раздел админки, чтобы сохранять инварианты и аудит. Здесь она доступна для полного просмотра.")
+          : null;
       dom.controlView.replaceChildren(
         card(`${entityName} · запись`, pre(item.values), actions(...actionItems)),
       );
