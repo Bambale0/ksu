@@ -12,6 +12,7 @@
 
   const VIEWS = [
     ["overview", "Обзор", "Обзор"],
+    ["entities", "Сущности", "Сущности"],
     ["users", "Пользователи", "Пользователи"],
     ["payments", "Платежи", "Финансы"],
     ["operations", "Операции", "Работы"],
@@ -400,6 +401,7 @@
     loading();
     try {
       if (state.view === "overview") return await renderOverview();
+      if (state.view === "entities") return await renderEntities();
       if (state.view === "users") return await renderUsers();
       if (state.view === "payments") return await renderPayments();
       if (state.view === "operations") return await renderOperations();
@@ -439,6 +441,99 @@
       "Архитектура",
       node("p", "muted", "UI не содержит privileged business logic: все команды идут через shared services, policy, audit/idempotency и durable workers."),
     ));
+  }
+
+  async function renderEntities(entityName = "", query = "") {
+    const catalog = await api("/api/v1/admin/control/entities");
+    const entities = catalog.items || [];
+    const selectedEntity = entities.find((item) => item.name === entityName) || entities[0] || null;
+    const selector = select(
+      entities.map((item) => [item.name, `${item.label} · ${item.category === "finance" ? "финансы" : item.edit_mode}`]),
+      selectedEntity?.name || "",
+    );
+    selector.addEventListener("change", () => void renderEntities(selector.value, ""));
+    const search = input("search", query, "UUID / ID / текст");
+    const searchButton = button("Найти", "primary", () => void renderEntities(selectedEntity?.name || "", search.value.trim()));
+    const controls = node("div", "control-form-inline");
+    controls.append(field("Сущность", selector), field("Поиск", search), searchButton);
+
+    if (!selectedEntity) {
+      dom.controlView.replaceChildren(card("Сущности", node("p", "muted", "ORM-сущности не найдены."), controls));
+      return;
+    }
+
+    const params = new URLSearchParams({ limit: "50" });
+    if (query) params.set("q", query);
+    const data = await api(`/api/v1/admin/control/entities/${encodeURIComponent(selectedEntity.name)}?${params}`);
+    const rows = data.items || [];
+    const entityTable = table(
+      ["Запись", "Данные", "Режим", "Действия"],
+      rows,
+      (row) => {
+        const entries = Object.entries(row.values || {})
+          .filter(([, value]) => value !== null && value !== "" && value !== "[redacted]")
+          .slice(0, 5)
+          .map(([key, value]) => `${key}: ${typeof value === "object" ? json(value) : value}`)
+          .join("\n");
+        const primary = Object.entries(row.values || {}).find(([key]) => key === "id" || key.endsWith("_id"));
+        return [
+          primary ? String(primary[1]) : row.record_key,
+          entries || "—",
+          row.edit_mode === "financial_actions"
+            ? "Финансовые действия"
+            : row.edit_mode === "generic_patch"
+              ? "Редактируется"
+              : "Только чтение",
+          actions(button("Открыть", "table-action", () => void renderEntityDetail(selectedEntity.name, row.record_key))),
+        ];
+      },
+    );
+    dom.controlView.replaceChildren(
+      card(`${selectedEntity.label} · ${data.total ?? 0}`, entityTable, controls),
+    );
+  }
+
+  async function renderEntityDetail(entityName, recordKey) {
+    try {
+      const item = await api(`/api/v1/admin/control/entities/${encodeURIComponent(entityName)}/${encodeURIComponent(recordKey)}`);
+      const actionItems = [
+        button("← К списку", "ghost", () => void renderEntities(entityName)),
+      ];
+      if (item.edit_mode === "generic_patch" && (item.editable_fields || []).length) {
+        actionItems.unshift(button("Изменить", "primary", () => {
+          const editable = {};
+          for (const key of item.editable_fields || []) editable[key] = item.values?.[key] ?? null;
+          openForm({
+            title: `Изменить ${entityName}`,
+            fields: [
+              { name: "changes", label: "Изменяемые поля (JSON)", type: "textarea", value: json(editable) },
+            ],
+            onSubmit: async ({ changes }) => {
+              const parsed = JSON.parse(changes || "{}");
+              await mutate(
+                `/api/v1/admin/control/entities/${encodeURIComponent(entityName)}/${encodeURIComponent(recordKey)}`,
+                {
+                  body: { changes: parsed },
+                  sensitive: true,
+                  label: `Сохранить изменения ${entityName}?`,
+                },
+              );
+              toast("Сущность обновлена", "ok");
+              await renderEntityDetail(entityName, recordKey);
+            },
+          });
+        }));
+      }
+      const note = item.edit_mode === "financial_actions"
+        ? node("p", "muted", "Финансовая сущность защищена от raw UPDATE. Используйте платежи, баланс, тарифы, промокоды и партнёрские операции в соответствующих разделах.")
+        : null;
+      dom.controlView.replaceChildren(
+        card(`${entityName} · запись`, pre(item.values), actions(...actionItems)),
+      );
+      if (note) dom.controlView.appendChild(card("Финансовая защита", note));
+    } catch (error) {
+      errorView(error);
+    }
   }
 
   async function renderUsers(query = "") {
@@ -522,6 +617,23 @@
               await renderPayments();
             } catch (error) { toast(error.message, "error"); }
           }),
+          ...(["succeeded", "partially_refunded"].includes(String(row.status))
+            ? [button("Возврат", "table-action dangerous", () => openForm({
+              title: `Возврат платежа ${row.id}`,
+              fields: [
+                { name: "amount", label: `Сумма (${row.currency})`, type: "number", step: "0.01", value: row.amount },
+                { name: "reason", label: "Причина", type: "textarea", maxLength: 255 },
+              ],
+              onSubmit: async ({ amount, reason }) => {
+                await mutate(`/api/v1/admin/control/payments/${row.id}/refund`, {
+                  body: { amount, reason },
+                  sensitive: true,
+                  label: `Вернуть ${amount} ${row.currency} по платежу ${row.id}?`,
+                });
+                toast("Запрос возврата создан", "ok");
+                await renderPayments();
+              },
+            }))] : []),
         ),
       ],
     );
