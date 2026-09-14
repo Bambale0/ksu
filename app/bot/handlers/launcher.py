@@ -67,7 +67,7 @@ async def _validated_inviter(session: AsyncSession, link: FeedDeepLink | None) -
             author = await FeedService.author_by_referral_code(session, link.profile_referral_code)
         except FeedNotFoundError:
             return None
-        return link.referral_telegram_id
+        return author.telegram_id
     if link.generation_id is None:
         return None
 
