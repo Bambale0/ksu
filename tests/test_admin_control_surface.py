@@ -130,4 +130,4 @@ def test_nexus_test_and_quick_menu_use_active_database_admins() -> None:
     assert "async def _is_admin(session: AsyncSession" in nexus
     assert "return await _admin_account(session, telegram_id) is not None" in nexus
     assert "admin_telegram_id" in nexus
-    assert "await _state_authorized(state, callback.from_user.id)" in nexus
+    assert "await _state_authorized(state, session, callback.from_user.id)" in nexus
