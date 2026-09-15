@@ -89,7 +89,7 @@ class PromoPartnerRequest(BaseModel):
 
 
 class PromoProgramRequest(BaseModel):
-    welcome_rox: Decimal = Field(ge=0, le=100_000)
+    welcome_rox: Decimal = Field(default=Decimal("0"), ge=0, le=0)
     first_line_percent: Decimal = Field(ge=0, le=100)
     topup_partner_rox: Decimal = Field(ge=0, le=100_000)
     payment_bonus_rox: Decimal = Field(ge=0, le=100_000)
