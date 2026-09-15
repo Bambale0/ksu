@@ -12,7 +12,6 @@ const PRIVATE_REPEAT_LINK = /^repeat_([0-9a-f]{32}_[A-Za-z0-9_-]{16})$/;
 const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
 const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
 const PROFILE_LINK = /^profile_(\d+)(?:_ref_(\d+))?$/;
-const PROMO_LINK = /^promo_([A-Z0-9_-]{3,64})$/i;
 const CONSUMED_TREND_TARGET_KEY = "__roxy_consumed_trend_target";
 const CONSUMED_PROFILE_TARGET_KEY = "__roxy_consumed_profile_target";
 const EXPLICIT_START_PARAM_NAMES = ["start_payload", "startapp"];
@@ -21,8 +20,7 @@ type Target =
   | { kind: "post" | "remix"; generationId: string; referralCode: string }
   | { kind: "repeat"; token: string; payload: string }
   | { kind: "trend"; trendId: string; payload: string }
-  | { kind: "profile"; referralCode: string; payload: string }
-  | { kind: "promo"; code: string; payload: string };
+  | { kind: "profile"; referralCode: string; payload: string };
 
 function targetConsumed(storageKey: string, payload: string): boolean {
   try {
@@ -104,10 +102,6 @@ function parseTarget(): Target | null {
   // A fresh explicit start_payload/startapp in the current URL still wins.
   if (current.searchParams.has("route") && !explicitLaunchCarries(payload)) return null;
 
-  if (PROMO_LINK.test(payload)) {
-    const match = PROMO_LINK.exec(payload)!;
-    return { kind: "promo", code: match[1].toUpperCase(), payload };
-  }
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
     return { kind: "post", generationId: match[1], referralCode: match[2] };
@@ -139,13 +133,6 @@ function parseTarget(): Target | null {
     return match[1] === referralCode ? profileTarget(match[1], payload) : null;
   }
   return null;
-}
-
-function PromoTarget({ code }: { code: string }) {
-  useEffect(() => {
-    window.location.replace(`/mini-app/payments/?promo=${encodeURIComponent(code)}`);
-  }, [code]);
-  return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Активирую промокод…</small></div>;
 }
 
 function TrendStartApp({ trendId, payload }: { trendId: string; payload: string }) {
@@ -188,7 +175,6 @@ export function AppEntryGate() {
   }, []);
 
   if (!ready) return <div className="splash" role="status"><EntryBackMarker /><strong>ROXY</strong><small>Открываю ссылку…</small></div>;
-  if (target?.kind === "promo") return <PromoTarget code={target.code} />;
   if (target?.kind === "profile") return <ProfileTarget referralCode={target.referralCode} payload={target.payload} />;
   if (target?.kind === "repeat") return <PrivateRepeatTarget token={target.token} />;
   if (target?.kind === "trend") return <TrendStartApp trendId={target.trendId} payload={target.payload} />;

@@ -39,15 +39,6 @@ def referral_payload(telegram_id: int | str) -> str:
     return f"ref_{_code(telegram_id)}"
 
 
-def promo_payload(code: str) -> str:
-    normalized = _code(code)
-    if len(normalized) < 3 or len(normalized) > 64:
-        raise ValueError("Promo code must contain 3..64 characters")
-    if not all(char.isalnum() or char in {"_", "-"} for char in normalized):
-        raise ValueError("Promo code contains unsupported characters")
-    return f"promo_{normalized}"
-
-
 def post_payload(generation_id: uuid.UUID, referral_telegram_id: int | str | None = None) -> str:
     payload = f"feed_{generation_id}"
     code = _code(referral_telegram_id) if referral_telegram_id is not None else ""

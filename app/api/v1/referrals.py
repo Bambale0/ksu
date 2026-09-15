@@ -164,7 +164,6 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
                 "uses_count": promo.uses_count,
                 "max_uses": promo.max_uses,
                 "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
-                "promo_link": PartnerService.promo_link(promo.code),
             }
             for promo in promo_codes
         ],

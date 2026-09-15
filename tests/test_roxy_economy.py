@@ -252,7 +252,6 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract(monkeypatch) 
                 "uses_count": 7,
                 "max_uses": 100,
                 "expires_at": None,
-                "promo_link": f"https://t.me/RoxyExampleBot?startapp=promo_{promo.code}",
             }
         ]
         assert payload["second_line_percent"] == "0"

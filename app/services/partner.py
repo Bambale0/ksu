@@ -20,7 +20,6 @@ from app.services.feed_links import (
     bot_start_link,
     mini_app_deep_link,
     profile_payload,
-    promo_payload,
     referral_payload,
 )
 
@@ -362,11 +361,4 @@ class PartnerService:
         """Public author profile link with referral attribution preserved."""
 
         payload = profile_payload(telegram_id)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
-
-    @staticmethod
-    def promo_link(code: str) -> str | None:
-        """Partner promo link that opens ROXY and activates the concrete code."""
-
-        payload = promo_payload(code)
         return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))

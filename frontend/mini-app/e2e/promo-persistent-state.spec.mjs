@@ -120,9 +120,9 @@ test('active promo persists on payments and is attached to a new payment automat
 });
 
 
-test('promo startapp link forwards its code into the redeem flow', async ({ page }) => {
+test('promo-looking query does not activate a code automatically', async ({ page }) => {
   await installTelegram(page);
-  let redeemBody = null;
+  let redeemCalls = 0;
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -134,24 +134,36 @@ test('promo startapp link forwards its code into the redeem flow', async ({ page
     });
 
     if (path === '/api/v1/promocodes/redeem' && request.method() === 'POST') {
-      redeemBody = request.postDataJSON();
-      return json({
-        status: 'activated',
-        code: 'KOR42',
-        welcome_rox: '25.00',
-        reward_rox: '25.00',
-        first_line_percent: '30.00',
-        topup_partner_rox: '10.00',
-        balance_rox: '25.00',
-      });
+      redeemCalls += 1;
+      return json({});
     }
     if (path === '/api/v1/promocodes/active') return json({ active: false, program_active: true });
+    if (path === '/api/v1/payments/card/packages') return json({
+      provider: 'card', label: 'Lava Top', configured: false, currencies: ['RUB'], packages: {},
+    });
+    if (path === '/api/v1/payments/yookassa/packages') return json({
+      provider: 'yookassa',
+      label: 'ЮKassa',
+      configured: true,
+      currencies: ['RUB'],
+      packages: {
+        starter: {
+          credits: '1000',
+          bonus_credits: '100',
+          total_credits: '1100',
+          prices: { RUB: '1000' },
+        },
+      },
+    });
+    if (path === '/api/v1/payments/crypto/packages') return json({
+      provider: 'cryptobot', label: 'CryptoBot', configured: false, currencies: ['RUB'], packages: {},
+    });
     if (path === '/api/v1/payments' && request.method() === 'GET') return json({ items: [] });
     return json({});
   });
 
-  await page.goto('/mini-app/?startapp=promo_KOR42');
+  await page.goto('/mini-app/payments/?promo=KOR42');
 
-  await expect(page).toHaveURL(/\/mini-app\/payments\/\?promo=KOR42/);
-  await expect.poll(() => redeemBody).toEqual({ code: 'KOR42' });
+  await expect(page.getByPlaceholder('Например, KSENIA50')).toHaveValue('');
+  await expect.poll(() => redeemCalls).toBe(0);
 });

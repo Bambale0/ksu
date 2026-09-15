@@ -304,7 +304,6 @@ export type PartnerStats = {
     uses_count: number;
     max_uses?: number | null;
     expires_at?: string | null;
-    promo_link?: string | null;
   }>;
   prompt_repeat_bonus_rox?: string;
   minimum_withdrawal_rox?: string;

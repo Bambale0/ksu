@@ -78,11 +78,6 @@ function initialProvider(): Provider {
   return "yookassa";
 }
 
-function initialPromoCode(): string {
-  if (typeof window === "undefined") return "";
-  return new URLSearchParams(window.location.search).get("promo")?.trim().toUpperCase() || "";
-}
-
 function paymentProviderLabel(payment: Payment): string {
   if (payment.label) return payment.label;
   if (payment.provider === "yookassa") return "ЮKassa";
@@ -126,7 +121,7 @@ export default function PaymentsPage() {
   const [packageId, setPackageId] = useState("");
   const [currency, setCurrency] = useState<Currency>("RUB");
   const [email, setEmail] = useState("");
-  const [promoCode, setPromoCode] = useState(initialPromoCode);
+  const [promoCode, setPromoCode] = useState("");
   const [promo, setPromo] = useState<PromoPreview | null>(null);
   const [activePromo, setActivePromo] = useState<ActivePromo | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -214,24 +209,7 @@ export default function PaymentsPage() {
       ? localStorage.getItem("roxy-billing-email") || ""
       : "";
     setEmail(savedEmail);
-    const code = initialPromoCode();
-    void (async () => {
-      await load();
-      if (!code) return;
-      try {
-        const next = await customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
-          method: "POST",
-          body: JSON.stringify({ code }),
-        });
-        setPromo(next);
-        setPromoCode(next.code);
-        const persisted = await customerRequest<ActivePromo>("/api/v1/promocodes/active");
-        setActivePromo(persisted);
-        setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
-      } catch {
-        setPromo(null);
-      }
-    })();
+    void load();
   }, []);
 
   const catalog = provider === "card"
