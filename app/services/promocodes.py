@@ -209,22 +209,9 @@ class PromoCodeService:
             existing_redemption.reserved_until = None
             existing_redemption.redeemed_at = now
 
-        if Decimal(config.welcome_rox) > 0:
-            await WalletService.credit(
-                session,
-                user_id=user_id,
-                amount=Decimal(config.welcome_rox),
-                kind="partner_promo_welcome",
-                reference_type="promo",
-                reference_id=str(promo.id),
-                idempotency_key=f"partner-promo-welcome:{user_id}",
-                reason="promo_activation_welcome",
-                promo_code=promo.code,
-                partner_id=promo.partner_user_id,
-                referral_user_id=user_id,
-                payment_id=None,
-            )
-
+        # Immediate activation gifts are intentionally disabled. User-facing
+        # promo ROX are granted only by apply_payment_bonus after a qualifying
+        # successful payment.
         await session.flush()
         return PromoActivation(promo=promo, config=config, activated=True)
 
