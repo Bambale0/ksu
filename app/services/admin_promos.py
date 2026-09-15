@@ -73,6 +73,11 @@ class AdminPromoService:
         }
 
     @staticmethod
+    def _require_partner_before_activation(item: PromoCode) -> None:
+        if item.partner_user_id is None:
+            raise ValueError("Promo code must have a partner before activation")
+
+    @staticmethod
     async def program_settings(
         session: AsyncSession,
         *,
@@ -194,6 +199,8 @@ class AdminPromoService:
             if expires_at is not None:
                 promo.expires_at = expires_at
             if is_active is not None:
+                if is_active:
+                    AdminPromoService._require_partner_before_activation(promo)
                 promo.is_active = is_active
             await session.flush()
             await session.refresh(promo)
@@ -275,6 +282,8 @@ class AdminPromoService:
             )
             if promo is None:
                 raise LookupError("Promo code not found")
+            if is_active:
+                AdminPromoService._require_partner_before_activation(promo)
             promo.is_active = is_active
             await session.flush()
             await session.refresh(promo)
