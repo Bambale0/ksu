@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUserDep, SessionDep
 from app.core.config import settings
 from app.db.feed_models import FeedRemixEvent
-from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, Wallet
+from app.db.models import Generation, PartnerWithdrawal, PromoCode, ReferralReward, User, Wallet
 from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.credits import InternalCreditService
@@ -109,6 +109,15 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     )
     minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
     promo_program = await PartnerPromoProgramService.get_config(session)
+    promo_codes = list(
+        (
+            await session.scalars(
+                select(PromoCode)
+                .where(PromoCode.partner_user_id == user.id)
+                .order_by(PromoCode.created_at.desc())
+            )
+        ).all()
+    )
 
     return {
         "first_line": first,
@@ -144,7 +153,20 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "invite_bonus_rox": "0",
         "promo_welcome_rox": str(promo_program.welcome_rox),
         "promo_topup_partner_rox": str(promo_program.topup_partner_rox),
+        "promo_topup_user_rox": str(promo_program.topup_user_rox),
+        "promo_topup_user_min_rub": str(promo_program.topup_user_min_rub),
         "promo_program_active": promo_program.is_active,
+        "promo_codes": [
+            {
+                "id": str(promo.id),
+                "code": promo.code,
+                "is_active": promo.is_active,
+                "uses_count": promo.uses_count,
+                "max_uses": promo.max_uses,
+                "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
+            }
+            for promo in promo_codes
+        ],
         "prompt_repeat_bonus_rox": str(settings.prompt_repeat_bonus_rox),
         "prompts_created": prompts_created,
         "prompt_repeats": prompt_repeats,

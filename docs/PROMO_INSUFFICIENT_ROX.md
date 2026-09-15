@@ -75,7 +75,7 @@ Promo campaign controls are server-owned:
 
 This supports partner campaigns such as `KSENIA50` with 1,000 successful activations for one month or 5,000 activations for a three-month campaign. The counter tracks paid activations, not code-entry attempts.
 
-Automatic package bonuses are disabled. Package catalogs return `bonus_credits=0` and `total_credits=credits`; extra ROX can only originate from a valid promo attached to a successful payment.
+Ordinary package bonuses are independent from partner promos. Package catalogs expose `bonus_credits` and `total_credits`; existing deployments use the default matrix 300→+30, 500→+50, 1000→+100, 2000→+150, 5000→+200 ROX unless package configuration overrides `bonus_credits`. A valid partner promo adds a separate payment-time user bonus (initially +50 ROX from 1000 RUB) on top of that ordinary package bonus.
 
 Full and partial payment refunds also reverse the applied promo bonus proportionally through the wallet accounting ledger.
 

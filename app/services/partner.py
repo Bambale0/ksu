@@ -16,7 +16,12 @@ from app.db.models import (
 )
 from app.db.partner_wallet_models import PartnerWalletTransfer, PartnerWithdrawalRequest
 from app.db.payment_models import ReferralRewardReversal
-from app.services.feed_links import bot_start_link, mini_app_deep_link, profile_payload, referral_payload
+from app.services.feed_links import (
+    bot_start_link,
+    mini_app_deep_link,
+    profile_payload,
+    referral_payload,
+)
 
 
 class PartnerWithdrawalError(ValueError):

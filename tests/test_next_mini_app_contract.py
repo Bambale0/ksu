@@ -197,9 +197,29 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert '"/api/v1/promocodes/active"' in payments
     assert "Промокод применён" in payments
     assert "ROX уже начислено" in payments
-    assert "Цена пакета не меняется" in payments
+    assert "Обычный бонус выбранного пакета сохраняется" in payments
+    assert "ROX по промокоду 🎟️" in payments
+    assert "Итого " in payments
     assert "payment.promo_code" in payments
 
     assert '"/api/v1/promocodes/active"' in promocodes
     assert "Промокод применён" in promocodes
     assert "Повторно вводить его при пополнении не нужно" in promocodes
+
+
+def test_partner_promos_are_separate_from_referral_links() -> None:
+    app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    gate = _read(FRONTEND / "components" / "app-entry-gate.tsx")
+    payments = _read(FRONTEND / "app" / "payments" / "page.tsx")
+    types = _read(FRONTEND / "lib" / "types.ts")
+
+    assert "stats?.promo_codes" in app
+    assert "обычную реферальную ссылку" in app
+    assert "не включает финансовые бонусы" in app
+    assert "не связан с реферальной ссылкой" in app
+    assert "promo_codes?:" in types
+    assert "Скопировать промо-ссылку" not in app
+    assert "const PROMO_LINK" not in gate
+    assert 'kind: "promo"' not in gate
+    assert "/mini-app/payments/?promo=" not in gate
+    assert "initialPromoCode" not in payments

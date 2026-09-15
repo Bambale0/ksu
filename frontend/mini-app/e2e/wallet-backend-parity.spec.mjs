@@ -31,6 +31,8 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
     };
   });
 
+  let promoActive = false;
+
   await page.route('**/api/v1/**', (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -51,16 +53,50 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
     if (path === '/api/v1/discovery/home') return json({ slides: [] });
-    if (path === '/api/v1/promocodes/redeem' && request.method() === 'POST') return json({
-      status: 'activated',
+    if (path === '/api/v1/promocodes/active') return json(promoActive ? {
+      active: true,
+      program_active: true,
       code: 'KSENIA25',
-      reward_rox: '25.00',
-      welcome_rox: '25.00',
+      promo_id: '11111111-1111-4111-8111-111111111111',
+      partner_user_id: '22222222-2222-4222-8222-222222222222',
+      activated_at: '2026-09-15T12:00:00+00:00',
+      welcome_rox_granted: '25.00',
+      welcome_rox_current: '25.00',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
-      balance_rox: '175.00',
-      message: 'Промокод активирован: +25 ROX',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
+      package_discount_percent: '0',
+    } : {
+      active: false,
+      program_active: true,
+      code: null,
+      promo_id: null,
+      partner_user_id: null,
+      activated_at: null,
+      welcome_rox_granted: '0',
+      welcome_rox_current: '0',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
+      package_discount_percent: '0',
     });
+    if (path === '/api/v1/promocodes/redeem' && request.method() === 'POST') {
+      promoActive = true;
+      return json({
+        status: 'activated',
+        code: 'KSENIA25',
+        reward_rox: '25.00',
+        welcome_rox: '25.00',
+        first_line_percent: '30.00',
+        topup_partner_rox: '10.00',
+        topup_user_rox: '50.00',
+        topup_user_min_rub: '1000.00',
+        balance_rox: '175.00',
+        message: 'Промокод активирован: +25 ROX',
+      });
+    }
     if (path === '/api/v1/payments/card/packages') return json({
       provider: 'kassa',
       label: 'Оплата картой',
@@ -182,12 +218,14 @@ test('partner promo activates separately and checkout package stays exact', asyn
     }
     return route.fallback();
   });
-  await page.goto('/mini-app/payments/?promo=KSENIA25');
+  await page.goto('/mini-app/payments/');
+  await page.getByRole('textbox', { name: 'Есть промокод?' }).fill('KSENIA25');
+  await page.getByRole('button', { name: 'Активировать промокод' }).click();
 
   await expect(page.getByText('Промокод активирован: +25 ROX')).toBeVisible();
   await expect(page.getByText('KSENIA25', { exact: true })).toBeVisible();
   await expect(page.getByText('100', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/пакете не меняется|пакету пополнения/).first()).toBeVisible();
+  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/).first()).toBeVisible();
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
   await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
 });
@@ -203,9 +241,11 @@ test('released promo is not rendered as credited bonus in payment history', asyn
       package_id: 'starter',
       amount: '100.00',
       currency: 'RUB',
-      credits: '125.00',
+      credits: '100.00',
       base_credits: '100.00',
-      bonus_credits: '25.00',
+      package_bonus_credits: '0',
+      promo_bonus_credits: '0',
+      bonus_credits: '0',
       promo_code: 'KSENIA25',
       promo_bonus_status: 'released',
       created_at: '2026-09-13T10:00:00Z',

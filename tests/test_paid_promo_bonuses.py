@@ -24,6 +24,7 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.db.session import SessionFactory
+from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_promos import AdminPromoService
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.payments import PaymentService
@@ -642,6 +643,135 @@ async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_onl
 
 
 @pytest.mark.asyncio
+async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_1000_rub() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Topup partner")
+        buyer = await _user(session, "Topup buyer")
+        promo = await _promo(session, partner=partner)
+        payment = Payment(
+            user_id=buyer.id,
+            provider="yookassa",
+            amount=Decimal("1086.96"),
+            currency="RUB",
+            rox_amount=Decimal("1100"),
+            status="pending",
+            payload={
+                "package_id": "p1000",
+                "base_credits": "1000",
+                "package_bonus_credits": "100",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "100",
+                "credited_credits": "1100",
+            },
+        )
+        session.add(payment)
+        await session.commit()
+
+        await PromoCodeService.reserve_for_payment(session, payment=payment, code=promo.code)
+        await session.commit()
+        completed = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+
+        config = await PartnerPromoProgramService.get_config(session)
+        buyer_wallet = await session.get(Wallet, buyer.id)
+        assert Decimal(config.topup_user_rox) == Decimal("50.00")
+        assert Decimal(config.topup_user_min_rub) == Decimal("1000.00")
+        assert buyer_wallet is not None
+        assert Decimal(buyer_wallet.balance) == Decimal("1175.00")
+        assert Decimal(completed.rox_amount) == Decimal("1100")
+        assert completed.payload["package_bonus_credits"] == "100"
+        assert completed.payload["promo_bonus_credits"] == "50.00"
+        assert completed.payload["promo_reward_credits"] == "50.00"
+        assert completed.payload["bonus_credits"] == "150.00"
+        assert completed.payload["credited_credits"] == "1150.00"
+        assert completed.payload["promo_bonus_status"] == "applied"
+
+        user_bonus = await session.scalar(
+            select(WalletTransaction).where(
+                WalletTransaction.user_id == buyer.id,
+                WalletTransaction.kind == "partner_promo_user_topup_bonus",
+                WalletTransaction.payment_id == payment.id,
+            )
+        )
+        assert user_bonus is not None
+        assert Decimal(user_bonus.amount) == Decimal("50.00")
+        assert user_bonus.reason == "partner_promo_user_topup_bonus"
+        assert user_bonus.promo_code == promo.code
+        assert user_bonus.partner_id == partner.id
+        assert user_bonus.referral_user_id == buyer.id
+
+        await PaymentService.apply_reversal(
+            session,
+            payment_id=payment.id,
+            amount=Decimal("1086.96"),
+            provider="yookassa",
+            idempotency_key=f"promo-user-topup-refund:{payment.id}",
+            reason="refund",
+            provider_payload={"status": "refunded"},
+        )
+        await session.refresh(buyer_wallet)
+        # Full refund removes both the package payment credits and +50 payment promo;
+        # the one-time +25 activation welcome remains.
+        assert Decimal(buyer_wallet.balance) == Decimal(config.welcome_rox)
+
+
+@pytest.mark.asyncio
+async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Small topup partner")
+        buyer = await _user(session, "Small topup buyer")
+        promo = await _promo(session, partner=partner)
+        payment = Payment(
+            user_id=buyer.id,
+            provider="yookassa",
+            amount=Decimal("543.48"),
+            currency="RUB",
+            rox_amount=Decimal("550"),
+            status="pending",
+            payload={
+                "package_id": "p500",
+                "base_credits": "500",
+                "package_bonus_credits": "50",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "50",
+                "credited_credits": "550",
+            },
+        )
+        session.add(payment)
+        await session.commit()
+
+        await PromoCodeService.reserve_for_payment(session, payment=payment, code=promo.code)
+        await session.commit()
+        completed = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+
+        config = await PartnerPromoProgramService.get_config(session)
+        buyer_wallet = await session.get(Wallet, buyer.id)
+        assert buyer_wallet is not None
+        assert Decimal(buyer_wallet.balance) == Decimal("550") + Decimal(config.welcome_rox)
+        assert completed.payload["package_bonus_credits"] == "50"
+        assert completed.payload["promo_bonus_credits"] == "0"
+        assert completed.payload["bonus_credits"] == "50"
+        assert completed.payload["credited_credits"] == "550"
+        assert completed.payload["promo_bonus_status"] == "below_threshold"
+
+        user_bonus = await session.scalar(
+            select(WalletTransaction).where(
+                WalletTransaction.user_id == buyer.id,
+                WalletTransaction.kind == "partner_promo_user_topup_bonus",
+                WalletTransaction.payment_id == payment.id,
+            )
+        )
+        assert user_bonus is None
+
+
+@pytest.mark.asyncio
 async def test_plain_referral_link_never_creates_financial_rewards() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Link partner")
@@ -769,6 +899,8 @@ async def test_admin_can_change_global_program_economics_without_per_code_reward
             welcome_rox=Decimal("27"),
             first_line_percent=Decimal("31"),
             topup_partner_rox=Decimal("11"),
+            topup_user_rox=Decimal("55"),
+            topup_user_min_rub=Decimal("1200"),
             is_active=True,
             idempotency_key=f"program-update:{uuid.uuid4()}",
             request_id=f"test:{uuid.uuid4()}",
@@ -779,7 +911,107 @@ async def test_admin_can_change_global_program_economics_without_per_code_reward
         assert Decimal(str(result["welcome_rox"])) == Decimal("27")
         assert Decimal(str(result["first_line_percent"])) == Decimal("31")
         assert Decimal(str(result["topup_partner_rox"])) == Decimal("11")
+        assert Decimal(str(result["topup_user_rox"])) == Decimal("55")
+        assert Decimal(str(result["topup_user_min_rub"])) == Decimal("1200")
         # Keep the suite isolated: this test proves the mutation but does not persist it.
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_legacy_admin_program_update_preserves_new_user_topup_fields_when_omitted() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Legacy program admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.read", "promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        before = await PartnerPromoProgramService.get_config(session)
+        expected_user_rox = Decimal(before.topup_user_rox)
+        expected_min_rub = Decimal(before.topup_user_min_rub)
+
+        result, replayed = await AdminPromoService.update_program(
+            session,
+            admin=admin,
+            welcome_rox=Decimal("25"),
+            first_line_percent=Decimal("30"),
+            topup_partner_rox=Decimal("10"),
+            topup_user_rox=None,
+            topup_user_min_rub=None,
+            is_active=True,
+            idempotency_key=f"legacy-program-update:{uuid.uuid4()}",
+            request_id=f"test:{uuid.uuid4()}",
+            confirmed=True,
+        )
+
+        assert replayed is False
+        assert Decimal(str(result["topup_user_rox"])) == expected_user_rox
+        assert Decimal(str(result["topup_user_min_rub"])) == expected_min_rub
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_legacy_admin_program_update_retry_replays_pre_0039_hash() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Legacy retry admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.read", "promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        key = f"legacy-program-retry:{uuid.uuid4()}"
+        legacy_payload = {
+            "welcome_rox": "25",
+            "first_line_percent": "30",
+            "topup_partner_rox": "10",
+            "is_active": True,
+        }
+        legacy_response = {
+            "welcome_rox": "25",
+            "first_line_percent": "30",
+            "topup_partner_rox": "10",
+            "is_active": True,
+        }
+
+        async def legacy_operation() -> dict[str, object]:
+            return legacy_response
+
+        first, first_replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=key,
+            admin_user_id=admin.id,
+            request_id=f"legacy:{uuid.uuid4()}",
+            action="promos.manage",
+            target_id="partner-promo-program",
+            request_payload=legacy_payload,
+            operation=legacy_operation,
+        )
+        assert first_replayed is False
+
+        replay, replayed = await AdminPromoService.update_program(
+            session,
+            admin=admin,
+            welcome_rox=Decimal("25"),
+            first_line_percent=Decimal("30"),
+            topup_partner_rox=Decimal("10"),
+            topup_user_rox=None,
+            topup_user_min_rub=None,
+            is_active=True,
+            idempotency_key=key,
+            request_id=f"retry:{uuid.uuid4()}",
+            confirmed=True,
+        )
+
+        assert replayed is True
+        assert replay == first == legacy_response
         await session.rollback()
 
 
