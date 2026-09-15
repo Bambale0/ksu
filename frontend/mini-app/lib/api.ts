@@ -263,7 +263,7 @@ export const api = {
   }),
   activePromo: () => request<ActivePromo>("/api/v1/promocodes/active"),
   referralStats: () => request<PartnerStats>("/api/v1/referrals/stats"),
-  referralInvitations: () => request<{ items: ReferralInvitation[] }>("/api/v1/referrals/invitations?limit=20"),
+  referralInvitations: () => request<{ items: ReferralInvitation[] }>("/api/v1/referrals/invitations?line=1&limit=20"),
   referralRewards: () => request<{ items: ReferralReward[] }>("/api/v1/referrals/rewards?limit=20"),
   referralTransfers: () => request<{ items: Array<{ id: string; amount_rub: string; rox_amount: string; created_at: string }> }>("/api/v1/referrals/wallet-transfers?limit=20"),
   creatorPartnership: () => request<Record<string, any>>("/api/v1/creator-partnership"),
