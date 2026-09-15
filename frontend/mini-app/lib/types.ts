@@ -272,6 +272,7 @@ export type PromptToolTask = {
 
 export type PartnerStats = {
   first_line?: number;
+  promo_first_line?: number;
   second_line?: number;
   available?: string;
   partner_balance_rub?: string;
@@ -318,6 +319,8 @@ export type ReferralInvitation = {
   username?: string | null;
   first_name?: string | null;
   line: number;
+  source?: "link" | "promo" | string | null;
+  promo_id?: string | null;
   joined_at: string;
 };
 
