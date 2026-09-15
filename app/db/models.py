@@ -78,16 +78,32 @@ class WalletTransaction(Base):
     )
 
 
+class PartnerPromoProgramConfig(TimestampMixin, Base):
+    __tablename__ = "partner_promo_program_config"
+
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    welcome_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    first_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    topup_partner_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class PromoCode(TimestampMixin, Base):
     __tablename__ = "promo_codes"
     __table_args__ = (
         UniqueConstraint("code"),
         Index("ix_promo_codes_code", "code", unique=True),
+        Index("ix_promo_codes_partner_user_id", "partner_user_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Retained for schema/backward compatibility. Runtime economics come from
+    # PartnerPromoProgramConfig, not from per-code reward values.
     reward_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    partner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
     max_uses: Mapped[int | None] = mapped_column(Integer)
     uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -124,12 +140,22 @@ class PromoRedemption(Base):
 
 class ReferralRelation(Base):
     __tablename__ = "referral_relations"
+    __table_args__ = (
+        Index("ix_referral_relations_inviter_source", "inviter_user_id", "source"),
+        Index("ix_referral_relations_promo_id", "promo_id"),
+    )
 
     referred_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     inviter_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="link", server_default="link", nullable=False
+    )
+    promo_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("promo_codes.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
