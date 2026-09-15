@@ -117,26 +117,32 @@ async def test_partner_promo_activation_credits_welcome_once_and_sets_attributio
         assert promo.uses_count == 1
         assert redemption is not None and redemption.status == "applied"
         assert len(transactions) == 1
+        welcome_tx = transactions[0]
+        assert welcome_tx.reason == "promo_activation_welcome"
+        assert welcome_tx.promo_code == promo.code
+        assert welcome_tx.partner_id == partner.id
+        assert welcome_tx.referral_user_id == user.id
+        assert welcome_tx.payment_id is None
 
 
 @pytest.mark.asyncio
-async def test_same_partner_link_is_upgraded_but_other_partner_cannot_steal_attribution() -> None:
+async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None:
     async with SessionFactory() as session:
         first_partner = await _user(session, "First partner")
         second_partner = await _user(session, "Second partner")
-        upgrade_user = await _user(session, "Upgrade user")
-        locked_user = await _user(session, "Locked user")
+        same_link_user = await _user(session, "Same link user")
+        cross_link_user = await _user(session, "Cross link user")
         first_promo = await _promo(session, partner=first_partner)
-        await _promo(session, partner=second_partner)
+        second_promo = await _promo(session, partner=second_partner)
         session.add_all(
             [
                 ReferralRelation(
-                    referred_user_id=upgrade_user.id,
+                    referred_user_id=same_link_user.id,
                     inviter_user_id=first_partner.id,
                     source="link",
                 ),
                 ReferralRelation(
-                    referred_user_id=locked_user.id,
+                    referred_user_id=cross_link_user.id,
                     inviter_user_id=second_partner.id,
                     source="link",
                 ),
@@ -144,30 +150,44 @@ async def test_same_partner_link_is_upgraded_but_other_partner_cannot_steal_attr
         )
         await session.commit()
 
-        activation = await PromoCodeService.activate(
+        same_activation = await PromoCodeService.activate(
             session,
-            user_id=upgrade_user.id,
+            user_id=same_link_user.id,
+            code=first_promo.code,
+        )
+        cross_activation = await PromoCodeService.activate(
+            session,
+            user_id=cross_link_user.id,
             code=first_promo.code,
         )
         await session.commit()
-        assert activation.activated is True
-        upgraded = await session.get(ReferralRelation, upgrade_user.id)
-        assert upgraded is not None
-        assert upgraded.source == "promo"
-        assert upgraded.promo_id == first_promo.id
+
+        assert same_activation.activated is True
+        assert cross_activation.activated is True
+        same_relation = await session.get(ReferralRelation, same_link_user.id)
+        cross_relation = await session.get(ReferralRelation, cross_link_user.id)
+        assert same_relation is not None
+        assert same_relation.inviter_user_id == first_partner.id
+        assert same_relation.source == "promo"
+        assert same_relation.promo_id == first_promo.id
+        assert cross_relation is not None
+        assert cross_relation.inviter_user_id == first_partner.id
+        assert cross_relation.source == "promo"
+        assert cross_relation.promo_id == first_promo.id
 
         with pytest.raises(PromoCodeError) as exc_info:
             await PromoCodeService.activate(
                 session,
-                user_id=locked_user.id,
-                code=first_promo.code,
+                user_id=cross_link_user.id,
+                code=second_promo.code,
             )
         await session.rollback()
         assert exc_info.value.code == "already_attributed"
-        locked = await session.get(ReferralRelation, locked_user.id)
+        locked = await session.get(ReferralRelation, cross_link_user.id)
         assert locked is not None
-        assert locked.inviter_user_id == second_partner.id
-        assert locked.source == "link"
+        assert locked.inviter_user_id == first_partner.id
+        assert locked.source == "promo"
+        assert locked.promo_id == first_promo.id
 
 
 @pytest.mark.asyncio
@@ -268,6 +288,65 @@ async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_onl
         assert [(row.level, Decimal(row.percent), Decimal(row.amount)) for row in rewards] == [
             (1, Decimal(config.first_line_percent), Decimal("90.00")),
         ]
+        reward = rewards[0]
+        assert reward.reason == "partner_referral_commission"
+        assert reward.promo_id == promo.id
+        assert reward.promo_code == promo.code
+        assert reward.payment_id == payment.id
+        assert reward.partner_user_id == partner.id
+        assert reward.source_user_id == buyer.id
+
+        payment_tx = await session.scalar(
+            select(WalletTransaction).where(
+                WalletTransaction.user_id == buyer.id,
+                WalletTransaction.kind == "payment",
+                WalletTransaction.reference_id == str(payment.id),
+            )
+        )
+        assert payment_tx is not None
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+            payment_amount=Decimal("999999"),
+        )
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+        )
+        await session.flush()
+
+        bonus_transactions = list(
+            (
+                await session.scalars(
+                    select(WalletTransaction).where(
+                        WalletTransaction.user_id == partner.id,
+                        WalletTransaction.kind == "partner_promo_topup_bonus",
+                    )
+                )
+            ).all()
+        )
+        assert len(bonus_transactions) == 1
+        bonus_tx = bonus_transactions[0]
+        assert bonus_tx.reason == "partner_referral_topup_bonus"
+        assert bonus_tx.promo_code == promo.code
+        assert bonus_tx.partner_id == partner.id
+        assert bonus_tx.referral_user_id == buyer.id
+        assert bonus_tx.payment_id == payment.id
+        assert len(
+            list(
+                (
+                    await session.scalars(
+                        select(ReferralReward).where(
+                            ReferralReward.source_transaction_id == payment_tx.id
+                        )
+                    )
+                ).all()
+            )
+        ) == 1
+        await session.refresh(partner_wallet)
+        assert Decimal(partner_wallet.balance) == Decimal(config.topup_partner_rox)
         assert (await ReferralService.stats(session, second_line.id))["available"] == Decimal("0")
 
         await PaymentService.apply_reversal(
