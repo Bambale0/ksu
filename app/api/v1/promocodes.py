@@ -60,17 +60,19 @@ async def _view(
         "code": promo.code,
         "partner_user_id": str(promo.partner_user_id),
         "welcome_rox": str(config.welcome_rox),
-        # Backward-compatible alias for older Mini App clients.
-        "reward_rox": str(config.welcome_rox),
+        # Backward-compatible alias now reports the payment-bound promo reward.
+        "reward_rox": str(config.payment_bonus_rox),
+        "payment_bonus_rox": str(config.payment_bonus_rox),
+        "min_payment_rub": str(config.min_payment_rub),
         "first_line_percent": str(config.first_line_percent),
         "topup_partner_rox": str(config.topup_partner_rox),
         "already_active": already_active,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
         "message": (
-            "Партнёрская программа уже активна"
+            f"Промокод активен — +{config.payment_bonus_rox} ROX при пополнении от {config.min_payment_rub} ₽"
             if already_active
-            else f"После активации начислим +{config.welcome_rox} ROX"
+            else f"Активируйте промокод: +{config.payment_bonus_rox} ROX при пополнении от {config.min_payment_rub} ₽"
         ),
     }
 
@@ -121,13 +123,16 @@ async def redeem(
         "code": activation.promo.code,
         "partner_user_id": str(activation.promo.partner_user_id),
         "welcome_rox": str(activation.config.welcome_rox),
-        "reward_rox": str(activation.config.welcome_rox),
+        "reward_rox": str(activation.config.payment_bonus_rox),
+        "payment_bonus_rox": str(activation.config.payment_bonus_rox),
+        "min_payment_rub": str(activation.config.min_payment_rub),
         "first_line_percent": str(activation.config.first_line_percent),
         "topup_partner_rox": str(activation.config.topup_partner_rox),
         "balance_rox": str(wallet.balance if wallet is not None else 0),
         "message": (
-            f"Промокод активирован: +{activation.config.welcome_rox} ROX"
-            if activation.activated
-            else "Партнёрская программа уже активна"
+            (
+                f"Промокод активен — +{activation.config.payment_bonus_rox} ROX "
+                f"при пополнении от {activation.config.min_payment_rub} ₽"
+            )
         ),
     }
