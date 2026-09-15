@@ -75,6 +75,14 @@ async def _view(
     }
 
 
+@router.get("/active")
+async def active_promo(
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    return await PromoCodeService.active_state(session, user_id=user.id)
+
+
 @router.post("/validate")
 async def validate(
     payload: RedeemPromoRequest,
