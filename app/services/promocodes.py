@@ -17,6 +17,7 @@ from app.db.models import (
     User,
 )
 from app.services.partner_promo_program import PartnerPromoProgramService
+from app.services.referral_antifraud import ReferralAntifraudService
 from app.services.wallet import WalletService
 
 
@@ -143,20 +144,22 @@ class PromoCodeService:
 
         cls._check_capacity(promo)
 
-        if relation is None:
-            relation = ReferralRelation(
-                referred_user_id=user_id,
-                inviter_user_id=promo.partner_user_id,
-                source="promo",
-                promo_id=promo.id,
+        admission = await ReferralAntifraudService.attach_promo_user(
+            session,
+            visitor=user,
+            inviter_user_id=promo.partner_user_id,
+            promo_id=promo.id,
+        )
+        if not admission.attached:
+            code = (
+                "already_attributed"
+                if admission.reason == "already_attributed"
+                else f"referral_{admission.reason}"
             )
-            session.add(relation)
-        else:
-            # Plain referral links carry no financial ownership. The first promo
-            # activation establishes the immutable financial partner attribution.
-            relation.inviter_user_id = promo.partner_user_id
-            relation.source = "promo"
-            relation.promo_id = promo.id
+            raise PromoCodeError(
+                code,
+                f"Partner referral admission rejected: {admission.reason}",
+            )
 
         now = datetime.now(UTC)
         if existing_redemption is None:
