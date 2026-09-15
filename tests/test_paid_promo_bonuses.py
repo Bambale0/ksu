@@ -211,6 +211,8 @@ async def test_partner_promo_activation_respects_referral_hourly_limit(
         existing_referral = await _user(session, "Existing referral")
         promo_user = await _user(session, "Blocked promo user")
         promo = await _promo(session, partner=partner)
+        promo_user_id = promo_user.id
+        promo_id = promo.id
         session.add(
             ReferralRelation(
                 referred_user_id=existing_referral.id,
@@ -223,16 +225,16 @@ async def test_partner_promo_activation_respects_referral_hourly_limit(
         with pytest.raises(PromoCodeError) as exc_info:
             await PromoCodeService.activate(
                 session,
-                user_id=promo_user.id,
+                user_id=promo_user_id,
                 code=promo.code,
             )
         await session.rollback()
 
         assert exc_info.value.code == "referral_hourly_limit"
         assert exc_info.value.preserve_transaction is True
-        assert await session.get(ReferralRelation, promo_user.id) is None
-        assert await session.get(Wallet, promo_user.id) is None
-        stored = await session.get(PromoCode, promo.id)
+        assert await session.get(ReferralRelation, promo_user_id) is None
+        assert await session.get(Wallet, promo_user_id) is None
+        stored = await session.get(PromoCode, promo_id)
         assert stored is not None
         assert stored.uses_count == 0
 
