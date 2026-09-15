@@ -6,35 +6,39 @@ This document is the deployment/runbook companion to `ROXY_BRAND.md`.
 
 ## Approved product rules
 
-- 1 ROX = 1 RUB.
-- Welcome: 50 internal ROX.
-- Invited friend: +30 internal ROX to the inviter after successful anti-fraud admission.
-- Paid prompt repeat/remix: +5 internal ROX to the original author; self-repeats do not pay.
-- Level 1 real top-up: 30% withdrawable ROX.
-- Level 2 real top-up: 5% withdrawable ROX.
-- Minimum partner withdrawal: 3,000 ROX.
+- 1 ROX = 1 RUB for RUB package/pricing denomination.
+- Registration without a promo code grants 0 ROX.
+- Ordinary referral/profile/share links are non-financial.
+- Partner promo activation grants the configured welcome ROX once; current default is 25 ROX.
+- A promo-attributed 1st-line successful top-up pays the partner the configured cash commission; current default is 30% of the authoritative paid RUB basis.
+- The same successful top-up grants the partner the configured fixed wallet bonus; current default is +10 ROX.
+- 2nd-line financial rewards are 0.
+- Prompt repeat/remix grants no referral bonus.
+- Minimum partner cash withdrawal: 3,000 RUB by current server configuration.
 
-Internal spend ROX live in the wallet/accounting domain. Withdrawable partner earnings are derived from referral reward accounting and are not merged into the spend wallet.
+Internal spend ROX live in the wallet/accounting domain. Withdrawable partner earnings are RUB-backed referral cash accounting and are not merged into the spend wallet. Partner-promo economics are database/admin controlled through the global promo program configuration.
 
 ## Public denomination migration
 
 Migration `0023_roxy_one_ruble_denomination` converted persisted legacy 10-RUB credit values to public 1-RUB ROX while preserving real monetary value.
 
-Current production overrides must use public ROX units:
+Current production denomination/config compatibility:
 
 ```dotenv
 INTERNAL_CREDIT_RUB=1
-START_BALANCE_ROX=50
-INVITE_BONUS_ROX=30
-PROMPT_REPEAT_BONUS_ROX=5
-REFERRAL_FIRST_PERCENT=30
-REFERRAL_SECOND_PERCENT=5
+START_BALANCE_ROX=0
+INVITE_BONUS_ROX=0
+PROMPT_REPEAT_BONUS_ROX=0
+REFERRAL_FIRST_PERCENT=0
+REFERRAL_SECOND_PERCENT=0
 PARTNER_MIN_WITHDRAWAL_RUB=3000
 ```
 
+The zero-valued referral variables above are deprecated compatibility knobs. They are not authoritative business configuration; current partner promo economics come from the database/admin-controlled global partner promo program config.
+
 ## Referral admission anti-fraud
 
-The invitation bonus is not issued directly from `/start` parsing. A new user first passes the server-side referral admission gate under a row lock on the inviter.
+Registration-time referral admission is non-financial. A plain `/start`/share/profile link may establish attribution for analytics and sharing, but it must not create ROX or cash rewards. Financial rewards begin only after a valid partner promo activation.
 
 Current defaults:
 
@@ -48,15 +52,15 @@ REFERRAL_ANTIFRAUD_BURST_AUTOBAN=true
 
 Rules:
 
-- accepted relations are counted from durable `referral_relations`;
-- the +30 invite bonus is credited only after the relation is accepted;
-- the wallet credit remains idempotent by referred user;
-- hour/day limits reject the attempted attachment but do not deactivate the inviter;
+- accepted link relations are counted from durable `referral_relations`;
+- registration/link admission never creates a wallet or cash bonus;
+- hour/day limits reject the attempted link attachment but do not deactivate the inviter;
 - with the default burst settings, the sixth registration within 10 seconds is rejected and the referrer account is restricted when autoban is enabled;
-- all evaluated attempts are persisted to `referral_events` with a reason and context;
-- existing users cannot change inviter by presenting another referral payload later.
+- all evaluated registration referral attempts are persisted to `referral_events` with a reason and context;
+- an existing non-financial link attribution may be replaced by the first valid promo attribution according to the partner promo service rules;
+- once promo-owned, attribution cannot silently move to another partner.
 
-This protects the spend-wallet bonus from registration floods without mixing it with withdrawable 30%/5% referral rewards.
+Promo activation and payment reward idempotency protect the financial program separately from registration anti-fraud.
 
 ## Generation billing
 
@@ -137,11 +141,14 @@ After deploy/migration/restart:
 3. A controlled generation debit equals its quote.
 4. Kling Motion 2.6/3.0 resolve different 720p and 1080p rates correctly.
 5. Restart preserves the latest published Admin Tariff.
-6. `/api/v1/referrals/stats` keeps bonus/internal and withdrawable balances separate.
-7. New registration receives 50 ROX.
-8. An admitted referred registration credits the inviter 30 ROX once.
-9. Hour/day rejected referrals create no relation/bonus and leave the inviter active.
-10. Burst threshold blocks the triggering registration and, when configured, restricts the referrer account.
-11. Concurrent registration attempts for one inviter cannot exceed the configured limit through a race.
-12. Paid remix by another user credits the original author 5 ROX once.
-13. Partner rewards remain separately withdrawable subject to the 3,000 ROX threshold.
+6. `/api/v1/referrals/stats` keeps wallet ROX and withdrawable partner RUB accounting separate.
+7. New registration receives 0 ROX and creates no `welcome_bonus` transaction, even if a stale legacy environment still contains `START_BALANCE_ROX=50`.
+8. Ordinary referral/share links create no financial reward.
+9. Valid promo activation grants the configured welcome ROX exactly once and persists promo attribution.
+10. A successful promo-attributed 1st-line top-up creates only the configured 1st-line cash commission plus fixed partner ROX bonus.
+11. 2nd-line financial rewards remain zero.
+12. Hour/day rejected registration referrals create no relation and leave the inviter active.
+13. Burst threshold blocks the triggering registration and, when configured, restricts the referrer account.
+14. Concurrent registration attempts for one inviter cannot exceed the configured limit through a race.
+15. Paid remix/repeat does not create a referral bonus.
+16. Partner cash rewards remain separately withdrawable subject to the configured RUB threshold.
