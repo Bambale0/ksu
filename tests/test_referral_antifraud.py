@@ -47,11 +47,10 @@ def test_referral_event_model_is_registered_for_alembic_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_hourly_referral_limit_blocks_bonus_without_banning_referrer(
+async def test_hourly_referral_limit_blocks_extra_attribution_without_banning_referrer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 1)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)
@@ -109,8 +108,7 @@ async def test_hourly_referral_limit_blocks_bonus_without_banning_referrer(
         )
 
     assert relations == 1
-    assert wallet is not None
-    assert wallet.balance == 30
+    assert wallet is None or wallet.balance == 0
     assert inviter is not None and inviter.is_active is True
     assert sorted(reasons) == ["attached", "hourly_limit"]
     assert first_id in referred_ids
@@ -122,7 +120,6 @@ async def test_daily_referral_limit_blocks_bonus_without_banning_referrer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 1)
     _disable_burst(monkeypatch)
@@ -177,7 +174,6 @@ async def test_burst_threshold_deactivates_referrer_and_blocks_current_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 10)
@@ -230,7 +226,7 @@ async def test_burst_threshold_deactivates_referrer_and_blocks_current_attempt(
     assert inviter is not None
     assert inviter.is_active is False
     assert relations == 1
-    assert wallet is not None and wallet.balance == 30
+    assert wallet is None or wallet.balance == 0
     assert blocked_relation is None
     assert sorted(event.reason for event in events) == ["attached", "burst_autoban"]
     burst_event = next(event for event in events if event.reason == "burst_autoban")
@@ -242,7 +238,6 @@ async def test_burst_limit_can_reject_without_autoban(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 10)
@@ -279,7 +274,6 @@ async def test_concurrent_referrals_are_serialized_under_same_inviter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 1)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)
@@ -321,8 +315,7 @@ async def test_concurrent_referrals_are_serialized_under_same_inviter(
         )
 
     assert relation_count == 1
-    assert wallet is not None
-    assert wallet.balance == 30
+    assert wallet is None or wallet.balance == 0
     assert sorted(reasons) == ["attached", "hourly_limit"]
 
 
@@ -331,7 +324,6 @@ async def test_existing_unattributed_user_ignores_late_referral_link(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
-    monkeypatch.setattr(settings, "invite_bonus_rox", 30)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)
