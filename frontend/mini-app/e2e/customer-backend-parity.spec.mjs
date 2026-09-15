@@ -76,6 +76,17 @@ async function mockApi(page) {
     if (/^\/api\/v1\/support\/tickets\/[^/]+$/.test(path)) return json({ id: '44444444-4444-4444-8444-444444444444', topic: 'Оплата', status: 'open', created_at: '2026-08-26T04:00:00Z', updated_at: '2026-08-26T05:00:00Z', can_reply: true, can_close: true, can_reopen: false, messages: [{ id: 'm1', body: 'Помогите', author: 'user', created_at: '2026-08-26T04:00:00Z' }] });
     if (path.startsWith('/api/v1/support/tickets/')) return json({ status: 'ok' });
 
+    if (path === '/api/v1/promocodes/redeem' && method === 'POST') return json({
+      status: 'activated',
+      code: 'WELCOME',
+      partner_user_id: '99999999-9999-4999-8999-999999999999',
+      reward_rox: '25.00',
+      welcome_rox: '25.00',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      balance_rox: '175.00',
+      message: 'Промокод активирован: +25.00 ROX',
+    });
     if (path === '/api/v1/promocodes/validate') return json({
       status: 'valid',
       code: 'WELCOME',
