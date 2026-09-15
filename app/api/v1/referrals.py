@@ -14,6 +14,7 @@ from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, W
 from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.credits import InternalCreditService
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.partner import (
     PartnerInsufficientFunds,
     PartnerService,
@@ -107,6 +108,7 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         .limit(1)
     )
     minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
+    promo_program = await PartnerPromoProgramService.get_config(session)
 
     return {
         "first_line": first,
@@ -124,8 +126,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "pending_withdrawals": str(accounting["pending_withdrawals"]),
         "minimum_withdrawal": str(minimum_rub),
         "minimum_withdrawal_rub": str(minimum_rub),
-        "first_line_percent": str(settings.referral_first_percent),
-        "second_line_percent": str(settings.referral_second_percent),
+        "first_line_percent": str(promo_program.first_line_percent),
+        "second_line_percent": "0",
         "referral_payload": payload,
         "referral_link": referral_link,
         "referral_bot_link": referral_link,
@@ -139,7 +141,10 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
         "welcome_bonus_rox": str(settings.start_balance_rox),
-        "invite_bonus_rox": str(settings.invite_bonus_rox),
+        "invite_bonus_rox": "0",
+        "promo_welcome_rox": str(promo_program.welcome_rox),
+        "promo_topup_partner_rox": str(promo_program.topup_partner_rox),
+        "promo_program_active": promo_program.is_active,
         "prompt_repeat_bonus_rox": str(settings.prompt_repeat_bonus_rox),
         "prompts_created": prompts_created,
         "prompt_repeats": prompt_repeats,
