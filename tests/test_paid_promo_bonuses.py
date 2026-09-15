@@ -152,6 +152,10 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
             ]
         )
         await session.commit()
+        cross_link_user_id = cross_link_user.id
+        first_partner_id = first_partner.id
+        first_promo_id = first_promo.id
+        second_promo_code = second_promo.code
 
         same_activation = await PromoCodeService.activate(
             session,
@@ -181,16 +185,16 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
         with pytest.raises(PromoCodeError) as exc_info:
             await PromoCodeService.activate(
                 session,
-                user_id=cross_link_user.id,
-                code=second_promo.code,
+                user_id=cross_link_user_id,
+                code=second_promo_code,
             )
         await session.rollback()
         assert exc_info.value.code == "already_attributed"
-        locked = await session.get(ReferralRelation, cross_link_user.id)
+        locked = await session.get(ReferralRelation, cross_link_user_id)
         assert locked is not None
-        assert locked.inviter_user_id == first_partner.id
+        assert locked.inviter_user_id == first_partner_id
         assert locked.source == "promo"
-        assert locked.promo_id == first_promo.id
+        assert locked.promo_id == first_promo_id
 
 
 @pytest.mark.asyncio
