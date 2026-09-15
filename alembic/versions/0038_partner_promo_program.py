@@ -27,6 +27,12 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.CheckConstraint("welcome_rox >= 0", name="ck_partner_promo_welcome_nonnegative"),
+        sa.CheckConstraint(
+            "first_line_percent >= 0 AND first_line_percent <= 100",
+            name="ck_partner_promo_percent_range",
+        ),
+        sa.CheckConstraint("topup_partner_rox >= 0", name="ck_partner_promo_topup_nonnegative"),
         sa.PrimaryKeyConstraint("key"),
     )
     op.execute(
@@ -58,6 +64,11 @@ def upgrade() -> None:
         sa.Column("source", sa.String(length=16), server_default="link", nullable=False),
     )
     op.add_column("referral_relations", sa.Column("promo_id", sa.Uuid(), nullable=True))
+    op.create_check_constraint(
+        "ck_referral_relation_source",
+        "referral_relations",
+        "source IN ('link', 'promo')",
+    )
     op.create_foreign_key(
         "fk_referral_relations_promo_id_promo_codes",
         "referral_relations",
@@ -91,6 +102,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_referral_relations_promo_id", table_name="referral_relations")
     op.drop_index("ix_referral_relations_inviter_source", table_name="referral_relations")
+    op.drop_constraint("ck_referral_relation_source", "referral_relations", type_="check")
     op.drop_constraint(
         "fk_referral_relations_promo_id_promo_codes",
         "referral_relations",
