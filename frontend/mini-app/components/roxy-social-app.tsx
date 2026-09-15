@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { SavedReferencePicker } from "@/lib/reference-memory";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type {
+  ActivePromo,
   Draft,
   FeedCard,
   FeedComment,
@@ -89,6 +90,8 @@ function transactionLabel(value?: string | null): string {
     generation: "Создание",
     refund: "Возврат",
     bonus: "Бонус",
+    partner_promo_welcome: "Бонус по промокоду",
+    partner_promo_topup_bonus: "Бонус партнёру за пополнение",
     referral_bonus: "Бонус за приглашение",
     partner_transfer: "Перевод партнёра",
     adjustment: "Корректировка",
@@ -334,6 +337,7 @@ export function RoxySocialApp() {
   const [partnerStats, setPartnerStats] = useState<PartnerStats | null>(null);
   const [partnerRewards, setPartnerRewards] = useState<ReferralReward[]>([]);
   const [partnerInvites, setPartnerInvites] = useState<ReferralInvitation[]>([]);
+  const [activePromo, setActivePromo] = useState<ActivePromo | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [preview, setPreview] = useState<Generation | FeedCard | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface>("private");
@@ -378,9 +382,10 @@ export function RoxySocialApp() {
   }, []);
 
   const loadProfile = useCallback(async () => {
-    const [works, publications] = await Promise.all([
+    const [works, publications, promo] = await Promise.all([
       api.generations("limit=36&status=succeeded"),
       me ? api.profileFeed(String(me.telegram_id), 0) : Promise.resolve({ items: [] as FeedCard[] }),
+      api.activePromo().catch(() => null),
     ]);
     const ownPublished = works.items.filter(isPublishedGeneration);
     const publishedIds = new Set((publications.items || []).map((item) => item.id));
@@ -389,6 +394,7 @@ export function RoxySocialApp() {
       ...(publications.items || []),
       ...ownPublished.filter((item) => !publishedIds.has(item.id)),
     ]);
+    if (promo) setActivePromo(promo);
   }, [me]);
 
   const loadPartners = useCallback(async () => {
@@ -415,9 +421,10 @@ export function RoxySocialApp() {
 
     (async () => {
       try {
-        const [modelResult, meResult, recentResult, feedResult, trendsResult, onboardingResult] = await Promise.allSettled([
+        const [modelResult, meResult, promoResult, recentResult, feedResult, trendsResult, onboardingResult] = await Promise.allSettled([
           api.models(),
           tg?.initData ? api.me() : Promise.resolve(null),
+          tg?.initData ? api.activePromo() : Promise.resolve(null),
           tg?.initData ? api.generations("limit=12") : Promise.resolve({ items: [] }),
           tg?.initData ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
           tg?.initData ? api.trends() : Promise.resolve({ items: [] }),
@@ -430,6 +437,7 @@ export function RoxySocialApp() {
           setFamilies(modelResult.value.families?.length ? modelResult.value.families : fallbackFamilies(nextModels));
         }
         if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
+        if (promoResult.status === "fulfilled" && promoResult.value) setActivePromo(promoResult.value);
         if (recentResult.status === "fulfilled") setRecent(recentResult.value.items || []);
         if (feedResult.status === "fulfilled") setFeed(feedResult.value.items || []);
         if (trendsResult.status === "fulfilled") setTrends(trendsResult.value.items || []);
@@ -562,7 +570,7 @@ export function RoxySocialApp() {
         }} />}
         {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
-        {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
+        {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
 
@@ -792,10 +800,10 @@ function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generatio
   return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {statusLabel(item.status)}</small>{item.error && <p>Не получилось создать работу. Попробуйте ещё раз или измените описание.</p>}</div><span className={`status ${item.status}`}>{statusLabel(item.status)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
 }
 
-function ProfileScreen({ me, avatar, stats, tab, setTab, works, publications, onPreview, onWallet, onCopy }: { me: Me | null; avatar: string; stats: PartnerStats | null; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: ProfilePublication[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void; onCopy: (value: string | null | undefined) => Promise<void> }) {
+function ProfileScreen({ me, avatar, stats, activePromo, tab, setTab, works, publications, onPreview, onWallet, onCopy }: { me: Me | null; avatar: string; stats: PartnerStats | null; activePromo: ActivePromo | null; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: ProfilePublication[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void; onCopy: (value: string | null | undefined) => Promise<void> }) {
   const likes = publications.reduce((sum, item) => sum + Number((item as FeedCard).likes_count || 0), 0);
   const link = profileLink(stats, me);
-  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><div className="profile-actions">{link ? <button className="icon-button" type="button" onClick={() => void onCopy(link)} aria-label="Поделиться профилем"><Icon name="share"/></button> : null}<button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button></div><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div><div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет. Открой работу и нажми “В профиль” или “В ленту + профиль”." onClick={(item) => onPreview(item, "surface" in item && item.surface ? item.surface as FeedSurface : "private")} reactions/>}</section>;
+  return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><div className="profile-actions">{link ? <button className="icon-button" type="button" onClick={() => void onCopy(link)} aria-label="Поделиться профилем"><Icon name="share"/></button> : null}<button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button></div><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div>{activePromo?.active ? <div className="panel"><span className="kicker">Промокод активирован</span><h2>{activePromo.code}</h2><p className="muted">+{compact(activePromo.welcome_rox_granted)} ROX начислено по промокоду. Цена пакета не меняется — бонус выдаётся отдельно.</p>{!activePromo.program_active ? <p className="muted">Партнёрская программа временно приостановлена, привязка промокода сохранена.</p> : null}</div> : <div className="panel"><span className="kicker">Промокод</span><p className="muted">Партнёрский промокод ещё не активирован.</p><a className="secondary wide" href="/mini-app/promocodes/">Активировать промокод</a></div>}<div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет. Открой работу и нажми “В профиль” или “В ленту + профиль”." onClick={(item) => onPreview(item, "surface" in item && item.surface ? item.surface as FeedSurface : "private")} reactions/>}</section>;
 }
 
 function PartnerScreen({ me, stats, rewards, invitations, onRefresh, showToast }: { me: Me | null; stats: PartnerStats | null; rewards: ReferralReward[]; invitations: ReferralInvitation[]; onRefresh: () => void; showToast: (message: string) => void }) {

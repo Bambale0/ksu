@@ -35,3 +35,19 @@ Partner promo codes are the only financial activation mechanism for the referral
 - The fixed partner top-up ROX bonus is idempotent per source payment transaction and is reversed on a full payment refund. Cash referral rewards keep the existing proportional refund accounting.
 - Every partner-program financial row stores audit context for its reason, promo code, partner, referred user and source payment (where a payment exists), in addition to an idempotency key/unique financial source.
 - Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
+
+
+## Active Feature Execution — Persistent promo visibility in Mini App
+
+- **Task:** make an already activated partner promo visibly persist across Mini App reloads/navigation and surface its benefit on payments/profile without changing promo economics.
+- **Baseline SHA:** `70ae3f961950ce103e8c88f8d3131526287ceab8`.
+- **Current state:** activation/economics exist and are covered by backend tests; `/mini-app/promocodes/` shows immediate activation result; `payments/page.tsx` only knows promo state from manual input or `?promo=` and therefore loses visible state after reload/navigation.
+- **Missing:** authenticated read endpoint for the current user's active promo attribution; automatic hydration of that state on payments/profile; regression coverage for persisted visibility.
+- **Reuse:** `PromoCodeService.relation_for_user`, `PartnerPromoProgramService`, existing `PromoCode`/wallet audit rows, customer API helper.
+- **Security:** derive user from authenticated session only; never accept user/partner ownership from client; return only user-facing promo metadata.
+- **No-hardcode:** economics remain DB-owned by `partner_promo_program_config`.
+- **Observability:** no new provider path; existing request-id HTTP middleware remains authoritative. Endpoint is read-only and deterministic.
+- **Acceptance criteria:** (1) after promo activation, reload/navigation still shows active code; (2) payments page auto-hydrates it without re-entry; (3) UI explicitly shows +welcome ROX benefit and that purchased package amount itself is unchanged; (4) checkout automatically carries active promo metadata when applicable; (5) profile exposes active promo/program state; (6) existing activation/payment/refund economics stay unchanged.
+- **Verification matrix:** unit/domain — existing promo economics + new view helper; DB/API integration — required; authorization — required via CurrentUserDep; migrations — N/A, no schema change; provider contract — N/A; idempotency/retry — existing activation/checkout unchanged; API — required; E2E — required for persisted UI; smoke — required through Mini App/CI; observability — existing request middleware; admin configurability — economics unchanged/DB-backed; performance — indexed PK/FK lookup only; rollback — code-only revert.
+- **Plan:** 1) add failing API regression for active promo state; 2) implement read endpoint; 3) hydrate payments/profile UX from endpoint; 4) add frontend/E2E assertions; 5) code review against spec + AGENTS; 6) exact-head CI, merge, deploy, exact-SHA production verification.
+- **Progress:** audit complete; implementation pending.

@@ -15,6 +15,7 @@ from app.db.models import (
     PromoRedemption,
     ReferralRelation,
     User,
+    WalletTransaction,
 )
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.referral_antifraud import ReferralAntifraudService
@@ -240,22 +241,38 @@ class PromoCodeService:
         """
         normalized = cls.normalize(code)
         if not normalized:
-            return None
+            return await cls.attach_current_attribution_to_payment(
+                session,
+                payment=payment,
+            )
 
         activation = await cls.activate(
             session,
             user_id=payment.user_id,
             code=normalized,
         )
-        cls._attach_payment_metadata(payment, activation.promo)
+        cls._attach_payment_metadata(
+            payment,
+            activation.promo,
+            metadata_source="activation",
+        )
         await session.flush()
         return activation.promo
 
     @classmethod
     def assert_payment_code(cls, payment: Payment, requested_code: str | None) -> None:
-        actual = cls.normalize((payment.payload or {}).get("promo_code"))
+        payload = payment.payload or {}
+        actual = cls.normalize(payload.get("promo_code"))
         requested = cls.normalize(requested_code)
-        if actual != requested:
+        metadata_source = str(payload.get("promo_metadata_source") or "")
+        if requested:
+            matches = actual == requested
+        else:
+            # Automatic attribution metadata is not part of the user's checkout
+            # intent. An idempotent retry without an explicit promo must therefore
+            # remain valid even though the stored Payment is enriched server-side.
+            matches = not actual or metadata_source == "attribution"
+        if not matches:
             from app.services.payment_creation import PaymentIdempotencyConflict
 
             raise PaymentIdempotencyConflict(
@@ -431,6 +448,75 @@ class PromoCodeService:
         return await PartnerPromoProgramService.get_config(session)
 
     @classmethod
+    async def active_state(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+    ) -> dict[str, object]:
+        """Return the persisted partner-promo state visible to the current user."""
+        config = await PartnerPromoProgramService.get_config(session)
+        base: dict[str, object] = {
+            "active": False,
+            "program_active": bool(config.is_active),
+            "welcome_rox_current": str(config.welcome_rox),
+            "first_line_percent": str(config.first_line_percent),
+            "topup_partner_rox": str(config.topup_partner_rox),
+            # Current partner promos do not discount or increase paid packages.
+            "package_discount_percent": "0",
+        }
+        relation = await cls.relation_for_user(session, user_id=user_id)
+        if relation is None or relation.source != "promo" or relation.promo_id is None:
+            return base
+
+        promo = await session.get(PromoCode, relation.promo_id)
+        if promo is None or promo.partner_user_id != relation.inviter_user_id:
+            return base
+
+        welcome_tx = await session.scalar(
+            select(WalletTransaction)
+            .where(
+                WalletTransaction.user_id == user_id,
+                WalletTransaction.kind == "partner_promo_welcome",
+                WalletTransaction.promo_code == promo.code,
+                WalletTransaction.partner_id == relation.inviter_user_id,
+            )
+            .order_by(WalletTransaction.created_at.asc())
+        )
+        granted = Decimal(welcome_tx.amount) if welcome_tx is not None else Decimal("0")
+        return {
+            **base,
+            "active": True,
+            "code": promo.code,
+            "promo_id": str(promo.id),
+            "partner_user_id": str(relation.inviter_user_id),
+            "activated_at": relation.created_at.isoformat(),
+            "welcome_rox_granted": str(granted),
+        }
+
+    @classmethod
+    async def attach_current_attribution_to_payment(
+        cls,
+        session: AsyncSession,
+        *,
+        payment: Payment,
+    ) -> PromoCode | None:
+        """Attach persisted promo attribution to a new payment without reactivation."""
+        relation = await cls.relation_for_user(session, user_id=payment.user_id)
+        if relation is None or relation.source != "promo" or relation.promo_id is None:
+            return None
+        promo = await session.get(PromoCode, relation.promo_id)
+        if promo is None or promo.partner_user_id != relation.inviter_user_id:
+            return None
+        cls._attach_payment_metadata(
+            payment,
+            promo,
+            metadata_source="attribution",
+        )
+        await session.flush()
+        return promo
+
+    @classmethod
     async def redeem(
         cls,
         session: AsyncSession,
@@ -525,7 +611,12 @@ class PromoCodeService:
             raise PromoCodeError("usage_limit_reached", "Promo code usage limit reached")
 
     @staticmethod
-    def _attach_payment_metadata(payment: Payment, promo: PromoCode) -> None:
+    def _attach_payment_metadata(
+        payment: Payment,
+        promo: PromoCode,
+        *,
+        metadata_source: str,
+    ) -> None:
         payload = payment.payload or {}
         base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
         payment.payload = {
@@ -534,6 +625,7 @@ class PromoCodeService:
             "promo_id": str(promo.id),
             "promo_code": promo.code,
             "promo_partner_user_id": str(promo.partner_user_id),
+            "promo_metadata_source": metadata_source,
             "promo_reward_credits": "0",
             "promo_bonus_status": "activated",
             "bonus_credits": "0",

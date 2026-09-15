@@ -14,6 +14,7 @@ import {
   type CheckoutIntent,
 } from "@/lib/payment-idempotency";
 import { openPaymentLink } from "@/lib/telegram";
+import type { ActivePromo } from "@/lib/types";
 
 type Currency = "RUB" | "USD" | "EUR";
 type Provider = "card" | "yookassa" | "cryptobot" | "2328";
@@ -98,6 +99,8 @@ function paymentRoxSummary(payment: Payment): string {
     bonusLabel = ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code}`;
   } else if (bonus > 0 && !hasPromo) {
     bonusLabel = ` · +${compactNumber(payment.bonus_credits)} бонус`;
+  } else if (hasPromo && payment.promo_bonus_status === "activated") {
+    bonusLabel = ` · промокод ${payment.promo_code} активен`;
   }
   return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${bonusLabel}`;
 }
@@ -114,17 +117,19 @@ export default function PaymentsPage() {
   const [email, setEmail] = useState("");
   const [promoCode, setPromoCode] = useState(initialPromoCode);
   const [promo, setPromo] = useState<PromoPreview | null>(null);
+  const [activePromo, setActivePromo] = useState<ActivePromo | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const load = async () => {
     setError("");
-    const [cardResult, yooKassaResult, cryptoBotResult, paymentsResult] = await Promise.allSettled([
+    const [cardResult, yooKassaResult, cryptoBotResult, paymentsResult, promoStateResult] = await Promise.allSettled([
       customerRequest<PackageResponse>("/api/v1/payments/card/packages"),
       customerRequest<PackageResponse>("/api/v1/payments/yookassa/packages"),
       customerRequest<PackageResponse>("/api/v1/payments/crypto/packages"),
       customerRequest<{ items: Payment[] }>("/api/v1/payments?limit=50"),
+      customerRequest<ActivePromo>("/api/v1/promocodes/active"),
     ]);
 
     const nextCardCatalog = cardResult.status === "fulfilled" ? cardResult.value : null;
@@ -146,6 +151,9 @@ export default function PaymentsPage() {
     setCrypto2328Catalog(null);
     if (paymentsResult.status === "fulfilled") {
       setPayments(paymentsResult.value.items || []);
+    }
+    if (promoStateResult.status === "fulfilled") {
+      setActivePromo(promoStateResult.value);
     }
     setProvider((current) => {
       if (current === "card" && cardReady) return "card";
@@ -179,6 +187,8 @@ export default function PaymentsPage() {
       });
       setPromo(next);
       setPromoCode(next.code);
+      const persisted = await customerRequest<ActivePromo>("/api/v1/promocodes/active");
+      setActivePromo(persisted);
       setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
     } catch (reason) {
       setPromo(null);
@@ -193,21 +203,24 @@ export default function PaymentsPage() {
       ? localStorage.getItem("roxy-billing-email") || ""
       : "";
     setEmail(savedEmail);
-    void load();
-
     const code = initialPromoCode();
-    if (code) {
-      void customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      }).then((next) => {
+    void (async () => {
+      await load();
+      if (!code) return;
+      try {
+        const next = await customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
+          method: "POST",
+          body: JSON.stringify({ code }),
+        });
         setPromo(next);
         setPromoCode(next.code);
+        const persisted = await customerRequest<ActivePromo>("/api/v1/promocodes/active");
+        setActivePromo(persisted);
         setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
-      }).catch(() => {
+      } catch {
         setPromo(null);
-      });
-    }
+      }
+    })();
   }, []);
 
   const catalog = provider === "card"
@@ -262,17 +275,21 @@ export default function PaymentsPage() {
 
   const checkout = async () => {
     if (!packageId || !price || busy || (provider === "card" && !email.trim())) return;
-    if (promoCode.trim() && !promo) {
+    if (!activePromo?.active && promoCode.trim() && !promo) {
       setError("Сначала примените промокод или очистите поле.");
       return;
     }
-    const activePromo = promo?.code || "";
+    // Persisted promo attribution is part of the payment intent because it
+    // changes partner accounting. Re-send the stored code automatically so
+    // checkout idempotency remains stable across reloads/deploys without asking
+    // the user to enter the code again.
+    const effectivePromo = activePromo?.code || promo?.code || "";
     const intent: CheckoutIntent = {
       provider,
       packageId,
       currency: activeCurrency,
       billingEmail: provider === "card" ? email.trim() : "",
-      promoCode: activePromo,
+      promoCode: effectivePromo,
     };
     const requestKey = checkoutIdempotencyKey(intent);
 
@@ -288,20 +305,20 @@ export default function PaymentsPage() {
           body: JSON.stringify({
             provider: "yookassa",
             package_id: packageId,
-            promo_code: activePromo || null,
+            promo_code: effectivePromo || null,
           }),
         });
       } else if (provider === "cryptobot") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
+          body: JSON.stringify({ package_id: packageId, promo_code: effectivePromo || null }),
         });
       } else if (provider === "2328") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: activePromo || null }),
+          body: JSON.stringify({ package_id: packageId, promo_code: effectivePromo || null }),
         });
       } else {
         payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", {
@@ -311,7 +328,7 @@ export default function PaymentsPage() {
             package_id: packageId,
             currency,
             billing_email: email.trim(),
-            promo_code: activePromo || null,
+            promo_code: effectivePromo || null,
           }),
         });
         localStorage.setItem("roxy-billing-email", email.trim());
@@ -349,7 +366,7 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = activePromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
+      const promoHint = effectivePromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
       setNotice(
         provider === "card"
           ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
@@ -404,6 +421,16 @@ export default function PaymentsPage() {
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
+      {activePromo?.active ? <div className="panel">
+        <span className="kicker">Промокод применён</span>
+        <h2>{activePromo.code}</h2>
+        <div className="profile-stats">
+          <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
+          <div><strong>Без изменений</strong><span>цена пакета</span></div>
+          <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
+        </div>
+        <p className="muted">Цена пакета не меняется: этот промокод даёт отдельный бонус ROX и закрепляет партнёрскую программу.</p>
+      </div> : null}
 
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
@@ -428,30 +455,32 @@ export default function PaymentsPage() {
 
           {selected ? <div className="profile-stats">
             <div><strong>{compactNumber(selected.credits)}</strong><span>ROX в пакете</span></div>
-            {promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
+            {activePromo?.active ? <div><strong>{activePromo.code}</strong><span>промокод применён</span></div> : promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
             <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
           </div> : null}
 
           <div className="form-stack">
-            <label className="field">
-              <span className="label">Есть промокод?</span>
-              <input
-                className="control"
-                maxLength={64}
-                value={promoCode}
-                onChange={(event) => {
-                  setPromoCode(event.target.value.toUpperCase());
-                  setPromo(null);
-                  setNotice("");
-                }}
-                placeholder="Например, KSENIA50"
-                autoCapitalize="characters"
-              />
-            </label>
-            <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
-              {busy === "promo" ? "Активирую…" : promo ? `Промокод ${promo.code} активирован` : "Активировать промокод"}
-            </button>
-            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX относится к активации промокода, а не к пакету пополнения.</small> : null}
+            {!activePromo?.active ? <>
+              <label className="field">
+                <span className="label">Есть промокод?</span>
+                <input
+                  className="control"
+                  maxLength={64}
+                  value={promoCode}
+                  onChange={(event) => {
+                    setPromoCode(event.target.value.toUpperCase());
+                    setPromo(null);
+                    setNotice("");
+                  }}
+                  placeholder="Например, KSENIA50"
+                  autoCapitalize="characters"
+                />
+              </label>
+              <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
+                {busy === "promo" ? "Активирую…" : promo ? `Промокод ${promo.code} активирован` : "Активировать промокод"}
+              </button>
+              {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX относится к активации промокода, а не к пакету пополнения.</small> : null}
+            </> : <small className="muted">Промокод {activePromo.code} уже закреплён за аккаунтом и применяется автоматически.</small>}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>

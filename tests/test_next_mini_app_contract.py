@@ -180,3 +180,26 @@ def test_design_tokens_match_current_roxy_system() -> None:
     assert "--tg-safe-bottom" in css
     assert "min-height: 44px" in css
     assert "prefers-reduced-motion: reduce" in css
+
+
+def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
+    api = _read(FRONTEND / "lib" / "api.ts")
+    app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    payments = _read(FRONTEND / "app" / "payments" / "page.tsx")
+    promocodes = _read(FRONTEND / "app" / "promocodes" / "page.tsx")
+
+    assert '"/api/v1/promocodes/active"' in api
+    assert "api.activePromo()" in app
+    assert "activePromo={activePromo}" in app
+    assert "Промокод активирован" in app
+    assert 'partner_promo_welcome: "Бонус по промокоду"' in app
+
+    assert '"/api/v1/promocodes/active"' in payments
+    assert "Промокод применён" in payments
+    assert "ROX уже начислено" in payments
+    assert "Цена пакета не меняется" in payments
+    assert "payment.promo_code" in payments
+
+    assert '"/api/v1/promocodes/active"' in promocodes
+    assert "Промокод применён" in promocodes
+    assert "Повторно вводить его при пополнении не нужно" in promocodes

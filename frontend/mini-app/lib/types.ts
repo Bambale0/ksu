@@ -32,6 +32,20 @@ export type Me = {
   };
 };
 
+export type ActivePromo = {
+  active: boolean;
+  program_active: boolean;
+  code?: string | null;
+  promo_id?: string | null;
+  partner_user_id?: string | null;
+  activated_at?: string | null;
+  welcome_rox_granted?: string;
+  welcome_rox_current: string;
+  first_line_percent: string;
+  topup_partner_rox: string;
+  package_discount_percent: string;
+};
+
 export type UiField = {
   name: string;
   label: string;
