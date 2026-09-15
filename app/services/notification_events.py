@@ -6,7 +6,6 @@ from decimal import Decimal
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.db.models import (
     Generation,
     Notification,
