@@ -22,6 +22,11 @@ PROMO_ERROR_MESSAGES = {
     "program_inactive": "Партнёрская бонусная программа временно отключена",
     "self_ref": "Нельзя активировать собственный партнёрский промокод",
     "invalid_user": "Аккаунт недоступен для активации промокода",
+    "referral_hourly_limit": "Лимит партнёрских активаций за час исчерпан",
+    "referral_daily_limit": "Лимит партнёрских активаций за сутки исчерпан",
+    "referral_burst_limit": "Слишком много активаций подряд. Попробуйте позже",
+    "referral_burst_autoban": "Партнёрская программа для этого партнёра временно недоступна",
+    "referral_blocked_referrer": "Партнёр по этому промокоду сейчас недоступен",
 }
 
 
@@ -96,7 +101,10 @@ async def redeem(
         )
         await session.commit()
     except PromoCodeError as exc:
-        await session.rollback()
+        if exc.preserve_transaction:
+            await session.commit()
+        else:
+            await session.rollback()
         raise _promo_error(exc) from exc
 
     wallet = await session.get(Wallet, user.id)
