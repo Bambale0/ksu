@@ -100,6 +100,17 @@ def upgrade() -> None:
         unique=False,
     )
 
+    op.add_column("wallet_transactions", sa.Column("reason", sa.String(length=64), nullable=True))
+    op.add_column("wallet_transactions", sa.Column("promo_code", sa.String(length=64), nullable=True))
+    op.add_column("wallet_transactions", sa.Column("partner_id", sa.Uuid(), nullable=True))
+    op.add_column("wallet_transactions", sa.Column("referral_user_id", sa.Uuid(), nullable=True))
+    op.add_column("wallet_transactions", sa.Column("payment_id", sa.Uuid(), nullable=True))
+
+    op.add_column("referral_rewards", sa.Column("reason", sa.String(length=64), nullable=True))
+    op.add_column("referral_rewards", sa.Column("promo_id", sa.Uuid(), nullable=True))
+    op.add_column("referral_rewards", sa.Column("promo_code", sa.String(length=64), nullable=True))
+    op.add_column("referral_rewards", sa.Column("payment_id", sa.Uuid(), nullable=True))
+
     # Old pending rows represented payment reservations. The new program activates
     # attribution immediately and never reserves a code for a payment.
     op.execute(
@@ -110,6 +121,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("referral_rewards", "payment_id")
+    op.drop_column("referral_rewards", "promo_code")
+    op.drop_column("referral_rewards", "promo_id")
+    op.drop_column("referral_rewards", "reason")
+
+    op.drop_column("wallet_transactions", "payment_id")
+    op.drop_column("wallet_transactions", "referral_user_id")
+    op.drop_column("wallet_transactions", "partner_id")
+    op.drop_column("wallet_transactions", "promo_code")
+    op.drop_column("wallet_transactions", "reason")
+
     op.drop_index("ix_referral_relations_promo_id", table_name="referral_relations")
     op.drop_index("ix_referral_relations_inviter_source", table_name="referral_relations")
     op.drop_constraint("ck_referral_relation_source", "referral_relations", type_="check")
