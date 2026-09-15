@@ -50,4 +50,17 @@ Partner promo codes are the only financial activation mechanism for the referral
 - **Acceptance criteria:** (1) after promo activation, reload/navigation still shows active code; (2) payments page auto-hydrates it without re-entry; (3) UI explicitly shows +welcome ROX benefit and that purchased package amount itself is unchanged; (4) checkout automatically carries active promo metadata when applicable; (5) profile exposes active promo/program state; (6) existing activation/payment/refund economics stay unchanged.
 - **Verification matrix:** unit/domain — existing promo economics + new view helper; DB/API integration — required; authorization — required via CurrentUserDep; migrations — N/A, no schema change; provider contract — N/A; idempotency/retry — existing activation/checkout unchanged; API — required; E2E — required for persisted UI; smoke — required through Mini App/CI; observability — existing request middleware; admin configurability — economics unchanged/DB-backed; performance — indexed PK/FK lookup only; rollback — code-only revert.
 - **Plan:** 1) add failing API regression for active promo state; 2) implement read endpoint; 3) hydrate payments/profile UX from endpoint; 4) add frontend/E2E assertions; 5) code review against spec + AGENTS; 6) exact-head CI, merge, deploy, exact-SHA production verification.
-- **Progress:** audit complete; implementation pending.
+- **Progress:** merged as PR #458 into `main` at `caa3806a4878302946bb2de2ef397d464d553315`; persistent promo UI/API/payment metadata are implemented.
+
+
+## Active Hotfix — Remove legacy referral economy
+
+- **Trigger:** production launcher still advertised `50 ROX` on registration and `+30 ROX` after a friend's first generation after the promo-only program had shipped.
+- **Baseline:** `caa3806a4878302946bb2de2ef397d464d553315` (merge of PR #458).
+- **Root cause:** the stale launcher copy matched a real legacy runtime path: `UserService.get_or_create()` still credited `settings.start_balance_rox` as `welcome_bonus`. Referral stats and partner/profile UI also still exposed legacy welcome/repeat/second-line economics.
+- **Authoritative rule:** registration, ordinary invite/share links and prompt repeat/remix are non-financial. Financial rewards are enabled only by a valid partner promo: configured welcome ROX to the user, configured first-line cash commission, and configured fixed partner ROX on successful top-up. Second-line financial reward is zero.
+- **Implementation:** remove registration wallet credit; make old economy env knobs inert/default-zero; make launcher read global promo economics from DB; return legacy stats fields as zero; expose promo-attributed first-line count/source; remove second-line earnings UX and label cash rewards in RUB; update retired bot/profile copy and economy/partner runbooks.
+- **Compatibility:** existing historical wallet transactions/balances are not silently clawed back. Legacy config fields remain parseable so stale production environment variables cannot break startup, but financial runtime no longer consumes them.
+- **Regression:** add a DB test proving `START_BALANCE_ROX=50` cannot create a registration grant; launcher source contract forbids old 50/30 text; stats/frontend contracts require promo-only terms and RUB cash labeling.
+- **No migration:** schema unchanged. Rollback is code-only.
+- **Progress:** implementation in `fix/remove-legacy-referral-economy`; exact-head CI/E2E, review, merge and production verification pending.
