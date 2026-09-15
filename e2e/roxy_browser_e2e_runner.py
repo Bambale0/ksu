@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+from decimal import Decimal
 
 from playwright.async_api import Page, expect
+
+from app.db.session import SessionFactory
+from app.services.users import UserService
+from app.services.wallet import WalletService
 
 from e2e import roxy_browser_e2e_v2 as suite
 
@@ -28,6 +33,24 @@ async def robust_route(page: Page, name: str) -> None:
         "profile": ".profile-screen",
     }.get(name, "main .screen")
     await expect(page.locator(ready).first).to_be_visible(timeout=10000)
+
+
+async def seed_main_wallet() -> None:
+    """Fund only the deterministic E2E account; registration itself stays non-financial."""
+    async with SessionFactory() as session:
+        user = await UserService.get_by_telegram_id(session, suite.legacy.MAIN_TG_ID)
+        if user is None:
+            raise AssertionError("E2E user was not created by browser authentication")
+        await WalletService.credit(
+            session,
+            user_id=user.id,
+            amount=Decimal("100000"),
+            kind="e2e_seed",
+            reference_type="e2e",
+            reference_id="main-wallet",
+            idempotency_key="e2e-main-wallet-seed",
+        )
+        await session.commit()
 
 
 async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) -> None:
@@ -55,6 +78,8 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
         timeout=7000,
     )
     report.controls_seen.add("catalog:prompt-tools/back")
+    await seed_main_wallet()
+    report.controls_seen.add("fixture:explicit-wallet-seed")
     report.ok("boot + canonical navigation + Back")
 
 
