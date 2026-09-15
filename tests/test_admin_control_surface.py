@@ -88,6 +88,10 @@ def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract()
     assert '@router.post("/promocodes", status_code=201)' not in operations
     assert '@router.post("/promocodes", status_code=status.HTTP_201_CREATED)' in capabilities
     assert '@router.patch("/promocodes/{promo_id}")' in capabilities
+    # v1 remains request-compatible for deployed admin clients, but the old
+    # reward field cannot control the new global program economics.
+    assert "reward_credits: Decimal | None" in capabilities
+    assert "partner_user_id: uuid.UUID | None = None" in capabilities
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
