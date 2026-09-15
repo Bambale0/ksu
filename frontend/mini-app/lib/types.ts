@@ -297,6 +297,17 @@ export type PartnerStats = {
   withdrawal_status?: string;
 };
 
+export type PartnerPromoCode = {
+  id: string;
+  code: string;
+  max_uses?: number | null;
+  uses_count: number;
+  remaining_uses?: number | null;
+  is_active: boolean;
+  expires_at?: string | null;
+  created_at: string;
+};
+
 export type ReferralReward = {
   id: string;
   line: number;

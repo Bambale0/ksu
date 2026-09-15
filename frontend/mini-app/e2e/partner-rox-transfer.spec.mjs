@@ -34,6 +34,21 @@ async function mockApi(page) {
     if (path === '/api/v1/referrals/stats') return json({ first_line: 0, second_line: 0, partner_balance_rub: '0.00', referral_link: 'https://t.me/example?start=ref_88002' });
     if (path === '/api/v1/referrals/rewards') return json({ items: [] });
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
+    if (path === '/api/v1/referrals/promocodes') return json({
+      items: [{
+        id: '33333333-3333-4333-8333-333333333333',
+        code: 'KOR42',
+        max_uses: 100,
+        uses_count: 4,
+        remaining_uses: 96,
+        is_active: true,
+        expires_at: null,
+        created_at: '2026-09-14T11:15:57Z',
+      }],
+      total: 1,
+      limit: 100,
+      offset: 0,
+    });
     if (path === '/api/v1/referrals/rox-transfers' && method === 'POST') {
       calls.push(request.postDataJSON());
       await new Promise((resolve) => setTimeout(resolve, 80));
@@ -88,4 +103,16 @@ test('partner cannot submit a transfer to their own ID', async ({ page }) => {
   await expect(panel.getByText('Нельзя переводить ROX самому себе.')).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Перевести 100 ROX' })).toBeDisabled();
   expect(calls).toHaveLength(0);
+});
+
+
+test('partner cabinet shows assigned promo codes', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/mini-app/?route=partners');
+
+  const promos = page.locator('[data-partner-promocodes]');
+  await expect(promos).toBeVisible();
+  await expect(promos.getByText('KOR42', { exact: true })).toBeVisible();
+  await expect(promos.getByText(/Активен · использовано 4 \/ 100/)).toBeVisible();
+  await expect(promos.getByRole('button', { name: 'Скопировать промокод KOR42' })).toBeVisible();
 });

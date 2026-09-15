@@ -50,4 +50,15 @@ Partner promo codes are the only financial activation mechanism for the referral
 - **Acceptance criteria:** (1) after promo activation, reload/navigation still shows active code; (2) payments page auto-hydrates it without re-entry; (3) UI explicitly shows +welcome ROX benefit and that purchased package amount itself is unchanged; (4) checkout automatically carries active promo metadata when applicable; (5) profile exposes active promo/program state; (6) existing activation/payment/refund economics stay unchanged.
 - **Verification matrix:** unit/domain — existing promo economics + new view helper; DB/API integration — required; authorization — required via CurrentUserDep; migrations — N/A, no schema change; provider contract — N/A; idempotency/retry — existing activation/checkout unchanged; API — required; E2E — required for persisted UI; smoke — required through Mini App/CI; observability — existing request middleware; admin configurability — economics unchanged/DB-backed; performance — indexed PK/FK lookup only; rollback — code-only revert.
 - **Plan:** 1) add failing API regression for active promo state; 2) implement read endpoint; 3) hydrate payments/profile UX from endpoint; 4) add frontend/E2E assertions; 5) code review against spec + AGENTS; 6) exact-head CI, merge, deploy, exact-SHA production verification.
-- **Progress:** audit complete; implementation pending.
+- **Progress:** shipped in `caa3806a4878302946bb2de2ef397d464d553315`; active promo persistence is live and exact-SHA verified.
+
+
+## Active Incident — Partner promo inventory visibility
+
+- **Symptom:** partners could not see promo codes assigned to them in the Mini App even though admins could manage `promo_codes`.
+- **Root cause:** customer UI only exposed the promo a user had activated; the partner cabinet had no authenticated endpoint or UI for the partner's own promo-code inventory. Legacy production rows also included ownerless codes, which are intentionally not activatable.
+- **Production repair:** the intended owner was restored for the active legacy partner code through `AdminPromoService`/admin command auditing, and a stale active smoke code was disabled.
+- **Security seam:** `/api/v1/referrals/promocodes` derives ownership from `CurrentUserDep`; callers cannot request another partner's codes.
+- **Safety rule:** an ownerless promo code cannot be activated or reactivated through admin service paths.
+- **Acceptance criteria:** partner cabinet shows assigned codes, active/inactive state, usage/limit, expiry and copy action; only the authenticated partner's codes are returned; customer activation economics remain unchanged.
+- **Verification:** backend DB regression, Mini App contract, Chromium partner journey, full PR gates, exact-SHA production deploy and live bundle/API smoke.

@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUserDep, SessionDep
 from app.core.config import settings
 from app.db.feed_models import FeedRemixEvent
-from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, Wallet
+from app.db.models import Generation, PartnerWithdrawal, PromoCode, ReferralReward, User, Wallet
 from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.credits import InternalCreditService
@@ -149,6 +149,57 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "prompts_created": prompts_created,
         "prompt_repeats": prompt_repeats,
         "withdrawal_status": latest_withdrawal.status if latest_withdrawal is not None else "NONE",
+    }
+
+
+@router.get("/promocodes")
+async def promocodes(
+    user: CurrentUserDep,
+    session: SessionDep,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, object]:
+    """List promo codes owned by the authenticated partner."""
+
+    stmt = (
+        select(PromoCode)
+        .where(PromoCode.partner_user_id == user.id)
+        .order_by(PromoCode.is_active.desc(), PromoCode.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = list((await session.scalars(stmt)).all())
+    total = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(PromoCode)
+                .where(PromoCode.partner_user_id == user.id)
+            )
+        )
+        or 0
+    )
+    return {
+        "items": [
+            {
+                "id": str(item.id),
+                "code": item.code,
+                "max_uses": item.max_uses,
+                "uses_count": item.uses_count,
+                "remaining_uses": (
+                    None
+                    if item.max_uses is None
+                    else max(0, item.max_uses - item.uses_count)
+                ),
+                "is_active": item.is_active,
+                "expires_at": item.expires_at.isoformat() if item.expires_at else None,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 
