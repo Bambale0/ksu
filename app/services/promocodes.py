@@ -46,8 +46,8 @@ class PromoCodeService:
     """Partner promo activation.
 
     A partner-owned promo activates immutable partner attribution for a user.
-    The welcome ROX gift is granted once on activation. Future paid top-ups are
-    handled by ReferralService; promo codes never increase a payment package.
+    Activation itself grants no ROX. Eligible successful paid top-ups receive
+    the globally configured user promo bonus on top of the package total.
     """
 
     @staticmethod
@@ -207,21 +207,6 @@ class PromoCodeService:
             existing_redemption.reserved_until = None
             existing_redemption.redeemed_at = now
 
-        if Decimal(config.welcome_rox) > 0:
-            await WalletService.credit(
-                session,
-                user_id=user_id,
-                amount=Decimal(config.welcome_rox),
-                kind="partner_promo_welcome",
-                reference_type="promo",
-                reference_id=str(promo.id),
-                idempotency_key=f"partner-promo-welcome:{user_id}",
-                reason="promo_activation_welcome",
-                promo_code=promo.code,
-                partner_id=promo.partner_user_id,
-                referral_user_id=user_id,
-                payment_id=None,
-            )
 
         await session.flush()
         return PromoActivation(promo=promo, config=config, activated=True)
@@ -348,16 +333,81 @@ class PromoCodeService:
             redemption.reserved_until = None
             redemption.redeemed_at = None
 
-        if payload.get("promo_code"):
-            base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        relation = await session.get(ReferralRelation, payment.user_id)
+        config = await PartnerPromoProgramService.get_config(session)
+        promo: PromoCode | None = None
+        if (
+            config.is_active
+            and relation is not None
+            and relation.source == "promo"
+            and relation.promo_id is not None
+        ):
+            promo = await session.get(PromoCode, relation.promo_id)
+            if promo is not None and promo.partner_user_id != relation.inviter_user_id:
+                promo = None
+
+        package_total = Decimal(payment.rox_amount)
+        paid_rub = cls._payment_rub_basis(payment)
+        eligible = (
+            promo is not None
+            and paid_rub is not None
+            and paid_rub >= Decimal(config.min_payment_rub)
+            and Decimal(config.payment_bonus_rox) > 0
+        )
+        if eligible:
+            assert promo is not None
+            reward = Decimal(config.payment_bonus_rox)
+            await WalletService.credit(
+                session,
+                user_id=payment.user_id,
+                amount=reward,
+                kind="partner_promo_payment_bonus",
+                reference_type="payment",
+                reference_id=str(payment.id),
+                idempotency_key=f"payment:{payment.id}:partner-promo-user-bonus",
+                reason="promo_payment_bonus",
+                promo_code=promo.code,
+                partner_id=promo.partner_user_id,
+                referral_user_id=payment.user_id,
+                payment_id=payment.id,
+            )
             payment.payload = {
                 **payload,
-                "promo_bonus_status": "activated",
+                "promo_id": str(promo.id),
+                "promo_code": promo.code,
+                "promo_partner_user_id": str(promo.partner_user_id),
+                "promo_reward_credits": str(reward),
+                "promo_bonus_credits": str(reward),
+                "promo_bonus_status": "applied",
+                "credited_credits": str(package_total + reward),
+            }
+            return reward
+
+        if payload.get("promo_code") or promo is not None:
+            payment.payload = {
+                **payload,
                 "promo_reward_credits": "0",
-                "bonus_credits": "0",
-                "credited_credits": str(base),
+                "promo_bonus_credits": "0",
+                "promo_bonus_status": "ineligible",
+                "credited_credits": str(package_total),
             }
         return Decimal("0")
+
+    @staticmethod
+    def _payment_rub_basis(payment: Payment) -> Decimal | None:
+        currency = str(payment.currency or "").strip().upper()
+        if currency == "RUB":
+            amount = Decimal(payment.amount)
+        else:
+            payload = payment.payload if isinstance(payment.payload, dict) else {}
+            raw = payload.get("referral_basis_rub")
+            if raw in (None, ""):
+                return None
+            try:
+                amount = Decimal(str(raw))
+            except Exception:
+                return None
+        return amount if amount > 0 else None
 
     @classmethod
     async def release_payment_reservation(
@@ -460,6 +510,8 @@ class PromoCodeService:
             "active": False,
             "program_active": bool(config.is_active),
             "welcome_rox_current": str(config.welcome_rox),
+            "payment_bonus_rox": str(config.payment_bonus_rox),
+            "min_payment_rub": str(config.min_payment_rub),
             "first_line_percent": str(config.first_line_percent),
             "topup_partner_rox": str(config.topup_partner_rox),
             # Current partner promos do not discount or increase paid packages.
@@ -473,17 +525,6 @@ class PromoCodeService:
         if promo is None or promo.partner_user_id != relation.inviter_user_id:
             return base
 
-        welcome_tx = await session.scalar(
-            select(WalletTransaction)
-            .where(
-                WalletTransaction.user_id == user_id,
-                WalletTransaction.kind == "partner_promo_welcome",
-                WalletTransaction.promo_code == promo.code,
-                WalletTransaction.partner_id == relation.inviter_user_id,
-            )
-            .order_by(WalletTransaction.created_at.asc())
-        )
-        granted = Decimal(welcome_tx.amount) if welcome_tx is not None else Decimal("0")
         return {
             **base,
             "active": True,
@@ -491,7 +532,7 @@ class PromoCodeService:
             "promo_id": str(promo.id),
             "partner_user_id": str(relation.inviter_user_id),
             "activated_at": relation.created_at.isoformat(),
-            "welcome_rox_granted": str(granted),
+            "welcome_rox_granted": "0",
         }
 
     @classmethod
@@ -618,16 +659,16 @@ class PromoCodeService:
         metadata_source: str,
     ) -> None:
         payload = payment.payload or {}
-        base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+        package_total = Decimal(payment.rox_amount)
         payment.payload = {
             **payload,
-            "base_credits": str(base),
+            "base_credits": str(payload.get("base_credits") or package_total),
             "promo_id": str(promo.id),
             "promo_code": promo.code,
             "promo_partner_user_id": str(promo.partner_user_id),
             "promo_metadata_source": metadata_source,
             "promo_reward_credits": "0",
+            "promo_bonus_credits": "0",
             "promo_bonus_status": "activated",
-            "bonus_credits": "0",
-            "credited_credits": str(base),
+            "credited_credits": str(package_total),
         }
