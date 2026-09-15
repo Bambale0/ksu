@@ -13,6 +13,11 @@ def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
     assert "<b>Добро пожаловать в ROXY ✨</b>" in block
     assert "Создавайте изображения, видео и музыку" in block
     assert "🚀 Открыть ROXY" in block
+    assert "PartnerPromoProgramService.get_config(session)" in block
+    assert "после активации партнёрского промокода" in block
+    assert "За регистрацию и обычное приглашение начислений нет." in block
+    assert "50 ROX — сразу после регистрации" not in block
+    assert "+30 ROX — за друга после его первой генерации" not in block
     assert "_support_line()" in block
     assert "Поддержка:" in launcher
     assert 'parse_mode="HTML"' in block
