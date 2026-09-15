@@ -169,6 +169,12 @@ class AdminPromoService:
             partner = await session.get(User, partner_user_id)
             if partner is None or not partner.is_active:
                 raise ValueError("Promo partner must be an active user")
+            if (
+                promo.partner_user_id is not None
+                and promo.partner_user_id != partner_user_id
+                and promo.uses_count > 0
+            ):
+                raise ValueError("Used promo code partner cannot be changed")
             promo.partner_user_id = partner_user_id
             await session.flush()
             await session.refresh(promo)
