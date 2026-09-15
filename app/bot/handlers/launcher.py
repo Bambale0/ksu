@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.services.admin_security import parse_bootstrap_ids
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.trends import TrendService
 from app.services.users import UserService
 
@@ -115,6 +116,19 @@ async def _send_launcher(
     payload: str | None,
 ) -> None:
     try:
+        promo_program = await PartnerPromoProgramService.get_config(session)
+        welcome_rox = f"{promo_program.welcome_rox:g}"
+        first_line_percent = f"{promo_program.first_line_percent:g}"
+        topup_partner_rox = f"{promo_program.topup_partner_rox:g}"
+        promo_copy = (
+            "<b>Бонусы по промокоду:</b>\n"
+            f"🎟️ +{welcome_rox} ROX — пользователю после активации промокода\n"
+            f"💰 Партнёру: {first_line_percent}% + {topup_partner_rox} ROX "
+            "с успешного пополнения реферала\n"
+            "👥 За обычное приглашение без промокода начислений нет\n\n"
+            if promo_program.is_active
+            else "<b>Бонусы по промокоду:</b> программа временно приостановлена.\n\n"
+        )
         await message.answer(
             "Меню и поддержка закреплены снизу.",
             reply_markup=await _quick_menu_for(message, session),
@@ -125,9 +139,7 @@ async def _send_launcher(
             "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
             "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
             "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
-            "<b>Бонусы:</b>\n"
-            "🎁 50 ROX — сразу после регистрации\n"
-            "🎁 +30 ROX — за друга после его первой генерации\n\n"
+            f"{promo_copy}"
             "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
             f"{_support_line()}",
             reply_markup=app_launcher_menu(route=route, start_payload=payload),
