@@ -270,7 +270,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         first_wallet = await session.get(Wallet, first_line.id)
         relation = await session.get(ReferralRelation, buyer.id)
         assert buyer_wallet is not None
-        assert Decimal(buyer_wallet.balance) == Decimal("325.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("300.00")
         assert first_wallet is not None
         assert Decimal(first_wallet.balance) == Decimal("10.00")
         assert relation is not None
@@ -287,7 +287,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
             ).all()
         )
         # 30% is calculated from the authoritative 326.10 RUB payment.
-        # The +25 welcome ROX and +10 partner ROX are internal credits, not cash basis.
+        # Package/promo gifts and +10 partner ROX are internal credits, not cash basis.
         assert [(item.level, Decimal(item.amount)) for item in rewards] == [
             (1, Decimal("97.83")),
         ]
@@ -322,7 +322,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         )
         await session.refresh(buyer_wallet)
         await session.refresh(first_wallet)
-        assert Decimal(buyer_wallet.balance) == Decimal("175.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("150.00")
         assert Decimal(first_wallet.balance) == Decimal("10.00")
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
             "48.91"
@@ -360,7 +360,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         assert second_line_accounting["total_earned"] == Decimal("0")
         await session.refresh(buyer_wallet)
         await session.refresh(first_wallet)
-        assert Decimal(buyer_wallet.balance) == Decimal("25.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("0.00")
         assert Decimal(first_wallet.balance) == Decimal("0.00")
 
 
