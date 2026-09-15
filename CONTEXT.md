@@ -20,3 +20,17 @@ A Trend Assignment can be:
 - **automatic** — the category was selected from the trend's hashtags and may be recalculated when those tags or categories change.
 
 A manual assignment to the root `Тренды` category is still an explicit assignment and remains authoritative.
+
+## Partner Promo Program
+
+Partner promo codes are the only financial activation mechanism for the referral program.
+
+- Every promo code belongs to one partner (`promo_codes.partner_user_id`).
+- Program economics are global and database-owned in `partner_promo_program_config`; individual promo codes do not define their own reward amount.
+- Initial production values are: **25 ROX** to the user on first promo activation, **30%** of paid RUB basis to the first-line partner, and **+10 ROX** to that partner for each successful referred-user top-up.
+- A plain referral/deep link may still create an attribution relation for analytics/anti-fraud, but it grants **no ROX and no cash reward**. Financial rewards start only after a promo upgrades/creates the relation with `source=promo`.
+- Partner ownership is immutable for the user: a promo may upgrade a same-partner link attribution, but it cannot steal a user already attributed to another partner.
+- The welcome ROX grant is one-time and idempotent per user. Promo activation is independent from payment success and does not increase a purchased ROX package.
+- Only first-line paid top-ups earn commission. Second-line financial rewards are disabled for this program.
+- The fixed partner top-up ROX bonus is idempotent per source payment transaction and is reversed on a full payment refund. Cash referral rewards keep the existing proportional refund accounting.
+- Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
