@@ -721,6 +721,35 @@ async def test_admin_promo_uses_global_economics_and_requires_partner() -> None:
         assert Decimal(promo.reward_amount) == Decimal(config.welcome_rox)
 
 
+
+@pytest.mark.asyncio
+async def test_admin_promo_create_rejects_missing_partner_instead_of_creating_dead_code() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Ownerless promo admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        with pytest.raises(ValueError, match="partner_user_id is required"):
+            await AdminPromoService.create(
+                session,
+                admin=admin,
+                code=f"OWNERLESS{uuid.uuid4().hex[:8].upper()}",
+                partner_user_id=None,
+                max_uses=100,
+                expires_at=datetime.now(UTC) + timedelta(days=30),
+                idempotency_key=f"ownerless-promo:{uuid.uuid4()}",
+                request_id=f"test:{uuid.uuid4()}",
+                confirmed=True,
+            )
+        await session.rollback()
+
+
 @pytest.mark.asyncio
 async def test_admin_can_change_global_program_economics_without_per_code_rewards() -> None:
     async with SessionFactory() as session:
