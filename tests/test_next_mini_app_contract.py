@@ -213,6 +213,8 @@ def test_partner_cabinet_exposes_only_current_promo_economics() -> None:
     assert "promo_first_line" in block
     assert "promo_welcome_rox" in block
     assert "promo_topup_partner_rox" in block
+    assert "promo_program_active" in block
+    assert "Программа на паузе" in block
     assert "first_line_percent" in block
     assert "обычное приглашение начислений нет" in block.lower()
     assert "second_line" not in block
@@ -221,3 +223,5 @@ def test_partner_cabinet_exposes_only_current_promo_economics() -> None:
     assert "net_amount || reward.amount" in block
     assert " ₽</span>" in block
     assert " ROX</span>" not in block
+    api = _read(FRONTEND / "lib" / "api.ts")
+    assert '"/api/v1/referrals/invitations?line=1&limit=20"' in api
