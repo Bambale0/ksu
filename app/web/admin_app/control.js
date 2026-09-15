@@ -812,50 +812,117 @@
   }
 
   async function renderPromos() {
-    const data = await api("/api/v1/admin/control/promocodes");
-    const createButton = button("Create promo", "primary", () => openForm({
-      title: "Create promo code",
+    const [data, program] = await Promise.all([
+      api("/api/v1/admin/control/promocodes"),
+      api("/api/v1/admin/control/promocodes/program"),
+    ]);
+    const createButton = button("Создать промокод", "primary", () => openForm({
+      title: "Создать партнёрский промокод",
       fields: [
-        { name: "code", label: "Code" },
-        { name: "reward_credits", label: "Reward ROX", type: "number", step: "0.01" },
-        { name: "max_uses", label: "Successful activations limit", type: "number", required: false },
-        { name: "expires_at", label: "Expires at (optional)", type: "datetime-local", required: false },
+        { name: "code", label: "Код" },
+        { name: "partner_user_id", label: "UUID партнёра" },
+        { name: "max_uses", label: "Лимит активаций", type: "number", required: false },
+        { name: "expires_at", label: "Действует до (необязательно)", type: "datetime-local", required: false },
       ],
-      onSubmit: async ({ code, reward_credits, max_uses, expires_at }) => {
+      onSubmit: async ({ code, partner_user_id, max_uses, expires_at }) => {
         await mutate("/api/v1/admin/control/promocodes", {
           body: {
             code,
-            reward_credits,
+            partner_user_id,
             max_uses: max_uses ? Number(max_uses) : null,
             expires_at: expires_at ? new Date(expires_at).toISOString() : null,
           },
-          label: `Create promo ${code}?`,
+          label: `Создать промокод ${code} для партнёра ${partner_user_id}?`,
         });
-        toast("Promo created", "ok");
+        toast("Промокод создан", "ok");
         await renderPromos();
       },
     }));
+    const programButton = button("Изменить экономику", "primary", () => openForm({
+      title: "Партнёрская бонусная программа",
+      fields: [
+        { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
+        { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
+        { name: "topup_partner_rox", label: "ROX партнёру за каждое пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
+        { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
+      ],
+      onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
+        await mutate("/api/v1/admin/control/promocodes/program", {
+          body: {
+            welcome_rox,
+            first_line_percent,
+            topup_partner_rox,
+            is_active: is_active === "true",
+          },
+          label: "Изменить глобальную экономику партнёрских промокодов?",
+        });
+        toast("Экономика программы обновлена", "ok");
+        await renderPromos();
+      },
+    }));
+    const programSummary = pre({
+      "ROX новому пользователю": program.welcome_rox,
+      "1-я линия": `${program.first_line_percent}%`,
+      "ROX за пополнение реферала": program.topup_partner_rox,
+      "Статус": program.is_active ? "включена" : "выключена",
+      "Примечание": "За само приглашение начислений нет. Бонусы активируются только промокодом.",
+    });
     const promoTable = table(
-      ["Code", "Reward", "Usage", "Expires", "Status", "Actions"],
+      ["Код", "Партнёр", "Использование", "Действует до", "Статус", "Действия"],
       data.items || [],
       (row) => [
         row.code,
-        row.reward_credits,
+        row.partner_user_id || "не назначен",
         `${row.uses_count}/${row.max_uses || "∞"}`,
         row.expires_at ? new Date(row.expires_at).toLocaleString("ru-RU") : "∞",
-        row.is_active ? "active" : "inactive",
-        actions(button(row.is_active ? "Deactivate" : "Activate", "table-action", async () => {
-          try {
-            await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
-              body: { is_active: !row.is_active },
-              label: `${row.is_active ? "Deactivate" : "Activate"} promo ${row.code}?`,
-            });
-            await renderPromos();
-          } catch (error) { toast(error.message, "error"); }
-        })),
+        row.is_active ? "активен" : "выключен",
+        actions(
+          button("Партнёр", "table-action", () => openForm({
+            title: `Партнёр для ${row.code}`,
+            fields: [{ name: "partner_user_id", label: "UUID партнёра", value: row.partner_user_id || "" }],
+            onSubmit: async ({ partner_user_id }) => {
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}/partner`, {
+                body: { partner_user_id },
+                label: `Привязать ${row.code} к партнёру ${partner_user_id}?`,
+              });
+              await renderPromos();
+            },
+          })),
+          button("Параметры", "table-action", () => openForm({
+            title: `Параметры ${row.code}`,
+            fields: [
+              { name: "max_uses", label: "Макс. активаций", type: "number", required: false, value: row.max_uses ?? "" },
+              { name: "expires_at", label: "Истекает (ISO)", required: false, value: row.expires_at || "" },
+            ],
+            onSubmit: async ({ max_uses, expires_at }) => {
+              const body = {};
+              if (max_uses) body.max_uses = Number(max_uses);
+              if (expires_at) body.expires_at = expires_at;
+              if (!Object.keys(body).length) throw new Error("Укажите хотя бы один параметр");
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}`, {
+                method: "PATCH",
+                body,
+                label: `Обновить лимиты/срок промокода ${row.code}?`,
+              });
+              await renderPromos();
+            },
+          })),
+          button(row.is_active ? "Выключить" : "Включить", "table-action", async () => {
+            try {
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
+                body: { is_active: !row.is_active },
+                label: `${row.is_active ? "Выключить" : "Включить"} промокод ${row.code}?`,
+              });
+              await renderPromos();
+            } catch (error) { toast(error.message, "error"); }
+          }),
+        ),
       ],
     );
-    dom.controlView.replaceChildren(card("Promo management", promoTable, actions(createButton)));
+    dom.controlView.replaceChildren(
+      card("Экономика партнёрской программы", programSummary, actions(programButton)),
+      card("Партнёрские промокоды", promoTable, actions(createButton)),
+    );
   }
 
   async function renderContent() {

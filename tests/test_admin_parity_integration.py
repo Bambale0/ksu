@@ -1,6 +1,7 @@
 import json
 import random
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -162,11 +163,11 @@ async def test_signed_balance_adjustment_replays_same_idempotency_key_once(
 
 
 @pytest.mark.asyncio
-async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> None:
+async def test_legacy_admin_promo_create_shape_is_rejected_without_partner() -> None:
     async with SessionFactory() as session:
         admin_user = User(
             telegram_id=random.randint(7_250_000_000_000, 7_299_999_999_999),
-            first_name="Promo admin",
+            first_name="Legacy promo admin",
         )
         session.add(admin_user)
         await session.flush()
@@ -179,12 +180,55 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
         )
         session.add(admin)
         await session.flush()
+        code = f"LEGACYADMIN{random.randint(100_000, 999_999)}"
+
+        with pytest.raises(ValueError, match="partner_user_id is required"):
+            await AdminPromoService.create(
+                session,
+                admin=admin,
+                code=code,
+                partner_user_id=None,
+                max_uses=5,
+                expires_at=None,
+                idempotency_key=f"legacy-admin-promo:{uuid.uuid4()}",
+                request_id="legacy-admin-promo",
+                confirmed=True,
+            )
+        await session.rollback()
+
+        promo = await session.scalar(select(PromoCode).where(PromoCode.code == code))
+        assert promo is None
+
+
+
+@pytest.mark.asyncio
+async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> None:
+    async with SessionFactory() as session:
+        admin_user = User(
+            telegram_id=random.randint(7_250_000_000_000, 7_299_999_999_999),
+            first_name="Promo admin",
+        )
+        session.add(admin_user)
+        await session.flush()
+        partner_user = User(
+            telegram_id=random.randint(7_300_000_000_000, 7_349_999_999_999),
+            first_name="Promo partner",
+        )
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={},
+            is_active=True,
+            mfa_enabled=True,
+        )
+        session.add_all([admin, partner_user])
+        await session.flush()
 
         create_result, create_replayed = await AdminPromoService.create(
             session,
             admin=admin,
             code=f"PROMO{random.randint(100_000, 999_999)}",
-            reward_credits=Decimal("7"),
+            partner_user_id=partner_user.id,
             max_uses=1,
             expires_at=None,
             idempotency_key=f"integration-promo-create:{uuid.uuid4()}",
@@ -192,6 +236,23 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
             confirmed=True,
         )
         assert create_replayed is False
+        assert create_result["partner_user_id"] == str(partner_user.id)
+
+        expires_at = datetime.now(UTC) + timedelta(days=30)
+        limits_result, limits_replayed = await AdminPromoService.update_campaign(
+            session,
+            admin=admin,
+            promo_id=uuid.UUID(create_result["id"]),
+            max_uses=2,
+            expires_at=expires_at,
+            is_active=None,
+            idempotency_key=f"integration-promo-limits:{uuid.uuid4()}",
+            request_id="promo-limits-integration",
+            confirmed=True,
+        )
+        assert limits_replayed is False
+        assert limits_result["max_uses"] == 2
+        assert limits_result["expires_at"] == expires_at.isoformat()
 
         update_result, update_replayed = await AdminPromoService.set_active(
             session,

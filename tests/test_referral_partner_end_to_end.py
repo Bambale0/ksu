@@ -55,7 +55,7 @@ async def _seed_referral_reward(
     buyer: User,
     basis: Decimal = Decimal("100"),
 ) -> ReferralReward:
-    session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+    """Seed cash accounting without also adding the promo program's fixed ROX bonus."""
     payment = Payment(
         user_id=buyer.id,
         provider="partner-e2e",
@@ -77,20 +77,17 @@ async def _seed_referral_reward(
         reference_id=str(payment.id),
         idempotency_key=f"partner-e2e-source:{uuid.uuid4()}",
     )
-    await ReferralService.accrue_from_payment(
-        session,
+    reward = ReferralReward(
+        partner_user_id=partner.id,
         source_user_id=buyer.id,
         source_transaction_id=source_tx.id,
-        payment_amount=basis,
+        level=1,
+        percent=Decimal("30"),
+        amount=(basis * Decimal("0.30")).quantize(Decimal("0.01")),
+        status="available",
     )
-    reward = await session.scalar(
-        select(ReferralReward).where(
-            ReferralReward.partner_user_id == partner.id,
-            ReferralReward.source_transaction_id == source_tx.id,
-            ReferralReward.level == 1,
-        )
-    )
-    assert reward is not None
+    session.add(reward)
+    await session.flush()
     return reward
 
 
@@ -137,7 +134,24 @@ async def test_bonus_rox_cannot_become_referral_cash_even_if_accrual_is_called(
     async with SessionFactory() as session:
         partner = await _user(session, "Partner")
         buyer = await _user(session, "Bonus buyer")
-        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+        promo = PromoCode(
+            code=f"BONUSONLY{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=partner.id,
+            max_uses=100,
+            uses_count=1,
+            is_active=True,
+        )
+        session.add(promo)
+        await session.flush()
+        session.add(
+            ReferralRelation(
+                referred_user_id=buyer.id,
+                inviter_user_id=partner.id,
+                source="promo",
+                promo_id=promo.id,
+            )
+        )
         bonus_tx = await WalletService.credit(
             session,
             user_id=buyer.id,
@@ -169,7 +183,7 @@ async def test_bonus_rox_cannot_become_referral_cash_even_if_accrual_is_called(
 
 
 @pytest.mark.asyncio
-async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are_proportional(
+async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proportional(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -179,8 +193,6 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
     )
     monkeypatch.setattr(settings, "card_offer_id", "offer-referral-e2e")
     monkeypatch.setattr(settings, "card_api_key", "e2e-card-key")
-    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
-    monkeypatch.setattr(settings, "referral_second_percent", Decimal("5"))
 
     async def fake_get_products(self: CardCheckoutClient) -> dict[str, object]:
         return {
@@ -216,7 +228,8 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
         buyer = await _user(session, "Buyer")
         promo = PromoCode(
             code=f"REFERRAL{uuid.uuid4().hex[:8].upper()}",
-            reward_amount=Decimal("50"),
+            reward_amount=Decimal("25"),
+            partner_user_id=first_line.id,
             max_uses=100,
             uses_count=0,
             is_active=True,
@@ -227,10 +240,12 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
                 ReferralRelation(
                     referred_user_id=first_line.id,
                     inviter_user_id=second_line.id,
+                    source="link",
                 ),
                 ReferralRelation(
                     referred_user_id=buyer.id,
                     inviter_user_id=first_line.id,
+                    source="link",
                 ),
             ]
         )
@@ -251,9 +266,16 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
             provider_payload={"status": "paid"},
         )
 
-        wallet = await session.get(Wallet, buyer.id)
-        assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal("350.00")
+        buyer_wallet = await session.get(Wallet, buyer.id)
+        first_wallet = await session.get(Wallet, first_line.id)
+        relation = await session.get(ReferralRelation, buyer.id)
+        assert buyer_wallet is not None
+        assert Decimal(buyer_wallet.balance) == Decimal("325.00")
+        assert first_wallet is not None
+        assert Decimal(first_wallet.balance) == Decimal("10.00")
+        assert relation is not None
+        assert relation.source == "promo"
+        assert relation.promo_id == promo.id
 
         rewards = list(
             (
@@ -264,14 +286,13 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
                 )
             ).all()
         )
-        # Referral cash is based on the actual 326.10 RUB payment, never on the
-        # 300 purchased ROX or the extra 50 promo ROX credited to the wallet.
+        # 30% is calculated from the authoritative 326.10 RUB payment.
+        # The +25 welcome ROX and +10 partner ROX are internal credits, not cash basis.
         assert [(item.level, Decimal(item.amount)) for item in rewards] == [
             (1, Decimal("97.83")),
-            (2, Decimal("16.31")),
         ]
 
-        # Provider retry must not duplicate either reward.
+        # Provider retry must not duplicate cash or fixed ROX rewards.
         await CardPaymentService.complete(
             session,
             payment_id=payment.id,
@@ -286,7 +307,9 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
                 )
             )
             or 0
-        ) == 2
+        ) == 1
+        await session.refresh(first_wallet)
+        assert Decimal(first_wallet.balance) == Decimal("10.00")
 
         await PaymentService.apply_reversal(
             session,
@@ -297,12 +320,15 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
             reason="e2e partial refund",
             provider_payload={"refunded": "163.05"},
         )
-        await session.refresh(wallet)
-        assert Decimal(wallet.balance) == Decimal("175.00")
-        first_accounting = await PartnerService.accounting(session, first_line.id)
-        second_accounting = await PartnerService.accounting(session, second_line.id)
-        assert first_accounting["total_earned"] == Decimal("48.91")
-        assert second_accounting["total_earned"] == Decimal("8.15")
+        await session.refresh(buyer_wallet)
+        await session.refresh(first_wallet)
+        assert Decimal(buyer_wallet.balance) == Decimal("175.00")
+        assert Decimal(first_wallet.balance) == Decimal("10.00")
+        assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
+            "48.91"
+        )
+        second_line_accounting = await PartnerService.accounting(session, second_line.id)
+        assert second_line_accounting["total_earned"] == Decimal("0")
 
         # Exact replay of the refund is idempotent.
         await PaymentService.apply_reversal(
@@ -330,11 +356,12 @@ async def test_card_promo_rox_never_increase_referral_commission_and_refunds_are
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
             "0.00"
         )
-        assert (await PartnerService.accounting(session, second_line.id))["total_earned"] == Decimal(
-            "0.00"
-        )
-        await session.refresh(wallet)
-        assert Decimal(wallet.balance) == Decimal("0.00")
+        second_line_accounting = await PartnerService.accounting(session, second_line.id)
+        assert second_line_accounting["total_earned"] == Decimal("0")
+        await session.refresh(buyer_wallet)
+        await session.refresh(first_wallet)
+        assert Decimal(buyer_wallet.balance) == Decimal("25.00")
+        assert Decimal(first_wallet.balance) == Decimal("0.00")
 
 
 @pytest.mark.asyncio

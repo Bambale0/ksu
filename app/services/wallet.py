@@ -50,6 +50,11 @@ class WalletService:
         kind: str,
         reference_type: str | None,
         reference_id: str | None,
+        reason: str | None,
+        promo_code: str | None,
+        partner_id: uuid.UUID | None,
+        referral_user_id: uuid.UUID | None,
+        payment_id: uuid.UUID | None,
     ) -> WalletTransaction:
         if (
             existing.user_id != user_id
@@ -57,6 +62,11 @@ class WalletService:
             or existing.kind != kind
             or existing.reference_type != reference_type
             or existing.reference_id != reference_id
+            or existing.reason != reason
+            or existing.promo_code != promo_code
+            or existing.partner_id != partner_id
+            or existing.referral_user_id != referral_user_id
+            or existing.payment_id != payment_id
         ):
             raise IdempotencyConflictError(
                 "Wallet idempotency key already belongs to a different operation"
@@ -74,6 +84,11 @@ class WalletService:
         reference_type: str | None = None,
         reference_id: str | None = None,
         idempotency_key: str | None = None,
+        reason: str | None = None,
+        promo_code: str | None = None,
+        partner_id: uuid.UUID | None = None,
+        referral_user_id: uuid.UUID | None = None,
+        payment_id: uuid.UUID | None = None,
     ) -> WalletTransaction:
         if amount <= 0:
             raise ValueError("Credit amount must be positive")
@@ -86,6 +101,11 @@ class WalletService:
                 kind=kind,
                 reference_type=reference_type,
                 reference_id=reference_id,
+                reason=reason,
+                promo_code=promo_code,
+                partner_id=partner_id,
+                referral_user_id=referral_user_id,
+                payment_id=payment_id,
             )
 
         wallet = await session.scalar(
@@ -108,6 +128,11 @@ class WalletService:
             reference_type=reference_type,
             reference_id=reference_id,
             idempotency_key=idempotency_key,
+            reason=reason,
+            promo_code=promo_code,
+            partner_id=partner_id,
+            referral_user_id=referral_user_id,
+            payment_id=payment_id,
         )
         session.add(tx)
         await session.flush()
@@ -124,6 +149,11 @@ class WalletService:
         reference_type: str | None = None,
         reference_id: str | None = None,
         idempotency_key: str | None = None,
+        reason: str | None = None,
+        promo_code: str | None = None,
+        partner_id: uuid.UUID | None = None,
+        referral_user_id: uuid.UUID | None = None,
+        payment_id: uuid.UUID | None = None,
     ) -> WalletTransaction:
         return await cls._debit(
             session,
@@ -133,6 +163,11 @@ class WalletService:
             reference_type=reference_type,
             reference_id=reference_id,
             idempotency_key=idempotency_key,
+            reason=reason,
+            promo_code=promo_code,
+            partner_id=partner_id,
+            referral_user_id=referral_user_id,
+            payment_id=payment_id,
             allow_negative=False,
         )
 
@@ -147,6 +182,11 @@ class WalletService:
         reference_type: str | None = None,
         reference_id: str | None = None,
         idempotency_key: str | None = None,
+        reason: str | None = None,
+        promo_code: str | None = None,
+        partner_id: uuid.UUID | None = None,
+        referral_user_id: uuid.UUID | None = None,
+        payment_id: uuid.UUID | None = None,
     ) -> WalletTransaction:
         """Debit an external-accounting reversal even if credits were already spent.
 
@@ -163,6 +203,11 @@ class WalletService:
             reference_type=reference_type,
             reference_id=reference_id,
             idempotency_key=idempotency_key,
+            reason=reason,
+            promo_code=promo_code,
+            partner_id=partner_id,
+            referral_user_id=referral_user_id,
+            payment_id=payment_id,
             allow_negative=True,
         )
 
@@ -177,6 +222,11 @@ class WalletService:
         reference_type: str | None,
         reference_id: str | None,
         idempotency_key: str | None,
+        reason: str | None,
+        promo_code: str | None,
+        partner_id: uuid.UUID | None,
+        referral_user_id: uuid.UUID | None,
+        payment_id: uuid.UUID | None,
         allow_negative: bool,
     ) -> WalletTransaction:
         if amount <= 0:
@@ -190,6 +240,11 @@ class WalletService:
                 kind=kind,
                 reference_type=reference_type,
                 reference_id=reference_id,
+                reason=reason,
+                promo_code=promo_code,
+                partner_id=partner_id,
+                referral_user_id=referral_user_id,
+                payment_id=payment_id,
             )
 
         wallet = await session.scalar(
@@ -218,6 +273,11 @@ class WalletService:
             reference_type=reference_type,
             reference_id=reference_id,
             idempotency_key=idempotency_key,
+            reason=reason,
+            promo_code=promo_code,
+            partner_id=partner_id,
+            referral_user_id=referral_user_id,
+            payment_id=payment_id,
         )
         session.add(tx)
         await session.flush()

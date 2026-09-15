@@ -73,9 +73,26 @@ class SupportReplyRequest(BaseModel):
 
 class PromoCreateRequest(BaseModel):
     code: str = Field(min_length=3, max_length=64)
-    reward_credits: Decimal = Field(gt=0, le=100_000)
+    partner_user_id: uuid.UUID | None = None
     max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
     expires_at: datetime | None = None
+
+
+class PromoUpdateRequest(BaseModel):
+    max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
+    expires_at: datetime | None = None
+    is_active: bool | None = None
+
+
+class PromoPartnerRequest(BaseModel):
+    partner_user_id: uuid.UUID
+
+
+class PromoProgramRequest(BaseModel):
+    welcome_rox: Decimal = Field(ge=0, le=100_000)
+    first_line_percent: Decimal = Field(ge=0, le=100)
+    topup_partner_rox: Decimal = Field(ge=0, le=100_000)
+    is_active: bool
 
 
 class PromoStateRequest(BaseModel):
@@ -527,9 +544,95 @@ async def control_promocode_create(
             session,
             admin=context.account,
             code=payload.code,
-            reward_credits=payload.reward_credits,
+            partner_user_id=payload.partner_user_id,
             max_uses=payload.max_uses,
             expires_at=payload.expires_at,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.patch("/promocodes/{promo_id}")
+async def control_promocode_update(
+    promo_id: uuid.UUID,
+    payload: PromoUpdateRequest,
+    request: Request,
+    context: PromosManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.update_campaign(
+            session,
+            admin=context.account,
+            promo_id=promo_id,
+            max_uses=payload.max_uses,
+            expires_at=payload.expires_at,
+            is_active=payload.is_active,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.get("/promocodes/program")
+async def control_promo_program(
+    context: PromosReadDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    return await AdminPromoService.program_settings(session, admin=context.account)
+
+
+@router.post("/promocodes/program")
+async def control_promo_program_update(
+    payload: PromoProgramRequest,
+    request: Request,
+    context: PromosManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, object]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.update_program(
+            session,
+            admin=context.account,
+            welcome_rox=payload.welcome_rox,
+            first_line_percent=payload.first_line_percent,
+            topup_partner_rox=payload.topup_partner_rox,
+            is_active=payload.is_active,
+            idempotency_key=_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirm(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/promocodes/{promo_id}/partner")
+async def control_promo_partner(
+    promo_id: uuid.UUID,
+    payload: PromoPartnerRequest,
+    request: Request,
+    context: PromosManageDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.set_partner(
+            session,
+            admin=context.account,
+            promo_id=promo_id,
+            partner_user_id=payload.partner_user_id,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirm(confirmation),

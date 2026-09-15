@@ -62,7 +62,7 @@ async def test_new_referral_queues_partner_telegram_notification(
         assert notification.title == "🎉 Новый реферал"
         assert "Новый Друг" in notification.body
         assert "@new_friend" in notification.body
-        assert "ROX" in notification.body
+        assert "Финансовые бонусы включаются только после активации вашего промокода." in notification.body
 
         delivery = await session.scalar(
             select(NotificationDelivery).where(

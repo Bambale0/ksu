@@ -66,7 +66,32 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert "/api/v1/admin/auth/me" in js
     assert "Доступ администратора не подтверждён" in js
     assert 'mutate(`/api/v1/admin/control/promocodes/${row.id}/state`' in js
+    assert "/api/v1/admin/control/promocodes/program" in js
+    assert '/api/v1/admin/control/promocodes/${row.id}/partner' in js
+    assert "ROX новому пользователю" in js
+    assert "% партнёру с пополнений 1-й линии" in js
 
+
+
+def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract() -> None:
+    js = _read(ADMIN / "admin.js")
+    operations = _read(ROOT / "app" / "api" / "v1" / "admin_operations.py")
+    capabilities = _read(ROOT / "app" / "api" / "v1" / "admin_capabilities.py")
+
+    assert "/api/v1/admin/promocodes/program" in js
+    assert "partner_user_id" in js
+    assert '"Idempotency-Key"' in js
+    assert '"X-Admin-Confirm"' in js
+    assert 'name: "reward_credits"' not in js
+
+    # There must be exactly one live admin POST contract for creating promo codes.
+    assert '@router.post("/promocodes", status_code=201)' not in operations
+    assert '@router.post("/promocodes", status_code=status.HTTP_201_CREATED)' in capabilities
+    assert '@router.patch("/promocodes/{promo_id}")' in capabilities
+    # v1 remains request-compatible for deployed admin clients, but the old
+    # reward field cannot control the new global program economics.
+    assert "reward_credits: Decimal | None" in capabilities
+    assert "partner_user_id: uuid.UUID | None = None" in capabilities
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
@@ -84,8 +109,13 @@ def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     assert "session.execute(" not in source
     assert "Idempotency-Key" in source
     assert "X-Admin-Confirm" in source
+    assert '@router.patch("/promocodes/{promo_id}")' in source
     assert '@router.post("/promocodes/{promo_id}/state")' in source
+    assert '@router.post("/promocodes/{promo_id}/partner")' in source
+    assert '@router.post("/promocodes/program")' in source
     assert "AdminPromoService.set_active(" in source
+    assert "AdminPromoService.set_partner(" in source
+    assert "AdminPromoService.update_program(" in source
 
 
 def test_new_capability_backend_revalidates_permissions_server_side() -> None:

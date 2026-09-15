@@ -4,9 +4,10 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.db.models import Payment, ReferralRelation, ReferralReward, WalletTransaction
+from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, WalletTransaction
 from app.db.payment_models import ReferralRewardReversal
+from app.services.partner_promo_program import PartnerPromoProgramService
+from app.services.wallet import WalletService
 
 
 class ReferralService:
@@ -62,24 +63,12 @@ class ReferralService:
         }
 
     @staticmethod
-    async def _paid_rub_basis(
+    async def _source_payment(
         session: AsyncSession,
         *,
         source_user_id: uuid.UUID,
         source_transaction_id: uuid.UUID,
-    ) -> Decimal | None:
-        """Return the authoritative withdrawable basis for a real paid order.
-
-        ROX are an internal, non-withdrawable currency. Referral cash may therefore
-        never be inferred from a wallet credit amount, including purchased, gift,
-        promo or admin ROX. The wallet transaction must point to a real Payment and
-        the commission basis comes from the money recorded on that Payment.
-
-        Partner accounting is RUB-denominated. Foreign-currency payments stay
-        non-withdrawable until a provider records an explicit RUB settlement basis;
-        silently treating USD/EUR numbers as RUB would create fake cash.
-        """
-
+    ) -> Payment | None:
         wallet_tx = await session.get(WalletTransaction, source_transaction_id)
         if (
             wallet_tx is None
@@ -97,6 +86,24 @@ class ReferralService:
 
         payment = await session.get(Payment, payment_id)
         if payment is None or payment.user_id != source_user_id:
+            return None
+        return payment
+
+    @classmethod
+    async def _paid_rub_basis(
+        cls,
+        session: AsyncSession,
+        *,
+        source_user_id: uuid.UUID,
+        source_transaction_id: uuid.UUID,
+    ) -> Decimal | None:
+        """Return the authoritative withdrawable RUB basis for a real paid order."""
+        payment = await cls._source_payment(
+            session,
+            source_user_id=source_user_id,
+            source_transaction_id=source_transaction_id,
+        )
+        if payment is None:
             return None
 
         currency = str(payment.currency or "").strip().upper()
@@ -124,49 +131,66 @@ class ReferralService:
         source_transaction_id: uuid.UUID,
         payment_amount: Decimal | None = None,
     ) -> None:
-        first_relation = await session.get(ReferralRelation, source_user_id)
-        if first_relation is None:
+        relation = await session.get(ReferralRelation, source_user_id)
+        if relation is None or relation.source != "promo" or relation.promo_id is None:
             return
 
-        # payment_amount is intentionally ignored and retained only for backwards
-        # compatibility with existing provider call sites. The authoritative basis
-        # is loaded from the Payment linked by the wallet transaction, so ROX can
-        # never become withdrawable cash because a caller passed the wrong number.
+        config = await PartnerPromoProgramService.get_config(session)
+        if not config.is_active:
+            return
+
+        # Validate that the source is a real successful-payment wallet transaction.
+        source_payment = await cls._source_payment(
+            session,
+            source_user_id=source_user_id,
+            source_transaction_id=source_transaction_id,
+        )
+        if source_payment is None:
+            return
+
+        promo = await session.get(PromoCode, relation.promo_id)
+        if promo is None or promo.partner_user_id != relation.inviter_user_id:
+            return
+
+        # Retained only for backwards compatibility with existing provider call
+        # sites. Cash commission always comes from the authoritative Payment row.
         _ = payment_amount
         reward_basis = await cls._paid_rub_basis(
             session,
             source_user_id=source_user_id,
             source_transaction_id=source_transaction_id,
         )
-        if reward_basis is None:
-            return
+        if reward_basis is not None and Decimal(config.first_line_percent) > 0:
+            await cls._create_reward(
+                session,
+                partner_user_id=relation.inviter_user_id,
+                source_user_id=source_user_id,
+                source_transaction_id=source_transaction_id,
+                level=1,
+                percent=Decimal(config.first_line_percent),
+                payment_amount=reward_basis,
+                reason="partner_referral_commission",
+                promo_id=promo.id,
+                promo_code=promo.code,
+                payment_id=source_payment.id,
+            )
 
-        await cls._create_reward(
-            session,
-            partner_user_id=first_relation.inviter_user_id,
-            source_user_id=source_user_id,
-            source_transaction_id=source_transaction_id,
-            level=1,
-            percent=settings.referral_first_percent,
-            payment_amount=reward_basis,
-        )
-
-        second_relation = await session.get(
-            ReferralRelation,
-            first_relation.inviter_user_id,
-        )
-        if second_relation is None:
-            return
-
-        await cls._create_reward(
-            session,
-            partner_user_id=second_relation.inviter_user_id,
-            source_user_id=source_user_id,
-            source_transaction_id=source_transaction_id,
-            level=2,
-            percent=settings.referral_second_percent,
-            payment_amount=reward_basis,
-        )
+        fixed_rox = Decimal(config.topup_partner_rox)
+        if fixed_rox > 0:
+            await WalletService.credit(
+                session,
+                user_id=relation.inviter_user_id,
+                amount=fixed_rox,
+                kind="partner_promo_topup_bonus",
+                reference_type="payment",
+                reference_id=str(source_payment.id),
+                idempotency_key=f"partner-promo-topup:{source_transaction_id}",
+                reason="partner_referral_topup_bonus",
+                promo_code=promo.code,
+                partner_id=relation.inviter_user_id,
+                referral_user_id=source_user_id,
+                payment_id=source_payment.id,
+            )
 
     @staticmethod
     async def reverse_payment_rewards(
@@ -214,6 +238,29 @@ class ReferralService:
                     )
                 )
             reward.status = "reversed" if target >= Decimal(reward.amount) else "available"
+        if ratio >= Decimal("1"):
+            bonus_key = f"partner-promo-topup:{source_transaction_id}"
+            bonus_tx = await session.scalar(
+                select(WalletTransaction).where(
+                    WalletTransaction.idempotency_key == bonus_key
+                )
+            )
+            if bonus_tx is not None and Decimal(bonus_tx.amount) > 0:
+                await WalletService.accounting_debit(
+                    session,
+                    user_id=bonus_tx.user_id,
+                    amount=Decimal(bonus_tx.amount),
+                    kind="partner_promo_topup_reversal",
+                    reference_type="wallet_transaction",
+                    reference_id=str(source_transaction_id),
+                    idempotency_key=f"partner-promo-topup-reversal:{source_transaction_id}",
+                    reason="partner_referral_topup_bonus_reversal",
+                    promo_code=bonus_tx.promo_code,
+                    partner_id=bonus_tx.partner_id,
+                    referral_user_id=bonus_tx.referral_user_id,
+                    payment_id=bonus_tx.payment_id,
+                )
+
         await session.flush()
 
     @staticmethod
@@ -226,6 +273,10 @@ class ReferralService:
         level: int,
         percent: Decimal,
         payment_amount: Decimal,
+        reason: str,
+        promo_id: uuid.UUID,
+        promo_code: str,
+        payment_id: uuid.UUID,
     ) -> None:
         existing = await session.scalar(
             select(ReferralReward).where(
@@ -252,6 +303,10 @@ class ReferralService:
                 percent=percent,
                 amount=amount,
                 status="available",
+                reason=reason,
+                promo_id=promo_id,
+                promo_code=promo_code,
+                payment_id=payment_id,
             )
         )
         await session.flush()

@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
@@ -73,9 +74,35 @@ class WalletTransaction(Base):
     reference_type: Mapped[str | None] = mapped_column(String(64))
     reference_id: Mapped[str | None] = mapped_column(String(128))
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    promo_code: Mapped[str | None] = mapped_column(String(64))
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    referral_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class PartnerPromoProgramConfig(TimestampMixin, Base):
+    __tablename__ = "partner_promo_program_config"
+    __table_args__ = (
+        CheckConstraint("welcome_rox >= 0", name="ck_partner_promo_welcome_nonnegative"),
+        CheckConstraint(
+            "first_line_percent >= 0 AND first_line_percent <= 100",
+            name="ck_partner_promo_percent_range",
+        ),
+        CheckConstraint(
+            "topup_partner_rox >= 0",
+            name="ck_partner_promo_topup_nonnegative",
+        ),
+    )
+
+    key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    welcome_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    first_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    topup_partner_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class PromoCode(TimestampMixin, Base):
@@ -83,11 +110,17 @@ class PromoCode(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("code"),
         Index("ix_promo_codes_code", "code", unique=True),
+        Index("ix_promo_codes_partner_user_id", "partner_user_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Retained for schema/backward compatibility. Runtime economics come from
+    # PartnerPromoProgramConfig, not from per-code reward values.
     reward_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    partner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
     max_uses: Mapped[int | None] = mapped_column(Integer)
     uses_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -124,12 +157,23 @@ class PromoRedemption(Base):
 
 class ReferralRelation(Base):
     __tablename__ = "referral_relations"
+    __table_args__ = (
+        CheckConstraint("source IN ('link', 'promo')", name="ck_referral_relation_source"),
+        Index("ix_referral_relations_inviter_source", "inviter_user_id", "source"),
+        Index("ix_referral_relations_promo_id", "promo_id"),
+    )
 
     referred_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     inviter_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="link", server_default="link", nullable=False
+    )
+    promo_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("promo_codes.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -156,6 +200,10 @@ class ReferralReward(Base):
     percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    promo_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    promo_code: Mapped[str | None] = mapped_column(String(64))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

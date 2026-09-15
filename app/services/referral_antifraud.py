@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -14,14 +13,6 @@ from app.db.models import ReferralRelation, User
 from app.db.referral_models import ReferralEvent
 from app.services.notifications import NotificationService
 from app.services.referral_audit import log_referral_admission
-from app.services.wallet import WalletService
-
-
-def _money(value: Decimal | object) -> str:
-    try:
-        return f"{Decimal(value):.2f}".rstrip("0").rstrip(".")
-    except Exception:  # noqa: BLE001 - notification copy must not break referral admission
-        return str(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,20 +66,200 @@ class ReferralAntifraudService:
         *,
         inviter_user_id: uuid.UUID,
         since: datetime,
+        exclude_referred_user_id: uuid.UUID | None = None,
     ) -> int:
-        return int(
-            (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(ReferralRelation)
-                    .where(
-                        ReferralRelation.inviter_user_id == inviter_user_id,
-                        ReferralRelation.created_at >= since,
-                    )
-                )
+        stmt = (
+            select(func.count())
+            .select_from(ReferralRelation)
+            .where(
+                ReferralRelation.inviter_user_id == inviter_user_id,
+                ReferralRelation.created_at >= since,
             )
-            or 0
         )
+        if exclude_referred_user_id is not None:
+            stmt = stmt.where(ReferralRelation.referred_user_id != exclude_referred_user_id)
+        return int((await session.scalar(stmt)) or 0)
+
+    @classmethod
+    async def _check_limits(
+        cls,
+        session: AsyncSession,
+        *,
+        visitor: User,
+        inviter: User,
+        exclude_referred_user_id: uuid.UUID | None = None,
+    ) -> tuple[ReferralAdmissionResult | None, int, int]:
+        now = datetime.now(timezone.utc)
+        hourly_limit = max(0, int(settings.referral_antifraud_max_per_hour))
+        daily_limit = max(0, int(settings.referral_antifraud_max_per_day))
+        burst_max = max(0, int(settings.referral_antifraud_burst_max))
+        burst_window = max(0, int(settings.referral_antifraud_burst_window_seconds))
+
+        hourly_count = 0
+        if hourly_limit:
+            hourly_count = await cls._count_since(
+                session,
+                inviter_user_id=inviter.id,
+                since=now - timedelta(hours=1),
+                exclude_referred_user_id=exclude_referred_user_id,
+            )
+            if hourly_count >= hourly_limit:
+                await cls._record(
+                    session,
+                    visitor=visitor,
+                    inviter=inviter,
+                    inviter_telegram_id=inviter.telegram_id,
+                    reason="hourly_limit",
+                    metadata={"count": hourly_count, "limit": hourly_limit},
+                )
+                return ReferralAdmissionResult(False, "hourly_limit", inviter.id), 0, 0
+
+        daily_count = 0
+        if daily_limit:
+            daily_count = await cls._count_since(
+                session,
+                inviter_user_id=inviter.id,
+                since=now - timedelta(days=1),
+                exclude_referred_user_id=exclude_referred_user_id,
+            )
+            if daily_count >= daily_limit:
+                await cls._record(
+                    session,
+                    visitor=visitor,
+                    inviter=inviter,
+                    inviter_telegram_id=inviter.telegram_id,
+                    reason="daily_limit",
+                    metadata={"count": daily_count, "limit": daily_limit},
+                )
+                return ReferralAdmissionResult(False, "daily_limit", inviter.id), 0, 0
+
+        if burst_max and burst_window:
+            burst_count = await cls._count_since(
+                session,
+                inviter_user_id=inviter.id,
+                since=now - timedelta(seconds=burst_window),
+                exclude_referred_user_id=exclude_referred_user_id,
+            )
+            if burst_count >= max(0, burst_max - 1):
+                reason = "burst_limit"
+                if settings.referral_antifraud_burst_autoban:
+                    inviter.is_active = False
+                    reason = "burst_autoban"
+                await cls._record(
+                    session,
+                    visitor=visitor,
+                    inviter=inviter,
+                    inviter_telegram_id=inviter.telegram_id,
+                    reason=reason,
+                    metadata={
+                        "count_before_attempt": burst_count,
+                        "threshold": burst_max,
+                        "window_seconds": burst_window,
+                    },
+                )
+                return ReferralAdmissionResult(False, reason, inviter.id), 0, 0
+
+        return None, hourly_count, daily_count
+
+    @classmethod
+    async def attach_promo_user(
+        cls,
+        session: AsyncSession,
+        *,
+        visitor: User,
+        inviter_user_id: uuid.UUID,
+        promo_id: uuid.UUID,
+    ) -> ReferralAdmissionResult:
+        if inviter_user_id == visitor.id:
+            await cls._record(
+                session,
+                visitor=visitor,
+                inviter=None,
+                inviter_telegram_id=visitor.telegram_id,
+                reason="self_ref",
+            )
+            return ReferralAdmissionResult(False, "self_ref")
+
+        inviter = await session.scalar(
+            select(User).where(User.id == inviter_user_id).with_for_update()
+        )
+        if inviter is None:
+            await cls._record(
+                session,
+                visitor=visitor,
+                inviter=None,
+                inviter_telegram_id=None,
+                reason="inviter_not_found",
+            )
+            return ReferralAdmissionResult(False, "inviter_not_found")
+        if not inviter.is_active:
+            await cls._record(
+                session,
+                visitor=visitor,
+                inviter=inviter,
+                inviter_telegram_id=inviter.telegram_id,
+                reason="blocked_referrer",
+            )
+            return ReferralAdmissionResult(False, "blocked_referrer", inviter.id)
+
+        relation = await session.scalar(
+            select(ReferralRelation)
+            .where(ReferralRelation.referred_user_id == visitor.id)
+            .with_for_update()
+        )
+        if relation is not None and relation.source == "promo":
+            return ReferralAdmissionResult(
+                False,
+                "already_attributed",
+                relation.inviter_user_id,
+            )
+
+        exclude_current = (
+            visitor.id
+            if relation is not None and relation.inviter_user_id == inviter.id
+            else None
+        )
+        blocked, hourly_count, daily_count = await cls._check_limits(
+            session,
+            visitor=visitor,
+            inviter=inviter,
+            exclude_referred_user_id=exclude_current,
+        )
+        if blocked is not None:
+            return blocked
+
+        now = datetime.now(timezone.utc)
+        if relation is None:
+            relation = ReferralRelation(
+                referred_user_id=visitor.id,
+                inviter_user_id=inviter.id,
+                source="promo",
+                promo_id=promo_id,
+            )
+            session.add(relation)
+        else:
+            moved_partner = relation.inviter_user_id != inviter.id
+            relation.inviter_user_id = inviter.id
+            relation.source = "promo"
+            relation.promo_id = promo_id
+            if moved_partner:
+                relation.created_at = now
+        await session.flush()
+
+        await cls._record(
+            session,
+            visitor=visitor,
+            inviter=inviter,
+            inviter_telegram_id=inviter.telegram_id,
+            reason="promo_attached",
+            attached=True,
+            metadata={
+                "hourly_count_before": hourly_count,
+                "daily_count_before": daily_count,
+                "promo_id": str(promo_id),
+            },
+        )
+        return ReferralAdmissionResult(True, "promo_attached", inviter.id)
 
     @classmethod
     async def attach_new_user(
@@ -157,75 +328,13 @@ class ReferralAntifraudService:
                 existing_relation.inviter_user_id,
             )
 
-        now = datetime.now(timezone.utc)
-        hourly_limit = max(0, int(settings.referral_antifraud_max_per_hour))
-        daily_limit = max(0, int(settings.referral_antifraud_max_per_day))
-        burst_max = max(0, int(settings.referral_antifraud_burst_max))
-        burst_window = max(0, int(settings.referral_antifraud_burst_window_seconds))
-
-        hourly_count = 0
-        if hourly_limit:
-            hourly_count = await cls._count_since(
-                session,
-                inviter_user_id=inviter.id,
-                since=now - timedelta(hours=1),
-            )
-            if hourly_count >= hourly_limit:
-                await cls._record(
-                    session,
-                    visitor=visitor,
-                    inviter=inviter,
-                    inviter_telegram_id=inviter_telegram_id,
-                    reason="hourly_limit",
-                    metadata={"count": hourly_count, "limit": hourly_limit},
-                )
-                return ReferralAdmissionResult(False, "hourly_limit", inviter.id)
-
-        daily_count = 0
-        if daily_limit:
-            daily_count = await cls._count_since(
-                session,
-                inviter_user_id=inviter.id,
-                since=now - timedelta(days=1),
-            )
-            if daily_count >= daily_limit:
-                await cls._record(
-                    session,
-                    visitor=visitor,
-                    inviter=inviter,
-                    inviter_telegram_id=inviter_telegram_id,
-                    reason="daily_limit",
-                    metadata={"count": daily_count, "limit": daily_limit},
-                )
-                return ReferralAdmissionResult(False, "daily_limit", inviter.id)
-
-        if burst_max and burst_window:
-            burst_count = await cls._count_since(
-                session,
-                inviter_user_id=inviter.id,
-                since=now - timedelta(seconds=burst_window),
-            )
-            # Match the proven Tanya production semantics: the current attempted
-            # referral counts toward the threshold, so attempt N is blocked when
-            # N would equal the configured burst maximum.
-            if burst_count >= max(0, burst_max - 1):
-                reason = "burst_limit"
-                if settings.referral_antifraud_burst_autoban:
-                    inviter.is_active = False
-                    reason = "burst_autoban"
-                await cls._record(
-                    session,
-                    visitor=visitor,
-                    inviter=inviter,
-                    inviter_telegram_id=inviter_telegram_id,
-                    reason=reason,
-                    metadata={
-                        "count_before_attempt": burst_count,
-                        "threshold": burst_max,
-                        "window_seconds": burst_window,
-                    },
-                )
-                return ReferralAdmissionResult(False, reason, inviter.id)
+        blocked, hourly_count, daily_count = await cls._check_limits(
+            session,
+            visitor=visitor,
+            inviter=inviter,
+        )
+        if blocked is not None:
+            return blocked
 
         attached_user_id = (
             await session.execute(
@@ -249,17 +358,6 @@ class ReferralAntifraudService:
             )
         await session.flush()
 
-        if settings.invite_bonus_rox > Decimal("0"):
-            await WalletService.credit(
-                session,
-                user_id=inviter.id,
-                amount=settings.invite_bonus_rox,
-                kind="referral_invite_bonus",
-                reference_type="referral_user",
-                reference_id=str(visitor.id),
-                idempotency_key=f"invite-bonus:{visitor.id}",
-            )
-
         display_name = " ".join(
             part for part in (visitor.first_name, visitor.last_name or "") if part
         ).strip()
@@ -271,8 +369,6 @@ class ReferralAntifraudService:
             referred_name = f"@{visitor.username}"
         else:
             referred_name = "Новый пользователь ROXY"
-        bonus = Decimal(settings.invite_bonus_rox)
-        bonus_line = f"За приглашение начислено +{_money(bonus)} ROX.\n" if bonus > 0 else ""
         await NotificationService.create(
             session,
             user_id=inviter.id,
@@ -280,8 +376,7 @@ class ReferralAntifraudService:
             title="🎉 Новый реферал",
             body=(
                 f"К вам присоединился: {referred_name}.\n"
-                f"{bonus_line}"
-                "Начисления с его пополнений будут приходить отдельными уведомлениями."
+                "Финансовые бонусы включаются только после активации вашего промокода."
             ),
         )
 

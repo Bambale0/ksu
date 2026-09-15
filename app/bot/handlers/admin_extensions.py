@@ -172,7 +172,7 @@ async def admin_promo_lookup(
     await message.answer(
         f"🎟 {promo['code']}\n"
         f"ID: {promo['id']}\n"
-        f"Награда: {promo['reward_credits']} cr\n"
+        f"Партнёр: {promo['partner_user_id'] or 'не назначен'}\n"
         f"Использовано: {promo['uses_count']}/{promo['max_uses'] or '∞'}\n"
         f"Статус: {'active' if promo['is_active'] else 'inactive'}\n"
         f"Expires: {promo['expires_at'] or '—'}",

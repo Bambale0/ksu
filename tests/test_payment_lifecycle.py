@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.db.models import Payment, ReferralReward, ReferralRelation, User, Wallet
+from app.db.models import Payment, PromoCode, ReferralReward, ReferralRelation, User, Wallet
 from app.db.payment_models import PaymentRequest, PaymentReversal, ReferralRewardReversal
 from app.db.session import SessionFactory
 from app.providers.payments import CreatedPayment
@@ -269,8 +269,23 @@ async def test_referral_rewards_are_reversed_proportionally() -> None:
         buyer = User(telegram_id=_telegram_id(10), first_name="Buyer")
         session.add_all([inviter, buyer])
         await session.flush()
+        promo = PromoCode(
+            code=f"REFUND{uuid.uuid4().hex[:10].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=inviter.id,
+            max_uses=100,
+            uses_count=1,
+            is_active=True,
+        )
+        session.add(promo)
+        await session.flush()
         session.add(
-            ReferralRelation(referred_user_id=buyer.id, inviter_user_id=inviter.id)
+            ReferralRelation(
+                referred_user_id=buyer.id,
+                inviter_user_id=inviter.id,
+                source="promo",
+                promo_id=promo.id,
+            )
         )
         await WalletService.ensure_wallet(session, buyer.id)
         payment = Payment(

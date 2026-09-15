@@ -51,13 +51,15 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
     if (path === '/api/v1/referrals/invitations') return json({ items: [] });
     if (path === '/api/v1/references') return json({ items: [] });
     if (path === '/api/v1/discovery/home') return json({ slides: [] });
-    if (path === '/api/v1/promocodes/validate' && request.method() === 'POST') return json({
-      status: 'valid',
+    if (path === '/api/v1/promocodes/redeem' && request.method() === 'POST') return json({
+      status: 'activated',
       code: 'KSENIA25',
       reward_rox: '25.00',
-      remaining_uses: 999,
-      expires_at: '2026-10-13T00:00:00+00:00',
-      message: 'После успешной оплаты начислим +25 ROX',
+      welcome_rox: '25.00',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      balance_rox: '175.00',
+      message: 'Промокод активирован: +25 ROX',
     });
     if (path === '/api/v1/payments/card/packages') return json({
       provider: 'kassa',
@@ -150,7 +152,7 @@ test('quick wallet keeps YooKassa primary with Lava reserve and CryptoBot availa
 });
 
 
-test('promo code previews a bonus but only attaches it to checkout', async ({ page }) => {
+test('partner promo activates separately and checkout package stays exact', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   let checkoutBody = null;
   await mockApi(page);
@@ -169,11 +171,11 @@ test('promo code previews a bonus but only attaches it to checkout', async ({ pa
           package_id: 'starter',
           amount: '100.00',
           currency: 'RUB',
-          credits: '125.00',
+          credits: '100.00',
           base_credits: '100.00',
-          bonus_credits: '25.00',
+          bonus_credits: '0',
           promo_code: 'KSENIA25',
-          promo_bonus_status: 'reserved',
+          promo_bonus_status: 'activated',
           payment_url: 'https://pay.example/promo',
         }),
       });
@@ -182,9 +184,10 @@ test('promo code previews a bonus but only attaches it to checkout', async ({ pa
   });
   await page.goto('/mini-app/payments/?promo=KSENIA25');
 
-  await expect(page.getByText('по промокоду KSENIA25')).toBeVisible();
-  await expect(page.getByText('125', { exact: true })).toBeVisible();
-  await expect(page.getByText(/только после успешной оплаты/).first()).toBeVisible();
+  await expect(page.getByText('Промокод активирован: +25 ROX')).toBeVisible();
+  await expect(page.getByText('KSENIA25', { exact: true })).toBeVisible();
+  await expect(page.getByText('100', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/пакете не меняется|пакету пополнения/).first()).toBeVisible();
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
   await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
 });
