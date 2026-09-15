@@ -46,9 +46,12 @@ class PaymentPackage:
     amount: Decimal
     currency: str
     rox_amount: Decimal
+    base_credits: Decimal
+    bonus_credits: Decimal
 
     @property
     def credits(self) -> Decimal:
+        """Backward-compatible total package ROX."""
         return self.rox_amount
 
 
@@ -87,31 +90,49 @@ class PaymentService:
                 )
 
             amount_raw = item.get("amount")
-            credits_raw = item.get("credits", item.get("rox"))
-            if amount_raw is None and credits_raw is None:
-                continue
+            total_raw = item.get("credits", item.get("rox"))
+            base_raw = item.get("base_credits")
+            bonus_raw = item.get("bonus_credits", 0)
 
             explicit_amount = amount_raw is not None
-            explicit_credits = credits_raw is not None
             amount = Decimal(str(amount_raw)) if explicit_amount else None
-            credits = Decimal(str(credits_raw)) if explicit_credits else None
+            bonus = Decimal(str(bonus_raw or 0))
+            if bonus < 0:
+                raise ValueError(f"Package {package_id} bonus_credits must be non-negative")
 
-            if amount is None and credits is not None:
-                amount = InternalCreditService.rubles_for(credits)
-            elif credits is None and amount is not None:
-                credits = InternalCreditService.credits_for(amount)
-
-            assert amount is not None and credits is not None
-            if amount <= 0 or credits <= 0:
+            if base_raw is not None:
+                base = Decimal(str(base_raw))
+                total = base + bonus
+                if total_raw is not None and Decimal(str(total_raw)) != total:
+                    raise ValueError(
+                        f"Package {package_id} credits must equal base_credits + bonus_credits"
+                    )
+            elif total_raw is not None:
+                total = Decimal(str(total_raw))
+                base = total
+                bonus = Decimal("0")
+            elif amount is not None:
+                total = InternalCreditService.credits_for(amount)
+                base = total
+                bonus = Decimal("0")
+            else:
                 continue
 
-            if not (explicit_amount and explicit_credits):
-                InternalCreditService.assert_rate(credits=credits, rubles=amount)
+            if amount is None:
+                amount = InternalCreditService.rubles_for(total)
+
+            if amount <= 0 or total <= 0 or base <= 0:
+                continue
+
+            if not explicit_amount and bonus == 0:
+                InternalCreditService.assert_rate(credits=total, rubles=amount)
             result[str(package_id)] = PaymentPackage(
                 package_id=str(package_id),
                 amount=amount,
                 currency=currency,
-                rox_amount=credits,
+                rox_amount=total,
+                base_credits=base,
+                bonus_credits=bonus,
             )
         return result
 
@@ -148,8 +169,13 @@ class PaymentService:
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
+                # base_credits is the whole package before promo, retained for
+                # payment compatibility; package_* fields expose its breakdown.
                 "base_credits": str(package.credits),
-                "bonus_credits": "0",
+                "package_base_credits": str(package.base_credits),
+                "package_bonus_credits": str(package.bonus_credits),
+                "bonus_credits": str(package.bonus_credits),
+                "promo_bonus_credits": "0",
                 "credited_credits": str(package.credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
