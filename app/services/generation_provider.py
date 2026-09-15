@@ -372,34 +372,6 @@ class GenerationProviderService:
         return generation
 
     @classmethod
-    async def _award_prompt_repeat_bonus(
-        cls,
-        session: AsyncSession,
-        generation: Generation,
-    ) -> None:
-        params = generation.parameters or {}
-        if (
-            generation.action_type != "remix"
-            or generation.source_feed_gen_id is None
-            or settings.prompt_repeat_bonus_rox <= Decimal("0")
-            or Decimal(generation.cost_rox) <= 0
-            or bool(params.get("_admin_free"))
-        ):
-            return
-        source = await session.get(Generation, generation.source_feed_gen_id)
-        if source is None or source.user_id == generation.user_id:
-            return
-        await WalletService.credit(
-            session,
-            user_id=source.user_id,
-            amount=settings.prompt_repeat_bonus_rox,
-            kind="prompt_repeat_bonus",
-            reference_type="generation",
-            reference_id=str(generation.id),
-            idempotency_key=f"prompt-repeat:{generation.id}",
-        )
-
-    @classmethod
     async def apply_kie_task(
         cls,
         session: AsyncSession,
@@ -432,7 +404,6 @@ class GenerationProviderService:
             if task.tracks is not None:
                 parameters["_music_tracks"] = task.tracks
             generation.parameters = parameters
-            await cls._award_prompt_repeat_bonus(session, generation)
             if cls._provider_api(generation) == "suno_music":
                 await MusicMediaAssetService.enqueue_results(
                     session,
