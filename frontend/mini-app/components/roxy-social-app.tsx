@@ -14,6 +14,7 @@ import type {
   GenerationModel,
   GenerationModelFamily,
   Me,
+  PartnerPromoCode,
   PartnerStats,
   Quote,
   RecreateGenerationPayload,
@@ -337,6 +338,7 @@ export function RoxySocialApp() {
   const [partnerStats, setPartnerStats] = useState<PartnerStats | null>(null);
   const [partnerRewards, setPartnerRewards] = useState<ReferralReward[]>([]);
   const [partnerInvites, setPartnerInvites] = useState<ReferralInvitation[]>([]);
+  const [partnerPromocodes, setPartnerPromocodes] = useState<PartnerPromoCode[]>([]);
   const [activePromo, setActivePromo] = useState<ActivePromo | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
   const [preview, setPreview] = useState<Generation | FeedCard | null>(null);
@@ -398,14 +400,16 @@ export function RoxySocialApp() {
   }, [me]);
 
   const loadPartners = useCallback(async () => {
-    const [stats, rewards, invitations] = await Promise.allSettled([
+    const [stats, rewards, invitations, promocodes] = await Promise.allSettled([
       api.referralStats(),
       api.referralRewards(),
       api.referralInvitations(),
+      api.referralPromocodes(),
     ]);
     if (stats.status === "fulfilled") setPartnerStats(stats.value);
     if (rewards.status === "fulfilled") setPartnerRewards(rewards.value.items || []);
     if (invitations.status === "fulfilled") setPartnerInvites(invitations.value.items || []);
+    if (promocodes.status === "fulfilled") setPartnerPromocodes(promocodes.value.items || []);
   }, []);
 
   useEffect(() => {
@@ -571,7 +575,7 @@ export function RoxySocialApp() {
         {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
-        {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
+        {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} promocodes={partnerPromocodes} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
 
       <BottomNav route={route} onNavigate={(next) => next === "create" ? startNewGeneration() : navigate(next)} />
@@ -806,12 +810,14 @@ function ProfileScreen({ me, avatar, stats, activePromo, tab, setTab, works, pub
   return <section className="screen profile-screen"><div className="profile-hero panel"><div className="avatar">{avatar ? <img src={avatar} alt=""/> : <span>{(me?.first_name?.[0] || me?.username?.[0] || "R").toUpperCase()}</span>}</div><div className="profile-copy"><span className="kicker">Профиль</span><h1>{displayName(me)}</h1><p>{me?.username ? `@${me.username}` : "Автор ROXY"}</p></div><div className="profile-actions">{link ? <button className="icon-button" type="button" onClick={() => void onCopy(link)} aria-label="Поделиться профилем"><Icon name="share"/></button> : null}<button className="icon-button" type="button" onClick={onWallet} aria-label="Баланс"><Icon name="wallet"/></button></div><div className="profile-stats"><div><strong>{works.length}</strong><span>работ</span></div><div><strong>{publications.length}</strong><span>публикаций</span></div><div><strong>{compact(likes)}</strong><span>лайков</span></div></div></div>{activePromo?.active ? <div className="panel"><span className="kicker">Промокод активирован</span><h2>{activePromo.code}</h2><p className="muted">+{compact(activePromo.welcome_rox_granted)} ROX начислено по промокоду. Цена пакета не меняется — бонус выдаётся отдельно.</p>{!activePromo.program_active ? <p className="muted">Партнёрская программа временно приостановлена, привязка промокода сохранена.</p> : null}</div> : <div className="panel"><span className="kicker">Промокод</span><p className="muted">Партнёрский промокод ещё не активирован.</p><a className="secondary wide" href="/mini-app/promocodes/">Активировать промокод</a></div>}<div className="profile-tabs"><button type="button" className={tab === "works" ? "active" : ""} onClick={() => setTab("works")}>Работы</button><button type="button" className={tab === "publications" ? "active" : ""} onClick={() => setTab("publications")}>Публикации</button></div>{tab === "works" ? <MediaGrid items={works} empty="Готовых работ пока нет." onClick={(item) => onPreview(item, "private")}/> : <MediaGrid items={publications} empty="Публикаций пока нет. Открой работу и нажми “В профиль” или “В ленту + профиль”." onClick={(item) => onPreview(item, "surface" in item && item.surface ? item.surface as FeedSurface : "private")} reactions/>}</section>;
 }
 
-function PartnerScreen({ me, stats, rewards, invitations, onRefresh, showToast }: { me: Me | null; stats: PartnerStats | null; rewards: ReferralReward[]; invitations: ReferralInvitation[]; onRefresh: () => void; showToast: (message: string) => void }) {
+function PartnerScreen({ me, stats, rewards, invitations, promocodes, onRefresh, showToast }: { me: Me | null; stats: PartnerStats | null; rewards: ReferralReward[]; invitations: ReferralInvitation[]; promocodes: PartnerPromoCode[]; onRefresh: () => void; showToast: (message: string) => void }) {
   const pLink = profileLink(stats, me);
-  const copy = async (value?: string | null) => { if (await copyText(value)) showToast("Ссылка скопирована"); };
+  const copy = async (value?: string | null, message = "Ссылка скопирована") => { if (await copyText(value)) showToast(message); };
   return <section className="screen"><ScreenHead kicker="Партнёрам" title="Кабинет автора" copy="Делитесь ссылкой, приглашайте друзей и отслеживайте бонусы в одном месте." />
     <div className="profile-stats panel"><div><strong>{compact(stats?.first_line)}</strong><span>1 линия</span></div><div><strong>{compact(stats?.second_line)}</strong><span>2 линия</span></div><div><strong>{compact(stats?.partner_balance_rub)} ₽</strong><span>доступно</span></div></div>
     <div className="panel"><span className="kicker">Профиль автора</span><p className="muted">{pLink || stats?.referral_link || "Ссылка появится после входа в ROXY."}</p>{pLink && <button className="primary wide" type="button" onClick={() => void copy(pLink)}>Скопировать профиль</button>}{stats?.referral_link && <button className="secondary wide" type="button" onClick={() => void copy(stats.referral_link)}>Скопировать реферальную ссылку</button>}{stats?.partner_chat_url && <a className="secondary wide" href={stats.partner_chat_url} target="_blank" rel="noreferrer">Чат партнёров</a>}</div>
+    <SectionTitle kicker="Промокоды" title="Мои промокоды" action="Обновить" onAction={onRefresh} />
+    <div className="transaction-list" data-partner-promocodes>{promocodes.length ? promocodes.map((item) => <div className="transaction" key={item.id}><div><strong>{item.code}</strong><small>{item.is_active ? "Активен" : "Выключен"} · использовано {compact(item.uses_count)} / {item.max_uses == null ? "∞" : compact(item.max_uses)}{item.expires_at ? ` · до ${dateLabel(item.expires_at)}` : ""}</small></div><button className="icon-button" type="button" aria-label={`Скопировать промокод ${item.code}`} onClick={() => void copy(item.code, "Промокод скопирован")}><Icon name="share" size={16}/></button></div>) : <Empty text="Промокоды ещё не назначены." />}</div>
     <SectionTitle kicker="Доход" title="Последние начисления" action="Обновить" onAction={onRefresh} />
     <div className="transaction-list">{rewards.length ? rewards.map((reward) => <div className="transaction" key={reward.id}><div><strong>{reward.source_user?.first_name || reward.source_user?.username || `Линия ${reward.line}`}</strong><small>{dateLabel(reward.created_at)} · {statusLabel(reward.status)}</small></div><span>+{compact(reward.net_amount_rox || reward.amount_rox || reward.amount)} ROX</span></div>) : <Empty text="Начислений пока нет." />}</div>
     <SectionTitle kicker="Рефералы" title="Новые приглашения" />
