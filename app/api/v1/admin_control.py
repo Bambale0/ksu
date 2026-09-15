@@ -73,7 +73,7 @@ class SupportReplyRequest(BaseModel):
 
 class PromoCreateRequest(BaseModel):
     code: str = Field(min_length=3, max_length=64)
-    partner_user_id: uuid.UUID
+    partner_user_id: uuid.UUID | None = None
     max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
     expires_at: datetime | None = None
 
