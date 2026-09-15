@@ -311,7 +311,6 @@ async def test_activation_preserves_live_legacy_reservation_until_payment_settle
     async with SessionFactory() as session:
         partner = await _user(session, "Legacy reservation partner")
         user = await _user(session, "Legacy reservation user")
-        config = await PartnerPromoProgramService.get_config(session)
         promo = PromoCode(
             code=f"LEGACYACT{uuid.uuid4().hex[:8].upper()}",
             reward_amount=Decimal("7"),
@@ -812,7 +811,7 @@ async def test_admin_promo_uses_global_economics_and_requires_partner() -> None:
         assert replayed is False
         assert promo is not None
         assert promo.partner_user_id == partner.id
-        assert Decimal(promo.reward_amount) == Decimal(config.welcome_rox)
+        assert Decimal(promo.reward_amount) == Decimal(config.payment_bonus_rox)
 
 
 
@@ -860,7 +859,9 @@ async def test_admin_can_change_global_program_economics_without_per_code_reward
         result, replayed = await AdminPromoService.update_program(
             session,
             admin=admin,
-            welcome_rox=Decimal("27"),
+            welcome_rox=Decimal("0"),
+            payment_bonus_rox=Decimal("55"),
+            min_payment_rub=Decimal("1200"),
             first_line_percent=Decimal("31"),
             topup_partner_rox=Decimal("11"),
             is_active=True,
@@ -870,7 +871,9 @@ async def test_admin_can_change_global_program_economics_without_per_code_reward
         )
 
         assert replayed is False
-        assert Decimal(str(result["welcome_rox"])) == Decimal("27")
+        assert Decimal(str(result["welcome_rox"])) == Decimal("0")
+        assert Decimal(str(result["payment_bonus_rox"])) == Decimal("55")
+        assert Decimal(str(result["min_payment_rub"])) == Decimal("1200")
         assert Decimal(str(result["first_line_percent"])) == Decimal("31")
         assert Decimal(str(result["topup_partner_rox"])) == Decimal("11")
         # Keep the suite isolated: this test proves the mutation but does not persist it.
