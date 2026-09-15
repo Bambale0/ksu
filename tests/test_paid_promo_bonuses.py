@@ -225,6 +225,7 @@ async def test_partner_promo_activation_respects_referral_hourly_limit(
         await session.rollback()
 
         assert exc_info.value.code == "referral_hourly_limit"
+        assert exc_info.value.preserve_transaction is True
         assert await session.get(ReferralRelation, promo_user.id) is None
         assert await session.get(Wallet, promo_user.id) is None
         stored = await session.get(PromoCode, promo.id)
