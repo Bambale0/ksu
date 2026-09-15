@@ -43,6 +43,8 @@ export type ActivePromo = {
   welcome_rox_current: string;
   first_line_percent: string;
   topup_partner_rox: string;
+  payment_bonus_rox: string;
+  payment_bonus_min_rub: string;
   package_discount_percent: string;
 };
 
