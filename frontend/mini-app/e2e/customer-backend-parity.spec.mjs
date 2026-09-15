@@ -57,6 +57,7 @@ async function installTelegram(page) {
 
 async function mockApi(page) {
   await installTelegram(page);
+  let promoActive = false;
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -76,7 +77,34 @@ async function mockApi(page) {
     if (/^\/api\/v1\/support\/tickets\/[^/]+$/.test(path)) return json({ id: '44444444-4444-4444-8444-444444444444', topic: 'Оплата', status: 'open', created_at: '2026-08-26T04:00:00Z', updated_at: '2026-08-26T05:00:00Z', can_reply: true, can_close: true, can_reopen: false, messages: [{ id: 'm1', body: 'Помогите', author: 'user', created_at: '2026-08-26T04:00:00Z' }] });
     if (path.startsWith('/api/v1/support/tickets/')) return json({ status: 'ok' });
 
-    if (path === '/api/v1/promocodes/redeem' && method === 'POST') return json({
+    if (path === '/api/v1/promocodes/active') return json(promoActive ? {
+      active: true,
+      program_active: true,
+      code: 'WELCOME',
+      promo_id: '88888888-8888-4888-8888-888888888888',
+      partner_user_id: '99999999-9999-4999-8999-999999999999',
+      activated_at: '2026-09-15T12:00:00+00:00',
+      welcome_rox_granted: '25.00',
+      welcome_rox_current: '25.00',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      package_discount_percent: '0',
+    } : {
+      active: false,
+      program_active: true,
+      code: null,
+      promo_id: null,
+      partner_user_id: null,
+      activated_at: null,
+      welcome_rox_granted: '0',
+      welcome_rox_current: '0',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      package_discount_percent: '0',
+    });
+    if (path === '/api/v1/promocodes/redeem' && method === 'POST') {
+      promoActive = true;
+      return json({
       status: 'activated',
       code: 'WELCOME',
       partner_user_id: '99999999-9999-4999-8999-999999999999',
@@ -86,7 +114,8 @@ async function mockApi(page) {
       topup_partner_rox: '10.00',
       balance_rox: '175.00',
       message: 'Промокод активирован: +25.00 ROX',
-    });
+      });
+    }
     if (path === '/api/v1/promocodes/validate') return json({
       status: 'valid',
       code: 'WELCOME',
