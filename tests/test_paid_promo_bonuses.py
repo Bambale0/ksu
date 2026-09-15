@@ -735,7 +735,7 @@ async def test_partner_lists_only_their_assigned_promo_codes() -> None:
         foreign = await _promo(session, partner=other_partner, max_uses=50)
         await session.commit()
 
-        result = await referrals_api.promocodes(partner, session)
+        result = await referrals_api.promocodes(partner, session, limit=100, offset=0)
         items = {item["code"]: item for item in result["items"]}
 
         assert set(items) == {owned.code, disabled.code}
