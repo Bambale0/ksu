@@ -82,3 +82,27 @@ def test_trend_page_can_copy_current_partner_trend_link() -> None:
     assert "Скопировать ссылку тренда" in source
     assert "api.shareTrend(trend.id)" in source
     assert "copyToClipboard(result.copy_link || result.link)" in source
+
+
+def test_referral_stats_keep_legacy_bonus_fields_zero_and_expose_promo_attribution() -> None:
+    source = _source("app/api/v1/referrals.py")
+    partner = _source("app/services/partner.py")
+
+    assert '"welcome_bonus_rox": "0"' in source
+    assert '"invite_bonus_rox": "0"' in source
+    assert '"prompt_repeat_bonus_rox": "0"' in source
+    assert '"second_line_percent": "0"' in source
+    assert '"promo_welcome_rox": str(promo_program.welcome_rox)' in source
+    assert '"promo_topup_partner_rox": str(promo_program.topup_partner_rox)' in source
+    assert 'ReferralRelation.source == "promo"' in source
+    assert '"promo_first_line": promo_first_line' in source
+    assert '"source": row.get("source")' in source
+    assert '"source": relation.source' in partner
+
+
+def test_registration_service_has_no_legacy_welcome_credit_path() -> None:
+    users = _source("app/services/users.py")
+
+    assert "settings.start_balance_rox" not in users
+    assert 'kind="welcome_bonus"' not in users
+    assert "Registration itself is non-financial" in users
