@@ -189,7 +189,7 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     promocodes = _read(FRONTEND / "app" / "promocodes" / "page.tsx")
 
     assert '"/api/v1/promocodes/active"' in api
-    assert '"/api/v1/referrals/promocodes"' in api
+    assert "/api/v1/referrals/promocodes" in api
     assert "api.activePromo()" in app
     assert "api.referralPromocodes()" in app
     assert "partnerPromocodes" in app
