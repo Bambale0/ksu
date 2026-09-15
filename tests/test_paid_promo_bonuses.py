@@ -127,7 +127,7 @@ async def test_same_partner_link_is_upgraded_but_other_partner_cannot_steal_attr
         upgrade_user = await _user(session, "Upgrade user")
         locked_user = await _user(session, "Locked user")
         first_promo = await _promo(session, partner=first_partner)
-        second_promo = await _promo(session, partner=second_partner)
+        await _promo(session, partner=second_partner)
         session.add_all(
             [
                 ReferralRelation(
