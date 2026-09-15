@@ -36,6 +36,8 @@ class PartnerPromoProgramService:
         welcome_rox: Decimal,
         first_line_percent: Decimal,
         topup_partner_rox: Decimal,
+        payment_bonus_rox: Decimal,
+        payment_bonus_min_rub: Decimal,
     ) -> None:
         if welcome_rox < 0 or welcome_rox > Decimal("100000"):
             raise ValueError("Welcome ROX must be between 0 and 100000")
@@ -43,6 +45,10 @@ class PartnerPromoProgramService:
             raise ValueError("First-line percent must be between 0 and 100")
         if topup_partner_rox < 0 or topup_partner_rox > Decimal("100000"):
             raise ValueError("Partner top-up ROX must be between 0 and 100000")
+        if payment_bonus_rox < 0 or payment_bonus_rox > Decimal("100000"):
+            raise ValueError("Payment bonus ROX must be between 0 and 100000")
+        if payment_bonus_min_rub < 0 or payment_bonus_min_rub > Decimal("100000000"):
+            raise ValueError("Payment bonus minimum RUB must be between 0 and 100000000")
 
     @staticmethod
     def view(config: PartnerPromoProgramConfig) -> dict[str, object]:
@@ -51,6 +57,8 @@ class PartnerPromoProgramService:
             "welcome_rox": str(config.welcome_rox),
             "first_line_percent": str(config.first_line_percent),
             "topup_partner_rox": str(config.topup_partner_rox),
+            "payment_bonus_rox": str(config.payment_bonus_rox),
+            "payment_bonus_min_rub": str(config.payment_bonus_min_rub),
             "is_active": config.is_active,
             "created_at": config.created_at.isoformat(),
             "updated_at": config.updated_at.isoformat(),
