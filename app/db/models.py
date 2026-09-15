@@ -80,6 +80,17 @@ class WalletTransaction(Base):
 
 class PartnerPromoProgramConfig(TimestampMixin, Base):
     __tablename__ = "partner_promo_program_config"
+    __table_args__ = (
+        CheckConstraint("welcome_rox >= 0", name="ck_partner_promo_welcome_nonnegative"),
+        CheckConstraint(
+            "first_line_percent >= 0 AND first_line_percent <= 100",
+            name="ck_partner_promo_percent_range",
+        ),
+        CheckConstraint(
+            "topup_partner_rox >= 0",
+            name="ck_partner_promo_topup_nonnegative",
+        ),
+    )
 
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
     welcome_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
@@ -141,6 +152,7 @@ class PromoRedemption(Base):
 class ReferralRelation(Base):
     __tablename__ = "referral_relations"
     __table_args__ = (
+        CheckConstraint("source IN ('link', 'promo')", name="ck_referral_relation_source"),
         Index("ix_referral_relations_inviter_source", "inviter_user_id", "source"),
         Index("ix_referral_relations_promo_id", "promo_id"),
     )
