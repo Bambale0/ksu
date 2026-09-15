@@ -426,7 +426,7 @@ export default function PaymentsPage() {
         <h2>{activePromo.code}</h2>
         <div className="profile-stats">
           <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
-          <div><strong>0%</strong><span>скидка на пакет</span></div>
+          <div><strong>Без изменений</strong><span>цена пакета</span></div>
           <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
         </div>
         <p className="muted">Цена пакета не меняется: этот промокод даёт отдельный бонус ROX и закрепляет партнёрскую программу.</p>
