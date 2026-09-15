@@ -1,8 +1,8 @@
 # Partner cabinet and withdrawal workflow
 
-**Status:** synchronized with current runtime on 2026-08-26.
+**Status:** synchronized with current runtime on 2026-09-15.
 
-The partner cabinet lives inside the existing Profile shell. Referral reward percentages remain server settings (30% first line / 5% second line by default); the browser never computes partner earnings, decides referral admission or determines withdrawal eligibility.
+The partner cabinet lives inside the existing Profile shell. Financial rewards are promo-only: a user must activate a valid partner promo before their top-ups can create partner earnings. Current global promo economics are database/admin controlled; the browser never computes partner earnings, decides attribution ownership or determines withdrawal eligibility.
 
 ## Cabinet data
 
@@ -23,9 +23,10 @@ The cabinet shows:
 - available-to-withdraw balance;
 - pending rewards;
 - pending/processing withdrawal amount;
-- first- and second-line counts;
-- referral payload/link;
-- invitations;
+- promo-attributed 1st-line count;
+- current global promo terms;
+- profile/invite links as non-financial sharing tools;
+- attribution history with its source (`promo` or `link`);
 - accrual history;
 - withdrawal request history.
 
@@ -33,7 +34,7 @@ The cabinet shows:
 
 Referral attachment happens only while a **new Telegram user** is created. Existing accounts are not re-parented by a later `/start` payload.
 
-The server serializes admission for one inviter with `SELECT ... FOR UPDATE` on the inviter row, then evaluates the current accepted `ReferralRelation` count. This prevents concurrent registrations from each seeing the same pre-limit count and both earning a bonus.
+The server serializes registration-time link admission for one inviter with `SELECT ... FOR UPDATE` on the inviter row, then evaluates the current accepted `ReferralRelation` count. This prevents concurrent registrations from bypassing attribution anti-fraud limits. Registration/link admission is non-financial.
 
 Current defaults:
 
@@ -47,12 +48,14 @@ REFERRAL_ANTIFRAUD_BURST_AUTOBAN=true
 
 Semantics:
 
-- hour/day limits reject the new referral relation and inviter bonus, but **do not** deactivate the inviter account;
+- hour/day limits reject the new link relation but **do not** deactivate the inviter account;
 - burst threshold counts the current attempted registration, so with `BURST_MAX=6` the sixth registration inside the 10-second window is rejected;
 - when burst autoban is enabled, that burst attempt also sets the referrer account `is_active=false`; the ordinary Mini App account-restriction path then applies;
 - when burst autoban is disabled, the same attempt is rejected with `burst_limit` but the account remains active;
-- self-referrals, missing inviters and already-restricted inviters never create a relation or invitation bonus;
-- the +30 invite bonus is credited only **after** successful relation admission and remains idempotent per referred user.
+- self-referrals, missing inviters and already-restricted inviters never create a relation;
+- registration and ordinary invite links create **no ROX and no cash reward**;
+- the first valid partner promo activation can replace a non-financial link attribution and becomes the financial owner;
+- once promo-owned, attribution cannot silently move to another partner.
 
 Every evaluated referral attempt is written to the durable `referral_events` audit table. Current reasons include:
 
@@ -100,7 +103,7 @@ Current approved default:
 PARTNER_MIN_WITHDRAWAL_RUB=3000
 ```
 
-With the public denomination `1 ROX = 1 RUB`, this is the approved 3,000-RUB/ROX partner withdrawal threshold. The API returns the configured threshold in `/referrals/stats`; the Mini App validates it for UX and the backend repeats validation authoritatively.
+This is the approved 3,000-RUB partner cash withdrawal threshold. Wallet ROX remain non-withdrawable internal credits. The API returns the configured threshold in `/referrals/stats`; the Mini App validates it for UX and the backend repeats validation authoritatively.
 
 If business configuration intentionally changes the threshold, deployment config and maintained economy/partner documentation must change together.
 
@@ -135,7 +138,7 @@ referral_link / referral_mini_app_link https://t.me/KsuBot?start=ref_<telegram_i
 direct link when short name exists     https://t.me/KsuBot/<short_name>?startapp=profile_<telegram_id>_ref_<telegram_id>
 ```
 
-The primary author-facing share link is `profile_link`: it opens the public author profile with their works and subscription button, while preserving referral attribution. `referral_link` remains the plain invite link for registration-only sharing. The backend still accepts legacy `/start ref_<telegram_id>` links and can fall back to them when `TELEGRAM_MINI_APP_SHORT_NAME` is not configured.
+The primary author-facing share link is `profile_link`: it opens the public author profile with their works and subscription button, while preserving non-financial attribution. `referral_link` remains the plain invite link for registration-time attribution only. Neither link enables financial rewards by itself; a valid partner promo activation is required. The backend still accepts legacy `/start ref_<telegram_id>` links and can fall back to them when `TELEGRAM_MINI_APP_SHORT_NAME` is not configured.
 
 When `BOT_USERNAME` is absent the server still returns the existing `ref_<telegram_id>` payload and `referral_link=null`; the Mini App falls back to copy behavior instead of inventing a bot URL.
 
