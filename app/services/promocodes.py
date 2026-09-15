@@ -61,10 +61,14 @@ class PromoCodeService:
             raise PromoCodeError("partner_unavailable", "Promo partner is unavailable")
 
         relation = await session.get(ReferralRelation, user_id)
-        if relation is not None and relation.inviter_user_id != promo.partner_user_id:
+        if (
+            relation is not None
+            and relation.source == "promo"
+            and relation.inviter_user_id != promo.partner_user_id
+        ):
             raise PromoCodeError(
                 "already_attributed",
-                "User is already attributed to another partner",
+                "User is already attributed to another promo partner",
             )
         if not (
             relation is not None
@@ -111,10 +115,14 @@ class PromoCodeService:
             .where(ReferralRelation.referred_user_id == user_id)
             .with_for_update()
         )
-        if relation is not None and relation.inviter_user_id != promo.partner_user_id:
+        if (
+            relation is not None
+            and relation.source == "promo"
+            and relation.inviter_user_id != promo.partner_user_id
+        ):
             raise PromoCodeError(
                 "already_attributed",
-                "User is already attributed to another partner",
+                "User is already attributed to another promo partner",
             )
 
         existing_redemption = await session.scalar(
@@ -144,8 +152,9 @@ class PromoCodeService:
             )
             session.add(relation)
         else:
-            # A signed/share referral for the same partner can be upgraded, but
-            # attribution ownership can never be moved to another partner.
+            # Plain referral links carry no financial ownership. The first promo
+            # activation establishes the immutable financial partner attribution.
+            relation.inviter_user_id = promo.partner_user_id
             relation.source = "promo"
             relation.promo_id = promo.id
 
@@ -182,6 +191,11 @@ class PromoCodeService:
                 reference_type="promo",
                 reference_id=str(promo.id),
                 idempotency_key=f"partner-promo-welcome:{user_id}",
+                reason="promo_activation_welcome",
+                promo_code=promo.code,
+                partner_id=promo.partner_user_id,
+                referral_user_id=user_id,
+                payment_id=None,
             )
 
         await session.flush()
