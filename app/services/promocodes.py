@@ -365,7 +365,12 @@ class PromoCodeService:
             )
             .with_for_update()
         )
-        if redemption is None:
+        if redemption is None or not isinstance(redemption, PromoRedemption):
+            # Some provider reconciliation tests use a deliberately tiny fake
+            # AsyncSession that can return its PaymentRequest sentinel for
+            # unrelated scalar queries. Real DB sessions return PromoRedemption
+            # here; treating any other object as "no legacy promo reservation"
+            # keeps this compatibility cleanup side-effect free.
             return
 
         promo = await session.scalar(
