@@ -3,7 +3,6 @@ import { AppEntryGate } from "@/components/app-entry-gate";
 import { BalanceAnchorGuard } from "@/components/balance-anchor-guard";
 import { CatalogFeatureHub } from "@/components/catalog-feature-hub";
 import { CatalogParityFeatures } from "@/components/catalog-parity-features";
-import { CatalogTrendFolders } from "@/components/catalog-trend-folders";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { CustomerParityHub } from "@/components/customer-parity-hub";
 import { FeedAdminModeration } from "@/components/feed-admin-moderation";
@@ -13,6 +12,7 @@ import { GenerationQuoteFreshnessGuard } from "@/components/generation-quote-fre
 import { GenerationSubmitGuard } from "@/components/generation-submit-guard";
 import { GlobalUxEnhancers } from "@/components/global-ux-enhancers";
 import { HistoryPromptCopyUx } from "@/components/history-prompt-copy-ux";
+import { HomeCatalogContract } from "@/components/home-catalog-contract";
 import { HomeTrendFolders } from "@/components/home-trend-folders";
 import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
@@ -38,11 +38,11 @@ export default function Page() {
       <FeedResponsiveLayout />
       <FeedAdminModeration />
       <BalanceAnchorGuard />
+      <HomeCatalogContract />
       <CatalogFeatureHub />
       <LiveTrendRail />
       <HomeTrendFolders />
       <AiReferenceHomeEntry />
-      <CatalogTrendFolders />
       <CatalogParityFeatures />
       <CustomerParityHub />
       <WalletParity />
