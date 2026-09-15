@@ -31,9 +31,12 @@ type PackageResponse = {
   packages: Record<string, Package>;
 };
 type PromoPreview = {
-  status: "valid";
+  status: "valid" | "activated" | "already_active";
   code: string;
   reward_rox: string;
+  welcome_rox?: string;
+  first_line_percent?: string;
+  topup_partner_rox?: string;
   remaining_uses?: number | null;
   expires_at?: string | null;
   message?: string;
@@ -170,13 +173,13 @@ export default function PaymentsPage() {
     setError("");
     setNotice("");
     try {
-      const next = await customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
+      const next = await customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
         method: "POST",
         body: JSON.stringify({ code: normalized }),
       });
       setPromo(next);
       setPromoCode(next.code);
-      setNotice(next.message || `Промокод применён. После успешной оплаты получите +${compactNumber(next.reward_rox)} ROX.`);
+      setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
     } catch (reason) {
       setPromo(null);
       setError(reason instanceof Error ? reason.message : "Не удалось проверить промокод");
@@ -194,13 +197,13 @@ export default function PaymentsPage() {
 
     const code = initialPromoCode();
     if (code) {
-      void customerRequest<PromoPreview>("/api/v1/promocodes/validate", {
+      void customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
         method: "POST",
         body: JSON.stringify({ code }),
       }).then((next) => {
         setPromo(next);
         setPromoCode(next.code);
-        setNotice(next.message || `Промокод применён. После успешной оплаты получите +${compactNumber(next.reward_rox)} ROX.`);
+        setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
       }).catch(() => {
         setPromo(null);
       });
@@ -236,8 +239,7 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
-  const promoReward = Number(promo?.reward_rox || 0);
-  const totalRox = Number(selected?.credits || 0) + promoReward;
+  const totalRox = Number(selected?.credits || 0);
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
@@ -347,7 +349,7 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = activePromo ? ` Промобонус +${compactNumber(promo?.reward_rox)} ROX начислится только после успешной оплаты.` : "";
+      const promoHint = activePromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
       setNotice(
         provider === "card"
           ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
@@ -447,9 +449,9 @@ export default function PaymentsPage() {
               />
             </label>
             <button className="secondary wide" type="button" disabled={busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
-              {busy === "promo" ? "Проверяю…" : promo ? `Промокод ${promo.code} применён` : "Применить промокод"}
+              {busy === "promo" ? "Активирую…" : promo ? `Промокод ${promo.code} активирован` : "Активировать промокод"}
             </button>
-            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX будет начислен только после успешной оплаты.</small> : null}
+            {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX относится к активации промокода, а не к пакету пополнения.</small> : null}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>
