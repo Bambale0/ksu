@@ -105,7 +105,7 @@ async def test_registration_creates_start_wallet_but_invite_has_no_rox_bonus(
         inviter_wallet = await session.get(Wallet, inviter.id)
         relation = await session.get(ReferralRelation, friend.id)
 
-        assert friend_wallet is not None and friend_wallet.balance == Decimal("50")
+        assert friend_wallet is not None and friend_wallet.balance == Decimal("0")
         assert inviter_wallet is None or inviter_wallet.balance == Decimal("0")
         assert relation is not None
         assert relation.inviter_user_id == inviter.id
@@ -121,7 +121,7 @@ async def test_registration_creates_start_wallet_but_invite_has_no_rox_bonus(
                 )
             ).all()
         )
-        assert "welcome_bonus" in kinds
+        assert "welcome_bonus" not in kinds
         assert "referral_invite_bonus" not in kinds
 
 
@@ -226,9 +226,9 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         assert payload["transferred_to_rox"] == "0"
         assert payload["bonus_rox"] == "280.00"  # wallet compatibility only
         assert payload["rub_per_rox"] == "1"
-        assert payload["welcome_bonus_rox"] == "50"
+        assert payload["welcome_bonus_rox"] == "0"
         assert payload["invite_bonus_rox"] == "0"
-        assert payload["prompt_repeat_bonus_rox"] == "5"
+        assert payload["prompt_repeat_bonus_rox"] == "0"
         assert payload["first_line_percent"] == "30.00"
         assert payload["promo_welcome_rox"] == "25.00"
         assert payload["promo_topup_partner_rox"] == "10.00"
@@ -246,19 +246,13 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
             assert misleading_key not in payload
 
 
-def test_prompt_repeat_bonus_is_idempotent_success_only_and_blocks_self_reward() -> None:
+def test_prompt_repeat_has_no_financial_reward_path() -> None:
     provider = (ROOT / "app" / "services" / "generation_provider.py").read_text(encoding="utf-8")
     generation_create = (ROOT / "app" / "services" / "generations.py").read_text(encoding="utf-8")
-    assert 'generation.action_type != "remix"' in provider
-    assert "source.user_id == generation.user_id" in provider
-    assert 'kind="prompt_repeat_bonus"' in provider
-    assert 'idempotency_key=f"prompt-repeat:{generation.id}"' in provider
-    assert "settings.prompt_repeat_bonus_rox" in provider
-    assert "await cls._award_prompt_repeat_bonus(session, generation)" in provider
-    assert provider.index("if task.state == \"success\":") < provider.index(
-        "await cls._award_prompt_repeat_bonus(session, generation)"
-    )
-    assert 'kind="prompt_repeat_bonus"' not in generation_create
+    for source in (provider, generation_create):
+        assert 'kind="prompt_repeat_bonus"' not in source
+        assert "settings.prompt_repeat_bonus_rox" not in source
+        assert "_award_prompt_repeat_bonus" not in source
 
 
 def test_public_roxy_menu_is_mini_app_only() -> None:
