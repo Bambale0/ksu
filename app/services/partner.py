@@ -300,6 +300,8 @@ class PartnerService:
                     "username": user.username,
                     "first_name": user.first_name,
                     "line": 1,
+                    "source": relation.source,
+                    "promo_id": str(relation.promo_id) if relation.promo_id else None,
                     "joined_at": relation.created_at,
                 }
                 for relation, user in first_rows
@@ -329,6 +331,8 @@ class PartnerService:
                     "username": user.username,
                     "first_name": user.first_name,
                     "line": 2,
+                    "source": relation.source,
+                    "promo_id": str(relation.promo_id) if relation.promo_id else None,
                     "joined_at": relation.created_at,
                 }
                 for relation, user in second_rows
