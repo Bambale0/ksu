@@ -111,12 +111,6 @@ def _referral_joined_name(session: Session, relation: ReferralRelation) -> str:
 
 def _add_referral_joined_notification(session: Session, relation: ReferralRelation) -> None:
     referred_name = _referral_joined_name(session, relation)
-    bonus = Decimal(settings.invite_bonus_rox)
-    bonus_line = (
-        f"За приглашение начислено +{_money(bonus)} ROX.\n"
-        if bonus > 0
-        else ""
-    )
     _add_notification(
         session,
         user_id=relation.inviter_user_id,
@@ -124,8 +118,8 @@ def _add_referral_joined_notification(session: Session, relation: ReferralRelati
         title="🎉 Новый реферал",
         body=(
             f"К вам присоединился: {referred_name}.\n"
-            f"{bonus_line}"
-            "Начисления с его пополнений будут приходить отдельными уведомлениями."
+            "Само приглашение не даёт финансового бонуса. "
+            "Партнёрские начисления включаются после активации вашего промокода."
         ),
     )
 
