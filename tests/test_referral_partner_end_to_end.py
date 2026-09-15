@@ -327,9 +327,8 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
             "48.91"
         )
-        assert (await PartnerService.accounting(session, second_line.id))["total_earned"] == Decimal(
-            "0"
-        )
+        second_line_accounting = await PartnerService.accounting(session, second_line.id)
+        assert second_line_accounting["total_earned"] == Decimal("0")
 
         # Exact replay of the refund is idempotent.
         await PaymentService.apply_reversal(
@@ -357,9 +356,8 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
             "0.00"
         )
-        assert (await PartnerService.accounting(session, second_line.id))["total_earned"] == Decimal(
-            "0"
-        )
+        second_line_accounting = await PartnerService.accounting(session, second_line.id)
+        assert second_line_accounting["total_earned"] == Decimal("0")
         await session.refresh(buyer_wallet)
         await session.refresh(first_wallet)
         assert Decimal(buyer_wallet.balance) == Decimal("25.00")
