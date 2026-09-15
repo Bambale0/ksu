@@ -400,7 +400,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Пакеты начисляют ровно указанное количество ROX. Дополнительные ROX доступны только по промокоду после успешной оплаты."
+      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Пакеты начисляют ровно указанное количество ROX. Партнёрский промокод активирует отдельную бонусную программу и не меняет пакет."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -428,7 +428,7 @@ export default function PaymentsPage() {
 
           {selected ? <div className="profile-stats">
             <div><strong>{compactNumber(selected.credits)}</strong><span>ROX в пакете</span></div>
-            {promo ? <div><strong>+{compactNumber(promo.reward_rox)}</strong><span>по промокоду {promo.code}</span></div> : null}
+            {promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
             <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
           </div> : null}
 
