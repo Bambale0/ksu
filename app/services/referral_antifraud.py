@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -14,14 +13,6 @@ from app.db.models import ReferralRelation, User
 from app.db.referral_models import ReferralEvent
 from app.services.notifications import NotificationService
 from app.services.referral_audit import log_referral_admission
-from app.services.wallet import WalletService
-
-
-def _money(value: Decimal | object) -> str:
-    try:
-        return f"{Decimal(value):.2f}".rstrip("0").rstrip(".")
-    except Exception:  # noqa: BLE001 - notification copy must not break referral admission
-        return str(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,17 +240,6 @@ class ReferralAntifraudService:
             )
         await session.flush()
 
-        if settings.invite_bonus_rox > Decimal("0"):
-            await WalletService.credit(
-                session,
-                user_id=inviter.id,
-                amount=settings.invite_bonus_rox,
-                kind="referral_invite_bonus",
-                reference_type="referral_user",
-                reference_id=str(visitor.id),
-                idempotency_key=f"invite-bonus:{visitor.id}",
-            )
-
         display_name = " ".join(
             part for part in (visitor.first_name, visitor.last_name or "") if part
         ).strip()
@@ -271,8 +251,6 @@ class ReferralAntifraudService:
             referred_name = f"@{visitor.username}"
         else:
             referred_name = "Новый пользователь ROXY"
-        bonus = Decimal(settings.invite_bonus_rox)
-        bonus_line = f"За приглашение начислено +{_money(bonus)} ROX.\n" if bonus > 0 else ""
         await NotificationService.create(
             session,
             user_id=inviter.id,
@@ -280,8 +258,7 @@ class ReferralAntifraudService:
             title="🎉 Новый реферал",
             body=(
                 f"К вам присоединился: {referred_name}.\n"
-                f"{bonus_line}"
-                "Начисления с его пополнений будут приходить отдельными уведомлениями."
+                "Финансовые бонусы включаются только после активации вашего промокода."
             ),
         )
 
