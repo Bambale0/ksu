@@ -116,7 +116,7 @@ const surfaces = [
   ['/mini-app/notifications/', '1 непрочитанных'],
   ['/mini-app/support/', 'Помощь ROXY'],
   ['/mini-app/settings/', 'Аккаунт ROXY'],
-  ['/mini-app/promocodes/', 'Бонус к пополнению'],
+  ['/mini-app/promocodes/', 'Партнёрские бонусы'],
   ['/mini-app/partner-wallet/', 'Доход и выплаты'],
   ['/mini-app/subscriptions/', 'Мои подписки'],
   ['/mini-app/history-manager/', 'Управление работами'],
@@ -137,17 +137,17 @@ for (const [url, title] of surfaces) {
   });
 }
 
-test('promo validation previews a paid bonus without crediting the wallet', async ({ page }) => {
+test('promo activation grants welcome ROX before checkout', async ({ page }) => {
   await mockApi(page);
   await page.goto('/mini-app/promocodes/');
   await page.getByPlaceholder('Например, KSENIA50').fill('WELCOME');
-  await page.getByRole('button', { name: 'Проверить промокод' }).click();
+  await page.getByRole('button', { name: 'Активировать промокод' }).click();
   await expect(page.getByText('+25', { exact: true })).toBeVisible();
-  await expect(page.getByText('ROX после оплаты', { exact: true })).toBeVisible();
-  await expect(page.getByText(/начислен только после подтверждения оплаты/)).toBeVisible();
-  await expect(page.getByText('175', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /Перейти к пополнению/ }).click();
-  await expect(page).toHaveURL(/\/mini-app\/payments\/\?promo=WELCOME/);
+  await expect(page.getByText('ROX за активацию', { exact: true })).toBeVisible();
+  await expect(page.getByText('30%', { exact: true })).toBeVisible();
+  await expect(page.getByText('+10', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Перейти к пополнению' }).click();
+  await expect(page).toHaveURL(/\/mini-app\/payments\//);
 });
 
 test('notifications can be marked read in the customer center', async ({ page }) => {
