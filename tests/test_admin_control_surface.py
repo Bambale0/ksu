@@ -87,6 +87,7 @@ def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract()
     # There must be exactly one live admin POST contract for creating promo codes.
     assert '@router.post("/promocodes", status_code=201)' not in operations
     assert '@router.post("/promocodes", status_code=status.HTTP_201_CREATED)' in capabilities
+    assert '@router.patch("/promocodes/{promo_id}")' in capabilities
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
@@ -104,6 +105,7 @@ def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     assert "session.execute(" not in source
     assert "Idempotency-Key" in source
     assert "X-Admin-Confirm" in source
+    assert '@router.patch("/promocodes/{promo_id}")' in source
     assert '@router.post("/promocodes/{promo_id}/state")' in source
     assert '@router.post("/promocodes/{promo_id}/partner")' in source
     assert '@router.post("/promocodes/program")' in source
