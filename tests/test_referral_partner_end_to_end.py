@@ -55,7 +55,7 @@ async def _seed_referral_reward(
     buyer: User,
     basis: Decimal = Decimal("100"),
 ) -> ReferralReward:
-    session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+    """Seed cash accounting without also adding the promo program's fixed ROX bonus."""
     payment = Payment(
         user_id=buyer.id,
         provider="partner-e2e",
@@ -77,20 +77,17 @@ async def _seed_referral_reward(
         reference_id=str(payment.id),
         idempotency_key=f"partner-e2e-source:{uuid.uuid4()}",
     )
-    await ReferralService.accrue_from_payment(
-        session,
+    reward = ReferralReward(
+        partner_user_id=partner.id,
         source_user_id=buyer.id,
         source_transaction_id=source_tx.id,
-        payment_amount=basis,
+        level=1,
+        percent=Decimal("30"),
+        amount=(basis * Decimal("0.30")).quantize(Decimal("0.01")),
+        status="available",
     )
-    reward = await session.scalar(
-        select(ReferralReward).where(
-            ReferralReward.partner_user_id == partner.id,
-            ReferralReward.source_transaction_id == source_tx.id,
-            ReferralReward.level == 1,
-        )
-    )
-    assert reward is not None
+    session.add(reward)
+    await session.flush()
     return reward
 
 
@@ -137,7 +134,24 @@ async def test_bonus_rox_cannot_become_referral_cash_even_if_accrual_is_called(
     async with SessionFactory() as session:
         partner = await _user(session, "Partner")
         buyer = await _user(session, "Bonus buyer")
-        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+        promo = PromoCode(
+            code=f"BONUSONLY{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=partner.id,
+            max_uses=100,
+            uses_count=1,
+            is_active=True,
+        )
+        session.add(promo)
+        await session.flush()
+        session.add(
+            ReferralRelation(
+                referred_user_id=buyer.id,
+                inviter_user_id=partner.id,
+                source="promo",
+                promo_id=promo.id,
+            )
+        )
         bonus_tx = await WalletService.credit(
             session,
             user_id=buyer.id,
