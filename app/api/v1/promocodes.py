@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.db.models import Wallet
 from app.services.promocodes import PromoCodeError, PromoCodeService
 
 router = APIRouter(prefix="/promocodes", tags=["promocodes"])
@@ -15,35 +16,57 @@ PROMO_ERROR_MESSAGES = {
     "invalid": "Промокод не существует или недоступен",
     "expired": "Срок действия промокода истёк",
     "usage_limit_reached": "Лимит активаций промокода исчерпан",
-    "already_used": "Вы уже использовали этот промокод",
-    "already_reserved": "Этот промокод уже привязан к другой незавершённой оплате",
+    "already_attributed": "Партнёр уже закреплён за этим аккаунтом",
+    "partner_unassigned": "Промокод пока не привязан к партнёру",
+    "partner_unavailable": "Партнёр по этому промокоду сейчас недоступен",
+    "program_inactive": "Партнёрская бонусная программа временно отключена",
+    "self_ref": "Нельзя активировать собственный партнёрский промокод",
+    "invalid_user": "Аккаунт недоступен для активации промокода",
 }
 
 
-async def _validate(
-    payload: RedeemPromoRequest,
-    user: CurrentUserDep,
-    session: SessionDep,
-) -> dict[str, object]:
-    try:
-        promo = await PromoCodeService.preview(session, user_id=user.id, code=payload.code)
-    except PromoCodeError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": exc.code,
-                "message": PROMO_ERROR_MESSAGES.get(exc.code, "Не удалось проверить промокод"),
-            },
-        ) from exc
+def _promo_error(exc: PromoCodeError) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={
+            "code": exc.code,
+            "message": PROMO_ERROR_MESSAGES.get(exc.code, "Не удалось применить промокод"),
+        },
+    )
 
+
+async def _view(
+    *,
+    session: SessionDep,
+    user: CurrentUserDep,
+    code: str,
+) -> dict[str, object]:
+    promo = await PromoCodeService.preview(session, user_id=user.id, code=code)
+    config = await PromoCodeService.program_config(session)
+    relation = await PromoCodeService.relation_for_user(session, user_id=user.id)
+    already_active = bool(
+        relation is not None
+        and relation.source == "promo"
+        and relation.inviter_user_id == promo.partner_user_id
+    )
     remaining_uses = await PromoCodeService.remaining_uses(session, promo=promo)
     return {
         "status": "valid",
         "code": promo.code,
-        "reward_rox": str(promo.reward_amount),
+        "partner_user_id": str(promo.partner_user_id),
+        "welcome_rox": str(config.welcome_rox),
+        # Backward-compatible alias for older Mini App clients.
+        "reward_rox": str(config.welcome_rox),
+        "first_line_percent": str(config.first_line_percent),
+        "topup_partner_rox": str(config.topup_partner_rox),
+        "already_active": already_active,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
-        "message": f"После успешной оплаты начислим +{promo.reward_amount} ROX",
+        "message": (
+            "Партнёрская программа уже активна"
+            if already_active
+            else f"После активации начислим +{config.welcome_rox} ROX"
+        ),
     }
 
 
@@ -53,7 +76,10 @@ async def validate(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    return await _validate(payload, user, session)
+    try:
+        return await _view(session=session, user=user, code=payload.code)
+    except PromoCodeError as exc:
+        raise _promo_error(exc) from exc
 
 
 @router.post("/redeem")
@@ -62,5 +88,30 @@ async def redeem(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, object]:
-    """Backward-compatible endpoint: promo codes no longer grant free ROX."""
-    return await _validate(payload, user, session)
+    try:
+        activation = await PromoCodeService.activate(
+            session,
+            user_id=user.id,
+            code=payload.code,
+        )
+        await session.commit()
+    except PromoCodeError as exc:
+        await session.rollback()
+        raise _promo_error(exc) from exc
+
+    wallet = await session.get(Wallet, user.id)
+    return {
+        "status": "activated" if activation.activated else "already_active",
+        "code": activation.promo.code,
+        "partner_user_id": str(activation.promo.partner_user_id),
+        "welcome_rox": str(activation.config.welcome_rox),
+        "reward_rox": str(activation.config.welcome_rox),
+        "first_line_percent": str(activation.config.first_line_percent),
+        "topup_partner_rox": str(activation.config.topup_partner_rox),
+        "balance_rox": str(wallet.balance if wallet is not None else 0),
+        "message": (
+            f"Промокод активирован: +{activation.config.welcome_rox} ROX"
+            if activation.activated
+            else "Партнёрская программа уже активна"
+        ),
+    }
