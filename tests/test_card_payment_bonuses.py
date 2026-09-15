@@ -376,7 +376,7 @@ def test_wallet_does_not_render_automatic_bonus_badges() -> None:
     assert "<WalletParity />" in page
     assert "package-bonus-live" not in wallet
     assert "bonus_credits" not in wallet
-    assert "Дополнительные ROX доступны только по промокоду" in payments
+    assert "Партнёрский промокод активирует отдельную бонусную программу и не меняет пакет" in payments
     assert "Есть промокод?" in wallet
 
 
