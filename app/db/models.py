@@ -96,10 +96,22 @@ class PartnerPromoProgramConfig(TimestampMixin, Base):
             "topup_partner_rox >= 0",
             name="ck_partner_promo_topup_nonnegative",
         ),
+        CheckConstraint(
+            "payment_bonus_rox >= 0",
+            name="ck_partner_promo_payment_bonus_nonnegative",
+        ),
+        CheckConstraint(
+            "min_payment_rub >= 0",
+            name="ck_partner_promo_min_payment_nonnegative",
+        ),
     )
 
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Legacy field retained for API/schema compatibility. New activations never
+    # grant ROX immediately; production value is migrated to zero.
     welcome_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    payment_bonus_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    min_payment_rub: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     first_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     topup_partner_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

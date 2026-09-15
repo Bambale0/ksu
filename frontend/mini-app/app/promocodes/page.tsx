@@ -11,6 +11,8 @@ type PromoActivation = {
   code: string;
   reward_rox: string;
   welcome_rox: string;
+  payment_bonus_rox: string;
+  min_payment_rub: string;
   first_line_percent: string;
   topup_partner_rox: string;
   balance_rox: string;
@@ -62,7 +64,7 @@ export default function PromocodesPage() {
     <StandaloneShell
       kicker="Промокод"
       title="Партнёрские бонусы"
-      copy="Промокод один раз закрепляет партнёра и включает бонусную программу. Сам пакет пополнения при этом не меняется."
+      copy="Промокод закрепляет партнёра за аккаунтом. За активацию ROX не начисляются: +50 ROX выдаются после успешного пополнения от 1000 ₽."
     >
       <div className="panel tool-panel">
         {loading ? <p className="muted">Проверяем активный промокод…</p> : null}
@@ -71,12 +73,12 @@ export default function PromocodesPage() {
           <span className="kicker">Промокод применён</span>
           <h2>{activePromo.code}</h2>
           <div className="profile-stats">
-            <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
-            <div><strong>Без изменений</strong><span>цена пакета</span></div>
+            <div><strong>+{compactNumber(activePromo.payment_bonus_rox)}</strong><span>ROX за подходящее пополнение</span></div>
+            <div><strong>от {compactNumber(activePromo.min_payment_rub)} ₽</strong><span>порог оплаты</span></div>
             <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
           </div>
           <p className="muted">
-            Промокод закреплён за аккаунтом. Повторно вводить его при пополнении не нужно.
+            Промокод активен — +{compactNumber(activePromo.payment_bonus_rox)} ROX при пополнении от {compactNumber(activePromo.min_payment_rub)} ₽. Повторно вводить код не нужно.
           </p>
           {!activePromo.program_active ? <p className="muted">
             Программа временно приостановлена, но привязка промокода сохранена.
@@ -107,9 +109,9 @@ export default function PromocodesPage() {
           </label>
           {error ? <div className="action-error" role="alert">{error}</div> : null}
           {result ? <div className="profile-stats">
-            <div><strong>+{compactNumber(result.welcome_rox)}</strong><span>ROX за активацию</span></div>
-            <div><strong>{compactNumber(result.first_line_percent)}%</strong><span>партнёру с пополнений</span></div>
-            <div><strong>+{compactNumber(result.topup_partner_rox)}</strong><span>ROX партнёру за пополнение</span></div>
+            <div><strong>+{compactNumber(result.payment_bonus_rox)}</strong><span>ROX после подходящей оплаты</span></div>
+            <div><strong>от {compactNumber(result.min_payment_rub)} ₽</strong><span>минимум пополнения</span></div>
+            <div><strong>0 ROX</strong><span>за саму активацию</span></div>
           </div> : null}
           {result ? <p className="muted">{result.message || ("Промокод " + result.code + " активирован.")}</p> : null}
           <button className="secondary wide" type="button" disabled={busy || !code.trim()} onClick={() => void activate()}>

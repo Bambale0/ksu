@@ -846,10 +846,12 @@
         { name: "topup_partner_rox", label: "ROX партнёру за каждое пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
         { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
       ],
-      onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
+      onSubmit: async ({ payment_bonus_rox, min_payment_rub, first_line_percent, topup_partner_rox, is_active }) => {
         await mutate("/api/v1/admin/control/promocodes/program", {
           body: {
-            welcome_rox,
+            welcome_rox: 0,
+            payment_bonus_rox,
+            min_payment_rub,
             first_line_percent,
             topup_partner_rox,
             is_active: is_active === "true",
@@ -861,11 +863,12 @@
       },
     }));
     const programSummary = pre({
-      "ROX новому пользователю": program.welcome_rox,
+      "Бонус пользователю за оплату": `+${program.payment_bonus_rox} ROX`,
+      "Минимальная сумма": `${program.min_payment_rub} ₽`,
       "1-я линия": `${program.first_line_percent}%`,
       "ROX за пополнение реферала": program.topup_partner_rox,
       "Статус": program.is_active ? "включена" : "выключена",
-      "Примечание": "За само приглашение начислений нет. Бонусы активируются только промокодом.",
+      "Примечание": "За активацию и приглашение ROX не начисляются. Пользовательский бонус выдаётся только после успешной подходящей оплаты.",
     });
     const promoTable = table(
       ["Код", "Партнёр", "Использование", "Действует до", "Статус", "Действия"],

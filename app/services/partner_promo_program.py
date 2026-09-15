@@ -34,11 +34,17 @@ class PartnerPromoProgramService:
     def validate_values(
         *,
         welcome_rox: Decimal,
+        payment_bonus_rox: Decimal,
+        min_payment_rub: Decimal,
         first_line_percent: Decimal,
         topup_partner_rox: Decimal,
     ) -> None:
         if welcome_rox < 0 or welcome_rox > Decimal("100000"):
             raise ValueError("Welcome ROX must be between 0 and 100000")
+        if payment_bonus_rox < 0 or payment_bonus_rox > Decimal("100000"):
+            raise ValueError("Payment promo ROX must be between 0 and 100000")
+        if min_payment_rub < 0 or min_payment_rub > Decimal("100000000"):
+            raise ValueError("Promo minimum payment RUB must be between 0 and 100000000")
         if first_line_percent < 0 or first_line_percent > Decimal("100"):
             raise ValueError("First-line percent must be between 0 and 100")
         if topup_partner_rox < 0 or topup_partner_rox > Decimal("100000"):
@@ -49,6 +55,8 @@ class PartnerPromoProgramService:
         return {
             "key": config.key,
             "welcome_rox": str(config.welcome_rox),
+            "payment_bonus_rox": str(config.payment_bonus_rox),
+            "min_payment_rub": str(config.min_payment_rub),
             "first_line_percent": str(config.first_line_percent),
             "topup_partner_rox": str(config.topup_partner_rox),
             "is_active": config.is_active,

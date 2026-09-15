@@ -128,9 +128,9 @@ class AdminPromoService:
             config = await PartnerPromoProgramService.get_config(session)
             promo = PromoCode(
                 code=normalized,
-                # Legacy column mirrors the current welcome grant for compatibility,
-                # but runtime economics are always read from the global config.
-                reward_amount=Decimal(config.welcome_rox),
+                # Legacy column is retained only for old clients. New user promo
+                # rewards are payment-bound and globally configured.
+                reward_amount=Decimal(config.payment_bonus_rox),
                 partner_user_id=partner_user_id,
                 max_uses=max_uses,
                 is_active=True,
@@ -297,6 +297,8 @@ class AdminPromoService:
         *,
         admin: AdminAccount,
         welcome_rox: Decimal,
+        payment_bonus_rox: Decimal,
+        min_payment_rub: Decimal,
         first_line_percent: Decimal,
         topup_partner_rox: Decimal,
         is_active: bool,
@@ -307,11 +309,15 @@ class AdminPromoService:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
         PartnerPromoProgramService.validate_values(
             welcome_rox=welcome_rox,
+            payment_bonus_rox=payment_bonus_rox,
+            min_payment_rub=min_payment_rub,
             first_line_percent=first_line_percent,
             topup_partner_rox=topup_partner_rox,
         )
         payload = {
             "welcome_rox": str(welcome_rox),
+            "payment_bonus_rox": str(payment_bonus_rox),
+            "min_payment_rub": str(min_payment_rub),
             "first_line_percent": str(first_line_percent),
             "topup_partner_rox": str(topup_partner_rox),
             "is_active": is_active,
@@ -320,6 +326,8 @@ class AdminPromoService:
         async def operation() -> dict[str, object]:
             config = await PartnerPromoProgramService.get_config(session, for_update=True)
             config.welcome_rox = welcome_rox
+            config.payment_bonus_rox = payment_bonus_rox
+            config.min_payment_rub = min_payment_rub
             config.first_line_percent = first_line_percent
             config.topup_partner_rox = topup_partner_rox
             config.is_active = is_active

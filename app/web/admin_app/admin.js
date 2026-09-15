@@ -759,17 +759,20 @@
         button("Экономика программы", "table-action", () => openForm({
           title: "Партнёрская бонусная программа",
           fields: [
-            { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
+            { name: "payment_bonus_rox", label: "ROX пользователю за подходящее пополнение", type: "number", step: "0.01", value: program.payment_bonus_rox },
+            { name: "min_payment_rub", label: "Минимальная сумма пополнения, ₽", type: "number", step: "0.01", value: program.min_payment_rub },
             { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
             { name: "topup_partner_rox", label: "ROX партнёру за пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
             { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
           ],
-          onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
+          onSubmit: async ({ payment_bonus_rox, min_payment_rub, first_line_percent, topup_partner_rox, is_active }) => {
             await api("/api/v1/admin/promocodes/program", {
               method: "POST",
               headers: promoHeaders(),
               body: JSON.stringify({
-                welcome_rox,
+                welcome_rox: 0,
+                payment_bonus_rox,
+                min_payment_rub,
                 first_line_percent,
                 topup_partner_rox,
                 is_active: is_active === "true",
@@ -806,7 +809,7 @@
 
     const summary = el("div", "metric-grid");
     summary.append(
-      metric("Новый пользователь", `+${formatNumber(program.welcome_rox)} ROX`, "после активации промокода"),
+      metric("Бонус пользователю", `+${formatNumber(program.payment_bonus_rox)} ROX`, `при успешном пополнении от ${formatNumber(program.min_payment_rub)} ₽`),
       metric("1-я линия", `${formatNumber(program.first_line_percent)}%`, "только с успешных пополнений"),
       metric("За пополнение", `+${formatNumber(program.topup_partner_rox)} ROX`, "партнёру за факт пополнения"),
       metric("Программа", program.is_active ? "Включена" : "Выключена", "за приглашение начислений нет"),
