@@ -888,6 +888,25 @@
               await renderPromos();
             },
           })),
+          button("Параметры", "table-action", () => openForm({
+            title: `Параметры ${row.code}`,
+            fields: [
+              { name: "max_uses", label: "Макс. активаций", type: "number", required: false, value: row.max_uses ?? "" },
+              { name: "expires_at", label: "Истекает (ISO)", required: false, value: row.expires_at || "" },
+            ],
+            onSubmit: async ({ max_uses, expires_at }) => {
+              const body = {};
+              if (max_uses) body.max_uses = Number(max_uses);
+              if (expires_at) body.expires_at = expires_at;
+              if (!Object.keys(body).length) throw new Error("Укажите хотя бы один параметр");
+              await mutate(`/api/v1/admin/control/promocodes/${row.id}`, {
+                method: "PATCH",
+                body,
+                label: `Обновить лимиты/срок промокода ${row.code}?`,
+              });
+              await renderPromos();
+            },
+          })),
           button(row.is_active ? "Выключить" : "Включить", "table-action", async () => {
             try {
               await mutate(`/api/v1/admin/control/promocodes/${row.id}/state`, {
