@@ -83,12 +83,15 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    start_balance_rox: Decimal = Decimal("50")
-    invite_bonus_rox: Decimal = Decimal("30")
+    # Legacy referral knobs are retained for env compatibility only. Partner
+    # promo economics live in partner_promo_program_config and must not be
+    # sourced from process settings.
+    start_balance_rox: Decimal = Decimal("0")
+    invite_bonus_rox: Decimal = Decimal("0")
     prompt_repeat_bonus_rox: Decimal = Decimal("5")
     internal_credit_rub: Decimal = Decimal("1")
-    referral_first_percent: Decimal = Decimal("30")
-    referral_second_percent: Decimal = Decimal("5")
+    referral_first_percent: Decimal = Decimal("0")
+    referral_second_percent: Decimal = Decimal("0")
     partner_min_withdrawal_rub: Decimal = Decimal("3000")
     referral_antifraud_max_per_hour: int = 30
     referral_antifraud_max_per_day: int = 120

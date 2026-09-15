@@ -140,7 +140,7 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "bonus_rox": str(wallet_rox),
         "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
-        "welcome_bonus_rox": str(settings.start_balance_rox),
+        "welcome_bonus_rox": "0",
         "invite_bonus_rox": "0",
         "promo_welcome_rox": str(promo_program.welcome_rox),
         "promo_topup_partner_rox": str(promo_program.topup_partner_rox),

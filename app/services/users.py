@@ -1,11 +1,8 @@
-from decimal import Decimal
-
 from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.models import User
 from app.services.referral_antifraud import ReferralAntifraudService
 from app.services.wallet import WalletService
@@ -69,15 +66,6 @@ class UserService:
             return user
 
         await WalletService.ensure_wallet(session, user.id)
-
-        if settings.start_balance_rox > Decimal("0"):
-            await WalletService.credit(
-                session,
-                user_id=user.id,
-                amount=settings.start_balance_rox,
-                kind="welcome_bonus",
-                idempotency_key=f"welcome:{user.id}",
-            )
 
         await ReferralAntifraudService.attach_new_user(
             session,

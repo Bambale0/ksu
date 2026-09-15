@@ -22,11 +22,11 @@ def test_roxy_product_defaults_match_approved_economy() -> None:
 
     product = Settings(_env_file=None)
     assert product.internal_credit_rub == Decimal("1")
-    assert product.start_balance_rox == Decimal("50")
-    assert product.invite_bonus_rox == Decimal("30")
+    assert product.start_balance_rox == Decimal("0")
+    assert product.invite_bonus_rox == Decimal("0")
     assert product.prompt_repeat_bonus_rox == Decimal("5")
-    assert product.referral_first_percent == Decimal("30")
-    assert product.referral_second_percent == Decimal("5")
+    assert product.referral_first_percent == Decimal("0")
+    assert product.referral_second_percent == Decimal("0")
     assert product.partner_min_withdrawal_rub == Decimal("3000")
 
 
