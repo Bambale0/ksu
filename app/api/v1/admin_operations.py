@@ -15,7 +15,6 @@ from app.db.models import (
     Generation,
     PartnerWithdrawal,
     Payment,
-    PromoCode,
     ReferralReward,
     SupportMessage,
     SupportTicket,
@@ -40,8 +39,6 @@ WithdrawalsManageDep = Annotated[
     AdminContext,
     Depends(require_permission("withdrawals.manage", step_up=True)),
 ]
-PromosReadDep = Annotated[AdminContext, Depends(require_permission("promocodes.read"))]
-PromosManageDep = Annotated[AdminContext, Depends(require_permission("promocodes.manage"))]
 ReferralsReadDep = Annotated[AdminContext, Depends(require_permission("referrals.read"))]
 
 
@@ -56,20 +53,6 @@ class SupportStatusRequest(BaseModel):
 class WithdrawalStatusRequest(BaseModel):
     status: Literal["processing", "paid", "rejected", "canceled"]
     reason: str = Field(min_length=3, max_length=500)
-
-
-class PromoCreateRequest(BaseModel):
-    code: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
-    reward_credits: Decimal = Field(gt=0, le=100000)
-    max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
-    expires_at: datetime | None = None
-
-
-class PromoUpdateRequest(BaseModel):
-    reward_credits: Decimal | None = Field(default=None, gt=0, le=100000)
-    max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
-    is_active: bool | None = None
-    expires_at: datetime | None = None
 
 
 @router.get("/dashboard")
@@ -436,120 +419,6 @@ async def update_withdrawal_status(
     )
     await session.commit()
     return {"id": str(withdrawal.id), "status": withdrawal.status}
-
-
-@router.get("/promocodes")
-async def list_promocodes(
-    context: PromosReadDep,
-    session: SessionDep,
-    limit: int = Query(default=100, ge=1, le=200),
-) -> dict[str, object]:
-    del context
-    rows = list(
-        (
-            await session.scalars(
-                select(PromoCode).order_by(PromoCode.created_at.desc()).limit(limit)
-            )
-        ).all()
-    )
-    return {
-        "items": [
-            {
-                "id": str(item.id),
-                "code": item.code,
-                "reward_credits": str(item.reward_amount),
-                "max_uses": item.max_uses,
-                "uses_count": item.uses_count,
-                "is_active": item.is_active,
-                "expires_at": item.expires_at.isoformat() if item.expires_at else None,
-                "created_at": item.created_at.isoformat(),
-            }
-            for item in rows
-        ]
-    }
-
-
-@router.post("/promocodes", status_code=201)
-async def create_promocode(
-    payload: PromoCreateRequest,
-    request: Request,
-    context: PromosManageDep,
-    session: SessionDep,
-) -> dict[str, object]:
-    code = payload.code.upper()
-    existing = await session.scalar(select(PromoCode).where(PromoCode.code == code))
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="Promo code already exists")
-    promo = PromoCode(
-        code=code,
-        reward_amount=payload.reward_credits,
-        max_uses=payload.max_uses,
-        is_active=True,
-        expires_at=payload.expires_at,
-    )
-    session.add(promo)
-    await session.flush()
-    await AdminAuditService.record(
-        session,
-        action="admin.promocode.created",
-        outcome="success",
-        admin=context.account,
-        admin_session=context.session,
-        request=request,
-        resource_type="promo_code",
-        resource_id=str(promo.id),
-        metadata={
-            "code": promo.code,
-            "reward_credits": str(promo.reward_amount),
-            "max_uses": promo.max_uses,
-        },
-    )
-    await session.commit()
-    return {"id": str(promo.id), "code": promo.code}
-
-
-@router.patch("/promocodes/{promo_id}")
-async def update_promocode(
-    promo_id: uuid.UUID,
-    payload: PromoUpdateRequest,
-    request: Request,
-    context: PromosManageDep,
-    session: SessionDep,
-) -> dict[str, object]:
-    promo = await session.scalar(select(PromoCode).where(PromoCode.id == promo_id).with_for_update())
-    if promo is None:
-        raise HTTPException(status_code=404, detail="Promo code not found")
-    changes: dict[str, object] = {}
-    if payload.reward_credits is not None:
-        changes["reward_credits"] = [str(promo.reward_amount), str(payload.reward_credits)]
-        promo.reward_amount = payload.reward_credits
-    if payload.max_uses is not None:
-        if payload.max_uses < promo.uses_count:
-            raise HTTPException(status_code=409, detail="max_uses cannot be below uses_count")
-        changes["max_uses"] = [promo.max_uses, payload.max_uses]
-        promo.max_uses = payload.max_uses
-    if payload.is_active is not None:
-        changes["is_active"] = [promo.is_active, payload.is_active]
-        promo.is_active = payload.is_active
-    if payload.expires_at is not None:
-        changes["expires_at"] = [
-            promo.expires_at.isoformat() if promo.expires_at else None,
-            payload.expires_at.isoformat(),
-        ]
-        promo.expires_at = payload.expires_at
-    await AdminAuditService.record(
-        session,
-        action="admin.promocode.updated",
-        outcome="success",
-        admin=context.account,
-        admin_session=context.session,
-        request=request,
-        resource_type="promo_code",
-        resource_id=str(promo.id),
-        metadata={"changes": changes},
-    )
-    await session.commit()
-    return {"id": str(promo.id), "updated": True}
 
 
 @router.get("/referrals/rewards")
