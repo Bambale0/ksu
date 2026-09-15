@@ -200,7 +200,8 @@ async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available()
         assert first.id == second.id
         wallet = await session.get(Wallet, partner.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("40.00")
+        # 40 ROX converted from cash earnings + 10 ROX fixed promo top-up bonus.
+        assert wallet.balance == Decimal("50.00")
         accounting = await PartnerWalletTransferService.accounting(session, partner.id)
         assert accounting["total_earned"] == Decimal("90.00")
         assert accounting["transferred_to_rox"] == Decimal("40.00")
@@ -228,7 +229,7 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         assert payload["welcome_bonus_rox"] == "50"
         assert payload["invite_bonus_rox"] == "0"
         assert payload["prompt_repeat_bonus_rox"] == "5"
-        assert payload["first_line_percent"] == "30"
+        assert payload["first_line_percent"] == "30.00"
         assert payload["promo_welcome_rox"] == "25.00"
         assert payload["promo_topup_partner_rox"] == "10.00"
         assert payload["promo_program_active"] is True
