@@ -106,14 +106,12 @@ def _catalog_package(
     *,
     currency: str,
 ) -> dict[str, object]:
-    credits = package.credits
-    canonical = PaymentService.packages().get(package_id)
-    if canonical is not None and Decimal(canonical.rox_amount) == Decimal(credits):
-        base_credits = canonical.base_credits
-        bonus_credits = canonical.bonus_credits
-    else:
-        base_credits = Decimal(credits)
-        bonus_credits = Decimal("0")
+    _ = package_id
+    credits = Decimal(package.credits)
+    base_credits = Decimal(
+        package.base_credits if package.base_credits is not None else package.credits
+    )
+    bonus_credits = Decimal(package.bonus_credits)
     return {
         "credits": str(credits),
         "base_credits": str(base_credits),
