@@ -203,3 +203,21 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert '"/api/v1/promocodes/active"' in promocodes
     assert "Промокод применён" in promocodes
     assert "Повторно вводить его при пополнении не нужно" in promocodes
+
+
+def test_partner_cabinet_exposes_only_current_promo_economics() -> None:
+    app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+
+    block = app.split("function PartnerScreen", 1)[1].split("function MediaGrid", 1)[0]
+    assert "финансовая партнёрская программа включается только после активации" in block.lower()
+    assert "promo_first_line" in block
+    assert "promo_welcome_rox" in block
+    assert "promo_topup_partner_rox" in block
+    assert "first_line_percent" in block
+    assert "обычное приглашение начислений нет" in block.lower()
+    assert "second_line" not in block
+    assert "2 линия" not in block
+    assert "Последние денежные начисления" in block
+    assert "net_amount || reward.amount" in block
+    assert " ₽</span>" in block
+    assert " ROX</span>" not in block
