@@ -9,6 +9,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
+from app.core.config import settings
+
 from app.db.models import (
     AdminAccount,
     Payment,
@@ -188,6 +190,117 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
         assert locked.inviter_user_id == first_partner.id
         assert locked.source == "promo"
         assert locked.promo_id == first_promo.id
+
+
+@pytest.mark.asyncio
+async def test_partner_promo_activation_respects_referral_hourly_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 1)
+    monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_burst_max", 0)
+    monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 0)
+
+    async with SessionFactory() as session:
+        partner = await _user(session, "Limited partner")
+        existing_referral = await _user(session, "Existing referral")
+        promo_user = await _user(session, "Blocked promo user")
+        promo = await _promo(session, partner=partner)
+        session.add(
+            ReferralRelation(
+                referred_user_id=existing_referral.id,
+                inviter_user_id=partner.id,
+                source="link",
+            )
+        )
+        await session.commit()
+
+        with pytest.raises(PromoCodeError) as exc_info:
+            await PromoCodeService.activate(
+                session,
+                user_id=promo_user.id,
+                code=promo.code,
+            )
+        await session.rollback()
+
+        assert exc_info.value.code == "referral_hourly_limit"
+        assert await session.get(ReferralRelation, promo_user.id) is None
+        assert await session.get(Wallet, promo_user.id) is None
+        stored = await session.get(PromoCode, promo.id)
+        assert stored is not None
+        assert stored.uses_count == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_pending_payment_promo_is_honored_after_program_upgrade() -> None:
+    async with SessionFactory() as session:
+        user = await _user(session, "Legacy pending user")
+        promo = PromoCode(
+            code=f"LEGACY{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("7"),
+            partner_user_id=None,
+            max_uses=100,
+            uses_count=0,
+            is_active=True,
+        )
+        payment = Payment(
+            user_id=user.id,
+            provider="yookassa",
+            amount=Decimal("100"),
+            currency="RUB",
+            rox_amount=Decimal("100"),
+            status="pending",
+            payload={
+                "package_id": "legacy-p100",
+                "base_credits": "100",
+                "promo_id": "",
+                "promo_code": promo.code,
+                "promo_reward_credits": "7",
+                "promo_bonus_status": "reserved",
+                "bonus_credits": "7",
+                "credited_credits": "107",
+            },
+        )
+        session.add_all([promo, payment])
+        await session.flush()
+        payment.payload = {**payment.payload, "promo_id": str(promo.id)}
+        redemption = PromoRedemption(
+            promo_id=promo.id,
+            user_id=user.id,
+            payment_id=payment.id,
+            status="pending",
+            reserved_until=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(redemption)
+        await session.commit()
+
+        await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded", "legacy": True},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        await session.refresh(promo)
+        await session.refresh(redemption)
+        await session.refresh(payment)
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal("107.00")
+        assert promo.uses_count == 1
+        assert redemption.status == "applied"
+        assert redemption.redeemed_at is not None
+        assert payment.payload["promo_bonus_status"] == "applied"
+        assert payment.payload["credited_credits"] == "107"
+
+
+def test_partner_promo_migration_does_not_destroy_pending_legacy_reservations() -> None:
+    migration = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "0038_partner_promo_program.py"
+    ).read_text(encoding="utf-8")
+    assert "SET status = 'released'" not in migration
 
 
 @pytest.mark.asyncio
