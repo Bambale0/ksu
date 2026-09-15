@@ -128,9 +128,9 @@ class AdminPromoService:
             config = await PartnerPromoProgramService.get_config(session)
             promo = PromoCode(
                 code=normalized,
-                # Legacy column mirrors the current welcome grant for compatibility,
-                # but runtime economics are always read from the global config.
-                reward_amount=Decimal(config.welcome_rox),
+                # Legacy column mirrors the current user-facing promo reward for
+                # compatibility; runtime economics are always read from global config.
+                reward_amount=Decimal(config.payment_bonus_rox),
                 partner_user_id=partner_user_id,
                 max_uses=max_uses,
                 is_active=True,
