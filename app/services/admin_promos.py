@@ -147,6 +147,65 @@ class AdminPromoService:
         )
 
     @staticmethod
+    async def update_campaign(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        promo_id: uuid.UUID,
+        max_uses: int | None,
+        expires_at: datetime | None,
+        is_active: bool | None,
+        idempotency_key: str,
+        request_id: str,
+        confirmed: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
+        if max_uses is None and expires_at is None and is_active is None:
+            raise ValueError("No promo changes supplied")
+        if max_uses is not None and not 1 <= max_uses <= 10_000_000:
+            raise ValueError("Invalid promo max_uses")
+        if expires_at is not None:
+            if expires_at.utcoffset() is None:
+                raise ValueError("Promo expiration must include timezone")
+            if expires_at <= datetime.now(UTC):
+                raise ValueError("Promo expiration must be in the future")
+
+        payload = {
+            "max_uses": max_uses,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "is_active": is_active,
+        }
+
+        async def operation() -> dict[str, Any]:
+            promo = await session.scalar(
+                select(PromoCode).where(PromoCode.id == promo_id).with_for_update()
+            )
+            if promo is None:
+                raise LookupError("Promo code not found")
+            if max_uses is not None:
+                if max_uses < promo.uses_count:
+                    raise ValueError("max_uses cannot be below uses_count")
+                promo.max_uses = max_uses
+            if expires_at is not None:
+                promo.expires_at = expires_at
+            if is_active is not None:
+                promo.is_active = is_active
+            await session.flush()
+            await session.refresh(promo)
+            return AdminPromoService._view(promo)
+
+        return await AdminCommandLedger.execute(
+            session,
+            idempotency_key=idempotency_key,
+            admin_user_id=admin.id,
+            request_id=request_id,
+            action="promos.manage",
+            target_id=str(promo_id),
+            request_payload=payload,
+            operation=operation,
+        )
+
+    @staticmethod
     async def set_partner(
         session: AsyncSession,
         *,
