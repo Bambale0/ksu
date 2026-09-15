@@ -9,8 +9,9 @@ from sqlalchemy import select
 
 from app.api.v1.referrals import stats
 from app.core.config import settings
-from app.db.models import Payment, ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
+from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
 from app.db.session import SessionFactory
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.partner_wallet import PartnerWalletTransferService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
@@ -55,11 +56,36 @@ async def _paid_transaction(
     )
 
 
+async def _promo_attribution(session, *, partner: User, buyer: User) -> PromoCode:
+    config = await PartnerPromoProgramService.get_config(session)
+    promo = PromoCode(
+        code=f"ECON{uuid.uuid4().hex[:12].upper()}",
+        reward_amount=Decimal(config.welcome_rox),
+        partner_user_id=partner.id,
+        max_uses=100,
+        uses_count=1,
+        is_active=True,
+    )
+    session.add(promo)
+    await session.flush()
+    session.add(
+        ReferralRelation(
+            referred_user_id=buyer.id,
+            inviter_user_id=partner.id,
+            source="promo",
+            promo_id=promo.id,
+        )
+    )
+    await session.flush()
+    return promo
+
+
 @pytest.mark.asyncio
-async def test_registration_and_invite_create_rox_wallet_bonuses(
+async def test_registration_creates_start_wallet_but_invite_has_no_rox_bonus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
+    # Legacy setting may still exist for compatibility, but must not grant money.
     monkeypatch.setattr(settings, "invite_bonus_rox", Decimal("30"))
     async with SessionFactory() as session:
         inviter = User(telegram_id=_telegram_id(), first_name="Inviter")
@@ -77,8 +103,14 @@ async def test_registration_and_invite_create_rox_wallet_bonuses(
         assert friend is not None
         friend_wallet = await session.get(Wallet, friend.id)
         inviter_wallet = await session.get(Wallet, inviter.id)
+        relation = await session.get(ReferralRelation, friend.id)
+
         assert friend_wallet is not None and friend_wallet.balance == Decimal("50")
-        assert inviter_wallet is not None and inviter_wallet.balance == Decimal("30")
+        assert inviter_wallet is None or inviter_wallet.balance == Decimal("0")
+        assert relation is not None
+        assert relation.inviter_user_id == inviter.id
+        assert relation.source == "link"
+        assert relation.promo_id is None
 
         kinds = set(
             (
@@ -89,20 +121,18 @@ async def test_registration_and_invite_create_rox_wallet_bonuses(
                 )
             ).all()
         )
-        assert {"welcome_bonus", "referral_invite_bonus"}.issubset(kinds)
+        assert "welcome_bonus" in kinds
+        assert "referral_invite_bonus" not in kinds
 
 
 @pytest.mark.asyncio
-async def test_referral_percent_uses_actual_paid_rub_not_credited_rox(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+async def test_referral_percent_uses_actual_paid_rub_not_credited_rox() -> None:
     async with SessionFactory() as session:
         inviter = User(telegram_id=_telegram_id(), first_name="Partner")
         buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
         session.add_all([inviter, buyer])
         await session.flush()
-        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=inviter.id))
+        await _promo_attribution(session, partner=inviter, buyer=buyer)
         payment_tx = await _paid_transaction(
             session,
             buyer=buyer,
@@ -131,16 +161,13 @@ async def test_referral_percent_uses_actual_paid_rub_not_credited_rox(
 
 
 @pytest.mark.asyncio
-async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "referral_first_percent", Decimal("30"))
+async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available() -> None:
     async with SessionFactory() as session:
         partner = User(telegram_id=_telegram_id(), first_name="Partner")
         buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
         session.add_all([partner, buyer])
         await session.flush()
-        session.add(ReferralRelation(referred_user_id=buyer.id, inviter_user_id=partner.id))
+        await _promo_attribution(session, partner=partner, buyer=buyer)
         payment_tx = await _paid_transaction(
             session,
             buyer=buyer,
@@ -199,10 +226,13 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         assert payload["bonus_rox"] == "280.00"  # wallet compatibility only
         assert payload["rub_per_rox"] == "1"
         assert payload["welcome_bonus_rox"] == "50"
-        assert payload["invite_bonus_rox"] == "30"
+        assert payload["invite_bonus_rox"] == "0"
         assert payload["prompt_repeat_bonus_rox"] == "5"
         assert payload["first_line_percent"] == "30"
-        assert payload["second_line_percent"] == "5"
+        assert payload["promo_welcome_rox"] == "25.00"
+        assert payload["promo_topup_partner_rox"] == "10.00"
+        assert payload["promo_program_active"] is True
+        assert payload["second_line_percent"] == "0"
         assert payload["minimum_withdrawal"] == "3000"
         assert payload["minimum_withdrawal_rub"] == "3000"
         assert payload["withdrawal_status"] == "NONE"
