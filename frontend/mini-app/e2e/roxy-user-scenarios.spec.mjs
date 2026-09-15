@@ -478,7 +478,7 @@ async function runPartners(page, check) {
     await expect(page.getByText('Новые приглашения')).toBeVisible();
     await expect(page.getByText('@anna')).toBeVisible();
   } else if (check === 'refresh') {
-    await page.getByRole('button', { name: 'Обновить' }).click();
+    await page.getByRole('button', { name: 'Обновить кабинет', exact: true }).click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'copy-profile') {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
