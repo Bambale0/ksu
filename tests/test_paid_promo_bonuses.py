@@ -301,6 +301,161 @@ async def test_legacy_pending_payment_promo_is_honored_after_program_upgrade() -
         assert payment.payload["credited_credits"] == "107"
 
 
+
+@pytest.mark.asyncio
+async def test_activation_preserves_live_legacy_reservation_until_payment_settles() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Legacy reservation partner")
+        user = await _user(session, "Legacy reservation user")
+        config = await PartnerPromoProgramService.get_config(session)
+        promo = PromoCode(
+            code=f"LEGACYACT{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("7"),
+            partner_user_id=partner.id,
+            max_uses=1,
+            uses_count=0,
+            is_active=True,
+        )
+        payment = Payment(
+            user_id=user.id,
+            provider="yookassa",
+            amount=Decimal("100"),
+            currency="RUB",
+            rox_amount=Decimal("100"),
+            status="pending",
+            payload={
+                "package_id": "legacy-activation-p100",
+                "base_credits": "100",
+                "promo_id": "",
+                "promo_code": promo.code,
+                "promo_reward_credits": "7",
+                "promo_bonus_status": "reserved",
+                "bonus_credits": "7",
+                "credited_credits": "107",
+            },
+        )
+        session.add_all([promo, payment])
+        await session.flush()
+        payment.payload = {**payment.payload, "promo_id": str(promo.id)}
+        redemption = PromoRedemption(
+            promo_id=promo.id,
+            user_id=user.id,
+            payment_id=payment.id,
+            status="pending",
+            reserved_until=datetime.now(UTC) + timedelta(hours=1),
+        )
+        session.add(redemption)
+        await session.commit()
+
+        activation = await PromoCodeService.activate(
+            session,
+            user_id=user.id,
+            code=promo.code,
+        )
+        await session.commit()
+
+        relation = await session.get(ReferralRelation, user.id)
+        wallet = await session.get(Wallet, user.id)
+        await session.refresh(promo)
+        await session.refresh(redemption)
+        assert activation.activated is True
+        assert relation is not None
+        assert relation.source == "promo"
+        assert relation.inviter_user_id == partner.id
+        assert relation.promo_id == promo.id
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal(config.welcome_rox)
+        assert promo.uses_count == 0
+        assert redemption.status == "pending"
+        assert redemption.payment_id == payment.id
+        assert redemption.reserved_until is not None
+
+        await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded", "legacy": True},
+        )
+
+        wallet = await session.get(Wallet, user.id)
+        await session.refresh(promo)
+        await session.refresh(redemption)
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal(config.welcome_rox) + Decimal("107.00")
+        assert promo.uses_count == 1
+        assert redemption.status == "applied"
+        assert redemption.redeemed_at is not None
+
+
+@pytest.mark.asyncio
+async def test_live_legacy_reservation_holds_capacity_but_owner_can_activate() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Capacity partner")
+        holder = await _user(session, "Capacity holder")
+        newcomer = await _user(session, "Capacity newcomer")
+        promo = PromoCode(
+            code=f"LEGACYCAP{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("7"),
+            partner_user_id=partner.id,
+            max_uses=1,
+            uses_count=0,
+            is_active=True,
+        )
+        payment = Payment(
+            user_id=holder.id,
+            provider="yookassa",
+            amount=Decimal("100"),
+            currency="RUB",
+            rox_amount=Decimal("100"),
+            status="pending",
+            payload={"base_credits": "100"},
+        )
+        session.add_all([promo, payment])
+        await session.flush()
+        session.add(
+            PromoRedemption(
+                promo_id=promo.id,
+                user_id=holder.id,
+                payment_id=payment.id,
+                status="pending",
+                reserved_until=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        await session.commit()
+        promo_id = promo.id
+        promo_code = promo.code
+        holder_id = holder.id
+        newcomer_id = newcomer.id
+
+    async with SessionFactory() as session:
+        with pytest.raises(PromoCodeError) as exc_info:
+            await PromoCodeService.activate(
+                session,
+                user_id=newcomer_id,
+                code=promo_code,
+            )
+        await session.rollback()
+        assert exc_info.value.code == "usage_limit_reached"
+
+    async with SessionFactory() as session:
+        activation = await PromoCodeService.activate(
+            session,
+            user_id=holder_id,
+            code=promo_code,
+        )
+        await session.commit()
+        promo = await session.get(PromoCode, promo_id)
+        redemption = await session.scalar(
+            select(PromoRedemption).where(
+                PromoRedemption.promo_id == promo_id,
+                PromoRedemption.user_id == holder_id,
+            )
+        )
+        assert activation.activated is True
+        assert promo is not None and promo.uses_count == 0
+        assert redemption is not None and redemption.status == "pending"
+        assert await PromoCodeService.remaining_uses(session, promo=promo) == 0
+
+
 def test_partner_promo_migration_does_not_destroy_pending_legacy_reservations() -> None:
     migration = (
         Path(__file__).resolve().parents[1]
