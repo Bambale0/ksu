@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 const STANDALONE_RETURN_KEY = "__roxy_standalone_return_v1";
 const STANDALONE_RETURNING_TO_KEY = "__roxy_standalone_returning_to_v1";
@@ -162,13 +163,16 @@ export function StandaloneShell({
           <span className="roxy-mark" aria-hidden="true"><span>RX</span></span>
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button
-          className="balance-button"
-          type="button"
-          onClick={openPayments}
-        >
-          <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
-        </button>
+        <div className="topbar-actions">
+          <LanguageSwitcher />
+          <button
+            className="balance-button"
+            type="button"
+            onClick={openPayments}
+          >
+            <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
+          </button>
+        </div>
       </header>
 
       <main className="main-shell">
