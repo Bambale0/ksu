@@ -27,6 +27,8 @@ class CardPackage:
     package_id: str
     credits: Decimal
     prices: dict[str, Decimal]
+    base_credits: Decimal | None = None
+    bonus_credits: Decimal = Decimal("0")
     offer_id: str | None = None
     # Lava rejects `amount` for fixed-price offers (HTTP 400 "is not dynamic
     # price"). Only explicitly dynamic/price-on-request packages may send it.
@@ -78,6 +80,8 @@ class CardPackageCatalog:
                 package_id=package_id,
                 credits=package.credits,
                 prices={"RUB": package.amount},
+                base_credits=package.base_credits,
+                bonus_credits=package.bonus_credits,
                 offer_id=None,
             )
             for package_id, package in PaymentService.packages().items()
@@ -90,12 +94,18 @@ class CardPackageCatalog:
             if not isinstance(item, dict):
                 continue
             credits_raw = item.get("credits", item.get("rox"))
+            base_raw = item.get("base_credits")
+            bonus_raw = item.get("bonus_credits", 0)
             prices_raw = item.get("prices")
             if credits_raw is None or not isinstance(prices_raw, dict):
                 continue
             credits = Decimal(str(credits_raw))
-            if credits <= 0:
-                continue
+            bonus = Decimal(str(bonus_raw or 0))
+            base = Decimal(str(base_raw)) if base_raw is not None else credits - bonus
+            if credits <= 0 or base <= 0 or bonus < 0 or base + bonus != credits:
+                raise ValueError(
+                    f"Card package {package_id} credits must equal base_credits + bonus_credits"
+                )
             prices: dict[str, Decimal] = {}
             for currency, value in prices_raw.items():
                 code = str(currency).upper()
@@ -115,6 +125,8 @@ class CardPackageCatalog:
                 package_id=str(package_id),
                 credits=credits,
                 prices=prices,
+                base_credits=base,
+                bonus_credits=bonus,
                 offer_id=offer_id,
                 dynamic_amount=dynamic_amount,
             )
@@ -252,6 +264,8 @@ class CardPackageCatalog:
                     package_id=offer_id,
                     credits=credits,
                     prices=prices,
+                    base_credits=credits,
+                    bonus_credits=Decimal("0"),
                     offer_id=offer_id,
                     dynamic_amount=False,
                 )
@@ -410,6 +424,8 @@ class CardPaymentService:
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
         credited_credits = package.credits
+        package_base = package.base_credits if package.base_credits is not None else package.credits
+        package_bonus = package.bonus_credits
 
         payment = Payment(
             user_id=user_id,
@@ -423,7 +439,10 @@ class CardPaymentService:
                 "request_key": request_key,
                 "billing_email": email,
                 "base_credits": str(package.credits),
-                "bonus_credits": "0",
+                "package_base_credits": str(package_base),
+                "package_bonus_credits": str(package_bonus),
+                "bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
