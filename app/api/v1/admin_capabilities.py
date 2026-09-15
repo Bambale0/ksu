@@ -146,6 +146,12 @@ class PromoCreateRequest(BaseModel):
     expires_at: datetime | None = None
 
 
+class PromoUpdateRequest(BaseModel):
+    max_uses: int | None = Field(default=None, ge=1, le=10_000_000)
+    expires_at: datetime | None = None
+    is_active: bool | None = None
+
+
 class PromoPartnerRequest(BaseModel):
     partner_user_id: uuid.UUID
 
@@ -605,6 +611,33 @@ async def web_admin_promo_create(
             partner_user_id=payload.partner_user_id,
             max_uses=payload.max_uses,
             expires_at=payload.expires_at,
+            idempotency_key=_require_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirmed(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.patch("/promocodes/{promo_id}")
+async def web_admin_promo_update(
+    promo_id: uuid.UUID,
+    payload: PromoUpdateRequest,
+    request: Request,
+    context: AdminPromoWriteDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.update_campaign(
+            session,
+            admin=context.account,
+            promo_id=promo_id,
+            max_uses=payload.max_uses,
+            expires_at=payload.expires_at,
+            is_active=payload.is_active,
             idempotency_key=_require_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirmed(confirmation),
