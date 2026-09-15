@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
+from app.api.v1 import referrals as referrals_api
 from app.core.config import settings
 
 from app.db.models import (
@@ -720,6 +721,64 @@ async def test_admin_promo_uses_global_economics_and_requires_partner() -> None:
         assert promo.partner_user_id == partner.id
         assert Decimal(promo.reward_amount) == Decimal(config.welcome_rox)
 
+
+
+@pytest.mark.asyncio
+async def test_partner_lists_only_their_assigned_promo_codes() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Partner promo owner")
+        other_partner = await _user(session, "Other promo owner")
+        owned = await _promo(session, partner=partner, max_uses=100)
+        owned.uses_count = 4
+        disabled = await _promo(session, partner=partner, max_uses=None)
+        disabled.is_active = False
+        foreign = await _promo(session, partner=other_partner, max_uses=50)
+        await session.commit()
+
+        result = await referrals_api.promocodes(partner, session)
+        items = {item["code"]: item for item in result["items"]}
+
+        assert set(items) == {owned.code, disabled.code}
+        assert foreign.code not in items
+        assert items[owned.code]["uses_count"] == 4
+        assert items[owned.code]["remaining_uses"] == 96
+        assert items[owned.code]["is_active"] is True
+        assert items[disabled.code]["remaining_uses"] is None
+        assert items[disabled.code]["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_reactivate_legacy_ownerless_promo() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Legacy promo admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        promo = PromoCode(
+            code=f"OWNERLESS{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=None,
+            max_uses=100,
+            uses_count=0,
+            is_active=False,
+        )
+        session.add_all([admin, promo])
+        await session.flush()
+
+        with pytest.raises(ValueError, match="partner"):
+            await AdminPromoService.set_active(
+                session,
+                admin=admin,
+                promo_id=promo.id,
+                is_active=True,
+                idempotency_key=f"ownerless-reactivate:{uuid.uuid4()}",
+                request_id=f"test:{uuid.uuid4()}",
+                confirmed=True,
+            )
+        await session.rollback()
 
 
 @pytest.mark.asyncio
