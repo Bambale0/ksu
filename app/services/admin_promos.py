@@ -88,7 +88,7 @@ class AdminPromoService:
         *,
         admin: AdminAccount,
         code: str,
-        partner_user_id: uuid.UUID,
+        partner_user_id: uuid.UUID | None,
         max_uses: int | None,
         expires_at: datetime | None,
         idempotency_key: str,
@@ -107,7 +107,7 @@ class AdminPromoService:
             raise ValueError("Promo expiration must include timezone")
         payload = {
             "code": normalized,
-            "partner_user_id": str(partner_user_id),
+            "partner_user_id": str(partner_user_id) if partner_user_id else None,
             "max_uses": max_uses,
             "expires_at": expires_at.isoformat() if expires_at else None,
         }
@@ -117,9 +117,10 @@ class AdminPromoService:
                 raise ValueError("Promo expiration must be in the future")
             if await session.scalar(select(PromoCode).where(PromoCode.code == normalized)):
                 raise ValueError("Promo code already exists")
-            partner = await session.get(User, partner_user_id)
-            if partner is None or not partner.is_active:
-                raise ValueError("Promo partner must be an active user")
+            if partner_user_id is not None:
+                partner = await session.get(User, partner_user_id)
+                if partner is None or not partner.is_active:
+                    raise ValueError("Promo partner must be an active user")
             config = await PartnerPromoProgramService.get_config(session)
             promo = PromoCode(
                 code=normalized,
