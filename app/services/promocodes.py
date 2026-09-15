@@ -54,6 +54,12 @@ class PromoCodeService:
         code: str,
     ) -> PromoCode:
         promo = await cls._load_valid_promo(session, code=code)
+        if promo.partner_user_id == user_id:
+            raise PromoCodeError("self_ref", "A partner cannot activate their own promo code")
+        partner = await session.get(User, promo.partner_user_id)
+        if partner is None or not partner.is_active:
+            raise PromoCodeError("partner_unavailable", "Promo partner is unavailable")
+
         relation = await session.get(ReferralRelation, user_id)
         if relation is not None and relation.inviter_user_id != promo.partner_user_id:
             raise PromoCodeError(
