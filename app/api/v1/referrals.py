@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUserDep, SessionDep
 from app.core.config import settings
 from app.db.feed_models import FeedRemixEvent
-from app.db.models import Generation, PartnerWithdrawal, ReferralReward, User, Wallet
+from app.db.models import Generation, PartnerWithdrawal, ReferralRelation, ReferralReward, User, Wallet
 from app.db.partner_wallet_models import PartnerWalletTransfer
 from app.db.payment_models import ReferralRewardReversal
 from app.services.credits import InternalCreditService
@@ -109,9 +109,21 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     )
     minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
     promo_program = await PartnerPromoProgramService.get_config(session)
+    promo_first_line = int(
+        (
+            await session.scalar(
+                select(func.count()).select_from(ReferralRelation).where(
+                    ReferralRelation.inviter_user_id == user.id,
+                    ReferralRelation.source == "promo",
+                )
+            )
+        )
+        or 0
+    )
 
     return {
         "first_line": first,
+        "promo_first_line": promo_first_line,
         "second_line": second,
         # Only referral commissions from paid user orders are cash-withdrawable.
         # ROX are internal credits and are deliberately excluded from payout accounting.
@@ -174,6 +186,8 @@ async def invitations(
                 "username": row["username"],
                 "first_name": row["first_name"],
                 "line": row["line"],
+                "source": row.get("source"),
+                "promo_id": row.get("promo_id"),
                 "joined_at": row["joined_at"].isoformat(),
             }
             for row in rows
