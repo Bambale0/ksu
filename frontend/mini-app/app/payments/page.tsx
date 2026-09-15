@@ -279,16 +279,17 @@ export default function PaymentsPage() {
       setError("Сначала примените промокод или очистите поле.");
       return;
     }
-    // A persisted attribution is already stored server-side and is attached to
-    // new payments automatically. Only a newly-entered code belongs to this
-    // checkout intent.
-    const explicitPromo = activePromo?.active ? "" : promo?.code || "";
+    // Persisted promo attribution is part of the payment intent because it
+    // changes partner accounting. Re-send the stored code automatically so
+    // checkout idempotency remains stable across reloads/deploys without asking
+    // the user to enter the code again.
+    const effectivePromo = activePromo?.code || promo?.code || "";
     const intent: CheckoutIntent = {
       provider,
       packageId,
       currency: activeCurrency,
       billingEmail: provider === "card" ? email.trim() : "",
-      promoCode: explicitPromo,
+      promoCode: effectivePromo,
     };
     const requestKey = checkoutIdempotencyKey(intent);
 
@@ -304,20 +305,20 @@ export default function PaymentsPage() {
           body: JSON.stringify({
             provider: "yookassa",
             package_id: packageId,
-            promo_code: explicitPromo || null,
+            promo_code: effectivePromo || null,
           }),
         });
       } else if (provider === "cryptobot") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: explicitPromo || null }),
+          body: JSON.stringify({ package_id: packageId, promo_code: effectivePromo || null }),
         });
       } else if (provider === "2328") {
         payment = await customerRequest<Payment>("/api/v1/payments/crypto/2328/checkout", {
           method: "POST",
           headers: { "Idempotency-Key": requestKey },
-          body: JSON.stringify({ package_id: packageId, promo_code: explicitPromo || null }),
+          body: JSON.stringify({ package_id: packageId, promo_code: effectivePromo || null }),
         });
       } else {
         payment = await customerRequest<Payment>("/api/v1/payments/card/checkout", {
@@ -327,7 +328,7 @@ export default function PaymentsPage() {
             package_id: packageId,
             currency,
             billing_email: email.trim(),
-            promo_code: explicitPromo || null,
+            promo_code: effectivePromo || null,
           }),
         });
         localStorage.setItem("roxy-billing-email", email.trim());
@@ -365,7 +366,7 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = activePromo?.active || explicitPromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
+      const promoHint = effectivePromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
       setNotice(
         provider === "card"
           ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
