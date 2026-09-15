@@ -47,7 +47,7 @@ async def _promo(session, *, partner: User, max_uses: int | None = 100) -> Promo
     config = await PartnerPromoProgramService.get_config(session)
     promo = PromoCode(
         code=f"PARTNER{uuid.uuid4().hex[:8].upper()}",
-        reward_amount=Decimal(config.welcome_rox),
+        reward_amount=Decimal(config.payment_bonus_rox),
         partner_user_id=partner.id,
         max_uses=max_uses,
         uses_count=0,
@@ -58,30 +58,41 @@ async def _promo(session, *, partner: User, max_uses: int | None = 100) -> Promo
     return promo
 
 
-def _payment(*, user_id: uuid.UUID, amount: str = "300") -> Payment:
+def _payment(
+    *,
+    user_id: uuid.UUID,
+    amount: str = "300",
+    package_rox: str | None = None,
+    base_rox: str | None = None,
+    package_bonus_rox: str = "0",
+) -> Payment:
+    total = package_rox or amount
+    base = base_rox or total
     return Payment(
         user_id=user_id,
         provider="yookassa",
         amount=Decimal(amount),
         currency="RUB",
-        rox_amount=Decimal(amount),
+        rox_amount=Decimal(total),
         status="pending",
         payload={
             "package_id": f"p{amount}",
-            "base_credits": amount,
-            "bonus_credits": "0",
-            "credited_credits": amount,
+            "base_credits": total,
+            "package_base_credits": base,
+            "package_bonus_credits": package_bonus_rox,
+            "bonus_credits": package_bonus_rox,
+            "promo_bonus_credits": "0",
+            "credited_credits": total,
         },
     )
 
 
 @pytest.mark.asyncio
-async def test_partner_promo_activation_credits_welcome_once_and_sets_attribution() -> None:
+async def test_partner_promo_activation_sets_attribution_without_free_rox() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Partner")
         user = await _user(session, "Promo user")
         promo = await _promo(session, partner=partner)
-        config = await PartnerPromoProgramService.get_config(session)
         await session.commit()
 
         first = await PromoCodeService.activate(session, user_id=user.id, code=promo.code.lower())
@@ -111,21 +122,14 @@ async def test_partner_promo_activation_credits_welcome_once_and_sets_attributio
 
         assert first.activated is True
         assert second.activated is False
-        assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal(config.welcome_rox)
+        assert wallet is None or Decimal(wallet.balance) == Decimal("0")
         assert relation is not None
         assert relation.inviter_user_id == partner.id
         assert relation.source == "promo"
         assert relation.promo_id == promo.id
         assert promo.uses_count == 1
         assert redemption is not None and redemption.status == "applied"
-        assert len(transactions) == 1
-        welcome_tx = transactions[0]
-        assert welcome_tx.reason == "promo_activation_welcome"
-        assert welcome_tx.promo_code == promo.code
-        assert welcome_tx.partner_id == partner.id
-        assert welcome_tx.referral_user_id == user.id
-        assert welcome_tx.payment_id is None
+        assert transactions == []
 
 
 @pytest.mark.asyncio
@@ -363,8 +367,7 @@ async def test_activation_preserves_live_legacy_reservation_until_payment_settle
         assert relation.source == "promo"
         assert relation.inviter_user_id == partner.id
         assert relation.promo_id == promo.id
-        assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal(config.welcome_rox)
+        assert wallet is None or Decimal(wallet.balance) == Decimal("0")
         assert promo.uses_count == 0
         assert redemption.status == "pending"
         assert redemption.payment_id == payment.id
@@ -380,7 +383,7 @@ async def test_activation_preserves_live_legacy_reservation_until_payment_settle
         await session.refresh(promo)
         await session.refresh(redemption)
         assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal(config.welcome_rox) + Decimal("107.00")
+        assert Decimal(wallet.balance) == Decimal("107.00")
         assert promo.uses_count == 1
         assert redemption.status == "applied"
         assert redemption.redeemed_at is not None
@@ -511,7 +514,7 @@ async def test_concurrent_activation_cannot_oversubscribe_last_promo_slot() -> N
 
 
 @pytest.mark.asyncio
-async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_only() -> None:
+async def test_partner_promo_payment_below_threshold_keeps_package_exact_and_pays_partner() -> None:
     async with SessionFactory() as session:
         second_line = await _user(session, "Second line")
         partner = await _user(session, "Partner")
@@ -558,7 +561,7 @@ async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_onl
         assert completed.rox_amount == Decimal("300")
         assert completed.payload["bonus_credits"] == "0"
         assert buyer_wallet is not None
-        assert Decimal(buyer_wallet.balance) == Decimal("300") + Decimal(config.welcome_rox)
+        assert Decimal(buyer_wallet.balance) == Decimal("300")
         assert partner_wallet is not None
         assert Decimal(partner_wallet.balance) == Decimal(config.topup_partner_rox)
         assert [(row.level, Decimal(row.percent), Decimal(row.amount)) for row in rewards] == [
@@ -636,7 +639,98 @@ async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_onl
         )
         await session.refresh(buyer_wallet)
         await session.refresh(partner_wallet)
-        assert Decimal(buyer_wallet.balance) == Decimal(config.welcome_rox)
+        assert Decimal(buyer_wallet.balance) == Decimal("0")
+        assert Decimal(partner_wallet.balance) == Decimal("0")
+        assert (await ReferralService.stats(session, partner.id))["available"] == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_partner_promo_payment_from_1000_rub_adds_50_rox_once_and_refunds_it() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Eligible partner")
+        buyer = await _user(session, "Eligible buyer")
+        promo = await _promo(session, partner=partner)
+        payment = _payment(
+            user_id=buyer.id,
+            amount="1087",
+            package_rox="1100",
+            base_rox="1000",
+            package_bonus_rox="100",
+        )
+        session.add(payment)
+        await session.commit()
+
+        activation = await PromoCodeService.activate(
+            session,
+            user_id=buyer.id,
+            code=promo.code,
+        )
+        await session.commit()
+        assert activation.activated is True
+        wallet = await session.get(Wallet, buyer.id)
+        assert wallet is None or Decimal(wallet.balance) == Decimal("0")
+
+        first = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        second = await PaymentService.complete(
+            session,
+            payment_id=payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+
+        config = await PartnerPromoProgramService.get_config(session)
+        wallet = await session.get(Wallet, buyer.id)
+        partner_wallet = await session.get(Wallet, partner.id)
+        assert first.id == second.id
+        assert wallet is not None
+        assert Decimal(wallet.balance) == Decimal("1150.00")
+        assert partner_wallet is not None
+        assert Decimal(partner_wallet.balance) == Decimal(config.topup_partner_rox)
+        assert first.payload["package_base_credits"] == "1000"
+        assert first.payload["package_bonus_credits"] == "100"
+        assert first.payload["promo_bonus_credits"] == str(config.payment_bonus_rox)
+        assert first.payload["promo_bonus_status"] == "applied"
+        assert Decimal(str(first.payload["credited_credits"])) == Decimal("1150")
+
+        promo_bonus_txs = list(
+            (
+                await session.scalars(
+                    select(WalletTransaction).where(
+                        WalletTransaction.user_id == buyer.id,
+                        WalletTransaction.kind == "partner_promo_payment_bonus",
+                        WalletTransaction.payment_id == payment.id,
+                    )
+                )
+            ).all()
+        )
+        assert len(promo_bonus_txs) == 1
+        assert promo_bonus_txs[0].reason == "promo_payment_bonus"
+
+        reward = await session.scalar(
+            select(ReferralReward).where(
+                ReferralReward.partner_user_id == partner.id,
+                ReferralReward.source_user_id == buyer.id,
+                ReferralReward.payment_id == payment.id,
+            )
+        )
+        assert reward is not None
+        assert Decimal(reward.amount) == Decimal("326.10")
+
+        await PaymentService.apply_reversal(
+            session,
+            payment_id=payment.id,
+            amount=Decimal("1087"),
+            provider="yookassa",
+            idempotency_key=f"eligible-refund:{payment.id}",
+            reason="refund",
+            provider_payload={"status": "refunded"},
+        )
+        await session.refresh(wallet)
+        await session.refresh(partner_wallet)
+        assert Decimal(wallet.balance) == Decimal("0")
         assert Decimal(partner_wallet.balance) == Decimal("0")
         assert (await ReferralService.stats(session, partner.id))["available"] == Decimal("0")
 
