@@ -122,6 +122,10 @@ function transactionLabel(value?: string | null): string {
     generation: "Создание",
     refund: "Возврат",
     bonus: "Бонус",
+    topup_package_bonus: "Подарок за пакет",
+    partner_promo_payment_bonus: "Бонус по промокоду",
+    topup_package_bonus_reversal: "Возврат подарка за пакет",
+    promo_bonus_reversal: "Возврат бонуса по промокоду",
     adjustment: "Корректировка",
   };
   return value ? labels[value] || "Операция" : "Операция";
@@ -698,7 +702,7 @@ function Preview({ item, surface, onClose, onPublished, showToast }: { item: Gen
 }
 
 function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onClose: () => void; onRefresh: () => Promise<Me>; showToast: (message: string) => void }) {
-  const [packages, setPackages] = useState<Record<string, { credits: string; prices: Record<string, string> }>>({});
+  const [packages, setPackages] = useState<Record<string, { credits: string; bonus_credits?: string; total_credits?: string; prices: Record<string, string> }>>({});
   const [transactions, setTransactions] = useState<Array<{ id: string; kind: string; amount: string; balance_after: string; status: string; created_at: string }>>([]);
   const [selected, setSelected] = useState("");
   const [paying, setPaying] = useState(false);
@@ -717,7 +721,7 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
     } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось создать платёж"); }
     finally { setPaying(false); }
   };
-  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices.RUB || 0)} RUB</small></button>)}</div><div className="segmented providers"><button type="button" className="active">ЮKassa</button></div><button className="primary wide" type="button" disabled={!selected || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
+  return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong>{Number(pack.bonus_credits || 0) > 0 && <small className="package-bonus-live">+{compact(pack.bonus_credits)} ROX 🎁</small>}<small>{compact(pack.prices.RUB || 0)} RUB</small></button>)}</div><div className="segmented providers"><button type="button" className="active">ЮKassa</button></div><button className="primary wide" type="button" disabled={!selected || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
 }
 
 function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
