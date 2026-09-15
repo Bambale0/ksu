@@ -97,6 +97,10 @@ class AdminPromoService:
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
         normalized = code.strip().upper()
+        if partner_user_id is None:
+            raise ValueError(
+                "partner_user_id is required: every active promo code must belong to a partner"
+            )
         if len(normalized) < 3 or len(normalized) > 64:
             raise ValueError("Promo code must contain 3..64 characters")
         if not all(char.isalnum() or char in {"_", "-"} for char in normalized):
