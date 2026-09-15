@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.services.admin_security import parse_bootstrap_ids
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.trends import TrendService
 from app.services.users import UserService
 
@@ -114,6 +115,7 @@ async def _send_launcher(
     route: str,
     payload: str | None,
 ) -> None:
+    promo = await PartnerPromoProgramService.get_config(session)
     try:
         await message.answer(
             "Меню и поддержка закреплены снизу.",
@@ -125,9 +127,11 @@ async def _send_launcher(
             "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
             "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
             "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
-            "<b>Бонусы:</b>\n"
-            "🎁 50 ROX — сразу после регистрации\n"
-            "🎁 +30 ROX — за друга после его первой генерации\n\n"
+            "<b>Партнёрская программа:</b>\n"
+            f"🎁 +{promo.welcome_rox} ROX — после активации партнёрского промокода\n"
+            f"💰 {promo.first_line_percent}% партнёру — с успешных пополнений 1-й линии\n"
+            f"🎁 +{promo.topup_partner_rox} ROX партнёру — за успешное пополнение реферала\n"
+            "За регистрацию и обычное приглашение начислений нет.\n\n"
             "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
             f"{_support_line()}",
             reply_markup=app_launcher_menu(route=route, start_payload=payload),
