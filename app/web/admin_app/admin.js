@@ -744,32 +744,113 @@
   }
 
   async function renderPromos() {
-    const data = await api("/api/v1/admin/promocodes?limit=100");
-    const actions = hasPermission("promocodes.manage") ? button("Создать", "primary", () => openForm({
-      title: "Новый промокод",
-      fields: [
-        { name: "code", label: "Код", maxLength: 64 },
-        { name: "reward_credits", label: "Кредиты", type: "number", step: "0.01" },
-        { name: "max_uses", label: "Макс. активаций", type: "number", required: false },
-        { name: "expires_at", label: "Истекает (ISO, optional)", required: false, placeholder: "2026-12-31T23:59:00Z" },
-      ],
-      onSubmit: async (values) => {
-        const payload = { code: values.code, reward_credits: values.reward_credits };
-        if (values.max_uses) payload.max_uses = Number(values.max_uses);
-        if (values.expires_at) payload.expires_at = values.expires_at;
-        await api("/api/v1/admin/promocodes", { method: "POST", body: JSON.stringify(payload) });
-        await renderPromos();
-      },
-    })) : null;
+    const promoHeaders = () => ({
+      "Idempotency-Key": crypto.randomUUID(),
+      "X-Admin-Confirm": "confirmed",
+    });
+    const [data, program] = await Promise.all([
+      api("/api/v1/admin/promocodes"),
+      api("/api/v1/admin/promocodes/program"),
+    ]);
+
+    const actions = hasPermission("promocodes.manage") ? el("div", "actions") : null;
+    if (actions) {
+      actions.append(
+        button("Экономика программы", "table-action", () => openForm({
+          title: "Партнёрская бонусная программа",
+          fields: [
+            { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
+            { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
+            { name: "topup_partner_rox", label: "ROX партнёру за пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
+            { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
+          ],
+          onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
+            await api("/api/v1/admin/promocodes/program", {
+              method: "POST",
+              headers: promoHeaders(),
+              body: JSON.stringify({
+                welcome_rox,
+                first_line_percent,
+                topup_partner_rox,
+                is_active: is_active === "true",
+              }),
+            });
+            await renderPromos();
+          },
+        })),
+        button("Создать", "primary", () => openForm({
+          title: "Новый партнёрский промокод",
+          fields: [
+            { name: "code", label: "Код", maxLength: 64 },
+            { name: "partner_user_id", label: "UUID партнёра" },
+            { name: "max_uses", label: "Макс. активаций", type: "number", required: false },
+            { name: "expires_at", label: "Истекает (ISO, optional)", required: false, placeholder: "2026-12-31T23:59:00Z" },
+          ],
+          onSubmit: async (values) => {
+            const payload = {
+              code: values.code,
+              partner_user_id: values.partner_user_id,
+              max_uses: values.max_uses ? Number(values.max_uses) : null,
+              expires_at: values.expires_at || null,
+            };
+            await api("/api/v1/admin/promocodes", {
+              method: "POST",
+              headers: promoHeaders(),
+              body: JSON.stringify(payload),
+            });
+            await renderPromos();
+          },
+        })),
+      );
+    }
+
+    const summary = el("div", "metric-grid");
+    summary.append(
+      metric("Новый пользователь", `+${formatNumber(program.welcome_rox)} ROX`, "после активации промокода"),
+      metric("1-я линия", `${formatNumber(program.first_line_percent)}%`, "только с успешных пополнений"),
+      metric("За пополнение", `+${formatNumber(program.topup_partner_rox)} ROX`, "партнёру за факт пополнения"),
+      metric("Программа", program.is_active ? "Включена" : "Выключена", "за приглашение начислений нет"),
+    );
+
     const cols = [
       ["Код", (row) => el("strong", "mono", row.code)],
-      ["Награда", (row) => `${formatNumber(row.reward_credits)} кр.`],
+      ["Партнёр", (row) => el("span", "mono", row.partner_user_id || "не назначен")],
       ["Использовано", (row) => `${formatNumber(row.uses_count, 0)} / ${row.max_uses ?? "∞"}`],
       ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")],
       ["Истекает", (row) => formatDate(row.expires_at)],
-      ["", (row) => hasPermission("promocodes.manage") ? actionsCell(button(row.is_active ? "Отключить" : "Включить", "table-action", async () => { try { await api(`/api/v1/admin/promocodes/${row.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !row.is_active }) }); await renderPromos(); } catch (error) { toast(error.message); } })) : ""],
+      ["", (row) => {
+        if (!hasPermission("promocodes.manage")) return "";
+        return actionsCell(
+          button("Партнёр", "table-action", () => openForm({
+            title: `Партнёр для ${row.code}`,
+            fields: [{ name: "partner_user_id", label: "UUID партнёра", value: row.partner_user_id || "" }],
+            onSubmit: async ({ partner_user_id }) => {
+              await api(`/api/v1/admin/promocodes/${row.id}/partner`, {
+                method: "POST",
+                headers: promoHeaders(),
+                body: JSON.stringify({ partner_user_id }),
+              });
+              await renderPromos();
+            },
+          })),
+          button(row.is_active ? "Отключить" : "Включить", "table-action", async () => {
+            try {
+              await api(`/api/v1/admin/promocodes/${row.id}/state`, {
+                method: "POST",
+                headers: promoHeaders(),
+                body: JSON.stringify({ is_active: !row.is_active }),
+              });
+              await renderPromos();
+            } catch (error) { toast(error.message); }
+          }),
+        );
+      }],
     ];
-    dom.adminView.replaceChildren(panel("Промокоды", table(cols, data.items || []), actions));
+
+    dom.adminView.replaceChildren(
+      panel("Экономика партнёрской программы", summary, actions),
+      panel("Партнёрские промокоды", table(cols, data.items || [])),
+    );
   }
 
   async function renderReferrals(filters = {}) {
