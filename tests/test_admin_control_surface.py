@@ -72,6 +72,22 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert "% партнёру с пополнений 1-й линии" in js
 
 
+
+def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract() -> None:
+    js = _read(ADMIN / "admin.js")
+    operations = _read(ROOT / "app" / "api" / "v1" / "admin_operations.py")
+    capabilities = _read(ROOT / "app" / "api" / "v1" / "admin_capabilities.py")
+
+    assert "/api/v1/admin/promocodes/program" in js
+    assert "partner_user_id" in js
+    assert '"Idempotency-Key"' in js
+    assert '"X-Admin-Confirm"' in js
+    assert 'name: "reward_credits"' not in js
+
+    # There must be exactly one live admin POST contract for creating promo codes.
+    assert '@router.post("/promocodes", status_code=201)' not in operations
+    assert '@router.post("/promocodes", status_code=status.HTTP_201_CREATED)' in capabilities
+
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
     for service in (
