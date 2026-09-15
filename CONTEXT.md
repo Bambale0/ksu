@@ -37,17 +37,15 @@ Partner promo codes are the only financial activation mechanism for the referral
 - Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
 
 
-## Active Feature Execution — Persistent promo visibility in Mini App
+## Active Feature Execution — Partner promo share activation
 
-- **Task:** make an already activated partner promo visibly persist across Mini App reloads/navigation and surface its benefit on payments/profile without changing promo economics.
-- **Baseline SHA:** `70ae3f961950ce103e8c88f8d3131526287ceab8`.
-- **Current state:** activation/economics exist and are covered by backend tests; `/mini-app/promocodes/` shows immediate activation result; `payments/page.tsx` only knows promo state from manual input or `?promo=` and therefore loses visible state after reload/navigation.
-- **Missing:** authenticated read endpoint for the current user's active promo attribution; automatic hydration of that state on payments/profile; regression coverage for persisted visibility.
-- **Reuse:** `PromoCodeService.relation_for_user`, `PartnerPromoProgramService`, existing `PromoCode`/wallet audit rows, customer API helper.
-- **Security:** derive user from authenticated session only; never accept user/partner ownership from client; return only user-facing promo metadata.
-- **No-hardcode:** economics remain DB-owned by `partner_promo_program_config`.
-- **Observability:** no new provider path; existing request-id HTTP middleware remains authoritative. Endpoint is read-only and deterministic.
-- **Acceptance criteria:** (1) after promo activation, reload/navigation still shows active code; (2) payments page auto-hydrates it without re-entry; (3) UI explicitly shows +welcome ROX benefit and that purchased package amount itself is unchanged; (4) checkout automatically carries active promo metadata when applicable; (5) profile exposes active promo/program state; (6) existing activation/payment/refund economics stay unchanged.
-- **Verification matrix:** unit/domain — existing promo economics + new view helper; DB/API integration — required; authorization — required via CurrentUserDep; migrations — N/A, no schema change; provider contract — N/A; idempotency/retry — existing activation/checkout unchanged; API — required; E2E — required for persisted UI; smoke — required through Mini App/CI; observability — existing request middleware; admin configurability — economics unchanged/DB-backed; performance — indexed PK/FK lookup only; rollback — code-only revert.
-- **Plan:** 1) add failing API regression for active promo state; 2) implement read endpoint; 3) hydrate payments/profile UX from endpoint; 4) add frontend/E2E assertions; 5) code review against spec + AGENTS; 6) exact-head CI, merge, deploy, exact-SHA production verification.
-- **Progress:** audit complete; implementation pending.
+- **Task:** fix the production case where a user joins through a plain referral link but the partner promo is never activated, so the user receives no +25 ROX and the partner financial program remains disabled.
+- **Observed production case:** an affected new user existed with `referral_relations.source=link`, `promo_id=NULL`, no promo redemption and no promo welcome wallet transaction, while the partner-owned promo code was active and unused.
+- **Root cause:** the partner cabinet exposes profile/plain referral links only. A plain `ref_*` link intentionally creates non-financial attribution and carries no promo code, so there is nothing to redeem. A new-user promo POST could also be blocked by the generic onboarding mutation gate.
+- **Invariant:** economics stay unchanged and DB-owned: +25 ROX once on first valid promo activation; partner 30% of successful first-line paid RUB basis +10 ROX per successful referred-user top-up; invitation alone pays nothing.
+- **Implementation:** expose every partner-owned promo in `/api/v1/referrals/stats` with a canonical `promo_<CODE>` Mini App link; route signed promo deep links to `/mini-app/payments/?promo=<CODE>`, where the existing idempotent redeem flow activates the promo; exempt `/api/v1/promocodes` from onboarding mutation gating; keep ordinary referral links explicitly non-financial.
+- **Admin repair:** the legacy Telegram admin promo menu must use the partner-owned/global-economics contract and must not reference removed per-code `reward_credits`.
+- **Security:** promo ownership comes from server-side `PromoCode.partner_user_id`; the client never chooses partner ownership. Existing promo anti-fraud, immutable `source=promo` attribution, idempotent wallet credit and capacity checks remain authoritative.
+- **No-hardcode:** partner code lists and welcome amount come from DB/API; promo links are generated from configured bot username and the stored promo code.
+- **Verification:** isolated PostgreSQL migration + focused backend/domain tests, Ruff, Next typecheck/build, Mini App contract/E2E, full exact-head CI and code review before merge/deploy.
+- **Progress:** production diagnosis complete; fix implemented locally on `fix/promo-deeplink-activation`; focused backend tests 50/50 green, Ruff green, Next typecheck/build green; PR/CI/deploy pending.

@@ -111,3 +111,40 @@ test('active promo persists on payments and is attached to a new payment automat
   await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
   await expect(page.getByText(/промокод KSENIA50 активен/)).toBeVisible();
 });
+
+
+test('promo startapp link forwards its code into the redeem flow', async ({ page }) => {
+  await installTelegram(page);
+  let redeemBody = null;
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+
+    if (path === '/api/v1/promocodes/redeem' && request.method() === 'POST') {
+      redeemBody = request.postDataJSON();
+      return json({
+        status: 'activated',
+        code: 'KOR42',
+        welcome_rox: '25.00',
+        reward_rox: '25.00',
+        first_line_percent: '30.00',
+        topup_partner_rox: '10.00',
+        balance_rox: '25.00',
+      });
+    }
+    if (path === '/api/v1/promocodes/active') return json({ active: false, program_active: true });
+    if (path === '/api/v1/payments' && request.method() === 'GET') return json({ items: [] });
+    return json({});
+  });
+
+  await page.goto('/mini-app/?startapp=promo_KOR42');
+
+  await expect(page).toHaveURL(/\/mini-app\/payments\/\?promo=KOR42/);
+  await expect.poll(() => redeemBody).toEqual({ code: 'KOR42' });
+});

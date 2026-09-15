@@ -161,3 +161,12 @@ def test_nexus_test_and_quick_menu_use_active_database_admins() -> None:
     assert "return await _admin_account(session, telegram_id) is not None" in nexus
     assert "admin_telegram_id" in nexus
     assert "await _state_authorized(state, session, callback.from_user.id)" in nexus
+
+
+def test_telegram_admin_promo_menu_uses_partner_owned_contract() -> None:
+    source = _read(ROOT / "app" / "bot" / "handlers" / "admin.py")
+    promo_section = source[source.index('F.data == "admin:promos"'):source.index('F.data == "admin:pricing"')]
+
+    assert "reward_credits" not in promo_section
+    assert "PARTNER_USER_ID" in promo_section
+    assert "partner_user_id=partner_user_id" in promo_section

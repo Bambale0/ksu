@@ -203,3 +203,18 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert '"/api/v1/promocodes/active"' in promocodes
     assert "Промокод применён" in promocodes
     assert "Повторно вводить его при пополнении не нужно" in promocodes
+
+
+def test_partner_promo_share_link_is_exposed_and_auto_activated() -> None:
+    app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    gate = _read(FRONTEND / "components" / "app-entry-gate.tsx")
+    types = _read(FRONTEND / "lib" / "types.ts")
+
+    assert "stats?.promo_codes" in app
+    assert "Скопировать промо-ссылку" in app
+    assert "обычную реферальную ссылку" in app
+    assert "не включает финансовые бонусы" in app
+    assert "promo_codes?:" in types
+    assert "const PROMO_LINK" in gate
+    assert 'kind: "promo"' in gate
+    assert "/mini-app/payments/?promo=" in gate

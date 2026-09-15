@@ -210,12 +210,22 @@ async def test_partner_earnings_can_move_to_rox_once_and_reduce_cash_available()
 
 
 @pytest.mark.asyncio
-async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
+async def test_stats_expose_simple_wallet_and_partner_rub_contract(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     async with SessionFactory() as session:
         user = User(telegram_id=_telegram_id(), first_name="Economy")
         session.add(user)
         await session.flush()
         session.add(Wallet(user_id=user.id, balance=Decimal("280")))
+        promo = PromoCode(
+            code=f"ECON{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=user.id,
+            max_uses=100,
+            uses_count=7,
+            is_active=True,
+        )
+        session.add(promo)
         await session.commit()
 
         payload = await stats(user, session)
@@ -234,6 +244,17 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract() -> None:
         assert payload["promo_welcome_rox"] == "25.00"
         assert payload["promo_topup_partner_rox"] == "10.00"
         assert payload["promo_program_active"] is True
+        assert payload["promo_codes"] == [
+            {
+                "id": str(promo.id),
+                "code": promo.code,
+                "is_active": True,
+                "uses_count": 7,
+                "max_uses": 100,
+                "expires_at": None,
+                "promo_link": f"https://t.me/RoxyExampleBot?startapp=promo_{promo.code}",
+            }
+        ]
         assert payload["second_line_percent"] == "0"
         assert payload["minimum_withdrawal"] == "3000"
         assert payload["minimum_withdrawal_rub"] == "3000"

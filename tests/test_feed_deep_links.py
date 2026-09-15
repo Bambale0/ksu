@@ -10,6 +10,7 @@ from app.services.feed_links import (
     parse_feed_deep_link,
     post_payload,
     profile_payload,
+    promo_payload,
     referral_payload,
     remix_payload,
     trend_payload,
@@ -78,6 +79,22 @@ def test_partner_referral_link_opens_direct_main_mini_app(monkeypatch) -> None: 
     assert parsed is not None
     assert parsed.action == "ref"
     assert parsed.referral_telegram_id == 123456
+
+
+def test_partner_promo_link_opens_direct_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
+
+    assert promo_payload("kor42") == "promo_KOR42"
+    assert PartnerService.promo_link("kor42") == "https://t.me/RoxyExampleBot?startapp=promo_KOR42"
+
+
+def test_promo_payload_rejects_unsupported_or_too_short_codes() -> None:
+    for code in ("A", "AB", "BAD CODE", "BAD/SLASH"):
+        try:
+            promo_payload(code)
+        except ValueError:
+            continue
+        raise AssertionError(f"Expected invalid promo payload for {code!r}")
 
 
 def test_referral_payloads_round_trip_for_share_surfaces() -> None:

@@ -584,7 +584,11 @@ async def admin_promos(callback: CallbackQuery, session: AsyncSession, state: FS
         return
     data = await AdminPromoService.list_promos(session, admin=admin, limit=10)
     lines = [
-        f"• {item['code']}: {item['reward_credits']} cr | {item['uses_count']}/{item['max_uses'] or '∞'} | {'on' if item['is_active'] else 'off'}"
+        (
+            f"• {item['code']}: partner={str(item.get('partner_user_id') or '—')[:8]} | "
+            f"{item['uses_count']}/{item['max_uses'] or '∞'} | "
+            f"{'on' if item['is_active'] else 'off'}"
+        )
         for item in data["items"]
     ]
     keyboard = InlineKeyboardMarkup(
@@ -603,7 +607,7 @@ async def admin_promo_create_start(callback: CallbackQuery, session: AsyncSessio
     await state.set_state(AdminStates.promo_create)
     await _send_or_edit(
         callback,
-        "Формат: CODE CREDITS MAX_USES\nПример: START100 100 500\nДля безлимита вместо MAX_USES укажите -",
+        "Формат: CODE PARTNER_USER_ID MAX_USES\nПример: KOR42 123e4567-e89b-12d3-a456-426614174000 500\nДля безлимита вместо MAX_USES укажите -",
         _back_admin(),
     )
 
@@ -615,16 +619,16 @@ async def admin_promo_create(message: Message, session: AsyncSession, state: FSM
         return
     parts = message.text.split()
     if len(parts) != 3:
-        await message.answer("Нужно три значения: CODE CREDITS MAX_USES|-.")
+        await message.answer("Нужно три значения: CODE PARTNER_USER_ID MAX_USES|-.")
         return
     try:
-        reward = Decimal(parts[1].replace(",", "."))
+        partner_user_id = uuid.UUID(parts[1])
         max_uses = None if parts[2] == "-" else int(parts[2])
         result, replayed = await AdminPromoService.create(
             session,
             admin=admin,
             code=parts[0],
-            reward_credits=reward,
+            partner_user_id=partner_user_id,
             max_uses=max_uses,
             expires_at=None,
             idempotency_key=f"tg:{uuid.uuid4()}",

@@ -290,6 +290,18 @@ export type PartnerStats = {
   rox_balance?: string;
   welcome_bonus_rox?: string;
   invite_bonus_rox?: string;
+  promo_welcome_rox?: string;
+  promo_topup_partner_rox?: string;
+  promo_program_active?: boolean;
+  promo_codes?: Array<{
+    id: string;
+    code: string;
+    is_active: boolean;
+    uses_count: number;
+    max_uses?: number | null;
+    expires_at?: string | null;
+    promo_link?: string | null;
+  }>;
   prompt_repeat_bonus_rox?: string;
   minimum_withdrawal_rox?: string;
   prompts_created?: number;
