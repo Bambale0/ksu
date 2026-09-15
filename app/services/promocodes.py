@@ -248,9 +248,68 @@ class PromoCodeService:
         *,
         payment: Payment,
     ) -> Decimal:
-        """Legacy payment hook: partner promos never add ROX to paid packages."""
-        _ = session
+        """Honor only reservations created by the pre-partner promo program.
+
+        New partner promos are activated immediately and never add ROX to a paid
+        package. A pending redemption tied to this payment is therefore a legacy
+        promise created before this program was deployed and must remain payable.
+        """
         payload = payment.payload or {}
+        redemption = await session.scalar(
+            select(PromoRedemption)
+            .where(
+                PromoRedemption.payment_id == payment.id,
+                PromoRedemption.status == "pending",
+            )
+            .with_for_update()
+        )
+        if redemption is not None:
+            promo = await session.scalar(
+                select(PromoCode).where(PromoCode.id == redemption.promo_id).with_for_update()
+            )
+            now = datetime.now(UTC)
+            valid = (
+                promo is not None
+                and promo.is_active
+                and redemption.reserved_until is not None
+                and redemption.reserved_until > now
+                and (promo.expires_at is None or promo.expires_at > now)
+            )
+            if valid:
+                assert promo is not None
+                reward = Decimal(str(payload.get("promo_reward_credits") or promo.reward_amount))
+                if reward > 0:
+                    base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
+                    await WalletService.credit(
+                        session,
+                        user_id=payment.user_id,
+                        amount=reward,
+                        kind="promo_bonus",
+                        reference_type="payment",
+                        reference_id=str(payment.id),
+                        idempotency_key=f"payment:{payment.id}:promo_bonus",
+                        reason="legacy_payment_promo",
+                        promo_code=promo.code,
+                        partner_id=promo.partner_user_id,
+                        referral_user_id=payment.user_id,
+                        payment_id=payment.id,
+                    )
+                    promo.uses_count += 1
+                    redemption.status = "applied"
+                    redemption.reserved_until = None
+                    redemption.redeemed_at = now
+                    payment.payload = {
+                        **payload,
+                        "promo_bonus_status": "applied",
+                        "bonus_credits": str(reward),
+                        "credited_credits": str(base + reward),
+                    }
+                    return reward
+
+            redemption.status = "released"
+            redemption.reserved_until = None
+            redemption.redeemed_at = None
+
         if payload.get("promo_code"):
             base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
             payment.payload = {
