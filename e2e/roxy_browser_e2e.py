@@ -220,6 +220,23 @@ async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
     return generation
 
 
+async def seed_main_wallet() -> None:
+    async with SessionFactory() as session:
+        user = await UserService.get_by_telegram_id(session, MAIN_TG_ID)
+        if user is None:
+            raise AssertionError("E2E user was not created by browser authentication")
+        await WalletService.credit(
+            session,
+            user_id=user.id,
+            amount=Decimal("100000"),
+            kind="e2e_seed",
+            reference_type="e2e",
+            reference_id="main-wallet",
+            idempotency_key="e2e-main-wallet-seed",
+        )
+        await session.commit()
+
+
 async def seed_partner_earnings() -> None:
     async with SessionFactory() as session:
         inviter = await UserService.get_by_telegram_id(session, MAIN_TG_ID)
@@ -285,6 +302,7 @@ async def scenario_boot_and_navigation(page: Page, report: Report) -> None:
         await page.go_back()
         await expect(page).to_have_url(re.compile(r"[?&]route=catalog(?:&|$)"), timeout=7000)
         report.controls_seen.add("catalog:prompt-tools/back")
+    await seed_main_wallet()
     report.ok("boot + canonical navigation + Back")
 
 

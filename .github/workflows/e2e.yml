@@ -50,7 +50,6 @@ jobs:
       TELEGRAM_WEBHOOK_SECRET: e2e-secret
       ONBOARDING_ENABLED: false
       PUBLIC_BASE_URL: http://127.0.0.1:8000
-      START_BALANCE_ROX: "100000"
       ROX_PACKAGES_JSON: '{"e2e":{"amount":"100","credits":"100","currency":"RUB"}}'
       CARD_API_KEY: e2e-card-key
       CARD_API_BASE_URL: http://127.0.0.1:18082

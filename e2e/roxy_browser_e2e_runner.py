@@ -55,6 +55,7 @@ async def scenario_boot_and_navigation(page: Page, report: suite.legacy.Report) 
         timeout=7000,
     )
     report.controls_seen.add("catalog:prompt-tools/back")
+    await suite.legacy.seed_main_wallet()
     report.ok("boot + canonical navigation + Back")
 
 

@@ -22,6 +22,7 @@ from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_pa
 from app.services.onboarding import OnboardingService
 from app.services.partner import PartnerService
 from app.services.partner_wallet import PartnerWalletTransferService
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
 
@@ -123,7 +124,8 @@ async def _balance_text(session: AsyncSession, user_id) -> str:  # type: ignore[
         f"Баланс ROX: {rox_balance}\n"
         "Бонусы и пополнения сразу зачисляются на этот баланс.\n\n"
         f"💰 Заработок партнёра: {partner_rub} ₽\n"
-        "Это доход с реальных пополнений 1-й и 2-й линии. Его можно перевести в ROX или оформить выплату.\n\n"
+        "Это доход с успешных пополнений рефералов 1-й линии, закреплённых партнёрским промокодом. "
+        "Его можно перевести в ROX или оформить выплату.\n\n"
         "1 ROX = 1 ₽\n"
         f"Вывод деньгами от {settings.partner_min_withdrawal_rub} ₽."
     )
@@ -256,16 +258,17 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
     user = await UserService.get_or_create(session, callback.from_user)
     stats = await ReferralService.stats(session, user.id)
     partner = await PartnerWalletTransferService.accounting(session, user.id)
+    promo_program = await PartnerPromoProgramService.get_config(session)
     referral_link = PartnerService.referral_link(user.telegram_id) or "недоступна"
     await callback.answer()
     if callback.message:
         await callback.message.answer(
             "👥 Партнёры ROXY\n\n"
-            f"🎁 {settings.start_balance_rox} ROX — при регистрации, сразу в баланс\n"
-            f"👤 +{settings.invite_bonus_rox} ROX — за приглашённого, сразу в баланс\n"
-            f"🔁 +{settings.prompt_repeat_bonus_rox} ROX — за повтор работы, сразу в баланс\n\n"
-            f"💰 {settings.referral_first_percent}% — заработок с пополнений 1-й линии\n"
-            f"💰 {settings.referral_second_percent}% — заработок с пополнений 2-й линии\n"
+            f"🎟️ +{promo_program.welcome_rox:g} ROX — пользователю после активации вашего промокода\n"
+            f"💰 {promo_program.first_line_percent:g}% — партнёру с успешных пополнений 1-й линии\n"
+            f"💎 +{promo_program.topup_partner_rox:g} ROX — партнёру за каждое успешное пополнение реферала\n"
+            "👤 За само приглашение начислений нет\n"
+            "2-я линия — только статистика, финансовых начислений нет\n\n"
             f"Доступно: {partner['available']} ₽\n"
             f"Вывод деньгами от {settings.partner_min_withdrawal_rub} ₽ или перевод в ROX без смешивания балансов.\n\n"
             f"1 линия: {stats['first_line']} · 2 линия: {stats['second_line']}\n\n"
