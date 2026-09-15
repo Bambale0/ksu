@@ -93,7 +93,7 @@ test('active promo persists on payments and is attached to a new payment automat
   await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'KSENIA50' })).toBeVisible();
   await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
-  await expect(page.getByText('0%', { exact: true })).toBeVisible();
+  await expect(page.getByText('Без изменений', { exact: true })).toBeVisible();
   await expect(page.getByText(/Цена пакета не меняется/)).toBeVisible();
   await expect(page.getByText(/Промокод KSENIA50 уже закреплён/)).toBeVisible();
   await expect(page.getByText('Есть промокод?', { exact: true })).toHaveCount(0);
