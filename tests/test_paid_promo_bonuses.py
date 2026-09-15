@@ -816,3 +816,60 @@ async def test_admin_promo_still_rejects_invalid_expiration(expires_at: datetime
                 request_id=f"test:{uuid.uuid4()}",
                 confirmed=True,
             )
+
+
+@pytest.mark.asyncio
+async def test_active_partner_promo_state_persists_and_marks_future_payment() -> None:
+    async with SessionFactory() as session:
+        partner = await _user(session, "Persistent promo partner")
+        user = await _user(session, "Persistent promo user")
+        promo = await _promo(session, partner=partner)
+        await session.commit()
+
+        activation = await PromoCodeService.activate(
+            session,
+            user_id=user.id,
+            code=promo.code,
+        )
+        await session.commit()
+        assert activation.activated is True
+
+        state = await PromoCodeService.active_state(session, user_id=user.id)
+        assert state["active"] is True
+        assert state["code"] == promo.code
+        assert state["partner_user_id"] == str(partner.id)
+        assert Decimal(str(state["welcome_rox_granted"])) == Decimal("25.00")
+        assert Decimal(str(state["package_discount_percent"])) == Decimal("0")
+
+        payment = Payment(
+            user_id=user.id,
+            provider="yookassa",
+            amount=Decimal("300"),
+            currency="RUB",
+            rox_amount=Decimal("300"),
+            status="pending",
+            payload={
+                "package_id": "persistent-p300",
+                "base_credits": "300",
+                "bonus_credits": "0",
+                "credited_credits": "300",
+            },
+        )
+        session.add(payment)
+        await session.flush()
+
+        attached = await PromoCodeService.reserve_for_payment(
+            session,
+            payment=payment,
+            code=None,
+        )
+        await session.flush()
+
+        assert attached is not None
+        assert attached.id == promo.id
+        assert payment.payload["promo_code"] == promo.code
+        assert payment.payload["promo_partner_user_id"] == str(partner.id)
+        assert payment.payload["promo_metadata_source"] == "attribution"
+        assert payment.payload["promo_bonus_status"] == "activated"
+        assert payment.payload["bonus_credits"] == "0"
+        assert payment.payload["credited_credits"] == "300"
