@@ -182,10 +182,12 @@ test('promo activation grants welcome ROX before checkout', async ({ page }) => 
   await page.goto('/mini-app/promocodes/');
   await page.getByPlaceholder('Например, KSENIA50').fill('WELCOME');
   await page.getByRole('button', { name: 'Активировать промокод' }).click();
+  await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'WELCOME' })).toBeVisible();
   await expect(page.getByText('+25', { exact: true })).toBeVisible();
-  await expect(page.getByText('ROX за активацию', { exact: true })).toBeVisible();
-  await expect(page.getByText('30%', { exact: true })).toBeVisible();
-  await expect(page.getByText('+10', { exact: true })).toBeVisible();
+  await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
+  await expect(page.getByText('Без изменений', { exact: true })).toBeVisible();
+  await expect(page.getByText('Активна', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Перейти к пополнению' }).click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
 });
