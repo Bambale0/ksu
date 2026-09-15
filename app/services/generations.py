@@ -13,9 +13,10 @@ from app.services.abuse_protection import AbuseProtectionService, GenerationAdmi
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
-from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
 from app.services.model_routing import resolve_model_request, video_references
 from app.services.seedance25_contract import normalize_seedance25_input
+from app.services.seedance_prompt_limits import validate_prompt_length
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,12 @@ class GenerationService:
 
         routed = resolve_model_request(model_id, merged, input_url=input_url)
         merged = routed.parameters
+
+        try:
+            validate_prompt_length(routed.model_id, merged.get("prompt", ""))
+        except ValueError as exc:
+            # Reject before quote/debit/provider submission; never truncate prompts.
+            raise InvalidModelParametersError(str(exc)) from exc
 
         if routed.model_id == "seedance-2.5":
             # Validate the current provider contract before wallet debit. This also
