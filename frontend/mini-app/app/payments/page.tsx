@@ -203,23 +203,24 @@ export default function PaymentsPage() {
       ? localStorage.getItem("roxy-billing-email") || ""
       : "";
     setEmail(savedEmail);
-    void load();
-
     const code = initialPromoCode();
-    if (code) {
-      void customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
-        method: "POST",
-        body: JSON.stringify({ code }),
-      }).then(async (next) => {
+    void (async () => {
+      await load();
+      if (!code) return;
+      try {
+        const next = await customerRequest<PromoPreview>("/api/v1/promocodes/redeem", {
+          method: "POST",
+          body: JSON.stringify({ code }),
+        });
         setPromo(next);
         setPromoCode(next.code);
         const persisted = await customerRequest<ActivePromo>("/api/v1/promocodes/active");
         setActivePromo(persisted);
         setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
-      }).catch(() => {
+      } catch {
         setPromo(null);
-      });
-    }
+      }
+    })();
   }, []);
 
   const catalog = provider === "card"
