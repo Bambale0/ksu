@@ -392,9 +392,9 @@ async def test_admin_can_change_global_program_economics_without_per_code_reward
         )
 
         assert replayed is False
-        assert result["welcome_rox"] == "27"
-        assert result["first_line_percent"] == "31"
-        assert result["topup_partner_rox"] == "11"
+        assert Decimal(str(result["welcome_rox"])) == Decimal("27")
+        assert Decimal(str(result["first_line_percent"])) == Decimal("31")
+        assert Decimal(str(result["topup_partner_rox"])) == Decimal("11")
         # Keep the suite isolated: this test proves the mutation but does not persist it.
         await session.rollback()
 
