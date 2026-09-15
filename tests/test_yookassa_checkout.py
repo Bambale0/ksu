@@ -69,7 +69,8 @@ def test_mini_app_exposes_yookassa_checkout_and_reconciliation() -> None:
         'provider: "yookassa"',
         '/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile',
         'payment.provider === "yookassa"',
-        'promo_code: activePromo || null',
+        'const effectivePromo = activePromo?.code || promo?.code || "";',
+        'promo_code: effectivePromo || null',
         '>ЮKassa</button>',
     ):
         assert token in page
