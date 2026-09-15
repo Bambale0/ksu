@@ -66,6 +66,10 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert "/api/v1/admin/auth/me" in js
     assert "Доступ администратора не подтверждён" in js
     assert 'mutate(`/api/v1/admin/control/promocodes/${row.id}/state`' in js
+    assert "/api/v1/admin/control/promocodes/program" in js
+    assert '/api/v1/admin/control/promocodes/${row.id}/partner' in js
+    assert "ROX новому пользователю" in js
+    assert "% партнёру с пополнений 1-й линии" in js
 
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
@@ -85,7 +89,11 @@ def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     assert "Idempotency-Key" in source
     assert "X-Admin-Confirm" in source
     assert '@router.post("/promocodes/{promo_id}/state")' in source
+    assert '@router.post("/promocodes/{promo_id}/partner")' in source
+    assert '@router.post("/promocodes/program")' in source
     assert "AdminPromoService.set_active(" in source
+    assert "AdminPromoService.set_partner(" in source
+    assert "AdminPromoService.update_program(" in source
 
 
 def test_new_capability_backend_revalidates_permissions_server_side() -> None:
