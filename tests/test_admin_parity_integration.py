@@ -1,6 +1,7 @@
 import json
 import random
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -197,6 +198,22 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
         )
         assert create_replayed is False
         assert create_result["partner_user_id"] == str(partner_user.id)
+
+        expires_at = datetime.now(UTC) + timedelta(days=30)
+        limits_result, limits_replayed = await AdminPromoService.update_campaign(
+            session,
+            admin=admin,
+            promo_id=uuid.UUID(create_result["id"]),
+            max_uses=2,
+            expires_at=expires_at,
+            is_active=None,
+            idempotency_key=f"integration-promo-limits:{uuid.uuid4()}",
+            request_id="promo-limits-integration",
+            confirmed=True,
+        )
+        assert limits_replayed is False
+        assert limits_result["max_uses"] == 2
+        assert limits_result["expires_at"] == expires_at.isoformat()
 
         update_result, update_replayed = await AdminPromoService.set_active(
             session,
