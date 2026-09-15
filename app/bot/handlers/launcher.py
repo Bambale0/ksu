@@ -115,7 +115,34 @@ async def _send_launcher(
     route: str,
     payload: str | None,
 ) -> None:
-    promo = await PartnerPromoProgramService.get_config(session)
+    try:
+        promo = await PartnerPromoProgramService.get_config(session)
+        if promo.is_active:
+            promo_text = (
+                "<b>Партнёрская программа:</b>\n"
+                f"🎁 +{promo.welcome_rox} ROX — после активации партнёрского промокода\n"
+                f"💰 {promo.first_line_percent}% партнёру — с успешных пополнений 1-й линии\n"
+                f"🎁 +{promo.topup_partner_rox} ROX партнёру — за успешное пополнение реферала\n"
+                "За регистрацию и обычное приглашение начислений нет.\n"
+            )
+        else:
+            promo_text = (
+                "<b>Партнёрская программа:</b>\n"
+                "Сейчас временно приостановлена. Привязки промокодов сохраняются.\n"
+                "За регистрацию и обычное приглашение начислений нет.\n"
+            )
+    except Exception as exc:
+        logger.warning(
+            "launcher_partner_program_config_failed",
+            extra={"telegram_user_id": message.from_user.id if message.from_user else None},
+            exc_info=exc,
+        )
+        promo_text = (
+            "<b>Партнёрская программа:</b>\n"
+            "Бонусы активируются только партнёрским промокодом. Актуальные условия смотрите в ROXY.\n"
+            "За регистрацию и обычное приглашение начислений нет.\n"
+        )
+
     try:
         await message.answer(
             "Меню и поддержка закреплены снизу.",
@@ -127,11 +154,7 @@ async def _send_launcher(
             "А ещё ROXY помогает собрать подробное описание по фото, видео или идее.\n"
             "Если не знаете, как красиво описать идею — откройте приложение, загрузите фото, видео "
             "или напишите задумку, а ROXY подготовит текст для запуска.\n\n"
-            "<b>Партнёрская программа:</b>\n"
-            f"🎁 +{promo.welcome_rox} ROX — после активации партнёрского промокода\n"
-            f"💰 {promo.first_line_percent}% партнёру — с успешных пополнений 1-й линии\n"
-            f"🎁 +{promo.topup_partner_rox} ROX партнёру — за успешное пополнение реферала\n"
-            "За регистрацию и обычное приглашение начислений нет.\n\n"
+            f"{promo_text}\n"
             "Нажмите <b>«🚀 Открыть ROXY»</b>, чтобы перейти в приложение.\n"
             f"{_support_line()}",
             reply_markup=app_launcher_menu(route=route, start_payload=payload),
