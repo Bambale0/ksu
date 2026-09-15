@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment, ReferralRelation, ReferralReward, WalletTransaction
 from app.db.payment_models import ReferralRewardReversal
+from app.services.partner_promo_program import PartnerPromoProgramService
+from app.services.wallet import WalletService
 
 
 class ReferralService:
