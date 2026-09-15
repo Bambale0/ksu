@@ -289,11 +289,15 @@ The audit must state:
 13. rollout/rollback impact;
 14. exact implementation plan.
 
-### `CONTEXT.md` is the execution ledger
+### `CONTEXT.md` carries domain context + the active execution ledger
 
-For substantial feature/refactor/integration/migration work, `CONTEXT.md` is the canonical live execution ledger. Do not substitute another file just because it is convenient.
+KSU's existing `CONTEXT.md` is also the persistent domain glossary. Preserve that purpose: never replace, flatten, or rewrite the Domain Context to make room for task progress.
 
-Maintain an **Active Feature Execution** section containing:
+For substantial feature/refactor/integration/migration work, maintain a dedicated **Active Feature Execution** section in `CONTEXT.md` alongside the persistent domain context. Keep transient execution details confined to that section.
+
+If multiple concurrent workstreams would make one active section unsafe or conflict-prone, detailed per-workstream execution may live under `docs/agents/EXECUTION/<ticket-or-feature>.md`, but `CONTEXT.md` must still contain the authoritative active-work pointer, baseline SHA, concise current status, and final outcome. The domain glossary remains intact.
+
+Maintain the **Active Feature Execution** section containing:
 
 - feature/ticket/spec;
 - audit baseline and exact SHA;
@@ -426,6 +430,17 @@ Each integration must explicitly define:
 
 Mutating external operations must have a duplicate-prevention strategy.
 
+### Server-side authorization and data isolation
+
+Authorization must be enforced server-side for every protected API, admin, payment, generation, ownership-sensitive, and financial flow. UI hiding, disabled controls, client-supplied ownership IDs, or frontend routing are never sufficient authorization.
+
+Where ownership, role, partner, admin, or other data-isolation boundaries apply:
+- derive trusted scope from authenticated server-side state;
+- validate access again on mutation;
+- prevent cross-user/cross-scope reads and writes;
+- audit sensitive actions;
+- treat unauthorized data exposure as a release blocker.
+
 ### AI is not an authority boundary
 
 AI/LLM output never bypasses:
@@ -532,6 +547,8 @@ Do not mark a feature done until:
 - no unresolved high-severity review finding remains;
 - CI is green for the exact verified SHA;
 - production is verified on the exact release SHA when deployment is part of the task.
+
+KSU has repository CI, so exact-SHA CI is a hard completion gate. If GitHub Actions or the connector is temporarily unavailable, run the closest safe local/remote checks and record the evidence, but report the task as **verification-blocked / not fully complete** until the exact SHA is green in CI. Do not downgrade CI unavailability into a successful completion path.
 
 ### Delivery report
 
