@@ -5,6 +5,7 @@ import random
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
@@ -295,7 +296,7 @@ async def test_legacy_pending_payment_promo_is_honored_after_program_upgrade() -
 
 def test_partner_promo_migration_does_not_destroy_pending_legacy_reservations() -> None:
     migration = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[1]
         / "alembic"
         / "versions"
         / "0038_partner_promo_program.py"
