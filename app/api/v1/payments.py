@@ -85,8 +85,10 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "currency": payment.currency,
         "credits": str(payload.get("credited_credits") or payment.rox_amount),
         "rox": str(payload.get("credited_credits") or payment.rox_amount),
-        "base_credits": str(payload.get("base_credits") or payment.rox_amount),
-        "bonus_credits": str(payload.get("bonus_credits") or "0"),
+        "base_credits": str(payload.get("package_base_credits") or payload.get("base_credits") or payment.rox_amount),
+        "bonus_credits": str(payload.get("package_bonus_credits") or payload.get("bonus_credits") or "0"),
+        "package_total_credits": str(payload.get("base_credits") or payment.rox_amount),
+        "promo_bonus_credits": str(payload.get("promo_bonus_credits") or "0"),
         "promo_code": str(payload.get("promo_code") or ""),
         "promo_bonus_status": str(payload.get("promo_bonus_status") or ""),
         "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
@@ -97,22 +99,35 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
     }
 
 
-def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object]:
+def _catalog_package(
+    package_id: str,
+    package: CardPackage,
+    *,
+    currency: str,
+) -> dict[str, object]:
     credits = package.credits
+    canonical = PaymentService.packages().get(package_id)
+    if canonical is not None and Decimal(canonical.rox_amount) == Decimal(credits):
+        base_credits = canonical.base_credits
+        bonus_credits = canonical.bonus_credits
+    else:
+        base_credits = Decimal(credits)
+        bonus_credits = Decimal("0")
     return {
         "credits": str(credits),
-        "bonus_credits": "0",
+        "base_credits": str(base_credits),
+        "bonus_credits": str(bonus_credits),
         "total_credits": str(credits),
         "prices": {currency: str(package.prices[currency])},
     }
 
 
 def _yookassa_catalog_package(package: PaymentPackage) -> dict[str, object]:
-    credits = package.credits
     return {
-        "credits": str(credits),
-        "bonus_credits": "0",
-        "total_credits": str(credits),
+        "credits": str(package.credits),
+        "base_credits": str(package.base_credits),
+        "bonus_credits": str(package.bonus_credits),
+        "total_credits": str(package.credits),
         "prices": {package.currency: str(package.amount)},
     }
 
@@ -164,7 +179,11 @@ async def list_crypto_packages() -> dict[str, object]:
         "configured": CryptoBotPaymentService.provider_configured(),
         "currencies": [CryptoBotPaymentService.CURRENCY],
         "packages": {
-            package_id: _catalog_package(package, currency=CryptoBotPaymentService.CURRENCY)
+            package_id: _catalog_package(
+                package_id,
+                package,
+                currency=CryptoBotPaymentService.CURRENCY,
+            )
             for package_id, package in packages.items()
         },
     }
@@ -179,7 +198,11 @@ async def list_2328_crypto_packages() -> dict[str, object]:
         "configured": Payment2328Service.provider_configured(),
         "currencies": [Payment2328Service.CURRENCY],
         "packages": {
-            package_id: _catalog_package(package, currency=Payment2328Service.CURRENCY)
+            package_id: _catalog_package(
+                package_id,
+                package,
+                currency=Payment2328Service.CURRENCY,
+            )
             for package_id, package in packages.items()
         },
     }
