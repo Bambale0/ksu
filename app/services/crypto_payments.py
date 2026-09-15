@@ -59,20 +59,25 @@ class CryptoBotPaymentService:
         if amount is None:
             raise UnknownPaymentPackageError(package_id)
 
-        base_credits = Decimal(package.credits)
-        credited_credits = base_credits
+        total_credits = Decimal(package.credits)
+        package_base = Decimal(package.base_credits if package.base_credits is not None else package.credits)
+        package_bonus = Decimal(package.bonus_credits)
+        credited_credits = total_credits
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=cls.CURRENCY,
-            rox_amount=base_credits,
+            rox_amount=total_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
-                "base_credits": str(base_credits),
-                "bonus_credits": "0",
+                "base_credits": str(total_credits),
+                "package_base_credits": str(package_base),
+                "package_bonus_credits": str(package_bonus),
+                "bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
@@ -114,7 +119,7 @@ class CryptoBotPaymentService:
                 local_id=str(payment.id),
                 amount=amount,
                 currency=cls.CURRENCY,
-                description=f"Пополнение ROXY: {base_credits} ROX",
+                description=f"Пополнение ROXY: {total_credits} ROX",
             )
         except Exception as exc:
             await PaymentCreationLifecycle.mark_unknown(
