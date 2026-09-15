@@ -186,6 +186,7 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     api = _read(FRONTEND / "lib" / "api.ts")
     app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
     payments = _read(FRONTEND / "app" / "payments" / "page.tsx")
+    promocodes = _read(FRONTEND / "app" / "promocodes" / "page.tsx")
 
     assert '"/api/v1/promocodes/active"' in api
     assert "api.activePromo()" in app
@@ -198,3 +199,7 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert "ROX уже начислено" in payments
     assert "Цена пакета не меняется" in payments
     assert "payment.promo_code" in payments
+
+    assert '"/api/v1/promocodes/active"' in promocodes
+    assert "Промокод применён" in promocodes
+    assert "Повторно вводить его при пополнении не нужно" in promocodes
