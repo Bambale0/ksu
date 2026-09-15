@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Payment, ReferralRelation, ReferralReward, WalletTransaction
+from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, WalletTransaction
 from app.db.payment_models import ReferralRewardReversal
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.wallet import WalletService
@@ -148,6 +148,10 @@ class ReferralService:
         if source_payment is None:
             return
 
+        promo = await session.get(PromoCode, relation.promo_id)
+        if promo is None or promo.partner_user_id != relation.inviter_user_id:
+            return
+
         # Retained only for backwards compatibility with existing provider call
         # sites. Cash commission always comes from the authoritative Payment row.
         _ = payment_amount
@@ -165,26 +169,28 @@ class ReferralService:
                 level=1,
                 percent=Decimal(config.first_line_percent),
                 payment_amount=reward_basis,
+                reason="partner_referral_commission",
+                promo_id=promo.id,
+                promo_code=promo.code,
+                payment_id=source_payment.id,
             )
 
         fixed_rox = Decimal(config.topup_partner_rox)
         if fixed_rox > 0:
-            idempotency_key = f"partner-promo-topup:{source_transaction_id}"
-            existing = await session.scalar(
-                select(WalletTransaction).where(
-                    WalletTransaction.idempotency_key == idempotency_key
-                )
+            await WalletService.credit(
+                session,
+                user_id=relation.inviter_user_id,
+                amount=fixed_rox,
+                kind="partner_promo_topup_bonus",
+                reference_type="payment",
+                reference_id=str(source_payment.id),
+                idempotency_key=f"partner-promo-topup:{source_transaction_id}",
+                reason="partner_referral_topup_bonus",
+                promo_code=promo.code,
+                partner_id=relation.inviter_user_id,
+                referral_user_id=source_user_id,
+                payment_id=source_payment.id,
             )
-            if existing is None:
-                await WalletService.credit(
-                    session,
-                    user_id=relation.inviter_user_id,
-                    amount=fixed_rox,
-                    kind="partner_promo_topup_bonus",
-                    reference_type="payment",
-                    reference_id=str(source_payment.id),
-                    idempotency_key=idempotency_key,
-                )
 
     @staticmethod
     async def reverse_payment_rewards(
@@ -248,6 +254,11 @@ class ReferralService:
                     reference_type="wallet_transaction",
                     reference_id=str(source_transaction_id),
                     idempotency_key=f"partner-promo-topup-reversal:{source_transaction_id}",
+                    reason="partner_referral_topup_bonus_reversal",
+                    promo_code=bonus_tx.promo_code,
+                    partner_id=bonus_tx.partner_id,
+                    referral_user_id=bonus_tx.referral_user_id,
+                    payment_id=bonus_tx.payment_id,
                 )
 
         await session.flush()
@@ -262,6 +273,10 @@ class ReferralService:
         level: int,
         percent: Decimal,
         payment_amount: Decimal,
+        reason: str,
+        promo_id: uuid.UUID,
+        promo_code: str,
+        payment_id: uuid.UUID,
     ) -> None:
         existing = await session.scalar(
             select(ReferralReward).where(
@@ -288,6 +303,10 @@ class ReferralService:
                 percent=percent,
                 amount=amount,
                 status="available",
+                reason=reason,
+                promo_id=promo_id,
+                promo_code=promo_code,
+                payment_id=payment_id,
             )
         )
         await session.flush()
