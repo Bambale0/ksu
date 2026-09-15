@@ -385,7 +385,7 @@ export function RoxySocialApp() {
     const [works, publications, promo] = await Promise.all([
       api.generations("limit=36&status=succeeded"),
       me ? api.profileFeed(String(me.telegram_id), 0) : Promise.resolve({ items: [] as FeedCard[] }),
-      api.activePromo(),
+      api.activePromo().catch(() => null),
     ]);
     const ownPublished = works.items.filter(isPublishedGeneration);
     const publishedIds = new Set((publications.items || []).map((item) => item.id));
@@ -394,7 +394,7 @@ export function RoxySocialApp() {
       ...(publications.items || []),
       ...ownPublished.filter((item) => !publishedIds.has(item.id)),
     ]);
-    setActivePromo(promo);
+    if (promo) setActivePromo(promo);
   }, [me]);
 
   const loadPartners = useCallback(async () => {
