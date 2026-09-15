@@ -935,7 +935,9 @@ async def test_active_partner_promo_state_persists_and_marks_future_payment() ->
         assert state["active"] is True
         assert state["code"] == promo.code
         assert state["partner_user_id"] == str(partner.id)
-        assert Decimal(str(state["welcome_rox_granted"])) == Decimal("25.00")
+        assert Decimal(str(state["welcome_rox_granted"])) == Decimal("0")
+        assert Decimal(str(state["payment_bonus_rox"])) == Decimal("50.00")
+        assert Decimal(str(state["min_payment_rub"])) == Decimal("1000.00")
         assert Decimal(str(state["package_discount_percent"])) == Decimal("0")
 
         payment = Payment(
