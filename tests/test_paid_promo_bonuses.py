@@ -782,6 +782,42 @@ async def test_admin_cannot_reactivate_legacy_ownerless_promo() -> None:
 
 
 @pytest.mark.asyncio
+async def test_admin_campaign_update_cannot_reactivate_legacy_ownerless_promo() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Legacy campaign promo admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.manage"]},
+            is_active=True,
+        )
+        promo = PromoCode(
+            code=f"CAMPAIGNOWNERLESS{uuid.uuid4().hex[:8].upper()}",
+            reward_amount=Decimal("25"),
+            partner_user_id=None,
+            max_uses=100,
+            uses_count=0,
+            is_active=False,
+        )
+        session.add_all([admin, promo])
+        await session.flush()
+
+        with pytest.raises(ValueError, match="partner"):
+            await AdminPromoService.update_campaign(
+                session,
+                admin=admin,
+                promo_id=promo.id,
+                max_uses=None,
+                expires_at=None,
+                is_active=True,
+                idempotency_key=f"ownerless-campaign-reactivate:{uuid.uuid4()}",
+                request_id=f"test:{uuid.uuid4()}",
+                confirmed=True,
+            )
+        await session.rollback()
+
+
+@pytest.mark.asyncio
 async def test_admin_promo_create_rejects_missing_partner_instead_of_creating_dead_code() -> None:
     async with SessionFactory() as session:
         admin_user = await _user(session, "Ownerless promo admin")
