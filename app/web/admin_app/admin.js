@@ -864,9 +864,11 @@
     ], renderReferrals);
     const cols = [
       ["Партнёр", (row) => el("span", "mono", row.partner_user_id)],
-      ["Источник", (row) => el("span", "mono", row.source_user_id)],
-      ["Линия", (row) => String(row.level)],
-      ["Начисление", (row) => `${formatNumber(row.amount)} · ${formatNumber(row.percent)}%`],
+      ["Реферал", (row) => el("span", "mono", row.source_user_id)],
+      ["Промокод", (row) => el("span", "mono", row.promo_code || "—")],
+      ["Платёж", (row) => el("span", "mono", row.payment_id || "—")],
+      ["Причина", (row) => row.reason || "—"],
+      ["Начисление", (row) => `${formatNumber(row.amount)} ₽ · ${formatNumber(row.percent)}%`],
       ["Статус", (row) => statusBadge(row.status)],
       ["Создано", (row) => formatDate(row.created_at)],
     ];
