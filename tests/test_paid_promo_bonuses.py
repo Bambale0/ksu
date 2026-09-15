@@ -24,6 +24,7 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.db.session import SessionFactory
+from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_promos import AdminPromoService
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.payments import PaymentService
@@ -950,6 +951,67 @@ async def test_legacy_admin_program_update_preserves_new_user_topup_fields_when_
         assert replayed is False
         assert Decimal(str(result["topup_user_rox"])) == expected_user_rox
         assert Decimal(str(result["topup_user_min_rub"])) == expected_min_rub
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_legacy_admin_program_update_retry_replays_pre_0039_hash() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Legacy retry admin")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.read", "promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        key = f"legacy-program-retry:{uuid.uuid4()}"
+        legacy_payload = {
+            "welcome_rox": "25",
+            "first_line_percent": "30",
+            "topup_partner_rox": "10",
+            "is_active": True,
+        }
+        legacy_response = {
+            "welcome_rox": "25",
+            "first_line_percent": "30",
+            "topup_partner_rox": "10",
+            "is_active": True,
+        }
+
+        async def legacy_operation() -> dict[str, object]:
+            return legacy_response
+
+        first, first_replayed = await AdminCommandLedger.execute(
+            session,
+            idempotency_key=key,
+            admin_user_id=admin.id,
+            request_id=f"legacy:{uuid.uuid4()}",
+            action="promos.manage",
+            target_id="partner-promo-program",
+            request_payload=legacy_payload,
+            operation=legacy_operation,
+        )
+        assert first_replayed is False
+
+        replay, replayed = await AdminPromoService.update_program(
+            session,
+            admin=admin,
+            welcome_rox=Decimal("25"),
+            first_line_percent=Decimal("30"),
+            topup_partner_rox=Decimal("10"),
+            topup_user_rox=None,
+            topup_user_min_rub=None,
+            is_active=True,
+            idempotency_key=key,
+            request_id=f"retry:{uuid.uuid4()}",
+            confirmed=True,
+        )
+
+        assert replayed is True
+        assert replay == first == legacy_response
         await session.rollback()
 
 

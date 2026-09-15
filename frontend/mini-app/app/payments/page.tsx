@@ -86,11 +86,19 @@ function paymentProviderLabel(payment: Payment): string {
   return "Lava Top";
 }
 
-function promoTopupBonusForPackage(item: Package | null | undefined, activePromo: ActivePromo | null): number {
+function promoTopupBonusForPackage(
+  item: Package | null | undefined,
+  activePromo: ActivePromo | null,
+  currency: Currency,
+): number {
   if (!item || !activePromo?.active || !activePromo.program_active) return 0;
   const minimumRub = Number(activePromo.topup_user_min_rub || 0);
   const rewardRox = Number(activePromo.topup_user_rox || 0);
-  const rubBasis = Number(item.prices.RUB || item.credits || 0);
+  // Match backend settlement exactly: RUB payments use the paid RUB amount,
+  // while non-RUB card payments use the package base ROX as RUB accounting basis.
+  const rubBasis = currency === "RUB"
+    ? Number(item.prices.RUB || 0)
+    : Number(item.credits || 0);
   return rubBasis >= minimumRub ? rewardRox : 0;
 }
 
@@ -243,7 +251,7 @@ export default function PaymentsPage() {
   const price = selected?.prices[activeCurrency];
   const packageBaseRox = Number(selected?.credits || 0);
   const packageBonusRox = Number(selected?.bonus_credits || 0);
-  const promoTopupBonusRox = promoTopupBonusForPackage(selected, activePromo);
+  const promoTopupBonusRox = promoTopupBonusForPackage(selected, activePromo, activeCurrency);
   const totalRox = Number(selected?.total_credits || packageBaseRox + packageBonusRox) + promoTopupBonusRox;
   const providerLabel = provider === "card"
     ? "Lava Top"
@@ -445,8 +453,8 @@ export default function PaymentsPage() {
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
             <strong>{compactNumber(item.credits)} ROX</strong>
             {Number(item.bonus_credits || 0) > 0 ? <small>+{compactNumber(item.bonus_credits)} ROX 🎁</small> : null}
-            {promoTopupBonusForPackage(item, activePromo) > 0 ? <small>+{compactNumber(promoTopupBonusForPackage(item, activePromo))} ROX по промокоду 🎟️</small> : null}
-            <small><strong>Итого {compactNumber(Number(item.total_credits || item.credits) + promoTopupBonusForPackage(item, activePromo))} ROX</strong></small>
+            {promoTopupBonusForPackage(item, activePromo, activeCurrency) > 0 ? <small>+{compactNumber(promoTopupBonusForPackage(item, activePromo, activeCurrency))} ROX по промокоду 🎟️</small> : null}
+            <small><strong>Итого {compactNumber(Number(item.total_credits || item.credits) + promoTopupBonusForPackage(item, activePromo, activeCurrency))} ROX</strong></small>
             <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
           </button>)}</div>
 

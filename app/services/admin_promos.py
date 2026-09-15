@@ -311,12 +311,14 @@ class AdminPromoService:
             "welcome_rox": str(welcome_rox),
             "first_line_percent": str(first_line_percent),
             "topup_partner_rox": str(topup_partner_rox),
-            "topup_user_rox": None if topup_user_rox is None else str(topup_user_rox),
-            "topup_user_min_rub": (
-                None if topup_user_min_rub is None else str(topup_user_min_rub)
-            ),
             "is_active": is_active,
         }
+        # Preserve the exact pre-0039 request hash when older admin clients omit
+        # the new optional fields and retry an existing idempotency key.
+        if topup_user_rox is not None:
+            payload["topup_user_rox"] = str(topup_user_rox)
+        if topup_user_min_rub is not None:
+            payload["topup_user_min_rub"] = str(topup_user_min_rub)
 
         async def operation() -> dict[str, object]:
             config = await PartnerPromoProgramService.get_config(session, for_update=True)

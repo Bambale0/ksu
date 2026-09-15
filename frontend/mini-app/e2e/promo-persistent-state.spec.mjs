@@ -167,3 +167,66 @@ test('promo-looking query does not activate a code automatically', async ({ page
   await expect(page.getByPlaceholder('Например, KSENIA50')).toHaveValue('');
   await expect.poll(() => redeemCalls).toBe(0);
 });
+
+
+test('promo topup preview uses the same RUB basis as non-RUB card settlement', async ({ page }) => {
+  await installTelegram(page);
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const json = (body) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+
+    if (path === '/api/v1/promocodes/active') return json({
+      active: true,
+      program_active: true,
+      code: 'FXPROMO',
+      promo_id: '44444444-4444-4444-8444-444444444444',
+      partner_user_id: '55555555-5555-4555-8555-555555555555',
+      activated_at: '2026-09-15T12:00:00+00:00',
+      welcome_rox_granted: '25.00',
+      welcome_rox_current: '25.00',
+      first_line_percent: '30.00',
+      topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1050.00',
+      package_discount_percent: '0',
+    });
+    if (path === '/api/v1/payments/card/packages') return json({
+      provider: 'card',
+      label: 'Lava Top',
+      configured: true,
+      currencies: ['RUB', 'USD'],
+      packages: {
+        starter: {
+          credits: '1000',
+          bonus_credits: '100',
+          total_credits: '1100',
+          prices: { RUB: '1087', USD: '10' },
+        },
+      },
+    });
+    if (path === '/api/v1/payments/yookassa/packages') return json({
+      provider: 'yookassa', label: 'ЮKassa', configured: false, currencies: ['RUB'], packages: {},
+    });
+    if (path === '/api/v1/payments/crypto/packages') return json({
+      provider: 'cryptobot', label: 'CryptoBot', configured: false, currencies: ['RUB'], packages: {},
+    });
+    if (path === '/api/v1/payments' && request.method() === 'GET') return json({ items: [] });
+    return json({});
+  });
+
+  await page.goto('/mini-app/payments/?provider=card');
+
+  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toBeVisible();
+  await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'USD', exact: true }).click();
+
+  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Итого 1 100 ROX', { exact: true })).toBeVisible();
+});
