@@ -163,6 +163,46 @@ async def test_signed_balance_adjustment_replays_same_idempotency_key_once(
 
 
 @pytest.mark.asyncio
+async def test_legacy_admin_promo_create_shape_remains_accepted_but_unassigned() -> None:
+    async with SessionFactory() as session:
+        admin_user = User(
+            telegram_id=random.randint(7_250_000_000_000, 7_299_999_999_999),
+            first_name="Legacy promo admin",
+        )
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={},
+            is_active=True,
+            mfa_enabled=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        result, replayed = await AdminPromoService.create(
+            session,
+            admin=admin,
+            code=f"LEGACYADMIN{random.randint(100_000, 999_999)}",
+            partner_user_id=None,
+            max_uses=5,
+            expires_at=None,
+            idempotency_key=f"legacy-admin-promo:{uuid.uuid4()}",
+            request_id="legacy-admin-promo",
+            confirmed=True,
+        )
+        await session.commit()
+
+        assert replayed is False
+        assert result["partner_user_id"] is None
+        promo = await session.get(PromoCode, uuid.UUID(result["id"]))
+        assert promo is not None
+        assert promo.partner_user_id is None
+
+
+
+@pytest.mark.asyncio
 async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> None:
     async with SessionFactory() as session:
         admin_user = User(
