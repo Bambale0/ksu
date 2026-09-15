@@ -1,11 +1,8 @@
-from decimal import Decimal
-
 from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.models import User
 from app.services.referral_antifraud import ReferralAntifraudService
 from app.services.wallet import WalletService
@@ -64,20 +61,13 @@ class UserService:
         cls._sync_telegram_profile(user, telegram_user)
 
         if created_user_id is None:
-            # The concurrent creator owns wallet/welcome/referral initialization.
+            # The concurrent creator owns wallet/referral initialization.
             # ON CONFLICT waits for that transaction to resolve before this branch.
             return user
 
+        # Registration itself is non-financial. Partner-program ROX are granted
+        # only by an explicit partner promo activation.
         await WalletService.ensure_wallet(session, user.id)
-
-        if settings.start_balance_rox > Decimal("0"):
-            await WalletService.credit(
-                session,
-                user_id=user.id,
-                amount=settings.start_balance_rox,
-                kind="welcome_bonus",
-                idempotency_key=f"welcome:{user.id}",
-            )
 
         await ReferralAntifraudService.attach_new_user(
             session,
