@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
