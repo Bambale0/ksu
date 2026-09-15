@@ -27,27 +27,29 @@ Partner promo codes are the only financial activation mechanism for the referral
 
 - Every promo code belongs to one partner (`promo_codes.partner_user_id`).
 - Program economics are global and database-owned in `partner_promo_program_config`; individual promo codes do not define their own reward amount.
-- Initial production values are: **25 ROX** to the user on first promo activation, **30%** of paid RUB basis to the first-line partner, and **+10 ROX** to that partner for each successful referred-user top-up.
+- Current production economics: promo activation itself grants **0 ROX**; an activated user receives **+50 ROX** only after a successful payment with authoritative paid RUB amount **>= 1000 ₽**; the first-line partner receives **30%** of the successful paid RUB amount plus **+10 ROX** for that top-up.
 - A plain referral/deep link may still create an attribution relation for analytics/anti-fraud, but it grants **no ROX and no cash reward**. Financial rewards start only after a promo upgrades/creates the relation with `source=promo`.
 - A plain link attribution is non-financial and may be replaced by the user's first valid partner promo, even when the link pointed to another partner. Once `source=promo`, partner ownership is immutable for the user; later promo codes cannot move the user to another partner.
-- The welcome ROX grant is one-time and idempotent per user. Promo activation is independent from payment success and does not increase a purchased ROX package.
+- Promo activation is persisted but grants no wallet transaction. The user payment bonus is idempotent per successful eligible payment and is recorded separately from the purchased package.
+- Package economics are independent from promo economics. Approved RUB packages are: 326.1 ₽ -> 300 base +30 package bonus = 330 ROX; 543.5 ₽ -> 500 +50 = 550; 1087 ₽ -> 1000 +100 = 1100; 2173.9 ₽ -> 2000 +150 = 2150; 5434.8 ₽ -> 5000 +300 = 5300.
+- With an active promo, only payments meeting the >=1000 ₽ threshold receive the additional +50 ROX: therefore the 1087/2173.9/5434.8 ₽ packages total 1150/2200/5350 ROX. The 326.1/543.5 ₽ packages remain 330/550 ROX.
 - Only first-line paid top-ups earn commission. Second-line financial rewards are disabled for this program.
-- The fixed partner top-up ROX bonus is idempotent per source payment transaction and is reversed on a full payment refund. Cash referral rewards keep the existing proportional refund accounting.
-- Every partner-program financial row stores audit context for its reason, promo code, partner, referred user and source payment (where a payment exists), in addition to an idempotency key/unique financial source.
-- Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
+- The fixed partner top-up ROX bonus is idempotent per source payment transaction and is reversed on a full payment refund. Cash referral rewards keep proportional refund accounting. The user's payment-bound promo bonus is also reversed with the payment.
+- Every partner-program financial row stores audit context for its reason, promo code, partner, referred user and source payment, in addition to an idempotency key/unique financial source.
+- Admins manage global promo payment bonus, minimum payment threshold, partner commission, partner top-up ROX, promo ownership, limits, expiry and state through the admin control surface. Legacy `welcome_rox` remains only for schema/API compatibility and production value is zero.
+- Legacy pre-0039 pending promo reservations must still settle according to the promise made at checkout; new promo activations use only the payment-bound program above.
 
 
-## Active Feature Execution — Persistent promo visibility in Mini App
+## Active Feature Execution — Paid promo + package bonus separation
 
-- **Task:** make an already activated partner promo visibly persist across Mini App reloads/navigation and surface its benefit on payments/profile without changing promo economics.
-- **Baseline SHA:** `70ae3f961950ce103e8c88f8d3131526287ceab8`.
-- **Current state:** activation/economics exist and are covered by backend tests; `/mini-app/promocodes/` shows immediate activation result; `payments/page.tsx` only knows promo state from manual input or `?promo=` and therefore loses visible state after reload/navigation.
-- **Missing:** authenticated read endpoint for the current user's active promo attribution; automatic hydration of that state on payments/profile; regression coverage for persisted visibility.
-- **Reuse:** `PromoCodeService.relation_for_user`, `PartnerPromoProgramService`, existing `PromoCode`/wallet audit rows, customer API helper.
-- **Security:** derive user from authenticated session only; never accept user/partner ownership from client; return only user-facing promo metadata.
-- **No-hardcode:** economics remain DB-owned by `partner_promo_program_config`.
-- **Observability:** no new provider path; existing request-id HTTP middleware remains authoritative. Endpoint is read-only and deterministic.
-- **Acceptance criteria:** (1) after promo activation, reload/navigation still shows active code; (2) payments page auto-hydrates it without re-entry; (3) UI explicitly shows +welcome ROX benefit and that purchased package amount itself is unchanged; (4) checkout automatically carries active promo metadata when applicable; (5) profile exposes active promo/program state; (6) existing activation/payment/refund economics stay unchanged.
-- **Verification matrix:** unit/domain — existing promo economics + new view helper; DB/API integration — required; authorization — required via CurrentUserDep; migrations — N/A, no schema change; provider contract — N/A; idempotency/retry — existing activation/checkout unchanged; API — required; E2E — required for persisted UI; smoke — required through Mini App/CI; observability — existing request middleware; admin configurability — economics unchanged/DB-backed; performance — indexed PK/FK lookup only; rollback — code-only revert.
-- **Plan:** 1) add failing API regression for active promo state; 2) implement read endpoint; 3) hydrate payments/profile UX from endpoint; 4) add frontend/E2E assertions; 5) code review against spec + AGENTS; 6) exact-head CI, merge, deploy, exact-SHA production verification.
-- **Progress:** audit complete; implementation pending.
+- **Task:** implement the final package/promo mechanics without hardcoded runtime economics.
+- **Baseline:** current `main` after merged PR #455.
+- **Package contract:** package total = `base_credits + bonus_credits`; package bonus belongs to the package and applies with or without promo.
+- **Promo contract:** activation stores immutable partner attribution and grants no ROX. Successful eligible payment grants `payment_bonus_rox` (default 50) only when authoritative paid RUB >= `min_payment_rub` (default 1000).
+- **Partner contract:** source must be `promo`; first-line partner receives global `first_line_percent` (default 30%) of authoritative paid RUB plus `topup_partner_rox` (default 10) for every successful referred-user top-up.
+- **UX:** active state says «Промокод активен — +50 ROX при пополнении от 1000 ₽». Package cards display base ROX, package gift, conditional promo gift, and resulting total.
+- **Accounting:** package payment credit, user promo payment bonus, partner fixed ROX bonus and partner RUB commission remain distinct auditable/idempotent records.
+- **Refunds:** payment ROX and user promo ROX reverse with the payment; partner fixed +10 reverses on full refund; partner RUB commission reverses proportionally.
+- **Compatibility:** retain old admin request fields and pre-upgrade pending promo reservations; no new activation-time ROX.
+- **Verification:** migration + ORM parity; unit/integration for activation, below-threshold, eligible payment, duplicate settlement, partner 30%/+10, refund; API catalog split; Mini App static/E2E; Admin Console; Batch; ROXY E2E; Release Gate; full CI; Codex review.
+
