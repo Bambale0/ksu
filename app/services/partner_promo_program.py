@@ -39,8 +39,8 @@ class PartnerPromoProgramService:
         payment_bonus_rox: Decimal,
         payment_bonus_min_rub: Decimal,
     ) -> None:
-        if welcome_rox < 0 or welcome_rox > Decimal("100000"):
-            raise ValueError("Welcome ROX must be between 0 and 100000")
+        if welcome_rox != Decimal("0"):
+            raise ValueError("Welcome ROX is deprecated and must remain 0")
         if first_line_percent < 0 or first_line_percent > Decimal("100"):
             raise ValueError("First-line percent must be between 0 and 100")
         if topup_partner_rox < 0 or topup_partner_rox > Decimal("100000"):
