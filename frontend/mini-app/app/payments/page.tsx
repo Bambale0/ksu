@@ -38,6 +38,8 @@ type PromoPreview = {
   welcome_rox?: string;
   first_line_percent?: string;
   topup_partner_rox?: string;
+  topup_user_rox?: string;
+  topup_user_min_rub?: string;
   remaining_uses?: number | null;
   expires_at?: string | null;
   message?: string;
@@ -53,6 +55,8 @@ type Payment = {
   credits?: string;
   rox?: string;
   base_credits?: string;
+  package_bonus_credits?: string;
+  promo_bonus_credits?: string;
   bonus_credits?: string;
   promo_code?: string;
   promo_bonus_status?: string;
@@ -87,22 +91,29 @@ function paymentProviderLabel(payment: Payment): string {
   return "Lava Top";
 }
 
+function promoTopupBonusForPackage(item: Package | null | undefined, activePromo: ActivePromo | null): number {
+  if (!item || !activePromo?.active || !activePromo.program_active) return 0;
+  const minimumRub = Number(activePromo.topup_user_min_rub || 0);
+  const rewardRox = Number(activePromo.topup_user_rox || 0);
+  const rubBasis = Number(item.prices.RUB || item.credits || 0);
+  return rubBasis >= minimumRub ? rewardRox : 0;
+}
+
 function paymentRoxSummary(payment: Payment): string {
-  const hasPromo = Boolean(payment.promo_code);
-  const promoApplied = hasPromo && payment.promo_bonus_status === "applied";
-  const credited = hasPromo && !promoApplied
-    ? payment.base_credits || payment.rox || payment.credits
-    : payment.credits || payment.rox || payment.base_credits;
-  const bonus = Number(payment.bonus_credits || 0);
-  let bonusLabel = "";
-  if (bonus > 0 && promoApplied) {
-    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} по ${payment.promo_code}`;
-  } else if (bonus > 0 && !hasPromo) {
-    bonusLabel = ` · +${compactNumber(payment.bonus_credits)} бонус`;
-  } else if (hasPromo && payment.promo_bonus_status === "activated") {
-    bonusLabel = ` · промокод ${payment.promo_code} активен`;
+  const credited = payment.credits || payment.rox || payment.base_credits;
+  const packageBonus = Number(payment.package_bonus_credits || 0);
+  const promoBonus = Number(payment.promo_bonus_credits || 0);
+  const labels: string[] = [];
+  if (packageBonus > 0) labels.push(`+${compactNumber(packageBonus)} пакетный бонус`);
+  if (promoBonus > 0 && payment.promo_code) {
+    labels.push(`+${compactNumber(promoBonus)} по ${payment.promo_code}`);
+  } else if (payment.promo_code && payment.promo_bonus_status === "below_threshold") {
+    labels.push(`промокод ${payment.promo_code}: порог не достигнут`);
+  } else if (payment.promo_code && payment.promo_bonus_status === "activated") {
+    labels.push(`промокод ${payment.promo_code} активен`);
   }
-  return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${bonusLabel}`;
+  const suffix = labels.length ? ` · ${labels.join(" · ")}` : "";
+  return `${credited ? `${compactNumber(credited)} ROX` : payment.package_id}${suffix}`;
 }
 
 export default function PaymentsPage() {
@@ -252,7 +263,10 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
-  const totalRox = Number(selected?.credits || 0);
+  const packageBaseRox = Number(selected?.credits || 0);
+  const packageBonusRox = Number(selected?.bonus_credits || 0);
+  const promoTopupBonusRox = promoTopupBonusForPackage(selected, activePromo);
+  const totalRox = Number(selected?.total_credits || packageBaseRox + packageBonusRox) + promoTopupBonusRox;
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
@@ -366,7 +380,11 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = effectivePromo ? " Партнёрский промокод уже активирован; сумма ROX в пакете не меняется." : "";
+      const promoHint = effectivePromo
+        ? promoTopupBonusRox > 0
+          ? ` Промокод добавит ещё +${compactNumber(promoTopupBonusRox)} ROX после успешной оплаты.`
+          : " Промокод активен, но выбранный пакет ниже порога дополнительного промо-бонуса."
+        : "";
       setNotice(
         provider === "card"
           ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
@@ -417,7 +435,7 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Пакеты начисляют ровно указанное количество ROX. Партнёрский промокод активирует отдельную бонусную программу и не меняет пакет."
+      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Обычный бонус пакета начисляется независимо от промокода. Активный партнёрский промокод добавляет ещё отдельный ROX-бонус к подходящему пополнению."
     >
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
@@ -426,10 +444,10 @@ export default function PaymentsPage() {
         <h2>{activePromo.code}</h2>
         <div className="profile-stats">
           <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
-          <div><strong>Без изменений</strong><span>цена пакета</span></div>
-          <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
+          <div><strong>+{compactNumber(activePromo.topup_user_rox || 0)}</strong><span>ROX от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽</span></div>
+          <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>партнёрская программа</span></div>
         </div>
-        <p className="muted">Цена пакета не меняется: этот промокод даёт отдельный бонус ROX и закрепляет партнёрскую программу.</p>
+        <p className="muted">Обычный бонус выбранного пакета сохраняется. При оплате от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽ промокод добавит ещё +{compactNumber(activePromo.topup_user_rox || 0)} ROX сверху.</p>
       </div> : null}
 
       <div className="panel tool-panel">
@@ -448,14 +466,18 @@ export default function PaymentsPage() {
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
             <strong>{compactNumber(item.credits)} ROX</strong>
+            {Number(item.bonus_credits || 0) > 0 ? <small>+{compactNumber(item.bonus_credits)} ROX 🎁</small> : null}
+            {promoTopupBonusForPackage(item, activePromo) > 0 ? <small>+{compactNumber(promoTopupBonusForPackage(item, activePromo))} ROX по промокоду 🎟️</small> : null}
+            <small><strong>Итого {compactNumber(Number(item.total_credits || item.credits) + promoTopupBonusForPackage(item, activePromo))} ROX</strong></small>
             <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
           </button>)}</div>
 
           {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
 
           {selected ? <div className="profile-stats">
-            <div><strong>{compactNumber(selected.credits)}</strong><span>ROX в пакете</span></div>
-            {activePromo?.active ? <div><strong>{activePromo.code}</strong><span>промокод применён</span></div> : promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
+            <div><strong>{compactNumber(packageBaseRox)}</strong><span>базовые ROX</span></div>
+            <div><strong>+{compactNumber(packageBonusRox)}</strong><span>бонус пакета</span></div>
+            {activePromo?.active ? <div><strong>+{compactNumber(promoTopupBonusRox)}</strong><span>по промокоду {activePromo.code}</span></div> : promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
             <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
           </div> : null}
 

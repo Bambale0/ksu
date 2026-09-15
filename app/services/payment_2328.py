@@ -77,19 +77,22 @@ class Payment2328Service:
             raise UnknownPaymentPackageError(package_id)
 
         base_credits = Decimal(package.credits)
-        credited_credits = base_credits
+        package_bonus = Decimal(package.bonus_credits)
+        credited_credits = base_credits + package_bonus
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=cls.CURRENCY,
-            rox_amount=base_credits,
+            rox_amount=credited_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "base_credits": str(base_credits),
-                "bonus_credits": "0",
+                "package_bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
+                "bonus_credits": str(package_bonus),
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },

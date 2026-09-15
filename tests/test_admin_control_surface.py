@@ -70,6 +70,8 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert '/api/v1/admin/control/promocodes/${row.id}/partner' in js
     assert "ROX новому пользователю" in js
     assert "% партнёру с пополнений 1-й линии" in js
+    assert "ROX пользователю за подходящее пополнение" in js
+    assert "Минимальная сумма пополнения, ₽" in js
 
 
 

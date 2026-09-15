@@ -88,6 +88,8 @@ async function mockApi(page) {
       welcome_rox_current: '25.00',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
       package_discount_percent: '0',
     } : {
       active: false,
@@ -100,6 +102,8 @@ async function mockApi(page) {
       welcome_rox_current: '0',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
       package_discount_percent: '0',
     });
     if (path === '/api/v1/promocodes/redeem' && method === 'POST') {
@@ -112,6 +116,8 @@ async function mockApi(page) {
       welcome_rox: '25.00',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
       balance_rox: '175.00',
       message: 'Промокод активирован: +25.00 ROX',
       });
@@ -186,7 +192,7 @@ test('promo activation grants welcome ROX before checkout', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'WELCOME' })).toBeVisible();
   await expect(page.getByText('+25', { exact: true })).toBeVisible();
   await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
-  await expect(page.getByText('Без изменений', { exact: true })).toBeVisible();
+  await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
   await expect(page.getByText('Активна', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Перейти к пополнению' }).click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);

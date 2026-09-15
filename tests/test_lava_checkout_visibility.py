@@ -17,7 +17,8 @@ def test_yookassa_is_primary_and_lava_is_reserve_for_new_mini_app_checkout() -> 
     assert '>2328</button>' not in source
     assert '>ЮKassa</button>' in source
     assert "ЮKassa — основной способ оплаты." in source
-    assert "Партнёрский промокод активирует отдельную бонусную программу и не меняет пакет." in source
+    assert "Обычный бонус пакета начисляется независимо от промокода." in source
+    assert "Активный партнёрский промокод добавляет ещё отдельный ROX-бонус" in source
     assert 'if (requested === "card") return "card";' in source
     assert 'if (requested === "cryptobot") return "cryptobot";' in source
     assert 'return "yookassa";' in source

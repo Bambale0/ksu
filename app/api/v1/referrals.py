@@ -153,6 +153,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "invite_bonus_rox": "0",
         "promo_welcome_rox": str(promo_program.welcome_rox),
         "promo_topup_partner_rox": str(promo_program.topup_partner_rox),
+        "promo_topup_user_rox": str(promo_program.topup_user_rox),
+        "promo_topup_user_min_rub": str(promo_program.topup_user_min_rub),
         "promo_program_active": promo_program.is_active,
         "promo_codes": [
             {

@@ -62,7 +62,7 @@ export default function PromocodesPage() {
     <StandaloneShell
       kicker="Промокод"
       title="Партнёрские бонусы"
-      copy="Промокод один раз закрепляет партнёра и включает бонусную программу. Сам пакет пополнения при этом не меняется."
+      copy="Промокод один раз закрепляет партнёра и включает отдельные партнёрские бонусы. Обычный бонус выбранного пакета при этом сохраняется."
     >
       <div className="panel tool-panel">
         {loading ? <p className="muted">Проверяем активный промокод…</p> : null}
@@ -72,7 +72,7 @@ export default function PromocodesPage() {
           <h2>{activePromo.code}</h2>
           <div className="profile-stats">
             <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
-            <div><strong>Без изменений</strong><span>цена пакета</span></div>
+            <div><strong>+{compactNumber(activePromo.topup_user_rox || 0)}</strong><span>ROX от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽</span></div>
             <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
           </div>
           <p className="muted">

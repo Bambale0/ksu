@@ -41,6 +41,8 @@ test('active promo persists on payments and is attached to a new payment automat
       welcome_rox_current: '25.00',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
+      topup_user_rox: '50.00',
+      topup_user_min_rub: '1000.00',
       package_discount_percent: '0',
     });
     if (path === '/api/v1/payments/card/packages') return json({
@@ -53,10 +55,10 @@ test('active promo persists on payments and is attached to a new payment automat
       currencies: ['RUB'],
       packages: {
         starter: {
-          credits: '300',
-          bonus_credits: '0',
-          total_credits: '300',
-          prices: { RUB: '326.10' },
+          credits: '1000',
+          bonus_credits: '100',
+          total_credits: '1100',
+          prices: { RUB: '1086.96' },
         },
       },
     });
@@ -72,12 +74,14 @@ test('active promo persists on payments and is attached to a new payment automat
         provider: 'yookassa',
         label: 'ЮKassa',
         package_id: 'starter',
-        amount: '326.10',
+        amount: '1086.96',
         currency: 'RUB',
-        credits: '300',
-        rox: '300',
-        base_credits: '300',
-        bonus_credits: '0',
+        credits: '1100',
+        rox: '1100',
+        base_credits: '1000',
+        package_bonus_credits: '100',
+        promo_bonus_credits: '0',
+        bonus_credits: '100',
         promo_code: 'KSENIA50',
         promo_bonus_status: 'activated',
         payment_url: 'https://pay.example.test/promo-persisted',
@@ -93,12 +97,15 @@ test('active promo persists on payments and is attached to a new payment automat
   await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'KSENIA50' })).toBeVisible();
   await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
-  await expect(page.getByText('Без изменений', { exact: true })).toBeVisible();
-  await expect(page.getByText(/Цена пакета не меняется/)).toBeVisible();
+  await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
+  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toBeVisible();
+  await expect(page.getByText('+100 ROX 🎁', { exact: true })).toBeVisible();
+  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toBeVisible();
+  await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
   await expect(page.getByText(/Промокод KSENIA50 уже закреплён/)).toBeVisible();
   await expect(page.getByText('Есть промокод?', { exact: true })).toHaveCount(0);
 
-  const pay = page.getByRole('button', { name: /Оплатить 326,1 RUB через ЮKassa/ });
+  const pay = page.getByRole('button', { name: /Оплатить 1 087 RUB через ЮKassa/ });
   await expect(pay).toBeVisible();
   await pay.click();
 
@@ -109,7 +116,7 @@ test('active promo persists on payments and is attached to a new payment automat
     promo_code: 'KSENIA50',
   });
   await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
-  await expect(page.getByText(/промокод KSENIA50 активен/)).toBeVisible();
+  await expect(page.getByText(/Промокод добавит ещё \+50 ROX/)).toBeVisible();
 });
 
 

@@ -299,29 +299,47 @@ class AdminPromoService:
         welcome_rox: Decimal,
         first_line_percent: Decimal,
         topup_partner_rox: Decimal,
+        topup_user_rox: Decimal | None,
+        topup_user_min_rub: Decimal | None,
         is_active: bool,
         idempotency_key: str,
         request_id: str,
         confirmed: bool,
     ) -> tuple[dict[str, object], bool]:
         AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
-        PartnerPromoProgramService.validate_values(
-            welcome_rox=welcome_rox,
-            first_line_percent=first_line_percent,
-            topup_partner_rox=topup_partner_rox,
-        )
         payload = {
             "welcome_rox": str(welcome_rox),
             "first_line_percent": str(first_line_percent),
             "topup_partner_rox": str(topup_partner_rox),
+            "topup_user_rox": None if topup_user_rox is None else str(topup_user_rox),
+            "topup_user_min_rub": (
+                None if topup_user_min_rub is None else str(topup_user_min_rub)
+            ),
             "is_active": is_active,
         }
 
         async def operation() -> dict[str, object]:
             config = await PartnerPromoProgramService.get_config(session, for_update=True)
+            effective_user_rox = (
+                Decimal(config.topup_user_rox) if topup_user_rox is None else topup_user_rox
+            )
+            effective_user_min_rub = (
+                Decimal(config.topup_user_min_rub)
+                if topup_user_min_rub is None
+                else topup_user_min_rub
+            )
+            PartnerPromoProgramService.validate_values(
+                welcome_rox=welcome_rox,
+                first_line_percent=first_line_percent,
+                topup_partner_rox=topup_partner_rox,
+                topup_user_rox=effective_user_rox,
+                topup_user_min_rub=effective_user_min_rub,
+            )
             config.welcome_rox = welcome_rox
             config.first_line_percent = first_line_percent
             config.topup_partner_rox = topup_partner_rox
+            config.topup_user_rox = effective_user_rox
+            config.topup_user_min_rub = effective_user_min_rub
             config.is_active = is_active
             await session.flush()
             await session.refresh(config)
