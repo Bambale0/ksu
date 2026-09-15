@@ -83,12 +83,15 @@ class Settings(BaseSettings):
     onboarding_rules_url: str = ""
     onboarding_privacy_url: str = ""
 
-    start_balance_rox: Decimal = Decimal("50")
-    invite_bonus_rox: Decimal = Decimal("30")
-    prompt_repeat_bonus_rox: Decimal = Decimal("5")
+    # Deprecated pre-promo economy knobs. They remain accepted for deployment
+    # compatibility but are non-financial and default to zero. Partner promo
+    # economics are owned by PartnerPromoProgramConfig in the database.
+    start_balance_rox: Decimal = Decimal("0")
+    invite_bonus_rox: Decimal = Decimal("0")
+    prompt_repeat_bonus_rox: Decimal = Decimal("0")
     internal_credit_rub: Decimal = Decimal("1")
-    referral_first_percent: Decimal = Decimal("30")
-    referral_second_percent: Decimal = Decimal("5")
+    referral_first_percent: Decimal = Decimal("0")
+    referral_second_percent: Decimal = Decimal("0")
     partner_min_withdrawal_rub: Decimal = Decimal("3000")
     referral_antifraud_max_per_hour: int = 30
     referral_antifraud_max_per_day: int = 120
