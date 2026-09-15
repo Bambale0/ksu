@@ -170,6 +170,10 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
         )
         session.add(admin_user)
         await session.flush()
+        partner_user = User(
+            telegram_id=random.randint(7_300_000_000_000, 7_349_999_999_999),
+            first_name="Promo partner",
+        )
         admin = AdminAccount(
             user_id=admin_user.id,
             role="admin",
@@ -177,14 +181,14 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
             is_active=True,
             mfa_enabled=True,
         )
-        session.add(admin)
+        session.add_all([admin, partner_user])
         await session.flush()
 
         create_result, create_replayed = await AdminPromoService.create(
             session,
             admin=admin,
             code=f"PROMO{random.randint(100_000, 999_999)}",
-            reward_credits=Decimal("7"),
+            partner_user_id=partner_user.id,
             max_uses=1,
             expires_at=None,
             idempotency_key=f"integration-promo-create:{uuid.uuid4()}",
@@ -192,6 +196,7 @@ async def test_admin_promo_state_update_returns_fresh_view_after_db_write() -> N
             confirmed=True,
         )
         assert create_replayed is False
+        assert create_result["partner_user_id"] == str(partner_user.id)
 
         update_result, update_replayed = await AdminPromoService.set_active(
             session,
