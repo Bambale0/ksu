@@ -1,5 +1,6 @@
 import { initTelegram, telegramHeaders } from "./telegram";
 import type {
+  ActivePromo,
   FeedCard,
   FeedComment,
   FeedSurface,
@@ -260,6 +261,7 @@ export const api = {
     headers: { "Idempotency-Key": idempotencyKey("video-prompt") },
     body: JSON.stringify(body),
   }),
+  activePromo: () => request<ActivePromo>("/api/v1/promocodes/active"),
   referralStats: () => request<PartnerStats>("/api/v1/referrals/stats"),
   referralInvitations: () => request<{ items: ReferralInvitation[] }>("/api/v1/referrals/invitations?limit=20"),
   referralRewards: () => request<{ items: ReferralReward[] }>("/api/v1/referrals/rewards?limit=20"),
