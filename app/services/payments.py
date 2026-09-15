@@ -22,6 +22,7 @@ from app.providers.payments import (
     YooKassaClient,
 )
 from app.services.credits import InternalCreditService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle, PaymentIdempotencyConflict
 from app.services.promocodes import PromoCodeError, PromoCodeService
 from app.services.referrals import ReferralService
@@ -46,10 +47,15 @@ class PaymentPackage:
     amount: Decimal
     currency: str
     rox_amount: Decimal
+    bonus_rox: Decimal = Decimal("0")
 
     @property
     def credits(self) -> Decimal:
         return self.rox_amount
+
+    @property
+    def total_credits(self) -> Decimal:
+        return self.rox_amount + self.bonus_rox
 
 
 class PaymentService:
@@ -104,6 +110,9 @@ class PaymentService:
             assert amount is not None and credits is not None
             if amount <= 0 or credits <= 0:
                 continue
+            bonus = Decimal(str(item.get("bonus_credits", item.get("bonus_rox", "0"))))
+            if bonus < 0:
+                raise ValueError(f"Package {package_id} bonus must be non-negative")
 
             if not (explicit_amount and explicit_credits):
                 InternalCreditService.assert_rate(credits=credits, rubles=amount)
@@ -112,6 +121,7 @@ class PaymentService:
                 amount=amount,
                 currency=currency,
                 rox_amount=credits,
+                bonus_rox=bonus,
             )
         return result
 
@@ -138,6 +148,7 @@ class PaymentService:
         PaymentCreationLifecycle.validate_request_key(request_key)
         package = cls.package(package_id)
 
+        package_bonus = Decimal(package.bonus_rox)
         payment = Payment(
             user_id=user_id,
             provider=provider,
@@ -149,8 +160,10 @@ class PaymentService:
                 "package_id": package_id,
                 "request_key": request_key,
                 "base_credits": str(package.credits),
-                "bonus_credits": "0",
-                "credited_credits": str(package.credits),
+                "package_bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
+                "bonus_credits": str(package_bonus),
+                "credited_credits": str(package.total_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )
@@ -295,6 +308,7 @@ class PaymentService:
             reference_id=str(payment.id),
             idempotency_key=f"payment:{payment.id}:credit",
         )
+        await TopUpBonusService.apply_package_bonus(session, payment=payment)
         await ReferralService.accrue_from_payment(
             session,
             source_user_id=payment.user_id,
@@ -392,21 +406,53 @@ class PaymentService:
             )
 
         payment_payload = payment.payload or {}
+        package_bonus = Decimal(str(payment_payload.get("package_bonus_credits") or "0"))
         promo_bonus = (
-            Decimal(str(payment_payload.get("promo_reward_credits") or "0"))
+            Decimal(
+                str(
+                    payment_payload.get("promo_bonus_credits")
+                    or payment_payload.get("promo_reward_credits")
+                    or "0"
+                )
+            )
             if payment_payload.get("promo_bonus_status") == "applied"
             else Decimal("0")
+        )
+
+        already_package_reversed = Decimal(
+            str(payment_payload.get("package_bonus_reversed") or "0")
         )
         already_promo_reversed = Decimal(
             str(payment_payload.get("promo_bonus_reversed") or "0")
         )
         if cumulative_amount >= Decimal(payment.amount):
+            target_package_reversed = package_bonus
             target_promo_reversed = promo_bonus
         else:
+            target_package_reversed = (package_bonus * ratio).quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
             target_promo_reversed = (promo_bonus * ratio).quantize(
                 Decimal("0.01"),
                 rounding=ROUND_HALF_UP,
             )
+
+        incremental_package_reversal = max(
+            Decimal("0"),
+            target_package_reversed - already_package_reversed,
+        )
+        if incremental_package_reversal > 0:
+            await WalletService.accounting_debit(
+                session,
+                user_id=payment.user_id,
+                amount=incremental_package_reversal,
+                kind="topup_package_bonus_reversal",
+                reference_type="payment_reversal",
+                reference_id=str(reversal.id),
+                idempotency_key=f"payment:{payment.id}:package-bonus-reversal:{reversal.id}",
+            )
+
         incremental_promo_reversal = max(
             Decimal("0"),
             target_promo_reversed - already_promo_reversed,
@@ -446,6 +492,7 @@ class PaymentService:
             "last_reversal": provider_payload,
             "refunded_amount": str(cumulative_amount),
             "refunded_credits": str(target_credits),
+            "package_bonus_reversed": str(target_package_reversed),
             "promo_bonus_reversed": str(target_promo_reversed),
         }
         await session.commit()

@@ -86,6 +86,8 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
         "credits": str(payload.get("credited_credits") or payment.rox_amount),
         "rox": str(payload.get("credited_credits") or payment.rox_amount),
         "base_credits": str(payload.get("base_credits") or payment.rox_amount),
+        "package_bonus_credits": str(payload.get("package_bonus_credits") or "0"),
+        "promo_bonus_credits": str(payload.get("promo_bonus_credits") or "0"),
         "bonus_credits": str(payload.get("bonus_credits") or "0"),
         "promo_code": str(payload.get("promo_code") or ""),
         "promo_bonus_status": str(payload.get("promo_bonus_status") or ""),
@@ -99,20 +101,22 @@ def _payment_view(payment: Payment, *, request_key: str | None = None) -> dict[s
 
 def _catalog_package(package: CardPackage, *, currency: str) -> dict[str, object]:
     credits = package.credits
+    bonus = package.bonus_credits
     return {
         "credits": str(credits),
-        "bonus_credits": "0",
-        "total_credits": str(credits),
+        "bonus_credits": str(bonus),
+        "total_credits": str(package.total_credits),
         "prices": {currency: str(package.prices[currency])},
     }
 
 
 def _yookassa_catalog_package(package: PaymentPackage) -> dict[str, object]:
     credits = package.credits
+    bonus = package.bonus_rox
     return {
         "credits": str(credits),
-        "bonus_credits": "0",
-        "total_credits": str(credits),
+        "bonus_credits": str(bonus),
+        "total_credits": str(package.total_credits),
         "prices": {package.currency: str(package.amount)},
     }
 
@@ -133,6 +137,8 @@ async def list_packages() -> dict[str, object]:
                 "currency": package.currency,
                 "credits": str(package.credits),
                 "rox": str(package.rox_amount),
+                "bonus_credits": str(package.bonus_rox),
+                "total_credits": str(package.total_credits),
             }
             for package_id, package in PaymentService.packages().items()
         },

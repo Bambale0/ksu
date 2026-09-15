@@ -192,12 +192,13 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert "api.activePromo()" in app
     assert "activePromo={activePromo}" in app
     assert "Промокод активирован" in app
-    assert 'partner_promo_welcome: "Бонус по промокоду"' in app
+    assert 'partner_promo_payment_bonus: "Бонус по промокоду"' in app
 
     assert '"/api/v1/promocodes/active"' in payments
     assert "Промокод применён" in payments
-    assert "ROX уже начислено" in payments
-    assert "Цена пакета не меняется" in payments
+    assert "ROX за подходящую оплату" in payments
+    assert "минимальная оплата" in payments
+    assert "бонус пакета" in payments
     assert "payment.promo_code" in payments
 
     assert '"/api/v1/promocodes/active"' in promocodes

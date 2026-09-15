@@ -89,9 +89,11 @@ class PromoPartnerRequest(BaseModel):
 
 
 class PromoProgramRequest(BaseModel):
-    welcome_rox: Decimal = Field(ge=0, le=100_000)
+    welcome_rox: Decimal = Field(default=Decimal("0"), ge=0, le=0)
     first_line_percent: Decimal = Field(ge=0, le=100)
     topup_partner_rox: Decimal = Field(ge=0, le=100_000)
+    payment_bonus_rox: Decimal = Field(ge=0, le=100_000)
+    payment_bonus_min_rub: Decimal = Field(ge=0, le=100_000_000)
     is_active: bool
 
 
@@ -607,6 +609,8 @@ async def control_promo_program_update(
             welcome_rox=payload.welcome_rox,
             first_line_percent=payload.first_line_percent,
             topup_partner_rox=payload.topup_partner_rox,
+            payment_bonus_rox=payload.payment_bonus_rox,
+            payment_bonus_min_rub=payload.payment_bonus_min_rub,
             is_active=payload.is_active,
             idempotency_key=_idempotency(idempotency_key),
             request_id=_request_id(request),

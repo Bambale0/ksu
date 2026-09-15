@@ -18,7 +18,8 @@ def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
     assert 'parse_mode="HTML"' in block
     assert "PartnerPromoProgramService.get_config(session)" in block
     assert "За обычное приглашение без промокода начислений нет" in block
-    assert "promo_program.welcome_rox" in block
+    assert "promo_program.payment_bonus_rox" in block
+    assert "promo_program.payment_bonus_min_rub" in block
     assert "promo_program.first_line_percent" in block
     assert "promo_program.topup_partner_rox" in block
     assert "50 ROX — сразу после регистрации" not in block

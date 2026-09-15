@@ -15,6 +15,7 @@ from app.db.models import Payment, WalletTransaction
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import PaymentService, UnknownPaymentPackageError
 from app.services.promocodes import PromoCodeError, PromoCodeService
@@ -27,7 +28,12 @@ class CardPackage:
     package_id: str
     credits: Decimal
     prices: dict[str, Decimal]
+    bonus_credits: Decimal = Decimal("0")
     offer_id: str | None = None
+
+    @property
+    def total_credits(self) -> Decimal:
+        return self.credits + self.bonus_credits
     # Lava rejects `amount` for fixed-price offers (HTTP 400 "is not dynamic
     # price"). Only explicitly dynamic/price-on-request packages may send it.
     dynamic_amount: bool = False
@@ -78,6 +84,7 @@ class CardPackageCatalog:
                 package_id=package_id,
                 credits=package.credits,
                 prices={"RUB": package.amount},
+                bonus_credits=package.bonus_rox,
                 offer_id=None,
             )
             for package_id, package in PaymentService.packages().items()
@@ -96,6 +103,11 @@ class CardPackageCatalog:
             credits = Decimal(str(credits_raw))
             if credits <= 0:
                 continue
+            bonus_credits = Decimal(
+                str(item.get("bonus_credits", item.get("bonus_rox", "0")))
+            )
+            if bonus_credits < 0:
+                raise ValueError(f"Card package {package_id} bonus must be non-negative")
             prices: dict[str, Decimal] = {}
             for currency, value in prices_raw.items():
                 code = str(currency).upper()
@@ -115,6 +127,7 @@ class CardPackageCatalog:
                 package_id=str(package_id),
                 credits=credits,
                 prices=prices,
+                bonus_credits=bonus_credits,
                 offer_id=offer_id,
                 dynamic_amount=dynamic_amount,
             )
@@ -409,7 +422,8 @@ class CardPaymentService:
         # Validate the operator-owned package before committing a local payment intent.
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
-        credited_credits = package.credits
+        package_bonus = Decimal(package.bonus_credits)
+        credited_credits = package.total_credits
 
         payment = Payment(
             user_id=user_id,
@@ -423,7 +437,9 @@ class CardPaymentService:
                 "request_key": request_key,
                 "billing_email": email,
                 "base_credits": str(package.credits),
-                "bonus_credits": "0",
+                "package_bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
+                "bonus_credits": str(package_bonus),
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
@@ -545,6 +561,7 @@ class CardPaymentService:
             reference_id=str(payment.id),
             idempotency_key=f"payment:{payment.id}:credit",
         )
+        await TopUpBonusService.apply_package_bonus(session, payment=payment)
         await PromoCodeService.apply_payment_bonus(session, payment=payment)
         # Referral accounting is RUB-denominated. Never treat a USD/EUR numeric
         # amount as RUB; use only the paid package ROX basis, excluding promo gifts.

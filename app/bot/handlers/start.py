@@ -264,7 +264,7 @@ async def referrals_callback(callback: CallbackQuery, session: AsyncSession) -> 
     if callback.message:
         await callback.message.answer(
             "👥 Партнёры ROXY\n\n"
-            f"🎟️ +{promo_program.welcome_rox:g} ROX — пользователю после активации вашего промокода\n"
+            f"🎟️ +{promo_program.payment_bonus_rox:g} ROX — пользователю после успешной оплаты от {promo_program.payment_bonus_min_rub:g} ₽\n"
             f"💰 {promo_program.first_line_percent:g}% — партнёру с успешных пополнений 1-й линии\n"
             f"💎 +{promo_program.topup_partner_rox:g} ROX — партнёру за каждое успешное пополнение реферала\n"
             "👤 За само приглашение начислений нет\n"

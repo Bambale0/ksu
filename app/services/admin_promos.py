@@ -128,9 +128,9 @@ class AdminPromoService:
             config = await PartnerPromoProgramService.get_config(session)
             promo = PromoCode(
                 code=normalized,
-                # Legacy column mirrors the current welcome grant for compatibility,
-                # but runtime economics are always read from the global config.
-                reward_amount=Decimal(config.welcome_rox),
+                # Legacy column mirrors the current user-facing promo reward for
+                # compatibility; runtime economics are always read from global config.
+                reward_amount=Decimal(config.payment_bonus_rox),
                 partner_user_id=partner_user_id,
                 max_uses=max_uses,
                 is_active=True,
@@ -299,6 +299,8 @@ class AdminPromoService:
         welcome_rox: Decimal,
         first_line_percent: Decimal,
         topup_partner_rox: Decimal,
+        payment_bonus_rox: Decimal,
+        payment_bonus_min_rub: Decimal,
         is_active: bool,
         idempotency_key: str,
         request_id: str,
@@ -309,11 +311,15 @@ class AdminPromoService:
             welcome_rox=welcome_rox,
             first_line_percent=first_line_percent,
             topup_partner_rox=topup_partner_rox,
+            payment_bonus_rox=payment_bonus_rox,
+            payment_bonus_min_rub=payment_bonus_min_rub,
         )
         payload = {
             "welcome_rox": str(welcome_rox),
             "first_line_percent": str(first_line_percent),
             "topup_partner_rox": str(topup_partner_rox),
+            "payment_bonus_rox": str(payment_bonus_rox),
+            "payment_bonus_min_rub": str(payment_bonus_min_rub),
             "is_active": is_active,
         }
 
@@ -322,6 +328,8 @@ class AdminPromoService:
             config.welcome_rox = welcome_rox
             config.first_line_percent = first_line_percent
             config.topup_partner_rox = topup_partner_rox
+            config.payment_bonus_rox = payment_bonus_rox
+            config.payment_bonus_min_rub = payment_bonus_min_rub
             config.is_active = is_active
             await session.flush()
             await session.refresh(config)
