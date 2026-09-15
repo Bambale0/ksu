@@ -25,8 +25,18 @@ def upgrade() -> None:
         sa.Column("first_line_percent", sa.Numeric(5, 2), nullable=False),
         sa.Column("topup_partner_rox", sa.Numeric(18, 2), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
         sa.CheckConstraint("welcome_rox >= 0", name="ck_partner_promo_welcome_nonnegative"),
         sa.CheckConstraint(
             "first_line_percent >= 0 AND first_line_percent <= 100",
