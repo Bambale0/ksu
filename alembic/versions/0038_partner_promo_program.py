@@ -111,15 +111,6 @@ def upgrade() -> None:
     op.add_column("referral_rewards", sa.Column("promo_code", sa.String(length=64), nullable=True))
     op.add_column("referral_rewards", sa.Column("payment_id", sa.Uuid(), nullable=True))
 
-    # Old pending rows represented payment reservations. The new program activates
-    # attribution immediately and never reserves a code for a payment.
-    op.execute(
-        "UPDATE promo_redemptions "
-        "SET status = 'released', reserved_until = NULL "
-        "WHERE status = 'pending'"
-    )
-
-
 def downgrade() -> None:
     op.drop_column("referral_rewards", "payment_id")
     op.drop_column("referral_rewards", "promo_code")
