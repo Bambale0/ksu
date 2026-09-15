@@ -1,6 +1,6 @@
 """move partner promo user reward to successful paid top-ups
 
-Revision ID: 0039_partner_promo_paid_user_bonus
+Revision ID: 0039_paid_promo_bonus
 Revises: 0038_partner_promo_program
 """
 
@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0039_partner_promo_paid_user_bonus"
+revision: str = "0039_paid_promo_bonus"
 down_revision: str | None = "0038_partner_promo_program"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
