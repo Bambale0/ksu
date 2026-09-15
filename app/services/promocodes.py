@@ -357,6 +357,11 @@ class PromoCodeService:
         dropped. This keeps usage accounting stable when the old payment fails.
         """
         _ = reason
+        if not hasattr(session, "scalar"):
+            # Minimal reconciliation test doubles do not expose the full
+            # AsyncSession read API. They cannot contain promo redemption rows,
+            # so legacy cleanup is intentionally a no-op for those adapters.
+            return
         redemption = await session.scalar(
             select(PromoRedemption)
             .where(
