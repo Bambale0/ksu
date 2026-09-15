@@ -106,7 +106,7 @@ test('active promo persists on payments and is attached to a new payment automat
   expect(checkoutBody).toMatchObject({
     provider: 'yookassa',
     package_id: 'starter',
-    promo_code: null,
+    promo_code: 'KSENIA50',
   });
   await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
   await expect(page.getByText(/промокод KSENIA50 активен/)).toBeVisible();
