@@ -73,6 +73,11 @@ class WalletTransaction(Base):
     reference_type: Mapped[str | None] = mapped_column(String(64))
     reference_id: Mapped[str | None] = mapped_column(String(128))
     idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    promo_code: Mapped[str | None] = mapped_column(String(64))
+    partner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    referral_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -194,6 +199,10 @@ class ReferralReward(Base):
     percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(64))
+    promo_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    promo_code: Mapped[str | None] = mapped_column(String(64))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
