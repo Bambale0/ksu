@@ -15,7 +15,6 @@ from app.db.models import (
     PromoRedemption,
     ReferralRelation,
     User,
-    WalletTransaction,
 )
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.referral_antifraud import ReferralAntifraudService
