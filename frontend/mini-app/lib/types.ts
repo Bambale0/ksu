@@ -282,6 +282,9 @@ export type PartnerStats = {
   minimum_withdrawal?: string;
   first_line_percent?: string;
   second_line_percent?: string;
+  promo_welcome_rox?: string;
+  promo_topup_partner_rox?: string;
+  promo_program_active?: boolean;
   referral_payload?: string;
   referral_link?: string;
   profile_link?: string;
