@@ -22,8 +22,15 @@ from app.services.wallet import WalletService
 
 
 class PromoCodeError(ValueError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        preserve_transaction: bool = False,
+    ) -> None:
         self.code = code
+        self.preserve_transaction = preserve_transaction
         super().__init__(message)
 
 
@@ -159,6 +166,7 @@ class PromoCodeService:
             raise PromoCodeError(
                 code,
                 f"Partner referral admission rejected: {admission.reason}",
+                preserve_transaction=True,
             )
 
         now = datetime.now(UTC)
