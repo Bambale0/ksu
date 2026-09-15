@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy import func, select
 
 from app.core.config import settings
-from app.db.models import ReferralRelation, User, Wallet
+from app.db.models import ReferralRelation, User, Wallet, WalletTransaction
 from app.db.referral_models import ReferralEvent
 from app.db.session import SessionFactory
 from app.services.users import UserService
@@ -360,3 +361,38 @@ async def test_existing_unattributed_user_ignores_late_referral_link(
     assert relation is None
     assert inviter_wallet is not None and inviter_wallet.balance == 0
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_registration_never_grants_legacy_welcome_rox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A stale production environment may still carry the retired value. The
+    # promo-only program must remain authoritative regardless of that env knob.
+    monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
+
+    tg_user = _telegram_user("No legacy welcome")
+    async with SessionFactory() as session:
+        user = await UserService.get_or_create(session, tg_user)
+        await session.commit()
+        user_id = user.id
+
+    async with SessionFactory() as session:
+        wallet = await session.get(Wallet, user_id)
+        legacy_tx_count = int(
+            (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(WalletTransaction)
+                    .where(
+                        WalletTransaction.user_id == user_id,
+                        WalletTransaction.kind == "welcome_bonus",
+                    )
+                )
+            )
+            or 0
+        )
+
+    assert wallet is not None
+    assert Decimal(wallet.balance) == Decimal("0")
+    assert legacy_tx_count == 0
