@@ -31,9 +31,35 @@ async function mockApi(page) {
     if (path === '/api/v1/feed') return json({ items: [] });
     if (path === '/api/v1/trends') return json({ items: [] });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-    if (path === '/api/v1/referrals/stats') return json({ first_line: 0, second_line: 0, partner_balance_rub: '0.00', referral_link: 'https://t.me/example?start=ref_88002' });
-    if (path === '/api/v1/referrals/rewards') return json({ items: [] });
-    if (path === '/api/v1/referrals/invitations') return json({ items: [] });
+    if (path === '/api/v1/referrals/stats') return json({
+      first_line: 3,
+      promo_first_line: 2,
+      second_line: 9,
+      partner_balance_rub: '90.00',
+      first_line_percent: '30.00',
+      promo_welcome_rox: '25.00',
+      promo_topup_partner_rox: '10.00',
+      promo_program_active: true,
+      referral_link: 'https://t.me/example?start=ref_88002',
+    });
+    if (path === '/api/v1/referrals/rewards') return json({
+      items: [{
+        id: 'reward-1',
+        line: 1,
+        percent: '30.00',
+        amount: '30.00',
+        net_amount: '30.00',
+        status: 'available',
+        created_at: '2026-09-15T12:00:00Z',
+        source_user: { first_name: 'Promo buyer' },
+      }],
+    });
+    if (path === '/api/v1/referrals/invitations') return json({
+      items: [
+        { user_id: 'promo-user', first_name: 'Promo user', line: 1, source: 'promo', promo_id: 'promo-1', joined_at: '2026-09-15T12:00:00Z' },
+        { user_id: 'link-user', first_name: 'Link user', line: 1, source: 'link', promo_id: null, joined_at: '2026-09-15T11:00:00Z' },
+      ],
+    });
     if (path === '/api/v1/referrals/rox-transfers' && method === 'POST') {
       calls.push(request.postDataJSON());
       await new Promise((resolve) => setTimeout(resolve, 80));
@@ -88,4 +114,22 @@ test('partner cannot submit a transfer to their own ID', async ({ page }) => {
   await expect(panel.getByText('Нельзя переводить ROX самому себе.')).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Перевести 100 ROX' })).toBeDisabled();
   expect(calls).toHaveLength(0);
+});
+
+
+test('partner cabinet shows promo-only economics and RUB cash commission', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/mini-app/?route=partners');
+
+  await expect(page.getByText('Промокод активирует бонусы', { exact: true })).toBeVisible();
+  await expect(page.getByText('по промокоду', { exact: true })).toBeVisible();
+  await expect(page.getByText('2', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('30%', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('90 ₽', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Пользователь получает \+25 ROX/)).toBeVisible();
+  await expect(page.getByText(/\+10 ROX за каждое успешное пополнение/)).toBeVisible();
+  await expect(page.getByText('30 ₽', { exact: true })).toBeVisible();
+  await expect(page.getByText('ссылка · без финансовых бонусов', { exact: false })).toBeVisible();
+  await expect(page.getByText('2 линия', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('30 ROX', { exact: true })).toHaveCount(0);
 });
