@@ -117,12 +117,13 @@ async def _send_launcher(
 ) -> None:
     try:
         promo_program = await PartnerPromoProgramService.get_config(session)
-        welcome_rox = f"{promo_program.welcome_rox:g}"
+        payment_bonus_rox = f"{promo_program.payment_bonus_rox:g}"
+        payment_bonus_min_rub = f"{promo_program.payment_bonus_min_rub:g}"
         first_line_percent = f"{promo_program.first_line_percent:g}"
         topup_partner_rox = f"{promo_program.topup_partner_rox:g}"
         promo_copy = (
             "<b>Бонусы по промокоду:</b>\n"
-            f"🎟️ +{welcome_rox} ROX — пользователю после активации промокода\n"
+            f"🎟️ +{payment_bonus_rox} ROX — пользователю после успешной оплаты от {payment_bonus_min_rub} ₽\n"
             f"💰 Партнёру: {first_line_percent}% + {topup_partner_rox} ROX "
             "с успешного пополнения реферала\n"
             "👥 За обычное приглашение без промокода начислений нет\n\n"
