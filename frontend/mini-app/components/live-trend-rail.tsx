@@ -10,8 +10,9 @@ import type { TrendItem } from "@/lib/types";
 
 function catalogScreen(): HTMLElement | null {
   for (const node of Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))) {
+    if (node.classList.contains("home-screen")) continue;
     const kicker = node.querySelector<HTMLElement>(".screen-head .kicker")?.textContent?.trim();
-    if (kicker === "Каталог" || node.classList.contains("roxy-catalog-feature-mode")) return node;
+    if (kicker === "Каталог") return node;
   }
   return null;
 }
