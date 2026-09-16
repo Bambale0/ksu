@@ -10,6 +10,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -75,27 +76,36 @@ class NexusAdminTaskService:
         image_size: str,
         idempotency_key: str,
     ) -> NexusAdminTask:
-        existing = await session.scalar(
-            select(NexusAdminTask).where(
+        task_id = uuid.uuid4()
+        result = await session.execute(
+            pg_insert(NexusAdminTask)
+            .values(
+                id=task_id,
+                telegram_id=telegram_id,
+                chat_id=chat_id,
+                status="queued",
+                prompt=prompt,
+                references=references,
+                aspect_ratio=aspect_ratio,
+                image_size=image_size,
+                idempotency_key=idempotency_key,
+                attempts=0,
+                available_at=utcnow(),
+            )
+            .on_conflict_do_nothing(index_elements=[NexusAdminTask.idempotency_key])
+            .returning(NexusAdminTask.id)
+        )
+        inserted_id = result.scalar_one_or_none()
+        resolved_id = inserted_id or await session.scalar(
+            select(NexusAdminTask.id).where(
                 NexusAdminTask.idempotency_key == idempotency_key
             )
         )
-        if existing is not None:
-            return existing
-
-        task = NexusAdminTask(
-            telegram_id=telegram_id,
-            chat_id=chat_id,
-            status="queued",
-            prompt=prompt,
-            references=references,
-            aspect_ratio=aspect_ratio,
-            image_size=image_size,
-            idempotency_key=idempotency_key,
-            available_at=utcnow(),
-        )
-        session.add(task)
-        await session.flush()
+        if resolved_id is None:
+            raise RuntimeError("Nexus task idempotency row disappeared after insert")
+        task = await session.get(NexusAdminTask, resolved_id)
+        if task is None:
+            raise RuntimeError("Nexus task could not be reloaded after insert")
         return task
 
     @staticmethod
