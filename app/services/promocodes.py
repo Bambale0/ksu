@@ -613,16 +613,6 @@ class PromoCodeService:
         if promo is None or promo.partner_user_id != relation.inviter_user_id:
             return base
 
-        welcome_tx = await session.scalar(
-            select(WalletTransaction)
-            .where(
-                WalletTransaction.user_id == user_id,
-                WalletTransaction.kind == "welcome_bonus",
-                WalletTransaction.reference_type == "registration",
-            )
-            .order_by(WalletTransaction.created_at.asc())
-        )
-        granted = Decimal(welcome_tx.amount) if welcome_tx is not None else Decimal("0")
         return {
             **base,
             "active": True,
@@ -630,7 +620,9 @@ class PromoCodeService:
             "promo_id": str(promo.id),
             "partner_user_id": str(relation.inviter_user_id),
             "activated_at": relation.created_at.isoformat(),
-            "welcome_rox_granted": str(granted),
+            # Promo activation itself never credits ROX. Registration welcome
+            # belongs to the account lifecycle and is intentionally not surfaced here.
+            "welcome_rox_granted": "0",
         }
 
     @classmethod
