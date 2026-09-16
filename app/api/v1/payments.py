@@ -132,7 +132,7 @@ async def list_packages() -> dict[str, object]:
                 "amount": str(package.amount),
                 "currency": package.currency,
                 "credits": str(package.credits),
-                "rox": str(package.total_credits),
+                "rox": str(package.credits),
                 "bonus_credits": str(package.bonus_credits),
                 "total_credits": str(package.total_credits),
             }
