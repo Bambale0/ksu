@@ -25,6 +25,7 @@ import type {
   UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { LanguageSwitcher } from "./language-switcher";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
@@ -146,7 +147,17 @@ function normalizeMediaFilter(value: string | null): MediaFilter {
 
 function initialRoute(): Route {
   if (typeof window === "undefined") return "home";
-  const route = new URL(window.location.href).searchParams.get("route");
+  const url = new URL(window.location.href);
+  const route = url.searchParams.get("route");
+  if (route === "catalog") {
+    url.searchParams.set("route", "home");
+    window.history.replaceState(
+      { ...(window.history.state || {}), roxyRoute: "home", roxyRootEntry: true },
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    return "home";
+  }
   return isRoute(route) ? route : "home";
 }
 
@@ -497,14 +508,15 @@ export function RoxySocialApp() {
   }, [booting, loadHistory, showToast]);
 
   const navigate = useCallback((next: Route) => {
+    const canonical = next === "catalog" ? "home" : next;
     setWalletOpen(false);
     setPreview(null);
-    setRoute(next);
+    setRoute(canonical);
     const url = new URL(window.location.href);
-    url.searchParams.set("route", next);
+    url.searchParams.set("route", canonical);
     url.searchParams.delete("generation");
-    window.history.pushState({ roxyRoute: next }, "", `${url.pathname}${url.search}${url.hash}`);
-    haptic(next === "create" ? "medium" : "light");
+    window.history.pushState({ roxyRoute: canonical }, "", `${url.pathname}${url.search}${url.hash}`);
+    haptic(canonical === "create" ? "medium" : "light");
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
@@ -555,9 +567,12 @@ export function RoxySocialApp() {
           <RoxyMark />
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button id="balance" className="balance-button" type="button" onClick={openPayments}>
-          <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
-        </button>
+        <div className="topbar-actions">
+          <LanguageSwitcher />
+          <button id="balance" className="balance-button" type="button" onClick={openPayments}>
+            <span>Баланс</span><strong>{me ? `${compact(me.balance_rox)} ROX` : "—"}</strong>
+          </button>
+        </div>
       </header>
 
       <main className="main-shell">
@@ -592,14 +607,9 @@ function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
 }
 
-function HomeScreen({ models, recent, trends, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: CreationMedia) => void; onPreview: (item: Generation) => void }) {
-  const counts = useMemo(() => ({ image: models.filter((m) => m.media_type === "image").length, video: models.filter((m) => m.media_type === "video").length, audio: models.filter((m) => m.media_type === "audio").length }), [models]);
+function HomeScreen({ recent, onNavigate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: CreationMedia) => void; onPreview: (item: Generation) => void }) {
   return <section className="screen home-screen">
     <div className="promo-slider" aria-label="Промо ROXY">{PROMO_SLIDES.map((slide) => <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("partners")}><img src={slide.src} alt={slide.title} /></button>)}</div>
-    <SectionTitle kicker="Студия" title="Что создаём?" />
-    <div className="format-grid"><FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onCreate("image")} /><FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onCreate("video")} /><FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onCreate("audio")} /></div>
-    <SectionTitle kicker="Тренды" title="Быстрый старт" action="Каталог" onAction={() => onNavigate("catalog")} />
-    <TrendStrip items={trends.slice(0, 6)} />
     <SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} />
     <MediaGrid items={recent.filter((item) => item.status === "succeeded").slice(0, 9)} empty="Готовые работы появятся здесь." onClick={onPreview} />
   </section>;
@@ -890,8 +900,8 @@ function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () =>
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
-  const menu: Array<[Route, IconName, string]> = [["home", "home", "Студия"], ["feed", "heart", "Лента"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
-  return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label]) => <button type="button" key={key} data-roxy-customer-route={key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
+  const menu: Array<[Route, IconName, string, string?]> = [["home", "catalog", "Каталог", "catalog"], ["feed", "heart", "Лента"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
+  return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label, customerRoute]) => <button type="button" key={key} data-roxy-customer-route={customerRoute || key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
 }
 
 function SectionTitle({ kicker, title, action, onAction }: { kicker: string; title: string; action?: string; onAction?: () => void }) {
