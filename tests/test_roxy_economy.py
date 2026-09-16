@@ -13,6 +13,7 @@ from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, 
 from app.db.session import SessionFactory
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.partner_wallet import PartnerWalletTransferService
+from app.services.payments import PaymentService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
 from app.services.wallet import WalletService
@@ -138,6 +139,102 @@ async def test_registration_grants_db_welcome_once_and_legacy_env_cannot_overrid
         assert registration[0].amount == Decimal("25")
         assert registration[0].reason == "registration_welcome"
         assert "referral_invite_bonus" not in {tx.kind for tx in transactions}
+
+
+@pytest.mark.asyncio
+async def test_package_bonus_is_zero_without_promo_and_applied_once_after_promo_payment() -> None:
+    async with SessionFactory() as session:
+        plain = User(telegram_id=_telegram_id(), first_name="Plain buyer")
+        partner = User(telegram_id=_telegram_id(), first_name="Partner")
+        promo_buyer = User(telegram_id=_telegram_id(), first_name="Promo buyer")
+        session.add_all([plain, partner, promo_buyer])
+        await session.flush()
+
+        plain_payment = Payment(
+            user_id=plain.id,
+            provider="yookassa",
+            amount=Decimal("500"),
+            currency="RUB",
+            rox_amount=Decimal("500"),
+            status="pending",
+            payload={
+                "package_id": "p500",
+                "base_credits": "500",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "50",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "0",
+                "credited_credits": "500",
+            },
+        )
+        session.add(plain_payment)
+        await session.commit()
+
+        await PaymentService.complete(
+            session,
+            payment_id=plain_payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        plain_wallet = await session.get(Wallet, plain.id)
+        assert plain_wallet is not None
+        assert Decimal(plain_wallet.balance) == Decimal("500")
+        await session.refresh(plain_payment)
+        assert plain_payment.payload["promo_bonus_credits"] == "0"
+        assert plain_payment.payload["credited_credits"] == "500"
+
+        promo = await _promo_attribution(session, partner=partner, buyer=promo_buyer)
+        promo_payment = Payment(
+            user_id=promo_buyer.id,
+            provider="yookassa",
+            amount=Decimal("1000"),
+            currency="RUB",
+            rox_amount=Decimal("1000"),
+            status="pending",
+            payload={
+                "package_id": "p1000",
+                "base_credits": "1000",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "150",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "0",
+                "credited_credits": "1000",
+                "promo_id": str(promo.id),
+                "promo_code": promo.code,
+                "promo_partner_user_id": str(partner.id),
+                "promo_metadata_source": "attribution",
+                "promo_bonus_status": "activated",
+            },
+        )
+        session.add(promo_payment)
+        await session.commit()
+
+        # Merely having an active promo still grants nothing before settlement.
+        before = await session.get(Wallet, promo_buyer.id)
+        assert before is None or Decimal(before.balance) == Decimal("0")
+
+        completed = await PaymentService.complete(
+            session,
+            payment_id=promo_payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        promo_wallet = await session.get(Wallet, promo_buyer.id)
+        assert promo_wallet is not None
+        assert Decimal(promo_wallet.balance) == Decimal("1150")
+        assert Decimal(completed.rox_amount) == Decimal("1000")
+        assert completed.payload["package_bonus_credits"] == "0"
+        assert completed.payload["promo_bonus_credits"] == "150"
+        assert completed.payload["promo_reward_credits"] == "150"
+        assert completed.payload["bonus_credits"] == "150"
+        assert completed.payload["credited_credits"] == "1150"
+
+        # Settlement replay is idempotent.
+        await PaymentService.complete(
+            session,
+            payment_id=promo_payment.id,
+            provider_payload={"status": "succeeded", "replay": True},
+        )
+        await session.refresh(promo_wallet)
+        assert Decimal(promo_wallet.balance) == Decimal("1150")
 
 
 @pytest.mark.asyncio
