@@ -37,8 +37,12 @@ export default function SettingsPage() {
     setError("");
     try {
       const next = await customerRequest<Preferences>("/api/v1/me/preferences", {
-        method: "PUT",
-        body: JSON.stringify(value),
+        method: "PATCH",
+        body: JSON.stringify({
+          notifications_enabled: value.notifications_enabled,
+          marketing_notifications: value.marketing_notifications,
+          profile_discoverable: value.profile_discoverable,
+        }),
       });
       setValue(next);
       setSaved(true);
@@ -59,17 +63,9 @@ export default function SettingsPage() {
   );
 
   return (
-    <StandaloneShell kicker="Настройки" title="Аккаунт ROXY" copy="Управляйте уведомлениями, языком и видимостью профиля. Telegram-имя и username остаются синхронизированы с Telegram.">
+    <StandaloneShell kicker="Настройки" title="Аккаунт ROXY" copy="Язык переключается сверху рядом с балансом. Здесь можно настроить уведомления и видимость профиля.">
       <div className="panel tool-panel">
         <div className="form-stack">
-          <label className="field">
-            <span className="label">Язык интерфейса</span>
-            <select className="control" value={value.ui_language} onChange={(event) => { setSaved(false); setValue((current) => ({ ...current, ui_language: event.target.value })); }}>
-              <option value="auto">Как в Telegram</option>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </label>
           {toggle("notifications_enabled")}
           {toggle("marketing_notifications")}
           {toggle("profile_discoverable")}
