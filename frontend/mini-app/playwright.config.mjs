@@ -4,6 +4,9 @@ export default {
   expect: { timeout: 6_000 },
   fullyParallel: false,
   workers: process.env.CI ? 2 : undefined,
+  reporter: process.env.CI
+    ? [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]]
+    : [['list']],
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
     {
