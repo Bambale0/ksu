@@ -84,7 +84,7 @@ export default function PromocodesPage() {
           <span className="kicker">Промокод применён</span>
           <h2>{activePromo.code}</h2>
           <div className="profile-stats">
-            <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
+            <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX начислены при регистрации</span></div>
             <div><strong>+{compactNumber(activePromo.topup_user_rox || 0)}</strong><span>ROX от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽</span></div>
             <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>бонусная программа</span></div>
           </div>
@@ -120,7 +120,7 @@ export default function PromocodesPage() {
           </label>
           {error ? <div className="action-error" role="alert">{error}</div> : null}
           {result ? <div className="profile-stats">
-            <div><strong>+{compactNumber(result.welcome_rox)}</strong><span>ROX за активацию</span></div>
+            <div><strong>+{compactNumber(result.welcome_rox)}</strong><span>ROX при регистрации</span></div>
             <div><strong>{compactNumber(result.first_line_percent)}%</strong><span>партнёру с пополнений</span></div>
             <div><strong>+{compactNumber(result.topup_partner_rox)}</strong><span>ROX партнёру за пополнение</span></div>
           </div> : null}
