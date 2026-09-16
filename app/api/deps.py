@@ -45,6 +45,7 @@ def _onboarding_gate_applies(request: Request) -> bool:
         "/api/v1/me",
         "/api/v1/support",
         "/api/v1/notifications",
+        "/api/v1/promocodes",
     )
     if any(_path_is_under(path, prefix) for prefix in safe_prefixes):
         return False
