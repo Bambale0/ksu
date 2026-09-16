@@ -130,11 +130,23 @@ export default function SupportPage() {
     <StandaloneShell kicker="Поддержка" title="Помощь ROXY" copy="Все обращения сохраняются в одном месте. Можно продолжить диалог, закрыть вопрос или переоткрыть его позже.">
       {error ? <div className="action-error" role="alert">{error}</div> : null}
 
-      <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+      {contactLoading ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+        <p className="muted">Проверяем доступные способы связи…</p>
+      </div> : null}
+
+      {!contactLoading && contact?.configured && contact.url ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
         <div className="section-title"><div><span className="kicker">Быстрая связь</span><h2>Поддержка в Telegram</h2></div></div>
-        <p className="muted">Если нужен быстрый ответ, напишите напрямую: <strong>@{SUPPORT_TELEGRAM_USERNAME}</strong></p>
-        <button className="primary wide" type="button" onClick={openTelegramSupport}>Написать @{SUPPORT_TELEGRAM_USERNAME}</button>
-      </div>
+        <p className="muted">Если нужен быстрый ответ, откройте прямой контакт{contact.handle ? <>: <strong>{contact.handle}</strong></> : "."}</p>
+        <button className="primary wide" type="button" onClick={() => openTelegramSupport(contact.url!)}>
+          {contact.handle ? `Написать ${contact.handle}` : "Открыть Telegram"}
+        </button>
+      </div> : null}
+
+      {!contactLoading && contactError ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+        <div className="action-error" role="status">{contactError}</div>
+        <p className="muted">Внутренние обращения ROXY ниже продолжают работать.</p>
+        <button className="secondary" type="button" onClick={() => void loadContact()}>Повторить</button>
+      </div> : null}
 
       <div className="tool-grid">
         <div className="panel tool-panel">
@@ -167,7 +179,7 @@ export default function SupportPage() {
             ))}
           </div>
           {selected.can_reply ? <div className="form-stack">
-            <textarea className="control textarea" maxLength={8000} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" />
+            <label className="field"><span className="label">Ответ</span><textarea className="control textarea" maxLength={8000} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" /></label>
             <button className="primary wide" type="button" disabled={busy || !reply.trim()} onClick={() => void sendReply()}>{busy ? "Отправляю…" : "Отправить"}</button>
           </div> : null}
           <div className="tool-actions">
