@@ -7,12 +7,24 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, SessionDep
+from app.bot.support_links import direct_support_handle, normalize_direct_support_url
+from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
 
 router = APIRouter(prefix="/support", tags=["support"])
 
 ACTIVE_USER_STATUSES = {"open", "in_progress"}
 REOPENABLE_USER_STATUSES = {"resolved", "closed"}
+
+
+@router.get("/contact")
+async def support_contact() -> dict[str, object]:
+    url = normalize_direct_support_url(settings.support_telegram_url)
+    return {
+        "configured": bool(url),
+        "url": url,
+        "handle": direct_support_handle(url),
+    }
 
 
 class CreateTicketRequest(BaseModel):
