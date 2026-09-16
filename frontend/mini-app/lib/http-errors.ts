@@ -86,23 +86,12 @@ export async function fetchWithTimeout(
   init: RequestInit = {},
   timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  return withRequestDeadline(init, timeoutMs, (signal) => fetch(input, { ...init, signal }));
-}
-
-export async function fetchJsonWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
-): Promise<{ response: Response; payload: unknown }> {
   return withRequestDeadline(init, timeoutMs, async (signal) => {
     const response = await fetch(input, { ...init, signal });
-    if (response.status === 204) return { response, payload: null };
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch (reason) {
-      if (signal.aborted) throw reason;
-    }
-    return { response, payload };
+    // fetch() resolves after headers. Drain a clone before returning so the
+    // deadline also covers a server/proxy that stalls the response body. The
+    // original Response remains untouched for callers to parse normally.
+    if (response.status !== 204 && response.body) await response.clone().arrayBuffer();
+    return response;
   });
 }
