@@ -435,7 +435,7 @@ export default function PaymentsPage() {
         <span className="kicker">Промокод применён</span>
         <h2>{activePromo.code}</h2>
         <div className="profile-stats">
-          <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
+          <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX начислены при регистрации</span></div>
           <div><strong>+{compactNumber(activePromo.topup_user_rox || 0)}</strong><span>ROX от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽</span></div>
           <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>партнёрская программа</span></div>
         </div>
