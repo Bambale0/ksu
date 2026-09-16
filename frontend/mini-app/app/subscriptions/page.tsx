@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
@@ -27,14 +27,25 @@ function mediaType(item: FeedCard): "image" | "video" | "audio" {
   return "image";
 }
 
+function mediaLabel(item: FeedCard): string {
+  const author = item.author?.display_name || item.author?.username || "автора";
+  return `Открыть работу ${author}`;
+}
+
 export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [feed, setFeed] = useState<FeedCard[]>([]);
   const [tab, setTab] = useState<"feed" | "authors">("feed");
   const [busy, setBusy] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const loadInFlight = useRef(false);
 
   const load = async () => {
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
+    setLoading(true);
     setError("");
     try {
       const [authors, cards] = await Promise.all([
@@ -43,21 +54,29 @@ export default function SubscriptionsPage() {
       ]);
       setSubscriptions(authors.items || []);
       setFeed(cards.items || []);
+      setLoaded(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить подписки");
+    } finally {
+      loadInFlight.current = false;
+      setLoading(false);
     }
   };
 
   useEffect(() => { void load(); }, []);
 
   const unsubscribe = async (author: Subscription) => {
-    setBusy(author.id); setError("");
+    if (busy) return;
+    setBusy(author.id);
+    setError("");
     try {
       await customerRequest(`/api/v1/social/profiles/${encodeURIComponent(author.id)}/subscribe`, { method: "DELETE" });
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось отписаться");
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -66,13 +85,26 @@ export default function SubscriptionsPage() {
         <button type="button" className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>Лента</button>
         <button type="button" className={tab === "authors" ? "active" : ""} onClick={() => setTab("authors")}>Авторы · {subscriptions.length}</button>
       </div>
-      {error ? <div className="action-error" role="alert">{error}</div> : null}
 
-      {tab === "feed" ? <div className="panel tool-panel">
-        <div className="section-title"><div><span className="kicker">Подписки</span><h2>Новые работы</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
+      {(!loaded || loading) ? <p className="muted" role="status">Загружаем подписки…</p> : null}
+      {error ? <div className="action-error" role="alert">{error}</div> : null}
+      {!loading && error && !loaded ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
+
+      {loaded && tab === "feed" ? <div className="panel tool-panel" aria-busy={loading}>
+        <div className="section-title">
+          <div><span className="kicker">Подписки</span><h2>Новые работы</h2></div>
+          <button type="button" disabled={loading} onClick={() => void load()}>{loading ? "Обновляю…" : "Обновить"}</button>
+        </div>
         {feed.length ? <div className="media-grid">{feed.map((item) => {
-          const url = mediaUrl(item); const type = mediaType(item);
-          return <button className="media-tile" type="button" key={item.id} onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`feed_${item.id}_ref_${item.author?.telegram_id || item.author?.referral_code || "0"}`)}`)}>
+          const url = mediaUrl(item);
+          const type = mediaType(item);
+          return <button
+            className="media-tile"
+            type="button"
+            key={item.id}
+            aria-label={mediaLabel(item)}
+            onClick={() => window.location.assign(`/mini-app/?start_payload=${encodeURIComponent(`feed_${item.id}_ref_${item.author?.telegram_id || item.author?.referral_code || "0"}`)}`)}
+          >
             {url && type === "video" ? <video src={url} muted playsInline preload="metadata" /> : null}
             {url && type === "image" ? <img src={url} alt="" loading="lazy" /> : null}
             {type === "audio" || !url ? <span className="media-placeholder">{type === "audio" ? "♫" : "ROXY"}</span> : null}
@@ -80,7 +112,7 @@ export default function SubscriptionsPage() {
         })}</div> : <p className="muted">Здесь появятся публикации авторов, на которых вы подпишетесь.</p>}
       </div> : null}
 
-      {tab === "authors" ? <div className="panel tool-panel">
+      {loaded && tab === "authors" ? <div className="panel tool-panel" aria-busy={loading}>
         <div className="transaction-list">{subscriptions.length ? subscriptions.map((author) => <div className="transaction" key={author.id}>
           <div><strong>{author.display_name}</strong><small>{author.username ? `@${author.username}` : "Профиль скрыт"}{author.subscribed_at ? ` · ${dateTime(author.subscribed_at)}` : ""}</small></div>
           <span style={{ display: "flex", gap: 8 }}>
