@@ -57,6 +57,9 @@ If your harness appears here, read its reference file for special instructions:
 - Pi: `references/pi-tools.md`
 - Antigravity: `references/antigravity-tools.md`
 - Hermes Agent: `references/hermes-tools.md`
+- Cline: use the repository-local `.clinerules` paths and Cline's native file, search, terminal, and task tools.
+
+For Cline sessions, load `.clinerules/agents.md` and this bootstrap at session start. When a skill is needed, read its `SKILL.md` from `.clinerules/skills/` before acting; translate references such as `superpowers:brainstorming` to `.clinerules/skills/brainstorming/SKILL.md`. Keep the skill checklist in the active Cline task and use the repository's normal `main`-based branch and PR workflow.
 
 ## User Instructions
 
