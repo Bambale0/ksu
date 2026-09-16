@@ -15,7 +15,9 @@ def _read(path: Path) -> str:
 
 def test_customer_app_has_one_next_react_source() -> None:
     package = json.loads(_read(FRONTEND / "package.json"))
-    assert package["dependencies"]["next"] == "16.3.1"
+    next_version = tuple(int(part) for part in package["dependencies"]["next"].split("."))
+    assert next_version[:2] == (16, 3)
+    assert next_version >= (16, 3, 3)
     assert package["dependencies"]["react"] == "19.2.8"
     assert package["dependencies"]["react-dom"] == "19.2.8"
     assert package["scripts"]["build"] == "next build"
