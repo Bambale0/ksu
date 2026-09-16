@@ -88,10 +88,10 @@ export default function CreatorPartnershipPage() {
         </div>
       </div> : null}
 
-      <div className="panel tool-panel">
+      {loaded ? <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Начисления</span><h2>{compactNumber(status?.total_granted_rox)} ROX всего</h2></div></div>
         <div className="transaction-list">{status?.grants?.length ? status.grants.map((grant) => <div className="transaction" key={grant.id}><div><strong>{grant.period}</strong><small>{grant.source}{grant.note ? ` · ${grant.note}` : ""}</small></div><span>+{compactNumber(grant.amount_rox)} ROX</span></div>) : <p className="muted">Начислений пока нет.</p>}</div>
-      </div>
+      </div> : null}
     </StandaloneShell>
   );
 }
