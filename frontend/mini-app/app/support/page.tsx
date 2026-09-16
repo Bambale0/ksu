@@ -48,6 +48,7 @@ export default function SupportPage() {
     if (ticketsLoadInFlight.current) return;
     ticketsLoadInFlight.current = true;
     setTicketsLoading(true);
+    setError("");
     try {
       const payload = await customerRequest<{ items: Ticket[] }>("/api/v1/support/tickets?limit=100");
       setTickets(payload.items || []);
@@ -173,7 +174,7 @@ export default function SupportPage() {
               <button className="transaction" type="button" key={ticket.id} onClick={() => void openTicket(ticket.id)} style={{ width: "100%", textAlign: "left" }}>
                 <div><strong>{ticket.topic}</strong><small>{dateTime(ticket.updated_at)}</small></div><span>{ticket.status}</span>
               </button>
-            )) : <p className="muted">Обращений пока нет.</p>}
+            )) : !error ? <p className="muted">Обращений пока нет.</p> : null}
           </div>}
         </div>
 
