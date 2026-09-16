@@ -81,49 +81,63 @@ async def _promo_attribution(session, *, partner: User, buyer: User) -> PromoCod
 
 
 @pytest.mark.asyncio
-async def test_registration_creates_empty_wallet_and_legacy_settings_cannot_grant_rox(
+async def test_registration_grants_db_welcome_once_and_legacy_env_cannot_override_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Legacy env knobs may still exist for compatibility, but partner money
-    # is activated only by a valid promo code.
+    # Registration economics are DB-owned. Legacy env knobs remain compatibility-only.
     monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
     monkeypatch.setattr(settings, "invite_bonus_rox", Decimal("30"))
     async with SessionFactory() as session:
+        config = await PartnerPromoProgramService.get_config(session)
+        assert Decimal(config.welcome_rox) == Decimal("25")
+
         inviter = User(telegram_id=_telegram_id(), first_name="Inviter")
         friend_telegram_id = _telegram_id()
         session.add(inviter)
         await session.flush()
-        await UserService.get_or_create(
+
+        telegram_user = TelegramUser(id=friend_telegram_id, is_bot=False, first_name="Friend")
+        first = await UserService.get_or_create(
             session,
-            TelegramUser(id=friend_telegram_id, is_bot=False, first_name="Friend"),
+            telegram_user,
+            inviter_telegram_id=inviter.telegram_id,
+        )
+        await session.commit()
+
+        # Re-opening the bot must not duplicate the registration bonus.
+        second = await UserService.get_or_create(
+            session,
+            telegram_user,
             inviter_telegram_id=inviter.telegram_id,
         )
         await session.commit()
 
         friend = await UserService.get_by_telegram_id(session, friend_telegram_id)
         assert friend is not None
+        assert first.id == second.id == friend.id
         friend_wallet = await session.get(Wallet, friend.id)
         inviter_wallet = await session.get(Wallet, inviter.id)
         relation = await session.get(ReferralRelation, friend.id)
 
-        assert friend_wallet is not None and friend_wallet.balance == Decimal("0")
+        assert friend_wallet is not None and friend_wallet.balance == Decimal("25")
         assert inviter_wallet is None or inviter_wallet.balance == Decimal("0")
         assert relation is not None
         assert relation.inviter_user_id == inviter.id
         assert relation.source == "link"
         assert relation.promo_id is None
 
-        kinds = set(
+        transactions = list(
             (
                 await session.scalars(
-                    select(WalletTransaction.kind).where(
-                        WalletTransaction.user_id.in_([friend.id, inviter.id])
-                    )
+                    select(WalletTransaction).where(WalletTransaction.user_id == friend.id)
                 )
             ).all()
         )
-        assert "welcome_bonus" not in kinds
-        assert "referral_invite_bonus" not in kinds
+        registration = [tx for tx in transactions if tx.kind == "welcome_bonus"]
+        assert len(registration) == 1
+        assert registration[0].amount == Decimal("25")
+        assert registration[0].reason == "registration_welcome"
+        assert "referral_invite_bonus" not in {tx.kind for tx in transactions}
 
 
 @pytest.mark.asyncio
