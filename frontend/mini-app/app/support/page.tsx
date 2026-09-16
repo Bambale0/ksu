@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
@@ -32,6 +32,8 @@ function openTelegramSupport(url: string) {
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
+  const ticketsLoadInFlight = useRef(false);
   const [selected, setSelected] = useState<TicketDetail | null>(null);
   const [topic, setTopic] = useState("");
   const [message, setMessage] = useState("");
@@ -43,11 +45,17 @@ export default function SupportPage() {
   const [contactError, setContactError] = useState("");
 
   const loadTickets = async () => {
+    if (ticketsLoadInFlight.current) return;
+    ticketsLoadInFlight.current = true;
+    setTicketsLoading(true);
     try {
       const payload = await customerRequest<{ items: Ticket[] }>("/api/v1/support/tickets?limit=100");
       setTickets(payload.items || []);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить обращения");
+    } finally {
+      ticketsLoadInFlight.current = false;
+      setTicketsLoading(false);
     }
   };
 
@@ -159,14 +167,14 @@ export default function SupportPage() {
         </div>
 
         <div className="panel tool-panel">
-          <div className="section-title"><div><span className="kicker">История</span><h2>Мои обращения</h2></div><button type="button" onClick={() => void loadTickets()}>Обновить</button></div>
-          <div className="transaction-list">
+          <div className="section-title"><div><span className="kicker">История</span><h2>Мои обращения</h2></div><button type="button" disabled={ticketsLoading} onClick={() => void loadTickets()}>{ticketsLoading ? "Обновляю…" : "Обновить"}</button></div>
+          {ticketsLoading ? <p className="muted" role="status">Загружаем обращения…</p> : <div className="transaction-list">
             {tickets.length ? tickets.map((ticket) => (
               <button className="transaction" type="button" key={ticket.id} onClick={() => void openTicket(ticket.id)} style={{ width: "100%", textAlign: "left" }}>
                 <div><strong>{ticket.topic}</strong><small>{dateTime(ticket.updated_at)}</small></div><span>{ticket.status}</span>
               </button>
             )) : <p className="muted">Обращений пока нет.</p>}
-          </div>
+          </div>}
         </div>
 
         {selected ? <div className="panel tool-panel">
