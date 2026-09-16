@@ -272,11 +272,11 @@ class PromoCodeService:
         *,
         payment: Payment,
     ) -> Decimal:
-        """Apply payment-time promo ROX without replacing ordinary package bonuses.
+        """Apply a payment-time promo entitlement exactly once after settlement.
 
-        Legacy payment-bound promo reservations are still honored. Current partner
-        promos add a separate user top-up bonus only when the program is active and
-        the paid RUB basis meets the configured threshold.
+        New payments use the package-owned `promo_package_bonus_credits` field.
+        Legacy in-flight reservations keep their old accounting path so a deploy
+        cannot change already-created invoices.
         """
         payload = payment.payload or {}
         base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
@@ -341,6 +341,77 @@ class PromoCodeService:
             redemption.status = "released"
             redemption.reserved_until = None
             redemption.redeemed_at = None
+
+        # New package contract: the package itself owns the promo-gated bonus.
+        # Presence of this field distinguishes new payments from legacy in-flight
+        # payments that used the old threshold + separate bonus model.
+        if "promo_package_bonus_credits" in payload:
+            reward = Decimal(str(payload.get("promo_package_bonus_credits") or "0"))
+            promo_code = cls.normalize(str(payload.get("promo_code") or ""))
+            if not promo_code or reward <= 0:
+                payment.payload = {
+                    **payload,
+                    "promo_bonus_status": "no_promo" if not promo_code else "no_bonus",
+                    "promo_bonus_credits": "0",
+                    "promo_reward_credits": "0",
+                    "bonus_credits": str(package_bonus),
+                    "credited_credits": str(base + package_bonus),
+                }
+                return Decimal("0")
+
+            relation = await session.scalar(
+                select(ReferralRelation)
+                .where(ReferralRelation.referred_user_id == payment.user_id)
+                .with_for_update()
+            )
+            promo = None
+            if relation is not None and relation.source == "promo" and relation.promo_id is not None:
+                promo = await session.get(PromoCode, relation.promo_id)
+            config = await PartnerPromoProgramService.get_config(session)
+            eligible = (
+                config.is_active
+                and relation is not None
+                and promo is not None
+                and promo.is_active
+                and promo.partner_user_id == relation.inviter_user_id
+                and promo.code == promo_code
+            )
+            if not eligible:
+                payment.payload = {
+                    **payload,
+                    "promo_bonus_status": "program_inactive" if not config.is_active else "invalid",
+                    "promo_bonus_credits": "0",
+                    "promo_reward_credits": "0",
+                    "bonus_credits": str(package_bonus),
+                    "credited_credits": str(base + package_bonus),
+                }
+                return Decimal("0")
+
+            assert relation is not None and promo is not None
+            await WalletService.credit(
+                session,
+                user_id=payment.user_id,
+                amount=reward,
+                kind="partner_promo_user_topup_bonus",
+                reference_type="payment",
+                reference_id=str(payment.id),
+                idempotency_key=f"payment:{payment.id}:partner-promo-user-topup",
+                reason="partner_promo_package_bonus",
+                promo_code=promo.code,
+                partner_id=relation.inviter_user_id,
+                referral_user_id=payment.user_id,
+                payment_id=payment.id,
+            )
+            total_bonus = package_bonus + reward
+            payment.payload = {
+                **payload,
+                "promo_bonus_status": "applied",
+                "promo_bonus_credits": str(reward),
+                "promo_reward_credits": str(reward),
+                "bonus_credits": str(total_bonus),
+                "credited_credits": str(base + total_bonus),
+            }
+            return reward
 
         promo_code = cls.normalize(str(payload.get("promo_code") or ""))
         if not promo_code:
@@ -687,13 +758,13 @@ class PromoCodeService:
     ) -> None:
         payload = payment.payload or {}
         base = Decimal(str(payload.get("base_credits") or payment.rox_amount))
-        package_bonus = Decimal(
-            str(payload.get("package_bonus_credits") or payload.get("bonus_credits") or "0")
-        )
+        package_bonus = Decimal(str(payload.get("package_bonus_credits") or "0"))
+        promo_package_bonus = Decimal(str(payload.get("promo_package_bonus_credits") or "0"))
         payment.payload = {
             **payload,
             "base_credits": str(base),
             "package_bonus_credits": str(package_bonus),
+            "promo_package_bonus_credits": str(promo_package_bonus),
             "promo_bonus_credits": "0",
             "promo_id": str(promo.id),
             "promo_code": promo.code,
