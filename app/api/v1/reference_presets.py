@@ -29,7 +29,7 @@ class ReferenceTouch(BaseModel):
 class PresetWrite(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=128)
-    prompt: str = Field(default="", max_length=8000)
+    prompt: str = Field(default="", max_length=30000)
     parameters: dict[str, Any] = Field(default_factory=dict)
     reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=16)
     billing_seconds: int | None = Field(default=None, ge=1)

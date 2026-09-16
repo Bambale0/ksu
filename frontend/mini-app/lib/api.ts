@@ -104,6 +104,7 @@ export type FeedRemixDraft = {
   model_id: string;
   effective_model_id: string;
   model_title: string;
+  prompt_max_length?: number;
   prompt: string;
   prompt_hidden: boolean;
   prompt_editable: boolean;
