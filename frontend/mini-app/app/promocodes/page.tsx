@@ -32,11 +32,20 @@ export default function PromocodesPage() {
     return state;
   };
 
-  useEffect(() => {
-    void refreshActive()
-      .catch(() => setActivePromo(null))
-      .finally(() => setLoading(false));
-  }, []);
+  const loadActive = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      await refreshActive();
+    } catch (reason) {
+      setActivePromo(null);
+      setError(reason instanceof Error ? reason.message : "Не удалось проверить активный промокод");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void loadActive(); }, []);
 
   const activate = async () => {
     if (!code.trim() || busy || activePromo?.active) return;
@@ -65,9 +74,13 @@ export default function PromocodesPage() {
       copy="Промокод один раз закрепляет партнёра и включает отдельные партнёрские бонусы. Обычный бонус выбранного пакета при этом сохраняется."
     >
       <div className="panel tool-panel">
-        {loading ? <p className="muted">Проверяем активный промокод…</p> : null}
+        {loading ? <p className="muted" role="status">Проверяем активный промокод…</p> : null}
+        {!loading && error && !activePromo ? <div className="form-stack">
+          <div className="action-error" role="alert">{error}</div>
+          <button className="secondary" type="button" onClick={() => void loadActive()}>Повторить загрузку</button>
+        </div> : null}
 
-        {!loading && activePromo?.active ? <div className="form-stack">
+        {!loading && !error && activePromo?.active ? <div className="form-stack">
           <span className="kicker">Промокод применён</span>
           <h2>{activePromo.code}</h2>
           <div className="profile-stats">
@@ -90,7 +103,7 @@ export default function PromocodesPage() {
           </button>
         </div> : null}
 
-        {!loading && !activePromo?.active ? <div className="form-stack">
+        {!loading && !error && !activePromo?.active ? <div className="form-stack">
           <label className="field">
             <span className="label">Промокод</span>
             <input
