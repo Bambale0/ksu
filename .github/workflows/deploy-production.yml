@@ -218,6 +218,7 @@ jobs:
             generation-worker
             media-worker
             prompt-tool-worker
+            nexus-test-worker
             payment-worker
             notification-worker
             admin-support-worker
