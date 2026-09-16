@@ -23,18 +23,18 @@ A manual assignment to the root `Тренды` category is still an explicit ass
 
 ## Partner Promo Program
 
-Partner promo codes are the only financial activation mechanism for the referral program.
+Partner promo codes activate paid referral attribution; the separate registration welcome is not promo-dependent.
 
 - Every promo code belongs to one partner (`promo_codes.partner_user_id`).
-- Program economics are global and database-owned in `partner_promo_program_config`; individual promo codes do not define their own reward amount.
-- Initial partner-program values are: **25 ROX** to the user on first promo activation, **30%** of paid RUB basis to the first-line partner, **+10 ROX** to that partner for each successful referred-user top-up, and **+50 ROX** to the referred user for each successful promo-attributed top-up from **1000 RUB**.
-- A plain referral/deep link may still create an attribution relation for analytics/anti-fraud, but it grants **no ROX and no cash reward**. Financial rewards start only after a promo upgrades/creates the relation with `source=promo`.
+- Program economics are global and database-owned in `partner_promo_program_config`; individual promo codes do not define their own reward amount. The legacy-compatible `welcome_rox` field now owns the registration welcome amount.
+- Initial values are: **25 ROX** to a user once on first account registration, **30%** of paid RUB basis to the first-line partner, **+10 ROX** to that partner for each successful referred-user top-up, and **+50 ROX** to the referred user for each successful promo-attributed top-up from **1000 RUB**.
+- A plain referral/deep link may still create an attribution relation for analytics/anti-fraud, but it grants no referral ROX or cash reward. Partner financial rewards start only after a promo upgrades/creates the relation with `source=promo`; the registration welcome is independent of that relation.
 - A plain link attribution is non-financial and may be replaced by the user's first valid partner promo, even when the link pointed to another partner. Once `source=promo`, partner ownership is immutable for the user; later promo codes cannot move the user to another partner.
-- The welcome ROX grant is one-time and idempotent per user. Ordinary package bonuses are independent from promo attribution: 300→+30, 500→+50, 1000→+100, 2000→+150, 5000→+200 ROX by default. Package config may override bonus_credits explicitly.
+- The registration welcome ROX grant is one-time and idempotent per user and is created during account registration, before any later promo activation. Ordinary package bonuses are independent from promo attribution: 300→+30, 500→+50, 1000→+100, 2000→+150, 5000→+200 ROX by default. Package config may override bonus_credits explicitly.
 - The promo-attributed top-up bonus is a separate payment-time layer: when the paid RUB basis reaches the configured threshold (initially 1000 RUB), the user receives the configured +50 ROX on top of the ordinary package bonus.
 - Only first-line paid top-ups earn commission. Second-line financial rewards are disabled for this program.
 - The fixed partner top-up ROX bonus is idempotent per source payment transaction and is reversed on a full payment refund. Cash referral rewards keep the existing proportional refund accounting.
-- Every partner-program financial row stores audit context for its reason, promo code, partner, referred user and source payment (where a payment exists), in addition to an idempotency key/unique financial source.
+- Every partner-program financial row stores audit context for its reason, promo code, partner, referred user and source payment (where a payment exists), in addition to an idempotency key/unique financial source. The independent registration welcome stores its own registration reason/reference and idempotency key.
 - Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
 
 
