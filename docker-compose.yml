@@ -176,22 +176,6 @@ services:
         condition: service_healthy
     command: python -m app.workers.nexus_test
 
-  nexus-test-worker:
-    image: "ksu-app:${KSU_IMAGE_TAG:-local}"
-    build: .
-    restart: unless-stopped
-    env_file: .env
-    volumes:
-      - ./logs:/app/logs
-    depends_on:
-      app:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: python -m app.workers.nexus_test
-
   creator-partnership-worker:
     image: "ksu-app:${KSU_IMAGE_TAG:-local}"
     build: .
