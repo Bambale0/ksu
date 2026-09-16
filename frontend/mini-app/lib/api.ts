@@ -1,5 +1,5 @@
 import { initTelegram, telegramHeaders } from "./telegram";
-import { userSafeHttpError, userSafeNetworkError } from "./http-errors";
+import { fetchWithTimeout, userSafeHttpError } from "./http-errors";
 import type {
   ActivePromo,
   FeedCard,
@@ -29,20 +29,15 @@ declare global {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      ...init,
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        ...telegramHeaders(Boolean(init.body) && !isForm),
-        ...(init.headers || {}),
-      },
-    });
-  } catch (reason) {
-    throw userSafeNetworkError(reason);
-  }
+  const response = await fetchWithTimeout(path, {
+    ...init,
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      ...telegramHeaders(Boolean(init.body) && !isForm),
+      ...(init.headers || {}),
+    },
+  });
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw userSafeHttpError(response.status, payload);
