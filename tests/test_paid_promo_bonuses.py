@@ -300,7 +300,6 @@ async def test_activation_preserves_live_legacy_reservation_until_payment_settle
     async with SessionFactory() as session:
         partner = await _user(session, "Legacy reservation partner")
         user = await _user(session, "Legacy reservation user")
-        config = await PartnerPromoProgramService.get_config(session)
         promo = PromoCode(
             code=f"LEGACYACT{uuid.uuid4().hex[:8].upper()}",
             reward_amount=Decimal("7"),
@@ -639,6 +638,7 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
         partner = await _user(session, "Topup partner")
         buyer = await _user(session, "Topup buyer")
         promo = await _promo(session, partner=partner)
+        config = await PartnerPromoProgramService.get_config(session)
         payment = Payment(
             user_id=buyer.id,
             provider="yookassa",
@@ -670,7 +670,7 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
         assert Decimal(config.topup_user_rox) == Decimal("50.00")
         assert Decimal(config.topup_user_min_rub) == Decimal("1000.00")
         assert buyer_wallet is not None
-        assert Decimal(buyer_wallet.balance) == Decimal("1175.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("1150.00")
         assert Decimal(completed.rox_amount) == Decimal("1100")
         assert completed.payload["package_bonus_credits"] == "100"
         assert completed.payload["promo_bonus_credits"] == "50.00"
