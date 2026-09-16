@@ -35,3 +35,38 @@ export function userSafeNetworkError(reason: unknown): Error {
   }
   return new Error("Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.");
 }
+
+
+export const CLIENT_REQUEST_TIMEOUT_MS = 20_000;
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const upstream = init.signal;
+  let timedOut = false;
+
+  const abortFromUpstream = () => controller.abort();
+  if (upstream?.aborted) {
+    controller.abort();
+  } else {
+    upstream?.addEventListener("abort", abortFromUpstream, { once: true });
+  }
+
+  const timer = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (reason) {
+    if (timedOut) return Promise.reject(new Error("Сервер отвечает слишком долго. Попробуйте ещё раз."));
+    throw userSafeNetworkError(reason);
+  } finally {
+    globalThis.clearTimeout(timer);
+    upstream?.removeEventListener("abort", abortFromUpstream);
+  }
+}
