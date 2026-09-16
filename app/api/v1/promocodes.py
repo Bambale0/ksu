@@ -72,7 +72,7 @@ async def _view(
         "message": (
             "Партнёрская программа уже активна"
             if already_active
-            else f"После активации начислим +{config.welcome_rox} ROX"
+            else "Промокод готов к активации"
         ),
     }
 
@@ -130,7 +130,7 @@ async def redeem(
         "topup_user_min_rub": str(activation.config.topup_user_min_rub),
         "balance_rox": str(wallet.balance if wallet is not None else 0),
         "message": (
-            f"Промокод активирован: +{activation.config.welcome_rox} ROX"
+            "Промокод активирован"
             if activation.activated
             else "Партнёрская программа уже активна"
         ),
