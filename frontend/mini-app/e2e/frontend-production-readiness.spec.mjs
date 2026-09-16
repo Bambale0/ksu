@@ -2,15 +2,35 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   page.__frontendAuditErrors = [];
+  page.__frontendAuditAllowResourceErrors = false;
   page.on('pageerror', (error) => page.__frontendAuditErrors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') page.__frontendAuditErrors.push(`console: ${message.text()}`);
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    if (
+      page.__frontendAuditAllowResourceErrors
+      && text.includes('Failed to load resource: the server responded with a status of 503')
+    ) return;
+    page.__frontendAuditErrors.push(`console: ${text}`);
   });
 });
 
 test.afterEach(async ({ page }) => {
   expect(page.__frontendAuditErrors || []).toEqual([]);
 });
+
+function allowExpected503ResourceError(page) {
+  // Browsers emit a console error for an intentionally mocked 503 even when
+  // the application handles it correctly. Scope this exception to tests that
+  // explicitly inject a 503 so unexpected console errors remain release blockers.
+  page.__frontendAuditAllowResourceErrors = true;
+}
+
+function userAlert(page) {
+  // Next.js owns an off-screen route announcer with role=alert. Customer error
+  // assertions must target the actual visible ROXY action error instead.
+  return page.locator('.action-error[role="alert"]');
+}
 
 async function installTelegram(page) {
   await page.addInitScript(() => {
@@ -65,6 +85,7 @@ async function mockMe(page) {
 test('settings never exposes editable defaults before preferences load and can retry a failed load', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  allowExpected503ResourceError(page);
   let attempts = 0;
   await page.route('**/api/v1/me/preferences', async (route) => {
     if (route.request().method() !== 'GET') {
@@ -92,8 +113,8 @@ test('settings never exposes editable defaults before preferences load and can r
   await expect(page.getByText('Загружаем настройки…')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Сохранить' })).toBeDisabled();
 
-  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
-  await expect(page.getByRole('alert')).not.toContainText('internal preference storage exploded');
+  await expect(userAlert(page)).toContainText('Сервис временно недоступен');
+  await expect(userAlert(page)).not.toContainText('internal preference storage exploded');
   await page.getByRole('button', { name: 'Повторить загрузку' }).click();
 
   await expect(page.getByLabel('Язык интерфейса')).toHaveValue('en');
@@ -209,6 +230,7 @@ test('support contact is server-owned and disappears when direct contact is not 
 test('promo bootstrap failure is an error with retry, never a fake inactive promo', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  allowExpected503ResourceError(page);
   let attempts = 0;
   await page.route('**/api/v1/promocodes/active', (route) => {
     attempts += 1;
@@ -217,7 +239,7 @@ test('promo bootstrap failure is an error with retry, never a fake inactive prom
   });
 
   await page.goto('/mini-app/promocodes/');
-  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
+  await expect(userAlert(page)).toContainText('Сервис временно недоступен');
   await expect(page.getByLabel('Промокод')).toHaveCount(0);
   await page.getByRole('button', { name: 'Повторить загрузку' }).click();
   await expect(page.getByLabel('Промокод')).toBeVisible();
@@ -299,6 +321,7 @@ test('payments show bootstrap progress instead of a false unavailable state', as
 test('support ticket load failure never masquerades as an empty inbox and can recover', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  allowExpected503ResourceError(page);
   let attempts = 0;
   await page.route('**/api/v1/support/contact', (route) => json(route, { configured: false, url: null, handle: null }));
   await page.route('**/api/v1/support/tickets?limit=100', (route) => {
@@ -308,16 +331,17 @@ test('support ticket load failure never masquerades as an empty inbox and can re
   });
 
   await page.goto('/mini-app/support/');
-  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
+  await expect(userAlert(page)).toContainText('Сервис временно недоступен');
   await expect(page.getByText('Обращений пока нет.')).toHaveCount(0);
   await page.getByRole('button', { name: 'Обновить' }).click();
   await expect(page.getByText('Обращений пока нет.')).toBeVisible();
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(userAlert(page)).toHaveCount(0);
 });
 
 test('payment bootstrap failure exposes an explicit retry that restores providers', async ({ page }) => {
   await installTelegram(page);
   await mockMe(page);
+  allowExpected503ResourceError(page);
   let attempt = 0;
   const available = {
     provider: 'yookassa',
