@@ -117,7 +117,7 @@ export default function PartnerWalletPage() {
       {!loading && error && !loaded ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
 
-      <div className="tool-grid">
+      {loaded ? <div className="tool-grid">
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">ROX</span><h2>Перевести в баланс</h2></div></div>
           <p className="muted">Партнёрские рубли можно добровольно перевести в ROX для генераций. Это односторонняя конвертация: ROX обратно в деньги не выводятся.</p>
@@ -146,7 +146,7 @@ export default function PartnerWalletPage() {
           <div className="section-title"><div><span className="kicker">ROX</span><h2>История переводов</h2></div></div>
           <div className="transaction-list">{loaded && transfers.length ? transfers.map((item) => <div className="transaction" key={item.id}><div><strong>{compactNumber(item.amount_rub)} ₽ → {compactNumber(item.rox_amount)} ROX</strong><small>{dateTime(item.created_at)}</small></div></div>) : loaded && !error ? <p className="muted">Переводов пока нет.</p> : null}</div>
         </div>
-      </div>
+      </div> : null}
     </StandaloneShell>
   );
 }
