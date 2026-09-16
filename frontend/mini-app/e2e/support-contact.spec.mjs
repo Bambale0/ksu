@@ -25,6 +25,13 @@ test('support exposes the direct Telegram contact', async ({ page }) => {
     if (path === '/api/v1/me') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' }) });
     }
+    if (path === '/api/v1/support/contact') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        configured: true,
+        url: 'https://t.me/korkinaxenia',
+        handle: '@korkinaxenia',
+      }) });
+    }
     if (path === '/api/v1/support/tickets') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) });
     }
