@@ -15,13 +15,24 @@ function textDetail(value: unknown): string | null {
   return null;
 }
 
+function validationDetail(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const detail = textDetail((payload as ErrorPayload).detail);
+  if (!detail || detail.length > 320 || /[\r\n]/.test(detail)) return null;
+  if (/\b(traceback|stack trace|exception|internal server error)\b/i.test(detail)) return null;
+  return detail;
+}
+
 export function userSafeHttpError(status: number, payload: unknown): Error {
   if (status >= 500) return new Error("Сервис временно недоступен. Попробуйте ещё раз.");
   if (status === 429) return new Error("Слишком много запросов. Попробуйте чуть позже.");
   if (status === 401) return new Error("Сессия истекла. Откройте ROXY заново.");
   if (status === 403) return new Error("Недостаточно прав для этого действия.");
   if (status === 404) return new Error("Данные не найдены или больше недоступны.");
-  if (status === 422) return new Error("Проверьте введённые данные и попробуйте ещё раз.");
+  if (status === 422) {
+    const detail = validationDetail(payload);
+    return new Error(detail || "Проверьте введённые данные и попробуйте ещё раз.");
+  }
 
   const body = payload && typeof payload === "object" ? payload as ErrorPayload : {};
   const detail = textDetail(body.detail) || textDetail(body.message);
@@ -36,14 +47,13 @@ export function userSafeNetworkError(reason: unknown): Error {
   return new Error("Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.");
 }
 
-
 export const CLIENT_REQUEST_TIMEOUT_MS = 20_000;
 
-export async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
+async function withRequestDeadline<T>(
+  init: RequestInit,
+  timeoutMs: number,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const upstream = init.signal;
   let timedOut = false;
@@ -61,12 +71,38 @@ export async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await operation(controller.signal);
   } catch (reason) {
-    if (timedOut) return Promise.reject(new Error("Сервер отвечает слишком долго. Попробуйте ещё раз."));
+    if (timedOut) throw new Error("Сервер отвечает слишком долго. Попробуйте ещё раз.");
     throw userSafeNetworkError(reason);
   } finally {
     globalThis.clearTimeout(timer);
     upstream?.removeEventListener("abort", abortFromUpstream);
   }
+}
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return withRequestDeadline(init, timeoutMs, (signal) => fetch(input, { ...init, signal }));
+}
+
+export async function fetchJsonWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = CLIENT_REQUEST_TIMEOUT_MS,
+): Promise<{ response: Response; payload: unknown }> {
+  return withRequestDeadline(init, timeoutMs, async (signal) => {
+    const response = await fetch(input, { ...init, signal });
+    if (response.status === 204) return { response, payload: null };
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch (reason) {
+      if (signal.aborted) throw reason;
+    }
+    return { response, payload };
+  });
 }
