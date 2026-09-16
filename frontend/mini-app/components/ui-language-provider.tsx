@@ -36,15 +36,20 @@ type UiLanguageContextValue = {
 
 const LANGUAGE_STORAGE_KEY = "roxy-ui-language";
 const TRANSLATED_ATTRIBUTES = ["placeholder", "aria-label", "title", "alt"] as const;
-const SKIP_TRANSLATION_SELECTOR = [
+const SKIP_SUBTREE_SELECTOR = [
   "script",
   "style",
   "pre",
   "code",
-  "textarea",
-  "[contenteditable='true']",
   "[data-no-i18n]",
   ".prompt-copy",
+].join(",");
+const SKIP_TEXT_SELECTOR = [
+  SKIP_SUBTREE_SELECTOR,
+  "textarea",
+  "input",
+  "select",
+  "[contenteditable='true']",
 ].join(",");
 
 const UiLanguageContext = createContext<UiLanguageContextValue | null>(null);
@@ -72,20 +77,27 @@ function persistLocalLanguage(language: UiLanguage): void {
   }
 }
 
-function shouldSkip(node: Node): boolean {
-  const element = node instanceof Element ? node : node.parentElement;
-  return Boolean(element?.closest(SKIP_TRANSLATION_SELECTOR));
+function closestElement(node: Node): Element | null {
+  return node instanceof Element ? node : node.parentElement;
+}
+
+function shouldSkipText(node: Node): boolean {
+  return Boolean(closestElement(node)?.closest(SKIP_TEXT_SELECTOR));
+}
+
+function shouldSkipAttributes(element: Element): boolean {
+  return Boolean(element.closest(SKIP_SUBTREE_SELECTOR));
 }
 
 function translateTextNode(node: Text, language: UiLanguage): void {
-  if (shouldSkip(node)) return;
+  if (shouldSkipText(node)) return;
   const current = node.nodeValue || "";
   const next = translateUiText(current, language);
   if (next !== current) node.nodeValue = next;
 }
 
 function translateElementAttributes(element: Element, language: UiLanguage): void {
-  if (shouldSkip(element)) return;
+  if (shouldSkipAttributes(element)) return;
   for (const name of TRANSLATED_ATTRIBUTES) {
     const current = element.getAttribute(name);
     if (!current) continue;
@@ -99,9 +111,9 @@ function translateSubtree(root: Node, language: UiLanguage): void {
     translateTextNode(root, language);
     return;
   }
+  if (root instanceof Element && root.closest(SKIP_SUBTREE_SELECTOR)) return;
   if (root instanceof Element) translateElementAttributes(root, language);
   if (!(root instanceof Element || root instanceof Document || root instanceof DocumentFragment)) return;
-  if (root instanceof Element && shouldSkip(root)) return;
 
   const owner = root instanceof Document ? root : root.ownerDocument;
   if (!owner) return;
@@ -161,7 +173,6 @@ export function UiLanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<UiLanguage>("ru");
   const [saving, setSaving] = useState(false);
   const [syncError, setSyncError] = useState("");
-  const preferencesRef = useRef<Preferences | null>(null);
   const manualSelectionRef = useRef(false);
 
   useDomTranslation(language);
@@ -175,7 +186,6 @@ export function UiLanguageProvider({ children }: { children: ReactNode }) {
     void customerRequest<Preferences>("/api/v1/me/preferences")
       .then((preferences) => {
         if (!active) return;
-        preferencesRef.current = preferences;
         if (manualSelectionRef.current) return;
         const resolved = resolveUiLanguage(preferences.ui_language, telegramLanguageCode());
         setLanguage(resolved);
@@ -198,14 +208,10 @@ export function UiLanguageProvider({ children }: { children: ReactNode }) {
     setSaving(true);
 
     try {
-      // Re-read before PUT so a language change never overwrites notification
-      // or discoverability changes saved from another Mini App surface.
-      const current = await customerRequest<Preferences>("/api/v1/me/preferences");
-      const updated = await customerRequest<Preferences>("/api/v1/me/preferences", {
-        method: "PUT",
-        body: JSON.stringify({ ...current, ui_language: next }),
+      await customerRequest<Preferences>("/api/v1/me/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ ui_language: next }),
       });
-      preferencesRef.current = updated;
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : "Language preference could not be synced");
       throw error;
