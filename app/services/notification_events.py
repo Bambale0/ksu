@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     Generation,
     Notification,
+    PartnerPromoProgramConfig,
     PartnerWithdrawal,
     Payment,
     ReferralRelation,
@@ -71,10 +72,20 @@ def _status_changed(obj: object) -> bool:
 
 def _referral_payment_amount(session: Session, reward: ReferralReward) -> Decimal:
     transaction = session.get(WalletTransaction, reward.source_transaction_id)
-    if transaction is not None and transaction.kind == "payment":
-        amount = Decimal(transaction.amount)
-        if amount > 0:
-            return amount
+    if (
+        transaction is not None
+        and transaction.kind == "payment"
+        and transaction.reference_type == "payment"
+        and transaction.reference_id
+    ):
+        try:
+            payment = session.get(Payment, uuid.UUID(str(transaction.reference_id)))
+        except (TypeError, ValueError, AttributeError):
+            payment = None
+        if payment is not None and payment.currency.upper() == "RUB":
+            amount = Decimal(payment.amount)
+            if amount > 0:
+                return amount
     percent = Decimal(reward.percent)
     if percent > 0:
         return (Decimal(reward.amount) * Decimal("100") / percent).quantize(Decimal("0.01"))
@@ -83,11 +94,7 @@ def _referral_payment_amount(session: Session, reward: ReferralReward) -> Decima
 
 def _referral_source_name(session: Session, reward: ReferralReward) -> str:
     source = session.get(User, reward.source_user_id)
-    if source is None:
-        return "Пользователь ROXY"
-    if source.first_name:
-        return source.first_name
-    if source.username:
+    if source is not None and source.username:
         return f"@{source.username}"
     return "Пользователь ROXY"
 
@@ -128,14 +135,18 @@ def _add_referral_reward_notification(session: Session, reward: ReferralReward) 
     line_label = "1-й" if level == 1 else "2-й"
     source_name = _referral_source_name(session, reward)
     payment_amount = _referral_payment_amount(session, reward)
+    config = session.get(PartnerPromoProgramConfig, "default")
+    fixed_rox = Decimal(config.topup_partner_rox) if config is not None else Decimal("0")
+    fixed_line = f"\n🎁 +{_money(fixed_rox)} ROX на баланс" if fixed_rox > 0 else ""
     _add_notification(
         session,
         user_id=reward.partner_user_id,
         kind=f"referral_line_{level}_topup",
-        title=f"💰 Пополнение по {line_label} линии!",
+        title=f"💰 По {line_label} линии пополнение!",
         body=(
-            f"Пополнение пользователя {source_name}: {_money(payment_amount)} ₽.\n"
-            f"Ваш заработок: +{_money(reward.amount)} ₽ ({_money(reward.percent)}%)."
+            f"{source_name} пополнил баланс на {_money(payment_amount)} ₽\n"
+            f"Ваш бонус: +{_money(reward.amount)} ₽ ({_money(reward.percent)}%)"
+            f"{fixed_line}"
         ),
     )
 
