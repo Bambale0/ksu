@@ -23,19 +23,10 @@ async function mockApi(page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
-    const json = (body, status = 200) => route.fulfill({
-      status,
-      contentType: 'application/json',
-      body: JSON.stringify(body),
-    });
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-    if (path === '/api/v1/profiles/777/feed') return json({
-      author: { display_name: 'Creator 777', referral_code: '777' },
-      items: [],
-    });
-    if (path === '/api/v1/me') return json({
-      id: 'viewer', telegram_id: 999, first_name: 'Viewer', balance_rox: '100.00',
-    });
+    if (path === '/api/v1/profiles/777/feed') return json({ author: { display_name: 'Creator 777', referral_code: '777' }, items: [] });
+    if (path === '/api/v1/me') return json({ id: 'viewer', telegram_id: 999, first_name: 'Viewer', balance_rox: '100.00' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/generations/models') return json({ models: [], families: [] });
     if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
@@ -58,11 +49,10 @@ test('public profile can leave a sticky Telegram start_param for ROXY and Feed',
   await openProfile(page);
   await page.getByRole('button', { name: 'Открыть ROXY' }).click();
   await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
   await page.waitForTimeout(300);
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
 
-  // An explicit fresh deep link to the same profile must still work in this WebView session.
   await openProfile(page);
   await page.getByRole('button', { name: 'Открыть ленту' }).click();
   await expect(page).toHaveURL(/\/mini-app\/?\?route=feed/);

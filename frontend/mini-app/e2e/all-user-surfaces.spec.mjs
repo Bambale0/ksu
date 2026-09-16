@@ -203,7 +203,7 @@ async function assertViewport(page) {
 const surfaces = [
   { id: 'home', url: '/mini-app/?route=home', ready: '.home-screen' },
   { id: 'feed', url: '/mini-app/?route=feed', ready: '.tiktok-feed-surface' },
-  { id: 'catalog', url: '/mini-app/?route=catalog', ready: '.screen-head >> text=Тренды и модели' },
+  { id: 'catalog-alias', url: '/mini-app/?route=catalog', ready: '#roxy-catalog-feature-hub' },
   { id: 'create', url: '/mini-app/?route=create', ready: '.create-screen' },
   { id: 'history', url: '/mini-app/?route=history', ready: '.screen-head >> text=Все работы' },
   { id: 'profile', url: '/mini-app/?route=profile', ready: '.profile-screen' },
@@ -271,7 +271,8 @@ test('Home and Catalog trend cards open the trend launcher', async ({ page }) =>
   await expect(page).toHaveURL(/\/mini-app\/trend\/\?id=trend_simple/);
 
   await page.goto('/mini-app/?route=catalog');
-  const catalogTrend = page.locator("[data-trend-launch='true']", { hasText: referenceTrend.title });
+  await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+  const catalogTrend = page.locator(".home-screen [data-trend-launch='true']", { hasText: referenceTrend.title });
   await expect(catalogTrend).toBeVisible();
 });
 

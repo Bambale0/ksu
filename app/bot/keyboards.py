@@ -55,7 +55,7 @@ def _prompt_tool_url(mode: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}/mini-app/prompt-tools.html?mode={mode}"
 
 
-def _open_app_inline_button(*, route: str = "catalog", start_payload: str | None = None) -> InlineKeyboardButton:
+def _open_app_inline_button(*, route: str = "home", start_payload: str | None = None) -> InlineKeyboardButton:
     if not settings.public_base_url:
         return InlineKeyboardButton(text=OPEN_APP_TEXT, callback_data="app:unavailable")
     return InlineKeyboardButton(
@@ -66,7 +66,7 @@ def _open_app_inline_button(*, route: str = "catalog", start_payload: str | None
 
 def app_launcher_menu(
     *,
-    route: str = "catalog",
+    route: str = "home",
     start_payload: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Inline app launcher: only the ROXY Mini App button under the message."""
@@ -184,9 +184,9 @@ def onboarding_menu() -> InlineKeyboardMarkup:
 
 def main_menu_with_start_payload(start_payload: str | None = None) -> InlineKeyboardMarkup:
     """Open the Mini App catalog while preserving a Telegram start payload."""
-    return app_launcher_menu(route="catalog", start_payload=start_payload)
+    return app_launcher_menu(route="home", start_payload=start_payload)
 
 
 def main_menu() -> InlineKeyboardMarkup:
     """Compatibility alias for older imports; customer UX opens the Mini App catalog."""
-    return app_launcher_menu(route="catalog")
+    return app_launcher_menu(route="home")
