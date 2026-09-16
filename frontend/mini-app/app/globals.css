@@ -194,9 +194,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .promo-carousel-arrow:hover { background: rgba(155, 92, 255, .8); }
 .promo-carousel-prev { left: 10px; transform: translateY(-50%) rotate(180deg); }
 .promo-carousel-next { right: 10px; }
-.promo-carousel-dots { position: absolute; left: 50%; bottom: 10px; display: flex; gap: 6px; transform: translateX(-50%); }
-.promo-carousel-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.45); cursor: pointer; }
-.promo-carousel-dots button.active { width: 19px; border-radius: 5px; background: #fff; }
+.promo-carousel-dots { position: absolute; left: 50%; bottom: 8px; display: flex; gap: 0; transform: translateX(-50%); }
+.promo-carousel-dots button { position: relative; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.promo-carousel-dots button::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.45); transform: translateX(-50%); }
+.promo-carousel-dots button.active::after { width: 19px; border-radius: 5px; background: #fff; }
 
 .primary, .secondary {
   min-height: 44px;
