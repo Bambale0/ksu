@@ -84,12 +84,12 @@ async function mockApi(page) {
       promo_id: '88888888-8888-4888-8888-888888888888',
       partner_user_id: '99999999-9999-4999-8999-999999999999',
       activated_at: '2026-09-15T12:00:00+00:00',
-      welcome_rox_granted: '25.00',
-      welcome_rox_current: '25.00',
+      welcome_rox_granted: '0',
+      welcome_rox_current: '0',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
-      topup_user_rox: '50.00',
-      topup_user_min_rub: '1000.00',
+      topup_user_rox: '0',
+      topup_user_min_rub: '0',
       package_discount_percent: '0',
     } : {
       active: false,
@@ -102,8 +102,8 @@ async function mockApi(page) {
       welcome_rox_current: '0',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
-      topup_user_rox: '50.00',
-      topup_user_min_rub: '1000.00',
+      topup_user_rox: '0',
+      topup_user_min_rub: '0',
       package_discount_percent: '0',
     });
     if (path === '/api/v1/promocodes/redeem' && method === 'POST') {
@@ -112,12 +112,12 @@ async function mockApi(page) {
       status: 'activated',
       code: 'WELCOME',
       partner_user_id: '99999999-9999-4999-8999-999999999999',
-      reward_rox: '25.00',
-      welcome_rox: '25.00',
+      reward_rox: '0',
+      welcome_rox: '0',
       first_line_percent: '30.00',
       topup_partner_rox: '10.00',
-      topup_user_rox: '50.00',
-      topup_user_min_rub: '1000.00',
+      topup_user_rox: '0',
+      topup_user_min_rub: '0',
       balance_rox: '150.00',
       message: 'Промокод активирован',
       });
@@ -125,7 +125,7 @@ async function mockApi(page) {
     if (path === '/api/v1/promocodes/validate') return json({
       status: 'valid',
       code: 'WELCOME',
-      reward_rox: '25.00',
+      reward_rox: '0',
       remaining_uses: 99,
       expires_at: '2026-10-13T00:00:00+00:00',
       message: 'Промокод готов к активации',
@@ -183,17 +183,17 @@ for (const [url, title] of surfaces) {
   });
 }
 
-test('promo activation preserves registration welcome before checkout', async ({ page }) => {
+test('promo activation grants no ROX and only unlocks payment bonus eligibility', async ({ page }) => {
   await mockApi(page);
   await page.goto('/mini-app/promocodes/');
   await page.getByPlaceholder('Например, KSENIA50').fill('WELCOME');
   await page.getByRole('button', { name: 'Активировать промокод' }).click();
   await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'WELCOME' })).toBeVisible();
-  await expect(page.getByText('+25', { exact: true })).toBeVisible();
-  await expect(page.getByText('ROX начислены при регистрации', { exact: true })).toBeVisible();
-  await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
-  await expect(page.getByText('Активна', { exact: true })).toBeVisible();
+  await expect(page.getByText('+25', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/ROX начислены при регистрации/)).toHaveCount(0);
+  await expect(page.getByText(/ROX от/)).toHaveCount(0);
+  await expect(page.getByText(/Бонус пакета начислится только после успешной оплаты/)).toBeVisible();
   await page.getByRole('button', { name: 'Перейти к пополнению' }).click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
 });
