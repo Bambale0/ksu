@@ -294,3 +294,53 @@ test('payments show bootstrap progress instead of a false unavailable state', as
   await expect(page.getByText('Пополнение сейчас недоступно.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toBeVisible();
 });
+
+
+test('support ticket load failure never masquerades as an empty inbox and can recover', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  let attempts = 0;
+  await page.route('**/api/v1/support/contact', (route) => json(route, { configured: false, url: null, handle: null }));
+  await page.route('**/api/v1/support/tickets?limit=100', (route) => {
+    attempts += 1;
+    if (attempts === 1) return json(route, { detail: 'private support storage failure' }, 503);
+    return json(route, { items: [] });
+  });
+
+  await page.goto('/mini-app/support/');
+  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
+  await expect(page.getByText('Обращений пока нет.')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Обновить' }).click();
+  await expect(page.getByText('Обращений пока нет.')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('payment bootstrap failure exposes an explicit retry that restores providers', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  let attempt = 0;
+  const available = {
+    provider: 'yookassa',
+    label: 'ЮKassa',
+    configured: true,
+    currencies: ['RUB'],
+    packages: {
+      starter: { credits: '300', bonus_credits: '30', total_credits: '330', prices: { RUB: '300' } },
+    },
+  };
+  await page.route('**/api/v1/payments/yookassa/packages', (route) => {
+    attempt += 1;
+    return attempt === 1 ? json(route, { detail: 'provider config unavailable' }, 503) : json(route, available);
+  });
+  await page.route('**/api/v1/payments/card/packages', (route) => json(route, { configured: false, provider: 'card', label: 'Lava Top', currencies: ['RUB'], packages: {} }));
+  await page.route('**/api/v1/payments/crypto/packages', (route) => json(route, { configured: false, provider: 'cryptobot', label: 'CryptoBot', currencies: ['RUB'], packages: {} }));
+  await page.route('**/api/v1/payments?limit=50', (route) => json(route, { items: [] }));
+  await page.route('**/api/v1/promocodes/active', (route) => json(route, { active: false, program_active: true }));
+
+  await page.goto('/mini-app/payments/');
+  await expect(page.getByText('Пополнение сейчас недоступно. Попробуйте ещё раз позже.')).toBeVisible();
+  const retry = page.getByRole('button', { name: 'Повторить загрузку' });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toBeVisible();
+});
