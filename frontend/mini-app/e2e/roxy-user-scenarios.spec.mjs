@@ -465,7 +465,7 @@ async function runPartners(page, check) {
     await expect(page.getByText('https://t.me/roxy_aicreativebot/app?startapp=profile_777_ref_777')).toBeVisible();
   } else if (check === 'copy-referral') {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.getByRole('button', { name: 'Скопировать реферальную ссылку' }).click();
+    await page.getByRole('button', { name: 'Скопировать обычную реферальную ссылку', exact: true }).click();
     await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } else if (check === 'stats') {
     await expect(page.getByText('2').first()).toBeVisible();
