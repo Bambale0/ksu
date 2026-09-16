@@ -12,8 +12,8 @@ from app.db.models import Generation
 from app.services.billing_access import BillingAccessService
 from app.services.feed import FeedError, FeedService
 from app.services.generations import GenerationService
-from app.services.model_catalog import ModelCatalog
-from app.services.seedance_prompt_limits import prompt_max_chars, UnknownModelError
+from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.seedance_prompt_limits import prompt_max_chars
 from app.services.model_routing import REFERENCE_PARAMETER_FIELDS
 from app.services.reference_resolver import ReferenceResolver
 from app.services.references import ReferenceService
