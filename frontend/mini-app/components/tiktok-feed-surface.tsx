@@ -838,20 +838,20 @@ export function TikTokFeedSurface() {
 
             <div className="tiktok-feed-meta">
               <button className="tiktok-feed-author-line" type="button" onClick={() => void openProfile(card)}>
-                <strong>{authorName(card)}</strong>
-                {card.author?.username && <small>@{card.author.username}</small>}
+                <strong data-no-i18n>{authorName(card)}</strong>
+                {card.author?.username && <small data-no-i18n>@{card.author.username}</small>}
               </button>
               <span className="tiktok-feed-model">{modelTitles[String(card.model || "")] || String(card.model || "ROXY")}</span>
               {card.prompt && !card.prompt_hidden && <>
-                <p className={`tiktok-feed-prompt${promptExpanded ? " expanded" : ""}`}>{card.prompt}</p>
+                <p className={`tiktok-feed-prompt${promptExpanded ? " expanded" : ""}`} data-no-i18n>{card.prompt}</p>
                 {card.prompt.length > 90 && <button className="tiktok-feed-prompt-more" type="button" onClick={() => setExpandedPrompt(promptExpanded ? null : card.id)}>{promptExpanded ? "свернуть" : "ещё"}</button>}
               </>}
               <small style={{ color: "rgba(255,255,255,.55)", fontSize: 9 }}>{dateLabel(card.feed_published_at || card.created_at)}</small>
             </div>
 
             <div className="tiktok-feed-rail">
-              <button className="tiktok-feed-avatar" type="button" onClick={() => void openProfile(card)} aria-label={`Профиль ${authorName(card)}`}>
-                <span>{authorInitials(card)}</span>
+              <button className="tiktok-feed-avatar" type="button" onClick={() => void openProfile(card)} aria-label="Профиль автора">
+                <span data-no-i18n>{authorInitials(card)}</span>
                 {!card.is_mine && <span className={`tiktok-feed-follow${profile?.subscribed_by_me ? " subscribed" : ""}`} onClick={(event) => { event.stopPropagation(); void toggleFollow(card); }}>{profile?.subscribed_by_me ? "✓" : "+"}</span>}
               </button>
               <button className={`tiktok-feed-rail-action${card.liked_by_me ? " liked" : ""}`} type="button" disabled={busyAction === `${card.id}:like`} onClick={() => void toggleLike(card)} aria-label="Лайк"><span><Icon name="heart" size={23}/></span><small>{compact(card.likes_count)}</small></button>
@@ -871,7 +871,7 @@ export function TikTokFeedSurface() {
       <section className="tiktok-sheet">
         <div className="tiktok-sheet-handle" />
         <div className="tiktok-sheet-head"><h2>Комментарии · {compact(commentsCard.comments_count)}</h2><button className="tiktok-sheet-close" type="button" onClick={() => setCommentsId(null)} aria-label="Закрыть"><Icon name="close"/></button></div>
-        {commentsLoading ? <p style={{ color: "#9994a3", fontSize: 12 }}>Загружаю обсуждение…</p> : <div className="tiktok-comments-list">{comments.length ? comments.map((comment) => <div className="tiktok-comment" key={comment.id}><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small><p>{comment.text}</p></div>) : <p style={{ color: "#9994a3", fontSize: 12 }}>Комментариев пока нет. Можно быть первым.</p>}</div>}
+        {commentsLoading ? <p style={{ color: "#9994a3", fontSize: 12 }}>Загружаю обсуждение…</p> : <div className="tiktok-comments-list">{comments.length ? comments.map((comment) => <div className="tiktok-comment" key={comment.id}><strong data-no-i18n>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small><p data-no-i18n>{comment.text}</p></div>) : <p style={{ color: "#9994a3", fontSize: 12 }}>Комментариев пока нет. Можно быть первым.</p>}</div>}
         <div className="tiktok-comment-form"><textarea maxLength={300} placeholder="Написать комментарий…" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button type="button" disabled={!commentText.trim() || busyAction === `${commentsCard.id}:comment`} onClick={() => void addComment()} aria-label="Отправить">↑</button></div>
       </section>
     </div>}
@@ -881,8 +881,8 @@ export function TikTokFeedSurface() {
       <section className="tiktok-sheet">
         <div className="tiktok-sheet-handle" />
         <div className="tiktok-sheet-head"><h2>{modelTitles[String(detailsCard.model || "")] || "Работа ROXY"}</h2><button className="tiktok-sheet-close" type="button" onClick={() => setDetailsId(null)} aria-label="Закрыть"><Icon name="close"/></button></div>
-        <button className="tiktok-feed-author-line" type="button" onClick={() => { setDetailsId(null); void openProfile(detailsCard); }}><strong>{authorName(detailsCard)}</strong>{detailsCard.author?.username && <small>@{detailsCard.author.username}</small>}</button>
-        {detailsCard.prompt && !detailsCard.prompt_hidden && <div className="tiktok-detail-copy"><small>Описание</small><p>{detailsCard.prompt}</p></div>}
+        <button className="tiktok-feed-author-line" type="button" onClick={() => { setDetailsId(null); void openProfile(detailsCard); }}><strong data-no-i18n>{authorName(detailsCard)}</strong>{detailsCard.author?.username && <small data-no-i18n>@{detailsCard.author.username}</small>}</button>
+        {detailsCard.prompt && !detailsCard.prompt_hidden && <div className="tiktok-detail-copy"><small>Описание</small><p data-no-i18n>{detailsCard.prompt}</p></div>}
         {!detailsCard.references_hidden && Boolean((detailsCard.reference_images?.length || 0) + (detailsCard.reference_videos?.length || 0)) && <div className="tiktok-detail-copy"><small>Референсы автора</small><div className="tiktok-reference-row">{(detailsCard.reference_images || []).map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={`${url}-${index}`}><img src={url} alt={`Референс ${index + 1}`}/></a>)}{(detailsCard.reference_videos || []).map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={`${url}-${index}`}><video src={url} muted playsInline preload="metadata"/></a>)}</div></div>}
         <div className="tiktok-detail-actions">
           <button type="button" onClick={() => openExternalLink(mediaUrl(detailsCard))}>Открыть результат</button>
@@ -901,7 +901,7 @@ export function TikTokFeedSurface() {
         <div className="tiktok-sheet-head"><h2>Профиль автора</h2><button className="tiktok-sheet-close" type="button" onClick={() => setProfileId(null)} aria-label="Закрыть"><Icon name="close"/></button></div>
         <div className="tiktok-profile-summary">
           <span className="tiktok-profile-avatar">{authorInitials(profileCard)}</span>
-          <div className="tiktok-profile-copy"><strong>{currentProfile?.display_name || authorName(profileCard)}</strong><small>{currentProfile?.username ? `@${currentProfile.username}` : profileCard.author?.username ? `@${profileCard.author.username}` : "Автор ROXY"}</small><small>{compact(currentProfile?.follower_count)} подписчиков</small></div>
+          <div className="tiktok-profile-copy"><strong data-no-i18n>{currentProfile?.display_name || authorName(profileCard)}</strong><small data-no-i18n>{currentProfile?.username ? `@${currentProfile.username}` : profileCard.author?.username ? `@${profileCard.author.username}` : "Автор ROXY"}</small><small>{compact(currentProfile?.follower_count)} подписчиков</small></div>
           {!profileCard.is_mine && <button className={`tiktok-profile-follow${currentProfile?.subscribed_by_me ? " subscribed" : ""}`} type="button" onClick={() => void toggleFollow(profileCard)}>{currentProfile?.subscribed_by_me ? "Вы подписаны" : "Подписаться"}</button>}
         </div>
         {profileLoading ? <p style={{ color: "#9994a3", fontSize: 12 }}>Загружаю работы…</p> : profileWorks.length ? <div className="tiktok-profile-grid">{profileWorks.slice(0, 12).map((work) => <button className="tiktok-profile-work" type="button" key={work.id} onClick={() => openExternalLink(mediaUrl(work))}>{mediaType(work) === "video" ? <video src={mediaUrl(work)} muted playsInline preload="metadata"/> : <img src={mediaUrl(work)} alt="" loading="lazy"/>}</button>)}</div> : <p style={{ color: "#9994a3", fontSize: 12 }}>Публичных работ пока нет.</p>}
