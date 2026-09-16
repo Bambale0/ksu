@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  page.__frontendAuditErrors = [];
+  page.on('pageerror', (error) => page.__frontendAuditErrors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') page.__frontendAuditErrors.push(`console: ${message.text()}`);
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  expect(page.__frontendAuditErrors || []).toEqual([]);
+});
+
 async function installTelegram(page) {
   await page.addInitScript(() => {
     window.__supportTelegramUrl = '';
@@ -33,6 +45,11 @@ async function expectTouchTargets(page) {
     })
     .filter((item) => item.width < 43.5 || item.height < 43.5));
   expect(undersized).toEqual([]);
+
+  const unnamed = await page.locator('button:visible').evaluateAll((buttons) => buttons
+    .filter((button) => !(button.getAttribute('aria-label') || button.getAttribute('title') || button.textContent?.trim()))
+    .map((button) => button.className || 'button'));
+  expect(unnamed).toEqual([]);
 }
 
 async function mockMe(page) {
