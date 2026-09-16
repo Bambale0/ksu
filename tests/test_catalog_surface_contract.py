@@ -15,11 +15,13 @@ def test_catalog_replaces_studio_in_customer_bottom_navigation() -> None:
     launcher = _read(ROOT / "app" / "bot" / "handlers" / "launcher.py")
     keyboard = _read(ROOT / "app" / "bot" / "keyboards.py")
 
-    assert ".bottom-nav button:first-child" in css
-    assert "display: none" in css
-    assert "['Лента', 'Каталог', 'Создать', 'Партнёры', 'Профиль']" in e2e
-    assert 'return "catalog"' in launcher
-    assert 'return app_launcher_menu(route="catalog")' in keyboard
+    assert ".bottom-nav button:first-child" not in css
+    assert "['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']" in e2e
+    assert 'return "home"' in launcher
+    assert 'return app_launcher_menu(route="home")' in keyboard
+    assert 'data-roxy-customer-route={customerRoute || key}' in _read(
+        FRONTEND / "components" / "roxy-social-app.tsx"
+    )
 
 
 def test_catalog_exposes_bot_tools_and_admin_published_trends() -> None:
