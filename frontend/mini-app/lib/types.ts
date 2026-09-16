@@ -292,6 +292,7 @@ export type PartnerStats = {
   partner_chat_url?: string | null;
   rox_balance?: string;
   welcome_bonus_rox?: string;
+  registration_bonus_rox?: string;
   invite_bonus_rox?: string;
   promo_welcome_rox?: string;
   promo_topup_partner_rox?: string;
