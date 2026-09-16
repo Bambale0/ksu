@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { api } from "@/lib/api";
 import { clearStoredLaunchPayload, consumeMiniAppReturnLocation, haptic, initTelegram, syncSafeArea } from "@/lib/telegram";
 
@@ -162,13 +163,16 @@ export function StandaloneShell({
           <span className="roxy-mark" aria-hidden="true"><span>RX</span></span>
           <span className="brand-copy"><strong>ROXY</strong><small>Студия творчества</small></span>
         </button>
-        <button
-          className="balance-button"
-          type="button"
-          onClick={openPayments}
-        >
-          <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
-        </button>
+        <div className="topbar-actions">
+          <LanguageSwitcher />
+          <button
+            className="balance-button"
+            type="button"
+            onClick={openPayments}
+          >
+            <span>Баланс</span><strong>{balance == null ? "—" : `${compact(balance)} ROX`}</strong>
+          </button>
+        </div>
       </header>
 
       <main className="main-shell">
