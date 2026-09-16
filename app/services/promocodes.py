@@ -546,9 +546,8 @@ class PromoCodeService:
             select(WalletTransaction)
             .where(
                 WalletTransaction.user_id == user_id,
-                WalletTransaction.kind == "partner_promo_welcome",
-                WalletTransaction.promo_code == promo.code,
-                WalletTransaction.partner_id == relation.inviter_user_id,
+                WalletTransaction.kind == "welcome_bonus",
+                WalletTransaction.reference_type == "registration",
             )
             .order_by(WalletTransaction.created_at.asc())
         )
