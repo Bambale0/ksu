@@ -736,7 +736,17 @@ const RU_PATTERNS: Pattern[] = [
   [/^Открыть пример (\d+)$/, (m) => `Open reference ${m[1]}`],
   [/^Открыть видео-пример (\d+)$/, (m) => `Open video reference ${m[1]}`],
   [/^Слайд (\d+)$/, (m) => `Slide ${m[1]}`],
-  [/^(\d+) непрочитанных$/, (m) => `${m[1]} unread`]
+  [/^(\d+) непрочитанных$/, (m) => `${m[1]} unread`],
+  [/^(\d+) изображений выбрано$/, (m) => `${m[1]} images selected`],
+  [/^(\d+) файлов выбрано$/, (m) => `${m[1]} files selected`],
+  [/^(\d+) (янв\.|февр\.|мар\.|апр\.|мая|июн\.|июл\.|авг\.|сент\.|окт\.|нояб\.|дек\.)$/, (m) => {
+    const months: Record<string, string> = {
+      "янв.": "Jan", "февр.": "Feb", "мар.": "Mar", "апр.": "Apr",
+      "мая": "May", "июн.": "Jun", "июл.": "Jul", "авг.": "Aug",
+      "сент.": "Sep", "окт.": "Oct", "нояб.": "Nov", "дек.": "Dec",
+    };
+    return `${m[1]} ${months[m[2]] || m[2]}`;
+  }]
 ];
 
 const EN_PATTERNS: Pattern[] = [
@@ -752,7 +762,16 @@ const EN_PATTERNS: Pattern[] = [
   [/^Open reference (\d+)$/, (m) => `Открыть пример ${m[1]}`],
   [/^Open video reference (\d+)$/, (m) => `Открыть видео-пример ${m[1]}`],
   [/^Slide (\d+)$/, (m) => `Слайд ${m[1]}`],
-  [/^(\d+) unread$/, (m) => `${m[1]} непрочитанных`]
+  [/^(\d+) unread$/, (m) => `${m[1]} непрочитанных`],
+  [/^(\d+) images selected$/, (m) => `${m[1]} изображений выбрано`],
+  [/^(\d+) files selected$/, (m) => `${m[1]} файлов выбрано`],
+  [/^(\d+) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$/, (m) => {
+    const months: Record<string, string> = {
+      Jan: "янв.", Feb: "февр.", Mar: "мар.", Apr: "апр.", May: "мая", Jun: "июн.",
+      Jul: "июл.", Aug: "авг.", Sep: "сент.", Oct: "окт.", Nov: "нояб.", Dec: "дек.",
+    };
+    return `${m[1]} ${months[m[2]] || m[2]}`;
+  }]
 ];
 
 function translateCore(value: string, language: UiLanguage): string {
@@ -764,18 +783,7 @@ function translateCore(value: string, language: UiLanguage): string {
     if (match) return format(match);
   }
 
-  const monthPairs = [
-    ["янв.", "Jan"], ["февр.", "Feb"], ["мар.", "Mar"], ["апр.", "Apr"],
-    ["мая", "May"], ["июн.", "Jun"], ["июл.", "Jul"], ["авг.", "Aug"],
-    ["сент.", "Sep"], ["окт.", "Oct"], ["нояб.", "Nov"], ["дек.", "Dec"],
-  ] as const;
-  let withLocaleDates = value;
-  for (const [ru, en] of monthPairs) {
-    withLocaleDates = language === "en"
-      ? withLocaleDates.replaceAll(ru, en)
-      : withLocaleDates.replaceAll(en, ru);
-  }
-  return withLocaleDates;
+  return value;
 }
 
 export function translateUiText(value: string, language: UiLanguage): string {
