@@ -1,5 +1,8 @@
+import pytest
+
+from app.api.v1.support import support_contact
 from app.bot.support_links import direct_support_handle, normalize_direct_support_url
-from app.core.config import Settings
+from app.core.config import Settings, settings
 
 
 def test_support_contact_is_opt_in_by_default() -> None:
@@ -31,3 +34,20 @@ def test_support_contact_allows_invite_link_but_does_not_render_it_as_mention() 
     invite = "https://t.me/+abcdEFGH123"
     assert normalize_direct_support_url(invite) == invite
     assert direct_support_handle(invite) is None
+
+
+@pytest.mark.asyncio
+async def test_support_api_exposes_only_normalized_runtime_contact(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "support_telegram_url", "https://t.me/roxy_support")
+    assert await support_contact() == {
+        "configured": True,
+        "url": "https://t.me/roxy_support",
+        "handle": "@roxy_support",
+    }
+
+    monkeypatch.setattr(settings, "support_telegram_url", "https://example.com/not-allowed")
+    assert await support_contact() == {
+        "configured": False,
+        "url": None,
+        "handle": None,
+    }
