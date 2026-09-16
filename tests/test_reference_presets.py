@@ -189,3 +189,30 @@ async def test_preset_validates_model_fields_and_reference_ownership() -> None:
                 parameters={},
                 reference_ids=[reference_id],
             )
+
+@pytest.mark.asyncio
+async def test_preset_prompt_limit_follows_selected_seedance_model() -> None:
+    async with SessionFactory() as session:
+        owner = await _user(session)
+        accepted = await UserPresetService.create(
+            session,
+            user_id=owner.id,
+            name="Seedance long prompt",
+            model_id="seedance-2.0",
+            prompt="x" * 20_000,
+            parameters={},
+            reference_ids=[],
+        )
+        assert len(accepted.prompt) == 20_000
+
+        with pytest.raises(PresetError):
+            await UserPresetService.create(
+                session,
+                user_id=owner.id,
+                name="Seedance too long",
+                model_id="seedance-2.0",
+                prompt="x" * 20_001,
+                parameters={},
+                reference_ids=[],
+            )
+

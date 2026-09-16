@@ -14,7 +14,7 @@ function EditableField({ field, value, onChange }: { field: UiField; value: unkn
   if (field.control === "file" || field.control === "files") return null;
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong><small>{field.placeholder || ""}</small></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /><i /></label>;
   if (field.suggestions?.length) return <label className="field"><span className="label">{field.label}</span><select className="control" value={value == null ? "" : String(value)} onChange={(event) => onChange(event.target.value)}><option value="">Не выбрано</option>{field.suggestions.map((item) => <option key={String(item)} value={String(item)}>{String(item)}</option>)}</select></label>;
-  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}</span><textarea className="control textarea" value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value)} onChange={(event) => onChange(event.target.value)} /></label>;
+  if (field.control === "textarea" || field.control === "json") return <label className="field"><span className="label">{field.label}</span><textarea className="control textarea" maxLength={field.max_length} value={value == null ? "" : typeof value === "string" ? value : JSON.stringify(value)} onChange={(event) => onChange(event.target.value)} /></label>;
   return <label className="field"><span className="label">{field.label}</span><input className="control" type={field.control === "number" ? "number" : "text"} min={field.min} max={field.max} step={field.step} value={value == null ? "" : String(value)} onChange={(event) => onChange(field.control === "number" ? (event.target.value === "" ? null : Number(event.target.value)) : event.target.value)} /></label>;
 }
 
@@ -34,6 +34,10 @@ export default function PresetsPage() {
 
   const selected = useMemo(() => models.find((item) => item.id === modelId) || null, [models, modelId]);
   const fields = useMemo(() => (selected?.ui_schema?.fields || []).filter((field) => field.name !== "prompt"), [selected]);
+  const promptMaxLength = useMemo(
+    () => selected?.ui_schema?.fields?.find((field) => field.name === "prompt")?.max_length || 8000,
+    [selected],
+  );
 
   const load = async () => {
     setError("");
@@ -115,7 +119,7 @@ export default function PresetsPage() {
           <div className="form-stack">
             <label className="field"><span className="label">Название</span><input className="control" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} placeholder="Например: Kling cinematic" /></label>
             <label className="field"><span className="label">Модель</span><select className="control" value={modelId} onChange={(event) => chooseModel(event.target.value)}>{models.map((model) => <option key={model.id} value={model.id}>{model.title}</option>)}</select></label>
-            <label className="field"><span className="label">Промпт</span><textarea className="control textarea" maxLength={8000} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Базовый промпт пресета" /></label>
+            <label className="field"><span className="label">Промпт</span><textarea className="control textarea" maxLength={promptMaxLength} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Базовый промпт пресета" /></label>
             {fields.map((field) => <EditableField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => setParameters((current) => ({ ...current, [field.name]: value }))} />)}
             {selected?.ui_schema?.billing_seconds ? <label className="field"><span className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</span><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></label> : null}
             {references.length ? <div className="field"><span className="label">Сохранённые референсы</span><div className="transaction-list">{references.map((reference) => <label className="transaction" key={reference.id}><div><strong>{reference.label || reference.original_filename || (reference.kind === "image" ? "Фото" : reference.kind === "video" ? "Видео" : "Аудио")}</strong><small>{reference.kind}</small></div><input type="checkbox" checked={referenceIds.includes(reference.id)} onChange={(event) => setReferenceIds((current) => event.target.checked ? [...new Set([...current, reference.id])].slice(0, 16) : current.filter((id) => id !== reference.id))} /></label>)}</div></div> : null}
