@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.reference_models import UserPreset
 from app.services.model_catalog import ModelCatalog
+from app.services.seedance_prompt_limits import validate_prompt_length
 from app.services.references import ReferenceService
 
 
@@ -21,8 +22,10 @@ class UserPresetService:
         clean_name = name.strip()
         if not clean_name or len(clean_name) > 80:
             raise PresetError("Preset name must contain 1..80 characters")
-        if len(prompt) > 8000:
-            raise PresetError("Prompt must be at most 8000 characters")
+        try:
+            validate_prompt_length(model_id, prompt)
+        except ValueError as exc:
+            raise PresetError(str(exc)) from exc
         spec = ModelCatalog.get(model_id)
         unknown = sorted(set(parameters) - set(spec.known_fields))
         if unknown:
