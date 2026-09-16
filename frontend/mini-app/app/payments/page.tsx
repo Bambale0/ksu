@@ -132,11 +132,13 @@ export default function PaymentsPage() {
   const [promoCode, setPromoCode] = useState("");
   const [promo, setPromo] = useState<PromoPreview | null>(null);
   const [activePromo, setActivePromo] = useState<ActivePromo | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const load = async () => {
+    setLoading(true);
     setError("");
     const [cardResult, yooKassaResult, cryptoBotResult, paymentsResult, promoStateResult] = await Promise.allSettled([
       customerRequest<PackageResponse>("/api/v1/payments/card/packages"),
@@ -186,6 +188,7 @@ export default function PaymentsPage() {
       loadErrors.push("Не удалось загрузить историю пополнений. Обновите экран или попробуйте позже.");
     }
     setError(loadErrors.join(" "));
+    setLoading(false);
   };
 
   const validatePromo = async (rawCode = promoCode) => {
@@ -274,7 +277,7 @@ export default function PaymentsPage() {
   );
 
   const checkout = async () => {
-    if (!packageId || !price || busy || (provider === "card" && !email.trim())) return;
+    if (loading || !packageId || !price || busy || (provider === "card" && !email.trim())) return;
     if (!activePromo?.active && promoCode.trim() && !promo) {
       setError("Сначала примените промокод или очистите поле.");
       return;
@@ -423,6 +426,7 @@ export default function PaymentsPage() {
       title="Пополнения ROX"
       copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Обычный бонус пакета начисляется независимо от промокода. Активный партнёрский промокод добавляет ещё отдельный ROX-бонус к подходящему пополнению."
     >
+      {loading ? <p className="muted" role="status">Загружаем способы оплаты и историю…</p> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
       {activePromo?.active ? <div className="panel">
@@ -447,7 +451,7 @@ export default function PaymentsPage() {
         {yooKassaAvailable && cardAvailable ? <p className="muted">Основной способ — ЮKassa. Lava Top используйте как резерв, если основной платёж не проходит.</p> : null}
         {!yooKassaAvailable && cardAvailable ? <p className="muted">ЮKassa сейчас недоступна — включён резервный способ Lava Top.</p> : null}
         {!yooKassaAvailable && !cardAvailable && cryptoBotAvailable ? <p className="muted">Оплата картой сейчас недоступна. Можно пополнить через CryptoBot.</p> : null}
-        {!yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
+        {!loading && !yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
           <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
