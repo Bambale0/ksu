@@ -40,7 +40,7 @@ function ensureCatalogHost(screen: HTMLElement): HTMLElement {
 function ensureHomeHost(screen: HTMLElement): HTMLElement | null {
   const existing = screen.querySelector<HTMLElement>("#roxy-home-live-trends");
   if (existing) return existing;
-  const promo = screen.querySelector<HTMLElement>(":scope > .promo-slider");
+  const promo = screen.querySelector<HTMLElement>(":scope > .promo-carousel, :scope > .promo-slider");
   if (!promo) return null;
   const host = document.createElement("div");
   host.id = "roxy-home-live-trends";
