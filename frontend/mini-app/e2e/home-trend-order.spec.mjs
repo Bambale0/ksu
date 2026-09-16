@@ -78,31 +78,33 @@ async function mockHome(page, { delayedFolderTabs = false } = {}) {
   });
 }
 
-test('home shows live trends and then category cards without an extra section heading', async ({ page }) => {
+test('canonical Catalog shows live trends and category cards without an extra section heading', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=home');
 
   const home = page.locator('.home-screen');
-  const promo = home.locator(':scope > .promo-slider');
   const trends = home.locator(':scope > #roxy-home-live-trends');
   const folders = home.locator(':scope > #roxy-home-trend-folders');
 
   await expect(home).toBeVisible();
-  await expect(promo).toBeVisible();
   await expect(trends.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
   await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
   await expect(folders.locator('.home-trend-folders-head')).toHaveCount(0);
   await expect(folders.getByRole('heading', { name: 'Папки трендов' })).toHaveCount(0);
 
   await expect.poll(() => home.evaluate((node) => {
-    const promo = node.querySelector(':scope > .promo-slider');
+    const children = Array.from(node.children);
     const trends = node.querySelector(':scope > #roxy-home-live-trends');
     const folders = node.querySelector(':scope > #roxy-home-trend-folders');
+    const featureHub = node.querySelector(':scope > #roxy-catalog-feature-hub');
+    const trendsIndex = trends ? children.indexOf(trends) : -1;
+    const foldersIndex = folders ? children.indexOf(folders) : -1;
+    const featureHubIndex = featureHub ? children.indexOf(featureHub) : -1;
     return {
-      trendsAfterPromo: Boolean(promo && trends && promo.nextElementSibling === trends),
-      foldersAfterTrends: Boolean(trends && folders && trends.nextElementSibling === folders),
+      foldersAfterTrends: trendsIndex >= 0 && foldersIndex > trendsIndex,
+      featureCatalogAfterFolders: foldersIndex >= 0 && featureHubIndex > foldersIndex,
     };
-  })).toEqual({ trendsAfterPromo: true, foldersAfterTrends: true });
+  })).toEqual({ foldersAfterTrends: true, featureCatalogAfterFolders: true });
 
   await folders.getByRole('button', { name: /День рождения/ }).click();
   await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
@@ -112,61 +114,17 @@ test('home shows live trends and then category cards without an extra section he
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
 });
 
-test('catalog keeps live trends and category cards directly below promo before feature catalog', async ({ page }) => {
+test('legacy catalog alias normalizes to the canonical Home catalog', async ({ page }) => {
   await mockHome(page);
   await page.goto('/mini-app/?route=catalog');
 
-  const catalog = page.locator('.roxy-catalog-feature-mode');
-  const trends = catalog.locator(':scope > #roxy-live-trends');
-  const folders = catalog.locator(':scope > #roxy-catalog-trend-folders');
-  await expect(catalog).toBeVisible();
-  await expect(trends.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
-  await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
-  await expect(folders.locator('.home-trend-folders-head')).toHaveCount(0);
-  await expect(folders.getByRole('heading', { name: 'Папки трендов' })).toHaveCount(0);
-
-  await expect.poll(() => catalog.evaluate((screen) => {
-    const children = Array.from(screen.children);
-    const promo = screen.querySelector(':scope > .promo-carousel');
-    const trends = screen.querySelector(':scope > #roxy-live-trends');
-    const folders = screen.querySelector(':scope > #roxy-catalog-trend-folders');
-    const foldersIndex = folders ? children.indexOf(folders) : -1;
-    const featureHub = screen.querySelector(':scope > #roxy-catalog-feature-hub');
-    const featureHubIndex = featureHub ? children.indexOf(featureHub) : -1;
-    return {
-      trendsDirectlyAfterPromo: Boolean(promo && trends && promo.nextElementSibling === trends),
-      foldersDirectlyAfterTrends: Boolean(trends && folders && trends.nextElementSibling === folders),
-      featureCatalogAfterFolders: foldersIndex >= 0 && featureHubIndex > foldersIndex,
-    };
-  })).toEqual({
-    trendsDirectlyAfterPromo: true,
-    foldersDirectlyAfterTrends: true,
-    featureCatalogAfterFolders: true,
-  });
-
-  await folders.getByRole('button', { name: /День рождения/ }).click();
-  const back = folders.getByRole('button', { name: /Категории/ });
-  await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
-  await expect(back).toBeVisible();
-  await expect.poll(() => back.evaluate((node) => getComputedStyle(node).borderRadius)).toBe('999px');
-  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=home$/);
+  await expect(page.locator('#roxy-home-live-trends').locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
+  await expect(page.locator('#roxy-home-trend-folders').getByRole('button', { name: /День рождения/ })).toBeVisible();
+  await expect(page.locator('#roxy-catalog-trend-folders')).toHaveCount(0);
 });
 
-test('catalog ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
-  await mockHome(page, { delayedFolderTabs: true });
-  await page.goto('/mini-app/?route=catalog');
-
-  const folders = page.locator('#roxy-catalog-trend-folders');
-  await folders.getByRole('button', { name: /День рождения/ }).click();
-  await folders.getByRole('tab', { name: /Видео/ }).click();
-
-  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
-  await page.waitForTimeout(220);
-  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayVideoTrend.title })).toBeVisible();
-  await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toHaveCount(0);
-});
-
-test('home ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
+test('canonical Catalog ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
   await mockHome(page, { delayedFolderTabs: true });
   await page.goto('/mini-app/?route=home');
 
