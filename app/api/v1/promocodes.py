@@ -59,13 +59,15 @@ async def _view(
         "status": "valid",
         "code": promo.code,
         "partner_user_id": str(promo.partner_user_id),
-        "welcome_rox": str(config.welcome_rox),
-        # Backward-compatible alias for older Mini App clients.
-        "reward_rox": str(config.welcome_rox),
+        "registration_welcome_rox": str(config.welcome_rox),
+        # Compatibility fields must describe promo activation itself: it pays 0 ROX.
+        "welcome_rox": "0",
+        "reward_rox": "0",
         "first_line_percent": str(config.first_line_percent),
         "topup_partner_rox": str(config.topup_partner_rox),
-        "topup_user_rox": str(config.topup_user_rox),
-        "topup_user_min_rub": str(config.topup_user_min_rub),
+        # Purchase bonuses are package-owned in the versioned admin tariff.
+        "topup_user_rox": "0",
+        "topup_user_min_rub": "0",
         "already_active": already_active,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
@@ -122,12 +124,13 @@ async def redeem(
         "status": "activated" if activation.activated else "already_active",
         "code": activation.promo.code,
         "partner_user_id": str(activation.promo.partner_user_id),
-        "welcome_rox": str(activation.config.welcome_rox),
-        "reward_rox": str(activation.config.welcome_rox),
+        "registration_welcome_rox": str(activation.config.welcome_rox),
+        "welcome_rox": "0",
+        "reward_rox": "0",
         "first_line_percent": str(activation.config.first_line_percent),
         "topup_partner_rox": str(activation.config.topup_partner_rox),
-        "topup_user_rox": str(activation.config.topup_user_rox),
-        "topup_user_min_rub": str(activation.config.topup_user_min_rub),
+        "topup_user_rox": "0",
+        "topup_user_min_rub": "0",
         "balance_rox": str(wallet.balance if wallet is not None else 0),
         "message": (
             "Промокод активирован"
