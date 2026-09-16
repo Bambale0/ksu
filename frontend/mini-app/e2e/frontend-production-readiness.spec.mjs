@@ -20,6 +20,21 @@ function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
+
+async function expectTouchTargets(page) {
+  const undersized = await page.locator('button:visible').evaluateAll((buttons) => buttons
+    .map((button) => {
+      const rect = button.getBoundingClientRect();
+      return {
+        label: button.getAttribute('aria-label') || button.textContent?.trim() || button.className || 'button',
+        width: Math.round(rect.width * 10) / 10,
+        height: Math.round(rect.height * 10) / 10,
+      };
+    })
+    .filter((item) => item.width < 43.5 || item.height < 43.5));
+  expect(undersized).toEqual([]);
+}
+
 async function mockMe(page) {
   await page.route('**/api/v1/me', (route) => json(route, {
     id: 'user_1',
@@ -66,6 +81,7 @@ test('settings never exposes editable defaults before preferences load and can r
 
   await expect(page.getByLabel('Язык интерфейса')).toHaveValue('en');
   await expect(page.getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+  await expectTouchTargets(page);
 });
 
 test('notification loading does not flash empty state and one notification cannot double-submit read', async ({ page }) => {
@@ -102,6 +118,7 @@ test('notification loading does not flash empty state and one notification canno
   await expect(notice).toBeDisabled();
   await notice.click({ force: true });
   await expect.poll(() => readRequests).toBe(1);
+  await expectTouchTargets(page);
 });
 
 test('subscriptions distinguish loading from empty and media cards have an accessible name', async ({ page }) => {
@@ -145,6 +162,7 @@ test('subscriptions distinguish loading from empty and media cards have an acces
   await expect(page.getByText('Здесь появятся публикации авторов, на которых вы подпишетесь.')).toHaveCount(0);
 
   await expect(page.getByRole('button', { name: /Открыть работу Анна/ })).toBeVisible();
+  await expectTouchTargets(page);
 });
 
 test('support contact is server-owned and disappears when direct contact is not configured', async ({ page }) => {
@@ -167,4 +185,5 @@ test('support contact is server-owned and disappears when direct contact is not 
   await page.reload();
   await expect(page.getByRole('button', { name: /Написать @/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Создать обращение' })).toBeVisible();
+  await expectTouchTargets(page);
 });
