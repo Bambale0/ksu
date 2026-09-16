@@ -472,7 +472,7 @@ export function RoxySocialApp() {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
-    if (route === "catalog") void loadTrends();
+    if (route === "home" || route === "catalog") void loadTrends();
   }, [route, history.length, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
@@ -572,7 +572,11 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
-        {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={(media) => startNewGeneration(media)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
+          if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
+          try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
+          catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
+        }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
         {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
           if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
@@ -622,13 +626,13 @@ function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: Fee
   </section>;
 }
 
-function CatalogScreen({ models, families, trends, onCreate, onOpenPartners, onRunTrend }: { models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onOpenPartners: () => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
+function CatalogScreen({ canonicalHome = false, models, families, trends, onCreate, onOpenPartners, onRunTrend }: { canonicalHome?: boolean; models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onOpenPartners: () => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
   const [media, setMedia] = useState<MediaFilter>("all");
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const filteredFamilies = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   const filteredTrends = media === "all" || media === "audio" ? trends : trends.filter((trend) => trend.media_type === media);
-  return <section className="screen"><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Начните с готового сценария или выберите модель под свою идею." />
+  return <section className={canonicalHome ? "screen home-screen" : "screen"}><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Начните с готового сценария или выберите модель под свою идею." />
     <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
     <SectionTitle kicker="Тренды" title="Готовые сценарии" />
     <div className="model-grid">{filteredTrends.slice(0, 12).map((trend) => <button className="model-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Тренд"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></button>)}</div>
