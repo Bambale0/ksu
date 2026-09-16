@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
-import { compactNumber, customerRequest } from "@/lib/customer-api";
+import { customerRequest } from "@/lib/customer-api";
 import type { ActivePromo } from "@/lib/types";
 
 type PromoActivation = {
