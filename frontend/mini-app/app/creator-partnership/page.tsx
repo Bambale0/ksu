@@ -18,19 +18,28 @@ export default function CreatorPartnershipPage() {
   const [averageViews, setAverageViews] = useState("");
   const [format, setFormat] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const load = async () => {
+    setLoading(true);
     setError("");
-    try { setStatus(await customerRequest<Status>("/api/v1/creator-partnership")); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось загрузить статус партнёрства"); }
+    try {
+      setStatus(await customerRequest<Status>("/api/v1/creator-partnership"));
+      setLoaded(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось загрузить статус партнёрства");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { void load(); }, []);
 
   const submit = async () => {
-    if (!channelName.trim() || !channelUrl.trim() || !(Number(audienceSize) > 0) || !format.trim() || busy) return;
+    if (!loaded || loading || !channelName.trim() || !channelUrl.trim() || !(Number(audienceSize) > 0) || !format.trim() || busy) return;
     setBusy(true); setError("");
     try {
       await customerRequest("/api/v1/creator-partnership/applications", {
@@ -54,11 +63,13 @@ export default function CreatorPartnershipPage() {
 
   const application = status?.application || null;
   const agreement = status?.agreement || null;
-  const canApply = !agreement && (!application || application.status !== "pending");
+  const canApply = loaded && !agreement && (!application || application.status !== "pending");
 
   return (
     <StandaloneShell kicker="Для авторов" title="Creator-партнёрство" copy="Индивидуальные условия для каналов и авторов. Заявка проверяется вручную, а согласованные ROX начисляются через официальный партнёрский контур.">
+      {loading ? <p className="muted" role="status">Загружаем статус партнёрства…</p> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
+      {!loading && error && !loaded ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
       {agreement ? <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Договор · {agreement.status}</span><h2>{compactNumber(agreement.monthly_rox)} ROX / месяц</h2></div></div>
         <p>{agreement.terms_summary}</p><p className="muted">Действует с {agreement.starts_on}{agreement.ends_on ? ` до ${agreement.ends_on}` : ""}.</p>
@@ -73,7 +84,7 @@ export default function CreatorPartnershipPage() {
           <div className="structured-row-grid"><label className="field"><span className="label">Аудитория</span><input className="control" type="number" min="1" value={audienceSize} onChange={(event) => setAudienceSize(event.target.value)} /></label><label className="field"><span className="label">Средние просмотры</span><input className="control" type="number" min="0" value={averageViews} onChange={(event) => setAverageViews(event.target.value)} /></label></div>
           <label className="field"><span className="label">Формат сотрудничества</span><input className="control" maxLength={160} value={format} onChange={(event) => setFormat(event.target.value)} placeholder="Обзоры, интеграции, контент для ROXY…" /></label>
           <label className="field"><span className="label">Комментарий</span><textarea className="control textarea" maxLength={4000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Расскажите о канале и идее сотрудничества" /></label>
-          <button className="primary wide" type="button" disabled={busy || !channelName.trim() || !channelUrl.trim() || !(Number(audienceSize) > 0) || !format.trim()} onClick={() => void submit()}>{busy ? "Отправляю…" : "Отправить заявку"}</button>
+          <button className="primary wide" type="button" disabled={!loaded || loading || busy || !channelName.trim() || !channelUrl.trim() || !(Number(audienceSize) > 0) || !format.trim()} onClick={() => void submit()}>{busy ? "Отправляю…" : "Отправить заявку"}</button>
         </div>
       </div> : null}
 
