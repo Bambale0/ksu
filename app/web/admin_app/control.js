@@ -841,7 +841,7 @@
     const programButton = button("Изменить экономику", "primary", () => openForm({
       title: "Партнёрская бонусная программа",
       fields: [
-        { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
+        { name: "welcome_rox", label: "ROX сразу после регистрации", type: "number", step: "0.01", value: program.welcome_rox },
         { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
         { name: "topup_partner_rox", label: "ROX партнёру за каждое пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
         { name: "topup_user_rox", label: "ROX пользователю за подходящее пополнение", type: "number", step: "0.01", value: program.topup_user_rox },
@@ -865,7 +865,7 @@
       },
     }));
     const programSummary = pre({
-      "ROX новому пользователю": program.welcome_rox,
+      "ROX сразу после регистрации": program.welcome_rox,
       "1-я линия": `${program.first_line_percent}%`,
       "ROX партнёру за пополнение": program.topup_partner_rox,
       "ROX пользователю за пополнение": program.topup_user_rox,
