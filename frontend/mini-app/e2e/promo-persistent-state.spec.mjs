@@ -96,7 +96,7 @@ test('active promo persists on payments and is attached to a new payment automat
 
   await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'KSENIA50' })).toBeVisible();
-  await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
+  await expect(page.getByText('ROX начислены при регистрации', { exact: true })).toBeVisible();
   await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
   await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toBeVisible();
   await expect(page.getByText('+100 ROX 🎁', { exact: true })).toBeVisible();
