@@ -90,6 +90,7 @@ test('Catalog leaves Telegram Close chrome visible while other main surfaces use
   await page.setViewportSize({ width: 393, height: 852 });
   await mockWebView(page);
   await page.goto('/mini-app/?route=catalog');
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
   await expect(page.locator('.bottom-nav')).toBeVisible();
   await expect(page.locator('button[data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
@@ -99,7 +100,7 @@ test('Catalog leaves Telegram Close chrome visible while other main surfaces use
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(true);
 
   await page.locator('button[data-roxy-customer-route="catalog"]').click();
-  await expect(page).toHaveURL(/\/mini-app\/?\?route=catalog/);
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
 });
 
