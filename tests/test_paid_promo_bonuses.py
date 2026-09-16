@@ -666,7 +666,6 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
             provider_payload={"status": "succeeded"},
         )
 
-        config = await PartnerPromoProgramService.get_config(session)
         buyer_wallet = await session.get(Wallet, buyer.id)
         assert Decimal(config.topup_user_rox) == Decimal("50.00")
         assert Decimal(config.topup_user_min_rub) == Decimal("1000.00")
@@ -742,7 +741,6 @@ async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> N
             provider_payload={"status": "succeeded"},
         )
 
-        config = await PartnerPromoProgramService.get_config(session)
         buyer_wallet = await session.get(Wallet, buyer.id)
         assert buyer_wallet is not None
         assert Decimal(buyer_wallet.balance) == Decimal("550")
