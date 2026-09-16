@@ -197,16 +197,18 @@ def test_partner_promo_is_persistently_visible_in_customer_surfaces() -> None:
     assert 'partner_promo_welcome: "Бонус по промокоду"' in app
 
     assert '"/api/v1/promocodes/active"' in payments
-    assert "Промокод применён" in payments
-    assert "ROX уже начислено" in payments
-    assert "Обычный бонус выбранного пакета сохраняется" in payments
-    assert "ROX по промокоду 🎟️" in payments
+    assert "promoEnabled" in payments
+    assert "Промокод применён" not in payments
+    assert "ROX уже начислено" not in payments
+    assert "Обычный бонус выбранного пакета сохраняется" not in payments
+    assert "ROX по промокоду 🎟️" not in payments
     assert "Итого " in payments
     assert "payment.promo_code" in payments
 
     assert '"/api/v1/promocodes/active"' in promocodes
     assert "Промокод применён" in promocodes
-    assert "Повторно вводить его при пополнении не нужно" in promocodes
+    assert "Бонус пакета начислится только после успешной оплаты" in promocodes
+    assert "ROX при регистрации" not in promocodes
 
 
 def test_partner_promos_are_separate_from_referral_links() -> None:
