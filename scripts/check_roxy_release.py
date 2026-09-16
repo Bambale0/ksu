@@ -48,6 +48,15 @@ def read(relative: str) -> str:
     return (FRONTEND / relative).read_text(encoding="utf-8")
 
 
+def parse_release_version(value: object) -> tuple[int, int, int] | None:
+    if not isinstance(value, str):
+        return None
+    parts = value.split(".")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
+
+
 def validate() -> list[str]:
     errors: list[str] = []
     for relative in REQUIRED_SOURCE:
@@ -71,7 +80,11 @@ def validate() -> list[str]:
         return errors
 
     package = json.loads(read("package.json"))
-    if package.get("dependencies", {}).get("next") != "16.3.1":
+    next_version = parse_release_version(package.get("dependencies", {}).get("next"))
+    # Stay on the reviewed 16.3 release line while requiring the first patched
+    # build that closes the August 2026 Next.js security advisories. This avoids
+    # pinning the release contract to one stale patch forever.
+    if next_version is None or next_version[:2] != (16, 3) or next_version < (16, 3, 3):
         errors.append("next-version")
     if package.get("dependencies", {}).get("react") != "19.2.8":
         errors.append("react-version")
