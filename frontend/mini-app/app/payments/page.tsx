@@ -428,6 +428,7 @@ export default function PaymentsPage() {
     >
       {loading ? <p className="muted" role="status">Загружаем способы оплаты и историю…</p> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
+      {!loading && error && !yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
       {activePromo?.active ? <div className="panel">
         <span className="kicker">Промокод применён</span>
