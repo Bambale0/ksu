@@ -19,9 +19,11 @@ const FEATURES = [
 ] as const;
 
 function catalogScreen(): HTMLElement | null {
+  const home = document.querySelector<HTMLElement>(".main-shell > .home-screen");
+  if (home) return home;
   for (const node of Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))) {
     const kicker = node.querySelector<HTMLElement>(".screen-head .kicker")?.textContent?.trim();
-    if (kicker === "Каталог" || node.classList.contains("roxy-catalog-feature-mode")) return node;
+    if (kicker === "Каталог") return node;
   }
   return null;
 }
