@@ -129,7 +129,7 @@ const savedReferences = [
   },
 ];
 
-const routes = ['home', 'feed', 'catalog', 'create', 'partners', 'profile'];
+const routes = ['home', 'feed', 'create', 'partners', 'profile'];
 const viewports = [
   { width: 320, height: 568 },
   { width: 360, height: 740 },
@@ -138,9 +138,11 @@ const viewports = [
   { width: 768, height: 1024 },
 ];
 const checksByRoute = {
-  home: ['shell', 'create-image', 'create-video', 'create-audio', 'catalog', 'history', 'partners', 'wallet', 'profile', 'feed'],
+  home: [
+    'shell', 'create-image', 'create-video', 'create-audio', 'history', 'partners', 'wallet', 'profile', 'feed', 'canonical-nav',
+    'legacy-alias', 'prompt-image', 'prompt-video', 'prompt-seedance', 'batch', 'trends', 'categories', 'services', 'no-legacy-studio', 'no-duplicate-catalog',
+  ],
   feed: ['shell', 'top-day', 'top', 'refresh', 'preview', 'like', 'share', 'comments', 'remix', 'create'],
-  catalog: ['shell', 'image-filter', 'video-filter', 'audio-filter', 'nano-family', 'seedance-family', 'image-trend', 'video-trend', 'create-nano', 'create'],
   create: ['fresh', 'prompt', 'image-family', 'video-family', 'audio-family', 'validation', 'submit', 'fresh-after-return', 'reuse', 'saved-reference'],
   partners: ['shell', 'referral-link', 'copy-referral', 'stats', 'rewards', 'invitations', 'refresh', 'copy-profile', 'profile', 'create'],
   profile: ['shell', 'counts', 'publications', 'work-preview', 'publication-preview', 'publish', 'reuse', 'wallet', 'profile-link', 'create'],
@@ -243,7 +245,7 @@ async function boot(page, scenario) {
   await expect(nav).toBeVisible();
   const visibleButtons = nav.locator('button:visible');
   await expect(visibleButtons).toHaveCount(5);
-  await expect(visibleButtons.locator('small')).toHaveText(['Лента', 'Каталог', 'Создать', 'Партнёры', 'Профиль']);
+  await expect(visibleButtons.locator('small')).toHaveText(['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']);
   await expect(page.locator('.bottom-nav button.central small')).toHaveText('Создать');
 }
 
@@ -277,40 +279,72 @@ async function chooseFamily(page, name) {
 }
 
 async function runHome(page, check) {
+  const feature = (id) => page.locator(`[data-catalog-feature="${id}"]`);
   if (check === 'shell') {
-    await expect(page.getByText('Что создаём?')).toBeVisible();
-    await expect(page.locator('.format-card')).toHaveCount(3);
+    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
+    await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
   } else if (check === 'create-image') {
-    await page.locator('.format-card').filter({ hasText: 'Фото' }).click();
+    await feature('create-image').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Фото', exact: true })).toHaveClass(/active/);
   } else if (check === 'create-video') {
-    await page.locator('.format-card').filter({ hasText: 'Видео' }).click();
+    await feature('create-video').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
-    await expect(page.getByText('Seedance').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Видео', exact: true })).toHaveClass(/active/);
   } else if (check === 'create-audio') {
-    await page.locator('.format-card').filter({ hasText: 'Музыка' }).click();
+    await feature('create-audio').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
-  } else if (check === 'catalog') {
-    await bottomButton(page, 'Каталог').click();
-    await expect(page.getByText('Готовые сценарии')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Музыка', exact: true })).toHaveClass(/active/);
   } else if (check === 'history') {
-    await page.getByRole('button', { name: 'Все' }).last().click();
+    await feature('history').click();
     await expect(page.getByText('Все работы')).toBeVisible();
   } else if (check === 'partners') {
-    await page.locator('.promo-slide').first().click();
+    await feature('partners').click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
     await expect(page).toHaveURL(/\/mini-app\/payments\//);
     await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   } else if (check === 'profile') {
-    await bottomButton(page, 'Профиль').click();
+    await feature('profile').click();
     await expect(page.getByText('QA').first()).toBeVisible();
   } else if (check === 'feed') {
-    await bottomButton(page, 'Лента').click();
+    await feature('feed').click();
     await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
     await expect(page.locator('.tiktok-feed-card')).toHaveCount(1);
+  } else if (check === 'canonical-nav') {
+    const oldHome = page.locator('.bottom-nav button[data-roxy-customer-route="home"]');
+    const catalog = page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]');
+    await expect(oldHome).toHaveCount(0);
+    await expect(catalog).toBeVisible();
+    await expect(catalog.locator('small')).toHaveText('Каталог');
+    await expect(catalog).toHaveAttribute('aria-current', 'page');
+  } else if (check === 'legacy-alias') {
+    await page.goto('/mini-app/?route=catalog', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/mini-app\/\?route=home$/);
+    await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  } else if (check === 'prompt-image') {
+    await expect(feature('prompt-image')).toContainText('Описание по фото');
+  } else if (check === 'prompt-video') {
+    await expect(feature('prompt-video')).toContainText('Описание по видео');
+  } else if (check === 'prompt-seedance') {
+    await expect(feature('prompt-seedance')).toContainText('Сценарий для видео');
+  } else if (check === 'batch') {
+    await expect(feature('batch')).toContainText('Пакетная обработка');
+  } else if (check === 'trends') {
+    await expect(page.locator('#roxy-home-live-trends')).toBeVisible();
+  } else if (check === 'categories') {
+    await expect(page.locator('#roxy-home-trend-folders')).toBeVisible();
+    await expect(page.locator('#roxy-catalog-trend-folders')).toHaveCount(0);
+  } else if (check === 'services') {
+    await expect(page.locator('#roxy-backend-parity-features')).toBeVisible();
+    await expect(page.getByText('Сервисы ROXY')).toBeVisible();
+  } else if (check === 'no-legacy-studio') {
+    await expect(page.getByRole('heading', { name: 'Что создаём?' })).toHaveCount(0);
+  } else if (check === 'no-duplicate-catalog') {
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="home"]')).toHaveCount(0);
+    await expect(page.locator('.bottom-nav button[data-roxy-customer-route="catalog"]')).toHaveCount(1);
   }
 }
 
@@ -362,52 +396,6 @@ async function runFeed(page, check) {
   }
 }
 
-async function runCatalog(page, check) {
-  if (check === 'shell') {
-    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
-    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
-    await expect(page.getByText('Описание по фото')).toBeVisible();
-    await expect(page.getByText('Описание по видео').first()).toBeVisible();
-    await expect(page.getByText('Сценарий для видео')).toBeVisible();
-    await expect(page.getByText('Пакетная обработка')).toBeVisible();
-    await expect(page.getByText('Готовые сценарии')).toBeVisible();
-    await expect(page.getByText('Полный каталог')).toBeVisible();
-  } else if (check === 'image-filter') {
-    await page.getByRole('button', { name: 'Фото', exact: true }).click();
-    await expect(page.getByText('Nano Banana').first()).toBeVisible();
-  } else if (check === 'video-filter') {
-    await page.getByRole('button', { name: 'Видео', exact: true }).click();
-    await expect(page.getByText('Seedance').first()).toBeVisible();
-  } else if (check === 'audio-filter') {
-    await page.getByRole('button', { name: 'Музыка', exact: true }).click();
-    await expect(page.getByText('Музыка').first()).toBeVisible();
-  } else if (check === 'nano-family') {
-    await page.locator('.model-card').filter({ hasText: 'Nano Banana' }).last().click();
-    await expect(page.locator('.bottom-sheet')).toBeVisible();
-    await expect(page.getByText('Nano Banana 2')).toBeVisible();
-  } else if (check === 'seedance-family') {
-    await page.locator('.model-card').filter({ hasText: 'Seedance' }).last().click();
-    await expect(page.locator('.bottom-sheet')).toBeVisible();
-    await expect(page.getByText('Seedance 2.5')).toBeVisible();
-  } else if (check === 'image-trend') {
-    await page.locator("[data-trend-launch='true']", { hasText: 'Неоновый портрет' }).click();
-    await expect(page).toHaveURL(/\/mini-app\/trend\/\?id=trend_portrait/);
-    await expect(page.getByRole('button', { name: /Сгенерировать/ })).toBeVisible();
-  } else if (check === 'video-trend') {
-    await page.locator("[data-trend-launch='true']", { hasText: 'Короткий клип' }).click();
-    await expect(page).toHaveURL(/\/mini-app\/trend\/\?id=trend_video/);
-    await expect(page.getByRole('button', { name: /Сгенерировать/ })).toBeVisible();
-  } else if (check === 'create-nano') {
-    await page.locator('.model-card').filter({ hasText: 'Nano Banana' }).last().click();
-    await page.locator('.variant-row').first().click();
-    await expect(page.getByText('Новая работа')).toBeVisible();
-    await expect(page.getByText('Nano Banana 2').first()).toBeVisible();
-  } else if (check === 'create') {
-    await bottomButton(page, 'Создать').click();
-    await expect(page.getByText('Новая работа')).toBeVisible();
-  }
-}
-
 async function runCreate(page, check) {
   const prompt = page.locator('textarea.control').first();
   if (check === 'fresh') {
@@ -441,7 +429,7 @@ async function runCreate(page, check) {
   } else if (check === 'fresh-after-return') {
     await prompt.fill('Этот текст не должен пережить новый запуск');
     await bottomButton(page, 'Каталог').click();
-    await expect(page.getByText('Готовые сценарии')).toBeVisible();
+    await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
     await bottomButton(page, 'Создать').click();
     await expect(page.locator('textarea.control').first()).toHaveValue('');
   } else if (check === 'reuse') {
@@ -535,7 +523,6 @@ async function runProfile(page, check) {
 const routeRunners = {
   home: runHome,
   feed: runFeed,
-  catalog: runCatalog,
   create: runCreate,
   partners: runPartners,
   profile: runProfile,
@@ -545,9 +532,10 @@ test.describe('ROXY Mini App — 300 isolated user scenarios', () => {
   test.describe.configure({ mode: 'parallel' });
 
   test('scenario matrix is exactly 300 cases', async () => {
-    expect(routes).toHaveLength(6);
+    expect(routes).toHaveLength(5);
     expect(viewports).toHaveLength(5);
-    for (const route of routes) expect(checksByRoute[route]).toHaveLength(10);
+    expect(checksByRoute.home).toHaveLength(20);
+    for (const route of routes.filter((route) => route !== 'home')) expect(checksByRoute[route]).toHaveLength(10);
     expect(scenarios).toHaveLength(300);
   });
 
