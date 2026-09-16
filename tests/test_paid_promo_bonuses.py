@@ -633,26 +633,26 @@ async def test_partner_promo_payment_keeps_package_exact_and_pays_first_line_onl
 
 
 @pytest.mark.asyncio
-async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_1000_rub() -> None:
+async def test_partner_promo_applies_admin_package_bonus_only_after_1000_rub_payment() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Topup partner")
         buyer = await _user(session, "Topup buyer")
         promo = await _promo(session, partner=partner)
-        config = await PartnerPromoProgramService.get_config(session)
         payment = Payment(
             user_id=buyer.id,
             provider="yookassa",
-            amount=Decimal("1086.96"),
+            amount=Decimal("1000"),
             currency="RUB",
-            rox_amount=Decimal("1100"),
+            rox_amount=Decimal("1000"),
             status="pending",
             payload={
                 "package_id": "p1000",
                 "base_credits": "1000",
-                "package_bonus_credits": "100",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "150",
                 "promo_bonus_credits": "0",
-                "bonus_credits": "100",
-                "credited_credits": "1100",
+                "bonus_credits": "0",
+                "credited_credits": "1000",
             },
         )
         session.add(payment)
@@ -667,16 +667,15 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
         )
 
         buyer_wallet = await session.get(Wallet, buyer.id)
-        assert Decimal(config.topup_user_rox) == Decimal("50.00")
-        assert Decimal(config.topup_user_min_rub) == Decimal("1000.00")
         assert buyer_wallet is not None
-        assert Decimal(buyer_wallet.balance) == Decimal("1150.00")
-        assert Decimal(completed.rox_amount) == Decimal("1100")
-        assert completed.payload["package_bonus_credits"] == "100"
-        assert completed.payload["promo_bonus_credits"] == "50.00"
-        assert completed.payload["promo_reward_credits"] == "50.00"
-        assert completed.payload["bonus_credits"] == "150.00"
-        assert completed.payload["credited_credits"] == "1150.00"
+        assert Decimal(buyer_wallet.balance) == Decimal("1150")
+        assert Decimal(completed.rox_amount) == Decimal("1000")
+        assert completed.payload["package_bonus_credits"] == "0"
+        assert completed.payload["promo_package_bonus_credits"] == "150"
+        assert completed.payload["promo_bonus_credits"] == "150"
+        assert completed.payload["promo_reward_credits"] == "150"
+        assert completed.payload["bonus_credits"] == "150"
+        assert completed.payload["credited_credits"] == "1150"
         assert completed.payload["promo_bonus_status"] == "applied"
 
         user_bonus = await session.scalar(
@@ -687,8 +686,8 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
             )
         )
         assert user_bonus is not None
-        assert Decimal(user_bonus.amount) == Decimal("50.00")
-        assert user_bonus.reason == "partner_promo_user_topup_bonus"
+        assert Decimal(user_bonus.amount) == Decimal("150")
+        assert user_bonus.reason == "partner_promo_package_bonus"
         assert user_bonus.promo_code == promo.code
         assert user_bonus.partner_id == partner.id
         assert user_bonus.referral_user_id == buyer.id
@@ -696,20 +695,18 @@ async def test_partner_promo_adds_user_topup_bonus_on_top_of_package_bonus_from_
         await PaymentService.apply_reversal(
             session,
             payment_id=payment.id,
-            amount=Decimal("1086.96"),
+            amount=Decimal("1000"),
             provider="yookassa",
             idempotency_key=f"promo-user-topup-refund:{payment.id}",
             reason="refund",
             provider_payload={"status": "refunded"},
         )
         await session.refresh(buyer_wallet)
-        # Full refund removes both the package payment credits and +50 payment promo;
-        # registration welcome is not part of promo activation.
         assert Decimal(buyer_wallet.balance) == Decimal("0")
 
 
 @pytest.mark.asyncio
-async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> None:
+async def test_partner_promo_applies_small_package_bonus_without_threshold() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Small topup partner")
         buyer = await _user(session, "Small topup buyer")
@@ -717,17 +714,18 @@ async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> N
         payment = Payment(
             user_id=buyer.id,
             provider="yookassa",
-            amount=Decimal("543.48"),
+            amount=Decimal("500"),
             currency="RUB",
-            rox_amount=Decimal("550"),
+            rox_amount=Decimal("500"),
             status="pending",
             payload={
                 "package_id": "p500",
                 "base_credits": "500",
-                "package_bonus_credits": "50",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "50",
                 "promo_bonus_credits": "0",
-                "bonus_credits": "50",
-                "credited_credits": "550",
+                "bonus_credits": "0",
+                "credited_credits": "500",
             },
         )
         session.add(payment)
@@ -744,11 +742,11 @@ async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> N
         buyer_wallet = await session.get(Wallet, buyer.id)
         assert buyer_wallet is not None
         assert Decimal(buyer_wallet.balance) == Decimal("550")
-        assert completed.payload["package_bonus_credits"] == "50"
-        assert completed.payload["promo_bonus_credits"] == "0"
+        assert completed.payload["package_bonus_credits"] == "0"
+        assert completed.payload["promo_bonus_credits"] == "50"
         assert completed.payload["bonus_credits"] == "50"
         assert completed.payload["credited_credits"] == "550"
-        assert completed.payload["promo_bonus_status"] == "below_threshold"
+        assert completed.payload["promo_bonus_status"] == "applied"
 
         user_bonus = await session.scalar(
             select(WalletTransaction).where(
@@ -757,7 +755,8 @@ async def test_partner_promo_does_not_add_user_topup_bonus_below_1000_rub() -> N
                 WalletTransaction.payment_id == payment.id,
             )
         )
-        assert user_bonus is None
+        assert user_bonus is not None
+        assert Decimal(user_bonus.amount) == Decimal("50")
 
 
 @pytest.mark.asyncio
