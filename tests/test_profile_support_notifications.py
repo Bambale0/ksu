@@ -5,7 +5,13 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.api.v1.me import UpdatePreferenceRequest, preferences, update_preferences
+from app.api.v1.me import (
+    PatchPreferenceRequest,
+    UpdatePreferenceRequest,
+    patch_preferences,
+    preferences,
+    update_preferences,
+)
 from app.api.v1.notifications import (
     list_notifications,
     mark_all_notifications_read,
@@ -76,6 +82,58 @@ async def test_profile_preferences_are_durable_and_server_validated() -> None:
                 session,
             )
         assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_partial_preference_updates_do_not_overwrite_other_fields() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=930000000000011, first_name="Preference Patch")
+        session.add(user)
+        await session.commit()
+
+        initial = await update_preferences(
+            UpdatePreferenceRequest(
+                ui_language="ru",
+                notifications_enabled=True,
+                marketing_notifications=True,
+                profile_discoverable=True,
+            ),
+            user,
+            session,
+        )
+        assert initial == {
+            "ui_language": "ru",
+            "notifications_enabled": True,
+            "marketing_notifications": True,
+            "profile_discoverable": True,
+        }
+
+        language_only = await patch_preferences(
+            PatchPreferenceRequest(ui_language="en"),
+            user,
+            session,
+        )
+        assert language_only == {
+            "ui_language": "en",
+            "notifications_enabled": True,
+            "marketing_notifications": True,
+            "profile_discoverable": True,
+        }
+
+        notifications_only = await patch_preferences(
+            PatchPreferenceRequest(
+                notifications_enabled=False,
+                profile_discoverable=False,
+            ),
+            user,
+            session,
+        )
+        assert notifications_only == {
+            "ui_language": "en",
+            "notifications_enabled": False,
+            "marketing_notifications": False,
+            "profile_discoverable": False,
+        }
 
 
 @pytest.mark.asyncio
