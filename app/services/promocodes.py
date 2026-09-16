@@ -598,11 +598,14 @@ class PromoCodeService:
         base: dict[str, object] = {
             "active": False,
             "program_active": bool(config.is_active),
-            "welcome_rox_current": str(config.welcome_rox),
+            "registration_welcome_rox": str(config.welcome_rox),
+            # Compatibility fields describe promo activation only. Purchase bonus
+            # values come from the selected package in the admin tariff.
+            "welcome_rox_current": "0",
             "first_line_percent": str(config.first_line_percent),
             "topup_partner_rox": str(config.topup_partner_rox),
-            "topup_user_rox": str(config.topup_user_rox),
-            "topup_user_min_rub": str(config.topup_user_min_rub),
+            "topup_user_rox": "0",
+            "topup_user_min_rub": "0",
             "package_discount_percent": "0",
         }
         relation = await cls.relation_for_user(session, user_id=user_id)
