@@ -93,8 +93,8 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
         topup_partner_rox: '10.00',
         topup_user_rox: '50.00',
         topup_user_min_rub: '1000.00',
-        balance_rox: '175.00',
-        message: 'Промокод активирован: +25 ROX',
+        balance_rox: '150.00',
+        message: 'Промокод активирован',
       });
     }
     if (path === '/api/v1/payments/card/packages') return json({
@@ -222,7 +222,7 @@ test('partner promo activates separately and checkout package stays exact', asyn
   await page.getByRole('textbox', { name: 'Есть промокод?' }).fill('KSENIA25');
   await page.getByRole('button', { name: 'Активировать промокод' }).click();
 
-  await expect(page.getByText('Промокод активирован: +25 ROX')).toBeVisible();
+  await expect(page.getByText('Промокод активирован', { exact: true })).toBeVisible();
   await expect(page.getByText('KSENIA25', { exact: true })).toBeVisible();
   await expect(page.getByText('100', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/).first()).toBeVisible();
