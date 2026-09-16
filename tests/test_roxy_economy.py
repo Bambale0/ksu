@@ -251,11 +251,12 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract(monkeypatch) 
         assert payload["transferred_to_rox"] == "0"
         assert payload["bonus_rox"] == "280.00"  # wallet compatibility only
         assert payload["rub_per_rox"] == "1"
-        assert payload["welcome_bonus_rox"] == "0"
+        assert payload["welcome_bonus_rox"] == "25.00"
+        assert payload["registration_bonus_rox"] == "25.00"
         assert payload["invite_bonus_rox"] == "0"
         assert payload["prompt_repeat_bonus_rox"] == "5"
         assert payload["first_line_percent"] == "30.00"
-        assert payload["promo_welcome_rox"] == "25.00"
+        assert payload["promo_welcome_rox"] == "0"
         assert payload["promo_topup_partner_rox"] == "10.00"
         assert payload["promo_program_active"] is True
         assert payload["promo_codes"] == [
