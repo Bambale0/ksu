@@ -77,12 +77,11 @@ def _payment(*, user_id: uuid.UUID, amount: str = "300") -> Payment:
 
 
 @pytest.mark.asyncio
-async def test_partner_promo_activation_credits_welcome_once_and_sets_attribution() -> None:
+async def test_partner_promo_activation_sets_attribution_without_welcome_credit() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Partner")
         user = await _user(session, "Promo user")
         promo = await _promo(session, partner=partner)
-        config = await PartnerPromoProgramService.get_config(session)
         await session.commit()
 
         first = await PromoCodeService.activate(session, user_id=user.id, code=promo.code.lower())
@@ -99,7 +98,7 @@ async def test_partner_promo_activation_credits_welcome_once_and_sets_attributio
                 PromoRedemption.promo_id == promo.id,
             )
         )
-        transactions = list(
+        promo_welcome_transactions = list(
             (
                 await session.scalars(
                     select(WalletTransaction).where(
@@ -112,21 +111,14 @@ async def test_partner_promo_activation_credits_welcome_once_and_sets_attributio
 
         assert first.activated is True
         assert second.activated is False
-        assert wallet is not None
-        assert Decimal(wallet.balance) == Decimal(config.welcome_rox)
+        assert wallet is None or Decimal(wallet.balance) == Decimal("0")
         assert relation is not None
         assert relation.inviter_user_id == partner.id
         assert relation.source == "promo"
         assert relation.promo_id == promo.id
         assert promo.uses_count == 1
         assert redemption is not None and redemption.status == "applied"
-        assert len(transactions) == 1
-        welcome_tx = transactions[0]
-        assert welcome_tx.reason == "promo_activation_welcome"
-        assert welcome_tx.promo_code == promo.code
-        assert welcome_tx.partner_id == partner.id
-        assert welcome_tx.referral_user_id == user.id
-        assert welcome_tx.payment_id is None
+        assert promo_welcome_transactions == []
 
 
 @pytest.mark.asyncio
