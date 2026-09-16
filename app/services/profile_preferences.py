@@ -62,3 +62,31 @@ class ProfilePreferenceService:
         preference.profile_discoverable = bool(profile_discoverable)
         await session.flush()
         return preference
+
+
+    @classmethod
+    async def patch(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        ui_language: str | None = None,
+        notifications_enabled: bool | None = None,
+        marketing_notifications: bool | None = None,
+        profile_discoverable: bool | None = None,
+    ) -> UserPreference:
+        if ui_language is not None and ui_language not in cls.ALLOWED_LANGUAGES:
+            raise ValueError("Unsupported interface language")
+        preference = await cls.get_or_create(session, user_id)
+        if ui_language is not None:
+            preference.ui_language = ui_language
+        if notifications_enabled is not None:
+            preference.notifications_enabled = bool(notifications_enabled)
+        if marketing_notifications is not None:
+            preference.marketing_notifications = bool(marketing_notifications)
+        if profile_discoverable is not None:
+            preference.profile_discoverable = bool(profile_discoverable)
+        if not preference.notifications_enabled:
+            preference.marketing_notifications = False
+        await session.flush()
+        return preference
