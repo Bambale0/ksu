@@ -39,6 +39,8 @@ def _view(payment: Payment, *, request_key: str | None = None) -> dict[str, str]
         "currency": payment.currency,
         "credits": str(payload.get("credited_credits") or payment.rox_amount),
         "base_credits": base_credits,
+        "package_bonus_credits": str(payload.get("package_bonus_credits") or "0"),
+        "promo_bonus_credits": str(payload.get("promo_bonus_credits") or "0"),
         "bonus_credits": bonus_credits,
         "promo_code": str(payload.get("promo_code") or ""),
         "promo_bonus_status": str(payload.get("promo_bonus_status") or ""),
@@ -65,8 +67,8 @@ async def packages() -> dict[str, object]:
         "packages": {
             package_id: {
                 "credits": str(package.credits),
-                "bonus_credits": "0",
-                "total_credits": str(package.credits),
+                "bonus_credits": str(package.bonus_credits),
+                "total_credits": str(package.credits + package.bonus_credits),
                 "prices": {
                     currency: str(amount)
                     for currency, amount in sorted(package.prices.items())

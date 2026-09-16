@@ -369,7 +369,7 @@ const cases = [
 
   // Partner links, publication and wallet/payment surfaces.
   { name: 'partner-referral-start-fallback', route: 'partners', run: async (page) => {
-    await page.getByRole('button', { name: 'Скопировать реферальную ссылку' }).click();
+    await page.getByRole('button', { name: 'Скопировать обычную реферальную ссылку', exact: true }).click();
     await expect.poll(() => page.evaluate(() => window.__copiedText || '')).toBe('https://t.me/roxy_aicreativebot?start=ref_777');
     await expect(page.getByText('Ссылка скопирована')).toBeVisible();
   } },

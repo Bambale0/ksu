@@ -96,12 +96,26 @@ class PartnerPromoProgramConfig(TimestampMixin, Base):
             "topup_partner_rox >= 0",
             name="ck_partner_promo_topup_nonnegative",
         ),
+        CheckConstraint(
+            "topup_user_rox >= 0",
+            name="ck_partner_promo_topup_user_nonnegative",
+        ),
+        CheckConstraint(
+            "topup_user_min_rub >= 0",
+            name="ck_partner_promo_topup_user_min_nonnegative",
+        ),
     )
 
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
     welcome_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     first_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     topup_partner_rox: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    topup_user_rox: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, server_default="50"
+    )
+    topup_user_min_rub: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, server_default="1000"
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 

@@ -64,6 +64,8 @@ async def _view(
         "reward_rox": str(config.welcome_rox),
         "first_line_percent": str(config.first_line_percent),
         "topup_partner_rox": str(config.topup_partner_rox),
+        "topup_user_rox": str(config.topup_user_rox),
+        "topup_user_min_rub": str(config.topup_user_min_rub),
         "already_active": already_active,
         "remaining_uses": remaining_uses,
         "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
@@ -124,6 +126,8 @@ async def redeem(
         "reward_rox": str(activation.config.welcome_rox),
         "first_line_percent": str(activation.config.first_line_percent),
         "topup_partner_rox": str(activation.config.topup_partner_rox),
+        "topup_user_rox": str(activation.config.topup_user_rox),
+        "topup_user_min_rub": str(activation.config.topup_user_min_rub),
         "balance_rox": str(wallet.balance if wallet is not None else 0),
         "message": (
             f"Промокод активирован: +{activation.config.welcome_rox} ROX"

@@ -16,7 +16,6 @@ from app.db.session import SessionFactory
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import CreatedPayment, PaymentProviderValidationError
 from app.services.card_payments import CardPackage, CardPackageCatalog, CardPaymentService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payments import PaymentIdempotencyConflict
 from app.services.referrals import ReferralService
 
@@ -25,12 +24,12 @@ FRONTEND = ROOT / "frontend" / "mini-app"
 
 PACKAGES_JSON = """
 {
-  "p100": {"credits": "100", "prices": {"RUB": "108.7"}},
-  "p300": {"credits": "300", "prices": {"RUB": "326.1"}},
-  "p500": {"credits": "500", "prices": {"RUB": "543.5"}},
-  "p1000": {"credits": "1000", "prices": {"RUB": "1087"}},
-  "p2000": {"credits": "2000", "prices": {"RUB": "2174"}},
-  "p5000": {"credits": "5000", "prices": {"RUB": "5435"}}
+  "p100": {"credits": "100", "bonus_credits": "0", "prices": {"RUB": "108.7"}},
+  "p300": {"credits": "300", "bonus_credits": "30", "prices": {"RUB": "326.1"}},
+  "p500": {"credits": "500", "bonus_credits": "50", "prices": {"RUB": "543.5"}},
+  "p1000": {"credits": "1000", "bonus_credits": "100", "prices": {"RUB": "1087"}},
+  "p2000": {"credits": "2000", "bonus_credits": "150", "prices": {"RUB": "2174"}},
+  "p5000": {"credits": "5000", "bonus_credits": "200", "prices": {"RUB": "5435"}}
 }
 """
 
@@ -40,7 +39,7 @@ def _telegram_id() -> int:
 
 
 @pytest.mark.asyncio
-async def test_card_package_endpoint_has_no_automatic_rox_gift_bonuses(
+async def test_card_package_endpoint_exposes_configured_package_bonuses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "card_packages_json", PACKAGES_JSON)
@@ -52,16 +51,16 @@ async def test_card_package_endpoint_has_no_automatic_rox_gift_bonuses(
 
     assert packages["p100"]["bonus_credits"] == "0"
     assert packages["p100"]["total_credits"] == "100"
-    assert packages["p300"]["bonus_credits"] == "0"
-    assert packages["p300"]["total_credits"] == "300"
-    assert packages["p500"]["bonus_credits"] == "0"
-    assert packages["p500"]["total_credits"] == "500"
-    assert packages["p1000"]["bonus_credits"] == "0"
-    assert packages["p1000"]["total_credits"] == "1000"
-    assert packages["p2000"]["bonus_credits"] == "0"
-    assert packages["p2000"]["total_credits"] == "2000"
-    assert packages["p5000"]["bonus_credits"] == "0"
-    assert packages["p5000"]["total_credits"] == "5000"
+    assert packages["p300"]["bonus_credits"] == "30"
+    assert packages["p300"]["total_credits"] == "330"
+    assert packages["p500"]["bonus_credits"] == "50"
+    assert packages["p500"]["total_credits"] == "550"
+    assert packages["p1000"]["bonus_credits"] == "100"
+    assert packages["p1000"]["total_credits"] == "1100"
+    assert packages["p2000"]["bonus_credits"] == "150"
+    assert packages["p2000"]["total_credits"] == "2150"
+    assert packages["p5000"]["bonus_credits"] == "200"
+    assert packages["p5000"]["total_credits"] == "5200"
 
 
 @pytest.mark.asyncio
@@ -84,7 +83,7 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"p300":{"credits":"300","prices":{"RUB":"326.1"},"dynamic_amount":true}}',
+        '{"p300":{"credits":"300","bonus_credits":"30","prices":{"RUB":"326.1"},"dynamic_amount":true}}',
     )
     monkeypatch.setattr(settings, "card_offer_id", "offer-bonus")
     seen: dict[str, object] = {}
@@ -156,10 +155,12 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
             "payment_provider": None,
         }
         assert Decimal(payment.amount) == Decimal("326.1")
-        assert Decimal(payment.rox_amount) == Decimal("300")
+        assert Decimal(payment.rox_amount) == Decimal("330")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["bonus_credits"] == "0"
-        assert payment.payload["credited_credits"] == "300"
+        assert payment.payload["package_bonus_credits"] == "30"
+        assert payment.payload["promo_bonus_credits"] == "0"
+        assert payment.payload["bonus_credits"] == "30"
+        assert payment.payload["credited_credits"] == "330"
 
         await CardPaymentService.complete(
             session,
@@ -169,7 +170,8 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("300.00")
+        assert wallet.balance == Decimal("330.00")
+        # Package bonuses are user-facing gifts and never inflate partner commission basis.
         assert seen["referral_basis"] == Decimal("300")
 
 
@@ -361,13 +363,7 @@ def test_card_checkout_response_accepts_lava_payment_url_aliases() -> None:
     assert CardCheckoutClient.extract_payment_url(data) == "https://pay.example/1"
 
 
-def test_top_up_packages_never_add_automatic_bonus() -> None:
-    for amount in (100, 300, 500, 1000, 2000, 5000):
-        assert TopUpBonusService.bonus_for(amount) == Decimal("0")
-        assert TopUpBonusService.total_for(amount) == Decimal(str(amount))
-
-
-def test_wallet_does_not_render_automatic_bonus_badges() -> None:
+def test_wallet_stays_clean_while_payments_explains_package_and_promo_bonuses() -> None:
     page = (FRONTEND / "app" / "page.tsx").read_text(encoding="utf-8")
     wallet = (FRONTEND / "components" / "wallet-parity.tsx").read_text(encoding="utf-8")
     payments = (FRONTEND / "app" / "payments" / "page.tsx").read_text(encoding="utf-8")
@@ -376,7 +372,10 @@ def test_wallet_does_not_render_automatic_bonus_badges() -> None:
     assert "<WalletParity />" in page
     assert "package-bonus-live" not in wallet
     assert "bonus_credits" not in wallet
-    assert "Партнёрский промокод активирует отдельную бонусную программу и не меняет пакет" in payments
+    assert "Обычный бонус пакета начисляется независимо от промокода" in payments
+    assert "промокод добавит ещё" in payments
+    assert "ROX по промокоду 🎟️" in payments
+    assert "ROX 🎁" in payments
     assert "Есть промокод?" in wallet
 
 

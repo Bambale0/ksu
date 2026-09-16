@@ -762,9 +762,11 @@
             { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
             { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
             { name: "topup_partner_rox", label: "ROX партнёру за пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
+            { name: "topup_user_rox", label: "ROX пользователю за подходящее пополнение", type: "number", step: "0.01", value: program.topup_user_rox },
+            { name: "topup_user_min_rub", label: "Минимальная сумма пополнения, ₽", type: "number", step: "0.01", value: program.topup_user_min_rub },
             { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
           ],
-          onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
+          onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, topup_user_rox, topup_user_min_rub, is_active }) => {
             await api("/api/v1/admin/promocodes/program", {
               method: "POST",
               headers: promoHeaders(),
@@ -772,6 +774,8 @@
                 welcome_rox,
                 first_line_percent,
                 topup_partner_rox,
+                topup_user_rox,
+                topup_user_min_rub,
                 is_active: is_active === "true",
               }),
             });
@@ -809,6 +813,7 @@
       metric("Новый пользователь", `+${formatNumber(program.welcome_rox)} ROX`, "после активации промокода"),
       metric("1-я линия", `${formatNumber(program.first_line_percent)}%`, "только с успешных пополнений"),
       metric("За пополнение", `+${formatNumber(program.topup_partner_rox)} ROX`, "партнёру за факт пополнения"),
+      metric("Промо-бонус пользователю", `+${formatNumber(program.topup_user_rox)} ROX`, `от ${formatNumber(program.topup_user_min_rub)} ₽`),
       metric("Программа", program.is_active ? "Включена" : "Выключена", "за приглашение начислений нет"),
     );
 

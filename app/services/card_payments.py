@@ -15,6 +15,7 @@ from app.db.models import Payment, WalletTransaction
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
+from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import PaymentService, UnknownPaymentPackageError
 from app.services.promocodes import PromoCodeError, PromoCodeService
@@ -27,6 +28,7 @@ class CardPackage:
     package_id: str
     credits: Decimal
     prices: dict[str, Decimal]
+    bonus_credits: Decimal = Decimal("0")
     offer_id: str | None = None
     # Lava rejects `amount` for fixed-price offers (HTTP 400 "is not dynamic
     # price"). Only explicitly dynamic/price-on-request packages may send it.
@@ -78,6 +80,7 @@ class CardPackageCatalog:
                 package_id=package_id,
                 credits=package.credits,
                 prices={"RUB": package.amount},
+                bonus_credits=package.bonus_credits,
                 offer_id=None,
             )
             for package_id, package in PaymentService.packages().items()
@@ -96,6 +99,14 @@ class CardPackageCatalog:
             credits = Decimal(str(credits_raw))
             if credits <= 0:
                 continue
+            bonus_raw = item.get("bonus_credits")
+            bonus_credits = (
+                TopUpBonusService.bonus_for(credits)
+                if bonus_raw is None
+                else Decimal(str(bonus_raw))
+            )
+            if bonus_credits < 0:
+                raise ValueError(f"Card package {package_id} bonus_credits must be non-negative")
             prices: dict[str, Decimal] = {}
             for currency, value in prices_raw.items():
                 code = str(currency).upper()
@@ -115,6 +126,7 @@ class CardPackageCatalog:
                 package_id=str(package_id),
                 credits=credits,
                 prices=prices,
+                bonus_credits=bonus_credits,
                 offer_id=offer_id,
                 dynamic_amount=dynamic_amount,
             )
@@ -252,6 +264,7 @@ class CardPackageCatalog:
                     package_id=offer_id,
                     credits=credits,
                     prices=prices,
+                    bonus_credits=TopUpBonusService.bonus_for(credits),
                     offer_id=offer_id,
                     dynamic_amount=False,
                 )
@@ -409,21 +422,24 @@ class CardPaymentService:
         # Validate the operator-owned package before committing a local payment intent.
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
-        credited_credits = package.credits
+        package_bonus = Decimal(package.bonus_credits)
+        credited_credits = package.credits + package_bonus
 
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=currency,
-            rox_amount=package.credits,
+            rox_amount=credited_credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "billing_email": email,
                 "base_credits": str(package.credits),
-                "bonus_credits": "0",
+                "package_bonus_credits": str(package_bonus),
+                "promo_bonus_credits": "0",
+                "bonus_credits": str(package_bonus),
                 "credited_credits": str(credited_credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },

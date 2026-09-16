@@ -43,6 +43,8 @@ export type ActivePromo = {
   welcome_rox_current: string;
   first_line_percent: string;
   topup_partner_rox: string;
+  topup_user_rox: string;
+  topup_user_min_rub: string;
   package_discount_percent: string;
 };
 
@@ -290,6 +292,19 @@ export type PartnerStats = {
   rox_balance?: string;
   welcome_bonus_rox?: string;
   invite_bonus_rox?: string;
+  promo_welcome_rox?: string;
+  promo_topup_partner_rox?: string;
+  promo_topup_user_rox?: string;
+  promo_topup_user_min_rub?: string;
+  promo_program_active?: boolean;
+  promo_codes?: Array<{
+    id: string;
+    code: string;
+    is_active: boolean;
+    uses_count: number;
+    max_uses?: number | null;
+    expires_at?: string | null;
+  }>;
   prompt_repeat_bonus_rox?: string;
   minimum_withdrawal_rox?: string;
   prompts_created?: number;
