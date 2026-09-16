@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from app.services.model_catalog import InvalidModelParametersError
+from app.services.seedance_prompt_limits import validate_prompt_length
 
 SEEDANCE25_MODEL_ID = "seedance-2.5"
 SEEDANCE25_PROVIDER_MODEL = "bytedance/seedance-2-5"
@@ -76,6 +77,10 @@ def normalize_seedance25_input(parameters: dict[str, Any]) -> dict[str, Any]:
     """
 
     payload = deepcopy(parameters)
+    try:
+        validate_prompt_length(SEEDANCE25_MODEL_ID, payload.get("prompt", ""))
+    except ValueError as exc:
+        raise InvalidModelParametersError(str(exc)) from exc
 
     # `fixed_lens` belongs to older Seedance contracts. Drop it from saved
     # drafts instead of forwarding an obsolete field to Seedance 2.5.
