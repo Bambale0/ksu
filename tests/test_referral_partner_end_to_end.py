@@ -287,8 +287,8 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
             ).all()
         )
         # 30% is calculated from the authoritative 326.10 RUB payment.
-        # The +30 package bonus, +25 welcome ROX and +10 partner ROX are internal
-        # credits and never inflate the partner cash commission basis.
+        # The +30 package bonus and +10 partner ROX are internal credits and
+        # never inflate the partner cash commission basis.
         assert [(item.level, Decimal(item.amount)) for item in rewards] == [
             (1, Decimal("97.83")),
         ]
@@ -361,7 +361,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         assert second_line_accounting["total_earned"] == Decimal("0")
         await session.refresh(buyer_wallet)
         await session.refresh(first_wallet)
-        assert Decimal(buyer_wallet.balance) == Decimal("25.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("0.00")
         assert Decimal(first_wallet.balance) == Decimal("0.00")
 
 
