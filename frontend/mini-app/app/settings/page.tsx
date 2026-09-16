@@ -21,17 +21,31 @@ const defaults: Preferences = {
 
 export default function SettingsPage() {
   const [value, setValue] = useState<Preferences>(defaults);
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    void customerRequest<Preferences>("/api/v1/me/preferences")
-      .then(setValue)
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить настройки"));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    setLoaded(false);
+    setSaved(false);
+    setError("");
+    try {
+      setValue(await customerRequest<Preferences>("/api/v1/me/preferences"));
+      setLoaded(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось загрузить настройки");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
 
   const save = async () => {
+    if (!loaded || loading || busy) return;
     setBusy(true);
     setSaved(false);
     setError("");
@@ -44,7 +58,9 @@ export default function SettingsPage() {
       setSaved(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось сохранить настройки");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggle = (key: keyof Pick<Preferences, "notifications_enabled" | "marketing_notifications" | "profile_discoverable">) => (
@@ -62,20 +78,28 @@ export default function SettingsPage() {
     <StandaloneShell kicker="Настройки" title="Аккаунт ROXY" copy="Управляйте уведомлениями, языком и видимостью профиля. Telegram-имя и username остаются синхронизированы с Telegram.">
       <div className="panel tool-panel">
         <div className="form-stack">
-          <label className="field">
-            <span className="label">Язык интерфейса</span>
-            <select className="control" value={value.ui_language} onChange={(event) => { setSaved(false); setValue((current) => ({ ...current, ui_language: event.target.value })); }}>
-              <option value="auto">Как в Telegram</option>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-          {toggle("notifications_enabled")}
-          {toggle("marketing_notifications")}
-          {toggle("profile_discoverable")}
+          {loading ? <p className="muted" role="status">Загружаем настройки…</p> : null}
+
+          {!loading && loaded ? <>
+            <label className="field">
+              <span className="label">Язык интерфейса</span>
+              <select className="control" value={value.ui_language} onChange={(event) => { setSaved(false); setValue((current) => ({ ...current, ui_language: event.target.value })); }}>
+                <option value="auto">Как в Telegram</option>
+                <option value="ru">Русский</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            {toggle("notifications_enabled")}
+            {toggle("marketing_notifications")}
+            {toggle("profile_discoverable")}
+          </> : null}
+
           {error ? <div className="action-error" role="alert">{error}</div> : null}
-          {saved ? <p className="muted">Настройки сохранены.</p> : null}
-          <button className="primary wide" type="button" disabled={busy} onClick={() => void save()}>{busy ? "Сохраняю…" : "Сохранить"}</button>
+          {!loading && !loaded && error ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
+          {saved ? <p className="muted" role="status">Настройки сохранены.</p> : null}
+          <button className="primary wide" type="button" disabled={busy || loading || !loaded} onClick={() => void save()}>
+            {busy ? "Сохраняю…" : "Сохранить"}
+          </button>
         </div>
       </div>
     </StandaloneShell>

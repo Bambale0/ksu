@@ -209,7 +209,8 @@ test('feed target 404 falls back to profile lookup and then shows a safe error',
   const payload = `feed_${missingGenerationId}_ref_777`;
   const audit = await openWithPayload(page, `?startapp=${encodeURIComponent(payload)}`);
 
-  await expect(page.getByText('Работа не найдена')).toBeVisible();
+  await expect(page.getByText('Данные не найдены или больше недоступны.')).toBeVisible();
+  await expect(page.getByText('Работа не найдена')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Открыть всю ленту' })).toBeVisible();
   expect(audit.feedItemCalls).toEqual([
     { id: missingGenerationId, surface: 'feed' },

@@ -231,7 +231,9 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
-  await page.getByPlaceholder('ссылка или текст из Pinterest').fill('Посмотри в Pinterest https://pin.it/example — хочу повторить');
+  const pinterestSource = page.getByLabel('Ссылка или текст из Pinterest');
+  await expect(pinterestSource).toBeVisible();
+  await pinterestSource.fill('Посмотри в Pinterest https://pin.it/example — хочу повторить');
   await page.getByRole('button', { name: 'Загрузить' }).click();
   await expect(page.getByAltText('Референс сцены')).toHaveAttribute(
     'src',
@@ -327,7 +329,7 @@ test('legacy Pinterest Flow route opens the canonical Pinterest Repeat experienc
   await page.goto('/mini-app/pinterest-flow/');
 
   await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
-  await expect(page.getByPlaceholder('ссылка или текст из Pinterest')).toBeVisible();
+  await expect(page.getByLabel('Ссылка или текст из Pinterest')).toBeVisible();
   await expect(page.getByLabel('Подтверждаю права на фото')).toBeVisible();
 });
 

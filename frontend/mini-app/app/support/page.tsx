@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import { telegram } from "@/lib/telegram";
 
-const SUPPORT_TELEGRAM_USERNAME = "korkinaxenia";
-const SUPPORT_TELEGRAM_URL = `https://t.me/${SUPPORT_TELEGRAM_USERNAME}`;
+type SupportContact = { configured: boolean; url?: string | null; handle?: string | null };
 
 type Ticket = {
   id: string;
@@ -22,30 +21,42 @@ type Ticket = {
 type Message = { id: string; body: string; author: "support" | "user"; created_at: string };
 type TicketDetail = Ticket & { messages: Message[] };
 
-function openTelegramSupport() {
+function openTelegramSupport(url: string) {
   const tg = telegram();
   if (tg?.openTelegramLink) {
-    tg.openTelegramLink(SUPPORT_TELEGRAM_URL);
+    tg.openTelegramLink(url);
     return;
   }
-  window.open(SUPPORT_TELEGRAM_URL, "_blank", "noopener,noreferrer");
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
+  const ticketsLoadInFlight = useRef(false);
   const [selected, setSelected] = useState<TicketDetail | null>(null);
   const [topic, setTopic] = useState("");
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [contact, setContact] = useState<SupportContact | null>(null);
+  const [contactLoading, setContactLoading] = useState(true);
+  const [contactError, setContactError] = useState("");
 
   const loadTickets = async () => {
+    if (ticketsLoadInFlight.current) return;
+    ticketsLoadInFlight.current = true;
+    setTicketsLoading(true);
+    setError("");
     try {
       const payload = await customerRequest<{ items: Ticket[] }>("/api/v1/support/tickets?limit=100");
       setTickets(payload.items || []);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить обращения");
+    } finally {
+      ticketsLoadInFlight.current = false;
+      setTicketsLoading(false);
     }
   };
 
@@ -58,7 +69,23 @@ export default function SupportPage() {
     }
   };
 
-  useEffect(() => { void loadTickets(); }, []);
+  const loadContact = async () => {
+    setContactLoading(true);
+    setContactError("");
+    try {
+      setContact(await customerRequest<SupportContact>("/api/v1/support/contact"));
+    } catch (reason) {
+      setContact(null);
+      setContactError(reason instanceof Error ? reason.message : "Прямая связь временно недоступна");
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadTickets();
+    void loadContact();
+  }, []);
 
   const create = async () => {
     if (!topic.trim() || !message.trim() || busy) return;
@@ -112,11 +139,23 @@ export default function SupportPage() {
     <StandaloneShell kicker="Поддержка" title="Помощь ROXY" copy="Все обращения сохраняются в одном месте. Можно продолжить диалог, закрыть вопрос или переоткрыть его позже.">
       {error ? <div className="action-error" role="alert">{error}</div> : null}
 
-      <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+      {contactLoading ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+        <p className="muted">Проверяем доступные способы связи…</p>
+      </div> : null}
+
+      {!contactLoading && contact?.configured && contact.url ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
         <div className="section-title"><div><span className="kicker">Быстрая связь</span><h2>Поддержка в Telegram</h2></div></div>
-        <p className="muted">Если нужен быстрый ответ, напишите напрямую: <strong>@{SUPPORT_TELEGRAM_USERNAME}</strong></p>
-        <button className="primary wide" type="button" onClick={openTelegramSupport}>Написать @{SUPPORT_TELEGRAM_USERNAME}</button>
-      </div>
+        <p className="muted">Если нужен быстрый ответ, откройте прямой контакт{contact.handle ? <>: <strong>{contact.handle}</strong></> : "."}</p>
+        <button className="primary wide" type="button" onClick={() => openTelegramSupport(contact.url!)}>
+          {contact.handle ? `Написать ${contact.handle}` : "Открыть Telegram"}
+        </button>
+      </div> : null}
+
+      {!contactLoading && contactError ? <div className="panel tool-panel" data-support-contact style={{ marginBottom: 18 }}>
+        <div className="action-error" role="status">{contactError}</div>
+        <p className="muted">Внутренние обращения ROXY ниже продолжают работать.</p>
+        <button className="secondary" type="button" onClick={() => void loadContact()}>Повторить</button>
+      </div> : null}
 
       <div className="tool-grid">
         <div className="panel tool-panel">
@@ -129,14 +168,14 @@ export default function SupportPage() {
         </div>
 
         <div className="panel tool-panel">
-          <div className="section-title"><div><span className="kicker">История</span><h2>Мои обращения</h2></div><button type="button" onClick={() => void loadTickets()}>Обновить</button></div>
-          <div className="transaction-list">
+          <div className="section-title"><div><span className="kicker">История</span><h2>Мои обращения</h2></div><button type="button" disabled={ticketsLoading} onClick={() => void loadTickets()}>{ticketsLoading ? "Обновляю…" : "Обновить"}</button></div>
+          {ticketsLoading ? <p className="muted" role="status">Загружаем обращения…</p> : <div className="transaction-list">
             {tickets.length ? tickets.map((ticket) => (
               <button className="transaction" type="button" key={ticket.id} onClick={() => void openTicket(ticket.id)} style={{ width: "100%", textAlign: "left" }}>
                 <div><strong>{ticket.topic}</strong><small>{dateTime(ticket.updated_at)}</small></div><span>{ticket.status}</span>
               </button>
-            )) : <p className="muted">Обращений пока нет.</p>}
-          </div>
+            )) : !error ? <p className="muted">Обращений пока нет.</p> : null}
+          </div>}
         </div>
 
         {selected ? <div className="panel tool-panel">
@@ -149,7 +188,7 @@ export default function SupportPage() {
             ))}
           </div>
           {selected.can_reply ? <div className="form-stack">
-            <textarea className="control textarea" maxLength={8000} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" />
+            <label className="field"><span className="label">Ответ</span><textarea className="control textarea" maxLength={8000} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" /></label>
             <button className="primary wide" type="button" disabled={busy || !reply.trim()} onClick={() => void sendReply()}>{busy ? "Отправляю…" : "Отправить"}</button>
           </div> : null}
           <div className="tool-actions">

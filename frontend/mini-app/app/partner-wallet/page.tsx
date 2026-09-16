@@ -24,12 +24,15 @@ export default function PartnerWalletPage() {
   const [transferAmount, setTransferAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [requisites, setRequisites] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const withdrawalKey = useRef<string | null>(null);
 
   const load = async () => {
+    setLoading(true);
     setError("");
     try {
       const [statsResult, withdrawalResult, transferResult] = await Promise.all([
@@ -40,8 +43,11 @@ export default function PartnerWalletPage() {
       setStats(statsResult);
       setWithdrawals(withdrawalResult.items || []);
       setTransfers(transferResult.items || []);
+      setLoaded(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить партнёрский баланс");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,9 +74,11 @@ export default function PartnerWalletPage() {
     } finally { setBusy(false); }
   };
 
+  const minimumWithdrawal = Number(stats?.minimum_withdrawal_rub || 0);
+
   const withdraw = async () => {
     const amount = Number(withdrawAmount);
-    if (!(amount > 0) || !requisites.trim() || busy) return;
+    if (!loaded || !stats || loading || !(amount >= minimumWithdrawal) || !requisites.trim() || busy) return;
     const requestKey = withdrawalKey.current ?? customerIdempotencyKey();
     withdrawalKey.current = requestKey;
     setBusy(true); setError(""); setNotice("");
@@ -103,17 +111,19 @@ export default function PartnerWalletPage() {
 
   return (
     <StandaloneShell kicker="Партнёрам" title="Доход и выплаты" copy="Выводятся только партнёрские начисления в ₽ — процент с реально оплаченных заказов ваших рефералов. ROX — внутренняя валюта ROXY и на карту не выводится.">
+      {loading ? <p className="muted" role="status">Загружаем партнёрский баланс…</p> : null}
       {stats ? <div className="profile-stats panel"><div><strong>{compactNumber(stats.withdrawable_rub)} ₽</strong><span>доступно</span></div><div><strong>{compactNumber(stats.pending_referral_rub)} ₽</strong><span>ожидается</span></div><div><strong>{compactNumber(stats.partner_total_earned_rub)} ₽</strong><span>заработано</span></div></div> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
+      {!loading && error && !loaded ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
 
-      <div className="tool-grid">
+      {loaded ? <div className="tool-grid">
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">ROX</span><h2>Перевести в баланс</h2></div></div>
           <p className="muted">Партнёрские рубли можно добровольно перевести в ROX для генераций. Это односторонняя конвертация: ROX обратно в деньги не выводятся.</p>
           <div className="form-stack">
             <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min="0.01" step="0.01" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} /></label>
-            <button className="primary wide" type="button" disabled={busy || !(Number(transferAmount) > 0)} onClick={() => void transferToRox()}>{busy ? "Выполняю…" : "Перевести в ROX"}</button>
+            <button className="primary wide" type="button" disabled={!loaded || loading || busy || !(Number(transferAmount) > 0)} onClick={() => void transferToRox()}>{busy ? "Выполняю…" : "Перевести в ROX"}</button>
           </div>
         </div>
 
@@ -123,20 +133,20 @@ export default function PartnerWalletPage() {
           <div className="form-stack">
             <label className="field"><span className="label">Сумма, ₽</span><input className="control" type="number" min={stats?.minimum_withdrawal_rub || "0.01"} step="0.01" value={withdrawAmount} onChange={(event) => { resetWithdrawalIntent(); setWithdrawAmount(event.target.value); }} /></label>
             <label className="field"><span className="label">Реквизиты</span><textarea className="control textarea" maxLength={1000} value={requisites} onChange={(event) => { resetWithdrawalIntent(); setRequisites(event.target.value); }} placeholder="Карта / СБП / другие согласованные реквизиты" /></label>
-            <button className="primary wide" type="button" disabled={busy || !(Number(withdrawAmount) > 0) || !requisites.trim()} onClick={() => void withdraw()}>{busy ? "Создаю…" : "Создать заявку"}</button>
+            <button className="primary wide" type="button" disabled={!loaded || loading || busy || !(Number(withdrawAmount) >= minimumWithdrawal) || !requisites.trim()} onClick={() => void withdraw()}>{busy ? "Создаю…" : "Создать заявку"}</button>
           </div>
         </div>
 
         <div className="panel tool-panel">
-          <div className="section-title"><div><span className="kicker">Выплаты</span><h2>История заявок</h2></div><button type="button" onClick={() => void load()}>Обновить</button></div>
-          <div className="transaction-list">{withdrawals.length ? withdrawals.map((item) => <div className="transaction" key={item.id}><div><strong>{compactNumber(item.amount_rub)} ₽</strong><small>{dateTime(item.created_at)} · {item.status}</small></div><span>{item.can_cancel ? <button type="button" disabled={busy} onClick={() => void cancel(item.id)}>Отменить</button> : item.status}</span></div>) : <p className="muted">Заявок пока нет.</p>}</div>
+          <div className="section-title"><div><span className="kicker">Выплаты</span><h2>История заявок</h2></div><button type="button" disabled={loading} onClick={() => void load()}>{loading ? "Обновляю…" : "Обновить"}</button></div>
+          <div className="transaction-list">{loaded && withdrawals.length ? withdrawals.map((item) => <div className="transaction" key={item.id}><div><strong>{compactNumber(item.amount_rub)} ₽</strong><small>{dateTime(item.created_at)} · {item.status}</small></div><span>{item.can_cancel ? <button type="button" disabled={busy} onClick={() => void cancel(item.id)}>Отменить</button> : item.status}</span></div>) : loaded && !error ? <p className="muted">Заявок пока нет.</p> : null}</div>
         </div>
 
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">ROX</span><h2>История переводов</h2></div></div>
-          <div className="transaction-list">{transfers.length ? transfers.map((item) => <div className="transaction" key={item.id}><div><strong>{compactNumber(item.amount_rub)} ₽ → {compactNumber(item.rox_amount)} ROX</strong><small>{dateTime(item.created_at)}</small></div></div>) : <p className="muted">Переводов пока нет.</p>}</div>
+          <div className="transaction-list">{loaded && transfers.length ? transfers.map((item) => <div className="transaction" key={item.id}><div><strong>{compactNumber(item.amount_rub)} ₽ → {compactNumber(item.rox_amount)} ROX</strong><small>{dateTime(item.created_at)}</small></div></div>) : loaded && !error ? <p className="muted">Переводов пока нет.</p> : null}</div>
         </div>
-      </div>
+      </div> : null}
     </StandaloneShell>
   );
 }

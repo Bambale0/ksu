@@ -133,14 +133,17 @@ async function expectNoHorizontalOverflow(page) {
 }
 
 const devices = [
-  { name: 'iPhone SE', viewport: { width: 320, height: 568 } },
-  { name: 'iPhone 15', viewport: { width: 393, height: 852 } },
-  { name: 'iPhone 15 Pro Max', viewport: { width: 430, height: 932 } },
-  { name: 'iPhone landscape', viewport: { width: 852, height: 393 } },
-  { name: 'iPad mini', viewport: { width: 768, height: 1024 } },
-  { name: 'iPad Air', viewport: { width: 820, height: 1180 } },
-  { name: 'iPad Pro 11', viewport: { width: 834, height: 1194 } },
-  { name: 'iPad Pro landscape', viewport: { width: 1194, height: 834 } },
+  { name: '320 phone', viewport: { width: 320, height: 568 } },
+  { name: '360 phone', viewport: { width: 360, height: 740 } },
+  { name: '375 phone', viewport: { width: 375, height: 812 } },
+  { name: '390 phone', viewport: { width: 390, height: 844 } },
+  { name: '414 phone', viewport: { width: 414, height: 896 } },
+  { name: 'phone landscape', viewport: { width: 852, height: 393 } },
+  { name: '768 tablet', viewport: { width: 768, height: 1024 } },
+  { name: '1024 landscape tablet', viewport: { width: 1024, height: 768 } },
+  { name: '1280 desktop', viewport: { width: 1280, height: 800 } },
+  { name: '1440 desktop', viewport: { width: 1440, height: 900 } },
+  { name: '1920 desktop', viewport: { width: 1920, height: 1080 } },
 ];
 
 const rootRoutes = ['home', 'feed', 'catalog', 'create', 'history', 'profile', 'partners'];
