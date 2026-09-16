@@ -6,9 +6,9 @@ ROXY Mini App supports Russian and English customer UI.
 
 - The compact `RU / EN` switch is shown in the top bar next to the ROX balance.
 - The same switch is available on standalone Mini App screens opened by deep link.
-- A manual choice is persisted to `PUT /api/v1/me/preferences` as `ui_language=ru|en` and cached locally for fast startup.
+- A manual choice is persisted atomically with `PATCH /api/v1/me/preferences` as `ui_language=ru|en` and cached locally for fast startup.
 - Existing `ui_language=auto` accounts remain supported. `auto` resolves from Telegram `language_code`; if Telegram does not provide one, ROXY keeps Russian as the compatibility default.
-- Changing the interface language does not translate user-generated prompts or editable text.
+- Changing the interface language translates UI copy and placeholders, but never user-generated prompts, comments, author names, or editable values.
 
 ## Implementation
 
