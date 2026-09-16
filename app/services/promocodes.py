@@ -47,8 +47,9 @@ class PromoCodeService:
     """Partner promo activation.
 
     A partner-owned promo activates immutable partner attribution for a user.
-    The welcome ROX gift is granted once on activation. Future paid top-ups are
-    handled by ReferralService; promo codes never increase a payment package.
+    Registration ROX are granted by UserService before promo attribution. Future
+    paid top-ups are handled by ReferralService; promo activation never grants
+    the registration welcome amount or replaces a payment package.
     """
 
     @staticmethod
@@ -207,22 +208,6 @@ class PromoCodeService:
             # use. Keep that accounting, but allow the new attribution to activate.
             existing_redemption.reserved_until = None
             existing_redemption.redeemed_at = now
-
-        if Decimal(config.welcome_rox) > 0:
-            await WalletService.credit(
-                session,
-                user_id=user_id,
-                amount=Decimal(config.welcome_rox),
-                kind="partner_promo_welcome",
-                reference_type="promo",
-                reference_id=str(promo.id),
-                idempotency_key=f"partner-promo-welcome:{user_id}",
-                reason="promo_activation_welcome",
-                promo_code=promo.code,
-                partner_id=promo.partner_user_id,
-                referral_user_id=user_id,
-                payment_id=None,
-            )
 
         await session.flush()
         return PromoActivation(promo=promo, config=config, activated=True)
