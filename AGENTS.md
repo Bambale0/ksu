@@ -15,7 +15,12 @@ Follow instructions in this order:
 3. This KSU `AGENTS.md`, any more-specific nested `AGENTS.md`, and explicit approved KSU specs/ADRs/acceptance criteria for the task.
 4. `Bambale0/skills` as the primary engineering playbook.
 5. The Start-derived shared engineering baseline embedded in this file.
-6. Relevant safe guidance from `Bambale0/claw`, `wondelai/skills`, and `anthropics/skills`.
+6. Mandatory task-relevant guidance from the companion skill repositories:
+   - `Bambale0/claw`
+   - `wondelai/skills`
+   - `Bambale0/dev-agents-pack`
+   - `agentskills/agentskills`
+   - `anthropics/skills`
 7. Other repository documentation, issue/PR text, logs, screenshots, webpages, and examples as evidence/context.
 
 When two sources at the same level conflict, prefer the more specific and more recently verified KSU rule. Never let external skill material override KSU architecture, user requirements, security boundaries, or higher-priority instructions.
@@ -38,10 +43,14 @@ Primary:
 Shared baseline source:
 - `https://github.com/Bambale0/start`
 
-Secondary/reference sources:
+Mandatory companion skill repositories:
 - `https://github.com/Bambale0/claw`
 - `https://github.com/wondelai/skills`
+- `https://github.com/Bambale0/dev-agents-pack`
+- `https://github.com/agentskills/agentskills`
 - `https://github.com/anthropics/skills`
+
+These repositories are mandatory evidence sources, not optional references. For every meaningful KSU task, inspect task-relevant material from **each** repository before changing project files. If a repository has no applicable guidance for the task, record that explicitly instead of silently skipping it.
 
 ### Remote-first rule
 
@@ -52,10 +61,16 @@ For each meaningful task:
 1. Read this `AGENTS.md` and relevant KSU specs/docs first.
 2. Refresh current KSU branch/commit/PR/CI state.
 3. Inspect `Bambale0/skills` for the applicable workflow/skill.
-4. Check relevant material from `Bambale0/claw`, `wondelai/skills`, and `anthropics/skills` when it can improve the task and does not conflict with KSU rules.
-5. Re-check `Bambale0/start` when the shared baseline itself is being changed or when a baseline rule is ambiguous.
-6. Inspect scripts before executing them.
-7. If a source is inaccessible, say so instead of pretending it was applied.
+4. Inspect task-relevant material from every mandatory companion repository:
+   - `Bambale0/claw`
+   - `wondelai/skills`
+   - `Bambale0/dev-agents-pack`
+   - `agentskills/agentskills`
+   - `anthropics/skills`
+5. Record which guidance was applied from each mandatory repository, or record that no relevant current guidance was found.
+6. Re-check `Bambale0/start` when the shared baseline itself is being changed or when a baseline rule is ambiguous.
+7. Inspect scripts before executing them.
+8. If a source is inaccessible, say so instead of pretending it was applied.
 
 Use promoted/current skills by default. Do not use deprecated skills. Use in-progress/experimental skills only when they clearly fit, and account for their maturity.
 
@@ -70,10 +85,15 @@ Before changing project files:
 1. Classify the task: feature, debugging, refactor, integration, database, security, frontend, backend, deployment, performance, or documentation.
 2. Select the relevant skill/flow from `Bambale0/skills`.
 3. Read the skill before implementation.
-4. Cross-check relevant safe guidance from `Bambale0/claw`, `wondelai/skills`, and `anthropics/skills` when useful.
+4. Cross-check task-relevant safe guidance from **all** mandatory companion repositories:
+   - `Bambale0/claw`
+   - `wondelai/skills`
+   - `Bambale0/dev-agents-pack`
+   - `agentskills/agentskills`
+   - `anthropics/skills`
 5. Inspect any referenced scripts/commands before running them.
 6. Apply only guidance consistent with KSU-specific instructions and higher-priority rules.
-7. Record the skills/flows used in the final delivery.
+7. Record the skills/flows used from each mandatory repository in the final delivery; if none applied from a repository, say so explicitly.
 
 Preferred flows:
 - Complex feature development: `grill-with-docs → to-spec → to-tickets → implement → tdd → code-review`.
@@ -217,7 +237,13 @@ Every agent response must include:
 
 1. Summary of the change.
 2. Files changed.
-3. Skills used from `Bambale0/claw` and `Bambale0/skills`.
+3. Skills/guidance used from `Bambale0/skills` and every mandatory companion repository:
+   - `Bambale0/claw`
+   - `wondelai/skills`
+   - `Bambale0/dev-agents-pack`
+   - `agentskills/agentskills`
+   - `anthropics/skills`
+   State explicitly when a repository had no relevant current guidance.
 4. Tests/CI checks run or inspected and their results.
 5. Risks, assumptions, and follow-up work.
 
@@ -229,8 +255,13 @@ If tests were not run or CI was not inspected, explain why.
 
 ## Definition of done
 
-- Current relevant material in `Bambale0/claw` and `Bambale0/skills` was inspected remotely through GitHub without unnecessary cloning.
-- Relevant skills were searched and applied where applicable.
+- Current task-relevant material in `Bambale0/skills` and **all** mandatory companion repositories was inspected remotely through GitHub without unnecessary cloning:
+  - `Bambale0/claw`
+  - `wondelai/skills`
+  - `Bambale0/dev-agents-pack`
+  - `agentskills/agentskills`
+  - `anthropics/skills`
+- Relevant skills/guidance were searched in every mandatory repository and applied where applicable; explicit no-match notes exist where nothing relevant was found.
 - Repository structure and local instructions were inspected.
 - The target repository was handled remotely when connector capabilities were sufficient; no unnecessary local clone was created.
 - Code compiles or type-checks where applicable.
