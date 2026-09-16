@@ -254,7 +254,7 @@ export default function FeedRemixPage() {
               <span className="kicker">1 · Идея</span>
               {draft.prompt_hidden
                 ? <><h2>Промпт автора скрыт</h2><p className="muted">ROXY использует исходный промпт на сервере, но не раскрывает его. Вам остаётся заменить референсы своими.</p></>
-                : <label className="field"><span className="label">Описание</span><textarea className="control textarea" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={8000} /></label>}
+                : <label className="field"><span className="label">Описание</span><textarea className="control textarea" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={draft.prompt_max_length || 8000} /></label>}
             </div>
 
             <div>
