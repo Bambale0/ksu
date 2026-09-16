@@ -6,8 +6,7 @@ import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import { telegram } from "@/lib/telegram";
 
-const SUPPORT_TELEGRAM_USERNAME = "korkinaxenia";
-const SUPPORT_TELEGRAM_URL = `https://t.me/${SUPPORT_TELEGRAM_USERNAME}`;
+type SupportContact = { configured: boolean; url?: string | null; handle?: string | null };
 
 type Ticket = {
   id: string;
@@ -22,13 +21,13 @@ type Ticket = {
 type Message = { id: string; body: string; author: "support" | "user"; created_at: string };
 type TicketDetail = Ticket & { messages: Message[] };
 
-function openTelegramSupport() {
+function openTelegramSupport(url: string) {
   const tg = telegram();
   if (tg?.openTelegramLink) {
-    tg.openTelegramLink(SUPPORT_TELEGRAM_URL);
+    tg.openTelegramLink(url);
     return;
   }
-  window.open(SUPPORT_TELEGRAM_URL, "_blank", "noopener,noreferrer");
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export default function SupportPage() {
@@ -39,6 +38,9 @@ export default function SupportPage() {
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [contact, setContact] = useState<SupportContact | null>(null);
+  const [contactLoading, setContactLoading] = useState(true);
+  const [contactError, setContactError] = useState("");
 
   const loadTickets = async () => {
     try {
@@ -58,7 +60,23 @@ export default function SupportPage() {
     }
   };
 
-  useEffect(() => { void loadTickets(); }, []);
+  const loadContact = async () => {
+    setContactLoading(true);
+    setContactError("");
+    try {
+      setContact(await customerRequest<SupportContact>("/api/v1/support/contact"));
+    } catch (reason) {
+      setContact(null);
+      setContactError(reason instanceof Error ? reason.message : "Прямая связь временно недоступна");
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadTickets();
+    void loadContact();
+  }, []);
 
   const create = async () => {
     if (!topic.trim() || !message.trim() || busy) return;
