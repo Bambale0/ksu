@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
 from app.db.nexus_models import NexusAdminTask
 from app.db.session import SessionFactory
@@ -221,3 +223,34 @@ async def test_nexus_enqueue_is_idempotent() -> None:
             idempotency_key=key,
         )
         assert duplicate.id == first_id
+
+@pytest.mark.asyncio
+async def test_nexus_enqueue_is_atomic_under_concurrent_retries() -> None:
+    key = f"nexus-regression:{uuid.uuid4()}"
+
+    async def create_once() -> uuid.UUID:
+        async with SessionFactory() as session:
+            task = await NexusAdminTaskService.enqueue(
+                session,
+                telegram_id=123456789,
+                chat_id=123456789,
+                prompt="concurrent durable nexus regression",
+                references=[],
+                aspect_ratio="1:1",
+                image_size="2K",
+                idempotency_key=key,
+            )
+            await session.commit()
+            return task.id
+
+    first_id, second_id = await asyncio.gather(create_once(), create_once())
+    assert first_id == second_id
+
+    async with SessionFactory() as session:
+        rows = (
+            await session.execute(
+                select(NexusAdminTask).where(NexusAdminTask.idempotency_key == key)
+            )
+        ).scalars().all()
+    assert len(rows) == 1
+
