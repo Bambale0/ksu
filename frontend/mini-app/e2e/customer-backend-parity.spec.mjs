@@ -118,8 +118,8 @@ async function mockApi(page) {
       topup_partner_rox: '10.00',
       topup_user_rox: '50.00',
       topup_user_min_rub: '1000.00',
-      balance_rox: '175.00',
-      message: 'Промокод активирован: +25.00 ROX',
+      balance_rox: '150.00',
+      message: 'Промокод активирован',
       });
     }
     if (path === '/api/v1/promocodes/validate') return json({
@@ -128,7 +128,7 @@ async function mockApi(page) {
       reward_rox: '25.00',
       remaining_uses: 99,
       expires_at: '2026-10-13T00:00:00+00:00',
-      message: 'После успешной оплаты начислим +25 ROX',
+      message: 'Промокод готов к активации',
     });
     if (path === '/api/v1/referrals/stats') return json({ partner_balance_rub: '1200.00', pending: '300.00', total_earned: '5000.00', transferred_to_rox: '1000.00', pending_withdrawals: '0.00', minimum_withdrawal: '500.00', rub_per_rox: '1.00' });
     if (path === '/api/v1/referrals/withdrawals') return json({ items: [] });
@@ -183,7 +183,7 @@ for (const [url, title] of surfaces) {
   });
 }
 
-test('promo activation grants welcome ROX before checkout', async ({ page }) => {
+test('promo activation preserves registration welcome before checkout', async ({ page }) => {
   await mockApi(page);
   await page.goto('/mini-app/promocodes/');
   await page.getByPlaceholder('Например, KSENIA50').fill('WELCOME');
@@ -191,7 +191,7 @@ test('promo activation grants welcome ROX before checkout', async ({ page }) => 
   await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'WELCOME' })).toBeVisible();
   await expect(page.getByText('+25', { exact: true })).toBeVisible();
-  await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
+  await expect(page.getByText('ROX начислены при регистрации', { exact: true })).toBeVisible();
   await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
   await expect(page.getByText('Активна', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Перейти к пополнению' }).click();
