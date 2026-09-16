@@ -225,7 +225,7 @@ test('partner promo activates separately and checkout package stays exact', asyn
   await expect(page.getByText('Промокод активирован', { exact: true })).toBeVisible();
   await expect(page.getByText('KSENIA25', { exact: true })).toBeVisible();
   await expect(page.getByText('100', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/).first()).toBeVisible();
+  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toHaveCount(0);
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
   await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
 });
