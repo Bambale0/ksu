@@ -187,3 +187,93 @@ test('support contact is server-owned and disappears when direct contact is not 
   await expect(page.getByRole('button', { name: 'Создать обращение' })).toBeVisible();
   await expectTouchTargets(page);
 });
+
+
+test('promo bootstrap failure is an error with retry, never a fake inactive promo', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  let attempts = 0;
+  await page.route('**/api/v1/promocodes/active', (route) => {
+    attempts += 1;
+    if (attempts === 1) return json(route, { detail: 'database stack trace should stay private' }, 503);
+    return json(route, { active: false, program_active: true });
+  });
+
+  await page.goto('/mini-app/promocodes/');
+  await expect(page.getByRole('alert')).toContainText('Сервис временно недоступен');
+  await expect(page.getByLabel('Промокод')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Повторить загрузку' }).click();
+  await expect(page.getByLabel('Промокод')).toBeVisible();
+});
+
+test('creator application is unavailable until authoritative partnership status loads', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  await page.route('**/api/v1/creator-partnership', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return json(route, { application: null, agreement: null, grants: [], total_granted_rox: '0' });
+  });
+
+  await page.goto('/mini-app/creator-partnership/');
+  await expect(page.getByText('Загружаем статус партнёрства…')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Отправить заявку' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Отправить заявку' })).toBeVisible();
+});
+
+test('partner withdrawal honors the server minimum before allowing submit', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  await page.route('**/api/v1/referrals/stats', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return json(route, {
+      withdrawable_rub: '1500',
+      pending_referral_rub: '0',
+      partner_total_earned_rub: '1500',
+      transferred_to_rox: '0',
+      pending_withdrawals: '0',
+      minimum_withdrawal_rub: '500',
+      rub_per_rox: '1',
+    });
+  });
+  await page.route('**/api/v1/referrals/withdrawals?limit=50', (route) => json(route, { items: [] }));
+  await page.route('**/api/v1/referrals/wallet-transfers?limit=50', (route) => json(route, { items: [] }));
+
+  await page.goto('/mini-app/partner-wallet/');
+  await expect(page.getByText('Загружаем партнёрский баланс…')).toBeVisible();
+
+  const amount = page.getByLabel('Сумма, ₽').nth(1);
+  const requisites = page.getByLabel('Реквизиты');
+  const submit = page.getByRole('button', { name: 'Создать заявку' });
+  await amount.fill('100');
+  await requisites.fill('СБП');
+  await expect(submit).toBeDisabled();
+  await amount.fill('500');
+  await expect(submit).toBeEnabled();
+});
+
+test('payments show bootstrap progress instead of a false unavailable state', async ({ page }) => {
+  await installTelegram(page);
+  await mockMe(page);
+  const packages = {
+    provider: 'yookassa',
+    label: 'ЮKassa',
+    configured: true,
+    currencies: ['RUB'],
+    packages: {
+      starter: { credits: '300', bonus_credits: '30', total_credits: '330', prices: { RUB: '300' } },
+    },
+  };
+  await page.route('**/api/v1/payments/yookassa/packages', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return json(route, packages);
+  });
+  await page.route('**/api/v1/payments/card/packages', (route) => json(route, { ...packages, provider: 'card', label: 'Lava Top', configured: false, packages: {} }));
+  await page.route('**/api/v1/payments/crypto/packages', (route) => json(route, { ...packages, provider: 'cryptobot', label: 'CryptoBot', configured: false, packages: {} }));
+  await page.route('**/api/v1/payments?limit=50', (route) => json(route, { items: [] }));
+  await page.route('**/api/v1/promocodes/active', (route) => json(route, { active: false, program_active: true }));
+
+  await page.goto('/mini-app/payments/');
+  await expect(page.getByText('Загружаем способы оплаты и историю…')).toBeVisible();
+  await expect(page.getByText('Пополнение сейчас недоступно.')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toBeVisible();
+});
