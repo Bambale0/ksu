@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.api.v1.payments import list_yookassa_packages
+from app.api.v1.payments import list_packages, list_yookassa_packages
 from app.core.config import settings
 
 
@@ -40,6 +40,12 @@ async def test_yookassa_catalog_exposes_configured_rub_rox_packages(
             "prices": {"RUB": "300"},
         }
     }
+
+    legacy_catalog = await list_packages()
+    assert legacy_catalog["packages"]["starter"]["credits"] == "300"
+    assert legacy_catalog["packages"]["starter"]["rox"] == "300"
+    assert legacy_catalog["packages"]["starter"]["bonus_credits"] == "30"
+    assert legacy_catalog["packages"]["starter"]["total_credits"] == "330"
 
 
 @pytest.mark.asyncio
