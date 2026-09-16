@@ -149,9 +149,11 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "bonus_rox": str(wallet_rox),
         "total_rox": str(wallet_rox),
         "rub_per_rox": str(InternalCreditService.rub_per_credit()),
-        "welcome_bonus_rox": "0",
+        "welcome_bonus_rox": str(promo_program.welcome_rox),
+        "registration_bonus_rox": str(promo_program.welcome_rox),
         "invite_bonus_rox": "0",
-        "promo_welcome_rox": str(promo_program.welcome_rox),
+        # Kept for older clients: promo activation itself no longer grants welcome ROX.
+        "promo_welcome_rox": "0",
         "promo_topup_partner_rox": str(promo_program.topup_partner_rox),
         "promo_topup_user_rox": str(promo_program.topup_user_rox),
         "promo_topup_user_min_rub": str(promo_program.topup_user_min_rub),
