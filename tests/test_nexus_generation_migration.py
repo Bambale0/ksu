@@ -9,12 +9,32 @@ import httpx
 import pytest
 
 from app.core.config import settings
-from app.providers.nexus import NANO_BANANA_MODELS, NexusClient, NexusProviderError
+from app.providers.nexus import (
+    NANO_BANANA_ASPECT_RATIOS,
+    NANO_BANANA_MODELS,
+    NexusClient,
+    NexusProviderError,
+)
 from app.services.generation_worker import GenerationWorkerService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_spec_image_audit import install_model_spec_image_audit
 from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.nexus_generation_provider import NexusGenerationProviderService
+
+
+DOCUMENTED_NEXUS_NANO_RATIOS = [
+    "auto",
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "5:4",
+    "4:5",
+    "21:9",
+]
 
 
 @pytest.mark.asyncio
@@ -54,6 +74,30 @@ async def test_nexus_client_submits_both_migrated_models(model_name: str) -> Non
             "image_urls": ["https://example.test/a.jpg"],
         }
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("aspect_ratio", DOCUMENTED_NEXUS_NANO_RATIOS)
+async def test_nexus_client_accepts_documented_aspect_ratios(aspect_ratio: str) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(202, json={"task_id": "task-ratio"})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://nexusapi.dev",
+    ) as http_client:
+        client = NexusClient("test-key", client=http_client)
+        await client.create_nano_banana(
+            model_name="nano-banana-2",
+            prompt="ratio contract",
+            aspect_ratio=aspect_ratio,
+            image_size="1K",
+        )
+
+    assert captured["params"]["aspect_ratio"] == aspect_ratio  # type: ignore[index]
 
 
 def test_nexus_generation_normalizes_legacy_roxy_payload() -> None:
@@ -99,6 +143,7 @@ def test_nexus_local_reference_uses_roxy_public_url_without_kie_transport(
 def test_nexus_generation_migration_is_limited_to_pro_and_v2() -> None:
     assert NANO_BANANA_MODELS == frozenset({"nano-banana-pro", "nano-banana-2"})
     assert "nano-banana-2-lite" not in NexusGenerationProviderService.MODEL_IDS
+    assert NANO_BANANA_ASPECT_RATIOS == set(DOCUMENTED_NEXUS_NANO_RATIOS)
 
 
 @pytest.mark.asyncio
@@ -142,18 +187,24 @@ def test_public_nexus_contract_rejects_bad_inputs_before_generation_is_charged()
         )
 
 
-@pytest.mark.parametrize("model_id", ["nano-banana-pro", "nano-banana-2"])
-def test_public_nexus_ui_matches_provider_capabilities(model_id: str) -> None:
+@pytest.mark.parametrize(
+    ("model_id", "expected_default_ratio"),
+    [("nano-banana-pro", "1:1"), ("nano-banana-2", "auto")],
+)
+def test_public_nexus_ui_matches_provider_capabilities(
+    model_id: str,
+    expected_default_ratio: str,
+) -> None:
     install_model_spec_image_audit()
     schema = build_public_model_ui_schema(ModelCatalog.get(model_id).public_dict())
     fields = {str(field["name"]): field for field in schema["fields"]}
 
     assert fields["image_input"]["max_items"] == 4
     assert "output_format" not in fields
-    assert fields["aspect_ratio"]["suggestions"] == ["1:1", "16:9", "9:16", "4:3", "3:4"]
+    assert fields["aspect_ratio"]["suggestions"] == DOCUMENTED_NEXUS_NANO_RATIOS
     assert fields["resolution"]["suggestions"] == ["1K", "2K", "4K"]
     assert "output_format" not in schema["defaults"]
-    assert schema["defaults"]["aspect_ratio"] == "1:1"
+    assert schema["defaults"]["aspect_ratio"] == expected_default_ratio
 
 
 @pytest.mark.asyncio
