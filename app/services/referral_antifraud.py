@@ -13,6 +13,7 @@ from app.db.models import ReferralRelation, User
 from app.db.referral_models import ReferralEvent
 from app.services.notifications import NotificationService
 from app.services.referral_audit import log_referral_admission
+from app.services.referral_notification_copy import referral_joined_copy
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,26 +359,17 @@ class ReferralAntifraudService:
             )
         await session.flush()
 
-        display_name = " ".join(
-            part for part in (visitor.first_name, visitor.last_name or "") if part
-        ).strip()
-        if display_name and visitor.username:
-            referred_name = f"{display_name} (@{visitor.username})"
-        elif display_name:
-            referred_name = display_name
-        elif visitor.username:
-            referred_name = f"@{visitor.username}"
-        else:
-            referred_name = "Новый пользователь ROXY"
+        notification_copy = referral_joined_copy(
+            username=visitor.username,
+            first_name=visitor.first_name,
+            last_name=visitor.last_name,
+        )
         await NotificationService.create(
             session,
             user_id=inviter.id,
             kind="referral_joined",
-            title="🎉 Новый реферал",
-            body=(
-                f"К вам присоединился: {referred_name}.\n"
-                "Финансовые бонусы включаются только после активации вашего промокода."
-            ),
+            title=notification_copy.title,
+            body=notification_copy.body,
         )
 
         await cls._record(

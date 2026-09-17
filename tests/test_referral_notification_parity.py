@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.models import (
     Notification,
+    ReferralRelation,
     ReferralReward,
     User,
     WalletTransaction,
@@ -60,9 +61,7 @@ async def test_new_referral_queues_partner_telegram_notification(
         )
         assert notification is not None
         assert notification.title == "🎉 Новый реферал"
-        assert "Новый Друг" in notification.body
-        assert "@new_friend" in notification.body
-        assert "Финансовые бонусы включаются только после активации вашего промокода." in notification.body
+        assert notification.body == "👤 @new_friend"
 
         delivery = await session.scalar(
             select(NotificationDelivery).where(
@@ -72,6 +71,42 @@ async def test_new_referral_queues_partner_telegram_notification(
         assert delivery is not None
         assert delivery.channel == "telegram"
         assert delivery.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_direct_referral_relation_uses_same_compact_join_copy() -> None:
+    async with SessionFactory() as session:
+        inviter = User(
+            telegram_id=980000000000105,
+            username="creator_direct",
+            first_name="Creator",
+        )
+        referred = User(
+            telegram_id=980000000000106,
+            username="direct_friend",
+            first_name="Direct",
+            last_name="Friend",
+        )
+        session.add_all([inviter, referred])
+        await session.flush()
+        session.add(
+            ReferralRelation(
+                referred_user_id=referred.id,
+                inviter_user_id=inviter.id,
+                source="link",
+            )
+        )
+        await session.commit()
+
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == inviter.id,
+                Notification.kind == "referral_joined",
+            )
+        )
+        assert notification is not None
+        assert notification.title == "🎉 Новый реферал"
+        assert notification.body == "👤 @direct_friend"
 
 
 @pytest.mark.asyncio
@@ -135,11 +170,12 @@ async def test_referral_payment_notification_uses_username_paid_rub_percent_and_
             )
         )
         assert notification is not None
-        assert notification.title == "💰 По 1-й линии пополнение!"
+        assert notification.title == "💰 Пополнение реферала"
         assert notification.body == (
-            "@polina_ai пополнил баланс на 500 ₽\n"
-            "Ваш бонус: +150 ₽ (30%)\n"
-            "🎁 +10 ROX на баланс"
+            "👤 @polina_ai\n"
+            "💳 Пополнение: 500 ₽\n"
+            "💵 Вам: +150 ₽ (30%)\n"
+            "💎 +10 ROX"
         )
         assert "Полина" not in notification.body
         assert "Telegram" not in notification.body
