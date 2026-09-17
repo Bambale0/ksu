@@ -22,9 +22,21 @@ def install_model_spec_image_audit() -> None:
     gpt2_ids = {"gpt-image-2-t2i", "gpt-image-2-i2i"}
     nano_legacy_ids = {"nano-banana", "nano-banana-edit"}
     nexus_nano_ids = {"nano-banana-pro", "nano-banana-2"}
-    # Keep the public contract at the documented Nexus family intersection for
-    # Nano Banana 2 and Pro. Do not leak wider KIE-only ratios into Nexus calls.
-    nexus_nano_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"]
+    # Nexus documents one shared aspect-ratio contract for the Nano Banana
+    # family. Keep the customer UI and pre-charge validation aligned with it.
+    nexus_nano_ratios = [
+        "auto",
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "5:4",
+        "4:5",
+        "21:9",
+    ]
     nexus_nano_resolutions = {"1K", "2K", "4K"}
     wan_ids = {"wan-2.7-image", "wan-2.7-image-pro"}
     nsfw_image_ids = {
