@@ -231,6 +231,19 @@ class PromoCodeService:
                 payment=payment,
             )
 
+        # Current clients resend the persisted code as part of their idempotent
+        # checkout intent. This is attribution, not a new activation: disabled
+        # campaigns must not prevent base-only top-ups by existing customers.
+        relation = await cls.relation_for_user(session, user_id=payment.user_id)
+        if relation is not None and relation.source == "promo" and relation.promo_id is not None:
+            attributed = await session.get(PromoCode, relation.promo_id)
+            if (
+                attributed is not None
+                and attributed.code == normalized
+                and attributed.partner_user_id == relation.inviter_user_id
+            ):
+                return await cls.attach_current_attribution_to_payment(session, payment=payment)
+
         activation = await cls.activate(
             session,
             user_id=payment.user_id,
@@ -596,6 +609,7 @@ class PromoCodeService:
         config = await PartnerPromoProgramService.get_config(session)
         base: dict[str, object] = {
             "active": False,
+            "bonus_eligible": False,
             "program_active": bool(config.is_active),
             "registration_welcome_rox": str(config.welcome_rox),
             # Compatibility fields describe promo activation only. Purchase bonus
@@ -618,6 +632,7 @@ class PromoCodeService:
         return {
             **base,
             "active": True,
+            "bonus_eligible": bool(config.is_active and promo.is_active),
             "code": promo.code,
             "promo_id": str(promo.id),
             "partner_user_id": str(relation.inviter_user_id),

@@ -122,6 +122,33 @@ async def test_partner_promo_activation_sets_attribution_without_welcome_credit(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_code", [False, True])
+async def test_disabled_promo_keeps_attribution_but_never_promises_or_credits_package_bonus(explicit_code):
+    async with SessionFactory() as session:
+        partner = await _user(session, "Disabled promo partner")
+        user = await _user(session, "Disabled promo user")
+        promo = await _promo(session, partner=partner)
+        await PromoCodeService.activate(session, user_id=user.id, code=promo.code)
+        promo.is_active = False
+        await session.flush()
+        state = await PromoCodeService.active_state(session, user_id=user.id)
+        assert state["active"] is True
+        assert state["code"] == promo.code
+        assert state["bonus_eligible"] is False
+        payment = _payment(user_id=user.id)
+        payment.payload = {**payment.payload, "promo_package_bonus_credits": "30"}
+        session.add(payment)
+        await session.flush()
+        await PromoCodeService.reserve_for_payment(
+            session, payment=payment, code=promo.code if explicit_code else None,
+        )
+        await PaymentService.complete(session, payment_id=payment.id, provider_payload={"status": "succeeded"})
+        wallet = await session.get(Wallet, user.id)
+        assert wallet.balance == Decimal("300")
+        assert payment.payload["promo_bonus_credits"] == "0"
+
+
+@pytest.mark.asyncio
 async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None:
     async with SessionFactory() as session:
         first_partner = await _user(session, "First partner")

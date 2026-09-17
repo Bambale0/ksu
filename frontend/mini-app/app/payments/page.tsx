@@ -236,7 +236,9 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
-  const promoEnabled = Boolean(activePromo?.active && activePromo.program_active);
+  const promoEnabled = Boolean(
+    activePromo?.active && activePromo.program_active && activePromo.bonus_eligible !== false,
+  );
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
