@@ -15,8 +15,9 @@ from app.core.config import settings
 from app.db.models import Generation
 from app.providers.kie import KieClient, KieProviderError, KieTask, kie_generation_binding
 from app.providers.kie_veo import KieVeoClient
+from app.providers.nexus import NexusClient, NexusProviderError
 from app.services.generation_reliability import GenerationOutboxService
-from app.services.kie_image_contracts import KieImageContractError
+from app.services.kie_image_contracts import KieImageContractError, normalize_kie_image_input
 from app.services.kie_video_contracts import KieVideoContractError
 from app.services.media_assets import MediaAssetService
 from app.services.model_catalog import ModelCatalog
@@ -32,6 +33,7 @@ from app.services.wallet import WalletService
 SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
 _TERMINAL_STATUSES = {"succeeded", "failed"}
 _UNCERTAIN_CLIENT_STATUSES = {408, 425}
+_NEXUS_NANO_MODEL_IDS = frozenset({"nano-banana-pro", "nano-banana-2"})
 
 
 class GenerationProviderService:
@@ -42,6 +44,12 @@ class GenerationProviderService:
     @staticmethod
     def _model_id(generation: Generation) -> str:
         return str((generation.parameters or {}).get("_model_id") or "")
+
+    @classmethod
+    def target_provider(cls, generation: Generation) -> str:
+        """Return the transport provider for a queued generation."""
+
+        return "nexus" if cls._model_id(generation) in _NEXUS_NANO_MODEL_IDS else "kie"
 
     @staticmethod
     def _provider_model_snapshot(generation: Generation) -> str:
@@ -87,6 +95,20 @@ class GenerationProviderService:
                 return "permanent"
             return "uncertain"
 
+        if isinstance(exc, NexusProviderError):
+            message = str(exc).lower()
+            if any(
+                marker in message
+                for marker in (
+                    "not configured",
+                    "unsupported",
+                    "must not be empty",
+                    "accepts at most",
+                )
+            ):
+                return "permanent"
+            return "uncertain"
+
         return "permanent"
 
     @classmethod
@@ -109,7 +131,8 @@ class GenerationProviderService:
 
         now = datetime.now(timezone.utc)
         generation.status = "retry" if disposition == "retryable" else "submitting"
-        generation.error = f"Kie submission {disposition}: {exc}"[:4000]
+        provider_name = str(generation.provider or cls.target_provider(generation)).capitalize()
+        generation.error = f"{provider_name} submission {disposition}: {exc}"[:4000]
         generation.updated_at = now
 
         parameters = dict(generation.parameters or {})
@@ -219,9 +242,22 @@ class GenerationProviderService:
             reason="Pinterest quality candidate is ready",
         )
 
+    @staticmethod
+    def _nexus_input(provider_model: str, input_data: dict[str, Any]) -> dict[str, Any]:
+        normalized = normalize_kie_image_input(provider_model, input_data)
+        references = normalized.get("image_input") or []
+        if not isinstance(references, list):
+            references = []
+        return {
+            "prompt": str(normalized.get("prompt") or "").strip(),
+            "aspect_ratio": str(normalized.get("aspect_ratio") or "1:1"),
+            "image_size": str(normalized.get("resolution") or "2K"),
+            "image_urls": [str(item).strip() for item in references if str(item).strip()],
+        }
+
     @classmethod
-    async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
-        """Submit a generation to the exact provider model frozen on creation."""
+    async def submit(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
+        """Submit a generation to the transport selected for its frozen model id."""
 
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -234,52 +270,73 @@ class GenerationProviderService:
         provider_api = cls._provider_api(generation)
         model_id = cls._model_id(generation)
         provider_model = cls._provider_model_snapshot(generation)
+        target_provider = cls.target_provider(generation)
 
+        generation.provider = target_provider
         generation.status = "submitting"
         generation.error = None
         await session.commit()
 
-        callback_url = settings.webhook_url("webhooks/kie")
-        if callback_url and settings.kie_webhook_hmac_key:
-            params = {
-                "generation_id": str(generation.id),
-                "binding": kie_generation_binding(generation.id, settings.kie_webhook_hmac_key),
-            }
-            callback_url = f"{callback_url}?{urlencode(params)}"
-        elif callback_url:
-            # Never ask KIE to call an endpoint that cannot authenticate callbacks.
-            # Non-production environments can rely on the existing polling/recovery path.
-            callback_url = ""
         input_data = cls._input_for(generation)
 
         try:
-            input_data = await ProviderMediaTransport.prepare(input_data)
-            if provider_api == "suno_music":
-                client = KieClient(settings.kie_api_key, settings.kie_base_url)
+            if target_provider == "nexus":
+                nexus_input = cls._nexus_input(provider_model, input_data)
+                client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
                 try:
-                    task_id = await client.create_music_task(
-                        model=provider_model,
-                        input_data=input_data,
-                        callback_url=callback_url,
+                    task_id = await client.create_nano_banana(
+                        model_name=provider_model,
+                        prompt=nexus_input["prompt"],
+                        aspect_ratio=nexus_input["aspect_ratio"],
+                        image_size=nexus_input["image_size"],
+                        image_urls=nexus_input["image_urls"],
+                        idempotency_key=str(generation.id),
                     )
-                finally:
-                    await client.aclose()
-            elif model_id == "veo-3.1":
-                client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
-                try:
-                    task_id = await client.create_task(input_data=input_data)
                 finally:
                     await client.aclose()
             else:
-                client = KieClient(settings.kie_api_key, settings.kie_base_url)
-                try:
-                    task_id = await client.create_task(
-                        model=provider_model,
-                        input_data=input_data,
-                        callback_url=callback_url,
-                    )
-                finally:
-                    await client.aclose()
+                callback_url = settings.webhook_url("webhooks/kie")
+                if callback_url and settings.kie_webhook_hmac_key:
+                    params = {
+                        "generation_id": str(generation.id),
+                        "binding": kie_generation_binding(
+                            generation.id,
+                            settings.kie_webhook_hmac_key,
+                        ),
+                    }
+                    callback_url = f"{callback_url}?{urlencode(params)}"
+                elif callback_url:
+                    # Never ask KIE to call an endpoint that cannot authenticate callbacks.
+                    # Non-production environments can rely on the existing polling/recovery path.
+                    callback_url = ""
+
+                input_data = await ProviderMediaTransport.prepare(input_data)
+                if provider_api == "suno_music":
+                    client = KieClient(settings.kie_api_key, settings.kie_base_url)
+                    try:
+                        task_id = await client.create_music_task(
+                            model=provider_model,
+                            input_data=input_data,
+                            callback_url=callback_url,
+                        )
+                    finally:
+                        await client.aclose()
+                elif model_id == "veo-3.1":
+                    client = KieVeoClient(settings.kie_api_key, settings.kie_base_url)
+                    try:
+                        task_id = await client.create_task(input_data=input_data)
+                    finally:
+                        await client.aclose()
+                else:
+                    client = KieClient(settings.kie_api_key, settings.kie_base_url)
+                    try:
+                        task_id = await client.create_task(
+                            model=provider_model,
+                            input_data=input_data,
+                            callback_url=callback_url,
+                        )
+                    finally:
+                        await client.aclose()
         except Exception as exc:
             await cls._record_submission_error(session, generation.id, exc)
             raise
@@ -296,12 +353,76 @@ class GenerationProviderService:
 
         now = datetime.now(timezone.utc)
         generation.external_id = task_id
-        generation.provider = "kie"
+        generation.provider = target_provider
         generation.status = "generating"
         generation.error = None
         generation.updated_at = now
         cls._mark_provider_task_bound(generation, now=now)
         await session.commit()
+        return generation
+
+    @classmethod
+    async def submit_kie(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
+        """Compatibility entrypoint retained for existing callers/tests."""
+
+        return await cls.submit(session, generation_id)
+
+    @classmethod
+    async def sync_nexus_task(
+        cls,
+        session: AsyncSession,
+        *,
+        task_id: str,
+        generation_id: uuid.UUID | None = None,
+    ) -> Generation | None:
+        """Synchronize a Nexus task into the existing generation lifecycle."""
+
+        generation = await session.scalar(
+            select(Generation)
+            .where(
+                Generation.provider == "nexus",
+                Generation.external_id == task_id,
+            )
+            .with_for_update()
+        )
+        if generation is not None and generation.status in _TERMINAL_STATUSES:
+            return generation
+
+        if generation is None and generation_id is not None:
+            candidate = await session.scalar(
+                select(Generation).where(Generation.id == generation_id).with_for_update()
+            )
+            if (
+                candidate is not None
+                and candidate.provider == "nexus"
+                and candidate.external_id == task_id
+            ):
+                generation = candidate
+
+        if generation is None or generation.status in _TERMINAL_STATUSES:
+            return generation
+
+        client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
+        try:
+            task = await client.get_task(task_id)
+        finally:
+            await client.aclose()
+
+        if task.status in {"completed", "success", "succeeded"}:
+            state = "success"
+        elif task.status in {"failed", "error"}:
+            state = "fail"
+        else:
+            state = "generating"
+
+        normalized = KieTask(
+            task_id=task.task_id,
+            state=state,
+            result_urls=list(task.image_urls),
+            fail_message=task.error,
+            raw=task.raw,
+        )
+        await cls.apply_kie_task(session, generation, normalized)
         return generation
 
     @classmethod
@@ -412,7 +533,7 @@ class GenerationProviderService:
         if task.state == "success":
             if not task.result_urls:
                 generation.status = "generating"
-                generation.error = "Kie reported success without result URLs; awaiting reconciliation"
+                generation.error = "Provider reported success without result URLs; awaiting reconciliation"
                 generation.updated_at = datetime.now(timezone.utc)
                 await session.commit()
                 return
@@ -450,7 +571,7 @@ class GenerationProviderService:
             return
 
         if task.state == "fail":
-            message = task.fail_message or task.fail_code or "Kie generation failed"
+            message = task.fail_message or task.fail_code or "Provider generation failed"
             await cls.fail_and_refund(session, generation.id, message)
             return
 
