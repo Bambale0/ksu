@@ -111,7 +111,14 @@ def test_admin_policy_confirmation_and_step_up_are_explicit() -> None:
 def test_tariff_validation_rejects_unknown_and_negative_values() -> None:
     valid = validate_tariff_payload(
         {
-            "packages": {"starter": {"credits": 50, "rub": 500}},
+            "packages": {
+                "starter": {
+                    "amount": 500,
+                    "currency": "RUB",
+                    "credits": 50,
+                    "bonus_credits": 0,
+                }
+            },
             "video_prices": {"kling": {"per_second": 2.5}},
         }
     )
