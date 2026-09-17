@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from sqlalchemy import select
@@ -13,12 +14,9 @@ from app.core.config import settings
 from app.db.models import Generation
 from app.providers.kie import KieTask
 from app.providers.nexus import NANO_BANANA_MODELS, NexusClient, NexusProviderError
+from app.services.feed_static import FeedStaticStorage
 from app.services.generation_provider import GenerationProviderService
-from app.services.provider_media_transport import (
-    ProviderMediaTransport,
-    ProviderMediaTransportError,
-    ProviderMediaTransportPermanentError,
-)
+from app.services.reference_static import ReferenceStaticStorage
 
 
 class NexusGenerationContractError(ValueError):
@@ -37,7 +35,40 @@ class NexusGenerationProviderService:
         return "nexus" if NexusGenerationProviderService.handles(generation) else "kie"
 
     @staticmethod
-    def _normalize_input(model_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
+    def _nexus_reference_url(raw: str) -> str:
+        """Return a deterministic URL Nexus can fetch without KIE transport.
+
+        Product-owned relative URLs are expanded against PUBLIC_BASE_URL. Absolute
+        HTTP(S) references are kept byte-for-byte so retries with the same Nexus
+        Idempotency-Key also keep the exact same request body.
+        """
+
+        value = str(raw or "").strip()
+        if not value:
+            raise NexusGenerationContractError("Nexus reference URL must not be empty")
+
+        parsed = urlsplit(value)
+        if parsed.scheme in {"https", "http"} and parsed.netloc:
+            return value
+
+        if not (
+            ReferenceStaticStorage.is_local_url(value)
+            or FeedStaticStorage.is_local_url(value)
+        ):
+            raise NexusGenerationContractError(
+                "Nexus reference must be an absolute URL or product-owned media URL"
+            )
+
+        base = urlsplit(settings.public_base_url.strip())
+        if base.scheme != "https" or not base.netloc:
+            raise NexusGenerationContractError(
+                "PUBLIC_BASE_URL must be HTTPS to send stored references to Nexus"
+            )
+        path = parsed.path or value.split("?", 1)[0]
+        return urlunsplit((base.scheme, base.netloc, path, "", ""))
+
+    @classmethod
+    def _normalize_input(cls, model_id: str, input_data: dict[str, Any]) -> dict[str, Any]:
         if model_id not in NANO_BANANA_MODELS:
             raise NexusGenerationContractError(f"Unsupported Nexus model: {model_id}")
 
@@ -49,12 +80,12 @@ class NexusGenerationProviderService:
         if raw_refs in (None, ""):
             raw_refs = input_data.get("image_urls")
         if raw_refs in (None, ""):
-            refs: list[str] = []
+            raw_values: list[str] = []
         elif isinstance(raw_refs, (list, tuple)):
-            refs = [str(item).strip() for item in raw_refs if str(item).strip()]
+            raw_values = [str(item).strip() for item in raw_refs if str(item).strip()]
         else:
-            refs = [str(raw_refs).strip()]
-        refs = list(dict.fromkeys(refs))
+            raw_values = [str(raw_refs).strip()]
+        refs = list(dict.fromkeys(cls._nexus_reference_url(item) for item in raw_values))
 
         return {
             "prompt": prompt,
@@ -67,10 +98,8 @@ class NexusGenerationProviderService:
 
     @staticmethod
     def _error_disposition(exc: Exception) -> str:
-        if isinstance(exc, (NexusGenerationContractError, ProviderMediaTransportPermanentError)):
+        if isinstance(exc, NexusGenerationContractError):
             return "permanent"
-        if isinstance(exc, ProviderMediaTransportError):
-            return "retryable"
         if isinstance(exc, httpx.HTTPStatusError):
             status = exc.response.status_code
             if status == 429:
@@ -149,7 +178,6 @@ class NexusGenerationProviderService:
 
         try:
             input_data = GenerationProviderService._input_for(generation)
-            input_data = await ProviderMediaTransport.prepare(input_data)
             normalized = cls._normalize_input(model_id, input_data)
             client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
             try:
