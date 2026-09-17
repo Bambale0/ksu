@@ -18,19 +18,7 @@ from app.services.nexus_admin_tasks import MAX_REFERENCE_FILE_BYTES, NexusAdminT
 
 router = Router(name="nexus-admin-test")
 
-NEXUS_TEST_ASPECT_RATIOS = (
-    "auto",
-    "1:1",
-    "4:3",
-    "3:4",
-    "3:2",
-    "2:3",
-    "5:4",
-    "4:5",
-    "16:9",
-    "9:16",
-    "21:9",
-)
+NEXUS_TEST_ASPECT_RATIOS = ("1:1", "4:3", "3:4", "16:9", "9:16")
 NEXUS_TEST_IMAGE_SIZES = ("2K", "4K")
 
 
@@ -94,23 +82,13 @@ def _aspect_ratio_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Auto", callback_data="nexus-test:ratio:auto"),
                 InlineKeyboardButton(text="1:1", callback_data="nexus-test:ratio:1:1"),
                 InlineKeyboardButton(text="4:3", callback_data="nexus-test:ratio:4:3"),
-            ],
-            [
                 InlineKeyboardButton(text="3:4", callback_data="nexus-test:ratio:3:4"),
-                InlineKeyboardButton(text="3:2", callback_data="nexus-test:ratio:3:2"),
-                InlineKeyboardButton(text="2:3", callback_data="nexus-test:ratio:2:3"),
             ],
             [
-                InlineKeyboardButton(text="5:4", callback_data="nexus-test:ratio:5:4"),
-                InlineKeyboardButton(text="4:5", callback_data="nexus-test:ratio:4:5"),
                 InlineKeyboardButton(text="16:9", callback_data="nexus-test:ratio:16:9"),
-            ],
-            [
                 InlineKeyboardButton(text="9:16", callback_data="nexus-test:ratio:9:16"),
-                InlineKeyboardButton(text="21:9", callback_data="nexus-test:ratio:21:9"),
             ],
             [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
         ]
@@ -181,77 +159,16 @@ async def nexus_test_start(
         }
     )
     await message.answer(
-        "🧪 <b>NexusAPI · Nano Banana Pro</b>\n\n"
-        "Пришлите от <b>1 до 4 изображений-референсов</b> — обычным фото или файлом. "
-        "Можно отправлять по одному. После загрузки нажмите «Продолжить».\n\n"
-        "Дальше бот попросит промпт, aspect ratio и качество <b>2K / 4K</b>.\n\n"
-        "Тестовый запуск не списывает ROX у пользователя, но расходует баланс NexusAPI.",
-        parse_mode="HTML",
+        "🧪 Nano Banana Pro · NexusAPI\n\n"
+        f"Пришлите от 1 до {NANO_BANANA_PRO_MAX_REFERENCES} фото-референсов по одному сообщению. "
+        "Когда закончите, нажмите «Продолжить».\n\n"
+        "Тестовый режим использует отдельную NexusAPI генерацию и не списывает ROX.",
         reply_markup=_references_keyboard(0),
     )
 
 
-@router.callback_query(F.data == "nexus-test:cancel")
-async def nexus_test_cancel(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
-    if not await _state_authorized(state, session, callback.from_user.id):
-        await state.clear()
-        await callback.answer("Нет доступа", show_alert=True)
-        return
-    await state.clear()
-    await callback.answer("Тест отменён")
-    if isinstance(callback.message, Message):
-        await callback.message.answer("Тестовый режим закрыт.", reply_markup=quick_menu(is_admin=True))
-
-
-@router.callback_query(NexusTestStates.references, F.data == "nexus-test:refs:clear")
-async def nexus_test_clear_references(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
-    if not await _state_authorized(state, session, callback.from_user.id):
-        await state.clear()
-        await callback.answer("Нет доступа", show_alert=True)
-        return
-    data = await state.get_data()
-    await state.update_data(references=[])
-    await callback.answer("Референсы очищены")
-    if isinstance(callback.message, Message):
-        await callback.message.edit_reply_markup(reply_markup=_references_keyboard(0))
-    if data.get("running"):
-        await state.update_data(running=False)
-
-
-@router.callback_query(NexusTestStates.references, F.data == "nexus-test:refs:done")
-async def nexus_test_references_done(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-) -> None:
-    if not await _state_authorized(state, session, callback.from_user.id):
-        await state.clear()
-        await callback.answer("Нет доступа", show_alert=True)
-        return
-    data = await state.get_data()
-    references = list(data.get("references") or [])
-    if not references:
-        await callback.answer("Сначала добавьте хотя бы один референс", show_alert=True)
-        return
-    await state.set_state(NexusTestStates.prompt)
-    await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            f"Референсов: {len(references)}. Теперь пришлите текстовый промпт для Nano Banana Pro.",
-            reply_markup=_cancel_keyboard(),
-        )
-
-
 @router.message(NexusTestStates.references)
-async def nexus_test_collect_reference(
+async def nexus_test_reference(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
@@ -264,28 +181,72 @@ async def nexus_test_collect_reference(
     reference = _message_reference(message)
     if reference is None:
         await message.answer(
-            "Нужен референс-картинка: отправьте фото или изображение как файл.",
+            "Пришлите фото или изображение-файл.",
             reply_markup=_references_keyboard(len((await state.get_data()).get("references") or [])),
         )
         return
-    if int(reference.get("file_size") or 0) > MAX_REFERENCE_FILE_BYTES:
-        await message.answer("Этот референс больше 8 МБ. Пришлите изображение поменьше.")
+    if int(reference["file_size"] or 0) > MAX_REFERENCE_FILE_BYTES:
+        await message.answer(
+            f"Файл слишком большой. Лимит — {MAX_REFERENCE_FILE_BYTES // (1024 * 1024)} МБ.",
+            reply_markup=_references_keyboard(len((await state.get_data()).get("references") or [])),
+        )
         return
 
     data = await state.get_data()
     references = list(data.get("references") or [])
     if len(references) >= NANO_BANANA_PRO_MAX_REFERENCES:
         await message.answer(
-            "У Nano Banana Pro в NexusAPI максимум 4 референса. Нажмите «Продолжить».",
+            f"Уже добавлено максимум {NANO_BANANA_PRO_MAX_REFERENCES} референса.",
             reply_markup=_references_keyboard(len(references)),
         )
         return
     references.append(reference)
     await state.update_data(references=references)
     await message.answer(
-        f"✅ Референс добавлен · {len(references)}/{NANO_BANANA_PRO_MAX_REFERENCES}",
+        f"Референс добавлен: {len(references)}/{NANO_BANANA_PRO_MAX_REFERENCES}",
         reply_markup=_references_keyboard(len(references)),
     )
+
+
+@router.callback_query(F.data == "nexus-test:refs:clear")
+async def nexus_test_clear_references(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    telegram_id = callback.from_user.id if callback.from_user else None
+    if not await _state_authorized(state, session, telegram_id):
+        await state.clear()
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+    await state.update_data(references=[])
+    if callback.message:
+        await callback.message.edit_reply_markup(reply_markup=_references_keyboard(0))
+    await callback.answer("Референсы очищены")
+
+
+@router.callback_query(F.data == "nexus-test:refs:done")
+async def nexus_test_references_done(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    telegram_id = callback.from_user.id if callback.from_user else None
+    if not await _state_authorized(state, session, telegram_id):
+        await state.clear()
+        await callback.answer("Нет доступа", show_alert=True)
+        return
+    references = list((await state.get_data()).get("references") or [])
+    if not references:
+        await callback.answer("Добавьте хотя бы один референс", show_alert=True)
+        return
+    await state.set_state(NexusTestStates.prompt)
+    if callback.message:
+        await callback.message.answer(
+            "Введите промпт для Nano Banana Pro.",
+            reply_markup=_cancel_keyboard(),
+        )
+    await callback.answer()
 
 
 @router.message(NexusTestStates.prompt)
@@ -298,21 +259,13 @@ async def nexus_test_prompt(
     if not await _state_authorized(state, session, telegram_id):
         await _deny(message, state)
         return
-
-    prompt = str(message.text or "").strip()
-    if len(prompt) < 3:
-        await message.answer("Промпт слишком короткий. Пришлите текст от 3 символов.")
+    prompt = str(message.text or message.caption or "").strip()
+    if not prompt:
+        await message.answer("Промпт не должен быть пустым.", reply_markup=_cancel_keyboard())
         return
-    if len(prompt) > 6000:
-        await message.answer("Промпт слишком длинный. Максимум для теста — 6000 символов.")
-        return
-
     await state.update_data(prompt=prompt)
     await state.set_state(NexusTestStates.aspect_ratio)
-    await message.answer(
-        "Выберите aspect ratio результата:",
-        reply_markup=_aspect_ratio_keyboard(),
-    )
+    await message.answer("Выберите соотношение сторон:", reply_markup=_aspect_ratio_keyboard())
 
 
 @router.callback_query(NexusTestStates.aspect_ratio, F.data.startswith("nexus-test:ratio:"))
@@ -321,88 +274,70 @@ async def nexus_test_aspect_ratio(
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    if not await _state_authorized(state, session, callback.from_user.id):
+    telegram_id = callback.from_user.id if callback.from_user else None
+    if not await _state_authorized(state, session, telegram_id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
-    aspect_ratio = str(callback.data or "").removeprefix("nexus-test:ratio:")
-    if aspect_ratio not in NEXUS_TEST_ASPECT_RATIOS or aspect_ratio not in NANO_BANANA_PRO_ASPECT_RATIOS:
-        await callback.answer("Неподдерживаемый aspect ratio", show_alert=True)
+    ratio = str(callback.data or "").split("nexus-test:ratio:", 1)[-1]
+    if ratio not in NEXUS_TEST_ASPECT_RATIOS or ratio not in NANO_BANANA_PRO_ASPECT_RATIOS:
+        await callback.answer("Неподдерживаемое соотношение", show_alert=True)
         return
-    await state.update_data(aspect_ratio=aspect_ratio)
+    await state.update_data(aspect_ratio=ratio)
     await state.set_state(NexusTestStates.image_size)
+    if callback.message:
+        await callback.message.answer("Выберите качество:", reply_markup=_image_size_keyboard())
     await callback.answer()
-    if isinstance(callback.message, Message):
-        await callback.message.answer(
-            f"Формат: {aspect_ratio}. Выберите качество:",
-            reply_markup=_image_size_keyboard(),
-        )
 
 
 @router.callback_query(NexusTestStates.image_size, F.data.startswith("nexus-test:size:"))
-async def nexus_test_generate(
+async def nexus_test_image_size(
     callback: CallbackQuery,
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    if not await _state_authorized(state, session, callback.from_user.id):
+    telegram_id = callback.from_user.id if callback.from_user else None
+    if not await _state_authorized(state, session, telegram_id):
         await state.clear()
         await callback.answer("Нет доступа", show_alert=True)
         return
-    if not isinstance(callback.message, Message):
-        await callback.answer("Не удалось открыть сообщение теста", show_alert=True)
-        return
-
-    image_size = str(callback.data or "").removeprefix("nexus-test:size:")
+    image_size = str(callback.data or "").split("nexus-test:size:", 1)[-1]
     if image_size not in NEXUS_TEST_IMAGE_SIZES:
-        await callback.answer("Выберите 2K или 4K", show_alert=True)
+        await callback.answer("Неподдерживаемое качество", show_alert=True)
         return
-
+    await state.update_data(image_size=image_size)
     data = await state.get_data()
-    if data.get("running"):
-        await callback.answer("Эта задача уже запускается")
-        return
     references = list(data.get("references") or [])
     prompt = str(data.get("prompt") or "").strip()
-    aspect_ratio = str(data.get("aspect_ratio") or "")
-    idempotency_key = str(data.get("idempotency_key") or "").strip()
-    if not references or not prompt or aspect_ratio not in NEXUS_TEST_ASPECT_RATIOS:
+    idempotency_key = str(data.get("idempotency_key") or f"ksu-nexus-test:{telegram_id}:{uuid.uuid4()}")
+    if not references or not prompt:
         await state.clear()
-        await callback.answer(
-            "Данные теста устарели. Запустите 🧪 Тест заново.",
-            show_alert=True,
-        )
+        await callback.answer("Сессия теста устарела — начните заново", show_alert=True)
         return
-
-    if not settings.nexus_api_key.strip():
-        await state.clear()
-        await callback.answer("NEXUS_API_KEY не настроен", show_alert=True)
+    if bool(data.get("running")):
+        await callback.answer("Генерация уже поставлена в очередь", show_alert=True)
+        return
+    await state.update_data(running=True)
+    try:
+        task = await NexusAdminTaskService.enqueue(
+            session,
+            requester_telegram_id=int(telegram_id or 0),
+            chat_id=int(callback.message.chat.id if callback.message else telegram_id or 0),
+            prompt=prompt,
+            references=references,
+            aspect_ratio=str(data.get("aspect_ratio") or "1:1"),
+            image_size=image_size,
+            idempotency_key=idempotency_key,
+        )
+    except Exception:
+        await state.update_data(running=False)
+        await callback.answer("Не удалось поставить тест в очередь", show_alert=True)
+        raise
+    await state.clear()
+    if callback.message:
         await callback.message.answer(
-            "NEXUS_API_KEY не настроен. Тест не запущен.",
+            f"🧪 Тест поставлен в очередь · {task.id}\n"
+            "Результат придёт сюда отдельным сообщением.",
             reply_markup=quick_menu(is_admin=True),
         )
-        return
-
-    await state.update_data(running=True, image_size=image_size)
-    task = await NexusAdminTaskService.enqueue(
-        session,
-        telegram_id=callback.from_user.id,
-        chat_id=callback.message.chat.id,
-        prompt=prompt,
-        references=references,
-        aspect_ratio=aspect_ratio,
-        image_size=image_size,
-        idempotency_key=(
-            idempotency_key
-            or f"ksu-nexus-test:{callback.from_user.id}:{uuid.uuid4()}"
-        ),
-    )
-    await session.commit()
-    await state.clear()
-    await callback.answer("Задача принята")
-    await callback.message.answer(
-        "⏳ NexusAPI · Nano Banana Pro\n"
-        f"Задача поставлена в надёжную очередь: {task.id}\n"
-        f"{image_size} · {aspect_ratio}. Результат придёт сюда автоматически.",
-        reply_markup=quick_menu(is_admin=True),
-    )
+    await callback.answer("Поставлено в очередь")

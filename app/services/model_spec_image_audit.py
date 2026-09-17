@@ -21,6 +21,23 @@ def install_model_spec_image_audit() -> None:
 
     gpt2_ids = {"gpt-image-2-t2i", "gpt-image-2-i2i"}
     nano_legacy_ids = {"nano-banana", "nano-banana-edit"}
+    nexus_nano_ids = {"nano-banana-pro", "nano-banana-2"}
+    # Nexus documents one shared aspect-ratio contract for the Nano Banana
+    # family. Keep the customer UI and pre-charge validation aligned with it.
+    nexus_nano_ratios = [
+        "auto",
+        "1:1",
+        "16:9",
+        "9:16",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "5:4",
+        "4:5",
+        "21:9",
+    ]
+    nexus_nano_resolutions = {"1K", "2K", "4K"}
     wan_ids = {"wan-2.7-image", "wan-2.7-image-pro"}
     nsfw_image_ids = {
         *nano_legacy_ids,
@@ -46,6 +63,11 @@ def install_model_spec_image_audit() -> None:
         if spec.id in nano_legacy_ids and "nsfw_checker" not in fields:
             fields.append("nsfw_checker")
             changed = True
+        if spec.id in nexus_nano_ids and "output_format" in fields:
+            # Nexus Nano Banana does not expose output_format. Old saved rows may
+            # still carry it; the Nexus adapter ignores that legacy-only field.
+            fields.remove("output_format")
+            changed = True
         if changed:
             spec = replace(spec, known_fields=tuple(fields))
         patched.append(spec)
@@ -58,15 +80,25 @@ def install_model_spec_image_audit() -> None:
         ] = ["1K", "2K", "4K"]
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["resolution"] = "1K"
 
+    for model_id in nexus_nano_ids:
+        suggestions = ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault(model_id, {})
+        suggestions["aspect_ratio"] = list(nexus_nano_ratios)
+        suggestions["resolution"] = ["1K", "2K", "4K"]
+        suggestions.pop("output_format", None)
+        defaults = ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})
+        defaults.pop("output_format", None)
+        if str(defaults.get("aspect_ratio") or "1:1") not in nexus_nano_ratios:
+            defaults["aspect_ratio"] = "1:1"
+
     for model_id in nsfw_image_ids:
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["nsfw_checker"] = False
 
-    # Current Kie upload limits. These are surfaced to every dynamic client via
+    # Provider-specific upload limits are surfaced to every dynamic client via
     # ui_schema instead of being reimplemented in the Mini App.
     upload_limits = {
         "nano-banana-edit": ("image_urls", 10, 10),
-        "nano-banana-pro": ("image_input", 8, 30),
-        "nano-banana-2": ("image_input", 14, 30),
+        "nano-banana-pro": ("image_input", 4, 30),
+        "nano-banana-2": ("image_input", 4, 30),
         "nano-banana-2-lite": ("image_urls", 10, 30),
         "seedream-4.5-edit": ("image_urls", 14, 10),
         "seedream-5-lite-i2i": ("image_urls", 14, 30),
@@ -95,6 +127,26 @@ def install_model_spec_image_audit() -> None:
             nsfw = clean.get("nsfw_checker")
             if nsfw is not None and not isinstance(nsfw, bool):
                 raise catalog.InvalidModelParametersError("nsfw_checker must be boolean")
+        if spec.id in nexus_nano_ids:
+            refs = clean.get("image_input") or []
+            if not isinstance(refs, list):
+                raise catalog.InvalidModelParametersError("image_input must be an array")
+            if len(refs) > 4:
+                raise catalog.InvalidModelParametersError(
+                    "Nexus Nano Banana accepts at most four image references"
+                )
+            aspect_ratio = str(clean.get("aspect_ratio") or "1:1")
+            if aspect_ratio not in nexus_nano_ratios:
+                raise catalog.InvalidModelParametersError(
+                    f"Unsupported Nexus Nano Banana aspect_ratio={aspect_ratio!r}"
+                )
+            resolution = str(clean.get("resolution") or "1K").upper()
+            if resolution not in nexus_nano_resolutions:
+                raise catalog.InvalidModelParametersError(
+                    f"Unsupported Nexus Nano Banana resolution={resolution!r}"
+                )
+            if "resolution" in clean:
+                clean["resolution"] = resolution
         if spec.id in wan_ids:
             prompt = str(clean.get("prompt") or "")
             if not 1 <= len(prompt) <= 5000:

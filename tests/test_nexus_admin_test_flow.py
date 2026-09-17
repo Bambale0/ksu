@@ -64,24 +64,12 @@ def test_reference_step_requires_at_least_one_image_before_continue() -> None:
     assert NANO_BANANA_PRO_MAX_REFERENCES == 4
 
 
-def test_admin_test_exposes_full_aspect_ratio_and_only_2k_4k_quality_choices() -> None:
+def test_admin_test_exposes_documented_aspect_ratios_and_only_2k_4k_quality_choices() -> None:
     ratio_callbacks = _inline_callbacks(_aspect_ratio_keyboard())
     for ratio in NEXUS_TEST_ASPECT_RATIOS:
         assert f"nexus-test:ratio:{ratio}" in ratio_callbacks
         assert ratio in NANO_BANANA_PRO_ASPECT_RATIOS
-    assert NEXUS_TEST_ASPECT_RATIOS == (
-        "auto",
-        "1:1",
-        "4:3",
-        "3:4",
-        "3:2",
-        "2:3",
-        "5:4",
-        "4:5",
-        "16:9",
-        "9:16",
-        "21:9",
-    )
+    assert NEXUS_TEST_ASPECT_RATIOS == ("1:1", "4:3", "3:4", "16:9", "9:16")
 
     size_callbacks = _inline_callbacks(_image_size_keyboard())
     assert NEXUS_TEST_IMAGE_SIZES == ("2K", "4K")
@@ -208,7 +196,7 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     assert "NexusAdminTaskService.enqueue" in source
     assert "references=references" in source
     assert "image_size=image_size" in source
-    assert "aspect_ratio=aspect_ratio" in source
+    assert 'aspect_ratio=str(data.get("aspect_ratio") or "1:1")' in source
     assert "wait_for_task" not in source
 
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
@@ -224,6 +212,9 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     assert "nexus-test-worker" in deploy
 
     provider = Path("app/providers/nexus.py").read_text(encoding="utf-8")
-    assert '"model_name": "nano-banana-pro"' in provider
+    assert "async def create_nano_banana(" in provider
+    assert '"nano-banana-pro"' in provider
+    assert '"nano-banana-2"' in provider
+    assert 'model_name="nano-banana-pro"' in provider
     assert 'params["image_urls"] = references' in provider
     assert "Idempotency-Key" in provider

@@ -71,6 +71,7 @@ For each meaningful task:
 6. Re-check `Bambale0/start` when the shared baseline itself is being changed or when a baseline rule is ambiguous.
 7. Inspect scripts before executing them.
 8. If a source is inaccessible, say so instead of pretending it was applied.
+9. If a required skills repository is unavailable, inspect repository-local fallback guidance in `.clinerules` and `.agents` (including task-relevant nested files) and use it as the fallback engineering guidance. Record that the fallback was used; do not silently skip skill guidance.
 
 Use promoted/current skills by default. Do not use deprecated skills. Use in-progress/experimental skills only when they clearly fit, and account for their maturity.
 

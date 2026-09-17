@@ -46,8 +46,10 @@ def test_resolution_options_are_model_specific() -> None:
 def test_current_image_upload_limits_are_exposed_to_dynamic_ui() -> None:
     expected = {
         ("nano-banana-edit", "image_urls"): (10, 10),
-        ("nano-banana-pro", "image_input"): (8, 30),
-        ("nano-banana-2", "image_input"): (14, 30),
+        # Pro and 2 now use NexusAPI rather than KIE; Nexus accepts at most
+        # four references for this customer generation contract.
+        ("nano-banana-pro", "image_input"): (4, 30),
+        ("nano-banana-2", "image_input"): (4, 30),
         ("nano-banana-2-lite", "image_urls"): (10, 30),
         ("seedream-4.5-edit", "image_urls"): (14, 10),
         ("seedream-5-lite-i2i", "image_urls"): (14, 30),
