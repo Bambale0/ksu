@@ -18,7 +18,7 @@ const cryptoPackages = {
   starter: { credits: '100.00', bonus_credits: '0', total_credits: '100.00', prices: { RUB: '100.00' } },
 };
 
-async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
+async function mockApi(page, { paymentsFail = false, payments = [], disabledPromo = false } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -31,7 +31,7 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
     };
   });
 
-  let promoActive = false;
+  let promoActive = disabledPromo;
 
   await page.route('**/api/v1/**', (route) => {
     const request = route.request();
@@ -56,6 +56,7 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
     if (path === '/api/v1/promocodes/active') return json(promoActive ? {
       active: true,
       program_active: true,
+      bonus_eligible: !disabledPromo,
       code: 'KSENIA25',
       promo_id: '11111111-1111-4111-8111-111111111111',
       partner_user_id: '22222222-2222-4222-8222-222222222222',
@@ -263,6 +264,35 @@ test('released promo is not rendered as credited bonus in payment history', asyn
   await expect(row).toContainText('100 ROX');
   await expect(row).not.toContainText('125 ROX');
   await expect(row).not.toContainText('+25');
+});
+
+test('disabled attributed promo does not advertise a package bonus', async ({ page }) => {
+  await mockApi(page, { disabledPromo: true });
+  let checkoutBody = null;
+  await page.route('**/api/v1/payments', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    checkoutBody = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({
+      id: 'disabled-promo-payment', status: 'pending', provider: 'yookassa',
+      package_id: 'starter', amount: '1000', currency: 'RUB', credits: '1000',
+      payment_url: 'https://pay.example/disabled-promo',
+    }) });
+  });
+  await page.route('**/api/v1/payments/yookassa/packages', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      provider: 'yookassa', label: 'ЮKassa', configured: true, currencies: ['RUB'],
+      packages: { starter: { credits: '1000', bonus_credits: '150', total_credits: '1150', prices: { RUB: '1000' } } },
+    }),
+  }));
+  await page.goto('/mini-app/payments/');
+  const selectedPackage = page.locator('.package-grid .package.active');
+  await expect(selectedPackage).toContainText('Итого 1 000 ROX');
+  await expect(selectedPackage).not.toContainText('🎁');
+  await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Оплатить 1 000 RUB через ЮKassa' }).click();
+  await expect.poll(() => checkoutBody).toEqual({ provider: 'yookassa', package_id: 'starter', promo_code: 'KSENIA25' });
 });
 
 

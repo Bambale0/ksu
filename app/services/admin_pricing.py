@@ -332,10 +332,14 @@ class AdminPricingService:
             )
             for item in published:
                 item.status = "superseded"
+            # Each version is a complete snapshot. Updating generation prices
+            # must not discard DB-owned checkout packages on the next restart.
+            current_payload = published[0].payload if published else {}
+            snapshot = {**(current_payload or {}), **validated}
             item = TariffVersion(
                 version=next_version,
                 status="published",
-                payload=validated,
+                payload=snapshot,
                 created_by_admin_id=admin.id,
                 published_by_admin_id=admin.id,
                 published_at=datetime.now(UTC),
@@ -359,7 +363,8 @@ class AdminPricingService:
             request_payload=validated,
             operation=operation,
         )
-        _activate_runtime_tariff(validated)
+        # A retry of an older command must not roll this worker back to stale prices.
+        await AdminPricingService.hydrate_runtime(session)
         return result, replayed
 
     @staticmethod

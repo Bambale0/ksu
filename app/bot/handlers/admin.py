@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from decimal import Decimal, InvalidOperation
 
@@ -33,6 +34,7 @@ from app.services.admin_users import AdminUserService
 from app.services.users import UserService
 
 router = Router(name="admin-launch")
+logger = logging.getLogger(__name__)
 
 CONFIRM_PHRASE = "ПОДТВЕРЖДАЮ"
 
@@ -607,7 +609,10 @@ async def admin_promo_create_start(callback: CallbackQuery, session: AsyncSessio
     await state.set_state(AdminStates.promo_create)
     await _send_or_edit(
         callback,
-        "Формат: CODE PARTNER_USER_ID MAX_USES\nПример: KOR42 123e4567-e89b-12d3-a456-426614174000 500\nДля безлимита вместо MAX_USES укажите -",
+        "Введите код, Telegram ID партнёра и лимит через пробелы.\n"
+        "Пример: ROXY 123456789 500\n"
+        "Вместо Telegram ID можно указать внутренний PARTNER_USER_ID (UUID).\n"
+        "Для безлимита вместо лимита укажите -.",
         _back_admin(),
     )
 
@@ -619,11 +624,32 @@ async def admin_promo_create(message: Message, session: AsyncSession, state: FSM
         return
     parts = message.text.split()
     if len(parts) != 3:
-        await message.answer("Нужно три значения: CODE PARTNER_USER_ID MAX_USES|-.")
+        await message.answer(
+            "Разделите три значения пробелами: код, Telegram ID партнёра, лимит.\n"
+            "Пример: ROXY 123456789 500. Для безлимита: ROXY 123456789 -"
+        )
         return
     try:
-        partner_user_id = uuid.UUID(parts[1])
-        max_uses = None if parts[2] == "-" else int(parts[2])
+        try:
+            max_uses = None if parts[2] == "-" else int(parts[2])
+        except ValueError:
+            raise ValueError("Лимит должен быть целым числом от 1 до 10000000 или -.") from None
+        if max_uses is not None and not 1 <= max_uses <= 10_000_000:
+            raise ValueError("Лимит должен быть целым числом от 1 до 10000000 или -.")
+        identifier = parts[1]
+        if identifier.isascii() and identifier.isdecimal() and len(identifier) <= 19:
+            telegram_id = int(identifier)
+            if not 0 < telegram_id < 2**63:
+                raise ValueError("Укажите корректный Telegram ID партнёра.")
+            partner = await UserService.get_by_telegram_id(session, telegram_id)
+            if partner is None:
+                raise ValueError("Партнёр не найден. Сначала он должен открыть бота и нажать /start.")
+            partner_user_id = partner.id
+        else:
+            try:
+                partner_user_id = uuid.UUID(identifier)
+            except ValueError:
+                raise ValueError("Укажите числовой Telegram ID партнёра или его внутренний UUID.") from None
         result, replayed = await AdminPromoService.create(
             session,
             admin=admin,
@@ -631,14 +657,22 @@ async def admin_promo_create(message: Message, session: AsyncSession, state: FSM
             partner_user_id=partner_user_id,
             max_uses=max_uses,
             expires_at=None,
-            idempotency_key=f"tg:{uuid.uuid4()}",
+            idempotency_key=f"tg:promo:{message.chat.id}:{message.message_id}",
             request_id=f"telegram:{message.message_id}",
             confirmed=True,
         )
         await session.commit()
-    except Exception as exc:  # noqa: BLE001
+    except ValueError as exc:
         await session.rollback()
         await message.answer(f"Не создано: {exc}")
+        return
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        logger.warning(
+            "telegram_promo_create_failed message_id=%s error_type=%s",
+            message.message_id, type(exc).__name__,
+        )
+        await message.answer("Не удалось создать промокод. Проверьте доступ и повторите попытку.")
         return
     await state.clear()
     await message.answer(

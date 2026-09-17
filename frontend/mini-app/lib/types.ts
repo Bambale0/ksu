@@ -34,6 +34,7 @@ export type Me = {
 
 export type ActivePromo = {
   active: boolean;
+  bonus_eligible?: boolean;
   program_active: boolean;
   code?: string | null;
   promo_id?: string | null;

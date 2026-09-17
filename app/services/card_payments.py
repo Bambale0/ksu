@@ -63,6 +63,13 @@ class CardPackageCatalog:
 
     @classmethod
     def packages(cls) -> dict[str, CardPackage]:
+        try:
+            raw = json.loads(settings.card_packages_json or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("CARD_PACKAGES_JSON is not valid JSON") from exc
+        if not isinstance(raw, dict):
+            raise ValueError("CARD_PACKAGES_JSON must be a JSON object")
+        card_packages = cls._parse_card_packages(raw)
         # The versioned admin ROX tariff is authoritative for the RUB checkout.
         # Card-specific JSON remains only a legacy fallback for deployments that
         # have not published package data yet.
@@ -72,20 +79,20 @@ class CardPackageCatalog:
                 package_id: CardPackage(
                     package_id=package_id,
                     credits=package.credits,
-                    prices={"RUB": package.amount},
+                    prices={
+                        **(card_packages[package_id].prices if package_id in card_packages else {}),
+                        "RUB": package.amount,
+                    },
                     bonus_credits=package.bonus_credits,
-                    offer_id=None,
+                    offer_id=(card_packages[package_id].offer_id if package_id in card_packages else None),
+                    dynamic_amount=(
+                        card_packages[package_id].dynamic_amount if package_id in card_packages else False
+                    ),
                 )
                 for package_id, package in base_packages.items()
             }
-        try:
-            raw = json.loads(settings.card_packages_json or "{}")
-        except json.JSONDecodeError as exc:
-            raise ValueError("CARD_PACKAGES_JSON is not valid JSON") from exc
-        if not isinstance(raw, dict):
-            raise ValueError("CARD_PACKAGES_JSON must be a JSON object")
         if raw:
-            return cls._parse_card_packages(raw)
+            return card_packages
 
         # Backward-compatible RUB-only package view. Foreign-currency prices are
         # never derived from RUB; operators must configure them explicitly.
@@ -226,7 +233,9 @@ class CardPackageCatalog:
             for offer in offers:
                 offer_id = cls._object_id(offer, product_keys=False)
                 if offer_id == configured_id:
-                    return CardOfferResolution(offer_id, "offer_id")
+                    return CardOfferResolution(
+                        offer_id, "exact_dynamic_offer" if cls._is_dynamic_price_offer(offer) else "offer_id"
+                    )
             if product_id == configured_id:
                 product_match_offers = offers
 
@@ -375,7 +384,7 @@ class CardPaymentService:
     # `amount` sent, so they must be treated as dynamic even without an explicit
     # package flag.
     DYNAMIC_RESOLUTION_SOURCES = frozenset(
-        {"single_dynamic_offer", "product_dynamic_offer"}
+        {"single_dynamic_offer", "product_dynamic_offer", "exact_dynamic_offer"}
     )
 
     @staticmethod
