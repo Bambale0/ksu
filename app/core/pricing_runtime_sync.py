@@ -8,12 +8,22 @@ from app.services.admin_pricing import AdminPricingService
 
 
 # These are the customer-facing boundaries where stale pricing is unacceptable:
-# the model picker, quote calculation and the actual generation create request.
+# generation pricing plus payment catalogs and checkout creation must always use
+# the latest published admin tariff.
 _PRICE_SENSITIVE_REQUESTS = frozenset(
     {
         ("GET", "/api/v1/generations/models"),
         ("POST", "/api/v1/generations/quote"),
         ("POST", "/api/v1/generations"),
+        ("GET", "/api/v1/payments/packages"),
+        ("GET", "/api/v1/payments/yookassa/packages"),
+        ("GET", "/api/v1/payments/card/packages"),
+        ("GET", "/api/v1/payments/crypto/packages"),
+        ("GET", "/api/v1/payments/crypto/2328/packages"),
+        ("POST", "/api/v1/payments"),
+        ("POST", "/api/v1/payments/card/checkout"),
+        ("POST", "/api/v1/payments/crypto/checkout"),
+        ("POST", "/api/v1/payments/crypto/2328/checkout"),
     }
 )
 
@@ -21,9 +31,10 @@ _PRICE_SENSITIVE_REQUESTS = frozenset(
 class PricingRuntimeSyncMiddleware:
     """Synchronize the current worker with the published PostgreSQL tariff.
 
-    Admin tariff publication can be handled by a different API worker. Reading
-    the published version at price-sensitive boundaries guarantees that catalog,
-    quote and debit use the same tariff without requiring a process restart.
+    Admin tariff publication can be handled by a different process. Reading
+    the published version at price-sensitive boundaries guarantees that generation
+    quotes/debits and payment catalogs/checkouts use the same tariff without a
+    process restart.
     """
 
     def __init__(self, app: ASGIApp) -> None:
