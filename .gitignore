@@ -23,3 +23,5 @@ frontend/mini-app/node_modules/
 frontend/mini-app/out/
 frontend/mini-app/tsconfig.tsbuildinfo
 app/web/mini_app/release.json
+
+.agents/
