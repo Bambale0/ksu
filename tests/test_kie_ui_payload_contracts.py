@@ -54,7 +54,7 @@ def test_current_image_upload_limits_are_exposed_to_dynamic_ui() -> None:
         ("seedream-4.5-edit", "image_urls"): (14, 10),
         ("seedream-5-lite-i2i", "image_urls"): (14, 30),
         ("seedream-5-pro-i2i", "image_urls"): (10, 10),
-        ("gpt-image-1.5-i2i", "input_urls"): (16, 30),
+        ("gpt-image-1.5-i2i", "input_urls"): (16, 10),
         ("gpt-image-2-i2i", "input_urls"): (16, 30),
         ("grok-image-i2i", "image_urls"): (1, 10),
     }
