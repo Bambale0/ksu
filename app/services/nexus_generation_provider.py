@@ -48,7 +48,10 @@ def _list_urls(value: Any) -> list[str]:
     return result
 
 
-def _nexus_input(generation: Generation, provider_input: dict[str, Any]) -> tuple[str, str, str, list[str]]:
+def _nexus_input(
+    generation: Generation,
+    provider_input: dict[str, Any],
+) -> tuple[str, str, str, str, list[str]]:
     model = _provider_model(generation)
     if model not in NEXUS_GENERATION_MODELS:
         raise NexusProviderError(f"Unsupported production Nexus model: {model}")
@@ -90,8 +93,6 @@ class NexusGenerationProviderService:
 
     @staticmethod
     async def _fail_and_refund(session: AsyncSession, generation_id: uuid.UUID, error: str) -> None:
-        # Import lazily to avoid a module cycle; the shared refund path remains the
-        # single source of truth for wallet idempotency and terminal outbox state.
         from app.services.generation_provider import GenerationProviderService
 
         await GenerationProviderService.fail_and_refund(session, generation_id, error)
@@ -118,29 +119,14 @@ class NexusGenerationProviderService:
             model, prompt, ratio, size, refs = _nexus_input(generation, provider_input)
             client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
             try:
-                # Nexus uses the same /generate contract for Pro and Nano Banana 2.
-                # The stable idempotency key makes transport retries safe.
-                response = await client._client.post(
-                    "/generate",
-                    headers={
-                        "Authorization": client._authorization,
-                        "Idempotency-Key": f"generation:{generation.id}",
-                    },
-                    json={
-                        "params": {
-                            "model_name": model,
-                            "prompt": prompt,
-                            "aspect_ratio": ratio,
-                            "image_size": size,
-                            **({"image_urls": refs} if refs else {}),
-                        }
-                    },
+                task_id = await client.create_nano_banana(
+                    model_name=model,
+                    prompt=prompt,
+                    aspect_ratio=ratio,
+                    image_size=size,
+                    image_urls=refs,
+                    idempotency_key=f"generation:{generation.id}",
                 )
-                response.raise_for_status()
-                payload = response.json()
-                task_id = str(payload.get("task_id") or "").strip()
-                if not task_id:
-                    raise NexusProviderError("NexusAPI /generate returned no task_id")
             finally:
                 await client.aclose()
         except Exception as exc:
