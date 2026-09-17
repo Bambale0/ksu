@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+from app.core.config import settings
 from app.providers.nexus import NANO_BANANA_MODELS, NexusClient, NexusProviderError
+from app.services.generation_worker import GenerationWorkerService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_spec_image_audit import install_model_spec_image_audit
 from app.services.model_ui_contract import build_public_model_ui_schema
@@ -60,17 +62,38 @@ def test_nexus_generation_normalizes_legacy_roxy_payload() -> None:
         {
             "prompt": "edit the reference",
             "image_input": ["https://example.test/ref.jpg"],
-            "aspect_ratio": "4:5",
+            "aspect_ratio": "4:3",
             "resolution": "2k",
             "output_format": "png",
         },
     )
     assert normalized == {
         "prompt": "edit the reference",
-        "aspect_ratio": "4:5",
+        "aspect_ratio": "4:3",
         "image_size": "2K",
         "image_urls": ["https://example.test/ref.jpg"],
     }
+
+
+def test_nexus_local_reference_uses_roxy_public_url_without_kie_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    normalized = NexusGenerationProviderService._normalize_input(
+        "nano-banana-pro",
+        {
+            "prompt": "edit",
+            "image_input": ["/uploads/refs/image/user/ref.jpg"],
+            "aspect_ratio": "1:1",
+            "resolution": "1K",
+        },
+    )
+    assert normalized["image_urls"] == [
+        "https://roxy.example/uploads/refs/image/user/ref.jpg"
+    ]
+    source = Path("app/services/nexus_generation_provider.py").read_text(encoding="utf-8")
+    assert "ProviderMediaTransport.prepare" not in source
+    assert "KieUploadClient" not in source
 
 
 def test_nexus_generation_migration_is_limited_to_pro_and_v2() -> None:
@@ -127,21 +150,10 @@ def test_public_nexus_ui_matches_provider_capabilities(model_id: str) -> None:
 
     assert fields["image_input"]["max_items"] == 4
     assert "output_format" not in fields
-    assert fields["aspect_ratio"]["suggestions"] == [
-        "auto",
-        "1:1",
-        "2:3",
-        "3:2",
-        "3:4",
-        "4:3",
-        "4:5",
-        "5:4",
-        "9:16",
-        "16:9",
-        "21:9",
-    ]
+    assert fields["aspect_ratio"]["suggestions"] == ["1:1", "16:9", "9:16", "4:3", "3:4"]
     assert fields["resolution"]["suggestions"] == ["1K", "2K", "4K"]
     assert "output_format" not in schema["defaults"]
+    assert schema["defaults"]["aspect_ratio"] == "1:1"
 
 
 @pytest.mark.asyncio
@@ -180,11 +192,32 @@ async def test_uncertain_nexus_create_is_requeued_for_idempotent_replay() -> Non
     assert generation.parameters["_submission_uncertain_at"]
 
 
-def test_generation_worker_dispatches_and_recovers_nexus_separately_from_kie() -> None:
+def test_generation_worker_preserves_existing_provider_and_polls_nexus_durably() -> None:
+    pre_migration_kie = SimpleNamespace(
+        provider="kie",
+        external_id="kie-task-1",
+        parameters={"_model_id": "nano-banana-pro"},
+    )
+    new_nexus = SimpleNamespace(
+        provider="kie",
+        external_id=None,
+        parameters={"_model_id": "nano-banana-pro"},
+    )
+    retry_nexus = SimpleNamespace(
+        provider="nexus",
+        external_id=None,
+        parameters={"_model_id": "nano-banana-pro"},
+    )
+
+    assert GenerationWorkerService._provider_name(pre_migration_kie) == "kie"
+    assert GenerationWorkerService._provider_name(new_nexus) == "nexus"
+    assert GenerationWorkerService._provider_name(retry_nexus) == "nexus"
+
     source = Path("app/services/generation_worker.py").read_text(encoding="utf-8")
     assert 'provider == "nexus"' in source
     assert "NexusGenerationProviderService.submit" in source
     assert "NexusGenerationProviderService.sync_task" in source
+    assert "Nexus image task submitted; polling result" in source
     assert 'Generation.provider.in_(_PROVIDER_NAMES)' in source
     assert 'AbuseProtectionService.provider_submission_gate(redis, provider)' in source
     assert 'record_provider_success(redis, provider)' in source
