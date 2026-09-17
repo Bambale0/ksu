@@ -22,19 +22,9 @@ def install_model_spec_image_audit() -> None:
     gpt2_ids = {"gpt-image-2-t2i", "gpt-image-2-i2i"}
     nano_legacy_ids = {"nano-banana", "nano-banana-edit"}
     nexus_nano_ids = {"nano-banana-pro", "nano-banana-2"}
-    nexus_nano_ratios = [
-        "auto",
-        "1:1",
-        "2:3",
-        "3:2",
-        "3:4",
-        "4:3",
-        "4:5",
-        "5:4",
-        "9:16",
-        "16:9",
-        "21:9",
-    ]
+    # Keep the public contract at the documented Nexus family intersection for
+    # Nano Banana 2 and Pro. Do not leak wider KIE-only ratios into Nexus calls.
+    nexus_nano_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4"]
     nexus_nano_resolutions = {"1K", "2K", "4K"}
     wan_ids = {"wan-2.7-image", "wan-2.7-image-pro"}
     nsfw_image_ids = {
@@ -62,9 +52,8 @@ def install_model_spec_image_audit() -> None:
             fields.append("nsfw_checker")
             changed = True
         if spec.id in nexus_nano_ids and "output_format" in fields:
-            # Nexus Nano Banana does not expose output_format. Keep legacy
-            # request payloads tolerated by ModelCatalog.prepare(), but stop
-            # advertising a control that the provider cannot honor.
+            # Nexus Nano Banana does not expose output_format. Old saved rows may
+            # still carry it; the Nexus adapter ignores that legacy-only field.
             fields.remove("output_format")
             changed = True
         if changed:
