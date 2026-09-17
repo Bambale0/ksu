@@ -68,6 +68,15 @@ def test_price_sensitive_customer_boundaries_force_runtime_tariff_sync() -> None
     assert ("GET", "/api/v1/generations/models") in _PRICE_SENSITIVE_REQUESTS
     assert ("POST", "/api/v1/generations/quote") in _PRICE_SENSITIVE_REQUESTS
     assert ("POST", "/api/v1/generations") in _PRICE_SENSITIVE_REQUESTS
+    assert ("GET", "/api/v1/payments/packages") in _PRICE_SENSITIVE_REQUESTS
+    assert ("GET", "/api/v1/payments/yookassa/packages") in _PRICE_SENSITIVE_REQUESTS
+    assert ("GET", "/api/v1/payments/card/packages") in _PRICE_SENSITIVE_REQUESTS
+    assert ("GET", "/api/v1/payments/crypto/packages") in _PRICE_SENSITIVE_REQUESTS
+    assert ("GET", "/api/v1/payments/crypto/2328/packages") in _PRICE_SENSITIVE_REQUESTS
+    assert ("POST", "/api/v1/payments") in _PRICE_SENSITIVE_REQUESTS
+    assert ("POST", "/api/v1/payments/card/checkout") in _PRICE_SENSITIVE_REQUESTS
+    assert ("POST", "/api/v1/payments/crypto/checkout") in _PRICE_SENSITIVE_REQUESTS
+    assert ("POST", "/api/v1/payments/crypto/2328/checkout") in _PRICE_SENSITIVE_REQUESTS
 
     main = Path("app/main.py").read_text(encoding="utf-8")
     assert "PricingRuntimeSyncMiddleware" in main
