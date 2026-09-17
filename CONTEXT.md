@@ -51,6 +51,7 @@ Partner promo codes activate paid referral attribution; the separate registratio
 - **Test seam:** `tests/test_referral_notification_parity.py` must fail on old copy and pass for both join and reward formatting; sender formatting remains `title + blank line + body`.
 - **Verification matrix:** unit/domain=required; DB/repository=existing notification integration; authorization/migrations/provider/API=N/A; Telegram delivery=existing worker contract plus focused formatter regression; observability=production DB rows + delivery state; rollback=revert PR.
 - **Plan:** add red copy regressions, introduce one shared formatter, route both referral join producers and reward notification through it, run focused tests/lint/compile, review exact diff, then require exact-head CI before merge/deploy.
+- **Progress:** production DB reproduced the stale join copy; the focused regression went red on both join/reward copy, then green after centralizing formatting. Focused referral/payment suite: 38 passed; Ruff and compileall are green. Exact-head PR CI remains before merge/deploy.
 
 ## Active Feature Execution — Partner promos independent from referral links
 

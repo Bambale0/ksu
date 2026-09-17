@@ -20,6 +20,10 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.db.notification_models import NotificationDelivery
+from app.services.referral_notification_copy import (
+    referral_joined_copy,
+    referral_topup_copy,
+)
 
 
 def _money(value: Decimal | object) -> str:
@@ -92,62 +96,52 @@ def _referral_payment_amount(session: Session, reward: ReferralReward) -> Decima
     return Decimal("0")
 
 
-def _referral_source_name(session: Session, reward: ReferralReward) -> str:
-    source = session.get(User, reward.source_user_id)
-    if source is not None and source.username:
-        return f"@{source.username}"
-    return "Пользователь ROXY"
-
-
-def _referral_joined_name(session: Session, relation: ReferralRelation) -> str:
-    referred = session.get(User, relation.referred_user_id)
-    if referred is None:
-        return "Новый пользователь ROXY"
-    display_name = " ".join(
-        part for part in (referred.first_name, referred.last_name or "") if part
-    ).strip()
-    if display_name and referred.username:
-        return f"{display_name} (@{referred.username})"
-    if display_name:
-        return display_name
-    if referred.username:
-        return f"@{referred.username}"
-    return "Новый пользователь ROXY"
+def _referral_user(session: Session, user_id: uuid.UUID) -> User | None:
+    return session.get(User, user_id)
 
 
 def _add_referral_joined_notification(session: Session, relation: ReferralRelation) -> None:
-    referred_name = _referral_joined_name(session, relation)
+    referred = _referral_user(session, relation.referred_user_id)
+    notification_copy = referral_joined_copy(
+        username=referred.username if referred is not None else None,
+        first_name=referred.first_name if referred is not None else None,
+        last_name=referred.last_name if referred is not None else None,
+    )
     _add_notification(
         session,
         user_id=relation.inviter_user_id,
         kind="referral_joined",
-        title="🎉 Новый реферал",
-        body=(
-            f"К вам присоединился: {referred_name}.\n"
-            "Само приглашение не даёт финансового бонуса. "
-            "Партнёрские начисления включаются после активации вашего промокода."
-        ),
+        title=notification_copy.title,
+        body=notification_copy.body,
     )
 
 
 def _add_referral_reward_notification(session: Session, reward: ReferralReward) -> None:
     level = 1 if int(reward.level) == 1 else 2
-    line_label = "1-й" if level == 1 else "2-й"
-    source_name = _referral_source_name(session, reward)
+    source = _referral_user(session, reward.source_user_id)
     payment_amount = _referral_payment_amount(session, reward)
     config = session.get(PartnerPromoProgramConfig, "default")
-    fixed_rox = Decimal(config.topup_partner_rox) if config is not None else Decimal("0")
-    fixed_line = f"\n🎁 +{_money(fixed_rox)} ROX на баланс" if fixed_rox > 0 else ""
+    fixed_rox = (
+        Decimal(config.topup_partner_rox)
+        if config is not None and level == 1
+        else Decimal("0")
+    )
+    notification_copy = referral_topup_copy(
+        username=source.username if source is not None else None,
+        first_name=source.first_name if source is not None else None,
+        last_name=source.last_name if source is not None else None,
+        payment_amount=payment_amount,
+        reward_amount=reward.amount,
+        reward_percent=reward.percent,
+        fixed_rox=fixed_rox,
+        level=level,
+    )
     _add_notification(
         session,
         user_id=reward.partner_user_id,
         kind=f"referral_line_{level}_topup",
-        title=f"💰 По {line_label} линии пополнение!",
-        body=(
-            f"{source_name} пополнил баланс на {_money(payment_amount)} ₽\n"
-            f"Ваш бонус: +{_money(reward.amount)} ₽ ({_money(reward.percent)}%)"
-            f"{fixed_line}"
-        ),
+        title=notification_copy.title,
+        body=notification_copy.body,
     )
 
 
