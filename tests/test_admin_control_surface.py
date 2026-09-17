@@ -78,7 +78,6 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
         assert label in promo_js
 
 
-
 def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract() -> None:
     js = _read(ADMIN / "admin.js")
     operations = _read(ROOT / "app" / "api" / "v1" / "admin_operations.py")
@@ -98,6 +97,7 @@ def test_legacy_admin_promo_surface_uses_partner_owned_global_program_contract()
     # reward field cannot control the new global program economics.
     assert "reward_credits: Decimal | None" in capabilities
     assert "partner_user_id: uuid.UUID | None = None" in capabilities
+
 
 def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     source = _read(ROOT / "app" / "api" / "v1" / "admin_control.py")
@@ -166,7 +166,8 @@ def test_nexus_test_and_quick_menu_use_active_database_admins() -> None:
     assert "async def _is_admin(session: AsyncSession" in nexus
     assert "return await _admin_account(session, telegram_id) is not None" in nexus
     assert "admin_telegram_id" in nexus
-    assert "await _state_authorized(state, session, callback.from_user.id)" in nexus
+    assert "telegram_id = callback.from_user.id if callback.from_user else None" in nexus
+    assert nexus.count("await _state_authorized(state, session, telegram_id)") >= 4
 
 
 def test_telegram_admin_promo_menu_uses_partner_owned_contract() -> None:
