@@ -12,6 +12,7 @@ class NexusProviderError(RuntimeError):
     pass
 
 
+NANO_BANANA_MODELS = frozenset({"nano-banana-pro", "nano-banana-2"})
 NANO_BANANA_PRO_ASPECT_RATIOS = {
     "auto",
     "1:1",
@@ -39,7 +40,7 @@ class NexusTask:
 
 
 class NexusClient:
-    """Small async client for the documented NexusAPI /generate + /tasks flow."""
+    """Async client for NexusAPI /generate + /tasks."""
 
     def __init__(
         self,
@@ -62,39 +63,45 @@ class NexusClient:
         if self._owns_client:
             await self._client.aclose()
 
-    async def create_nano_banana_pro(
+    async def create_nano_banana(
         self,
         *,
+        model_name: str,
         prompt: str,
         aspect_ratio: str = "1:1",
         image_size: str = "2K",
         image_urls: list[str] | None = None,
         idempotency_key: str | None = None,
     ) -> str:
+        model = str(model_name or "").strip()
+        if model not in NANO_BANANA_MODELS:
+            raise NexusProviderError(f"Unsupported Nexus Nano Banana model: {model or '<empty>'}")
         clean_prompt = prompt.strip()
         if not clean_prompt:
             raise NexusProviderError("Prompt must not be empty")
         if aspect_ratio not in NANO_BANANA_PRO_ASPECT_RATIOS:
-            raise NexusProviderError("Unsupported Nano Banana Pro aspect ratio")
-        if image_size not in NANO_BANANA_PRO_IMAGE_SIZES:
-            raise NexusProviderError("Unsupported Nano Banana Pro image size")
+            raise NexusProviderError("Unsupported Nano Banana aspect ratio")
+        clean_size = str(image_size or "").upper()
+        if clean_size not in NANO_BANANA_PRO_IMAGE_SIZES:
+            raise NexusProviderError("Unsupported Nano Banana image size")
 
         references: list[str] = []
         for raw in image_urls or []:
             value = str(raw or "").strip()
             if not value:
-                raise NexusProviderError("Nano Banana Pro reference must not be empty")
-            references.append(value)
+                raise NexusProviderError("Nano Banana reference must not be empty")
+            if value not in references:
+                references.append(value)
         if len(references) > NANO_BANANA_PRO_MAX_REFERENCES:
             raise NexusProviderError(
-                f"Nano Banana Pro accepts at most {NANO_BANANA_PRO_MAX_REFERENCES} references"
+                f"Nano Banana accepts at most {NANO_BANANA_PRO_MAX_REFERENCES} references"
             )
 
         params: dict[str, Any] = {
-            "model_name": "nano-banana-pro",
+            "model_name": model,
             "prompt": clean_prompt,
             "aspect_ratio": aspect_ratio,
-            "image_size": image_size,
+            "image_size": clean_size,
         }
         if references:
             params["image_urls"] = references
@@ -113,6 +120,24 @@ class NexusClient:
         if not task_id:
             raise NexusProviderError(f"NexusAPI /generate returned no task_id: {payload!r}")
         return str(task_id)
+
+    async def create_nano_banana_pro(
+        self,
+        *,
+        prompt: str,
+        aspect_ratio: str = "1:1",
+        image_size: str = "2K",
+        image_urls: list[str] | None = None,
+        idempotency_key: str | None = None,
+    ) -> str:
+        return await self.create_nano_banana(
+            model_name="nano-banana-pro",
+            prompt=prompt,
+            aspect_ratio=aspect_ratio,
+            image_size=image_size,
+            image_urls=image_urls,
+            idempotency_key=idempotency_key,
+        )
 
     async def get_task(self, task_id: str) -> NexusTask:
         response = await self._client.get(
