@@ -64,24 +64,12 @@ def test_reference_step_requires_at_least_one_image_before_continue() -> None:
     assert NANO_BANANA_PRO_MAX_REFERENCES == 4
 
 
-def test_admin_test_exposes_full_aspect_ratio_and_only_2k_4k_quality_choices() -> None:
+def test_admin_test_exposes_documented_aspect_ratios_and_only_2k_4k_quality_choices() -> None:
     ratio_callbacks = _inline_callbacks(_aspect_ratio_keyboard())
     for ratio in NEXUS_TEST_ASPECT_RATIOS:
         assert f"nexus-test:ratio:{ratio}" in ratio_callbacks
         assert ratio in NANO_BANANA_PRO_ASPECT_RATIOS
-    assert NEXUS_TEST_ASPECT_RATIOS == (
-        "auto",
-        "1:1",
-        "4:3",
-        "3:4",
-        "3:2",
-        "2:3",
-        "5:4",
-        "4:5",
-        "16:9",
-        "9:16",
-        "21:9",
-    )
+    assert NEXUS_TEST_ASPECT_RATIOS == ("1:1", "4:3", "3:4", "16:9", "9:16")
 
     size_callbacks = _inline_callbacks(_image_size_keyboard())
     assert NEXUS_TEST_IMAGE_SIZES == ("2K", "4K")
