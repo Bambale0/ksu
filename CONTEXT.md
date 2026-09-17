@@ -39,6 +39,19 @@ Partner promo codes activate paid referral attribution; the separate registratio
 - Admins manage global economics, promo ownership, limits, expiry and state through the admin control surface. Legacy promo rows without `partner_user_id` are not activatable until assigned.
 
 
+## Active Feature Execution — Referral notification UX parity
+
+- **Task:** replace stale/duplicated referral Telegram copy with one compact formatter shared by all referral-event producers.
+- **Audit baseline:** `main@156e3b8aeeeb18a2d656f8b428f055561ca0ccb6`; production DB on 2026-09-17 showed a newly-created `referral_joined` notification at 14:16 UTC still using the old long copy.
+- **Observed defect:** `referral_antifraud.py` and `notification_events.py` independently build `referral_joined` text, so wording can drift. Referral top-up copy is also rendered separately and historical rows still expose the older verbose layout.
+- **Root cause:** referral notification presentation is duplicated at multiple event seams instead of being a single domain formatter. The Telegram worker correctly sends stored `title + body`; the stale UX originates before delivery.
+- **User-visible outcome:** new-referral alerts are short (`🎉 Новый реферал` + one identity line); successful paid-referral alerts use a scan-friendly layout with referrer identity, paid RUB, cash reward/percent and fixed ROX as separate lines. No explanatory promo paragraph or legacy `Пополнение пользователя / Ваш заработок` prose.
+- **No-hardcode:** economics remain DB/admin-owned; formatter receives the already-authoritative payment amount, reward amount/percent and configured fixed ROX. Only presentation copy lives in code.
+- **Reuse:** keep existing Notification/NotificationDelivery outbox, Telegram retry/suppression rules, referral attribution, payment settlement and refund accounting unchanged.
+- **Test seam:** `tests/test_referral_notification_parity.py` must fail on old copy and pass for both join and reward formatting; sender formatting remains `title + blank line + body`.
+- **Verification matrix:** unit/domain=required; DB/repository=existing notification integration; authorization/migrations/provider/API=N/A; Telegram delivery=existing worker contract plus focused formatter regression; observability=production DB rows + delivery state; rollback=revert PR.
+- **Plan:** add red copy regressions, introduce one shared formatter, route both referral join producers and reward notification through it, run focused tests/lint/compile, review exact diff, then require exact-head CI before merge/deploy.
+
 ## Active Feature Execution — Partner promos independent from referral links
 
 - **Task:** restore the product's ordinary package bonuses and layer the partner promo program on top while keeping promo codes completely independent from referral/share links.
