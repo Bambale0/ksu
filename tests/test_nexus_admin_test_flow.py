@@ -224,6 +224,9 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     assert "nexus-test-worker" in deploy
 
     provider = Path("app/providers/nexus.py").read_text(encoding="utf-8")
-    assert '"model_name": "nano-banana-pro"' in provider
+    assert "async def create_nano_banana(" in provider
+    assert '"nano-banana-pro"' in provider
+    assert '"nano-banana-2"' in provider
+    assert 'model_name="nano-banana-pro"' in provider
     assert 'params["image_urls"] = references' in provider
     assert "Idempotency-Key" in provider

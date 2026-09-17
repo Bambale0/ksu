@@ -215,6 +215,13 @@ class NexusGenerationProviderService:
         finally:
             await client.aclose()
 
+        if task.status == "completed" and not task.image_urls:
+            generation.status = "generating"
+            generation.error = "Nexus reported completed without result URLs; awaiting reconciliation"
+            generation.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+            return generation
+
         state = (
             "success"
             if task.status == "completed"
@@ -227,7 +234,7 @@ class NexusGenerationProviderService:
             state=state,
             result_urls=task.image_urls,
             fail_code="nexus_failed" if task.status == "failed" else "",
-            fail_message=task.error,
+            fail_message=task.error or ("Nexus generation failed" if task.status == "failed" else ""),
             raw=task.raw,
         )
         await GenerationProviderService.apply_kie_task(session, generation, provider_task)
