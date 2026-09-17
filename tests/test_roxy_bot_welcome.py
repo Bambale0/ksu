@@ -17,12 +17,23 @@ def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
     assert "Поддержка:" in launcher
     assert 'parse_mode="HTML"' in block
     assert "PartnerPromoProgramService.get_config(session)" in block
-    assert "За обычное приглашение без промокода начислений нет" in block
     assert "promo_program.welcome_rox" in block
-    assert "promo_program.first_line_percent" in block
     assert "promo_program.topup_partner_rox" in block
-    assert "50 ROX — сразу после регистрации" not in block
-    assert "+30 ROX — за друга" not in block
+    assert 'f"🎁 +{welcome_rox} ROX — сразу после регистрации\\n"' in block
+    assert 'f"💎 +{topup_partner_rox} ROX — после успешного пополнения реферала\\n\\n"' in block
+
+    # The launcher intentionally exposes only the two approved ROX facts.
+    for forbidden_money_copy in (
+        "Бонусы по промокоду",
+        "после активации промокода",
+        "promo_program.first_line_percent",
+        "Партнёру:",
+        "%",
+        "За обычное приглашение",
+        "topup_user_rox",
+        "topup_user_min_rub",
+    ):
+        assert forbidden_money_copy not in block
 
     for legacy_copy in (
         "ROXY теперь работает через приложение",

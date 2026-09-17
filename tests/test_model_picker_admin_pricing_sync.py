@@ -9,7 +9,7 @@ from app.core.pricing_runtime_sync import _PRICE_SENSITIVE_REQUESTS
 from app.services.admin_pricing import (
     MUSIC_MODEL_ID,
     TariffValidationError,
-    _activate_generation_pricing,
+    _activate_runtime_tariff,
     validate_tariff_payload,
 )
 from app.services.model_catalog import ModelCatalog
@@ -35,7 +35,7 @@ def test_published_admin_tariff_drives_regular_and_music_model_picker_prices(
     monkeypatch.setattr(settings, "generation_pricing_json", settings.generation_pricing_json)
     monkeypatch.setattr(settings, "music_generation_price_rox", settings.music_generation_price_rox)
 
-    _activate_generation_pricing(
+    _activate_runtime_tariff(
         {
             "generation_pricing": {
                 "kling-3.0": {"per_second": 31},

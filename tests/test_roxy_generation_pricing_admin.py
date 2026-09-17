@@ -9,7 +9,8 @@ from app.db.models import AdminAccount, User
 from app.db.reference_models import UserReference
 from app.db.session import SessionFactory
 from app.services.admin_policy import AdminPolicyError
-from app.services.admin_pricing import AdminPricingService
+from app.services.admin_pricing import AdminPricingService, TariffValidationError
+from app.services.payments import PaymentService
 from app.services.generations import GenerationService
 from app.services.kie_image_contracts import KieImageContractError, normalize_kie_image_input
 from app.services.model_catalog import ModelCatalog
@@ -37,6 +38,108 @@ REQUESTED_BASE_PRICES = {
     "grok-video-1.5": ("per_second", Decimal("30")),
     "gemini-omni-video": ("per_second", Decimal("30")),
 }
+
+
+@pytest.mark.asyncio
+async def test_admin_tariff_owns_explicit_payment_packages_without_runtime_coefficient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A stale process-wide ROX/RUB rate must never change an explicit package price.
+    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("1.08696"))
+    monkeypatch.setattr(
+        settings,
+        "rox_packages_json",
+        '{"legacy":{"credits":"1000","amount":"1086.96","bonus_credits":"100"}}',
+    )
+
+    async with SessionFactory() as session:
+        admin_user = User(
+            telegram_id=random.randint(8_810_000_000_000, 8_819_999_999_999),
+            first_name="Package pricing admin",
+        )
+        session.add(admin_user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={},
+            is_active=True,
+            mfa_enabled=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        payload = {
+            "packages": {
+                "p100": {"amount": "100", "currency": "RUB", "credits": "100", "bonus_credits": "0"},
+                "p300": {"amount": "300", "currency": "RUB", "credits": "300", "bonus_credits": "30"},
+                "p500": {"amount": "500", "currency": "RUB", "credits": "500", "bonus_credits": "50"},
+                "p1000": {"amount": "1000", "currency": "RUB", "credits": "1000", "bonus_credits": "150"},
+                "p2000": {"amount": "2000", "currency": "RUB", "credits": "2000", "bonus_credits": "200"},
+                "p5000": {"amount": "5000", "currency": "RUB", "credits": "5000", "bonus_credits": "250"},
+            }
+        }
+        _result, replayed = await AdminPricingService.publish(
+            session,
+            admin=admin,
+            payload=payload,
+            idempotency_key=f"test-package-pricing:{uuid.uuid4()}",
+            request_id="package-pricing-live-override",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        assert replayed is False
+
+        packages = PaymentService.packages()
+        assert [(p.credits, p.amount, p.bonus_credits) for p in packages.values()] == [
+            (Decimal("100"), Decimal("100"), Decimal("0")),
+            (Decimal("300"), Decimal("300"), Decimal("30")),
+            (Decimal("500"), Decimal("500"), Decimal("50")),
+            (Decimal("1000"), Decimal("1000"), Decimal("150")),
+            (Decimal("2000"), Decimal("2000"), Decimal("200")),
+            (Decimal("5000"), Decimal("5000"), Decimal("250")),
+        ]
+
+        # Simulate a fresh process with poisoned legacy env, then hydrate DB tariff.
+        settings.rox_packages_json = (
+            '{"legacy":{"credits":"5000","amount":"5434.8","bonus_credits":"200"}}'
+        )
+        await AdminPricingService.hydrate_runtime(session)
+        hydrated = PaymentService.packages()
+        assert hydrated["p5000"].amount == Decimal("5000")
+        assert hydrated["p5000"].bonus_credits == Decimal("250")
+
+        await session.rollback()
+
+
+def test_payment_packages_reject_implicit_amount_and_bonus_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "internal_credit_rub", Decimal("1.08696"))
+    monkeypatch.setattr(
+        settings,
+        "rox_packages_json",
+        '{"p1000":{"credits":"1000","currency":"RUB","bonus_credits":"150"}}',
+    )
+    with pytest.raises(ValueError, match="explicit amount"):
+        PaymentService.packages()
+
+    monkeypatch.setattr(
+        settings,
+        "rox_packages_json",
+        '{"p1000":{"credits":"1000","amount":"1000","currency":"RUB"}}',
+    )
+    with pytest.raises(ValueError, match="explicit bonus_credits"):
+        PaymentService.packages()
+
+
+def test_tariff_rejects_incomplete_payment_package_schema() -> None:
+    from app.services.admin_pricing import validate_tariff_payload
+
+    with pytest.raises(TariffValidationError, match="amount"):
+        validate_tariff_payload(
+            {"packages": {"p1000": {"credits": "1000", "bonus_credits": "150"}}}
+        )
 
 
 def test_requested_generation_prices_are_operator_owned_public_rox(

@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.referral_antifraud import ReferralAntifraudService
 from app.services.wallet import WalletService
 
@@ -66,6 +67,18 @@ class UserService:
             return user
 
         await WalletService.ensure_wallet(session, user.id)
+        promo_program = await PartnerPromoProgramService.get_config(session)
+        if promo_program.welcome_rox > 0:
+            await WalletService.credit(
+                session,
+                user_id=user.id,
+                amount=promo_program.welcome_rox,
+                kind="welcome_bonus",
+                reference_type="registration",
+                reference_id=str(user.id),
+                idempotency_key=f"welcome:{user.id}",
+                reason="registration_welcome",
+            )
 
         await ReferralAntifraudService.attach_new_user(
             session,

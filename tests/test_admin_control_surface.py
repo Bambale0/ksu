@@ -41,6 +41,7 @@ def test_control_surface_keeps_privileged_credentials_memory_only_and_escapes_co
 
 def test_control_surface_uses_shared_backend_routes_and_command_headers() -> None:
     js = _read(ADMIN / "control.js")
+    promo_js = _read(ADMIN / "admin.js")
     for token in (
         "/api/v1/admin/control/users",
         "/api/v1/admin/control/payments",
@@ -68,10 +69,13 @@ def test_control_surface_uses_shared_backend_routes_and_command_headers() -> Non
     assert 'mutate(`/api/v1/admin/control/promocodes/${row.id}/state`' in js
     assert "/api/v1/admin/control/promocodes/program" in js
     assert '/api/v1/admin/control/promocodes/${row.id}/partner' in js
-    assert "ROX новому пользователю" in js
-    assert "% партнёру с пополнений 1-й линии" in js
-    assert "ROX пользователю за подходящее пополнение" in js
-    assert "Минимальная сумма пополнения, ₽" in js
+    for label in (
+        "ROX новому пользователю",
+        "% партнёру с пополнений 1-й линии",
+        "ROX пользователю за подходящее пополнение",
+        "Минимальная сумма пополнения, ₽",
+    ):
+        assert label in promo_js
 
 
 

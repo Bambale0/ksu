@@ -140,7 +140,7 @@ async def test_2328_provider_packages_keep_card_rub_prices(monkeypatch: pytest.M
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
+        '{"starter":{"credits":"300","bonus_credits":"30","prices":{"RUB":"326.09","USD":"6"}}}',
     )
 
     packages = await Payment2328Service.provider_packages()
@@ -293,7 +293,7 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
+        '{"starter":{"credits":"300","bonus_credits":"30","prices":{"RUB":"326.09","USD":"6"}}}',
     )
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
     monkeypatch.setattr(settings, "payment_2328_project_uuid", "project-uuid")
@@ -357,12 +357,13 @@ async def test_2328_checkout_uses_local_payment_uuid_as_upstream_order_id(
         assert first.provider == "2328"
         assert first.amount == Decimal("326.09")
         assert first.currency == "RUB"
-        assert first.rox_amount == Decimal("330")
+        assert first.rox_amount == Decimal("300")
         assert first.payload["base_credits"] == "300"
-        assert first.payload["package_bonus_credits"] == "30"
+        assert first.payload["package_bonus_credits"] == "0"
+        assert first.payload["promo_package_bonus_credits"] == "30"
         assert first.payload["promo_bonus_credits"] == "0"
-        assert first.payload["bonus_credits"] == "30"
-        assert first.payload["credited_credits"] == "330"
+        assert first.payload["bonus_credits"] == "0"
+        assert first.payload["credited_credits"] == "300"
         assert first.payload["payment_url"].startswith("https://go.2328.io/")
         assert first.created_at.isoformat()
         assert first.updated_at.isoformat()

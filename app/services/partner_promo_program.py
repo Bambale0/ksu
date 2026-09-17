@@ -9,7 +9,11 @@ from app.db.models import PartnerPromoProgramConfig
 
 
 class PartnerPromoProgramService:
-    """Database-owned economics for partner promo attribution."""
+    """Database-owned registration welcome and partner-promo economics.
+
+    `welcome_rox` is retained as the compatibility field name, but represents
+    the one-time ROX grant issued when a user account is first registered.
+    """
 
     KEY = "default"
 

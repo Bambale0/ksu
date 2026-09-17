@@ -841,21 +841,17 @@
     const programButton = button("Изменить экономику", "primary", () => openForm({
       title: "Партнёрская бонусная программа",
       fields: [
-        { name: "welcome_rox", label: "ROX новому пользователю", type: "number", step: "0.01", value: program.welcome_rox },
+        { name: "welcome_rox", label: "ROX сразу после регистрации", type: "number", step: "0.01", value: program.welcome_rox },
         { name: "first_line_percent", label: "% партнёру с пополнений 1-й линии", type: "number", step: "0.01", value: program.first_line_percent },
         { name: "topup_partner_rox", label: "ROX партнёру за каждое пополнение", type: "number", step: "0.01", value: program.topup_partner_rox },
-        { name: "topup_user_rox", label: "ROX пользователю за подходящее пополнение", type: "number", step: "0.01", value: program.topup_user_rox },
-        { name: "topup_user_min_rub", label: "Минимальная сумма пополнения, ₽", type: "number", step: "0.01", value: program.topup_user_min_rub },
         { name: "is_active", label: "Статус", type: "select", value: String(program.is_active), options: [["true", "Включена"], ["false", "Выключена"]] },
       ],
-      onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, topup_user_rox, topup_user_min_rub, is_active }) => {
+      onSubmit: async ({ welcome_rox, first_line_percent, topup_partner_rox, is_active }) => {
         await mutate("/api/v1/admin/control/promocodes/program", {
           body: {
             welcome_rox,
             first_line_percent,
             topup_partner_rox,
-            topup_user_rox,
-            topup_user_min_rub,
             is_active: is_active === "true",
           },
           label: "Изменить глобальную экономику партнёрских промокодов?",
@@ -865,13 +861,11 @@
       },
     }));
     const programSummary = pre({
-      "ROX новому пользователю": program.welcome_rox,
+      "ROX сразу после регистрации": program.welcome_rox,
       "1-я линия": `${program.first_line_percent}%`,
       "ROX партнёру за пополнение": program.topup_partner_rox,
-      "ROX пользователю за пополнение": program.topup_user_rox,
-      "Минимум для промо-бонуса, ₽": program.topup_user_min_rub,
       "Статус": program.is_active ? "включена" : "выключена",
-      "Примечание": "Обычные пакетные бонусы действуют всегда. Партнёрские бонусы активируются только промокодом.",
+      "Покупатель": "Бонусы пакетов настраиваются в Versioned tariffs → packages и доступны только с активным промокодом.",
     });
     const promoTable = table(
       ["Код", "Партнёр", "Использование", "Действует до", "Статус", "Действия"],

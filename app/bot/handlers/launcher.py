@@ -118,16 +118,11 @@ async def _send_launcher(
     try:
         promo_program = await PartnerPromoProgramService.get_config(session)
         welcome_rox = f"{promo_program.welcome_rox:g}"
-        first_line_percent = f"{promo_program.first_line_percent:g}"
         topup_partner_rox = f"{promo_program.topup_partner_rox:g}"
         promo_copy = (
-            "<b>Бонусы по промокоду:</b>\n"
-            f"🎟️ +{welcome_rox} ROX — пользователю после активации промокода\n"
-            f"💰 Партнёру: {first_line_percent}% + {topup_partner_rox} ROX "
-            "с успешного пополнения реферала\n"
-            "👥 За обычное приглашение без промокода начислений нет\n\n"
-            if promo_program.is_active
-            else "<b>Бонусы по промокоду:</b> программа временно приостановлена.\n\n"
+            "<b>Бонусы:</b>\n"
+            f"🎁 +{welcome_rox} ROX — сразу после регистрации\n"
+            f"💎 +{topup_partner_rox} ROX — после успешного пополнения реферала\n\n"
         )
         await message.answer(
             "Меню и поддержка закреплены снизу.",

@@ -56,9 +56,9 @@ test('active promo persists on payments and is attached to a new payment automat
       packages: {
         starter: {
           credits: '1000',
-          bonus_credits: '100',
-          total_credits: '1100',
-          prices: { RUB: '1086.96' },
+          bonus_credits: '150',
+          total_credits: '1150',
+          prices: { RUB: '1000' },
         },
       },
     });
@@ -74,14 +74,15 @@ test('active promo persists on payments and is attached to a new payment automat
         provider: 'yookassa',
         label: 'ЮKassa',
         package_id: 'starter',
-        amount: '1086.96',
+        amount: '1000',
         currency: 'RUB',
-        credits: '1100',
-        rox: '1100',
+        credits: '1000',
+        rox: '1000',
         base_credits: '1000',
-        package_bonus_credits: '100',
+        package_bonus_credits: '0',
+        promo_package_bonus_credits: '150',
         promo_bonus_credits: '0',
-        bonus_credits: '100',
+        bonus_credits: '0',
         promo_code: 'KSENIA50',
         promo_bonus_status: 'activated',
         payment_url: 'https://pay.example.test/promo-persisted',
@@ -94,18 +95,17 @@ test('active promo persists on payments and is attached to a new payment automat
 
   await page.goto('/mini-app/payments/');
 
-  await expect(page.getByText('Промокод применён', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'KSENIA50' })).toBeVisible();
-  await expect(page.getByText('ROX уже начислено', { exact: true })).toBeVisible();
-  await expect(page.getByText(/ROX от.*000.*₽/)).toBeVisible();
-  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toBeVisible();
-  await expect(page.getByText('+100 ROX 🎁', { exact: true })).toBeVisible();
-  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toBeVisible();
+  await expect(page.getByText('Промокод применён', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'KSENIA50' })).toHaveCount(0);
+  await expect(page.getByText('ROX начислены при регистрации', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toHaveCount(0);
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
+  await expect(page.getByText(/ROX по промокоду/)).toHaveCount(0);
   await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
-  await expect(page.getByText(/Промокод KSENIA50 уже закреплён/)).toBeVisible();
+  await expect(page.getByText(/Промокод KSENIA50 уже закреплён/)).toHaveCount(0);
   await expect(page.getByText('Есть промокод?', { exact: true })).toHaveCount(0);
 
-  const pay = page.getByRole('button', { name: /Оплатить 1 087 RUB через ЮKassa/ });
+  const pay = page.getByRole('button', { name: /Оплатить 1 000 RUB через ЮKassa/ });
   await expect(pay).toBeVisible();
   await pay.click();
 
@@ -116,7 +116,7 @@ test('active promo persists on payments and is attached to a new payment automat
     promo_code: 'KSENIA50',
   });
   await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
-  await expect(page.getByText(/Промокод добавит ещё \+50 ROX/)).toBeVisible();
+  await expect(page.getByText(/Промокод добавит ещё/)).toHaveCount(0);
 });
 
 
@@ -169,7 +169,7 @@ test('promo-looking query does not activate a code automatically', async ({ page
 });
 
 
-test('promo topup preview uses the same RUB basis as non-RUB card settlement', async ({ page }) => {
+test('promo package bonus is a single package-owned entitlement', async ({ page }) => {
   await installTelegram(page);
 
   await page.route('**/api/v1/**', async (route) => {
@@ -204,9 +204,9 @@ test('promo topup preview uses the same RUB basis as non-RUB card settlement', a
       packages: {
         starter: {
           credits: '1000',
-          bonus_credits: '100',
-          total_credits: '1100',
-          prices: { RUB: '1087', USD: '10' },
+          bonus_credits: '150',
+          total_credits: '1150',
+          prices: { RUB: '1000', USD: '10' },
         },
       },
     });
@@ -222,11 +222,11 @@ test('promo topup preview uses the same RUB basis as non-RUB card settlement', a
 
   await page.goto('/mini-app/payments/?provider=card');
 
-  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toBeVisible();
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
   await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'USD', exact: true }).click();
 
-  await expect(page.getByText('+50 ROX по промокоду 🎟️', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Итого 1 100 ROX', { exact: true })).toBeVisible();
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
+  await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
 });

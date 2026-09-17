@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -13,9 +14,27 @@ from app.core.config import settings
 from app.db.models import ReferralRelation, User, Wallet
 from app.db.referral_models import ReferralEvent
 from app.db.session import SessionFactory
+from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.users import UserService
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _disable_registration_welcome(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Attribution tests own their wallets: the registration welcome grant must not apply.
+
+    Welcome ROX is owned by partner_promo_program_config (not settings), so patch
+    the service and return a detached copy so the zeroed value never persists.
+    """
+    original = PartnerPromoProgramService.get_config
+
+    async def _zero_welcome(session, *, for_update: bool = False):
+        config = await original(session, for_update=for_update)
+        config.welcome_rox = Decimal("0")
+        session.expunge(config)
+        return config
+
+    monkeypatch.setattr(PartnerPromoProgramService, "get_config", _zero_welcome)
 
 
 def _telegram_user(name: str) -> TelegramUser:
@@ -51,6 +70,7 @@ async def test_hourly_referral_limit_blocks_extra_attribution_without_banning_re
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 1)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)
@@ -120,6 +140,7 @@ async def test_daily_referral_limit_blocks_bonus_without_banning_referrer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 1)
     _disable_burst(monkeypatch)
@@ -174,6 +195,7 @@ async def test_burst_threshold_deactivates_referrer_and_blocks_current_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 10)
@@ -238,6 +260,7 @@ async def test_burst_limit_can_reject_without_autoban(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     monkeypatch.setattr(settings, "referral_antifraud_burst_window_seconds", 10)
@@ -274,6 +297,7 @@ async def test_concurrent_referrals_are_serialized_under_same_inviter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 1)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)
@@ -324,6 +348,7 @@ async def test_existing_unattributed_user_ignores_late_referral_link(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "start_balance_rox", 0)
+    _disable_registration_welcome(monkeypatch)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_hour", 0)
     monkeypatch.setattr(settings, "referral_antifraud_max_per_day", 0)
     _disable_burst(monkeypatch)

@@ -75,20 +75,41 @@ async def test_new_referral_queues_partner_telegram_notification(
 
 
 @pytest.mark.asyncio
-async def test_referral_payment_keeps_separate_partner_accrual_notification() -> None:
+async def test_referral_payment_notification_uses_username_paid_rub_percent_and_fixed_rox() -> None:
     async with SessionFactory() as session:
-        partner = User(telegram_id=980000000000103, first_name="Partner")
-        referred = User(telegram_id=980000000000104, first_name="Buyer")
+        partner = User(telegram_id=980000000000103, username="partner", first_name="Partner")
+        referred = User(
+            telegram_id=980000000000104,
+            username="polina_ai",
+            first_name="Полина",
+        )
         session.add_all([partner, referred])
         await session.flush()
 
+        from app.db.models import Payment
+
+        payment = Payment(
+            user_id=referred.id,
+            provider="yookassa",
+            amount=Decimal("500.00"),
+            currency="RUB",
+            rox_amount=Decimal("550.00"),
+            status="succeeded",
+            payload={"base_credits": "500", "promo_bonus_credits": "50"},
+        )
+        session.add(payment)
+        await session.flush()
+
+        # Wallet movement is ROX, not the authoritative paid RUB amount.
         transaction = WalletTransaction(
             user_id=referred.id,
             kind="payment",
-            amount=Decimal("500.00"),
+            amount=Decimal("550.00"),
             balance_before=Decimal("0.00"),
-            balance_after=Decimal("500.00"),
+            balance_after=Decimal("550.00"),
             status="completed",
+            reference_type="payment",
+            reference_id=str(payment.id),
             idempotency_key="referral-notification-parity-payment",
         )
         session.add(transaction)
@@ -100,8 +121,8 @@ async def test_referral_payment_keeps_separate_partner_accrual_notification() ->
                 source_user_id=referred.id,
                 source_transaction_id=transaction.id,
                 level=1,
-                percent=Decimal("10.00"),
-                amount=Decimal("50.00"),
+                percent=Decimal("30.00"),
+                amount=Decimal("150.00"),
                 status="available",
             )
         )
@@ -114,9 +135,14 @@ async def test_referral_payment_keeps_separate_partner_accrual_notification() ->
             )
         )
         assert notification is not None
-        assert "Buyer" in notification.body
-        assert "500" in notification.body
-        assert "+50" in notification.body
+        assert notification.title == "💰 По 1-й линии пополнение!"
+        assert notification.body == (
+            "@polina_ai пополнил баланс на 500 ₽\n"
+            "Ваш бонус: +150 ₽ (30%)\n"
+            "🎁 +10 ROX на баланс"
+        )
+        assert "Полина" not in notification.body
+        assert "Telegram" not in notification.body
 
         delivery = await session.scalar(
             select(NotificationDelivery).where(

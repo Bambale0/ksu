@@ -389,7 +389,7 @@ const cases = [
   } },
   { name: 'wallet-yookassa-package', route: 'home', run: async (page) => {
     await page.locator('.balance-button').click();
-    await expect(page.getByText('Выберите пакет')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Выберите пакет', exact: true })).toBeVisible();
     await expect(page.getByText(/100 ROX/).first()).toBeVisible();
   } },
   { name: 'bottom-nav-route-integrity', route: 'home', run: async (page) => {
