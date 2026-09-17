@@ -196,7 +196,7 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     assert "NexusAdminTaskService.enqueue" in source
     assert "references=references" in source
     assert "image_size=image_size" in source
-    assert "aspect_ratio=aspect_ratio" in source
+    assert 'aspect_ratio=str(data.get("aspect_ratio") or "1:1")' in source
     assert "wait_for_task" not in source
 
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
