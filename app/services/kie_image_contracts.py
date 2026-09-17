@@ -14,7 +14,11 @@ NANO_LEGACY_RATIOS = {
 NANO_PRO_RATIOS = {
     "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "auto"
 }
-NANO_2_RATIOS = {
+# Nano Banana 2 customer traffic is routed to Nexus and therefore uses the
+# same documented ratio/reference contract as Nano Banana Pro. Lite remains
+# on KIE and keeps KIE's wider ratio set.
+NANO_2_RATIOS = set(NANO_PRO_RATIOS)
+NANO_2_LITE_RATIOS = {
     "1:1", "2:3", "3:2", "1:4", "4:1", "3:4", "4:3", "4:5", "5:4", "1:8", "8:1", "9:16", "16:9", "21:9", "auto"
 }
 SEEDREAM_RATIOS = {"1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"}
@@ -136,10 +140,11 @@ def _normalize_seedream_4_prompt(data: dict[str, Any]) -> None:
 
 
 def normalize_kie_image_input(model: str, input_data: dict[str, Any]) -> dict[str, Any]:
-    """Validate and normalize Kie image inputs against current provider model contracts.
+    """Validate and normalize image inputs against the active provider contract.
 
-    This runs immediately before createTask. It deliberately leaves unknown/non-image
-    models untouched, so video/audio flows keep their existing behavior.
+    The function name is retained for compatibility because most image models are
+    still submitted through KIE. Nano Banana Pro/2 now use Nexus, so their branch
+    intentionally reflects Nexus limits before provider submission.
     """
 
     data = deepcopy(input_data)
@@ -157,18 +162,18 @@ def normalize_kie_image_input(model: str, input_data: dict[str, Any]) -> dict[st
         _enum(data, "aspect_ratio", NANO_PRO_RATIOS)
         _enum(data, "resolution", {"1K", "2K", "4K"})
         _enum(data, "output_format", {"png", "jpg"})
-        _list_max(data, "image_input", 8)
+        _list_max(data, "image_input", 4)
         return data
 
     if model == "nano-banana-2":
         _enum(data, "aspect_ratio", NANO_2_RATIOS)
         _enum(data, "resolution", {"1K", "2K", "4K"})
         _enum(data, "output_format", {"jpg", "png"})
-        _list_max(data, "image_input", 14)
+        _list_max(data, "image_input", 4)
         return data
 
     if model == "nano-banana-2-lite":
-        _enum(data, "aspect_ratio", NANO_2_RATIOS)
+        _enum(data, "aspect_ratio", NANO_2_LITE_RATIOS)
         _list_max(data, "image_urls", 10)
         return data
 
