@@ -86,22 +86,6 @@ function paymentProviderLabel(payment: Payment): string {
   return "Lava Top";
 }
 
-function promoTopupBonusForPackage(
-  item: Package | null | undefined,
-  activePromo: ActivePromo | null,
-  currency: Currency,
-): number {
-  if (!item || !activePromo?.active || !activePromo.program_active) return 0;
-  const minimumRub = Number(activePromo.topup_user_min_rub || 0);
-  const rewardRox = Number(activePromo.topup_user_rox || 0);
-  // Match backend settlement exactly: RUB payments use the paid RUB amount,
-  // while non-RUB card payments use the package base ROX as RUB accounting basis.
-  const rubBasis = currency === "RUB"
-    ? Number(item.prices.RUB || 0)
-    : Number(item.credits || 0);
-  return rubBasis >= minimumRub ? rewardRox : 0;
-}
-
 function paymentRoxSummary(payment: Payment): string {
   const credited = payment.credits || payment.rox || payment.base_credits;
   const packageBonus = Number(payment.package_bonus_credits || 0);
@@ -206,7 +190,7 @@ export default function PaymentsPage() {
       setPromoCode(next.code);
       const persisted = await customerRequest<ActivePromo>("/api/v1/promocodes/active");
       setActivePromo(persisted);
-      setNotice(next.message || `Промокод активирован. Бонус +${compactNumber(next.reward_rox)} ROX начисляется отдельно от оплаты.`);
+      setNotice(next.message || "Промокод активирован");
     } catch (reason) {
       setPromo(null);
       setError(reason instanceof Error ? reason.message : "Не удалось проверить промокод");
@@ -252,10 +236,7 @@ export default function PaymentsPage() {
 
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
-  const packageBaseRox = Number(selected?.credits || 0);
-  const packageBonusRox = Number(selected?.bonus_credits || 0);
-  const promoTopupBonusRox = promoTopupBonusForPackage(selected, activePromo, activeCurrency);
-  const totalRox = Number(selected?.total_credits || packageBaseRox + packageBonusRox) + promoTopupBonusRox;
+  const promoEnabled = Boolean(activePromo?.active && activePromo.program_active);
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
@@ -369,15 +350,10 @@ export default function PaymentsPage() {
         throw new Error("Не удалось открыть платёжную ссылку");
       }
       clearCheckoutIdempotencyKey(intent, requestKey);
-      const promoHint = effectivePromo
-        ? promoTopupBonusRox > 0
-          ? ` Промокод добавит ещё +${compactNumber(promoTopupBonusRox)} ROX после успешной оплаты.`
-          : " Промокод активен, но выбранный пакет ниже порога дополнительного промо-бонуса."
-        : "";
       setNotice(
         provider === "card"
-          ? `Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус».${promoHint}`
-          : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.${promoHint}`,
+          ? "Оплата создана. После оплаты вернитесь сюда и нажмите «Проверить статус»."
+          : `Счёт ${providerLabel} создан. После оплаты вернитесь сюда — ROX начислятся автоматически.`,
       );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось создать оплату");
@@ -425,23 +401,12 @@ export default function PaymentsPage() {
     <StandaloneShell
       kicker="Баланс"
       title="Пополнения ROX"
-      copy="ЮKassa — основной способ оплаты. Lava Top доступна как резерв, CryptoBot — для оплаты криптовалютой. Обычный бонус пакета начисляется независимо от промокода. Активный партнёрский промокод добавляет ещё отдельный ROX-бонус к подходящему пополнению."
+      copy="Выберите пакет и способ оплаты."
     >
       {loading ? <p className="muted" role="status">Загружаем способы оплаты и историю…</p> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
       {!loading && error && !yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <button className="secondary" type="button" onClick={() => void load()}>Повторить загрузку</button> : null}
       {notice ? <div className="panel"><p className="muted">{notice}</p></div> : null}
-      {activePromo?.active ? <div className="panel">
-        <span className="kicker">Промокод применён</span>
-        <h2>{activePromo.code}</h2>
-        <div className="profile-stats">
-          <div><strong>+{compactNumber(activePromo.welcome_rox_granted || 0)}</strong><span>ROX уже начислено</span></div>
-          <div><strong>+{compactNumber(activePromo.topup_user_rox || 0)}</strong><span>ROX от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽</span></div>
-          <div><strong>{activePromo.program_active ? "Активна" : "Пауза"}</strong><span>партнёрская программа</span></div>
-        </div>
-        <p className="muted">Обычный бонус выбранного пакета сохраняется. При оплате от {compactNumber(activePromo.topup_user_min_rub || 0)} ₽ промокод добавит ещё +{compactNumber(activePromo.topup_user_rox || 0)} ROX сверху.</p>
-      </div> : null}
-
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">Пополнение</span><h2>Способ оплаты</h2></div></div>
         <div className="segmented providers" aria-label="Способ оплаты">
@@ -456,22 +421,18 @@ export default function PaymentsPage() {
         {!loading && !yooKassaAvailable && !cardAvailable && !cryptoBotAvailable ? <p className="muted">Пополнение сейчас недоступно.</p> : null}
         {providerAvailable ? <>
           <div className="section-title"><div><span className="kicker">{providerLabel}</span><h2>Выберите пакет</h2></div></div>
-          <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => <button type="button" disabled={loading} key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
-            <strong>{compactNumber(item.credits)} ROX</strong>
-            {Number(item.bonus_credits || 0) > 0 ? <small>+{compactNumber(item.bonus_credits)} ROX 🎁</small> : null}
-            {promoTopupBonusForPackage(item, activePromo, activeCurrency) > 0 ? <small>+{compactNumber(promoTopupBonusForPackage(item, activePromo, activeCurrency))} ROX по промокоду 🎟️</small> : null}
-            <small><strong>Итого {compactNumber(Number(item.total_credits || item.credits) + promoTopupBonusForPackage(item, activePromo, activeCurrency))} ROX</strong></small>
-            <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
-          </button>)}</div>
+          <div className="package-grid">{Object.entries(catalog?.packages || {}).map(([id, item]) => {
+            const bonus = promoEnabled ? Number(item.bonus_credits || 0) : 0;
+            const total = Number(item.credits || 0) + bonus;
+            return <button type="button" disabled={loading} key={id} className={id === packageId ? "package active" : "package"} onClick={() => setPackageId(id)}>
+              <strong>{compactNumber(item.credits)} ROX</strong>
+              {bonus > 0 ? <small>+{compactNumber(bonus)} ROX 🎁</small> : null}
+              <small><strong>Итого {compactNumber(total)} ROX</strong></small>
+              <small>{item.prices[activeCurrency] ? `${compactNumber(item.prices[activeCurrency])} ${activeCurrency}` : "Недоступно"}</small>
+            </button>;
+          })}</div>
 
           {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" disabled={loading} key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
-
-          {selected ? <div className="profile-stats">
-            <div><strong>{compactNumber(packageBaseRox)}</strong><span>базовые ROX</span></div>
-            <div><strong>+{compactNumber(packageBonusRox)}</strong><span>бонус пакета</span></div>
-            {activePromo?.active ? <div><strong>+{compactNumber(promoTopupBonusRox)}</strong><span>по промокоду {activePromo.code}</span></div> : promo ? <div><strong>{promo.code}</strong><span>партнёрская программа активна</span></div> : null}
-            <div><strong>{compactNumber(totalRox)}</strong><span>получите после оплаты</span></div>
-          </div> : null}
 
           <div className="form-stack">
             {!activePromo?.active ? <>
@@ -494,8 +455,7 @@ export default function PaymentsPage() {
               <button className="secondary wide" type="button" disabled={loading || busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
                 {busy === "promo" ? "Активирую…" : promo ? `Промокод ${promo.code} активирован` : "Активировать промокод"}
               </button>
-              {promo ? <small className="muted">Бонус +{compactNumber(promo.reward_rox)} ROX относится к активации промокода, а не к пакету пополнения.</small> : null}
-            </> : <small className="muted">Промокод {activePromo.code} уже закреплён за аккаунтом и применяется автоматически.</small>}
+            </> : null}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} disabled={loading} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={loading || busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>

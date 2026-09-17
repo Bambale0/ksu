@@ -116,6 +116,46 @@ def _validate_generation_pricing(value: Any) -> None:
                 _positive_price(price, path=f"{path}.{tier_key}.{tier}")
 
 
+def _decimal_field(item: dict[str, Any], field: str, *, path: str) -> Decimal:
+    if field not in item:
+        raise TariffValidationError(f"{path}.{field} is required")
+    try:
+        value = Decimal(str(item[field]))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise TariffValidationError(f"Invalid numeric value at {path}.{field}") from exc
+    return value
+
+
+def _validate_packages(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or not value:
+        raise TariffValidationError("packages must be a non-empty object")
+
+    allowed = {"amount", "currency", "credits", "bonus_credits"}
+    for package_id, item in value.items():
+        path = f"packages.{package_id}"
+        if not isinstance(item, dict):
+            raise TariffValidationError(f"{path} must be an object")
+        unknown = sorted(set(item) - allowed)
+        if unknown:
+            raise TariffValidationError(
+                f"Unknown payment package keys at {path}: {', '.join(unknown)}"
+            )
+        amount = _decimal_field(item, "amount", path=path)
+        credits = _decimal_field(item, "credits", path=path)
+        bonus = _decimal_field(item, "bonus_credits", path=path)
+        currency = str(item.get("currency") or "").strip().upper()
+        if currency != "RUB":
+            raise TariffValidationError(f"{path}.currency must be RUB")
+        if amount <= 0:
+            raise TariffValidationError(f"{path}.amount must be positive")
+        if credits <= 0:
+            raise TariffValidationError(f"{path}.credits must be positive")
+        if bonus < 0:
+            raise TariffValidationError(f"{path}.bonus_credits must be non-negative")
+
+
 def validate_tariff_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict) or not payload:
         raise TariffValidationError("Tariff payload must be a non-empty object")
@@ -123,6 +163,7 @@ def validate_tariff_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if unknown:
         raise TariffValidationError(f"Unknown tariff sections: {', '.join(unknown)}")
     _validate_prices(payload)
+    _validate_packages(payload.get("packages"))
     _validate_generation_pricing(payload.get("generation_pricing"))
     return payload
 
@@ -143,17 +184,24 @@ def _music_price_from_generation_pricing(merged: dict[str, Any]) -> Decimal:
     return Decimal(str(value))
 
 
-def _activate_generation_pricing(payload: dict[str, Any] | None) -> dict[str, Any]:
-    """Apply a published tariff over code defaults to every live pricing surface."""
+def _activate_runtime_tariff(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Apply the published DB tariff to live generation and payment pricing."""
 
     merged = _default_generation_pricing()
-    section = (payload or {}).get("generation_pricing")
-    if isinstance(section, dict):
-        merged.update(section)
+    generation_section = (payload or {}).get("generation_pricing")
+    if isinstance(generation_section, dict):
+        merged.update(generation_section)
     settings.generation_pricing_json = json.dumps(merged, separators=(",", ":"), sort_keys=True)
-    # Music uses its dedicated generation service, but its retail price is owned
-    # by the same published admin tariff as every image/video model.
     settings.music_generation_price_rox = _music_price_from_generation_pricing(merged)
+
+    package_section = (payload or {}).get("packages")
+    if isinstance(package_section, dict) and package_section:
+        _validate_packages(package_section)
+        settings.rox_packages_json = json.dumps(
+            package_section,
+            separators=(",", ":"),
+            sort_keys=False,
+        )
     return merged
 
 
@@ -236,7 +284,7 @@ class AdminPricingService:
 
     @staticmethod
     async def hydrate_runtime(session: AsyncSession) -> dict[str, Any]:
-        """Restore the latest published generation tariff from PostgreSQL."""
+        """Restore the latest published tariff from PostgreSQL."""
 
         item = await session.scalar(
             select(TariffVersion)
@@ -244,7 +292,7 @@ class AdminPricingService:
             .order_by(TariffVersion.version.desc())
             .limit(1)
         )
-        return _activate_generation_pricing(item.payload if item is not None else None)
+        return _activate_runtime_tariff(item.payload if item is not None else None)
 
     @staticmethod
     async def publish(
@@ -311,7 +359,7 @@ class AdminPricingService:
             request_payload=validated,
             operation=operation,
         )
-        _activate_generation_pricing(validated)
+        _activate_runtime_tariff(validated)
         return result, replayed
 
     @staticmethod

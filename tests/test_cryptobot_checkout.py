@@ -32,7 +32,7 @@ async def test_cryptobot_checkout_reuses_existing_service_and_is_idempotent(
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"starter":{"credits":"300","prices":{"RUB":"326.09","USD":"6"}}}',
+        '{"starter":{"credits":"300","bonus_credits":"30","prices":{"RUB":"326.09","USD":"6"}}}',
     )
     monkeypatch.setattr(settings, "cryptopay_api_token", "crypto-token")
     calls: list[dict[str, str]] = []
@@ -89,12 +89,13 @@ async def test_cryptobot_checkout_reuses_existing_service_and_is_idempotent(
         assert first.provider == "cryptobot"
         assert first.amount == Decimal("326.09")
         assert first.currency == "RUB"
-        assert first.rox_amount == Decimal("330")
+        assert first.rox_amount == Decimal("300")
         assert first.payload["base_credits"] == "300"
-        assert first.payload["package_bonus_credits"] == "30"
+        assert first.payload["package_bonus_credits"] == "0"
+        assert first.payload["promo_package_bonus_credits"] == "30"
         assert first.payload["promo_bonus_credits"] == "0"
-        assert first.payload["bonus_credits"] == "30"
-        assert first.payload["credited_credits"] == "330"
+        assert first.payload["bonus_credits"] == "0"
+        assert first.payload["credited_credits"] == "300"
         assert first.payload["payment_url"].startswith("https://t.me/CryptoBot")
         assert calls == [
             {

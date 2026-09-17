@@ -13,6 +13,7 @@ from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, 
 from app.db.session import SessionFactory
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.partner_wallet import PartnerWalletTransferService
+from app.services.payments import PaymentService
 from app.services.referrals import ReferralService
 from app.services.users import UserService
 from app.services.wallet import WalletService
@@ -81,49 +82,159 @@ async def _promo_attribution(session, *, partner: User, buyer: User) -> PromoCod
 
 
 @pytest.mark.asyncio
-async def test_registration_creates_empty_wallet_and_legacy_settings_cannot_grant_rox(
+async def test_registration_grants_db_welcome_once_and_legacy_env_cannot_override_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Legacy env knobs may still exist for compatibility, but partner money
-    # is activated only by a valid promo code.
+    # Registration economics are DB-owned. Legacy env knobs remain compatibility-only.
     monkeypatch.setattr(settings, "start_balance_rox", Decimal("50"))
     monkeypatch.setattr(settings, "invite_bonus_rox", Decimal("30"))
     async with SessionFactory() as session:
+        config = await PartnerPromoProgramService.get_config(session)
+        assert Decimal(config.welcome_rox) == Decimal("25")
+
         inviter = User(telegram_id=_telegram_id(), first_name="Inviter")
         friend_telegram_id = _telegram_id()
         session.add(inviter)
         await session.flush()
-        await UserService.get_or_create(
+
+        telegram_user = TelegramUser(id=friend_telegram_id, is_bot=False, first_name="Friend")
+        first = await UserService.get_or_create(
             session,
-            TelegramUser(id=friend_telegram_id, is_bot=False, first_name="Friend"),
+            telegram_user,
+            inviter_telegram_id=inviter.telegram_id,
+        )
+        await session.commit()
+
+        # Re-opening the bot must not duplicate the registration bonus.
+        second = await UserService.get_or_create(
+            session,
+            telegram_user,
             inviter_telegram_id=inviter.telegram_id,
         )
         await session.commit()
 
         friend = await UserService.get_by_telegram_id(session, friend_telegram_id)
         assert friend is not None
+        assert first.id == second.id == friend.id
         friend_wallet = await session.get(Wallet, friend.id)
         inviter_wallet = await session.get(Wallet, inviter.id)
         relation = await session.get(ReferralRelation, friend.id)
 
-        assert friend_wallet is not None and friend_wallet.balance == Decimal("0")
+        assert friend_wallet is not None and friend_wallet.balance == Decimal("25")
         assert inviter_wallet is None or inviter_wallet.balance == Decimal("0")
         assert relation is not None
         assert relation.inviter_user_id == inviter.id
         assert relation.source == "link"
         assert relation.promo_id is None
 
-        kinds = set(
+        transactions = list(
             (
                 await session.scalars(
-                    select(WalletTransaction.kind).where(
-                        WalletTransaction.user_id.in_([friend.id, inviter.id])
-                    )
+                    select(WalletTransaction).where(WalletTransaction.user_id == friend.id)
                 )
             ).all()
         )
-        assert "welcome_bonus" not in kinds
-        assert "referral_invite_bonus" not in kinds
+        registration = [tx for tx in transactions if tx.kind == "welcome_bonus"]
+        assert len(registration) == 1
+        assert registration[0].amount == Decimal("25")
+        assert registration[0].reason == "registration_welcome"
+        assert "referral_invite_bonus" not in {tx.kind for tx in transactions}
+
+
+@pytest.mark.asyncio
+async def test_package_bonus_is_zero_without_promo_and_applied_once_after_promo_payment() -> None:
+    async with SessionFactory() as session:
+        plain = User(telegram_id=_telegram_id(), first_name="Plain buyer")
+        partner = User(telegram_id=_telegram_id(), first_name="Partner")
+        promo_buyer = User(telegram_id=_telegram_id(), first_name="Promo buyer")
+        session.add_all([plain, partner, promo_buyer])
+        await session.flush()
+
+        plain_payment = Payment(
+            user_id=plain.id,
+            provider="yookassa",
+            amount=Decimal("500"),
+            currency="RUB",
+            rox_amount=Decimal("500"),
+            status="pending",
+            payload={
+                "package_id": "p500",
+                "base_credits": "500",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "50",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "0",
+                "credited_credits": "500",
+            },
+        )
+        session.add(plain_payment)
+        await session.commit()
+
+        await PaymentService.complete(
+            session,
+            payment_id=plain_payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        plain_wallet = await session.get(Wallet, plain.id)
+        assert plain_wallet is not None
+        assert Decimal(plain_wallet.balance) == Decimal("500")
+        await session.refresh(plain_payment)
+        assert plain_payment.payload["promo_bonus_credits"] == "0"
+        assert plain_payment.payload["credited_credits"] == "500"
+
+        promo = await _promo_attribution(session, partner=partner, buyer=promo_buyer)
+        promo_payment = Payment(
+            user_id=promo_buyer.id,
+            provider="yookassa",
+            amount=Decimal("1000"),
+            currency="RUB",
+            rox_amount=Decimal("1000"),
+            status="pending",
+            payload={
+                "package_id": "p1000",
+                "base_credits": "1000",
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": "150",
+                "promo_bonus_credits": "0",
+                "bonus_credits": "0",
+                "credited_credits": "1000",
+                "promo_id": str(promo.id),
+                "promo_code": promo.code,
+                "promo_partner_user_id": str(partner.id),
+                "promo_metadata_source": "attribution",
+                "promo_bonus_status": "activated",
+            },
+        )
+        session.add(promo_payment)
+        await session.commit()
+
+        # Merely having an active promo still grants nothing before settlement.
+        before = await session.get(Wallet, promo_buyer.id)
+        assert before is None or Decimal(before.balance) == Decimal("0")
+
+        completed = await PaymentService.complete(
+            session,
+            payment_id=promo_payment.id,
+            provider_payload={"status": "succeeded"},
+        )
+        promo_wallet = await session.get(Wallet, promo_buyer.id)
+        assert promo_wallet is not None
+        assert Decimal(promo_wallet.balance) == Decimal("1150")
+        assert Decimal(completed.rox_amount) == Decimal("1000")
+        assert completed.payload["package_bonus_credits"] == "0"
+        assert completed.payload["promo_bonus_credits"] == "150"
+        assert completed.payload["promo_reward_credits"] == "150"
+        assert completed.payload["bonus_credits"] == "150"
+        assert completed.payload["credited_credits"] == "1150"
+
+        # Settlement replay is idempotent.
+        await PaymentService.complete(
+            session,
+            payment_id=promo_payment.id,
+            provider_payload={"status": "succeeded", "replay": True},
+        )
+        await session.refresh(promo_wallet)
+        assert Decimal(promo_wallet.balance) == Decimal("1150")
 
 
 @pytest.mark.asyncio
@@ -237,7 +348,8 @@ async def test_stats_expose_simple_wallet_and_partner_rub_contract(monkeypatch) 
         assert payload["transferred_to_rox"] == "0"
         assert payload["bonus_rox"] == "280.00"  # wallet compatibility only
         assert payload["rub_per_rox"] == "1"
-        assert payload["welcome_bonus_rox"] == "0"
+        assert payload["welcome_bonus_rox"] == "25.00"
+        assert payload["registration_bonus_rox"] == "25.00"
         assert payload["invite_bonus_rox"] == "0"
         assert payload["prompt_repeat_bonus_rox"] == "5"
         assert payload["first_line_percent"] == "30.00"

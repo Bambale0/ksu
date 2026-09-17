@@ -87,14 +87,14 @@ async function mockApi(page, { paymentsFail = false, payments = [] } = {}) {
       return json({
         status: 'activated',
         code: 'KSENIA25',
-        reward_rox: '25.00',
+        reward_rox: '0.00',
         welcome_rox: '25.00',
         first_line_percent: '30.00',
         topup_partner_rox: '10.00',
         topup_user_rox: '50.00',
         topup_user_min_rub: '1000.00',
-        balance_rox: '175.00',
-        message: 'Промокод активирован: +25 ROX',
+        balance_rox: '150.00',
+        message: 'Промокод активирован',
       });
     }
     if (path === '/api/v1/payments/card/packages') return json({
@@ -222,12 +222,18 @@ test('partner promo activates separately and checkout package stays exact', asyn
   await page.getByRole('textbox', { name: 'Есть промокод?' }).fill('KSENIA25');
   await page.getByRole('button', { name: 'Активировать промокод' }).click();
 
-  await expect(page.getByText('Промокод активирован: +25 ROX')).toBeVisible();
-  await expect(page.getByText('KSENIA25', { exact: true })).toBeVisible();
-  await expect(page.getByText('100', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/).first()).toBeVisible();
+  await expect(page.getByText('Промокод активирован', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toHaveCount(0);
+  const selectedPackage = page.locator('.package-grid .package.active');
+  await expect(selectedPackage).toContainText('100 ROX');
+  await expect(selectedPackage).toContainText('Итого 100 ROX');
+  await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toHaveCount(0);
   await page.getByRole('button', { name: /Оплатить .* RUB через ЮKassa/ }).click();
-  await expect.poll(() => checkoutBody?.promo_code).toBe('KSENIA25');
+  await expect.poll(() => checkoutBody).toEqual({
+    provider: 'yookassa',
+    package_id: 'starter',
+    promo_code: 'KSENIA25',
+  });
 });
 
 test('released promo is not rendered as credited bonus in payment history', async ({ page }) => {

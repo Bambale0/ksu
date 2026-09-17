@@ -22,7 +22,6 @@ from app.providers.payments import (
     YooKassaClient,
 )
 from app.services.credits import InternalCreditService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle, PaymentIdempotencyConflict
 from app.services.promocodes import PromoCodeError, PromoCodeService
 from app.services.referrals import ReferralService
@@ -95,32 +94,20 @@ class PaymentService:
             amount_raw = item.get("amount")
             credits_raw = item.get("credits", item.get("rox"))
             bonus_raw = item.get("bonus_credits")
-            if amount_raw is None and credits_raw is None:
-                continue
+            if amount_raw is None:
+                raise ValueError(f"Package {package_id} requires explicit amount")
+            if credits_raw is None:
+                raise ValueError(f"Package {package_id} requires explicit credits")
+            if bonus_raw is None:
+                raise ValueError(f"Package {package_id} requires explicit bonus_credits")
 
-            explicit_amount = amount_raw is not None
-            explicit_credits = credits_raw is not None
-            amount = Decimal(str(amount_raw)) if explicit_amount else None
-            credits = Decimal(str(credits_raw)) if explicit_credits else None
-
-            if amount is None and credits is not None:
-                amount = InternalCreditService.rubles_for(credits)
-            elif credits is None and amount is not None:
-                credits = InternalCreditService.credits_for(amount)
-
-            assert amount is not None and credits is not None
-            bonus_credits = (
-                TopUpBonusService.bonus_for(credits)
-                if bonus_raw is None
-                else Decimal(str(bonus_raw))
-            )
+            amount = Decimal(str(amount_raw))
+            credits = Decimal(str(credits_raw))
+            bonus_credits = Decimal(str(bonus_raw))
             if amount <= 0 or credits <= 0:
-                continue
+                raise ValueError(f"Package {package_id} amount and credits must be positive")
             if bonus_credits < 0:
                 raise ValueError(f"Package {package_id} bonus_credits must be non-negative")
-
-            if not (explicit_amount and explicit_credits):
-                InternalCreditService.assert_rate(credits=credits, rubles=amount)
             result[str(package_id)] = PaymentPackage(
                 package_id=str(package_id),
                 amount=amount,
@@ -153,23 +140,23 @@ class PaymentService:
         PaymentCreationLifecycle.validate_request_key(request_key)
         package = cls.package(package_id)
 
-        package_bonus = Decimal(package.bonus_credits)
-        credited_credits = package.credits + package_bonus
+        promo_package_bonus = Decimal(package.bonus_credits)
         payment = Payment(
             user_id=user_id,
             provider=provider,
             amount=package.amount,
             currency=package.currency,
-            rox_amount=credited_credits,
+            rox_amount=package.credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "base_credits": str(package.credits),
-                "package_bonus_credits": str(package_bonus),
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": str(promo_package_bonus),
                 "promo_bonus_credits": "0",
-                "bonus_credits": str(package_bonus),
-                "credited_credits": str(credited_credits),
+                "bonus_credits": "0",
+                "credited_credits": str(package.credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )

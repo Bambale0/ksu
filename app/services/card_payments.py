@@ -15,7 +15,6 @@ from app.db.models import Payment, WalletTransaction
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import PaymentProviderError, PaymentProviderValidationError
 from app.services.credits import InternalCreditService
-from app.services.payment_bonuses import TopUpBonusService
 from app.services.payment_creation import PaymentCreationLifecycle
 from app.services.payments import PaymentService, UnknownPaymentPackageError
 from app.services.promocodes import PromoCodeError, PromoCodeService
@@ -64,6 +63,21 @@ class CardPackageCatalog:
 
     @classmethod
     def packages(cls) -> dict[str, CardPackage]:
+        # The versioned admin ROX tariff is authoritative for the RUB checkout.
+        # Card-specific JSON remains only a legacy fallback for deployments that
+        # have not published package data yet.
+        base_packages = PaymentService.packages()
+        if base_packages:
+            return {
+                package_id: CardPackage(
+                    package_id=package_id,
+                    credits=package.credits,
+                    prices={"RUB": package.amount},
+                    bonus_credits=package.bonus_credits,
+                    offer_id=None,
+                )
+                for package_id, package in base_packages.items()
+            }
         try:
             raw = json.loads(settings.card_packages_json or "{}")
         except json.JSONDecodeError as exc:
@@ -100,11 +114,7 @@ class CardPackageCatalog:
             if credits <= 0:
                 continue
             bonus_raw = item.get("bonus_credits")
-            bonus_credits = (
-                TopUpBonusService.bonus_for(credits)
-                if bonus_raw is None
-                else Decimal(str(bonus_raw))
-            )
+            bonus_credits = Decimal(str(bonus_raw or "0"))
             if bonus_credits < 0:
                 raise ValueError(f"Card package {package_id} bonus_credits must be non-negative")
             prices: dict[str, Decimal] = {}
@@ -264,7 +274,7 @@ class CardPackageCatalog:
                     package_id=offer_id,
                     credits=credits,
                     prices=prices,
-                    bonus_credits=TopUpBonusService.bonus_for(credits),
+                    bonus_credits=Decimal("0"),
                     offer_id=offer_id,
                     dynamic_amount=False,
                 )
@@ -422,25 +432,25 @@ class CardPaymentService:
         # Validate the operator-owned package before committing a local payment intent.
         # This avoids creation_unknown rows for prices the upstream API will always reject.
         CardCheckoutClient.validate_amount(currency, amount)
-        package_bonus = Decimal(package.bonus_credits)
-        credited_credits = package.credits + package_bonus
+        promo_package_bonus = Decimal(package.bonus_credits)
 
         payment = Payment(
             user_id=user_id,
             provider=cls.PROVIDER,
             amount=amount,
             currency=currency,
-            rox_amount=credited_credits,
+            rox_amount=package.credits,
             status="creating",
             payload={
                 "package_id": package_id,
                 "request_key": request_key,
                 "billing_email": email,
                 "base_credits": str(package.credits),
-                "package_bonus_credits": str(package_bonus),
+                "package_bonus_credits": "0",
+                "promo_package_bonus_credits": str(promo_package_bonus),
                 "promo_bonus_credits": "0",
-                "bonus_credits": str(package_bonus),
-                "credited_credits": str(credited_credits),
+                "bonus_credits": "0",
+                "credited_credits": str(package.credits),
                 "internal_credit_rub": str(InternalCreditService.rub_per_credit()),
             },
         )

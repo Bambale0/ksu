@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from app.core.config import settings
 from app.services.credits import InternalCreditService
 from app.services.payments import PaymentService
@@ -30,15 +32,16 @@ def test_roxy_product_defaults_match_approved_economy() -> None:
     assert product.partner_min_withdrawal_rub == Decimal("3000")
 
 
-def test_payment_package_can_derive_rub_amount_from_credits() -> None:
+def test_payment_package_requires_explicit_rub_amount_and_bonus() -> None:
     previous_rate = settings.internal_credit_rub
     previous_packages = settings.rox_packages_json
-    settings.internal_credit_rub = Decimal("1")
-    settings.rox_packages_json = '{"starter":{"credits":"300","currency":"RUB"}}'
+    settings.internal_credit_rub = Decimal("1.08696")
+    settings.rox_packages_json = (
+        '{"starter":{"credits":"300","currency":"RUB","bonus_credits":"30"}}'
+    )
     try:
-        package = PaymentService.package("starter")
-        assert package.credits == Decimal("300")
-        assert package.amount == Decimal("300.00")
+        with pytest.raises(ValueError, match="explicit amount"):
+            PaymentService.package("starter")
     finally:
         settings.internal_credit_rub = previous_rate
         settings.rox_packages_json = previous_packages
@@ -49,7 +52,7 @@ def test_payment_package_allows_explicit_provider_price() -> None:
     previous_packages = settings.rox_packages_json
     settings.internal_credit_rub = Decimal("1")
     settings.rox_packages_json = (
-        '{"lava":{"amount":"299","credits":"300","currency":"RUB"}}'
+        '{"lava":{"amount":"299","credits":"300","currency":"RUB","bonus_credits":"0"}}'
     )
     try:
         package = PaymentService.package("lava")
@@ -64,7 +67,7 @@ def test_legacy_rox_package_remains_compatible_when_rate_matches() -> None:
     previous_rate = settings.internal_credit_rub
     previous_packages = settings.rox_packages_json
     settings.internal_credit_rub = Decimal("1")
-    settings.rox_packages_json = '{"legacy":{"amount":"100","rox":"100","currency":"RUB"}}'
+    settings.rox_packages_json = '{"legacy":{"amount":"100","rox":"100","currency":"RUB","bonus_credits":"0"}}'
     try:
         package = PaymentService.package("legacy")
         assert package.credits == Decimal("100")

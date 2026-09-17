@@ -25,7 +25,7 @@ async def test_yookassa_payment_credits_package_plus_standard_bonus(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"p300":{"credits":"300","amount":"300","currency":"RUB"}}',
+        '{"p300":{"credits":"300","amount":"300","bonus_credits":"30","currency":"RUB"}}',
     )
 
     async def fake_create_external(
@@ -57,12 +57,15 @@ async def test_yookassa_payment_credits_package_plus_standard_bonus(
         )
 
         assert Decimal(payment.amount) == Decimal("300")
-        assert Decimal(payment.rox_amount) == Decimal("330")
+        assert Decimal(payment.rox_amount) == Decimal("300")
         assert payment.payload["base_credits"] == "300"
-        assert payment.payload["package_bonus_credits"] == "30"
+        # The package gift is promo-gated: without an activated partner promo
+        # the package bonus stays reserved and the base credits are credited.
+        assert payment.payload["package_bonus_credits"] == "0"
+        assert payment.payload["promo_package_bonus_credits"] == "30"
         assert payment.payload["promo_bonus_credits"] == "0"
-        assert payment.payload["bonus_credits"] == "30"
-        assert payment.payload["credited_credits"] == "330"
+        assert payment.payload["bonus_credits"] == "0"
+        assert payment.payload["credited_credits"] == "300"
 
         # Regression: server-side onupdate used to leave updated_at expired
         # after create/commit, so reading it in an async session raised
@@ -83,4 +86,4 @@ async def test_yookassa_payment_credits_package_plus_standard_bonus(
 
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None
-        assert wallet.balance == Decimal("330.00")
+        assert wallet.balance == Decimal("300.00")

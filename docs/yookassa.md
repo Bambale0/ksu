@@ -58,12 +58,12 @@ PAYMENT_RETURN_URL=https://<public-host>/mini-app/payments/
 - https://yookassa.ru/developers/payment-acceptance/receipts/basics
 - https://yookassa.ru/developers/using-api/changelog
 
-Пакеты берутся из `ROX_PACKAGES_JSON`. Для текущей экономики ROXY валюта пакета должна быть `RUB`. Если в пакете указано только `amount` или только `credits`, недостающее значение рассчитывается по внутренней деноминации `1 ROX = 1 RUB`. Если указаны оба поля, это явная цена провайдера: начисляется указанное количество ROX, а списывается указанная сумма в RUB. Так можно синхронизировать ЮKassa с пакетами Lava Top.
+Пакеты берутся из `ROX_PACKAGES_JSON`. Для текущей экономики ROXY валюта пакета должна быть `RUB`. Каждый пакет обязан явно задавать `amount`, `credits` и `bonus_credits`; неявный вывод недостающих значений и неявная бонусная матрица при старте приложения отклоняются с ошибкой валидации. Явная цена провайдера: начисляется указанное количество ROX, а списывается указанная сумма в RUB. Так можно синхронизировать ЮKassa с пакетами Lava Top.
 
 Пример:
 
 ```env
-ROX_PACKAGES_JSON={"lava-starter":{"amount":"108.70","credits":"100","currency":"RUB"},"lava-pro":{"amount":"1086.96","credits":"1000","currency":"RUB"}}
+ROX_PACKAGES_JSON={"lava-starter":{"amount":"108.70","credits":"100","bonus_credits":"0","currency":"RUB"},"lava-pro":{"amount":"1086.96","credits":"1000","bonus_credits":"150","currency":"RUB"}}
 ```
 
 ## Webhook
