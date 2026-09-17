@@ -22,6 +22,14 @@ _PROVIDER_NAMES = ("kie", "nexus")
 class GenerationWorkerService:
     @staticmethod
     def _provider_name(generation: Generation) -> str:
+        stored = str(generation.provider or "").strip().lower()
+        # Once an upstream task id exists, the persisted provider is authoritative.
+        # This preserves pre-migration KIE tasks for Nano Banana Pro/2 instead of
+        # trying to poll their ids through Nexus after deploy.
+        if generation.external_id and stored in _PROVIDER_NAMES:
+            return stored
+        if stored == "nexus":
+            return "nexus"
         return NexusGenerationProviderService.provider_name(generation)
 
     @classmethod
@@ -76,7 +84,48 @@ class GenerationWorkerService:
                     )
                 return True
 
+            provider = cls._provider_name(generation)
             if generation.external_id and generation.status in {"generating", "submitting"}:
+                if provider == "nexus":
+                    try:
+                        refreshed = await NexusGenerationProviderService.sync_task(
+                            session,
+                            task_id=str(generation.external_id),
+                            generation_id=generation.id,
+                        )
+                    except Exception as exc:
+                        logger.exception("Nexus polling failed for %s", generation.id)
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error=f"Nexus polling failed: {exc}",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                        return True
+
+                    # sync_task owns terminal outbox transitions and Pinterest
+                    # quality-stage requeueing. Only a still-running image task
+                    # needs another short durable poll.
+                    if refreshed is None:
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error="Nexus task could not be reconciled",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                    elif PinterestRepeatQualityGate.is_pending(refreshed):
+                        return True
+                    elif refreshed.status in {"succeeded", "failed"}:
+                        return True
+                    else:
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error="Nexus image task is still processing",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                    return True
+
                 if generation.action_type == "pinterest_repeat":
                     await GenerationOutboxService.complete_submission_stage(
                         session,
@@ -87,7 +136,6 @@ class GenerationWorkerService:
                     await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
-            provider = cls._provider_name(generation)
             if generation.status == "submitting" and generation.external_id is None:
                 age = utcnow() - generation.updated_at
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
@@ -165,7 +213,14 @@ class GenerationWorkerService:
                     result.error or "Generation failed",
                 )
             elif result.external_id or result.status in {"generating", "succeeded"}:
-                if result.action_type == "pinterest_repeat":
+                if provider == "nexus" and result.status != "succeeded":
+                    await GenerationOutboxService.release(
+                        session,
+                        claim.outbox_id,
+                        error="Nexus image task submitted; polling result",
+                        delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                    )
+                elif result.action_type == "pinterest_repeat":
                     await GenerationOutboxService.complete_submission_stage(
                         session,
                         claim.outbox_id,
