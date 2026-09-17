@@ -115,30 +115,39 @@ def test_wan_standard_and_pro_apply_documented_image_limits() -> None:
         )
 
 
-def test_nano_banana_2_limits_references_and_enums() -> None:
+def test_migrated_nano_models_use_nexus_reference_and_ratio_limits() -> None:
+    for model in ("nano-banana-pro", "nano-banana-2"):
+        payload = normalize_kie_image_input(
+            model,
+            {
+                "prompt": "x",
+                "image_input": [f"https://e/{i}.png" for i in range(4)],
+                "aspect_ratio": "21:9",
+                "resolution": "4K",
+                "output_format": "png",
+            },
+        )
+        assert len(payload["image_input"]) == 4
+
+        with pytest.raises(KieImageContractError, match="at most 4 images"):
+            normalize_kie_image_input(
+                model,
+                {"prompt": "x", "image_input": [f"https://e/{i}.png" for i in range(5)]},
+            )
+
+        with pytest.raises(KieImageContractError, match="aspect_ratio"):
+            normalize_kie_image_input(
+                model,
+                {"prompt": "x", "aspect_ratio": "1:8"},
+            )
+
+
+def test_nano_banana_2_lite_keeps_its_kie_ratio_contract() -> None:
     payload = normalize_kie_image_input(
-        "nano-banana-2",
-        {
-            "prompt": "x",
-            "image_input": [f"https://e/{i}.png" for i in range(14)],
-            "aspect_ratio": "1:8",
-            "resolution": "4K",
-            "output_format": "png",
-        },
+        "nano-banana-2-lite",
+        {"prompt": "x", "aspect_ratio": "1:8"},
     )
-    assert len(payload["image_input"]) == 14
-
-    with pytest.raises(KieImageContractError):
-        normalize_kie_image_input(
-            "nano-banana-2",
-            {"prompt": "x", "image_input": [f"https://e/{i}.png" for i in range(15)]},
-        )
-
-    with pytest.raises(KieImageContractError):
-        normalize_kie_image_input(
-            "nano-banana-2",
-            {"prompt": "x", "aspect_ratio": "7:5"},
-        )
+    assert payload["aspect_ratio"] == "1:8"
 
 
 def test_grok_image_contracts_are_explicit() -> None:
