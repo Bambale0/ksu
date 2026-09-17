@@ -111,7 +111,11 @@ class NexusGenerationProviderService:
             return
 
         now = datetime.now(timezone.utc)
-        generation.status = "retry" if disposition == "retryable" else "submitting"
+        # Nexus caches successful /generate responses by Idempotency-Key for 24h.
+        # Requeue uncertain outcomes so the durable worker safely replays the exact
+        # same logical request and recovers the original task_id instead of waiting
+        # for a callback that image tasks do not require.
+        generation.status = "retry"
         generation.error = f"Nexus submission {disposition}: {exc}"[:4000]
         generation.updated_at = now
         generation.provider = "nexus"
