@@ -189,7 +189,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
     monkeypatch.setattr(
         settings,
         "card_packages_json",
-        '{"p300":{"credits":"300","prices":{"RUB":"326.10"}}}',
+        '{"p300":{"credits":"300","bonus_credits":"30","prices":{"RUB":"326.10"}}}',
     )
     monkeypatch.setattr(settings, "card_offer_id", "offer-referral-e2e")
     monkeypatch.setattr(settings, "card_api_key", "e2e-card-key")
@@ -234,6 +234,9 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
             uses_count=0,
             is_active=True,
         )
+        session.add(promo)
+        # promo_id must reference the persisted promo row, so flush first.
+        await session.flush()
         session.add_all(
             [
                 promo,
@@ -242,10 +245,13 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
                     inviter_user_id=second_line.id,
                     source="link",
                 ),
+                # Partner promo payments require the buyer to be attached via
+                # the partner's promo code, not a plain referral link.
                 ReferralRelation(
                     referred_user_id=buyer.id,
                     inviter_user_id=first_line.id,
-                    source="link",
+                    source="promo",
+                    promo_id=promo.id,
                 ),
             ]
         )
@@ -270,7 +276,8 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         first_wallet = await session.get(Wallet, first_line.id)
         relation = await session.get(ReferralRelation, buyer.id)
         assert buyer_wallet is not None
-        assert Decimal(buyer_wallet.balance) == Decimal("355.00")
+        # 300 base credits + the promo-gated package bonus of 30 ROX.
+        assert Decimal(buyer_wallet.balance) == Decimal("330.00")
         assert first_wallet is not None
         assert Decimal(first_wallet.balance) == Decimal("10.00")
         assert relation is not None
@@ -323,7 +330,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         )
         await session.refresh(buyer_wallet)
         await session.refresh(first_wallet)
-        assert Decimal(buyer_wallet.balance) == Decimal("190.00")
+        assert Decimal(buyer_wallet.balance) == Decimal("165.00")
         assert Decimal(first_wallet.balance) == Decimal("10.00")
         assert (await PartnerService.accounting(session, first_line.id))["total_earned"] == Decimal(
             "48.91"

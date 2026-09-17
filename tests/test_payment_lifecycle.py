@@ -25,7 +25,7 @@ def test_payment_packages_allow_explicit_provider_price_over_internal_rate(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"lava-starter":{"credits":"100","amount":"108.70","currency":"RUB"}}',
+        '{"lava-starter":{"credits":"100","amount":"108.70","bonus_credits":"0","currency":"RUB"}}',
     )
 
     package = PaymentService.package("lava-starter")
@@ -42,7 +42,7 @@ async def test_payment_creation_idempotency_prevents_duplicate_provider_invoice(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"starter":{"credits":"30","currency":"RUB"}}',
+        '{"starter":{"credits":"30","amount":"30","bonus_credits":"0","currency":"RUB"}}',
     )
     calls: list[str] = []
 
@@ -102,7 +102,8 @@ async def test_payment_idempotency_key_cannot_be_reused_for_another_intent(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"a":{"credits":"10","currency":"RUB"},"b":{"credits":"20","currency":"RUB"}}',
+        '{"a":{"credits":"10","amount":"10","bonus_credits":"0","currency":"RUB"},'
+        '"b":{"credits":"20","amount":"20","bonus_credits":"0","currency":"RUB"}}',
     )
 
     async def fake_create_external(

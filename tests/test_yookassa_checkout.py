@@ -19,7 +19,7 @@ async def test_yookassa_catalog_exposes_configured_rub_rox_packages(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"starter":{"amount":"300","credits":"300","currency":"RUB"}}',
+        '{"starter":{"amount":"300","credits":"300","bonus_credits":"30","currency":"RUB"}}',
     )
     monkeypatch.setattr(settings, "yookassa_shop_id", "shop-id")
     monkeypatch.setattr(settings, "yookassa_secret_key", "secret-key")
@@ -55,7 +55,7 @@ async def test_yookassa_catalog_hides_incomplete_checkout_configuration(
     monkeypatch.setattr(
         settings,
         "rox_packages_json",
-        '{"starter":{"amount":"300","credits":"300","currency":"RUB"}}',
+        '{"starter":{"amount":"300","credits":"300","bonus_credits":"30","currency":"RUB"}}',
     )
     monkeypatch.setattr(settings, "yookassa_shop_id", "shop-id")
     monkeypatch.setattr(settings, "yookassa_secret_key", "secret-key")
