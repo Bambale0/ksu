@@ -15,6 +15,7 @@ from app.services.generation_reliability import GenerationOutboxService, utcnow
 from app.services.pinterest_quality_gate import PinterestRepeatQualityGate
 
 logger = logging.getLogger(__name__)
+_PROVIDER_NAMES = ("kie", "nexus")
 
 
 class GenerationWorkerService:
@@ -83,15 +84,18 @@ class GenerationWorkerService:
 
             if generation.status == "submitting" and generation.external_id is None:
                 age = utcnow() - generation.updated_at
+                provider = str(generation.provider or GenerationProviderService.target_provider(generation))
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
-                    message = "Kie submission outcome remained unknown after worker interruption"
+                    message = (
+                        f"{provider.capitalize()} submission outcome remained unknown after worker interruption"
+                    )
                     await GenerationProviderService.fail_and_refund(session, generation.id, message)
                     await GenerationOutboxService.fail(session, claim.outbox_id, message)
                 else:
                     await GenerationOutboxService.release(
                         session,
                         claim.outbox_id,
-                        error="Waiting for callback to recover uncertain Kie submission",
+                        error=f"Waiting to recover uncertain {provider} submission",
                         delay_seconds=min(30, settings.generation_worker_poll_seconds * 3),
                     )
                 return True
@@ -100,8 +104,9 @@ class GenerationWorkerService:
                 await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
+            provider = GenerationProviderService.target_provider(generation)
             try:
-                await AbuseProtectionService.provider_submission_gate(redis, "kie")
+                await AbuseProtectionService.provider_submission_gate(redis, provider)
             except ResourcePolicyError as exc:
                 # Resource throttling is not a generation failure and must not refund.
                 # Keep the durable outbox pending until the provider guard allows work.
@@ -114,10 +119,10 @@ class GenerationWorkerService:
                 return True
 
             try:
-                result = await GenerationProviderService.submit_kie(session, generation.id)
+                result = await GenerationProviderService.submit(session, generation.id)
             except Exception as exc:
                 if AbuseProtectionService.availability_failure(exc):
-                    await AbuseProtectionService.record_provider_failure(redis, "kie")
+                    await AbuseProtectionService.record_provider_failure(redis, provider)
                 logger.exception("Generation submission failed: %s", generation.id)
                 refreshed = await session.get(Generation, generation.id)
                 if refreshed is None:
@@ -133,12 +138,12 @@ class GenerationWorkerService:
                 elif refreshed.status == "failed":
                     await GenerationOutboxService.fail(session, claim.outbox_id, str(exc))
                 elif refreshed.status == "submitting" and refreshed.external_id is None:
-                    # Do not resubmit an ambiguous createTask outcome: the original
+                    # Do not resubmit an ambiguous create outcome: the original
                     # request may already have created a billable provider task.
                     await GenerationOutboxService.release(
                         session,
                         claim.outbox_id,
-                        error="Waiting for callback to recover uncertain Kie submission",
+                        error=f"Waiting to recover uncertain {provider} submission",
                         delay_seconds=min(30, settings.generation_worker_poll_seconds * 3),
                     )
                 elif claim.attempts >= settings.generation_submission_max_attempts:
@@ -153,7 +158,7 @@ class GenerationWorkerService:
                     )
                 return True
 
-            await AbuseProtectionService.record_provider_success(redis, "kie")
+            await AbuseProtectionService.record_provider_success(redis, provider)
             if result.status == "failed":
                 await GenerationOutboxService.fail(
                     session,
@@ -179,7 +184,7 @@ class GenerationWorkerService:
 
     @classmethod
     async def recovery_once(cls) -> None:
-        """Repair queue gaps and reconcile stale/expired Kie tasks."""
+        """Repair queue gaps and reconcile stale/expired provider tasks."""
 
         async with SessionFactory() as session:
             repaired = await GenerationOutboxService.ensure_missing(
@@ -197,12 +202,12 @@ class GenerationWorkerService:
     async def _expire_unknown_submissions(cls) -> None:
         cutoff = utcnow() - timedelta(seconds=settings.generation_submission_unknown_timeout_seconds)
         async with SessionFactory() as session:
-            ids = list(
+            rows = list(
                 (
-                    await session.scalars(
-                        select(Generation.id)
+                    await session.execute(
+                        select(Generation.id, Generation.provider)
                         .where(
-                            Generation.provider == "kie",
+                            Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status == "submitting",
                             Generation.external_id.is_(None),
                             Generation.updated_at < cutoff,
@@ -213,18 +218,19 @@ class GenerationWorkerService:
                 ).all()
             )
 
-        for generation_id in ids:
+        for generation_id, expected_provider in rows:
             async with SessionFactory() as session:
                 generation = await session.get(Generation, generation_id)
                 if (
                     generation is None
-                    or generation.provider != "kie"
+                    or generation.provider != expected_provider
                     or generation.status != "submitting"
                     or generation.external_id is not None
                     or generation.updated_at >= cutoff
                 ):
                     continue
-                message = "Kie submission outcome timed out before task id was persisted"
+                provider = str(generation.provider or "provider").capitalize()
+                message = f"{provider} submission outcome timed out before task id was persisted"
                 await GenerationProviderService.fail_and_refund(session, generation.id, message)
 
     @staticmethod
@@ -256,12 +262,12 @@ class GenerationWorkerService:
 
         cutoff = utcnow() - timedelta(seconds=hard_timeout)
         async with SessionFactory() as session:
-            ids = list(
+            rows = list(
                 (
-                    await session.scalars(
-                        select(Generation.id)
+                    await session.execute(
+                        select(Generation.id, Generation.provider)
                         .where(
-                            Generation.provider == "kie",
+                            Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status.in_(("generating", "submitting")),
                             Generation.created_at < cutoff,
                         )
@@ -271,19 +277,20 @@ class GenerationWorkerService:
                 ).all()
             )
 
-        for generation_id in ids:
+        for generation_id, expected_provider in rows:
             async with SessionFactory() as session:
                 generation = await session.get(Generation, generation_id)
                 if (
                     generation is None
-                    or generation.provider != "kie"
+                    or generation.provider != expected_provider
                     or generation.status not in {"generating", "submitting"}
                 ):
                     continue
                 if cls._provider_started_at(generation) >= cutoff:
                     continue
+                provider = str(generation.provider or "provider").capitalize()
                 message = (
-                    "Kie generation exceeded hard lifetime "
+                    f"{provider} generation exceeded hard lifetime "
                     f"of {settings.generation_hard_timeout_seconds} seconds"
                 )
                 await GenerationProviderService.fail_and_refund(session, generation.id, message)
@@ -295,9 +302,9 @@ class GenerationWorkerService:
             tasks = list(
                 (
                     await session.execute(
-                        select(Generation.id, Generation.external_id)
+                        select(Generation.id, Generation.external_id, Generation.provider)
                         .where(
-                            Generation.provider == "kie",
+                            Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status == "generating",
                             Generation.external_id.is_not(None),
                             Generation.updated_at < cutoff,
@@ -308,15 +315,22 @@ class GenerationWorkerService:
                 ).all()
             )
 
-        for generation_id, external_id in tasks:
+        for generation_id, external_id, provider in tasks:
             if not external_id:
                 continue
             async with SessionFactory() as session:
                 try:
-                    await GenerationProviderService.sync_kie_task(
-                        session,
-                        task_id=str(external_id),
-                        generation_id=generation_id,
-                    )
+                    if provider == "nexus":
+                        await GenerationProviderService.sync_nexus_task(
+                            session,
+                            task_id=str(external_id),
+                            generation_id=generation_id,
+                        )
+                    else:
+                        await GenerationProviderService.sync_kie_task(
+                            session,
+                            task_id=str(external_id),
+                            generation_id=generation_id,
+                        )
                 except Exception:
-                    logger.exception("Kie reconciliation failed for %s", generation_id)
+                    logger.exception("%s reconciliation failed for %s", provider, generation_id)
