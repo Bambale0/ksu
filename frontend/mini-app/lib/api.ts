@@ -1,5 +1,5 @@
 import { initTelegram, telegramHeaders } from "./telegram";
-import { fetchWithTimeout, userSafeHttpError } from "./http-errors";
+import { fetchWithTimeout, uploadTimeoutForFile, userSafeHttpError } from "./http-errors";
 import type {
   ActivePromo,
   FeedCard,
@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<T> {
   const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetchWithTimeout(path, {
     ...init,
@@ -37,7 +37,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...telegramHeaders(Boolean(init.body) && !isForm),
       ...(init.headers || {}),
     },
-  });
+  }, timeoutMs);
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw userSafeHttpError(response.status, payload);
@@ -188,7 +188,7 @@ export const api = {
       mime_type?: string;
       size?: number;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
-    }>("/api/v1/uploads/kie", { method: "POST", body: form });
+    }>("/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
