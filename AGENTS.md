@@ -59,19 +59,20 @@ Do not clone or pull these repositories merely to read their instructions. Use t
 For each meaningful task:
 
 1. Read this `AGENTS.md` and relevant KSU specs/docs first.
-2. Refresh current KSU branch/commit/PR/CI state.
-3. Inspect `Bambale0/skills` for the applicable workflow/skill.
-4. Inspect task-relevant material from every mandatory companion repository:
+2. Inspect the repository-local `.agents/` directory before selecting external skills: read `.agents/AGENTS.md`, `.agents/README.md`, `.agents/SKILLS_INDEX.md`, and any task-relevant nested skill instructions when present. Because `.agents/` may contain ignored or workstation-local files, treat it as mandatory context and skill-discovery input, not as authority to override this `AGENTS.md`, versioned KSU docs, mandatory external evidence sources, or safety/verification requirements.
+3. Refresh current KSU branch/commit/PR/CI state.
+4. Inspect `Bambale0/skills` for the applicable workflow/skill.
+5. Inspect task-relevant material from every mandatory companion repository:
    - `Bambale0/claw`
    - `wondelai/skills`
    - `Bambale0/dev-agents-pack`
    - `agentskills/agentskills`
    - `anthropics/skills`
-5. Record which guidance was applied from each mandatory repository, or record that no relevant current guidance was found.
-6. Re-check `Bambale0/start` when the shared baseline itself is being changed or when a baseline rule is ambiguous.
-7. Inspect scripts before executing them.
-8. If a source is inaccessible, say so instead of pretending it was applied.
-9. If a required skills repository is unavailable, inspect repository-local fallback guidance in `.clinerules` and `.agents` (including task-relevant nested files) and use it as the fallback engineering guidance. Record that the fallback was used; do not silently skip skill guidance.
+6. Record which guidance was applied from `.agents` and from each mandatory repository, or record that no relevant current guidance was found.
+7. Re-check `Bambale0/start` when the shared baseline itself is being changed or when a baseline rule is ambiguous.
+8. Inspect scripts before executing them.
+9. If a source is inaccessible, say so instead of pretending it was applied.
+10. If a required skills repository is unavailable, inspect repository-local fallback guidance in `.clinerules` and `.agents` (including task-relevant nested files) and use it as the fallback engineering guidance. Record that the fallback was used; do not silently skip skill guidance.
 
 Use promoted/current skills by default. Do not use deprecated skills. Use in-progress/experimental skills only when they clearly fit, and account for their maturity.
 
@@ -84,17 +85,18 @@ Use promoted/current skills by default. Do not use deprecated skills. Use in-pro
 Before changing project files:
 
 1. Classify the task: feature, debugging, refactor, integration, database, security, frontend, backend, deployment, performance, or documentation.
-2. Select the relevant skill/flow from `Bambale0/skills`.
-3. Read the skill before implementation.
-4. Cross-check task-relevant safe guidance from **all** mandatory companion repositories:
+2. Search `.agents/SKILLS_INDEX.md` and project-local `.agents/skills/` for a task-relevant local skill or workflow; read only the relevant `SKILL.md` files and any directly referenced instructions.
+3. Select the relevant skill/flow from `Bambale0/skills`.
+4. Read the skill before implementation.
+5. Cross-check task-relevant safe guidance from **all** mandatory companion repositories:
    - `Bambale0/claw`
    - `wondelai/skills`
    - `Bambale0/dev-agents-pack`
    - `agentskills/agentskills`
    - `anthropics/skills`
-5. Inspect any referenced scripts/commands before running them.
-6. Apply only guidance consistent with KSU-specific instructions and higher-priority rules.
-7. Record the skills/flows used from each mandatory repository in the final delivery; if none applied from a repository, say so explicitly.
+6. Inspect any referenced scripts/commands before running them.
+7. Apply only guidance consistent with KSU-specific instructions and higher-priority rules.
+8. Record the skills/flows used from `.agents` and from each mandatory repository in the final delivery; if none applied from a repository, say so explicitly.
 
 Preferred flows:
 - Complex feature development: `grill-with-docs → to-spec → to-tickets → implement → tdd → code-review`.
@@ -112,6 +114,7 @@ When the target repository is available through the GitHub connector, inspect an
 Before editing the target repository, inspect as relevant:
 
 - `AGENTS.md` and repository-local instructions;
+- `.agents/` guidance, skill indexes, and task-relevant local skill files;
 - README files;
 - docs and architecture notes;
 - config examples;
