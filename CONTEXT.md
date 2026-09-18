@@ -1,5 +1,15 @@
 # Domain Context
 
+## Active Feature Execution - Preview upload deadline
+
+- Baseline: `main@81370605494539d0c614c10f4ee2fbf0c9193e9a`; exact baseline CI and production deploy succeeded. Existing unrelated local ledger update is preserved.
+- Task: fix the screenshot's timeout while uploading a trend preview. Reuse the authenticated `/api/v1/uploads/kie` endpoint, reference storage/deduplication and existing safe network errors.
+- Evidence: production nginx records repeated upload HTTP 499 responses on 2026-09-18; completed API upload durations sampled at 69-709 ms. The client applies its 20-second JSON deadline to the entire multipart transfer; server media probing alone permits 20 seconds. Browser regression with a pending 25-second upload reproduces the exact Russian timeout alert on baseline. The screenshot's individual request cannot be correlated without its timestamp/request ID.
+- Plan: add failing browser regression, give only `api.upload` a finite 120-second transport budget, verify slow success and bounded failure/recovery, typecheck/build, review and require exact-head CI. No schema, business configuration, admin permissions or provider changes. This timeout is a client transport safeguard, not mutable business policy.
+- Guidance: Bambale0/skills `diagnosing-bugs` (reproduce before patch); Bambale0/claw README (architecture and focused verification); Bambale0/dev-agents-pack `12-debugger` (confirmed cause and narrow fix); wondelai/skills `release-it` (bounded integration calls); anthropics/skills `webapp-testing` (browser reproduction). agentskills/agentskills README is format guidance only, with no applicable upload-debugging flow. Start baseline is unambiguous and unchanged.
+- Verification: frontend E2E=slow upload success and eventual timeout on Chromium/WebKit; API contract=unchanged multipart/auth and response; unit/domain, DB, authorization, migrations, provider, business configuration=N/A (no changes); retry/deduplication=existing server hash contract unchanged; smoke=build; observability=existing sanitized nginx/API logs; performance=transfer deadline only; rollback=revert frontend change. System-wide Release It scoring is outside this narrow incident scope.
+- Status: red reproduced via `npx playwright test --project=chromium --workers=1 -g 'trend preview upload survives'`: 1 failed with the exact timeout alert. After the fix, 7 focused Chromium tests passed (slow upload, bounded failure/recovery and five viewport upload cases); production export build and `npx tsc --noEmit` passed. WebKit downloaded but cannot launch locally because OS libraries are absent; targeted WebKit coverage is added to the existing CI workflow. Exact-head CI remains pending. Review confirms only uploads opt into the longer deadline; JSON calls keep 20 seconds, authentication/content-type handling and backend deduplication are unchanged.
+
 ## Curated Trend
 
 An admin-owned reusable generation template stored as an `AdminTrend`. Ordinary users can run a Curated Trend but cannot edit its hidden generation recipe.

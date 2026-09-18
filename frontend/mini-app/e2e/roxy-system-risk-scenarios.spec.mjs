@@ -400,6 +400,46 @@ const cases = [
   } },
 ];
 
+test('trend preview upload survives a transfer longer than the JSON deadline', async ({ page }) => {
+  await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
+  const dialog = await openTrendAdmin(page);
+  await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
+  await dialog.getByRole('button', { name: /Новый тренд/ }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await page.clock.install();
+  let uploadRoute;
+  await page.route('**/api/v1/uploads/kie', (route) => { uploadRoute = route; });
+  await form.locator('input[type="file"]').setInputFiles({ name: 'preview.png', mimeType: 'image/png', buffer: Buffer.from('preview') });
+  await expect.poll(() => Boolean(uploadRoute)).toBe(true);
+  await page.clock.runFor(25_000);
+  await expect(form.getByRole('alert')).toHaveCount(0);
+  await expect(form.getByRole('button', { name: 'Опубликовать тренд' })).toBeDisabled();
+  await json(uploadRoute, { url: savedImage }, 201);
+  await expect(form.getByLabel('URL превью')).toHaveValue(savedImage);
+  await expect(form.getByAltText('Превью тренда')).toBeVisible();
+});
+
+test('trend preview upload remains bounded and allows recovery after timeout', async ({ page }) => {
+  await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
+  const dialog = await openTrendAdmin(page);
+  await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
+  await dialog.getByRole('button', { name: /Новый тренд/ }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await page.clock.install();
+  let requested = false;
+  await page.route('**/api/v1/uploads/kie', () => { requested = true; });
+  const file = form.locator('input[type="file"]');
+  await file.setInputFiles({ name: 'preview.png', mimeType: 'image/png', buffer: Buffer.from('preview') });
+  await expect.poll(() => requested).toBe(true);
+  await page.clock.runFor(120_001);
+  await expect(form.getByRole('alert')).toHaveText('Сервер отвечает слишком долго. Попробуйте ещё раз.');
+  await expect(file).toBeEnabled();
+  await page.route('**/api/v1/uploads/kie', (route) => json(route, { url: savedImage }, 201));
+  await file.setInputFiles({ name: 'retry.png', mimeType: 'image/png', buffer: Buffer.from('retry') });
+  await expect(form.getByLabel('URL превью')).toHaveValue(savedImage);
+  await expect(form.getByRole('alert')).toHaveCount(0);
+});
+
 const scenarios = viewports.flatMap((viewport) => cases.map((scenario) => ({ viewport, scenario })));
 if (cases.length !== 30 || viewports.length !== 5 || scenarios.length !== 150) {
   throw new Error(`ROXY system-risk matrix must be 30 x 5 = 150, got ${cases.length} x ${viewports.length} = ${scenarios.length}`);

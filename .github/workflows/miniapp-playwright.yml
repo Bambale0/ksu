@@ -54,6 +54,9 @@ jobs:
           e2e/trend-category-admin.spec.mjs
           e2e/trend-back-navigation.spec.mjs
           --project=webkit-mobile
+      - name: Verify upload deadlines in iPhone WebKit
+        working-directory: frontend/mini-app
+        run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --project=webkit-mobile --grep 'trend preview upload'
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

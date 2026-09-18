@@ -48,6 +48,8 @@ export function userSafeNetworkError(reason: unknown): Error {
 }
 
 export const CLIENT_REQUEST_TIMEOUT_MS = 20_000;
+// Multipart requests include file transfer and server-side media probing.
+export const CLIENT_UPLOAD_TIMEOUT_MS = 120_000;
 
 async function withRequestDeadline<T>(
   init: RequestInit,
