@@ -1,5 +1,5 @@
 import { initTelegram, telegramHeaders } from "./telegram";
-import { CLIENT_UPLOAD_TIMEOUT_MS, fetchWithTimeout, userSafeHttpError } from "./http-errors";
+import { fetchWithTimeout, uploadTimeoutForFile, userSafeHttpError } from "./http-errors";
 import type {
   ActivePromo,
   FeedCard,
@@ -188,7 +188,7 @@ export const api = {
       mime_type?: string;
       size?: number;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
-    }>("/api/v1/uploads/kie", { method: "POST", body: form }, CLIENT_UPLOAD_TIMEOUT_MS);
+    }>("/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),

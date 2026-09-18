@@ -48,8 +48,14 @@ export function userSafeNetworkError(reason: unknown): Error {
 }
 
 export const CLIENT_REQUEST_TIMEOUT_MS = 20_000;
-// Multipart requests include file transfer and server-side media probing.
-export const CLIENT_UPLOAD_TIMEOUT_MS = 120_000;
+export const CLIENT_UPLOAD_MIN_TIMEOUT_MS = 120_000;
+const CLIENT_UPLOAD_PROBE_TIMEOUT_MS = 30_000;
+const CLIENT_UPLOAD_MIN_BYTES_PER_SECOND = 512 * 1024;
+
+export function uploadTimeoutForFile(file: Pick<File, "size">): number {
+  const transferMs = Math.ceil((Math.max(0, file.size) / CLIENT_UPLOAD_MIN_BYTES_PER_SECOND) * 1000);
+  return Math.max(CLIENT_UPLOAD_MIN_TIMEOUT_MS, transferMs + CLIENT_UPLOAD_PROBE_TIMEOUT_MS);
+}
 
 async function withRequestDeadline<T>(
   init: RequestInit,
