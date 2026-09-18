@@ -76,6 +76,7 @@ _USER = (
 
 class KiePinterestAnalysisClient:
     MODEL = "gemini-2.5-pro"
+    FALLBACK_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 
     def __init__(
         self,
@@ -83,9 +84,11 @@ class KiePinterestAnalysisClient:
         base_url: str = "https://api.kie.ai",
         *,
         client: httpx.AsyncClient | None = None,
+        models: tuple[str, ...] | None = None,
     ) -> None:
         if not api_key and client is None:
             raise PinterestSceneAnalysisProviderError("KIE_API_KEY is not configured")
+        self._models = models or self.FALLBACK_MODELS
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
             base_url=base_url.rstrip("/"),
@@ -98,8 +101,18 @@ class KiePinterestAnalysisClient:
             await self._client.aclose()
 
     async def analyze(self, *, image_url: str) -> PinterestSceneAnalysisProviderResult:
+        last_error: PinterestSceneAnalysisProviderError | None = None
+        for model in self._models:
+            try:
+                return await self._analyze_model(model=model, image_url=image_url)
+            except PinterestSceneAnalysisProviderError as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
+
+    async def _analyze_model(self, *, model: str, image_url: str) -> PinterestSceneAnalysisProviderResult:
         body = {
-            "model": self.MODEL,
+            "model": model,
             "stream": False,
             "messages": [
                 {"role": "system", "content": _SYSTEM},
@@ -114,18 +127,48 @@ class KiePinterestAnalysisClient:
             "response_format": _PINTEREST_REPEAT_ANALYSIS_SCHEMA,
         }
         try:
-            response = await self._client.post("/gemini-2.5-pro/v1/chat/completions", json=body)
+            response = await self._client.post(f"/{model}/v1/chat/completions", json=body)
             response.raise_for_status()
             data = response.json()
-            message = (data.get("choices") or [{}])[0].get("message") or {}
+            if not isinstance(data, dict):
+                raise ValueError("Provider returned a non-object response")
+            provider_error = _provider_error_message(data)
+            if provider_error:
+                raise ValueError(provider_error)
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                raise ValueError("Provider returned no choices")
+            first_choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = first_choice.get("message") or {}
+            if not isinstance(message, dict):
+                raise ValueError("Provider returned no message")
             parsed = message.get("parsed")
             content = parsed if isinstance(parsed, dict) else message.get("content")
             payload = _parse_json_object(content)
-            return PinterestSceneAnalysisProviderResult(model=self.MODEL, payload=payload)
+            return PinterestSceneAnalysisProviderResult(model=model, payload=payload)
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise PinterestSceneAnalysisProviderError(
-                f"Pinterest scene analysis provider failed: {exc}"
+                f"{model} Pinterest scene analysis provider failed: {exc}"
             ) from exc
+
+
+def _provider_error_message(data: dict[str, Any]) -> str | None:
+    error = data.get("error")
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("msg") or error.get("detail")
+        return str(message or error).strip() or "Provider returned an error"
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    choices = data.get("choices")
+    if choices:
+        return None
+    for key in ("msg", "message", "detail"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            code = data.get("code")
+            if code not in (None, 0, "0", 200, "200"):
+                return value.strip()
+    return None
 
 
 def _parse_json_object(value: Any) -> dict[str, Any]:

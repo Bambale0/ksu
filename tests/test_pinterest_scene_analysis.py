@@ -165,6 +165,62 @@ async def test_kie_scene_analyzer_requests_structured_pose_expression_and_gaze()
     assert "gaze" in properties
 
 
+@pytest.mark.asyncio
+async def test_kie_scene_analyzer_falls_back_when_primary_returns_error_envelope() -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        model = str(body["model"])
+        calls.append((request.url.path, model))
+        if model == "gemini-2.5-pro":
+            return httpx.Response(
+                200,
+                json={"code": 500, "msg": "upstream model failed"},
+                request=request,
+            )
+        analysis = sample_analysis().model_dump()
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(analysis)}}]},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://api.kie.test",
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        client = KiePinterestAnalysisClient("test-key", client=http_client)
+        result = await client.analyze(image_url="https://cdn.example.com/scene.jpg")
+        await client.aclose()
+
+    assert result.model == "gemini-2.5-flash"
+    assert calls == [
+        ("/gemini-2.5-pro/v1/chat/completions", "gemini-2.5-pro"),
+        ("/gemini-2.5-flash/v1/chat/completions", "gemini-2.5-flash"),
+    ]
+    assert result.payload["scene"] == sample_analysis().scene
+
+
+@pytest.mark.asyncio
+async def test_kie_scene_analyzer_reports_http_200_provider_error_body() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"error": {"message": "model overloaded"}},
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        base_url="https://api.kie.test",
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        client = KiePinterestAnalysisClient("test-key", client=http_client, models=("gemini-2.5-pro",))
+        with pytest.raises(PinterestSceneAnalysisProviderError, match="model overloaded"):
+            await client.analyze(image_url="https://cdn.example.com/scene.jpg")
+        await client.aclose()
+
+
 def test_pinterest_ai_analysis_is_wired_to_api_and_reference_ui() -> None:
     endpoint = (ROOT / "app/api/v1/pinterest_repeat.py").read_text(encoding="utf-8")
     api = (ROOT / "frontend/mini-app/lib/pinterest-repeat-api.ts").read_text(encoding="utf-8")
