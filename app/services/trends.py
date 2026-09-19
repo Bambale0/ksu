@@ -15,6 +15,7 @@ from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_user_fields import (
     TrendUserFieldsError,
@@ -244,6 +245,11 @@ class TrendService:
             "prompt_hidden": True,
             "prompt_actions_allowed": False,
             "created_at": item.created_at.isoformat(),
+            **(
+                {"quality_options": await TrendService._quality_options(session, recipe, refs)}
+                if TrendService._resolution_options(recipe)
+                else {}
+            ),
         }
 
     @staticmethod
@@ -255,6 +261,7 @@ class TrendService:
         trend_id: uuid.UUID,
         reference_urls: list[str],
         user_values: dict[str, str] | None = None,
+        resolution: str | None = None,
     ) -> tuple[Generation, dict[str, Any]]:
         item = await session.get(AdminTrend, trend_id)
         if item is None or not item.is_active:
@@ -267,7 +274,7 @@ class TrendService:
             )
         if recipe["input_mode"] == "none" and refs:
             raise TrendRecipeError("This trend does not accept reference images")
-        parameters = TrendService._parameters_with_references(recipe, refs)
+        parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
         try:
             rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
         except TrendUserFieldsError as exc:
@@ -300,8 +307,14 @@ class TrendService:
         }
 
     @staticmethod
-    def _parameters_with_references(recipe: dict[str, Any], reference_urls: list[str]) -> dict[str, Any]:
+    def _parameters_with_references(
+        recipe: dict[str, Any],
+        reference_urls: list[str],
+        *,
+        resolution: str | None = None,
+    ) -> dict[str, Any]:
         parameters = dict(recipe.get("parameters") or {})
+        TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
         spec = ModelCatalog.get(str(recipe["model_id"]))
         for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):
             parameters.pop(field, None)
@@ -314,6 +327,79 @@ class TrendService:
             raise TrendRecipeError("Selected model requires exactly one reference image")
         parameters[field] = reference_urls if field in _REFERENCE_LIST_FIELDS else reference_urls[0]
         return parameters
+
+    @staticmethod
+    def _resolution_options(recipe: dict[str, Any]) -> list[str]:
+        if recipe.get("media_type") != "video":
+            return []
+        model_id = str(recipe["model_id"])
+        spec = ModelCatalog.get(model_id)
+        if "resolution" not in set(spec.known_fields):
+            return []
+        suggestions = MODEL_FIELD_SUGGESTIONS.get(model_id, {}).get("resolution") or []
+        options: list[str] = []
+        for item in suggestions:
+            value = str(item).strip()
+            if value and value not in options:
+                options.append(value)
+        return options
+
+    @staticmethod
+    def _default_resolution(recipe: dict[str, Any]) -> str | None:
+        parameters = recipe.get("parameters") if isinstance(recipe.get("parameters"), dict) else {}
+        current = str(parameters.get("resolution") or "").strip()
+        if current:
+            return current
+        default = MODEL_DEFAULTS.get(str(recipe["model_id"]), {}).get("resolution")
+        return str(default).strip() if default else None
+
+    @staticmethod
+    def _apply_resolution_override(
+        recipe: dict[str, Any],
+        parameters: dict[str, Any],
+        *,
+        resolution: str | None,
+    ) -> None:
+        if resolution in (None, ""):
+            return
+        selected = str(resolution).strip()
+        options = TrendService._resolution_options(recipe)
+        if not options:
+            raise TrendRecipeError("This trend does not support video quality selection")
+        if selected not in options:
+            raise TrendRecipeError("Unsupported video quality")
+        parameters["resolution"] = selected
+
+    @staticmethod
+    async def _quality_options(
+        session: AsyncSession,
+        recipe: dict[str, Any],
+        refs: list[str],
+    ) -> list[dict[str, Any]]:
+        options = TrendService._resolution_options(recipe)
+        default = TrendService._default_resolution(recipe) or (options[0] if options else None)
+        result: list[dict[str, Any]] = []
+        for resolution in options:
+            parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
+            _spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
+                session,
+                model_id=recipe["model_id"],
+                prompt=recipe["prompt"],
+                parameters=parameters,
+                billing_seconds=recipe["billing_seconds"],
+            )
+            result.append(
+                {
+                    "value": resolution,
+                    "label": resolution,
+                    "cost_credits": TrendService._amount(cost),
+                    "cost_rox": TrendService._amount(cost),
+                    "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
+                    "billing_seconds": seconds,
+                    "default": resolution == default,
+                }
+            )
+        return result
 
     @staticmethod
     def _reference_field(spec: ModelSpec) -> str | None:

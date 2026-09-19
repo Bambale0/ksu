@@ -29,6 +29,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 class RunTrendRequest(BaseModel):
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
     user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
+    resolution: str | None = Field(default=None, max_length=32)
 
 
 class InlineTrendWriteRequest(BaseModel):
@@ -99,6 +100,26 @@ async def _customer_price(
     view["cost_credits"] = _amount(decision.effective_cost)
     view["cost_rox"] = _amount(decision.effective_cost)
     view["cost_rub"] = _amount(InternalCreditService.rubles_for(decision.effective_cost))
+    if isinstance(view.get("quality_options"), list):
+        priced_options: list[dict[str, Any]] = []
+        for option in view["quality_options"]:
+            if not isinstance(option, dict):
+                continue
+            option_retail = Decimal(str(option.get("cost_credits") or option.get("cost_rox") or "0"))
+            option_decision = await BillingAccessService.decision(
+                session,
+                user_id=user_id,
+                retail_cost=option_retail,
+            )
+            priced = dict(option)
+            priced["retail_cost_credits"] = _amount(option_decision.retail_cost)
+            priced["retail_cost_rox"] = _amount(option_decision.retail_cost)
+            priced["admin_free"] = option_decision.admin_free
+            priced["cost_credits"] = _amount(option_decision.effective_cost)
+            priced["cost_rox"] = _amount(option_decision.effective_cost)
+            priced["cost_rub"] = _amount(InternalCreditService.rubles_for(option_decision.effective_cost))
+            priced_options.append(priced)
+        view["quality_options"] = priced_options
     return view
 
 
@@ -377,6 +398,7 @@ async def run_trend(
             trend_id=trend_id,
             reference_urls=payload.reference_urls,
             user_values=payload.user_values,
+            resolution=payload.resolution,
         )
     except Exception as exc:
         await session.rollback()

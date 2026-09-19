@@ -1,5 +1,14 @@
 # Domain Context
 
+## Active Feature Execution - Trend video quality choice
+
+- Baseline: local `main@e08bbd890028c4b85884b5e4dcf7e18539ef450c`; working tree has unrelated untracked `frontend/mini-app/test-results/`.
+- Task: add a user-visible video quality/resolution choice to Curated Trend repeat launches so customers can choose cheaper video output when tariffs differ by quality.
+- Evidence: the Trend screen currently submits only `reference_urls` and `user_values`; trend recipes can contain fixed `parameters.resolution`; `GenerationService._effective_unit_price` already prices models by `GENERATION_PRICING_JSON.by_resolution`; Seedance public UI contract exposes `480p/720p/1080p` resolution suggestions.
+- Plan: expose per-resolution quote options from `TrendService.public_view`, apply admin-free/customer pricing to each option, validate and apply the chosen `resolution` server-side on `/trends/{id}/run`, then render a compact Mini App selector that updates the displayed/button price and submits the selected resolution.
+- Verification matrix: unit/domain=focused trend quality contract; API=run payload accepts validated resolution; frontend=focused Playwright trend regression; DB/migrations/auth/provider/idempotency=N/A because schema, permissions and provider adapters are unchanged; no-hardcode=uses model UI contract + pricing config; observability=existing generation parameters retain selected resolution and retail/admin-free price; rollback=revert this slice.
+- Verification: `APP_ENV=test KSU_ALLOW_TEST_DATABASE=1 DATABASE_URL=postgresql+asyncpg://ksu:ksu@127.0.0.1:5432/ksu_test .venv/bin/python -m pytest -q tests/test_trends_service.py tests/test_trend_user_fields_frontend_contract.py` passed 15/15; `.venv/bin/python -m ruff check app/services/trends.py app/api/v1/trends.py tests/test_trends_service.py tests/test_trend_user_fields_frontend_contract.py` passed; `.venv/bin/python -m compileall -q app tests/test_trends_service.py tests/test_trend_user_fields_frontend_contract.py` passed; `cd frontend/mini-app && npm run typecheck` passed; focused Chromium Playwright `e2e/all-user-surfaces.spec.mjs -g "video trend lets customers choose cheaper quality"` passed 1/1.
+
 ## Active Feature Execution - Admin retail generation price visibility
 
 - Baseline: local `main@4a2f9534b2dcb0b026a6f8a5f7939c189d011c5f`; working tree clean before changes.
