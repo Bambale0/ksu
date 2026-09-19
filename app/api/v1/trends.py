@@ -106,18 +106,16 @@ async def _customer_price(
             if not isinstance(option, dict):
                 continue
             option_retail = Decimal(str(option.get("cost_credits") or option.get("cost_rox") or "0"))
-            option_decision = await BillingAccessService.decision(
-                session,
-                user_id=user_id,
-                retail_cost=option_retail,
-            )
+            if option_retail < 0:
+                raise ValueError("Retail cost must not be negative")
+            option_effective = Decimal("0.00") if decision.admin_free else option_retail
             priced = dict(option)
-            priced["retail_cost_credits"] = _amount(option_decision.retail_cost)
-            priced["retail_cost_rox"] = _amount(option_decision.retail_cost)
-            priced["admin_free"] = option_decision.admin_free
-            priced["cost_credits"] = _amount(option_decision.effective_cost)
-            priced["cost_rox"] = _amount(option_decision.effective_cost)
-            priced["cost_rub"] = _amount(InternalCreditService.rubles_for(option_decision.effective_cost))
+            priced["retail_cost_credits"] = _amount(option_retail)
+            priced["retail_cost_rox"] = _amount(option_retail)
+            priced["admin_free"] = decision.admin_free
+            priced["cost_credits"] = _amount(option_effective)
+            priced["cost_rox"] = _amount(option_effective)
+            priced["cost_rub"] = _amount(InternalCreditService.rubles_for(option_effective))
             priced_options.append(priced)
         view["quality_options"] = priced_options
     return view

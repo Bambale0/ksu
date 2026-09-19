@@ -338,10 +338,13 @@ class TrendService:
             return []
         suggestions = MODEL_FIELD_SUGGESTIONS.get(model_id, {}).get("resolution") or []
         options: list[str] = []
+        current = TrendService._default_resolution(recipe)
         for item in suggestions:
             value = str(item).strip()
             if value and value not in options:
                 options.append(value)
+        if current and current not in options:
+            options.insert(0, current)
         return options
 
     @staticmethod

@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.api.v1 import trends as trends_api
+from app.services.billing_access import BillingDecision
 from app.services.generations import GenerationService
 from app.services.trends import TrendRecipeError, TrendService
 
@@ -140,6 +142,59 @@ async def test_video_public_view_exposes_quality_options_from_resolution_pricing
             "default": False,
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_video_public_view_preserves_recipe_resolution_absent_from_suggestions(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    item.payload["parameters"]["resolution"] = "4K"
+
+    async def prepare(_session, *, model_id, prompt, parameters, billing_seconds):  # type: ignore[no-untyped-def]
+        prices = {"4K": Decimal("900.00"), "480p": Decimal("400.00"), "720p": Decimal("500.00"), "1080p": Decimal("600.00")}
+        spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
+        return spec, parameters, prices[parameters["resolution"]], billing_seconds, Decimal("90.00")
+
+    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+
+    view = await TrendService.public_view(AsyncMock(), item)
+
+    assert view["cost_credits"] == "900.00"
+    assert [option["value"] for option in view["quality_options"]] == ["4K", "480p", "720p", "1080p"]
+    assert view["quality_options"][0]["default"] is True
+
+
+@pytest.mark.asyncio
+async def test_customer_price_reuses_billing_decision_for_quality_options(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = 0
+
+    async def decision(_session, *, user_id, retail_cost):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        return BillingDecision(
+            retail_cost=Decimal(str(retail_cost)),
+            effective_cost=Decimal("0.00"),
+            admin_free=True,
+        )
+
+    monkeypatch.setattr(trends_api.BillingAccessService, "decision", decision)
+    view = await trends_api._customer_price(
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        item={
+            "cost_credits": "500.00",
+            "quality_options": [
+                {"value": "480p", "cost_credits": "400.00"},
+                {"value": "720p", "cost_credits": "500.00"},
+                {"value": "1080p", "cost_credits": "600.00"},
+            ],
+        },
+    )
+
+    assert calls == 1
+    assert view["admin_free"] is True
+    assert view["cost_rox"] == "0.00"
+    assert [option["cost_rox"] for option in view["quality_options"]] == ["0.00", "0.00", "0.00"]
+    assert [option["retail_cost_rox"] for option in view["quality_options"]] == ["400.00", "500.00", "600.00"]
 
 
 @pytest.mark.asyncio
