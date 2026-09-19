@@ -6,7 +6,8 @@ import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
-import type { TrendItem, TrendUserField } from "@/lib/types";
+import type { TrendItem, TrendQualityOption, TrendUserField } from "@/lib/types";
+import styles from "./trend.module.css";
 
 const TREND_USER_NUMBER_RE = /^-?\d+(?:[.,]\d+)?$/;
 
@@ -33,6 +34,16 @@ function previewIsVideo(trend: TrendItem): boolean {
   return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(trend.preview_url || "");
 }
 
+function defaultQualityValue(trend: TrendItem): string {
+  const options = trend.quality_options || [];
+  return options.find((option) => option.default)?.value || options[0]?.value || "";
+}
+
+function optionPriceLabel(option: TrendQualityOption): string {
+  const value = option.admin_free ? option.retail_cost_rox || option.cost_rox : option.cost_rox;
+  return value ? `${money(value)} ROX` : "";
+}
+
 export default function TrendPage() {
   const [trend, setTrend] = useState<TrendItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +53,7 @@ export default function TrendPage() {
   const [copying, setCopying] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [userValues, setUserValues] = useState<Record<string, string>>({});
+  const [selectedQuality, setSelectedQuality] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -55,6 +67,7 @@ export default function TrendPage() {
       .then((item) => {
         setTrend(item);
         setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, ""])));
+        setSelectedQuality(defaultQualityValue(item));
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть тренд"))
       .finally(() => setLoading(false));
@@ -63,6 +76,11 @@ export default function TrendPage() {
   const minimum = Number(trend?.reference_requirements?.min || 0);
   const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
   const userFields = (trend?.user_fields || []).slice(0, 6);
+  const qualityOptions = trend?.quality_options || [];
+  const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;
+  const displayedCost = chosenQuality?.cost_rox || trend?.cost_rox;
+  const displayedRetailCost = chosenQuality?.retail_cost_rox || trend?.retail_cost_rox;
+  const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
   const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady;
   const referenceCopy = useMemo(() => {
@@ -133,7 +151,12 @@ export default function TrendPage() {
     setRunning(true);
     setError("");
     try {
-      const result = await api.runTrend(trend.id, references.map((item) => item.url), userValues);
+      const result = await api.runTrend(
+        trend.id,
+        references.map((item) => item.url),
+        userValues,
+        chosenQuality ? { resolution: chosenQuality.value } : {},
+      );
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось запустить тренд");
@@ -157,9 +180,40 @@ export default function TrendPage() {
             <div className="trend-meta">
               <span>{trendUsageLabel(trend.usage_count)}</span>
               <span>{trend.model?.title || "ROXY model"}</span>
-              <span>{trend.admin_free ? "Бесплатно" : `${money(trend.cost_rox)} ROX`}</span>
+              <span>{adminFree ? "Бесплатно" : `${money(displayedCost)} ROX`}</span>
               {trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}
+              {chosenQuality ? <span>{chosenQuality.label || chosenQuality.value}</span> : null}
             </div>
+            {qualityOptions.length > 1 ? (
+              <section className={styles.quality} aria-label="Качество видео">
+                <div className={styles.qualityHead}>
+                  <strong>Качество видео</strong>
+                  {adminFree && displayedRetailCost ? <span>обычно {money(displayedRetailCost)} ROX</span> : null}
+                </div>
+                <div className={styles.qualityOptions} role="radiogroup" aria-label="Качество видео">
+                  {qualityOptions.map((option) => {
+                    const active = option.value === chosenQuality?.value;
+                    const price = optionPriceLabel(option);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={active ? "active" : ""}
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => {
+                          haptic("light");
+                          setSelectedQuality(option.value);
+                        }}
+                      >
+                        <span>{option.label || option.value}</span>
+                        {price ? <small>{price}</small> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
             <p className="muted">{referenceCopy}</p>
 
             {minimum > 0 ? (
@@ -223,7 +277,7 @@ export default function TrendPage() {
 
             {error ? <div className="action-error" role="alert">{error}</div> : null}
             <button className="primary wide" type="button" disabled={!ready || uploading || running} onClick={() => void run()}>
-              {running ? "Запускаю…" : trend.admin_free ? "Сгенерировать бесплатно" : `Сгенерировать · ${money(trend.cost_rox)} ROX`}
+              {running ? "Запускаю…" : adminFree ? "Сгенерировать бесплатно" : `Сгенерировать · ${money(displayedCost)} ROX`}
             </button>
             <button className="secondary wide" type="button" disabled={sharing} onClick={() => void share()}>
               {sharing ? "Открываю Telegram…" : "Поделиться трендом"}

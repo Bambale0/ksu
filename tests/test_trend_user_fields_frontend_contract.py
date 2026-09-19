@@ -18,8 +18,10 @@ def test_personalized_trend_fields_follow_tanyapi_auto_field_architecture() -> N
     assert '"user_fields": recipe["user_fields"]' in service
     assert 'render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)' in service
     assert 'user_values=payload.user_values' in api
-    assert 'api.runTrend(trend.id, references.map((item) => item.url), userValues)' in page
+    assert 'api.runTrend(' in page
+    assert 'chosenQuality ? { resolution: chosenQuality.value } : {}' in page
     assert 'user_values: userValues' in client
+    assert 'resolution: options.resolution' in client
     assert 'prompt:' not in client[client.index('runTrend:'):client.index('promptTools:')]
 
     assert 'TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"]' in admin

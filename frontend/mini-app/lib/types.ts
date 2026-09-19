@@ -216,6 +216,17 @@ export type TrendUserField = {
   suffix?: string;
 };
 
+export type TrendQualityOption = {
+  value: string;
+  label?: string;
+  cost_rox?: string;
+  retail_cost_rox?: string;
+  cost_rub?: string;
+  admin_free?: boolean;
+  billing_seconds?: number | null;
+  default?: boolean;
+};
+
 export type TrendItem = {
   id: string;
   title: string;
@@ -230,6 +241,7 @@ export type TrendItem = {
   billing_seconds?: number | null;
   reference_requirements?: { kind?: string; min?: number; max?: number };
   user_fields?: TrendUserField[];
+  quality_options?: TrendQualityOption[];
   tags?: string[];
   usage_count?: number;
   created_at?: string;

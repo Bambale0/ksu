@@ -108,6 +108,24 @@ const personalizedTrend = {
   prompt_actions_allowed: false,
 };
 
+const videoTrend = {
+  id: 'trend_video',
+  title: 'Видео поздравление',
+  description: 'Видео-сценарий с выбором качества',
+  media_type: 'video',
+  model: { id: 'seedance-2.0', title: 'Seedance 2.0', family: 'seedance' },
+  cost_rox: '500.00',
+  billing_seconds: 10,
+  reference_requirements: { kind: 'none', min: 0, max: 0 },
+  quality_options: [
+    { value: '480p', label: '480p', cost_rox: '400.00', retail_cost_rox: '400.00', default: false },
+    { value: '720p', label: '720p', cost_rox: '500.00', retail_cost_rox: '500.00', default: true },
+    { value: '1080p', label: '1080p', cost_rox: '600.00', retail_cost_rox: '600.00', default: false },
+  ],
+  prompt_hidden: true,
+  prompt_actions_allowed: false,
+};
+
 const viewports = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
@@ -160,10 +178,11 @@ async function mockApi(page, { onboarding = false, bootDelay = 0 } = {}) {
     if (path.includes('/comments')) return json({ items: [] });
     if (path.includes('/publish')) return json({ item: feedCard, publication_scope: 'feed' });
 
-    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend, personalizedTrend] });
+    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend, personalizedTrend, videoTrend] });
     if (path === '/api/v1/trends/trend_ref') return json(referenceTrend);
     if (path === '/api/v1/trends/trend_simple') return json(simpleTrend);
     if (path === '/api/v1/trends/trend_personalized') return json(personalizedTrend);
+    if (path === '/api/v1/trends/trend_video') return json(videoTrend);
     if (path.startsWith('/api/v1/trends/') && path.endsWith('/run')) return json({ id: 'trend_generation', status: 'queued', cost_rox: '15.00' }, 202);
 
     if (path === '/api/v1/prompt-tools') return json({ items: [
@@ -307,6 +326,27 @@ test('personalized trend shows empty tanyapi-style fields and submits only user 
     user_values: { Возраст: '31', Надпись: 'С юбилеем!', Дата: '2026-09-07' },
   });
   await expect(page.getByText(/hidden prompt|скрытый prompt/i)).toHaveCount(0);
+});
+
+test('video trend lets customers choose cheaper quality before launch', async ({ page }) => {
+  await mockApi(page);
+  let runBody = null;
+  await page.route('**/api/v1/trends/trend_video/run', async (route) => {
+    runBody = route.request().postDataJSON();
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'trend_generation', status: 'queued' }) });
+  });
+
+  await page.goto('/mini-app/trend/?id=trend_video');
+  await expect(page.getByRole('radio', { name: /720p/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: /Сгенерировать · 500 ROX/ })).toBeEnabled();
+
+  await page.getByRole('radio', { name: /480p/ }).click();
+  await expect(page.getByRole('radio', { name: /480p/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: /Сгенерировать · 400 ROX/ })).toBeEnabled();
+
+  await page.getByRole('button', { name: /Сгенерировать · 400 ROX/ }).click();
+  await expect.poll(() => runBody?.resolution || '').toBe('480p');
+  expect(runBody).toEqual({ reference_urls: [], resolution: '480p' });
 });
 
 test('reference trend waits for all files and sends them only on explicit Generate', async ({ page }) => {
