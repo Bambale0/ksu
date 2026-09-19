@@ -21,6 +21,10 @@ class UpdatePreferenceRequest(BaseModel):
     profile_discoverable: bool = False
 
 
+class UpdateLanguagePreferenceRequest(BaseModel):
+    ui_language: str = Field(max_length=16)
+
+
 def _preference_view(preference) -> dict[str, object]:  # type: ignore[no-untyped-def]
     return {
         "ui_language": preference.ui_language,
@@ -82,6 +86,24 @@ async def update_preferences(
             notifications_enabled=payload.notifications_enabled,
             marketing_notifications=payload.marketing_notifications,
             profile_discoverable=payload.profile_discoverable,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await session.commit()
+    return _preference_view(preference)
+
+
+@router.patch("/preferences/language")
+async def update_language_preference(
+    payload: UpdateLanguagePreferenceRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, object]:
+    try:
+        preference = await ProfilePreferenceService.update_language(
+            session,
+            user_id=user.id,
+            ui_language=payload.ui_language,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
