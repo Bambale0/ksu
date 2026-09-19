@@ -61,7 +61,7 @@ type ActionContext = {
   source_references?: { images?: string[]; videos?: string[] };
   edit_presets?: Array<{ id: string; label: string }>;
 };
-type Quote = { cost_rox?: string; cost_rub?: string; effective_cost_rox?: string };
+type Quote = { cost_rox?: string; cost_rub?: string; effective_cost_rox?: string; retail_cost_rox?: string; admin_free?: boolean };
 
 const SOURCE_ACTIONS = new Set(["remix", "edit", "animate"]);
 const REFERENCE_FIELDS = new Set([
@@ -156,6 +156,11 @@ function money(value?: string | null): string {
   if (!value) return "—";
   const parsed = Number(value);
   return Number.isFinite(parsed) ? new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(parsed) : value;
+}
+
+function retailPriceNote(quote: Quote | null): string {
+  if (!quote?.admin_free || !quote.retail_cost_rox) return "";
+  return `Обычная стоимость: ${money(quote.retail_cost_rox)} ROX`;
 }
 
 function buildQuoteBody(
@@ -366,6 +371,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
 
   const mediaType = resultMediaType(context);
   const source = context.source_url;
+  const adminRetailNote = retailPriceNote(quote);
 
   if (published) return <PublishSuccess share={published.share} generationId={context.generation.id} publicationScope={published.publicationScope} downgradedToProfile={published.downgradedToProfile} />;
 
@@ -391,7 +397,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
           {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить настройки" : "Настройки работы"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
           {model?.ui_schema?.billing_seconds && <div className="panel"><label className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={model.ui_schema.billing_seconds.min || 1} max={model.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></div>}
         </div>
-        <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(context.generation.id)}>Отмена</button></aside>
+        <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? adminRetailNote || `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(context.generation.id)}>Отмена</button></aside>
       </div>}
       {error && <div className="action-error" role="alert">{error}</div>}
     </section></main>

@@ -345,6 +345,7 @@ export type Quote = {
   effective_cost_rox?: string;
   retail_cost_rox?: string;
   billing_seconds?: number | null;
+  admin_free?: boolean;
 };
 
 export type Draft = {

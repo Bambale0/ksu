@@ -6,7 +6,7 @@ const model = {
   family: 'nano_banana',
   media_type: 'image',
   operation: 'generate_or_edit',
-  price_rox: '20.00',
+  price_rox: '1234.56',
   ui_schema: {
     fields: [
       { name: 'prompt', label: 'Промпт', control: 'textarea', required: true },
@@ -59,9 +59,9 @@ async function mockApi(page) {
     if (path === '/api/v1/generations/quote') {
       return json({
         model_id: model.id,
-        cost_rox: '20.00',
-        cost_rub: '20.00',
-        retail_cost_rox: '20.00',
+        cost_rox: '1234.56',
+        cost_rub: '1234.56',
+        retail_cost_rox: '1234.56',
         effective_cost_rox: '0.00',
         effective_cost_rub: '0.00',
         admin_free: true,
@@ -78,7 +78,7 @@ async function mockApi(page) {
   });
 }
 
-test('Create displays the effective ROX debit instead of retail quote', async ({ page }) => {
+test('Create shows admin-free debit and visible retail ROX price', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/?route=create');
@@ -89,9 +89,9 @@ test('Create displays the effective ROX debit instead of retail quote', async ({
 
   const quote = page.locator('.quote-box');
   await expect(quote.locator('strong')).toHaveText('0 ROX');
-  await expect(quote).not.toContainText('20 ROX');
+  await expect(quote).toContainText('Обычная стоимость: 1 234,56 ROX');
 
   const create = page.locator('.create-summary button.primary').first();
   await expect(create).toContainText('Создать · 0 ROX');
-  await expect(create).not.toContainText('20 ROX');
+  await expect(create).not.toContainText('1 234');
 });
