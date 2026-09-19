@@ -47,6 +47,13 @@ function compact(value: unknown): string {
   }).format(number);
 }
 
+function exactRox(value?: string | null): string {
+  if (!value) return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(number);
+}
+
 function modelIcon(mediaType?: string): IconName {
   return mediaType === "video" ? "video" : mediaType === "audio" ? "music" : "image";
 }
@@ -58,6 +65,11 @@ function normalizeMediaFilter(value: string | null): "all" | "image" | "video" |
 function priceLabel(value?: string | null): string {
   if (value === "0.00" || value === "0") return "Бесплатно";
   return value ? `${compact(value)} ROX` : "—";
+}
+
+function retailPriceNote(quote: Quote | null): string {
+  if (!quote?.admin_free || !quote.retail_cost_rox) return "";
+  return `Обычная стоимость: ${exactRox(quote.retail_cost_rox)} ROX`;
 }
 
 function variantLabel(model: GenerationModel): string {
@@ -574,6 +586,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const fields = visibleFields(selected, draft);
   const groups = selected.ui_schema?.groups || [{ id: "main", title: "Настройки" }];
   const quantity = Math.min(MAX_GENERATION_QUANTITY, Math.max(1, Number(draft.quantity || 1)));
+  const adminRetailNote = retailPriceNote(quote);
 
   return (
     <section className="screen create-screen">
@@ -623,7 +636,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
         <aside className="create-summary panel">
           <span className="kicker">Итог</span><h2>{selected.title}</h2>
           <p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p>
-          <div className="quote-box"><span>{quantity > 1 ? `Стоимость за ${quantity}` : "Стоимость"}</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? (quantity > 1 && quote.unit_price_rox ? `≈ ${compact(quote.cost_rub)} ₽ · по ${compact(quote.unit_price_rox)} ROX` : `≈ ${compact(quote.cost_rub)} ₽`) : quoteError || errors[0] || "Считаю…"}</small></div>
+          <div className="quote-box"><span>{quantity > 1 ? `Стоимость за ${quantity}` : "Стоимость"}</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? adminRetailNote || (quantity > 1 && quote.unit_price_rox ? `≈ ${compact(quote.cost_rub)} ₽ · по ${compact(quote.unit_price_rox)} ROX` : `≈ ${compact(quote.cost_rub)} ₽`) : quoteError || errors[0] || "Считаю…"}</small></div>
           <button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Генерирую…" : quote ? (quantity > 1 ? `Создать ${quantity} · ${compact(quote.cost_rox)} ROX` : `Создать · ${compact(quote.cost_rox)} ROX`) : "Создать"}</button>
         </aside>
       </div>

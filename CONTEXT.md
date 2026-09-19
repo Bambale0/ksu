@@ -1,5 +1,14 @@
 # Domain Context
 
+## Active Feature Execution - Admin retail generation price visibility
+
+- Baseline: local `main@4a2f9534b2dcb0b026a6f8a5f7939c189d011c5f`; working tree clean before changes.
+- Task: when an active administrator sees zero wallet debit in the Mini App generation flow, still show the real retail ROX price so the admin can see what the action costs for normal users.
+- Evidence: `docs/MODEL_IDENTITY_AND_ADMIN_FREE.md` states active admins have customer wallet cost `0.00 ROX` while retail price is preserved separately for audit/display. `frontend/mini-app/e2e/create-effective-quote.spec.mjs` currently asserts that the admin UI hides `retail_cost_rox`, matching the screenshot symptom.
+- Plan: keep billing/debit semantics unchanged; use existing `Quote.retail_cost_rox` + `admin_free` fields only for display; update the focused Mini App E2E so `0 ROX` remains the create button debit and retail price appears in the quote details.
+- Verification matrix: frontend E2E=focused admin-free create quote regression; API/backend/DB/auth/migrations/provider/idempotency=N/A because no server contract or billing mutation changes; no-hardcode=uses server-provided retail quote; observability=N/A; rollback=revert frontend/test patch.
+- Verification: first focused Chromium E2E run failed because the live create route used `roxy-social-app.tsx`; after applying the same retail display there, `npx playwright test --project=chromium --workers=1 e2e/create-effective-quote.spec.mjs` passed 1/1 and `npm run typecheck` passed. PR review then caught compact retail formatting; fixed the admin note to preserve exact server price without compact notation. Fresh `npm run typecheck` passed and focused Chromium E2E passed 1/1 with `1 234,56 ROX`.
+
 ## Active Feature Execution - Pinterest Kie Gemini fallback
 
 - Baseline: production/main `27355407b1858169dc0281363ccf4046d3200d13` deployed successfully; user screenshot shows Kie dashboard rows around 2026-09-18 17:31 with `gemini-2.5-pro` status `ошибка`.

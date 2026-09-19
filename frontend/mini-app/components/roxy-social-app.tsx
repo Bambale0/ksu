@@ -55,6 +55,13 @@ function compact(value: unknown): string {
   }).format(number);
 }
 
+function exactRox(value?: string | null): string {
+  if (!value) return "—";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return value;
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(number);
+}
+
 function dateLabel(value?: string | null): string {
   if (!value) return "";
   const date = new Date(value);
@@ -138,6 +145,11 @@ function creationMedia(model?: GenerationModel | null): CreationMedia | undefine
 function priceLabel(value?: string | null): string {
   if (value === "0.00" || value === "0") return "Бесплатно";
   return value ? `${compact(value)} ROX` : "—";
+}
+
+function retailPriceNote(quote: Quote | null): string {
+  if (!quote?.admin_free || !quote.retail_cost_rox) return "";
+  return `Обычная стоимость: ${exactRox(quote.retail_cost_rox)} ROX`;
 }
 
 function normalizeMediaFilter(value: string | null): MediaFilter {
@@ -764,6 +776,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   if (!selected || !draft) return <section className="screen"><ScreenHead kicker="Создание" title="Каталог моделей загружается" /></section>;
   const fields = visibleFields(selected, draft);
   const groups = selected.ui_schema?.groups || [{ id: "main", title: "Настройки" }];
+  const adminRetailNote = retailPriceNote(quote);
 
   return <section className="screen create-screen"><ScreenHead kicker="Создание" title={launch.kind === "reuse" ? "Использовать настройки" : "Новая работа"} copy="Опишите идею, добавьте примеры и выберите подходящий формат." />
     {launch.kind === "reuse" && <div className="panel"><span className="kicker">На основе работы</span><p className="muted">Описание и подходящие настройки уже перенесены. Если выбрать другую модель, ROXY подготовит форму заново.</p></div>}
@@ -771,7 +784,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
       {selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}
       {groups.map((group) => { const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group)); if (!grouped.length) return null; return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => { setUploading(true); try { const max = field.control === "file" ? 1 : field.max_items || 20; const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : []; for (const file of files.slice(0, Math.max(0, max - urls.length))) { if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; } const uploaded = await api.upload(file); if (field.control === "file") { updateValue(field.name, uploaded.url); break; } urls.push(uploaded.url); } if (field.control === "files") updateValue(field.name, urls); notify("success"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Ошибка загрузки"); } finally { setUploading(false); } }} />)}</div></div>; })}
       {selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}
-    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quoteError || errors[0] || (quote ? "Списание только в ROX" : "Считаю…")}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Запускаю…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
+    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quoteError || errors[0] || (quote ? adminRetailNote || "Списание только в ROX" : "Считаю…")}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Запускаю…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
     {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
   </section>;
 }
