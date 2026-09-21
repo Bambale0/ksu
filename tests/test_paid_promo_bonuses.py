@@ -149,7 +149,7 @@ async def test_disabled_promo_keeps_attribution_but_never_promises_or_credits_pa
 
 
 @pytest.mark.asyncio
-async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None:
+async def test_first_promo_keeps_existing_partner_attribution_locked() -> None:
     async with SessionFactory() as session:
         first_partner = await _user(session, "First partner")
         second_partner = await _user(session, "Second partner")
@@ -173,8 +173,6 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
         )
         await session.commit()
         cross_link_user_id = cross_link_user.id
-        first_partner_id = first_partner.id
-        first_promo_id = first_promo.id
         second_promo_code = second_promo.code
 
         same_activation = await PromoCodeService.activate(
@@ -182,15 +180,16 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
             user_id=same_link_user.id,
             code=first_promo.code,
         )
-        cross_activation = await PromoCodeService.activate(
-            session,
-            user_id=cross_link_user.id,
-            code=first_promo.code,
-        )
+        with pytest.raises(PromoCodeError) as cross_error:
+            await PromoCodeService.activate(
+                session,
+                user_id=cross_link_user.id,
+                code=first_promo.code,
+            )
         await session.commit()
 
         assert same_activation.activated is True
-        assert cross_activation.activated is True
+        assert cross_error.value.code == "already_attributed"
         same_relation = await session.get(ReferralRelation, same_link_user.id)
         cross_relation = await session.get(ReferralRelation, cross_link_user.id)
         assert same_relation is not None
@@ -198,23 +197,58 @@ async def test_first_promo_overrides_plain_link_then_partner_is_locked() -> None
         assert same_relation.source == "promo"
         assert same_relation.promo_id == first_promo.id
         assert cross_relation is not None
-        assert cross_relation.inviter_user_id == first_partner.id
-        assert cross_relation.source == "promo"
-        assert cross_relation.promo_id == first_promo.id
+        assert cross_relation.inviter_user_id == second_partner.id
+        assert cross_relation.source == "link"
+        assert cross_relation.promo_id is None
+
+        second_activation = await PromoCodeService.activate(
+            session,
+            user_id=cross_link_user_id,
+            code=second_promo_code,
+        )
+        await session.commit()
+        assert second_activation.activated is True
+        locked = await session.get(ReferralRelation, cross_link_user_id)
+        assert locked is not None
+        assert locked.inviter_user_id == second_partner.id
+        assert locked.source == "promo"
+        assert locked.promo_id == second_promo.id
+
+
+@pytest.mark.asyncio
+async def test_partner_promo_activation_rejects_referral_cycles() -> None:
+    async with SessionFactory() as session:
+        upstream = await _user(session, "Upstream partner")
+        downstream = await _user(session, "Downstream partner")
+        promo = await _promo(session, partner=downstream)
+        upstream_id = upstream.id
+        session.add(
+            ReferralRelation(
+                referred_user_id=downstream.id,
+                inviter_user_id=upstream.id,
+                source="link",
+            )
+        )
+        await session.commit()
+
+        with pytest.raises(PromoCodeError) as preview_error:
+            await PromoCodeService.preview(
+                session,
+                user_id=upstream.id,
+                code=promo.code,
+            )
+        assert preview_error.value.code == "referral_cycle"
 
         with pytest.raises(PromoCodeError) as exc_info:
             await PromoCodeService.activate(
                 session,
-                user_id=cross_link_user_id,
-                code=second_promo_code,
+                user_id=upstream.id,
+                code=promo.code,
             )
         await session.rollback()
-        assert exc_info.value.code == "already_attributed"
-        locked = await session.get(ReferralRelation, cross_link_user_id)
-        assert locked is not None
-        assert locked.inviter_user_id == first_partner_id
-        assert locked.source == "promo"
-        assert locked.promo_id == first_promo_id
+
+        assert exc_info.value.code == "referral_cycle"
+        assert await session.get(ReferralRelation, upstream_id) is None
 
 
 @pytest.mark.asyncio
@@ -1066,7 +1100,7 @@ async def test_admin_promo_still_rejects_invalid_expiration(expires_at: datetime
 
 
 @pytest.mark.asyncio
-async def test_active_partner_promo_state_persists_and_marks_future_payment() -> None:
+async def test_active_partner_promo_requires_explicit_code_for_future_payment() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Persistent promo partner")
         user = await _user(session, "Persistent promo user")
@@ -1105,10 +1139,24 @@ async def test_active_partner_promo_state_persists_and_marks_future_payment() ->
         session.add(payment)
         await session.flush()
 
-        attached = await PromoCodeService.reserve_for_payment(
+        attached_without_code = await PromoCodeService.reserve_for_payment(
             session,
             payment=payment,
             code=None,
+        )
+        await session.flush()
+
+        assert attached_without_code is None
+        assert "promo_code" not in payment.payload
+        assert "promo_partner_user_id" not in payment.payload
+        assert "promo_metadata_source" not in payment.payload
+        assert payment.payload["bonus_credits"] == "0"
+        assert payment.payload["credited_credits"] == "300"
+
+        attached = await PromoCodeService.reserve_for_payment(
+            session,
+            payment=payment,
+            code=promo.code,
         )
         await session.flush()
 
@@ -1116,7 +1164,7 @@ async def test_active_partner_promo_state_persists_and_marks_future_payment() ->
         assert attached.id == promo.id
         assert payment.payload["promo_code"] == promo.code
         assert payment.payload["promo_partner_user_id"] == str(partner.id)
-        assert payment.payload["promo_metadata_source"] == "attribution"
+        assert payment.payload["promo_metadata_source"] == "activation"
         assert payment.payload["promo_bonus_status"] == "activated"
         assert payment.payload["bonus_credits"] == "0"
         assert payment.payload["credited_credits"] == "300"

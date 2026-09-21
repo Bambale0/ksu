@@ -211,8 +211,8 @@ test('partner promo activates separately and checkout package stays exact', asyn
           credits: '100.00',
           base_credits: '100.00',
           bonus_credits: '0',
-          promo_code: 'KSENIA25',
-          promo_bonus_status: 'activated',
+          promo_code: checkoutBody?.promo_code ?? null,
+          promo_bonus_status: checkoutBody?.promo_code === 'KSENIA25' ? 'activated' : null,
           payment_url: 'https://pay.example/promo',
         }),
       });
@@ -225,6 +225,7 @@ test('partner promo activates separately and checkout package stays exact', asyn
 
   await expect(page.getByText('Промокод активирован', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Промокод KSENIA25 выбран' })).toBeVisible();
   const selectedPackage = page.locator('.package-grid .package.active');
   await expect(selectedPackage).toContainText('100 ROX');
   await expect(selectedPackage).toContainText('Итого 100 ROX');
@@ -292,7 +293,7 @@ test('disabled attributed promo does not advertise a package bonus', async ({ pa
   await expect(selectedPackage).not.toContainText('🎁');
   await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Оплатить 1 000 RUB через ЮKassa' }).click();
-  await expect.poll(() => checkoutBody).toEqual({ provider: 'yookassa', package_id: 'starter', promo_code: 'KSENIA25' });
+  await expect.poll(() => checkoutBody).toEqual({ provider: 'yookassa', package_id: 'starter', promo_code: null });
 });
 
 

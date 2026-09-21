@@ -75,11 +75,12 @@ def test_mini_app_exposes_yookassa_checkout_and_reconciliation() -> None:
         'provider: "yookassa"',
         '/api/v1/payments/yookassa/${encodeURIComponent(payment.id)}/reconcile',
         'payment.provider === "yookassa"',
-        'const effectivePromo = activePromo?.code || promo?.code || "";',
+        'const effectivePromo = promo?.code || "";',
         'promo_code: effectivePromo || null',
         '>ЮKassa</button>',
     ):
         assert token in page
+    assert 'activePromo?.code || promo?.code || ""' not in page
 
 
 def test_yookassa_setup_is_documented() -> None:

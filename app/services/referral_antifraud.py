@@ -81,6 +81,31 @@ class ReferralAntifraudService:
             stmt = stmt.where(ReferralRelation.referred_user_id != exclude_referred_user_id)
         return int((await session.scalar(stmt)) or 0)
 
+    @staticmethod
+    async def _would_create_cycle(
+        session: AsyncSession,
+        *,
+        visitor_user_id: uuid.UUID,
+        inviter_user_id: uuid.UUID,
+    ) -> bool:
+        descendants = (
+            select(ReferralRelation.referred_user_id.label("user_id"))
+            .where(ReferralRelation.inviter_user_id == visitor_user_id)
+            .cte("referral_descendants", recursive=True)
+        )
+        relation = ReferralRelation.__table__
+        descendants = descendants.union(
+            select(relation.c.referred_user_id).where(
+                relation.c.inviter_user_id == descendants.c.user_id
+            )
+        )
+        existing = await session.scalar(
+            select(descendants.c.user_id)
+            .where(descendants.c.user_id == inviter_user_id)
+            .limit(1)
+        )
+        return existing is not None
+
     @classmethod
     async def _check_limits(
         cls,
@@ -208,12 +233,26 @@ class ReferralAntifraudService:
             .where(ReferralRelation.referred_user_id == visitor.id)
             .with_for_update()
         )
-        if relation is not None and relation.source == "promo":
+        if relation is not None and relation.inviter_user_id != inviter.id:
             return ReferralAdmissionResult(
                 False,
                 "already_attributed",
                 relation.inviter_user_id,
             )
+
+        if await cls._would_create_cycle(
+            session,
+            visitor_user_id=visitor.id,
+            inviter_user_id=inviter.id,
+        ):
+            await cls._record(
+                session,
+                visitor=visitor,
+                inviter=inviter,
+                inviter_telegram_id=inviter.telegram_id,
+                reason="referral_cycle",
+            )
+            return ReferralAdmissionResult(False, "referral_cycle", inviter.id)
 
         exclude_current = (
             visitor.id
@@ -229,7 +268,6 @@ class ReferralAntifraudService:
         if blocked is not None:
             return blocked
 
-        now = datetime.now(timezone.utc)
         if relation is None:
             relation = ReferralRelation(
                 referred_user_id=visitor.id,
@@ -239,12 +277,9 @@ class ReferralAntifraudService:
             )
             session.add(relation)
         else:
-            moved_partner = relation.inviter_user_id != inviter.id
             relation.inviter_user_id = inviter.id
             relation.source = "promo"
             relation.promo_id = promo_id
-            if moved_partner:
-                relation.created_at = now
         await session.flush()
 
         await cls._record(

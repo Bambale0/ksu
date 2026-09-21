@@ -16,7 +16,7 @@ async function installTelegram(page) {
   });
 }
 
-test('active promo persists on payments and is attached to a new payment automatically', async ({ page }) => {
+test('active promo persists on payments and is attached only after explicit selection', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await installTelegram(page);
 
@@ -80,11 +80,11 @@ test('active promo persists on payments and is attached to a new payment automat
         rox: '1000',
         base_credits: '1000',
         package_bonus_credits: '0',
-        promo_package_bonus_credits: '150',
+        promo_package_bonus_credits: checkoutBody?.promo_code === 'KSENIA50' ? '150' : '0',
         promo_bonus_credits: '0',
         bonus_credits: '0',
-        promo_code: 'KSENIA50',
-        promo_bonus_status: 'activated',
+        promo_code: checkoutBody?.promo_code ?? null,
+        promo_bonus_status: checkoutBody?.promo_code === 'KSENIA50' ? 'activated' : null,
         payment_url: 'https://pay.example.test/promo-persisted',
         created_at: '2026-09-15T12:10:00+00:00',
         updated_at: '2026-09-15T12:10:00+00:00',
@@ -99,11 +99,12 @@ test('active promo persists on payments and is attached to a new payment automat
   await expect(page.getByRole('heading', { name: 'KSENIA50' })).toHaveCount(0);
   await expect(page.getByText('ROX начислены при регистрации', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/Обычный бонус выбранного пакета сохраняется/)).toHaveCount(0);
-  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/ROX по промокоду/)).toHaveCount(0);
-  await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
+  await expect(page.getByText('Итого 1 000 ROX', { exact: true })).toBeVisible();
   await expect(page.getByText(/Промокод KSENIA50 уже закреплён/)).toHaveCount(0);
   await expect(page.getByText('Есть промокод?', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Промокод KSENIA50 активирован/)).toBeVisible();
 
   const pay = page.getByRole('button', { name: /Оплатить 1 000 RUB через ЮKassa/ });
   await expect(pay).toBeVisible();
@@ -113,10 +114,23 @@ test('active promo persists on payments and is attached to a new payment automat
   expect(checkoutBody).toMatchObject({
     provider: 'yookassa',
     package_id: 'starter',
-    promo_code: 'KSENIA50',
+    promo_code: null,
   });
   await expect.poll(() => page.evaluate(() => window.__openedPaymentLinks.length)).toBe(1);
   await expect(page.getByText(/Промокод добавит ещё/)).toHaveCount(0);
+
+  checkoutBody = null;
+  await page.getByRole('button', { name: 'Применить к этой оплате' }).click();
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
+  await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
+  await pay.click();
+
+  await expect.poll(() => checkoutBody).not.toBeNull();
+  expect(checkoutBody).toMatchObject({
+    provider: 'yookassa',
+    package_id: 'starter',
+    promo_code: 'KSENIA50',
+  });
 });
 
 
@@ -222,6 +236,9 @@ test('promo package bonus is a single package-owned entitlement', async ({ page 
 
   await page.goto('/mini-app/payments/?provider=card');
 
+  await expect(page.getByText('Итого 1 000 ROX', { exact: true })).toBeVisible();
+  await expect(page.getByText('+150 ROX 🎁', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Применить к этой оплате' }).click();
   await expect(page.getByText('+150 ROX 🎁', { exact: true })).toBeVisible();
   await expect(page.getByText('Итого 1 150 ROX', { exact: true })).toBeVisible();
 

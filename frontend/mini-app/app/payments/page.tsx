@@ -237,8 +237,10 @@ export default function PaymentsPage() {
   const selected = packageId ? catalog?.packages[packageId] : null;
   const price = selected?.prices[activeCurrency];
   const promoEnabled = Boolean(
-    activePromo?.active && activePromo.program_active && activePromo.bonus_eligible !== false,
+    promo?.code && activePromo?.active && activePromo.program_active && activePromo.bonus_eligible !== false,
   );
+  const activePromoCode = activePromo?.code || "";
+  const hasActivePromoCode = Boolean(activePromo?.active && activePromoCode);
   const providerLabel = provider === "card"
     ? "Lava Top"
     : catalog?.label || (provider === "yookassa" ? "ЮKassa" : provider === "cryptobot" ? "CryptoBot" : "2328");
@@ -265,11 +267,7 @@ export default function PaymentsPage() {
       setError("Сначала примените промокод или очистите поле.");
       return;
     }
-    // Persisted promo attribution is part of the payment intent because it
-    // changes partner accounting. Re-send the stored code automatically so
-    // checkout idempotency remains stable across reloads/deploys without asking
-    // the user to enter the code again.
-    const effectivePromo = activePromo?.code || promo?.code || "";
+    const effectivePromo = promo?.code || "";
     const intent: CheckoutIntent = {
       provider,
       packageId,
@@ -437,7 +435,7 @@ export default function PaymentsPage() {
           {provider === "card" ? <div className="segmented scrollable">{(catalog?.currencies || []).map((item) => <button type="button" disabled={loading} key={item} className={currency === item ? "active" : ""} onClick={() => setCurrency(item)}>{item}</button>)}</div> : <p className="muted">{providerHint}</p>}
 
           <div className="form-stack">
-            {!activePromo?.active ? <>
+            {!hasActivePromoCode ? <>
               <label className="field">
                 <span className="label">Есть промокод?</span>
                 <input
@@ -457,7 +455,25 @@ export default function PaymentsPage() {
               <button className="secondary wide" type="button" disabled={loading || busy !== null || !promoCode.trim()} onClick={() => void validatePromo()}>
                 {busy === "promo" ? "Активирую…" : promo ? `Промокод ${promo.code} активирован` : "Активировать промокод"}
               </button>
-            </> : null}
+            </> : <div className="panel">
+              <p className="muted">Промокод {activePromoCode} активирован. Примените его к этой оплате, чтобы получить бонус выбранного пакета.</p>
+              <button
+                className="secondary wide"
+                type="button"
+                disabled={loading || busy !== null || promo?.code === activePromoCode}
+                onClick={() => {
+                  setPromoCode(activePromoCode);
+                  setPromo({
+                    status: "already_active",
+                    code: activePromoCode,
+                    reward_rox: "0",
+                  });
+                  setNotice(`Промокод ${activePromoCode} будет применён к этой оплате`);
+                }}
+              >
+                {promo?.code === activePromoCode ? `Промокод ${activePromoCode} выбран` : "Применить к этой оплате"}
+              </button>
+            </div>}
 
             {provider === "card" ? <label className="field"><span className="label">Email для чека без + и дефиса</span><input className="control" type="email" autoComplete="email" value={email} disabled={loading} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label> : null}
             <button className="primary wide" type="button" disabled={loading || busy !== null || !packageId || !price || (provider === "card" && !email.trim())} onClick={() => void checkout()}>{busy === "checkout" ? "Создаю оплату…" : price ? `Оплатить ${compactNumber(price)} ${activeCurrency} через ${providerLabel}` : "Пакет недоступен"}</button>
