@@ -71,14 +71,10 @@ class PromoCodeService:
             raise PromoCodeError("partner_unavailable", "Promo partner is unavailable")
 
         relation = await session.get(ReferralRelation, user_id)
-        if (
-            relation is not None
-            and relation.source == "promo"
-            and relation.inviter_user_id != promo.partner_user_id
-        ):
+        if relation is not None and relation.inviter_user_id != promo.partner_user_id:
             raise PromoCodeError(
                 "already_attributed",
-                "User is already attributed to another promo partner",
+                "User is already attributed to another partner",
             )
         if not (
             relation is not None
@@ -125,14 +121,10 @@ class PromoCodeService:
             .where(ReferralRelation.referred_user_id == user_id)
             .with_for_update()
         )
-        if (
-            relation is not None
-            and relation.source == "promo"
-            and relation.inviter_user_id != promo.partner_user_id
-        ):
+        if relation is not None and relation.inviter_user_id != promo.partner_user_id:
             raise PromoCodeError(
                 "already_attributed",
-                "User is already attributed to another promo partner",
+                "User is already attributed to another partner",
             )
 
         existing_redemption = await session.scalar(
@@ -163,6 +155,8 @@ class PromoCodeService:
             code = (
                 "already_attributed"
                 if admission.reason == "already_attributed"
+                else "referral_cycle"
+                if admission.reason == "referral_cycle"
                 else f"referral_{admission.reason}"
             )
             raise PromoCodeError(
@@ -226,14 +220,12 @@ class PromoCodeService:
         """
         normalized = cls.normalize(code)
         if not normalized:
-            return await cls.attach_current_attribution_to_payment(
-                session,
-                payment=payment,
-            )
+            return None
 
         # Current clients resend the persisted code as part of their idempotent
-        # checkout intent. This is attribution, not a new activation: disabled
-        # campaigns must not prevent base-only top-ups by existing customers.
+        # checkout intent. The promo is available only when the customer
+        # explicitly submits it for this payment; persisted referral attribution
+        # alone must not mark future top-ups as promo purchases.
         relation = await cls.relation_for_user(session, user_id=payment.user_id)
         if relation is not None and relation.source == "promo" and relation.promo_id is not None:
             attributed = await session.get(PromoCode, relation.promo_id)
@@ -242,7 +234,13 @@ class PromoCodeService:
                 and attributed.code == normalized
                 and attributed.partner_user_id == relation.inviter_user_id
             ):
-                return await cls.attach_current_attribution_to_payment(session, payment=payment)
+                cls._attach_payment_metadata(
+                    payment,
+                    attributed,
+                    metadata_source="activation",
+                )
+                await session.flush()
+                return attributed
 
         activation = await cls.activate(
             session,
