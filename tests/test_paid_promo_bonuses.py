@@ -231,6 +231,14 @@ async def test_partner_promo_activation_rejects_referral_cycles() -> None:
         )
         await session.commit()
 
+        with pytest.raises(PromoCodeError) as preview_error:
+            await PromoCodeService.preview(
+                session,
+                user_id=upstream.id,
+                code=promo.code,
+            )
+        assert preview_error.value.code == "referral_cycle"
+
         with pytest.raises(PromoCodeError) as exc_info:
             await PromoCodeService.activate(
                 session,

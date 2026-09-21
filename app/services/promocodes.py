@@ -76,6 +76,15 @@ class PromoCodeService:
                 "already_attributed",
                 "User is already attributed to another partner",
             )
+        if await ReferralAntifraudService._would_create_cycle(
+            session,
+            visitor_user_id=user_id,
+            inviter_user_id=promo.partner_user_id,
+        ):
+            raise PromoCodeError(
+                "referral_cycle",
+                "Partner referral admission rejected: referral_cycle",
+            )
         if not (
             relation is not None
             and relation.source == "promo"
