@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 class NexusProviderError(RuntimeError):
@@ -109,6 +113,18 @@ class NexusClient:
         }
         if references:
             params["image_urls"] = references
+            logger.info(
+                "nexus_client.create references=%s",
+                [u[:80] + "..." if len(u) > 80 else u for u in references],
+            )
+
+        log_payload = {k: (v[:120] + "..." if k == "prompt" and len(v) > 120 else v) for k, v in params.items()}
+        if "image_urls" in log_payload:
+            log_payload["image_urls"] = f"count={len(params['image_urls'])}"
+        logger.info("nexus_client.create sending model=%s ar=%s size=%s refs=%s idem=%s",
+                     params["model_name"], params["aspect_ratio"], params["image_size"],
+                     len(references) if references else 0,
+                     idempotency_key or "auto")
 
         response = await self._client.post(
             "/generate",
@@ -118,11 +134,21 @@ class NexusClient:
             },
             json={"params": params},
         )
+
+        if not response.is_success:
+            body_preview = (response.text or "")[:500]
+            logger.error(
+                "nexus_client.create FAILED http=%s body=%s params=%s",
+                response.status_code, body_preview, log_payload,
+            )
+
         response.raise_for_status()
         payload = response.json()
         task_id = payload.get("task_id")
         if not task_id:
             raise NexusProviderError(f"NexusAPI /generate returned no task_id: {payload!r}")
+
+        logger.info("nexus_client.create OK task_id=%s", task_id)
         return str(task_id)
 
     async def create_nano_banana_pro(
@@ -148,11 +174,22 @@ class NexusClient:
             f"/tasks/{task_id}",
             headers={"Authorization": self._authorization},
         )
+        if not response.is_success:
+            body_preview = (response.text or "")[:500]
+            logger.error(
+                "nexus_client.get_task FAILED task=%s http=%s body=%s",
+                task_id, response.status_code, body_preview,
+            )
         response.raise_for_status()
         payload = response.json()
         status = str(payload.get("status") or "unknown").lower()
         result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
         image_urls = _extract_image_urls(result)
+        logger.info(
+            "nexus_client.get_task task=%s status=%s image_urls=%s error=%s",
+            task_id, status, f"count={len(image_urls)}" if image_urls else "none",
+            payload.get("error") or "",
+        )
         return NexusTask(
             task_id=str(payload.get("task_id") or payload.get("id") or task_id),
             status=status,

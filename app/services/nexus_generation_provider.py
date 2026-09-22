@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -21,6 +22,9 @@ from app.services.reference_static import ReferenceStaticStorage
 
 class NexusGenerationContractError(ValueError):
     pass
+
+
+logger = logging.getLogger(__name__)
 
 
 class NexusGenerationProviderService:
@@ -179,6 +183,17 @@ class NexusGenerationProviderService:
         try:
             input_data = GenerationProviderService._input_for(generation)
             normalized = cls._normalize_input(model_id, input_data)
+
+            log_input = {k: v for k, v in normalized.items()}
+            if "prompt" in log_input:
+                log_input["prompt"] = (log_input["prompt"] or "")[:200]
+            if "image_urls" in log_input:
+                log_input["image_urls"] = f"count={len(log_input['image_urls'])}"
+            logger.info(
+                "nexus_submit submitting gen=%s model=%s normalized=%s",
+                generation_id, model_id, log_input,
+            )
+
             client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
             try:
                 task_id = await client.create_nano_banana(
@@ -260,6 +275,11 @@ class NexusGenerationProviderService:
             else "fail"
             if task.status == "failed"
             else task.status
+        )
+        logger.info(
+            "nexus_sync_task gen=%s task=%s nexus_status=%s state=%s urls=%s",
+            generation_id, task_id, task.status, state,
+            f"count={len(task.image_urls)}" if task.image_urls else "none",
         )
         provider_task = KieTask(
             task_id=task.task_id,
