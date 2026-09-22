@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import base64
 import logging
+import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
+import httpx
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
+from aiogram.types import FSInputFile
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -311,6 +315,8 @@ class NexusAdminTaskService:
             f"Референсы: {reference_count}\n"
             f"Параметры: {image_size} · {aspect_ratio}"
         )
+
+        # Try remote URL first, fall back to download+native upload, then text.
         try:
             message = await bot.send_photo(
                 chat_id=chat_id,
@@ -318,10 +324,36 @@ class NexusAdminTaskService:
                 caption=caption,
             )
         except TelegramAPIError:
-            message = await bot.send_message(
-                chat_id=chat_id,
-                text=f"{caption}\n\nРезультат: {result_url}",
+            logger.info(
+                "nexus_admin_remote_photo_failed url=%s", result_url,
             )
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as http:
+                    response = await http.get(result_url)
+                    response.raise_for_status()
+                suffix = Path(result_url.split("?", 1)[0]).suffix.lower() or ".bin"
+                handle = tempfile.NamedTemporaryFile(
+                    prefix="ksu-nexus-admin-", suffix=suffix, delete=False,
+                )
+                path = Path(handle.name)
+                handle.close()
+                try:
+                    path.write_bytes(response.content)
+                    message = await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=FSInputFile(path),
+                        caption=caption,
+                    )
+                finally:
+                    path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning(
+                    "nexus_admin_native_photo_failed url=%s", result_url,
+                )
+                message = await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"{caption}\n\nРезультат: {result_url}",
+                )
 
         async with SessionFactory() as session:
             task = await session.get(NexusAdminTask, task_id, with_for_update=True)
