@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.admin import _admin_account
-from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
+from app.bot.keyboards import QUICK_MENU_TEXT, QUICK_SUPPORT_TEXT, QUICK_TEST_TEXT, quick_menu
 from app.core.config import settings
 from app.providers.nexus import NANO_BANANA_PRO_ASPECT_RATIOS, NANO_BANANA_PRO_MAX_REFERENCES
 from app.services.admin_security import parse_bootstrap_ids
@@ -20,6 +20,10 @@ router = Router(name="nexus-admin-test")
 
 NEXUS_TEST_ASPECT_RATIOS = ("1:1", "4:3", "3:4", "16:9", "9:16")
 NEXUS_TEST_IMAGE_SIZES = ("2K", "4K")
+
+# Bottom-bar navigation shortcuts must never be swallowed by the test FSM.
+# Messages matching these texts are handled by the customer launcher instead.
+NEXUS_TEST_EXIT_TEXTS = frozenset({QUICK_MENU_TEXT, QUICK_SUPPORT_TEXT, QUICK_TEST_TEXT})
 
 
 class NexusTestStates(StatesGroup):
@@ -167,7 +171,7 @@ async def nexus_test_start(
     )
 
 
-@router.message(NexusTestStates.references)
+@router.message(NexusTestStates.references, ~F.text.in_(NEXUS_TEST_EXIT_TEXTS), ~F.text.startswith("/"))
 async def nexus_test_reference(
     message: Message,
     state: FSMContext,
@@ -249,7 +253,21 @@ async def nexus_test_references_done(
     await callback.answer()
 
 
-@router.message(NexusTestStates.prompt)
+@router.callback_query(F.data == "nexus-test:cancel")
+async def nexus_test_cancel(
+    callback: CallbackQuery,
+    state: FSMContext,
+) -> None:
+    await state.clear()
+    await callback.answer("Тест отменён")
+    if callback.message:
+        await callback.message.answer(
+            "Тест отменён. Вы вышли из тестового режима.",
+            reply_markup=quick_menu(is_admin=True),
+        )
+
+
+@router.message(NexusTestStates.prompt, ~F.text.in_(NEXUS_TEST_EXIT_TEXTS), ~F.text.startswith("/"))
 async def nexus_test_prompt(
     message: Message,
     state: FSMContext,
@@ -266,6 +284,28 @@ async def nexus_test_prompt(
     await state.update_data(prompt=prompt)
     await state.set_state(NexusTestStates.aspect_ratio)
     await message.answer("Выберите соотношение сторон:", reply_markup=_aspect_ratio_keyboard())
+
+
+@router.message(NexusTestStates.aspect_ratio, ~F.text.in_(NEXUS_TEST_EXIT_TEXTS), ~F.text.startswith("/"))
+async def nexus_test_aspect_ratio_message(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    await message.answer(
+        "Выберите соотношение сторон кнопками ниже или нажмите «Отмена».",
+        reply_markup=_aspect_ratio_keyboard(),
+    )
+
+
+@router.message(NexusTestStates.image_size, ~F.text.in_(NEXUS_TEST_EXIT_TEXTS), ~F.text.startswith("/"))
+async def nexus_test_image_size_message(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    await message.answer(
+        "Выберите качество кнопками ниже или нажмите «Отмена».",
+        reply_markup=_image_size_keyboard(),
+    )
 
 
 @router.callback_query(NexusTestStates.aspect_ratio, F.data.startswith("nexus-test:ratio:"))
@@ -321,7 +361,7 @@ async def nexus_test_image_size(
     try:
         task = await NexusAdminTaskService.enqueue(
             session,
-            requester_telegram_id=int(telegram_id or 0),
+            telegram_id=int(telegram_id or 0),
             chat_id=int(callback.message.chat.id if callback.message else telegram_id or 0),
             prompt=prompt,
             references=references,

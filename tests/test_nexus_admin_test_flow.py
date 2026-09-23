@@ -9,13 +9,15 @@ import pytest
 import app.bot.handlers.nexus_test as nexus_test_module
 from app.bot.handlers.nexus_test import (
     NEXUS_TEST_ASPECT_RATIOS,
+    NEXUS_TEST_EXIT_TEXTS,
     NEXUS_TEST_IMAGE_SIZES,
     _aspect_ratio_keyboard,
     _image_size_keyboard,
     _is_admin,
     _references_keyboard,
+    nexus_test_cancel,
 )
-from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
+from app.bot.keyboards import QUICK_MENU_TEXT, QUICK_SUPPORT_TEXT, QUICK_TEST_TEXT, quick_menu
 from app.core.config import settings
 from app.services.nexus_admin_tasks import _data_url
 from app.providers.nexus import (
@@ -80,6 +82,48 @@ def test_admin_test_exposes_documented_aspect_ratios_and_only_2k_4k_quality_choi
 
 def test_telegram_reference_is_encoded_as_data_url_for_nexus() -> None:
     assert _data_url(b"abc", "image/jpeg") == "data:image/jpeg;base64,YWJj"
+
+
+def test_cancel_button_exists_and_navigation_texts_leave_test_states() -> None:
+    references = _references_keyboard(1)
+    assert "nexus-test:cancel" in _inline_callbacks(references)
+    assert "nexus-test:cancel" in _inline_callbacks(_aspect_ratio_keyboard())
+    assert "nexus-test:cancel" in _inline_callbacks(_image_size_keyboard())
+    assert QUICK_MENU_TEXT in NEXUS_TEST_EXIT_TEXTS
+    assert QUICK_SUPPORT_TEXT in NEXUS_TEST_EXIT_TEXTS
+    assert QUICK_TEST_TEXT in NEXUS_TEST_EXIT_TEXTS
+
+
+@pytest.mark.asyncio
+async def test_cancel_handler_clears_test_state() -> None:
+    cleared = False
+
+    async def fake_clear() -> None:
+        nonlocal cleared
+        cleared = True
+
+    answered: list[tuple[str, bool]] = []
+    sent: list[str] = []
+
+    class _FakeCallbackMessage:
+        async def answer(self, text: str, **_kwargs: object) -> None:
+            sent.append(text)
+
+    class _FakeCallback:
+        message = _FakeCallbackMessage()
+
+        async def answer(self, text: str, **_kwargs: object) -> None:
+            answered.append((text, bool(_kwargs.get("show_alert", False))))
+
+    class _FakeState:
+        async def clear(self) -> None:
+            await fake_clear()
+
+    await nexus_test_cancel(_FakeCallback(), _FakeState())  # type: ignore[arg-type]
+
+    assert cleared is True
+    assert answered == [("Тест отменён", False)]
+    assert sent == ["Тест отменён. Вы вышли из тестового режима."]
 
 
 @pytest.mark.asyncio
@@ -197,6 +241,11 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     assert "references=references" in source
     assert "image_size=image_size" in source
     assert 'aspect_ratio=str(data.get("aspect_ratio") or "1:1")' in source
+    assert "telegram_id=int(telegram_id or 0)" in source
+    assert "requester_telegram_id" not in source
+    assert 'F.data == "nexus-test:cancel"' in source
+    assert "async def nexus_test_cancel" in source
+    assert "NEXUS_TEST_EXIT_TEXTS" in source
     assert "wait_for_task" not in source
 
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
