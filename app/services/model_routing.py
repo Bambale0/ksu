@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.model_catalog import ModelCatalog, ModelSpec, UnknownModelError
+from app.services.seedance_reference_integrity import canonicalize_seedance_reference_tags
 
 LEGACY_IMAGE_REFERENCE_FIELDS = (
     "reference_images",
@@ -316,6 +317,18 @@ def resolve_model_request(
     resolved_model_id = _select_model_id(requested_model_id, initial_parameters, input_url)
     spec = ModelCatalog.get(resolved_model_id)
     normalized_parameters = _apply_reference_aliases(spec, initial_parameters, input_url)
+    if spec.family == "seedance":
+        image_count = len(_collect_fields(normalized_parameters, SEEDANCE_GENERAL_IMAGE_REFERENCE_FIELDS))
+        video_count = len(_collect_fields(normalized_parameters, SEEDANCE_GENERAL_VIDEO_REFERENCE_FIELDS))
+        audio_value = normalized_parameters.get("reference_audio_urls")
+        audio_count = len(audio_value) if isinstance(audio_value, list) else int(bool(audio_value))
+        prompt = str(normalized_parameters.get("prompt") or "")
+        normalized_parameters["prompt"] = canonicalize_seedance_reference_tags(
+            prompt,
+            image_count=image_count,
+            video_count=video_count,
+            audio_count=audio_count,
+        )
     mode = _mode_for(spec, normalized_parameters, input_url)
     return RoutedModelRequest(
         requested_model_id=requested_model_id,

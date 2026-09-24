@@ -17,6 +17,7 @@ from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_routing import resolve_model_request, video_references
 from app.services.seedance25_contract import normalize_seedance25_input
 from app.services.seedance_prompt_limits import validate_prompt_length
+from app.services.seedance_reference_integrity import missing_seedance_reference_tags
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,34 @@ class GenerationService:
 
         routed = resolve_model_request(model_id, merged, input_url=input_url)
         merged = routed.parameters
+
+        if routed.spec.family == "seedance":
+            image_refs = merged.get("reference_image_urls")
+            video_refs = merged.get("reference_video_urls")
+            audio_refs = merged.get("reference_audio_urls")
+            image_count = len(image_refs) if isinstance(image_refs, list) else int(bool(image_refs))
+            video_count = len(video_refs) if isinstance(video_refs, list) else int(bool(video_refs))
+            audio_count = len(audio_refs) if isinstance(audio_refs, list) else int(bool(audio_refs))
+            missing_tags = missing_seedance_reference_tags(
+                str(merged.get("prompt") or ""),
+                image_count=image_count,
+                video_count=video_count,
+                audio_count=audio_count,
+            )
+            if missing_tags:
+                logger.warning(
+                    "Seedance request blocked before billing: model=%s missing_tags=%s image_refs=%s video_refs=%s audio_refs=%s",
+                    routed.model_id,
+                    missing_tags,
+                    image_count,
+                    video_count,
+                    audio_count,
+                )
+                raise InvalidModelParametersError(
+                    "Промпт ссылается на референс, которого нет в текущей генерации: "
+                    + ", ".join(missing_tags)
+                    + ". Загрузите нужное медиа или уберите ссылку из промпта."
+                )
 
         try:
             validate_prompt_length(routed.model_id, merged.get("prompt", ""))

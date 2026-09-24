@@ -1,3 +1,39 @@
+## Active Feature Execution — Seedance video-reference integrity
+
+- **Baseline:** `main@d523828cb7f0ae8faca50657c8b080d1e3d54e6d`.
+- **User-visible symptom:** Seedance 2.0/2.5 prompts explicitly reference `@video1`, but some KSU generations reach KIE with no video reference and therefore imitate/reuse people from the donor video instead of replacing identities as requested.
+- **Production evidence:** generation `5829076d-4907-4030-a91d-191e5be033d1` (Seedance 2.5, 2026-09-24 02:33 UTC) contains `@video1` throughout the prompt, but saved `parameters.reference_video_urls` is absent. A separate Seedance 2.5 generation `b8761834-a931-4fc5-9c7d-4b3b86d6afa1` on the same production path contains a valid MP4 in `reference_video_urls`, proving KIE transport itself can carry the video.
+- **Existing reusable pieces:** `model_routing.resolve_model_request` canonicalizes media aliases into `reference_video_urls`; `GenerationService.prepare_request` runs before billing/debit; KIE provider normalizes payloads and enforces Seedance frame/reference mode; Mini App already has a dedicated `references` scenario.
+- **Confirmed gaps:** there is no backend invariant binding typed prompt references (`@ImageN/@VideoN/@AudioN`) to actual uploaded media; mixed-case/legacy tags are passed through; a prompt can therefore request `@Video1` with zero video refs and still be quoted/created/submitted. Frontend scenario switching deletes fields listed in `clear_fields`, which can silently discard uploaded references.
+- **Architecture decision:** enforce reference integrity at the shared backend request boundary, before billing/debit and independent of client surface. Frontend will additionally avoid destructive scenario changes when they would discard populated Seedance reference fields. The KIE provider boundary repeats the typed-reference check so legacy/retry payloads cannot bypass the pre-billing invariant.
+- **No-hardcode:** media counts come from routed parameters/model contracts. No business pricing, model selection, or provider policy is hardcoded.
+- **Schema/migrations:** N/A; no DB schema change.
+- **Authorization/tenant isolation:** N/A; existing generation authorization remains unchanged.
+- **Provider contract:** keep KIE endpoint/model IDs unchanged. Canonicalize only Seedance prompt aliases and fail closed before provider submission when a referenced typed alias has no matching media.
+- **Observability:** log count-only normalization/block events; never log prompt contents or media URLs.
+- **Test seams:** provider/request-boundary unit tests; GenerationService pre-billing regression; Mini App browser regression for reference-preserving scenario switching; existing KIE/Seedance contract suites.
+- **Acceptance criteria:**
+  1. `@video1`, `@VIDEO 1` and `@Video1` canonicalize to `@Video1`.
+  2. Legacy combined ordinal `@IMAGE 4` with 3 images + 1 video becomes `@Video1`.
+  3. Seedance request containing `@Video1` with zero video refs is rejected by `prepare_request` before generation row/wallet debit/provider call.
+  4. Uploaded video refs are not silently discarded by a Seedance scenario change.
+  5. Existing valid Seedance reference requests continue to reach provider input unchanged apart from canonical prompt aliases.
+- **Guidance applied:** repository `AGENTS.md`; local `.agents` skill index (`diagnosing-bugs`, testing/release guidance); Bambale0/skills diagnosing-bugs; Bambale0/claw debugger; wondelai skills index reviewed for Release It!/integration discipline; agentskills/agentskills provides format guidance only; anthropics webapp-testing applies to the Mini App browser seam; Bambale0/start evidence-first/debugging baseline. The expected `Bambale0/dev-agents-pack` debugger path was unavailable through GitHub and is recorded as unavailable rather than assumed.
+- **Plan:** RED regressions → backend typed-reference integrity → non-destructive Mini App scenario switching → focused backend/E2E suites → changed-line lint/type/build → code review → PR/CI → merge/deploy exact SHA → production smoke and first live Seedance video-ref verification.
+- **Progress / evidence:**
+  - RED reproduced on baseline: typed aliases remained verbatim and `@Video1` without video was accepted.
+  - Backend implementation now canonicalizes typed aliases after media routing and rejects missing typed refs in `GenerationService.prepare_request`, before billing/wallet/provider.
+  - Mini App Seedance scenario switching is non-destructive when populated reference fields would be cleared.
+  - Seedance integrity/alias suite initially passed 11/11, including explicit proof that billing decision and wallet debit are not called for an invalid `@Video1` request.
+  - Provider-boundary RED reproduced: direct KIE submission preserved non-canonical tags and accepted `@Video1` with zero video refs. Added provider defense; focused provider+integrity suite now passes 13/13 and proves no HTTP call occurs for missing typed media.
+  - Expanded backend/provider/reference/pricing suite after provider-boundary defense: 70/70 passed.
+  - Ruff on changed backend/test files: passed.
+  - Python compileall: passed.
+  - Mini App TypeScript typecheck: passed.
+  - Focused Chromium Seedance reference suite: 6/6 passed, including reference-preserving mode switch.
+  - No DB migration, provider endpoint/model, auth, tenant or pricing behavior changed.
+- **Review:** no unresolved high-severity issue in the focused diff; backend enforcement is the source of truth and frontend protection is defense-in-depth.
+
 # Domain Context
 
 ## Active Feature Execution - Trend video quality choice
