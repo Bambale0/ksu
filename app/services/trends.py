@@ -16,6 +16,7 @@ from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
+from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_user_fields import (
     TrendUserFieldsError,
@@ -86,8 +87,20 @@ class TrendService:
             raise TrendRecipeError("input_mode must be 'none' or 'image'")
         reference_field = TrendService._reference_field(spec)
         default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
-        min_references = int(payload.get("min_references", 1 if input_mode == "image" else 0))
-        max_references = int(payload.get("max_references", default_max if input_mode == "image" else 0))
+        seedance_requirements = (
+            seedance_reference_requirements(prompt) if spec.family == "seedance" else {"image": 0, "video": 0, "audio": 0}
+        )
+        required_user_images = int(seedance_requirements["image"])
+        if required_user_images:
+            input_mode = "image"
+        min_references = max(
+            required_user_images,
+            int(payload.get("min_references", 1 if input_mode == "image" else 0)),
+        )
+        max_references = max(
+            min_references,
+            int(payload.get("max_references", default_max if input_mode == "image" else 0)),
+        )
         if min_references < 0 or max_references < min_references or max_references > 16:
             raise TrendRecipeError("Reference limits are invalid")
         if input_mode == "none" and (min_references or max_references):
@@ -142,7 +155,7 @@ class TrendService:
     @staticmethod
     async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
-        refs = ["https://example.invalid/trend-reference.jpg"] * recipe["min_references"]
+        refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
         try:
             await GenerationService.prepare_request(
@@ -214,7 +227,7 @@ class TrendService:
     @staticmethod
     async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
-        refs = ["https://example.invalid/trend-reference.jpg"] * recipe["min_references"]
+        refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
         spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
             session,
@@ -307,6 +320,13 @@ class TrendService:
         }
 
     @staticmethod
+    def _validation_reference_urls(count: int) -> list[str]:
+        return [
+            f"https://example.invalid/trend-reference-{index}.jpg"
+            for index in range(1, max(0, int(count)) + 1)
+        ]
+
+    @staticmethod
     def _parameters_with_references(
         recipe: dict[str, Any],
         reference_urls: list[str],
@@ -316,6 +336,7 @@ class TrendService:
         parameters = dict(recipe.get("parameters") or {})
         TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
         spec = ModelCatalog.get(str(recipe["model_id"]))
+        TrendService._apply_server_owned_seedance_references(recipe, parameters, spec=spec)
         for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):
             parameters.pop(field, None)
         if not reference_urls:
@@ -327,6 +348,40 @@ class TrendService:
             raise TrendRecipeError("Selected model requires exactly one reference image")
         parameters[field] = reference_urls if field in _REFERENCE_LIST_FIELDS else reference_urls[0]
         return parameters
+
+    @staticmethod
+    def _apply_server_owned_seedance_references(
+        recipe: dict[str, Any],
+        parameters: dict[str, Any],
+        *,
+        spec: ModelSpec,
+    ) -> None:
+        if spec.family != "seedance":
+            return
+        required = seedance_reference_requirements(str(recipe.get("prompt") or ""))
+        required_videos = int(required["video"])
+        if required_videos <= 0:
+            return
+
+        current = parameters.get("reference_video_urls")
+        if isinstance(current, list):
+            videos = [str(item).strip() for item in current if str(item).strip()]
+        elif current not in (None, ""):
+            videos = [str(current).strip()]
+        else:
+            videos = []
+
+        preview = str(recipe.get("preview_url") or "").strip()
+        if len(videos) < required_videos and TrendService._looks_like_video_url(preview):
+            if preview not in videos:
+                videos.append(preview)
+        if videos:
+            parameters["reference_video_urls"] = videos
+
+    @staticmethod
+    def _looks_like_video_url(value: str) -> bool:
+        path = urlsplit(str(value or "")).path.lower()
+        return path.endswith((".mp4", ".webm", ".mov", ".m4v", ".qt", ".quicktime"))
 
     @staticmethod
     def _resolution_options(recipe: dict[str, Any]) -> list[str]:

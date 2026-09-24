@@ -11,6 +11,7 @@ import pytest
 from app.api.v1 import trends as trends_api
 from app.services.billing_access import BillingDecision
 from app.services.generations import GenerationService
+from app.services.model_routing import resolve_model_request
 from app.services.trends import TrendRecipeError, TrendService
 
 
@@ -441,3 +442,149 @@ async def test_public_view_exposes_safe_empty_field_schema_not_hidden_prompt_or_
     assert "prompt" not in view and "Birthday portrait" not in repr(view)
     assert "default_value" not in repr(view["user_fields"])
     assert "min" not in view["user_fields"][0] and "max" not in view["user_fields"][0]
+
+
+def test_seedance_trend_infers_required_user_images_from_typed_prompt() -> None:
+    recipe = TrendService.normalize_recipe(
+        "Dance replacement",
+        {
+            "description": "Image1 dancer, Image2 filmer, Image3 car person",
+            "model_id": "seedance-2.0",
+            "prompt": "@Image1 dances, @Image2 films, @Image3 exits the car, follow @Video1",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "media_type": "video",
+            "input_mode": "none",
+            "billing_seconds": 5,
+            "parameters": {
+                "aspect_ratio": "adaptive",
+                "resolution": "720p",
+                "duration": 5,
+            },
+        },
+    )
+
+    assert recipe["input_mode"] == "image"
+    assert recipe["min_references"] == 3
+    assert recipe["max_references"] >= 3
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_validation_binds_video_preview_to_video1(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    prepare = AsyncMock(
+        return_value=(
+            SimpleNamespace(id="seedance-2.0"),
+            {},
+            Decimal("250.00"),
+            5,
+            Decimal("50.00"),
+        )
+    )
+    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+
+    recipe = await TrendService.validate_recipe(
+        AsyncMock(),
+        title="Dance replacement",
+        payload={
+            "description": "Three people from user photos",
+            "model_id": "seedance-2.0",
+            "prompt": "@Image1 dances, @Image2 films, @Image3 exits the car, follow @Video1",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "media_type": "video",
+            "input_mode": "none",
+            "billing_seconds": 5,
+            "parameters": {
+                "aspect_ratio": "adaptive",
+                "resolution": "720p",
+                "duration": 5,
+            },
+        },
+    )
+
+    kwargs = prepare.await_args.kwargs
+    assert recipe["min_references"] == 3
+    assert kwargs["parameters"]["reference_image_urls"] == [
+        "https://example.invalid/trend-reference-1.jpg",
+        "https://example.invalid/trend-reference-2.jpg",
+        "https://example.invalid/trend-reference-3.jpg",
+    ]
+    assert kwargs["parameters"]["reference_video_urls"] == [
+        "https://cdn.example.invalid/original.mp4"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_run_keeps_user_images_and_server_video_preview(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    item.payload.update(
+        {
+            "prompt": "@Image1 dances, @Image2 films, @Image3 exits the car, follow @Video1",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "input_mode": "none",
+            "min_references": 0,
+            "max_references": 0,
+        }
+    )
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    refs = [
+        "https://cdn.example.invalid/person-1.jpg",
+        "https://cdn.example.invalid/person-2.jpg",
+        "https://cdn.example.invalid/person-3.jpg",
+    ]
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=refs,
+    )
+
+    parameters = create.await_args.kwargs["parameters"]
+    assert parameters["reference_image_urls"] == refs
+    assert parameters["reference_video_urls"] == [
+        "https://cdn.example.invalid/original.mp4"
+    ]
+
+
+def test_trend_validation_reference_placeholders_are_unique() -> None:
+    refs = TrendService._validation_reference_urls(3)
+
+    assert refs == [
+        "https://example.invalid/trend-reference-1.jpg",
+        "https://example.invalid/trend-reference-2.jpg",
+        "https://example.invalid/trend-reference-3.jpg",
+    ]
+    assert len(set(refs)) == 3
+
+
+def test_seedance_trend_validation_refs_survive_router_without_deduplication() -> None:
+    recipe = TrendService.normalize_recipe(
+        "Dance replacement",
+        {
+            "description": "Three people and one source video",
+            "model_id": "seedance-2.0",
+            "prompt": "@Image1 dances, @Image2 films, @Image3 exits the car, follow @Video1",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "media_type": "video",
+            "billing_seconds": 5,
+            "parameters": {
+                "aspect_ratio": "adaptive",
+                "resolution": "720p",
+                "duration": 5,
+            },
+        },
+    )
+    refs = TrendService._validation_reference_urls(recipe["min_references"])
+    parameters = TrendService._parameters_with_references(recipe, refs)
+
+    routed = resolve_model_request(recipe["model_id"], parameters)
+
+    assert routed.parameters["reference_image_urls"] == refs
+    assert len(routed.parameters["reference_image_urls"]) == 3
+    assert routed.parameters["reference_video_urls"] == [
+        "https://cdn.example.invalid/original.mp4"
+    ]
