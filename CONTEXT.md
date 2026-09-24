@@ -1,4 +1,19 @@
-## Active Feature Execution — Seedance + WAN reference integrity audit
+## Active Feature Execution — Curated Trend multimodal reference slots
+
+- **Baseline:** `main@98c95032d6edfbedf00b3b966d56f63977ca807c`.
+- **User-visible symptom:** admin Trend creation rejects a Seedance template whose hidden prompt contains `@Image1/@Image2/@Image3/@Video1` with “reference missing”, even though those tokens describe media the future customer will upload. The existing customer Trend launcher also accepts only image refs, so merely bypassing save-time validation would leave the published trend unusable.
+- **Root cause:** `TrendService.validate_recipe/public_view` built only synthetic image refs from legacy `min_references`; `RunTrendRequest` exposed only `reference_urls`; the Trend page filtered uploads to `image/*`. Runtime Seedance integrity correctly rejects missing typed media, but template authoring had no distinct preflight contract.
+- **Architecture decision:** derive Seedance template slots automatically from the highest explicit `@ImageN/@VideoN/@AudioN` indices. Do not make admins manually duplicate those counts. Persist normalized typed requirements, validate/price templates against synthetic typed media without pretending those synthetic URLs are trusted owned uploads, then keep the normal trusted-media gate for real customer generation.
+- **Compatibility:** legacy image-only Trend recipes and `reference_urls` remain supported. New multimodal run payloads use typed `image_reference_urls/video_reference_urls/audio_reference_urls`.
+- **No-hardcode:** slot counts come from prompt tags; provider/model rules remain in existing catalogs and Seedance contracts. No pricing, wallet, auth, schema or model-selection changes.
+- **Schema/migrations:** N/A; normalized recipe JSON gains `reference_requirements` only.
+- **Billing/safety:** reusable template preflight can quote synthetic slots but skips owned-media duration/size probes; actual `GenerationService.create` still passes through full trusted-media checks before billing/submission.
+- **RED evidence:** backend recipe validation failed on `@Image1/@Image2/@Image3/@Video1`; browser Trend launcher exposed “4 images” and no video picker.
+- **GREEN evidence:** focused backend/Seedance suite 38/38 plus template/runtime safety boundary; final isolated full backend/product regression 1239/1239; Alembic upgrade/check, full-repo Ruff, compileall and diff-check green; Mini App typecheck/build green; full Chromium all-user-surfaces 47/47; admin-create multimodal assertions 5/5 across the fixed 150-case risk matrix.
+- **Acceptance:** (1) screenshot recipe saves with no admin-uploaded refs; (2) admin UI shows auto “3 фото + 1 видео”; (3) public Trend requires the same typed slots; (4) Generate stays disabled until all required kinds are uploaded; (5) run binds refs to exact Seedance provider fields; (6) missing `@Video1` is rejected before generation; (7) legacy image-only Trends remain unchanged; (8) full suite/review/PR/CI/deploy/prod smoke green.
+- **Plan/status:** evidence + RED ✅ → backend typed template contract ✅ → customer multimodal uploader ✅ → admin auto-slot UX ✅ → focused tests ✅ → docs/context ✅ → isolated full regression ✅ → five-axis review ✅ → PR/exact-head CI → merge/deploy → production smoke.
+
+## Completed Feature Execution — Seedance + WAN reference integrity audit
 
 - **Baseline:** `main@422597aebc62a3be2c2d1af0ccc97d7037fd4a19`, which already contains the Seedance typed-reference/video-preservation fix.
 - **User-visible scope:** verify and repair reference integrity for Seedance and WAN across photo refs, video refs, Mini App aliases, queued/retry rows, quote/create validation, and final KIE payloads. Do not assume every bad visual result is a prompt problem.

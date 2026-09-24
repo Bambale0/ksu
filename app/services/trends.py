@@ -16,6 +16,7 @@ from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
+from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_user_fields import (
     TrendUserFieldsError,
@@ -35,6 +36,19 @@ _REFERENCE_SINGLE_FIELDS = (
     "image_url",
     "first_frame_url",
     "first_frame",
+)
+_VIDEO_REFERENCE_FIELDS = (
+    "reference_video_urls",
+    "video_urls",
+    "video_url",
+    "reference_video",
+    "first_clip_url",
+)
+_AUDIO_REFERENCE_FIELDS = (
+    "reference_audio_urls",
+    "audio_urls",
+    "audio_url",
+    "reference_audio",
 )
 
 
@@ -82,20 +96,43 @@ class TrendService:
             input_mode = "image"
         elif input_mode in {"none", "text", "prompt"}:
             input_mode = "none"
+        elif input_mode != "multimodal":
+            raise TrendRecipeError("input_mode must be 'none', 'image' or 'multimodal'")
+
+        typed_slots = (
+            seedance_reference_requirements(prompt)
+            if spec.family == "seedance"
+            else {"image": 0, "video": 0, "audio": 0}
+        )
+        if any(typed_slots.values()):
+            input_mode = "multimodal"
+            reference_requirements = {
+                kind: {"min": count, "max": count}
+                for kind, count in typed_slots.items()
+            }
+            min_references = sum(typed_slots.values())
+            max_references = min_references
         else:
-            raise TrendRecipeError("input_mode must be 'none' or 'image'")
-        reference_field = TrendService._reference_field(spec)
-        default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
-        min_references = int(payload.get("min_references", 1 if input_mode == "image" else 0))
-        max_references = int(payload.get("max_references", default_max if input_mode == "image" else 0))
-        if min_references < 0 or max_references < min_references or max_references > 16:
-            raise TrendRecipeError("Reference limits are invalid")
-        if input_mode == "none" and (min_references or max_references):
-            raise TrendRecipeError("Reference limits require input_mode='image'")
-        if input_mode == "image" and reference_field is None:
-            raise TrendRecipeError("Selected model does not accept image references")
-        if reference_field in _REFERENCE_SINGLE_FIELDS and max_references > 1:
-            raise TrendRecipeError("Selected model accepts only one reference image")
+            reference_field = TrendService._reference_field(spec)
+            default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
+            min_references = int(payload.get("min_references", 1 if input_mode == "image" else 0))
+            max_references = int(payload.get("max_references", default_max if input_mode == "image" else 0))
+            if min_references < 0 or max_references < min_references or max_references > 16:
+                raise TrendRecipeError("Reference limits are invalid")
+            if input_mode == "none" and (min_references or max_references):
+                raise TrendRecipeError("Reference limits require input_mode='image'")
+            if input_mode == "image" and reference_field is None:
+                raise TrendRecipeError("Selected model does not accept image references")
+            if reference_field in _REFERENCE_SINGLE_FIELDS and max_references > 1:
+                raise TrendRecipeError("Selected model accepts only one reference image")
+            reference_requirements = {
+                "image": {
+                    "min": min_references if input_mode == "image" else 0,
+                    "max": max_references if input_mode == "image" else 0,
+                },
+                "video": {"min": 0, "max": 0},
+                "audio": {"min": 0, "max": 0},
+            }
         billing_seconds_raw = payload.get("billing_seconds")
         if billing_seconds_raw is None and spec.duration_field:
             billing_seconds_raw = parameters.get(spec.duration_field)
@@ -134,6 +171,7 @@ class TrendService:
             "input_mode": input_mode,
             "min_references": min_references,
             "max_references": max_references,
+            "reference_requirements": reference_requirements,
             "tags": clean_tags,
             "sort_order": sort_order,
             "usage_count": usage_count,
@@ -142,10 +180,10 @@ class TrendService:
     @staticmethod
     async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
-        refs = ["https://example.invalid/trend-reference.jpg"] * recipe["min_references"]
-        parameters = TrendService._parameters_with_references(recipe, refs)
+        reference_media = TrendService._synthetic_reference_media(recipe)
+        parameters = TrendService._parameters_with_reference_media(recipe, **reference_media)
         try:
-            await GenerationService.prepare_request(
+            await GenerationService.prepare_template_request(
                 session,
                 model_id=recipe["model_id"],
                 prompt=recipe["prompt"],
@@ -214,9 +252,9 @@ class TrendService:
     @staticmethod
     async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
-        refs = ["https://example.invalid/trend-reference.jpg"] * recipe["min_references"]
-        parameters = TrendService._parameters_with_references(recipe, refs)
-        spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
+        reference_media = TrendService._synthetic_reference_media(recipe)
+        parameters = TrendService._parameters_with_reference_media(recipe, **reference_media)
+        spec, _clean, cost, seconds, _unit = await GenerationService.prepare_template_request(
             session,
             model_id=recipe["model_id"],
             prompt=recipe["prompt"],
@@ -233,11 +271,7 @@ class TrendService:
             "cost_credits": TrendService._amount(cost),
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),
             "billing_seconds": seconds,
-            "reference_requirements": {
-                "kind": recipe["input_mode"],
-                "min": recipe["min_references"],
-                "max": recipe["max_references"],
-            },
+            "reference_requirements": TrendService._public_reference_requirements(recipe),
             "user_fields": recipe["user_fields"],
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
@@ -246,7 +280,7 @@ class TrendService:
             "prompt_actions_allowed": False,
             "created_at": item.created_at.isoformat(),
             **(
-                {"quality_options": await TrendService._quality_options(session, recipe, refs)}
+                {"quality_options": await TrendService._quality_options(session, recipe, reference_media)}
                 if TrendService._resolution_options(recipe)
                 else {}
             ),
@@ -260,6 +294,9 @@ class TrendService:
         user_id: uuid.UUID,
         trend_id: uuid.UUID,
         reference_urls: list[str],
+        image_reference_urls: list[str] | None = None,
+        video_reference_urls: list[str] | None = None,
+        audio_reference_urls: list[str] | None = None,
         user_values: dict[str, str] | None = None,
         resolution: str | None = None,
     ) -> tuple[Generation, dict[str, Any]]:
@@ -267,14 +304,32 @@ class TrendService:
         if item is None or not item.is_active:
             raise LookupError("Trend not found")
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
-        refs = [TrendService._safe_http_url(url, field="reference_url") for url in reference_urls]
-        if len(refs) < recipe["min_references"] or len(refs) > recipe["max_references"]:
-            raise TrendRecipeError(
-                f"Trend requires {recipe['min_references']}..{recipe['max_references']} reference images"
-            )
-        if recipe["input_mode"] == "none" and refs:
-            raise TrendRecipeError("This trend does not accept reference images")
-        parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
+        raw_images = reference_urls if image_reference_urls is None else image_reference_urls
+        images = [
+            TrendService._safe_http_url(url, field="image_reference_url")
+            for url in raw_images
+        ]
+        videos = [
+            TrendService._safe_http_url(url, field="video_reference_url")
+            for url in (video_reference_urls or [])
+        ]
+        audios = [
+            TrendService._safe_http_url(url, field="audio_reference_url")
+            for url in (audio_reference_urls or [])
+        ]
+        TrendService._validate_reference_media(
+            recipe,
+            image_reference_urls=images,
+            video_reference_urls=videos,
+            audio_reference_urls=audios,
+        )
+        parameters = TrendService._parameters_with_reference_media(
+            recipe,
+            image_reference_urls=images,
+            video_reference_urls=videos,
+            audio_reference_urls=audios,
+            resolution=resolution,
+        )
         try:
             rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
         except TrendUserFieldsError as exc:
@@ -307,26 +362,150 @@ class TrendService:
         }
 
     @staticmethod
+    def _reference_requirement(recipe: dict[str, Any], kind: str) -> tuple[int, int]:
+        requirements = recipe.get("reference_requirements")
+        if isinstance(requirements, dict):
+            value = requirements.get(kind)
+            if isinstance(value, dict):
+                minimum = max(0, int(value.get("min", 0)))
+                maximum = max(minimum, int(value.get("max", minimum)))
+                return minimum, maximum
+        if kind == "image" and recipe.get("input_mode") == "image":
+            minimum = max(0, int(recipe.get("min_references", 0)))
+            maximum = max(minimum, int(recipe.get("max_references", minimum)))
+            return minimum, maximum
+        return 0, 0
+
+    @staticmethod
+    def _public_reference_requirements(recipe: dict[str, Any]) -> dict[str, Any]:
+        typed = {
+            kind: {"min": minimum, "max": maximum}
+            for kind in ("image", "video", "audio")
+            for minimum, maximum in [TrendService._reference_requirement(recipe, kind)]
+        }
+        total_min = sum(value["min"] for value in typed.values())
+        total_max = sum(value["max"] for value in typed.values())
+        active = [kind for kind, value in typed.items() if value["max"] > 0]
+        kind = active[0] if len(active) == 1 else ("multimodal" if active else "none")
+        return {
+            "kind": kind,
+            "min": total_min,
+            "max": total_max,
+            **typed,
+        }
+
+    @staticmethod
+    def _synthetic_reference_media(recipe: dict[str, Any]) -> dict[str, list[str]]:
+        counts = {
+            kind: TrendService._reference_requirement(recipe, kind)[0]
+            for kind in ("image", "video", "audio")
+        }
+        return {
+            "image_reference_urls": [
+                f"https://example.invalid/trend-image-{index + 1}.jpg"
+                for index in range(counts["image"])
+            ],
+            "video_reference_urls": [
+                f"https://example.invalid/trend-video-{index + 1}.mp4"
+                for index in range(counts["video"])
+            ],
+            "audio_reference_urls": [
+                f"https://example.invalid/trend-audio-{index + 1}.mp3"
+                for index in range(counts["audio"])
+            ],
+        }
+
+    @staticmethod
+    def _validate_reference_media(
+        recipe: dict[str, Any],
+        *,
+        image_reference_urls: list[str],
+        video_reference_urls: list[str],
+        audio_reference_urls: list[str],
+    ) -> None:
+        values = {
+            "image": (image_reference_urls, "фото"),
+            "video": (video_reference_urls, "видео"),
+            "audio": (audio_reference_urls, "аудио"),
+        }
+        for kind, (items, label) in values.items():
+            minimum, maximum = TrendService._reference_requirement(recipe, kind)
+            count = len(items)
+            if count < minimum or count > maximum:
+                if minimum == maximum:
+                    raise TrendRecipeError(
+                        f"Тренд требует {minimum} {label}-референсов, получено {count}"
+                    )
+                raise TrendRecipeError(
+                    f"Тренд требует от {minimum} до {maximum} {label}-референсов, получено {count}"
+                )
+
+    @staticmethod
+    def _parameters_with_reference_media(
+        recipe: dict[str, Any],
+        *,
+        image_reference_urls: list[str],
+        video_reference_urls: list[str],
+        audio_reference_urls: list[str],
+        resolution: str | None = None,
+    ) -> dict[str, Any]:
+        parameters = dict(recipe.get("parameters") or {})
+        TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
+        spec = ModelCatalog.get(str(recipe["model_id"]))
+        for field in (
+            *_REFERENCE_LIST_FIELDS,
+            *_REFERENCE_SINGLE_FIELDS,
+            *_VIDEO_REFERENCE_FIELDS,
+            *_AUDIO_REFERENCE_FIELDS,
+        ):
+            parameters.pop(field, None)
+
+        if spec.family == "seedance":
+            if image_reference_urls:
+                parameters["reference_image_urls"] = image_reference_urls
+            if video_reference_urls:
+                parameters["reference_video_urls"] = video_reference_urls
+            if audio_reference_urls:
+                parameters["reference_audio_urls"] = audio_reference_urls
+            return parameters
+
+        if spec.id == "wan-2.7-r2v":
+            if audio_reference_urls:
+                raise TrendRecipeError("WAN R2V does not accept audio references")
+            if image_reference_urls:
+                parameters["reference_image"] = image_reference_urls
+            if video_reference_urls:
+                parameters["reference_video"] = video_reference_urls
+            return parameters
+
+        if video_reference_urls or audio_reference_urls:
+            raise TrendRecipeError("Selected model does not accept video/audio references")
+        if not image_reference_urls:
+            return parameters
+        field = TrendService._reference_field(spec)
+        if field is None:
+            raise TrendRecipeError("Selected model does not accept image references")
+        if field in _REFERENCE_SINGLE_FIELDS and len(image_reference_urls) != 1:
+            raise TrendRecipeError("Selected model requires exactly one reference image")
+        parameters[field] = (
+            image_reference_urls if field in _REFERENCE_LIST_FIELDS else image_reference_urls[0]
+        )
+        return parameters
+
+    @staticmethod
     def _parameters_with_references(
         recipe: dict[str, Any],
         reference_urls: list[str],
         *,
         resolution: str | None = None,
     ) -> dict[str, Any]:
-        parameters = dict(recipe.get("parameters") or {})
-        TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
-        spec = ModelCatalog.get(str(recipe["model_id"]))
-        for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):
-            parameters.pop(field, None)
-        if not reference_urls:
-            return parameters
-        field = TrendService._reference_field(spec)
-        if field is None:
-            raise TrendRecipeError("Selected model does not accept image references")
-        if field in _REFERENCE_SINGLE_FIELDS and len(reference_urls) != 1:
-            raise TrendRecipeError("Selected model requires exactly one reference image")
-        parameters[field] = reference_urls if field in _REFERENCE_LIST_FIELDS else reference_urls[0]
-        return parameters
+        return TrendService._parameters_with_reference_media(
+            recipe,
+            image_reference_urls=reference_urls,
+            video_reference_urls=[],
+            audio_reference_urls=[],
+            resolution=resolution,
+        )
 
     @staticmethod
     def _resolution_options(recipe: dict[str, Any]) -> list[str]:
@@ -377,14 +556,20 @@ class TrendService:
     async def _quality_options(
         session: AsyncSession,
         recipe: dict[str, Any],
-        refs: list[str],
+        reference_media: dict[str, list[str]],
     ) -> list[dict[str, Any]]:
         options = TrendService._resolution_options(recipe)
         default = TrendService._default_resolution(recipe) or (options[0] if options else None)
         result: list[dict[str, Any]] = []
         for resolution in options:
-            parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
-            _spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
+            parameters = TrendService._parameters_with_reference_media(
+                recipe,
+                image_reference_urls=reference_media["image_reference_urls"],
+                video_reference_urls=reference_media["video_reference_urls"],
+                audio_reference_urls=reference_media["audio_reference_urls"],
+                resolution=resolution,
+            )
+            _spec, _clean, cost, seconds, _unit = await GenerationService.prepare_template_request(
                 session,
                 model_id=recipe["model_id"],
                 prompt=recipe["prompt"],

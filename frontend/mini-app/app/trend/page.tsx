@@ -44,6 +44,30 @@ function optionPriceLabel(option: TrendQualityOption): string {
   return value ? `${money(value)} ROX` : "";
 }
 
+type ReferenceKind = "image" | "video" | "audio";
+type ReferenceRequirement = { min: number; max: number };
+
+function referenceRequirement(trend: TrendItem | null, kind: ReferenceKind): ReferenceRequirement {
+  const typed = trend?.reference_requirements?.[kind];
+  if (typed) {
+    const min = Math.max(0, Number(typed.min || 0));
+    return { min, max: Math.max(min, Number(typed.max ?? min)) };
+  }
+  if (kind === "image") {
+    const min = Math.max(0, Number(trend?.reference_requirements?.min || 0));
+    return { min, max: Math.max(min, Number(trend?.reference_requirements?.max ?? min)) };
+  }
+  return { min: 0, max: 0 };
+}
+
+function requirementPart(kind: ReferenceKind, requirement: ReferenceRequirement): string {
+  if (!requirement.max) return "";
+  const label = kind === "image" ? "фото" : kind === "video" ? "видео" : "аудио";
+  return requirement.min === requirement.max
+    ? `${requirement.min} ${label}`
+    : `${requirement.min}–${requirement.max} ${label}`;
+}
+
 export default function TrendPage() {
   const [trend, setTrend] = useState<TrendItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +75,7 @@ export default function TrendPage() {
   const [running, setRunning] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [copying, setCopying] = useState(false);
-  const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
+  const [references, setReferences] = useState<Array<{ url: string; name: string; kind: "image" | "video" | "audio" }>>([]);
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [selectedQuality, setSelectedQuality] = useState("");
   const [error, setError] = useState("");
@@ -73,8 +97,14 @@ export default function TrendPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const minimum = Number(trend?.reference_requirements?.min || 0);
-  const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
+  const imageRequirement = referenceRequirement(trend, "image");
+  const videoRequirement = referenceRequirement(trend, "video");
+  const audioRequirement = referenceRequirement(trend, "audio");
+  const requirements: Record<ReferenceKind, ReferenceRequirement> = {
+    image: imageRequirement,
+    video: videoRequirement,
+    audio: audioRequirement,
+  };
   const userFields = (trend?.user_fields || []).slice(0, 6);
   const qualityOptions = trend?.quality_options || [];
   const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;
@@ -82,30 +112,40 @@ export default function TrendPage() {
   const displayedRetailCost = chosenQuality?.retail_cost_rox || trend?.retail_cost_rox;
   const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
-  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady;
+  const referenceCount = (kind: ReferenceKind) => references.filter((item) => item.kind === kind).length;
+  const referencesReady = (Object.keys(requirements) as ReferenceKind[]).every((kind) => {
+    const count = referenceCount(kind);
+    const requirement = requirements[kind];
+    return count >= requirement.min && count <= requirement.max;
+  });
+  const ready = referencesReady && userFieldsReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";
-    if (!minimum) return "Референсы не нужны — сценарий можно запустить сразу.";
-    if (minimum === maximum) return `Добавьте ${minimum} ${minimum === 1 ? "изображение" : "изображения"}. Генерация начнётся только после нажатия кнопки.`;
-    return `Добавьте от ${minimum} до ${maximum} изображений. Генерация начнётся только после нажатия кнопки.`;
-  }, [maximum, minimum, trend]);
+    const parts = (["image", "video", "audio"] as ReferenceKind[])
+      .map((kind) => requirementPart(kind, referenceRequirement(trend, kind)))
+      .filter(Boolean);
+    if (!parts.length) return "Референсы не нужны — сценарий можно запустить сразу.";
+    return `Добавьте ${parts.join(" + ")}. Генерация начнётся только после нажатия кнопки.`;
+  }, [trend]);
 
-  const addFiles = async (files: File[]) => {
+  const addFiles = async (files: File[], kind: ReferenceKind) => {
     if (!trend || !files.length) return;
-    const available = Math.max(0, maximum - references.length);
+    const requirement = requirements[kind];
+    const currentCount = referenceCount(kind);
+    const available = Math.max(0, requirement.max - currentCount);
     if (!available) {
-      setError(`Максимум ${maximum} референсов`);
+      setError(`Лимит для этого типа референса: ${requirement.max}`);
       return;
     }
     setUploading(true);
     setError("");
     try {
-      const next: Array<{ url: string; name: string }> = [];
-      for (const file of files.filter((item) => item.type.startsWith("image/")).slice(0, available)) {
+      const next: Array<{ url: string; name: string; kind: ReferenceKind }> = [];
+      for (const file of files.filter((item) => item.type.startsWith(`${kind}/`)).slice(0, available)) {
         const uploaded = await api.upload(file);
-        next.push({ url: uploaded.url, name: file.name });
+        next.push({ url: uploaded.url, name: file.name, kind });
       }
-      setReferences((current) => [...current, ...next].slice(0, maximum));
+      setReferences((current) => [...current, ...next]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить референс");
     } finally {
@@ -151,9 +191,16 @@ export default function TrendPage() {
     setRunning(true);
     setError("");
     try {
+      const multimodal = videoRequirement.max > 0 || audioRequirement.max > 0;
       const result = await api.runTrend(
         trend.id,
-        references.map((item) => item.url),
+        multimodal
+          ? {
+              image_reference_urls: references.filter((item) => item.kind === "image").map((item) => item.url),
+              video_reference_urls: references.filter((item) => item.kind === "video").map((item) => item.url),
+              audio_reference_urls: references.filter((item) => item.kind === "audio").map((item) => item.url),
+            }
+          : references.filter((item) => item.kind === "image").map((item) => item.url),
         userValues,
         chosenQuality ? { resolution: chosenQuality.value } : {},
       );
@@ -216,22 +263,36 @@ export default function TrendPage() {
             ) : null}
             <p className="muted">{referenceCopy}</p>
 
-            {minimum > 0 ? (
+            {(Object.keys(requirements) as ReferenceKind[]).some((kind) => requirements[kind].max > 0) ? (
               <>
-                <label className="upload-control">
-                  <span>{uploading ? "Загружаю…" : references.length ? `Добавлено ${references.length}/${maximum}` : "Добавить референсы"}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple={maximum > 1}
-                    disabled={uploading || references.length >= maximum}
-                    onChange={(event) => {
-                      const files = Array.from(event.target.files || []);
-                      event.target.value = "";
-                      void addFiles(files);
-                    }}
-                  />
-                </label>
+                {(Object.keys(requirements) as ReferenceKind[]).map((kind) => {
+                  const requirement = requirements[kind];
+                  if (!requirement.max) return null;
+                  const count = referenceCount(kind);
+                  const title = kind === "image" ? "Фото" : kind === "video" ? "Видео" : "Аудио";
+                  return (
+                    <label className="upload-control" key={kind}>
+                      <span>
+                        {uploading
+                          ? "Загружаю…"
+                          : count
+                            ? `${title}: добавлено ${count}/${requirement.max}`
+                            : `Добавить ${title.toLowerCase()}`}
+                      </span>
+                      <input
+                        type="file"
+                        accept={`${kind}/*`}
+                        multiple={requirement.max > 1}
+                        disabled={uploading || count >= requirement.max}
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files || []);
+                          event.target.value = "";
+                          void addFiles(files, kind);
+                        }}
+                      />
+                    </label>
+                  );
+                })}
                 <div className="tool-file-list">
                   {references.map((item, index) => (
                     <div className="tool-file-chip" key={`${item.url}-${index}`}>

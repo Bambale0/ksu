@@ -136,7 +136,7 @@ class GenerationService:
         return spec.kie_model
 
     @classmethod
-    async def prepare_request(
+    async def _prepare_request_contract(
         cls,
         session: AsyncSession,
         *,
@@ -211,6 +211,51 @@ class GenerationService:
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
         return spec, clean, cost_rox, seconds, unit_price
+
+    @classmethod
+    async def prepare_template_request(
+        cls,
+        session: AsyncSession,
+        *,
+        model_id: str,
+        prompt: str,
+        input_url: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        billing_seconds: int | None = None,
+    ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
+        """Validate/price a reusable recipe without requiring real owned media rows.
+
+        Runtime generation must use prepare_request so trusted-media size,
+        duration and ownership checks still run before billing/submission.
+        """
+        return await cls._prepare_request_contract(
+            session,
+            model_id=model_id,
+            prompt=prompt,
+            input_url=input_url,
+            parameters=parameters,
+            billing_seconds=billing_seconds,
+        )
+
+    @classmethod
+    async def prepare_request(
+        cls,
+        session: AsyncSession,
+        *,
+        model_id: str,
+        prompt: str,
+        input_url: str | None = None,
+        parameters: dict[str, Any] | None = None,
+        billing_seconds: int | None = None,
+    ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
+        return await cls._prepare_request_contract(
+            session,
+            model_id=model_id,
+            prompt=prompt,
+            input_url=input_url,
+            parameters=parameters,
+            billing_seconds=billing_seconds,
+        )
 
     @classmethod
     def _generation_parameters(

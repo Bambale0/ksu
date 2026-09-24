@@ -108,7 +108,7 @@ async def test_video_public_view_exposes_quality_options_from_resolution_pricing
         spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
         return spec, parameters, prices[parameters["resolution"]], billing_seconds, Decimal("50.00")
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
 
     view = await TrendService.public_view(AsyncMock(), item)
 
@@ -154,7 +154,7 @@ async def test_video_public_view_preserves_recipe_resolution_absent_from_suggest
         spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
         return spec, parameters, prices[parameters["resolution"]], billing_seconds, Decimal("90.00")
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
 
     view = await TrendService.public_view(AsyncMock(), item)
 
@@ -441,3 +441,169 @@ async def test_public_view_exposes_safe_empty_field_schema_not_hidden_prompt_or_
     assert "prompt" not in view and "Birthday portrait" not in repr(view)
     assert "default_value" not in repr(view["user_fields"])
     assert "min" not in view["user_fields"][0] and "max" not in view["user_fields"][0]
+
+
+def _seedance_multimodal_item() -> SimpleNamespace:
+    now = datetime.now(UTC)
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        title="Мы там не были",
+        is_active=True,
+        created_at=now,
+        updated_at=now,
+        payload={
+            "description": "Три персонажа повторяют движение из видео",
+            "model_id": "seedance-2.0",
+            "prompt": "@Image1 танцует, @Image2 снимает, @Image3 выходит из машины по движению @Video1",
+            "preview_url": "https://cdn.example.invalid/trend.mp4",
+            "media_type": "video",
+            "input_mode": "none",
+            "billing_seconds": 5,
+            "parameters": {
+                "aspect_ratio": "adaptive",
+                "resolution": "720p",
+                "duration": 5,
+            },
+        },
+    )
+
+
+def test_seedance_trend_infers_multimodal_reference_slots_from_typed_prompt() -> None:
+    recipe = TrendService.normalize_recipe(
+        _seedance_multimodal_item().title,
+        _seedance_multimodal_item().payload,
+    )
+
+    assert recipe["input_mode"] == "multimodal"
+    assert recipe["reference_requirements"] == {
+        "image": {"min": 3, "max": 3},
+        "video": {"min": 1, "max": 1},
+        "audio": {"min": 0, "max": 0},
+    }
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_recipe_validation_uses_synthetic_typed_media_slots() -> None:
+    item = _seedance_multimodal_item()
+
+    recipe = await TrendService.validate_recipe(
+        AsyncMock(),
+        title=item.title,
+        payload=item.payload,
+    )
+
+    assert recipe["reference_requirements"]["image"]["min"] == 3
+    assert recipe["reference_requirements"]["video"]["min"] == 1
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_public_view_exposes_typed_reference_requirements() -> None:
+    view = await TrendService.public_view(AsyncMock(), _seedance_multimodal_item())
+
+    assert view["reference_requirements"]["kind"] == "multimodal"
+    assert view["reference_requirements"]["image"] == {"min": 3, "max": 3}
+    assert view["reference_requirements"]["video"] == {"min": 1, "max": 1}
+    assert view["reference_requirements"]["audio"] == {"min": 0, "max": 0}
+    assert view["reference_requirements"]["min"] == 4
+    assert view["reference_requirements"]["max"] == 4
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_run_binds_typed_media_to_provider_fields(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _seedance_multimodal_item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=[],
+        image_reference_urls=[
+            "https://cdn.example.invalid/person-1.jpg",
+            "https://cdn.example.invalid/person-2.jpg",
+            "https://cdn.example.invalid/person-3.jpg",
+        ],
+        video_reference_urls=["https://cdn.example.invalid/motion.mp4"],
+        audio_reference_urls=[],
+    )
+
+    parameters = create.await_args.kwargs["parameters"]
+    assert parameters["reference_image_urls"] == [
+        "https://cdn.example.invalid/person-1.jpg",
+        "https://cdn.example.invalid/person-2.jpg",
+        "https://cdn.example.invalid/person-3.jpg",
+    ]
+    assert parameters["reference_video_urls"] == ["https://cdn.example.invalid/motion.mp4"]
+    assert "reference_audio_urls" not in parameters
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_run_rejects_missing_video_slot_before_generation(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _seedance_multimodal_item()
+    session = AsyncMock()
+    session.get.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    with pytest.raises(TrendRecipeError, match="видео"):
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=[],
+            image_reference_urls=[
+                "https://cdn.example.invalid/person-1.jpg",
+                "https://cdn.example.invalid/person-2.jpg",
+                "https://cdn.example.invalid/person-3.jpg",
+            ],
+            video_reference_urls=[],
+            audio_reference_urls=[],
+        )
+
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_template_preflight_does_not_bypass_runtime_trusted_media_checks() -> None:
+    class MissingMediaSession:
+        async def scalar(self, _statement):  # type: ignore[no-untyped-def]
+            return None
+
+    parameters = {
+        "reference_image_urls": [
+            "https://example.invalid/image-1.jpg",
+            "https://example.invalid/image-2.jpg",
+            "https://example.invalid/image-3.jpg",
+        ],
+        "reference_video_urls": ["https://example.invalid/video-1.mp4"],
+        "duration": 5,
+        "resolution": "720p",
+        "aspect_ratio": "adaptive",
+    }
+    prompt = "@Image1, @Image2, @Image3 follow @Video1"
+
+    spec, clean, _cost, seconds, _unit = await GenerationService.prepare_template_request(
+        MissingMediaSession(),
+        model_id="seedance-2.0",
+        prompt=prompt,
+        parameters=parameters,
+        billing_seconds=5,
+    )
+    assert spec.id == "seedance-2.0"
+    assert clean["reference_video_urls"] == ["https://example.invalid/video-1.mp4"]
+    assert seconds == 5
+
+    with pytest.raises(Exception, match="duration must be verified"):
+        await GenerationService.prepare_request(
+            MissingMediaSession(),
+            model_id="seedance-2.0",
+            prompt=prompt,
+            parameters=parameters,
+            billing_seconds=5,
+        )

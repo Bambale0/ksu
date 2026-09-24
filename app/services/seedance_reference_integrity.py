@@ -67,3 +67,16 @@ def missing_seedance_reference_tags(
             if tag not in missing:
                 missing.append(tag)
     return missing
+
+
+def seedance_reference_requirements(prompt: str) -> dict[str, int]:
+    """Return the highest explicit typed slot index required by a template prompt."""
+
+    required = {"image": 0, "video": 0, "audio": 0}
+    for match in _TAG_RE.finditer(str(prompt or "")):
+        kind = match.group("kind").lower()
+        kind = "image" if kind == "img" else kind
+        index = int(match.group("index"))
+        if index > required[kind]:
+            required[kind] = index
+    return required

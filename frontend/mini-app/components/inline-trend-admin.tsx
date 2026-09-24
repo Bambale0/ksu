@@ -24,6 +24,29 @@ const SINGLE_REFERENCE_FIELDS = new Set(["image_url", "first_frame_url", "first_
 const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
 const NUMBER_FIELD_HINTS = ["возраст", "число", "цифр", "количество", "номер", "рост", "вес", "лет", "год", "свеч"];
 const DATE_FIELD_HINTS = ["дата", "date", "день рождения", "birthday"];
+const TYPED_REFERENCE_TAG_RE = /@\s*(image|img|video|audio)\s*[_-]?\s*(\d+)/giu;
+
+type TypedReferenceRequirements = { image: number; video: number; audio: number };
+
+function typedReferenceRequirements(prompt: string): TypedReferenceRequirements {
+  const required: TypedReferenceRequirements = { image: 0, video: 0, audio: 0 };
+  for (const match of String(prompt || "").matchAll(TYPED_REFERENCE_TAG_RE)) {
+    const rawKind = String(match[1] || "").toLowerCase();
+    const kind = rawKind === "img" ? "image" : rawKind as keyof TypedReferenceRequirements;
+    const index = Number(match[2] || 0);
+    if (index > required[kind]) required[kind] = index;
+  }
+  return required;
+}
+
+function typedReferenceSummary(required: TypedReferenceRequirements): string {
+  const parts = [
+    required.image ? `${required.image} фото` : "",
+    required.video ? `${required.video} видео` : "",
+    required.audio ? `${required.audio} аудио` : "",
+  ].filter(Boolean);
+  return parts.join(" + ");
+}
 
 function inferTemplateFieldType(field: string): TrendUserField["type"] {
   const normalized = field.trim().toLowerCase();
@@ -204,6 +227,16 @@ export function InlineTrendAdmin() {
   );
   const referenceAllowed = modelAcceptsReferences(selectedModel);
   const capacity = referenceCapacity(selectedModel);
+  const autoReferenceRequirements = useMemo(
+    () => selectedModel?.family === "seedance"
+      ? typedReferenceRequirements(draft.prompt)
+      : { image: 0, video: 0, audio: 0 },
+    [draft.prompt, selectedModel?.family],
+  );
+  const autoReferenceCount = autoReferenceRequirements.image
+    + autoReferenceRequirements.video
+    + autoReferenceRequirements.audio;
+  const autoReferenceSummary = typedReferenceSummary(autoReferenceRequirements);
 
   const beginCreate = () => {
     const modelId = models[0]?.id || "";
@@ -324,9 +357,13 @@ export function InlineTrendAdmin() {
       prompt: draft.prompt.trim(),
       user_fields: userFields.length ? userFields : undefined,
       parameters,
-      input_mode: draft.inputMode,
-      min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
-      max_references: draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
+      input_mode: autoReferenceCount ? "multimodal" : draft.inputMode,
+      min_references: autoReferenceCount
+        ? autoReferenceCount
+        : draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
+      max_references: autoReferenceCount
+        ? autoReferenceCount
+        : draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
       tags: draft.tags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
       sort_order: Number(draft.sortOrder || 0),
       usage_count: Number(items.find((item) => item.id === editingId)?.payload?.usage_count || 0),
@@ -483,11 +520,28 @@ export function InlineTrendAdmin() {
         </div>
 
         <div className="inline-trend-two-cols">
-          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none">Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
+          <label>
+            <span>Что загружает пользователь</span>
+            {autoReferenceCount ? (
+              <div className="inline-trend-auto-references">
+                Авто по промпту: {autoReferenceSummary}
+              </div>
+            ) : (
+              <select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}>
+                <option value="none">Ничего</option>
+                <option value="image" disabled={!referenceAllowed}>Фото / референс</option>
+              </select>
+            )}
+            <small>
+              {autoReferenceCount
+                ? "Слоты определены автоматически по @ImageN / @VideoN / @AudioN."
+                : referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}
+            </small>
+          </label>
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
         </div>
 
-        {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }))} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }))} /></label></div> : null}
+        {!autoReferenceCount && draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }))} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }))} /></label></div> : null}
 
         <label><span>Теги</span><input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} placeholder="trend, portrait" /><small>Через запятую, максимум 20.</small></label>
 
@@ -536,6 +590,7 @@ export function InlineTrendAdmin() {
       .inline-trend-form label>small { color:#81798b; font-weight:500; }
       .inline-trend-form input:not([type=checkbox]),.inline-trend-form textarea,.inline-trend-form select { width:100%; border:1px solid rgba(255,255,255,.1); background:#15111b; color:#fff; border-radius:12px; padding:11px 12px; outline:none; font:inherit; }
       .inline-trend-form input:focus,.inline-trend-form textarea:focus,.inline-trend-form select:focus { border-color:rgba(203,105,255,.65); box-shadow:0 0 0 3px rgba(174,72,255,.09); }
+      .inline-trend-auto-references { border:1px solid rgba(184,95,255,.28); background:rgba(163,76,255,.10); color:#e6c2ff; border-radius:12px; padding:11px 12px; font-weight:800; }
       .inline-trend-two-cols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
       .inline-trend-user-fields-admin { display:grid; gap:10px; border:1px solid rgba(255,255,255,.08); border-radius:16px; background:#100d15; padding:12px; }
       .inline-trend-user-fields-admin>div:first-child { display:grid; gap:5px; }
