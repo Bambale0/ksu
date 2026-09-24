@@ -123,6 +123,15 @@ async function mockAdminHome(page, { meFailures = 0, meFailureWindowMs = 0 } = {
       return json({ ...ugcTrend, ...state.updatedTrendBody });
     }
     if (path === '/api/v1/trend-collections' && method === 'GET') return json({ items: state.categories });
+    if (path === '/api/v1/trend-collections/ugc/items' && method === 'GET') {
+      const mediaType = url.searchParams.get('media_type');
+      const imageItems = [
+        { ...adsTrend, id: 'trend_ugc_image_1', title: 'UGC фото 1', collection_id: 'ugc', payload: { ...adsTrend.payload, preview_url: '/ugc-1.jpg' } },
+        { ...adsTrend, id: 'trend_ugc_image_2', title: 'UGC фото 2', collection_id: 'ugc', payload: { ...adsTrend.payload, preview_url: '/ugc-2.jpg' } },
+        { ...adsTrend, id: 'trend_ugc_image_3', title: 'UGC фото 3', collection_id: 'ugc', payload: { ...adsTrend.payload, preview_url: '/ugc-3.jpg' } },
+      ];
+      return json({ collection: ugcCategory, items: mediaType === 'video' ? [ugcTrend] : imageItems });
+    }
     if (path === '/api/v1/trend-collections/manage' && method === 'GET') {
       return json({ schema_version: 1, initialized: true, collections: state.categories, assignments: state.assignments });
     }
@@ -257,4 +266,42 @@ test('category management is hidden from non-admin users', async ({ page }) => {
 
   await expect(page.getByTestId('trend-category-admin-open')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Шаблоны', exact: true })).toHaveCount(0);
+});
+
+
+test('opened template category uses a vertical two-column gallery on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockAdminHome(page);
+  await page.goto('/mini-app/?route=home');
+
+  const folders = page.locator('#roxy-catalog-trend-folders');
+  await expect(folders).toBeVisible();
+  await folders.getByRole('button', { name: /UGC/ }).click();
+
+  const gallery = folders.locator('.home-trend-folder-items');
+  const cards = gallery.locator('.home-trend-folder-item');
+  await expect(cards).toHaveCount(3);
+
+  const layout = await gallery.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      display: style.display,
+      columns: style.gridTemplateColumns,
+      overflowX: style.overflowX,
+      scrollWidth: node.scrollWidth,
+      clientWidth: node.clientWidth,
+    };
+  });
+  expect(layout.display).toBe('grid');
+  expect(layout.columns.trim().split(/\s+/)).toHaveLength(2);
+  expect(layout.overflowX).not.toBe('auto');
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth + 1);
+
+  const boxes = await cards.evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { top: rect.top, left: rect.left };
+  }));
+  expect(Math.abs(boxes[0].top - boxes[1].top)).toBeLessThan(2);
+  expect(boxes[2].top).toBeGreaterThan(boxes[0].top + 20);
+  expect(boxes[1].left).toBeGreaterThan(boxes[0].left);
 });
