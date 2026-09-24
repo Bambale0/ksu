@@ -67,3 +67,22 @@ def missing_seedance_reference_tags(
             if tag not in missing:
                 missing.append(tag)
     return missing
+
+
+def seedance_reference_requirements(prompt: str) -> dict[str, int]:
+    """Return the highest explicitly referenced typed index per media kind.
+
+    Trend templates use this to infer how many user/server-owned references must
+    exist before a Seedance recipe is considered runnable. This intentionally
+    reads explicit typed tags only; legacy combined ordinals are canonicalized
+    later when actual media counts are known.
+    """
+
+    required = {"image": 0, "video": 0, "audio": 0}
+    for match in _TAG_RE.finditer(str(prompt or "")):
+        kind = match.group("kind").lower()
+        kind = "image" if kind == "img" else kind
+        index = int(match.group("index"))
+        if index > required[kind]:
+            required[kind] = index
+    return required

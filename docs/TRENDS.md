@@ -52,7 +52,9 @@ The public trend DTO exposes only presentation data, the safe model identity, au
 
 ## One-tap generation
 
-`TrendService.run()` merges only the validated user reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Therefore trend jobs reuse KSU's existing:
+`TrendService.run()` merges only the validated user reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. For Seedance templates, explicit typed tags are also part of the recipe contract: the highest `@ImageN` automatically defines the minimum number of user image uploads, validation uses distinct placeholder URLs for every required image, and a video preview can serve as the server-owned `@Video1` reference. The actual launch still passes through the normal Seedance reference-integrity checks, so missing or out-of-range `@ImageN/@VideoN/@AudioN` tags fail closed.
+
+Therefore trend jobs reuse KSU's existing:
 
 - model capability validation;
 - server-authoritative pricing and per-second billing;

@@ -1,20 +1,19 @@
-## Active Feature Execution — Seedance + WAN reference integrity audit
+## Active Feature Execution — Curated Trend Seedance reference templates
 
-- **Baseline:** `main@422597aebc62a3be2c2d1af0ccc97d7037fd4a19`, which already contains the Seedance typed-reference/video-preservation fix.
-- **User-visible scope:** verify and repair reference integrity for Seedance and WAN across photo refs, video refs, Mini App aliases, queued/retry rows, quote/create validation, and final KIE payloads. Do not assume every bad visual result is a prompt problem.
-- **Production evidence — Seedance:** historical generation `5829076d-4907-4030-a91d-191e5be033d1` contained three real `reference_image_urls` matching `@image1/@image2/@image3`, but no `reference_video_urls` despite `@video1`. The already-deployed `422597a` invariant now canonicalizes typed aliases and rejects missing `@ImageN/@VideoN/@AudioN` before billing and again at provider submission.
-- **Production evidence — WAN:** no recent customer WAN generations were present in the last seven days, so WAN findings are code/provider-contract evidence rather than a claimed live incident. The routing layer nevertheless had a deterministic data-loss bug for registered `wan-2.7-r2v`: generic multi-reference arrays were mapped to only `image_refs[0]` / `video_refs[0]`, while KIE R2V accepts arrays and limits image+video references to five total.
-- **Active WAN image surface:** `wan-2.7-image-pro` already preserves multiple `input_urls`; Mini App `input_image_urls` aliases are also retained as all `input_urls`. WAN I2V/video-edit remain scalar by provider contract and must not be converted into R2V-style arrays.
-- **Architecture decision:** keep Seedance's typed-reference invariant as-is; add a model-owned WAN R2V reference adapter before the generic scalar adapter. Derive WAN R2V aliases from the live canonical reference-field sets so runtime Mini App aliases are included. Repeat the WAN R2V cardinality/duration contract at the KIE boundary so historical/queued rows cannot bypass creation-time validation.
-- **No-hardcode:** model/provider IDs are existing catalog contracts; media limits and duration match the verified KIE WAN 2.7 R2V schema. No pricing, user IDs, production URLs, or business defaults are introduced.
-- **Schema/migrations:** N/A.
-- **Billing/idempotency:** validation remains before new-work billing where the model is callable; provider-boundary validation is defense-in-depth for queued/historical/internal rows. No wallet or price changes.
-- **Observability:** no prompt/media URLs added to logs. Existing generation/provider errors remain the signal for invalid contracts.
-- **RED evidence:** new R2V regression reproduced three defects on baseline: 3 image + 2 video refs collapsed to one of each; zero-reference R2V passed provider validation; six total refs passed provider validation.
-- **GREEN evidence:** new WAN routing/provider checks 7/7; active WAN Image Pro multi-photo checks 2/2; expanded Seedance/WAN/provider regression matrix 172/172; isolated full backend/product regression 1233/1233; Alembic upgrade/check, compileall, full-repo Ruff and git diff check are green.
-- **Acceptance:** (1) Seedance 3 photo + video refs remain intact and typed aliases bind to actual media; (2) WAN Image Pro retains all uploaded photos; (3) WAN R2V preserves all image/video arrays including Mini App aliases; (4) first-frame/continuation scalar semantics are unchanged; (5) queued/retry rows are re-canonicalized before provider submit; (6) WAN R2V requires 1–5 image/video refs total and 2–10s duration at provider boundary; (7) no provider endpoint, auth, pricing, or schema changes; (8) exact-head CI, review, merge, deploy and production smoke are green.
-- **Guidance:** repository `AGENTS.md`; local `.agents` diagnosing-bugs/TDD/code-review/webapp-testing; Bambale0/skills engineering workflow; Bambale0/claw QA/debugging baseline; Bambale0/dev-agents-pack repository guidance; wondelai Release It! fail-fast/observability/deploy discipline; agentskills/agentskills format guidance; anthropics webapp-testing for UI regression seams.
-- **Plan/status:** evidence audit ✅ → RED WAN R2V regressions ✅ → GREEN routing/provider fix ✅ → broad Seedance/WAN/provider suites ✅ → docs/context ✅ → lint/compile/full isolated regression ✅ → five-axis review ✅ → PR/exact-head CI → merge/deploy → exact-SHA production smoke.
+- **Baseline:** `main@98c95032d6edfbedf00b3b966d56f63977ca807c`.
+- **User-visible symptom:** inline admin cannot save a Seedance trend whose hidden prompt uses `@Image1/@Image2/@Image3/@Video1`; the form reports that Image2, Image3 and Video1 are missing even though those are template roles.
+- **Root cause 1:** trend validation synthesized `min_references` copies of the exact same fake image URL. The shared reference router deduplicates URLs, so three validation images collapsed to one and Seedance correctly reported `@Image2/@Image3` missing.
+- **Root cause 2:** Curated Trends only model user-uploaded image references. A Seedance video trend's preview video was presentation-only, so `@Video1` had no server-owned video reference during validation or real execution.
+- **Behavior:** explicit Seedance `@ImageN` tags infer the minimum number of user image uploads automatically; validation uses unique placeholders; when a Seedance prompt requires `@Video1`, a video preview is bound as the server-owned `reference_video_urls[0]`. The final generation path still runs the normal strict Seedance reference-integrity checks.
+- **Boundaries:** no auth, pricing, wallet, schema, provider endpoint, or hidden-prompt exposure changes. Non-Seedance trends and WAN scalar/reference contracts are unchanged.
+- **Verification:** RED reproduced all three screenshot failures; focused Trends/Seedance suite 45/45; isolated full backend/product regression 1238/1238; Alembic upgrade/check, Ruff, compileall green.
+- **Plan/status:** evidence ✅ → RED ✅ → minimal backend contract ✅ → focused tests ✅ → full isolated regression ✅ → docs/context ✅ → five-axis review ✅ → PR/exact-head CI → merge/deploy → production smoke.
+
+## Completed Feature Execution — Seedance + WAN reference integrity audit
+
+- **Baseline / merged result:** `422597a` → PR #489 → `main@98c95032d6edfbedf00b3b966d56f63977ca807c`.
+- **Result:** preserved full WAN 2.7 R2V image/video arrays, added Mini App alias coverage, kept first-frame/continuation semantics separate, and enforced provider-boundary R2V limits (1–5 total refs, 2–10s). Seedance typed-reference guards remained unchanged.
+- **Verification:** focused WAN/Seedance/provider matrix green; isolated full regression 1233/1233; PR CI, ROXY E2E, Batch Generation and Admin Console all green before merge.
 
 ## Completed Feature Execution — Seedance video-reference integrity
 
