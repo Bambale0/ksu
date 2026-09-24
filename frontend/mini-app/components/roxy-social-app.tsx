@@ -753,7 +753,18 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
     haptic("light");
   };
   const chooseMedia = (next: MediaFilter) => { setMedia(next); localStorage.setItem(MEDIA_FILTER_KEY, next); };
-  const setScenario = (id: string) => { if (!selected || !draft) return; const scenario = selected.ui_schema?.scenario?.items?.find((item) => item.id === id); const values = { ...draft.values }; for (const key of scenario?.clear_fields || []) delete values[key]; persist(selected.id, { ...draft, scenario: id, values }); };
+  const setScenario = (id: string) => {
+    if (!selected || !draft) return;
+    const scenario = selected.ui_schema?.scenario?.items?.find((item) => item.id === id);
+    const populatedToClear = (scenario?.clear_fields || []).filter((key) => !isEmpty(draft.values[key]));
+    if (selected.family === "seedance" && populatedToClear.length) {
+      showToast("Сначала удалите загруженные референсы вручную — ROXY не будет стирать их при смене режима.");
+      return;
+    }
+    const values = { ...draft.values };
+    for (const key of scenario?.clear_fields || []) delete values[key];
+    persist(selected.id, { ...draft, scenario: id, values });
+  };
 
   const submit = async () => {
     if (!selected || !draft || errors.length || !quote || submitting) return;

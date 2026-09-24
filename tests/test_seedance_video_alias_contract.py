@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
+from app.services import generations as generations_module
 from app.services.generations import GenerationService
 from app.services.model_routing import resolve_model_request
 from app.services.model_ui_contract import build_public_model_ui_schema
@@ -206,3 +209,81 @@ def test_seedance_reference_mode_ui_appends_images_instead_of_replacing() -> Non
         "reference_video_urls",
         "reference_audio_urls",
     ]
+
+
+def test_seedance_canonicalizes_typed_prompt_reference_aliases() -> None:
+    routed = resolve_model_request(
+        "seedance-2.5",
+        {
+            "prompt": (
+                "@image1 = person one; @IMAGE 2 = person two; "
+                "@IMAGE3 = person three; motion from @IMAGE 4."
+            ),
+            "reference_image_urls": [
+                "https://cdn.example/p1.png",
+                "https://cdn.example/p2.png",
+                "https://cdn.example/p3.png",
+            ],
+            "reference_video_urls": ["https://cdn.example/motion.mp4"],
+            "duration": 10,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+        },
+    )
+
+    assert routed.parameters["prompt"] == (
+        "@Image1 = person one; @Image2 = person two; "
+        "@Image3 = person three; motion from @Video1."
+    )
+
+
+@pytest.mark.asyncio
+async def test_seedance_prepare_rejects_missing_video_tag_before_billing() -> None:
+    with pytest.raises(Exception, match="@Video1"):
+        await GenerationService.prepare_request(
+            TrustedReferenceSession(),
+            model_id="seedance-2.5",
+            prompt="@Image1 copies motion from @video1",
+            parameters={
+                "reference_image_urls": ["https://cdn.example/person.png"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "adaptive",
+                "output_format": "mp4",
+                "generate_audio": False,
+                "return_last_frame": False,
+                "web_search": False,
+                "nsfw_checker": True,
+            },
+        )
+
+
+@pytest.mark.asyncio
+async def test_invalid_seedance_reference_fails_before_billing_or_wallet(monkeypatch) -> None:
+    billing_decision = AsyncMock()
+    wallet_debit = AsyncMock()
+    monkeypatch.setattr(generations_module.BillingAccessService, "decision", billing_decision)
+    monkeypatch.setattr(generations_module.WalletService, "debit", wallet_debit)
+
+    with pytest.raises(Exception, match="@Video1"):
+        await GenerationService.create_many(
+            TrustedReferenceSession(),
+            SimpleNamespace(),
+            user_id=uuid.uuid4(),
+            model_id="seedance-2.5",
+            prompt="@Image1 follows @Video1 exactly",
+            parameters={
+                "reference_image_urls": ["https://cdn.example/person.png"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "adaptive",
+                "output_format": "mp4",
+                "generate_audio": False,
+                "return_last_frame": False,
+                "web_search": False,
+                "nsfw_checker": True,
+            },
+        )
+
+    billing_decision.assert_not_awaited()
+    wallet_debit.assert_not_awaited()

@@ -257,3 +257,20 @@ test('Mini App quantity picker sends four launches and total quote', async ({ pa
   expect(payload.quantity).toBe(4);
   expect(payload.prompt).toBe('Сделай четыре разных варианта динамичного видео');
 });
+
+
+test('Seedance keeps uploaded multimodal refs when user taps Text mode', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockRoxy(page);
+  await page.goto('/mini-app/?route=create');
+
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const imageInput = page.locator('input[type="file"]').first();
+  await imageInput.setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: Buffer.from([1, 2, 3, 4]) });
+  await expect(page.getByText('1 загружено')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Текст', exact: true }).click();
+
+  await expect(page.getByRole('button', { name: 'Мультиреференсы', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('1 загружено')).toBeVisible();
+});
