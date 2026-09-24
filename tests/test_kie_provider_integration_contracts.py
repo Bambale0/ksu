@@ -45,7 +45,7 @@ VALID_MARKET_MODEL_INPUTS: dict[str, dict[str, Any]] = {
     "wan/2-7-text-to-video": {"prompt": "wan video", "aspect_ratio": "16:9", "prompt_extend": False, "watermark": False},
     "wan/2-7-image-to-video": {"prompt": "wan first frame", "first_frame_url": IMG, "prompt_extend": False, "watermark": False},
     "wan/2-7-videoedit": {"prompt": "wan edit", "audio_setting": {"mode": "auto"}, "duration": 4, "prompt_extend": False, "watermark": False},
-    "wan/2-7-r2v": {"prompt": "wan references", "reference_image": IMG, "reference_video": MP4, "prompt_extend": False, "watermark": False},
+    "wan/2-7-r2v": {"prompt": "wan references", "reference_image": [IMG], "reference_video": [MP4], "duration": 5, "prompt_extend": False, "watermark": False},
     "bytedance/seedance-1.5-pro": {"prompt": "seedance 1.5", "fixed_lens": False, "generate_audio": False, "nsfw_checker": True, "duration": 5, "input_urls": [IMG]},
     "bytedance/seedance-2": {"prompt": "seedance 2", "aspect_ratio": "16:9", "resolution": "720p", "duration": 8, "generate_audio": False, "nsfw_checker": True, "web_search": False, "reference_image_urls": [IMG]},
     "bytedance/seedance-2-fast": {"prompt": "seedance 2 fast", "aspect_ratio": "16:9", "resolution": "720p", "duration": 8, "generate_audio": False, "nsfw_checker": True, "web_search": False, "reference_video_urls": [MP4]},
@@ -317,3 +317,46 @@ async def test_kie_veo_client_posts_generate_contract_with_reference_mode() -> N
     assert body["enableTranslation"] is False
     assert body["resolution"] == "720p"
     assert body["duration"] == 4
+
+
+@pytest.mark.asyncio
+async def test_kie_client_posts_all_wan_r2v_references_without_dropping_items() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return _task_response("task_wan_r2v")
+
+    client = KieClient(TOKEN)
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(
+        base_url="https://api.kie.ai",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        task_id = await client.create_task(
+            model="wan/2-7-r2v",
+            input_data={
+                "prompt": "preserve every reference",
+                "reference_image": [IMG, IMG_2, IMG_3],
+                "reference_video": [
+                    "https://cdn.example.com/motion-a.mp4",
+                    "https://cdn.example.com/motion-b.mp4",
+                ],
+                "duration": 5,
+                "prompt_extend": False,
+                "watermark": False,
+            },
+        )
+    finally:
+        await client.aclose()
+
+    assert task_id == "task_wan_r2v"
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    assert body["input"]["reference_image"] == [IMG, IMG_2, IMG_3]
+    assert body["input"]["reference_video"] == [
+        "https://cdn.example.com/motion-a.mp4",
+        "https://cdn.example.com/motion-b.mp4",
+    ]

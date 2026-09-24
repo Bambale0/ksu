@@ -251,10 +251,44 @@ def _apply_seedance_reference_contract(
     return normalized
 
 
+def _apply_wan_r2v_reference_contract(
+    spec: ModelSpec,
+    parameters: dict[str, Any],
+    input_url: str | None,
+) -> dict[str, Any] | None:
+    if spec.id != "wan-2.7-r2v":
+        return None
+
+    normalized = dict(parameters)
+    image_fields = tuple(
+        field
+        for field in IMAGE_REFERENCE_FIELDS
+        if field not in {"first_frame_url", "last_frame_url", "first_frame", "last_frame"}
+    )
+    video_fields = tuple(
+        field for field in VIDEO_REFERENCE_FIELDS if field != "first_clip_url"
+    )
+    image_refs = _collect_fields(parameters, image_fields)
+    video_refs = _collect_fields(parameters, video_fields)
+    if input_url:
+        image_refs = _merge_urls(image_refs, [input_url])
+
+    normalized = _drop_reference_fields_not_supported(spec, normalized)
+    if image_refs:
+        normalized["reference_image"] = image_refs
+    if video_refs:
+        normalized["reference_video"] = video_refs
+    return normalized
+
+
 def _apply_reference_aliases(spec: ModelSpec, parameters: dict[str, Any], input_url: str | None) -> dict[str, Any]:
     seedance = _apply_seedance_reference_contract(spec, parameters, input_url)
     if seedance is not None:
         return seedance
+
+    wan_r2v = _apply_wan_r2v_reference_contract(spec, parameters, input_url)
+    if wan_r2v is not None:
+        return wan_r2v
 
     image_refs = image_references(parameters, input_url)
     video_refs = video_references(parameters)

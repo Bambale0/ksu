@@ -81,6 +81,14 @@ Scenario-driven models clear incompatible state when switching modes. Current ex
 
 Uploads go through `/api/v1/uploads/kie`; the provider API key remains server-side. Generated result URLs are temporary provider ingest sources until product-owned media ingestion completes.
 
+### Reference integrity
+
+Reference media is normalized at the backend routing boundary and again before provider submission for queued/legacy rows. A client alias must never silently reduce the number of uploaded references.
+
+For Seedance 2.0/2.5, typed prompt aliases are canonicalized to `@ImageN`, `@VideoN` and `@AudioN`. If a prompt references an index that is not present in the actual routed media arrays, the request is rejected before billing; the KIE boundary repeats the same check.
+
+WAN 2.7 Image Pro preserves all uploaded `input_urls` (up to its model contract). Registered WAN 2.7 Reference-to-Video payloads use array-valued `reference_image` and `reference_video`; image+video references are validated as one combined set of at most five items. Frame/continuation inputs remain separate scalar controls and are not folded into the R2V reference arrays.
+
 ### Seedance 2.5 callable contract
 
 ROXY maps `seedance-2.5` to Kie `bytedance/seedance-2-5` and validates its provider-specific inputs **before quote/debit/provider submission**.

@@ -126,3 +126,163 @@ def test_provider_input_keeps_legacy_input_url_fallback_without_explicit_media()
     provider_input = GenerationProviderService._input_for(generation)
 
     assert provider_input["image_url"] == "https://cdn.example/legacy-source.png"
+
+
+def test_wan_r2v_preserves_all_generic_image_and_video_references() -> None:
+    result = resolve_model_request(
+        "wan-2.7-r2v",
+        {
+            "prompt": "Image 1 and Image 2 follow Video 1",
+            "reference_image_urls": [
+                "https://cdn.example/person-a.png",
+                "https://cdn.example/person-b.png",
+                "https://cdn.example/style.png",
+            ],
+            "reference_video_urls": [
+                "https://cdn.example/motion-a.mp4",
+                "https://cdn.example/motion-b.mp4",
+            ],
+            "duration": 5,
+        },
+    )
+
+    assert result.model_id == "wan-2.7-r2v"
+    assert result.parameters["reference_image"] == [
+        "https://cdn.example/person-a.png",
+        "https://cdn.example/person-b.png",
+        "https://cdn.example/style.png",
+    ]
+    assert result.parameters["reference_video"] == [
+        "https://cdn.example/motion-a.mp4",
+        "https://cdn.example/motion-b.mp4",
+    ]
+    assert "reference_image_urls" not in result.parameters
+    assert "reference_video_urls" not in result.parameters
+
+    provider_input = normalize_kie_video_input(result.spec.kie_model, result.parameters)
+    assert provider_input["reference_image"] == result.parameters["reference_image"]
+    assert provider_input["reference_video"] == result.parameters["reference_video"]
+
+
+def test_wan_r2v_accepts_miniapp_reference_aliases_without_dropping_items() -> None:
+    result = resolve_model_request(
+        "wan-2.7-r2v",
+        {
+            "prompt": "Image 1 and Image 2 follow Video 1",
+            "input_image_urls": [
+                "https://cdn.example/person-a.png",
+                "https://cdn.example/person-b.png",
+            ],
+            "input_video_urls": [
+                "https://cdn.example/motion-a.mp4",
+                "https://cdn.example/motion-b.mp4",
+            ],
+            "duration": 5,
+        },
+    )
+
+    assert result.parameters["reference_image"] == [
+        "https://cdn.example/person-a.png",
+        "https://cdn.example/person-b.png",
+    ]
+    assert result.parameters["reference_video"] == [
+        "https://cdn.example/motion-a.mp4",
+        "https://cdn.example/motion-b.mp4",
+    ]
+    assert "input_image_urls" not in result.parameters
+    assert "input_video_urls" not in result.parameters
+
+
+def test_wan_r2v_keeps_first_frame_separate_from_reference_images() -> None:
+    result = resolve_model_request(
+        "wan-2.7-r2v",
+        {
+            "prompt": "use the subject reference and exact opening frame",
+            "reference_image_urls": ["https://cdn.example/person.png"],
+            "first_frame": "https://cdn.example/opening.png",
+            "duration": 5,
+        },
+    )
+
+    assert result.parameters["reference_image"] == ["https://cdn.example/person.png"]
+    assert result.parameters["first_frame"] == "https://cdn.example/opening.png"
+
+
+def test_wan_image_pro_preserves_all_photo_references() -> None:
+    result = resolve_model_request(
+        "wan-2.7-image-pro",
+        {
+            "prompt": "keep all three references",
+            "input_urls": [
+                "https://cdn.example/person.png",
+                "https://cdn.example/outfit.png",
+                "https://cdn.example/location.png",
+            ],
+            "resolution": "2K",
+        },
+    )
+
+    assert result.parameters["input_urls"] == [
+        "https://cdn.example/person.png",
+        "https://cdn.example/outfit.png",
+        "https://cdn.example/location.png",
+    ]
+
+
+def test_wan_image_pro_preserves_all_miniapp_photo_aliases() -> None:
+    result = resolve_model_request(
+        "wan-2.7-image-pro",
+        {
+            "prompt": "keep all uploaded references",
+            "input_image_urls": [
+                "https://cdn.example/person.png",
+                "https://cdn.example/outfit.png",
+                "https://cdn.example/location.png",
+            ],
+            "resolution": "2K",
+        },
+    )
+
+    assert result.parameters["input_urls"] == [
+        "https://cdn.example/person.png",
+        "https://cdn.example/outfit.png",
+        "https://cdn.example/location.png",
+    ]
+    assert "input_image_urls" not in result.parameters
+
+
+def test_wan_r2v_queued_legacy_payload_is_repaired_before_provider_submit() -> None:
+    generation = SimpleNamespace(
+        action_type="generation",
+        parameters={
+            "prompt": "use every reference",
+            "reference_image_urls": [
+                "https://cdn.example/person-a.png",
+                "https://cdn.example/person-b.png",
+                "https://cdn.example/style.png",
+            ],
+            "reference_video_urls": [
+                "https://cdn.example/motion-a.mp4",
+                "https://cdn.example/motion-b.mp4",
+            ],
+            "duration": 5,
+            "_model_id": "wan-2.7-r2v",
+            "_provider_model": "wan/2-7-r2v",
+        },
+        prompt="use every reference",
+        input_url=None,
+    )
+
+    provider_input = GenerationProviderService._input_for(generation)
+
+    assert provider_input["reference_image"] == [
+        "https://cdn.example/person-a.png",
+        "https://cdn.example/person-b.png",
+        "https://cdn.example/style.png",
+    ]
+    assert provider_input["reference_video"] == [
+        "https://cdn.example/motion-a.mp4",
+        "https://cdn.example/motion-b.mp4",
+    ]
+    assert "reference_image_urls" not in provider_input
+    assert "reference_video_urls" not in provider_input

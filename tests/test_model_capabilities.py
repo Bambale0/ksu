@@ -129,3 +129,10 @@ def test_grok_extend_uses_provider_extension_seconds_for_billing() -> None:
     assert params["extend_times"] == "6"
     assert seconds == 6
     assert cost == Decimal("60.00")
+
+
+def test_wan_r2v_registered_contract_uses_current_provider_duration_range() -> None:
+    spec = ModelCatalog.get("wan-2.7-r2v")
+
+    assert spec.min_seconds == 2
+    assert spec.max_seconds == 10
