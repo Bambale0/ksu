@@ -160,6 +160,18 @@ def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
             elif value not in (None, "") and not isinstance(value, list):
                 raise KieVideoContractError(f"{field} must be an array of URLs")
 
+        images = _list(payload, "reference_image", maximum=5)
+        videos = _list(payload, "reference_video", maximum=5)
+        if not images and not videos:
+            raise KieVideoContractError(
+                "Wan R2V requires at least one reference image or video"
+            )
+        if len(images) + len(videos) > 5:
+            raise KieVideoContractError(
+                "Wan R2V accepts at most 5 image/video references total"
+            )
+        _int_range(payload, "duration", minimum=2, maximum=10)
+
 
 def _enforce_seedance_prompt_reference_integrity(
     payload: dict[str, Any],

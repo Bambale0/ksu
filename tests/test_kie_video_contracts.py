@@ -342,3 +342,52 @@ def test_veo_31_contract_enforces_generation_modes() -> None:
                 "image_urls": ["https://example.com/ref.png"],
             }
         )
+
+
+def test_wan_r2v_requires_at_least_one_reference() -> None:
+    with pytest.raises(KieVideoContractError, match="requires at least one reference"):
+        normalize_kie_video_input(
+            "wan/2-7-r2v",
+            {
+                "prompt": "cinematic portrait",
+                "duration": 5,
+            },
+        )
+
+
+def test_wan_r2v_limits_reference_media_to_five_total() -> None:
+    with pytest.raises(KieVideoContractError, match="at most 5"):
+        normalize_kie_video_input(
+            "wan/2-7-r2v",
+            {
+                "prompt": "use all references",
+                "reference_image": [
+                    f"https://example.com/image-{index}.png" for index in range(4)
+                ],
+                "reference_video": [
+                    "https://example.com/video-1.mp4",
+                    "https://example.com/video-2.mp4",
+                ],
+                "duration": 5,
+            },
+        )
+
+
+def test_wan_r2v_accepts_five_references_total() -> None:
+    payload = normalize_kie_video_input(
+        "wan/2-7-r2v",
+        {
+            "prompt": "use all references",
+            "reference_image": [
+                f"https://example.com/image-{index}.png" for index in range(3)
+            ],
+            "reference_video": [
+                "https://example.com/video-1.mp4",
+                "https://example.com/video-2.mp4",
+            ],
+            "duration": 5,
+        },
+    )
+
+    assert len(payload["reference_image"]) == 3
+    assert len(payload["reference_video"]) == 2
