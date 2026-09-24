@@ -1,3 +1,20 @@
+## Active Feature Execution — Template category vertical gallery
+
+- **Baseline:** `main@630f520c4e054a097d914031ed557abbc50a6fb3`.
+- **User-visible request:** when a user opens a ready-made template category such as «Девушки», the category should open as a vertically scrollable, media-first gallery matching the supplied mobile reference: two template cards per row instead of the current horizontal carousel.
+- **Existing behavior:** `HomeTrendFolders` and the legacy Catalog parity surface already load admin-owned Template Categories and their real Curated Trend items from `/api/v1/trend-collections` and `/{collection_id}/items`; item taps already open the existing `/mini-app/trend/?id=...` flow; loading, error, empty, image/video tabs and stale-response protection already exist.
+- **Partial / missing:** category selection exists, but selected items use `grid-auto-flow: column` + horizontal scrolling and verbose overlay cards. The category-detail visual hierarchy therefore does not match the requested two-column vertical gallery. Home and Catalog parity components duplicate this presentation and must remain behaviorally consistent.
+- **Reuse:** keep the current backend/API, authenticated pricing, collection ownership, item routing, media-type filtering, admin controls, stale-request guard, and trend launch route. No new route, provider, billing rule, category model, or fake data is needed.
+- **Architecture / security / data risks:** frontend-only presentation change. No authorization boundary, hidden trend recipe, billing data, ownership rule, or server contract changes. Do not expose private prompt/settings in gallery markup.
+- **Schema / migration / integration impact:** N/A — no database migration, provider contract, payment flow, webhook, or external integration change.
+- **No-hardcode / admin:** category names, counts, ordering, visibility and trend membership remain server/admin-owned. The two-column mobile layout is UI presentation, not mutable business configuration.
+- **Observability:** existing client error reporting and API errors remain sufficient for this presentation-only slice; no new telemetry event is required. Browser regression is the primary evidence.
+- **Test seams:** highest public seam = Mini App browser journey: open Home/Catalog → open a category → verify a two-column vertical gallery with no horizontal carousel → open a card through the existing trend route. Existing source-contract test remains a secondary guard for parity between Home and Catalog implementations.
+- **Acceptance criteria:** (1) selected category renders two cards per row on mobile; (2) cards continue vertically and do not create an inner horizontal carousel; (3) image/video previews remain media-first and clickable; (4) mixed-media category tabs and stale-response protection remain functional; (5) loading/error/empty/admin behavior is unchanged; (6) Home and Catalog parity surfaces share the same gallery behavior; (7) no backend/schema/billing/auth change.
+- **Verification matrix:** unit/domain=N/A (presentation-only); database/repository=N/A; authorization=N/A unchanged; migrations=N/A; provider=N/A; idempotency=N/A; API=existing contract unchanged; frontend E2E=required; smoke/type/build=required; observability=existing path retained; no-hardcode/admin=existing server-owned category contract retained; performance=lazy-loaded images, no new requests; rollback=revert frontend/test slice.
+- **Rollout / rollback:** normal Mini App release; rollback is a source revert with no data migration.
+- **Plan/status:** fresh audit ✅ → RED browser/source regression → minimal Home + Catalog gallery presentation → focused E2E + source contract → typecheck/build → two-axis diff review → exact-head CI → merge when green.
+
 ## Active Feature Execution — Curated Trend Seedance reference templates
 
 - **Baseline:** `main@98c95032d6edfbedf00b3b966d56f63977ca807c`.
