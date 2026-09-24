@@ -147,9 +147,8 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folder-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:4px;border:1px solid rgba(255,255,255,.08);border-radius:17px;background:#0c0a0f}
         .catalog-trend-folders .home-trend-folder-tabs button{min-height:42px;border:0;border-radius:13px;background:transparent;color:#9d95a7;font-weight:850}
         .catalog-trend-folders .home-trend-folder-tabs button.active{background:linear-gradient(135deg,rgba(159,72,255,.88),rgba(207,94,255,.82));color:#fff;box-shadow:0 8px 24px rgba(165,72,255,.18)}
-        .catalog-trend-folders .home-trend-folder-items{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,76vw);gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:2px 2px 8px;scrollbar-width:none}
-        .catalog-trend-folders .home-trend-folder-items::-webkit-scrollbar{display:none}
-        .catalog-trend-folders .home-trend-folder-item{position:relative;min-height:268px;overflow:hidden;border:1px solid rgba(185,105,255,.28);border-radius:25px;background:#0b0910;color:#fff;scroll-snap-align:start;box-shadow:0 18px 42px rgba(0,0,0,.24)}
+        .catalog-trend-folders .home-trend-folder-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;overflow:visible;padding:2px 0 8px;min-width:0}
+        .catalog-trend-folders .home-trend-folder-item{position:relative;aspect-ratio:3/4;min-height:0;min-width:0;overflow:hidden;border:1px solid rgba(185,105,255,.28);border-radius:22px;background:#0b0910;color:#fff;box-shadow:0 18px 42px rgba(0,0,0,.24)}
         .catalog-trend-folders .home-trend-folder-item-open{position:absolute;inset:0;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left}
         .catalog-trend-folders .home-trend-folder-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0b0910}
         .catalog-trend-folders .home-trend-folder-item-open::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04) 28%,rgba(4,3,7,.88) 100%);pointer-events:none}
@@ -158,7 +157,7 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folder-item-copy small{color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .catalog-trend-folders .home-trend-folders-empty{padding:17px;border:1px dashed rgba(190,130,255,.26);border-radius:20px;color:var(--muted);background:rgba(16,12,22,.72)}
         .catalog-trend-folders .home-trend-folders-error{padding:11px 13px;border-radius:14px;background:rgba(255,80,120,.1);color:#ffc6d3}
-        @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.catalog-trend-folders .home-trend-folder-items{grid-auto-columns:minmax(230px,310px)}}
+        @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.catalog-trend-folders .home-trend-folder-items{grid-template-columns:repeat(3,minmax(0,1fr))}}
       `}</style>
       {selected ? <div className="home-trend-folders-head">
         <div className="home-trend-folders-copy">
