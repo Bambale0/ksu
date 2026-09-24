@@ -239,14 +239,33 @@ export const api = {
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string } = {}) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
-    method: "POST",
-    body: JSON.stringify({
-      reference_urls: referenceUrls,
-      ...(Object.keys(userValues).length ? { user_values: userValues } : {}),
-      ...(options.resolution ? { resolution: options.resolution } : {}),
-    }),
-  }),
+  runTrend: (
+    id: string,
+    references: string[] | {
+      image_reference_urls: string[];
+      video_reference_urls?: string[];
+      audio_reference_urls?: string[];
+    } = [],
+    userValues: Record<string, string> = {},
+    options: { resolution?: string } = {},
+  ) => {
+    const referencePayload = Array.isArray(references)
+      ? { reference_urls: references }
+      : {
+          reference_urls: [],
+          image_reference_urls: references.image_reference_urls,
+          video_reference_urls: references.video_reference_urls || [],
+          audio_reference_urls: references.audio_reference_urls || [],
+        };
+    return request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...referencePayload,
+        ...(Object.keys(userValues).length ? { user_values: userValues } : {}),
+        ...(options.resolution ? { resolution: options.resolution } : {}),
+      }),
+    });
+  },
   promptTools: () => request<{ admin_free: boolean; items: PromptToolCatalogItem[] }>("/api/v1/prompt-tools"),
   promptToolTask: (id: string) => request<PromptToolTask>(`/api/v1/prompt-tools/${encodeURIComponent(id)}`),
   buildPrompt: (body: PromptBuilderBody) => request<PromptToolTask>("/api/v1/prompt-tools/prompt-builder", {

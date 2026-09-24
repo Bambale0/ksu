@@ -87,6 +87,8 @@ Reference media is normalized at the backend routing boundary and again before p
 
 For Seedance 2.0/2.5, typed prompt aliases are canonicalized to `@ImageN`, `@VideoN` and `@AudioN`. If a prompt references an index that is not present in the actual routed media arrays, the request is rejected before billing; the KIE boundary repeats the same check.
 
+Curated Trend templates treat those typed tags as **future customer media slots**, not as admin-owned files. The Trend recipe derives the required counts automatically from the highest referenced index of each media kind (for example, `@Image1..3 + @Video1` means exactly three images and one video). Template preflight uses synthetic typed slots only for structural validation and pricing; real customer launches still require uploaded ROXY media and pass through the normal trusted-media checks. Legacy image-only Trend recipes remain supported.
+
 WAN 2.7 Image Pro preserves all uploaded `input_urls` (up to its model contract). Registered WAN 2.7 Reference-to-Video payloads use array-valued `reference_image` and `reference_video`; image+video references are validated as one combined set of at most five items. Frame/continuation inputs remain separate scalar controls and are not folded into the R2V reference arrays.
 
 ### Seedance 2.5 callable contract

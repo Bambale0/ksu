@@ -291,6 +291,13 @@ const cases = [
     await form.getByRole('button', { name: 'Опубликовать тренд' }).click();
     await expect(title).toBeFocused();
     await expect(form).toBeVisible();
+
+    await form.getByLabel('Модель').selectOption('seedance-2.5');
+    await form.getByLabel('Скрытый промпт').fill('@Image1 танцует, @Image2 снимает, @Image3 выходит из машины, движение из @Video1');
+    await expect(form.getByText('Авто по промпту: 3 фото + 1 видео')).toBeVisible();
+    await expect(form.getByText(/Слоты определены автоматически/)).toBeVisible();
+    await expect(form.getByLabel('Минимум фото')).toHaveCount(0);
+    await expect(form.getByLabel('Максимум фото')).toHaveCount(0);
   } },
   { name: 'trend-admin-preview-upload', route: 'catalog', admin: true, run: async (page) => {
     const dialog = await openTrendAdmin(page);

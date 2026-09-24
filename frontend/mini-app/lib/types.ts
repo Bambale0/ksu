@@ -239,7 +239,14 @@ export type TrendItem = {
   cost_rub?: string;
   admin_free?: boolean;
   billing_seconds?: number | null;
-  reference_requirements?: { kind?: string; min?: number; max?: number };
+  reference_requirements?: {
+    kind?: string;
+    min?: number;
+    max?: number;
+    image?: { min?: number; max?: number };
+    video?: { min?: number; max?: number };
+    audio?: { min?: number; max?: number };
+  };
   user_fields?: TrendUserField[];
   quality_options?: TrendQualityOption[];
   tags?: string[];

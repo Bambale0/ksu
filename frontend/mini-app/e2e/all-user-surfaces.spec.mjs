@@ -108,6 +108,26 @@ const personalizedTrend = {
   prompt_actions_allowed: false,
 };
 
+const multimodalTrend = {
+  id: 'trend_multimodal',
+  title: 'Мы там не были',
+  description: 'Три фото и видео движения',
+  media_type: 'video',
+  model: { id: 'seedance-2.0', title: 'Seedance 2.0', family: 'seedance' },
+  cost_rox: '500.00',
+  billing_seconds: 5,
+  reference_requirements: {
+    kind: 'multimodal',
+    min: 4,
+    max: 4,
+    image: { min: 3, max: 3 },
+    video: { min: 1, max: 1 },
+    audio: { min: 0, max: 0 },
+  },
+  prompt_hidden: true,
+  prompt_actions_allowed: false,
+};
+
 const videoTrend = {
   id: 'trend_video',
   title: 'Видео поздравление',
@@ -178,11 +198,12 @@ async function mockApi(page, { onboarding = false, bootDelay = 0 } = {}) {
     if (path.includes('/comments')) return json({ items: [] });
     if (path.includes('/publish')) return json({ item: feedCard, publication_scope: 'feed' });
 
-    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend, personalizedTrend, videoTrend] });
+    if (path === '/api/v1/trends') return json({ items: [simpleTrend, referenceTrend, personalizedTrend, videoTrend, multimodalTrend] });
     if (path === '/api/v1/trends/trend_ref') return json(referenceTrend);
     if (path === '/api/v1/trends/trend_simple') return json(simpleTrend);
     if (path === '/api/v1/trends/trend_personalized') return json(personalizedTrend);
     if (path === '/api/v1/trends/trend_video') return json(videoTrend);
+    if (path === '/api/v1/trends/trend_multimodal') return json(multimodalTrend);
     if (path.startsWith('/api/v1/trends/') && path.endsWith('/run')) return json({ id: 'trend_generation', status: 'queued', cost_rox: '15.00' }, 202);
 
     if (path === '/api/v1/prompt-tools') return json({ items: [
@@ -370,4 +391,39 @@ test('reference trend waits for all files and sends them only on explicit Genera
   expect(runBody).toBeNull();
   await generate.click();
   await expect.poll(() => runBody?.reference_urls?.length || 0).toBe(2);
+});
+
+
+test('multimodal Seedance trend requires three photos and one video before launch', async ({ page }) => {
+  await mockApi(page);
+  let runBody = null;
+  await page.route('**/api/v1/trends/trend_multimodal/run', async (route) => {
+    runBody = route.request().postDataJSON();
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'trend_generation', status: 'queued' }) });
+  });
+
+  await page.goto('/mini-app/trend/?id=trend_multimodal');
+  const generate = page.getByRole('button', { name: /Сгенерировать/ });
+  await expect(page.getByText(/3 фото.*1 видео/i)).toBeVisible();
+  await expect(generate).toBeDisabled();
+
+  const imagePicker = page.locator("input[type='file'][accept='image/*']");
+  await imagePicker.setInputFiles([
+    { name: 'one.png', mimeType: 'image/png', buffer: Buffer.from('one') },
+    { name: 'two.png', mimeType: 'image/png', buffer: Buffer.from('two') },
+    { name: 'three.png', mimeType: 'image/png', buffer: Buffer.from('three') },
+  ]);
+  await expect(generate).toBeDisabled();
+
+  const videoPicker = page.locator("input[type='file'][accept='video/*']");
+  await videoPicker.setInputFiles([
+    { name: 'motion.mp4', mimeType: 'video/mp4', buffer: Buffer.from('video') },
+  ]);
+  await expect(generate).toBeEnabled();
+
+  await generate.click();
+  await expect.poll(() => runBody?.image_reference_urls?.length || 0).toBe(3);
+  expect(runBody.video_reference_urls).toHaveLength(1);
+  expect(runBody.audio_reference_urls).toEqual([]);
+  expect(runBody.reference_urls).toEqual([]);
 });
