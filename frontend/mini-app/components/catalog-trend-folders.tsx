@@ -121,13 +121,23 @@ export function CatalogTrendFolders() {
     setError("");
   }, [selectedId, mediaType, loadItems]);
 
+  useEffect(() => {
+    if (!selectedId) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedId]);
+
   if (!host) return null;
 
   return createPortal(
-    <section className="catalog-trend-folders" aria-label="Категории шаблонов">
+    <section className={`catalog-trend-folders${selected ? " is-open" : ""}`} aria-label="Категории шаблонов">
       <style>{`
         #roxy-catalog-trend-folders{margin:0 0 24px;min-width:0}
         .catalog-trend-folders{display:grid;gap:13px;margin:2px 0 26px;min-width:0}
+        .catalog-trend-folders.is-open{position:fixed;z-index:70;inset:0 0 calc(92px + var(--tg-safe-bottom)) 0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;margin:0;padding:calc(18px + var(--tg-safe-top)) max(14px,var(--tg-safe-right)) 28px max(14px,var(--tg-safe-left));background:#0b0b10;align-content:start;-webkit-overflow-scrolling:touch}
         .catalog-trend-folders .home-trend-folders-head{display:flex;align-items:end;justify-content:space-between;gap:12px}
         .catalog-trend-folders .home-trend-folders-copy{display:grid;gap:4px;min-width:0}
         .catalog-trend-folders .home-trend-folders-copy h2{margin:0;font-size:24px;line-height:1;letter-spacing:-.04em}
@@ -165,7 +175,7 @@ export function CatalogTrendFolders() {
           {selected.description ? <p>{selected.description}</p> : null}
         </div>
         <div className="home-trend-folders-actions">
-          <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Категории</button>
+          <button className="home-trend-folders-back" type="button" onClick={() => setSelectedId("")}>← Назад</button>
           <TrendCollectionAdmin onChanged={refreshCollections} />
         </div>
       </div> : <div className="home-trend-folders-admin" aria-label="Управление шаблонами и категориями">
