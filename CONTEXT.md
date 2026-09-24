@@ -1,3 +1,16 @@
+## Active Feature Execution — Template folder two-column catalog
+
+- **Baseline:** `main@630f520c4e054a097d914031ed557abbc50a6fb3`.
+- **Task:** when a user opens a template category/folder from the Catalog, show its templates as a vertically scrolling two-column gallery like the supplied mobile reference instead of the current horizontal one-card rail.
+- **Existing reusable path:** `CatalogTrendFolders` already loads backend-owned categories and category items, preserves image/video tabs, and launches the existing `/mini-app/trend/?id=...` detail flow. No backend/API/schema changes are required.
+- **UX decision:** keep the category list/data contract unchanged; only the opened category presentation changes to a responsive 2-column vertical grid on mobile, with wider screens allowed to add columns. Template cards remain tappable and continue to use lazy image loading / metadata video loading.
+- **No-hardcode:** categories, counts, previews, media types and template IDs remain API-owned; no category names or business data are embedded in the UI.
+- **Risks:** mobile card height, bottom-navigation overlap, video autoplay density, and accidental horizontal overflow. Preserve loading/error/empty states and image/video filtering.
+- **Verification matrix:** unit/domain=N/A (presentation-only); DB/repository=N/A; authorization=N/A; migrations=N/A; provider=N/A; idempotency=N/A; API=existing trend-collection contract unchanged; frontend=Playwright regression at 390px proving two columns, vertical flow and no horizontal scroller; smoke/build=Mini App typecheck/build + exact-head CI; observability=N/A; rollback=revert branch/PR.
+- **TDD plan:** add the browser regression first and verify it fails on the horizontal rail; then make the minimal layout change, rerun focused browser test and typecheck, review diff, open PR and require exact-head green CI before merge.
+- **Guidance:** repository `AGENTS.md`; local `.agents` is absent so `.clinerules` fallback applies; local test-driven-development + verification-before-completion; Bambale0/claw Mini App/testing rules; wondelai Release It deployment discipline; Bambale0/dev-agents-pack code-reviewer; anthropics webapp-testing; agentskills/agentskills provides format guidance only. No task-specific current guidance was found through GitHub search in Bambale0/skills.
+- **Status:** audit/plan recorded; RED browser regression next.
+
 ## Active Feature Execution — Curated Trend Seedance reference templates
 
 - **Baseline:** `main@98c95032d6edfbedf00b3b966d56f63977ca807c`.
