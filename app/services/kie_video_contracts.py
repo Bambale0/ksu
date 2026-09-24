@@ -4,6 +4,10 @@ from copy import deepcopy
 from typing import Any
 
 from app.services.seedance_prompt_limits import validate_prompt_length
+from app.services.seedance_reference_integrity import (
+    canonicalize_seedance_reference_tags,
+    missing_seedance_reference_tags,
+)
 
 
 class KieVideoContractError(ValueError):
@@ -157,6 +161,33 @@ def _normalize_wan(model: str, payload: dict[str, Any]) -> None:
                 raise KieVideoContractError(f"{field} must be an array of URLs")
 
 
+def _enforce_seedance_prompt_reference_integrity(
+    payload: dict[str, Any],
+    *,
+    image_refs: list[Any],
+    video_refs: list[Any],
+    audio_refs: list[Any],
+) -> None:
+    prompt = str(payload.get("prompt") or "")
+    canonical = canonicalize_seedance_reference_tags(
+        prompt,
+        image_count=len(image_refs),
+        video_count=len(video_refs),
+        audio_count=len(audio_refs),
+    )
+    payload["prompt"] = canonical
+    missing = missing_seedance_reference_tags(
+        canonical,
+        image_count=len(image_refs),
+        video_count=len(video_refs),
+        audio_count=len(audio_refs),
+    )
+    if missing:
+        raise KieVideoContractError(
+            "Seedance prompt references missing media: " + ", ".join(missing)
+        )
+
+
 def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
     if model in SEEDANCE_2_MODELS:
         try:
@@ -215,9 +246,15 @@ def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
         # Seedance 2.0 supports hybrid control: first/last temporal frames may be
         # combined with multimodal reference arrays. The previous local mutual-
         # exclusion check stopped these requests before KieClient.post().
-        _list(payload, "reference_image_urls", maximum=9)
-        _list(payload, "reference_video_urls", maximum=3)
-        _list(payload, "reference_audio_urls", maximum=3)
+        image_refs = _list(payload, "reference_image_urls", maximum=9)
+        video_refs = _list(payload, "reference_video_urls", maximum=3)
+        audio_refs = _list(payload, "reference_audio_urls", maximum=3)
+        _enforce_seedance_prompt_reference_integrity(
+            payload,
+            image_refs=image_refs,
+            video_refs=video_refs,
+            audio_refs=audio_refs,
+        )
         return
 
     if model == "bytedance/seedance-2-5":
@@ -248,6 +285,12 @@ def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
             raise KieVideoContractError(
                 "Seedance 2.5 frame mode and multimodal reference mode are mutually exclusive"
             )
+        _enforce_seedance_prompt_reference_integrity(
+            payload,
+            image_refs=image_refs,
+            video_refs=video_refs,
+            audio_refs=audio_refs,
+        )
 
 
 def _normalize_kling_3(payload: dict[str, Any]) -> None:

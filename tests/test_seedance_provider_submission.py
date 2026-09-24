@@ -212,3 +212,55 @@ async def test_seedance_25_create_task_reaches_kie_with_normalized_payload() -> 
             },
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_seedance_provider_canonicalizes_typed_reference_tags() -> None:
+    client = KieClient("test-key")
+    fake = _FakeAsyncClient()
+    client._client = fake  # type: ignore[attr-defined]
+
+    await client.create_task(
+        model="bytedance/seedance-2-5",
+        input_data={
+            "prompt": "@image1 follows the motion from @VIDEO 1",
+            "reference_image_urls": ["https://cdn.example/person.png"],
+            "reference_video_urls": ["https://cdn.example/motion.mp4"],
+            "duration": 10,
+            "resolution": "720p",
+            "aspect_ratio": "adaptive",
+            "output_format": "mp4",
+            "generate_audio": False,
+            "return_last_frame": False,
+            "web_search": False,
+            "nsfw_checker": True,
+        },
+    )
+
+    assert fake.calls[0][1]["input"]["prompt"] == "@Image1 follows the motion from @Video1"
+
+
+@pytest.mark.asyncio
+async def test_seedance_provider_blocks_stale_video_tag_without_video_reference() -> None:
+    client = KieClient("test-key")
+    fake = _FakeAsyncClient()
+    client._client = fake  # type: ignore[attr-defined]
+
+    with pytest.raises(Exception, match="@Video1"):
+        await client.create_task(
+            model="bytedance/seedance-2-5",
+            input_data={
+                "prompt": "@Image1 follows @Video1 exactly",
+                "reference_image_urls": ["https://cdn.example/person.png"],
+                "duration": 10,
+                "resolution": "720p",
+                "aspect_ratio": "adaptive",
+                "output_format": "mp4",
+                "generate_audio": False,
+                "return_last_frame": False,
+                "web_search": False,
+                "nsfw_checker": True,
+            },
+        )
+
+    assert fake.calls == []

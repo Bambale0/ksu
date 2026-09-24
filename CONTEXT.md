@@ -5,7 +5,7 @@
 - **Production evidence:** generation `5829076d-4907-4030-a91d-191e5be033d1` (Seedance 2.5, 2026-09-24 02:33 UTC) contains `@video1` throughout the prompt, but saved `parameters.reference_video_urls` is absent. A separate Seedance 2.5 generation `b8761834-a931-4fc5-9c7d-4b3b86d6afa1` on the same production path contains a valid MP4 in `reference_video_urls`, proving KIE transport itself can carry the video.
 - **Existing reusable pieces:** `model_routing.resolve_model_request` canonicalizes media aliases into `reference_video_urls`; `GenerationService.prepare_request` runs before billing/debit; KIE provider normalizes payloads and enforces Seedance frame/reference mode; Mini App already has a dedicated `references` scenario.
 - **Confirmed gaps:** there is no backend invariant binding typed prompt references (`@ImageN/@VideoN/@AudioN`) to actual uploaded media; mixed-case/legacy tags are passed through; a prompt can therefore request `@Video1` with zero video refs and still be quoted/created/submitted. Frontend scenario switching deletes fields listed in `clear_fields`, which can silently discard uploaded references.
-- **Architecture decision:** enforce reference integrity at the shared backend request boundary, before billing/debit and independent of client surface. Frontend will additionally avoid destructive scenario changes when they would discard populated Seedance reference fields.
+- **Architecture decision:** enforce reference integrity at the shared backend request boundary, before billing/debit and independent of client surface. Frontend will additionally avoid destructive scenario changes when they would discard populated Seedance reference fields. The KIE provider boundary repeats the typed-reference check so legacy/retry payloads cannot bypass the pre-billing invariant.
 - **No-hardcode:** media counts come from routed parameters/model contracts. No business pricing, model selection, or provider policy is hardcoded.
 - **Schema/migrations:** N/A; no DB schema change.
 - **Authorization/tenant isolation:** N/A; existing generation authorization remains unchanged.
@@ -24,8 +24,9 @@
   - RED reproduced on baseline: typed aliases remained verbatim and `@Video1` without video was accepted.
   - Backend implementation now canonicalizes typed aliases after media routing and rejects missing typed refs in `GenerationService.prepare_request`, before billing/wallet/provider.
   - Mini App Seedance scenario switching is non-destructive when populated reference fields would be cleared.
-  - Seedance integrity/alias suite: 11/11 passed, including explicit proof that billing decision and wallet debit are not called for an invalid `@Video1` request.
-  - Expanded backend/provider/reference/pricing suite: 61/61 passed.
+  - Seedance integrity/alias suite initially passed 11/11, including explicit proof that billing decision and wallet debit are not called for an invalid `@Video1` request.
+  - Provider-boundary RED reproduced: direct KIE submission preserved non-canonical tags and accepted `@Video1` with zero video refs. Added provider defense; focused provider+integrity suite now passes 13/13 and proves no HTTP call occurs for missing typed media.
+  - Expanded backend/provider/reference/pricing suite after provider-boundary defense: 70/70 passed.
   - Ruff on changed backend/test files: passed.
   - Python compileall: passed.
   - Mini App TypeScript typecheck: passed.
