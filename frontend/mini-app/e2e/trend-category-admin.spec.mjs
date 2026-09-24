@@ -272,7 +272,7 @@ test('category management is hidden from non-admin users', async ({ page }) => {
 test('opened template category uses a vertical two-column gallery on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockAdminHome(page);
-  await page.goto('/mini-app/?route=home');
+  await page.goto('/mini-app/?route=catalog');
 
   const folders = page.locator('#roxy-catalog-trend-folders');
   await expect(folders).toBeVisible();
