@@ -9,7 +9,7 @@
 - **Verification matrix:** unit/domain=N/A (presentation-only); DB/repository=N/A; authorization=N/A; migrations=N/A; provider=N/A; idempotency=N/A; API=existing trend-collection contract unchanged; frontend=Playwright regression at 390px proving two columns, vertical flow and no horizontal scroller; smoke/build=Mini App typecheck/build + exact-head CI; observability=N/A; rollback=revert branch/PR.
 - **TDD plan:** add the browser regression first and verify it fails on the horizontal rail; then make the minimal layout change, rerun focused browser test and typecheck, review diff, open PR and require exact-head green CI before merge.
 - **Guidance:** repository `AGENTS.md`; local `.agents` is absent so `.clinerules` fallback applies; local test-driven-development + verification-before-completion; Bambale0/claw Mini App/testing rules; wondelai Release It deployment discipline; Bambale0/dev-agents-pack code-reviewer; anthropics webapp-testing; agentskills/agentskills provides format guidance only. No task-specific current guidance was found through GitHub search in Bambale0/skills.
-- **Status:** audit/plan recorded; RED browser regression next.
+- **Status:** RED verified on exact test-only head `591dade7e1000c52ad11ea215fe4aa0f64af4ca0`: Chromium rendered three 210px horizontal columns where the regression requires two vertical-grid columns; comprehensive Mini App audit had 745 passing tests plus this expected failure. Minimal CSS implementation is now on the branch; exact-head GREEN CI is pending.
 
 ## Active Feature Execution — Curated Trend Seedance reference templates
 
