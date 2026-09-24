@@ -112,10 +112,24 @@ test('home shows live trends and then category cards without an extra section he
 
   await folders.getByRole('button', { name: /День рождения/ }).click();
   await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
-  await expect(folders.getByRole('button', { name: /Категории/ })).toBeVisible();
+  const back = folders.getByRole('button', { name: /Назад/ });
+  await expect(back).toBeVisible();
   await expect(folders.getByRole('tab', { name: /Фото/ })).toBeVisible();
   await expect(folders.getByRole('tab', { name: /Видео/ })).toBeVisible();
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+
+  await expect.poll(() => folders.locator('.home-trend-folders').evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      position: style.position,
+      zIndex: style.zIndex,
+      overflowY: style.overflowY,
+    };
+  })).toEqual({ position: 'fixed', zIndex: '70', overflowY: 'auto' });
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+
+  await back.click();
+  await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
 });
 
 test('opened template category is a two-column vertical gallery on mobile', async ({ page }) => {
@@ -186,7 +200,7 @@ test('catalog keeps live trends and category cards directly below promo before f
   });
 
   await folders.getByRole('button', { name: /День рождения/ }).click();
-  const back = folders.getByRole('button', { name: /Категории/ });
+  const back = folders.getByRole('button', { name: /Назад/ });
   await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
   await expect(back).toBeVisible();
   await expect.poll(() => back.evaluate((node) => getComputedStyle(node).borderRadius)).toBe('999px');
