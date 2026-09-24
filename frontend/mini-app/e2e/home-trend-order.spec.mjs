@@ -131,23 +131,26 @@ test('opened template category is a two-column vertical gallery on mobile', asyn
   await expect(gallery.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
   await expect(gallery.locator('.home-trend-folder-item', { hasText: birthdayPhotoTrend.title })).toBeVisible();
 
-  await expect.poll(() => gallery.evaluate((node) => {
-    const style = getComputedStyle(node);
-    const columns = style.gridTemplateColumns.split(' ').filter(Boolean);
-    return {
-      display: style.display,
-      columnCount: columns.length,
-      gridAutoFlow: style.gridAutoFlow,
-      overflowX: style.overflowX,
-      fitsViewport: node.scrollWidth <= node.clientWidth + 1,
-    };
-  })).toEqual({
-    display: 'grid',
-    columnCount: 2,
-    gridAutoFlow: 'row',
-    overflowX: 'visible',
-    fitsViewport: true,
-  });
+  for (const width of [320, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.poll(() => gallery.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const columns = style.gridTemplateColumns.split(' ').filter(Boolean);
+      return {
+        display: style.display,
+        columnCount: columns.length,
+        gridAutoFlow: style.gridAutoFlow,
+        overflowX: style.overflowX,
+        fitsViewport: node.scrollWidth <= node.clientWidth + 1,
+      };
+    })).toEqual({
+      display: 'grid',
+      columnCount: 2,
+      gridAutoFlow: 'row',
+      overflowX: 'visible',
+      fitsViewport: true,
+    });
+  }
 });
 
 test('catalog keeps live trends and category cards directly below promo before feature catalog', async ({ page }) => {
@@ -188,6 +191,22 @@ test('catalog keeps live trends and category cards directly below promo before f
   await expect(back).toBeVisible();
   await expect.poll(() => back.evaluate((node) => getComputedStyle(node).borderRadius)).toBe('999px');
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+
+  const gallery = folders.locator('.home-trend-folder-items');
+  await expect.poll(() => gallery.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      columnCount: style.gridTemplateColumns.split(' ').filter(Boolean).length,
+      gridAutoFlow: style.gridAutoFlow,
+      overflowX: style.overflowX,
+      fitsViewport: node.scrollWidth <= node.clientWidth + 1,
+    };
+  })).toEqual({
+    columnCount: 2,
+    gridAutoFlow: 'row',
+    overflowX: 'visible',
+    fitsViewport: true,
+  });
 });
 
 test('catalog ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {
