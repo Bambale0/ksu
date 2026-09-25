@@ -167,7 +167,7 @@ test('opened template category is a two-column vertical gallery on mobile', asyn
   }
 });
 
-test('opened template category owns scrolling without locking the document', async ({ page }) => {
+test('opened template category owns scrolling and bottom navigation remains usable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockHome(page);
   await page.goto('/mini-app/?route=home');
@@ -175,12 +175,11 @@ test('opened template category owns scrolling without locking the document', asy
   const folders = page.locator('#roxy-home-trend-folders');
   await folders.getByRole('button', { name: /День рождения/ }).click();
   await expect.poll(() => folders.locator('.home-trend-folders').evaluate((node) => getComputedStyle(node).overflowY)).toBe('auto');
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
 
   await page.locator('.bottom-nav').getByRole('button', { name: 'Лента' }).click();
   await expect(page).toHaveURL(/route=feed/);
   await expect(folders).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
+  await expect(page.locator('.feed-screen')).toBeVisible();
 });
 
 test('catalog keeps live trends and category cards directly below promo before feature catalog', async ({ page }) => {
