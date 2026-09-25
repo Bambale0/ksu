@@ -281,6 +281,22 @@ for (const viewport of viewports) {
   });
 }
 
+test('bottom navigation swaps lazy route features without a reload', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/mini-app/?route=home');
+
+  await expect(page.locator('#roxy-home-live-trends')).toBeVisible();
+  await page.locator('[data-roxy-customer-route="feed"]').click();
+  await expect(page).toHaveURL(/route=feed/);
+  await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
+  await expect(page.locator('#roxy-home-live-trends')).toHaveCount(0);
+
+  await page.locator('[data-roxy-customer-route="catalog"]').click();
+  await expect(page).toHaveURL(/route=catalog/);
+  await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
+  await expect(page.locator('.tiktok-feed-surface')).toHaveCount(0);
+});
+
 test('Home and Catalog trend cards open the trend launcher', async ({ page }) => {
   await mockApi(page);
   await page.goto('/mini-app/?route=home');
