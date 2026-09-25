@@ -4,6 +4,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 
 const FeedRouteFeatures = lazy(() => import("./feed-route-features"));
 const CatalogRouteFeatures = lazy(() => import("./catalog-route-features"));
+const AccountRouteFeatures = lazy(() => import("./account-route-features"));
+const InteractiveRouteEnhancers = lazy(() => import("./interactive-route-enhancers"));
 
 type RouteName = string | null;
 
@@ -32,10 +34,15 @@ export function RouteFeatureLoader() {
 
   if (route === null) return null;
 
+  const accountRoute = route === "profile" || route === "partners" || route === "history";
+  const interactiveRoute = route === "home" || route === "catalog" || route === "create";
+
   return (
     <Suspense fallback={null}>
       {route === "feed" ? <FeedRouteFeatures /> : null}
       {route === "home" || route === "catalog" ? <CatalogRouteFeatures /> : null}
+      {accountRoute ? <AccountRouteFeatures route={route} /> : null}
+      {interactiveRoute ? <InteractiveRouteEnhancers /> : null}
     </Suspense>
   );
 }
