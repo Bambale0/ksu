@@ -121,15 +121,6 @@ export function CatalogTrendFolders() {
     setError("");
   }, [selectedId, mediaType, loadItems]);
 
-  useEffect(() => {
-    if (!selectedId || !host) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [selectedId, host]);
-
   if (!host) return null;
 
   return createPortal(
