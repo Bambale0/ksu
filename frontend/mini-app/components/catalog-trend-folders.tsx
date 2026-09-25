@@ -122,13 +122,13 @@ export function CatalogTrendFolders() {
   }, [selectedId, mediaType, loadItems]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !host) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [selectedId]);
+  }, [selectedId, host]);
 
   if (!host) return null;
 
@@ -167,7 +167,7 @@ export function CatalogTrendFolders() {
         .catalog-trend-folders .home-trend-folder-item-copy small{color:rgba(255,255,255,.72);font-size:11px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .catalog-trend-folders .home-trend-folders-empty{padding:17px;border:1px dashed rgba(190,130,255,.26);border-radius:20px;color:var(--muted);background:rgba(16,12,22,.72)}
         .catalog-trend-folders .home-trend-folders-error{padding:11px 13px;border-radius:14px;background:rgba(255,80,120,.1);color:#ffc6d3}
-        @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.catalog-trend-folders .home-trend-folder-items{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media(min-width:720px){.catalog-trend-folders .home-trend-folder-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
       `}</style>
       {selected ? <div className="home-trend-folders-head">
         <div className="home-trend-folders-copy">
