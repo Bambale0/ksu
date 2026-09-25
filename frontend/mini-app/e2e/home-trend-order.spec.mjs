@@ -179,7 +179,7 @@ test('opened template category owns scrolling and bottom navigation remains usab
   await page.locator('.bottom-nav').getByRole('button', { name: 'Лента' }).click();
   await expect(page).toHaveURL(/route=feed/);
   await expect(folders).toHaveCount(0);
-  await expect(page.locator('.feed-screen')).toBeVisible();
+  await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
 });
 
 test('catalog keeps live trends and category cards directly below promo before feature catalog', async ({ page }) => {
