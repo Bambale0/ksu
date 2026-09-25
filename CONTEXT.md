@@ -1,3 +1,17 @@
+## Active Performance Execution — Mini App route-level code splitting
+
+- **Baseline:** `main@34af239ad6e4907de1a1ad9b9c64d1348048622a`.
+- **User goal:** make the Telegram Mini App feel materially faster and smoother without changing business behavior.
+- **Evidence:** the root `frontend/mini-app/app/page.tsx` eagerly imported and mounted feed and catalog feature stacks together on every root route. That forced unrelated React code, effects, observers and route-specific UI into the startup graph even when the user opened another surface.
+- **Root cause:** route-heavy customer surfaces were composed directly in the root page instead of behind route-level dynamic imports.
+- **Scope:** first low-risk performance slice only: feed stack (`TikTokFeedSurface`, responsive layout, moderation) and catalog/home stack (catalog hub, live trend rail, Home/Catalog trend folders, AI reference entry, catalog parity) are code-split behind a single route-aware loader. Generation, quote, submit, wallet/payment and auth/onboarding guards remain eager to avoid correctness races.
+- **Routing contract:** the loader reads the existing `route` query parameter, treats missing route as `home`, listens to the same `popstate` navigation event used by current Mini App transitions, and also listens for `hashchange`. No backend/API/schema/pricing/provider contract changes.
+- **TDD:** `frontend/mini-app/e2e/route-performance.spec.mjs` was committed first on `78628fa6...` and requires the root page to stop directly importing the heavy route stacks and the new loader to use React lazy imports. Implementation followed on the same branch.
+- **Expected performance effect:** fewer route-irrelevant modules in the initial client graph, less startup parsing/hydration/effect work, and less background observer/API activity. Exact byte and Web Vitals deltas must come from CI/build/browser evidence before claiming a numeric improvement.
+- **Verification:** source-contract regression + Mini App typecheck/build + existing Playwright/comprehensive audit on exact head; verify Home/Catalog and Feed direct routes plus client-side transitions. Merge only after exact-head green CI.
+- **Rollback:** revert this frontend-only slice; no data migration or state repair required.
+- **Guidance:** KSU `AGENTS.md`; local `.agents` files are absent; `Bambale0/claw` UX/frontend audit guidance; `wondelai/skills` high-perf-browser; `Bambale0/dev-agents-pack` frontend-react + performance-engineer; `anthropics/skills` webapp-testing. No task-specific current guidance was found in `Bambale0/skills` or `agentskills/agentskills` through repository search.
+
 ## Active Feature Execution — Template category vertical gallery
 
 - **Baseline:** `main@630f520c4e054a097d914031ed557abbc50a6fb3`.
