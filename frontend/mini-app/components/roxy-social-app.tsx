@@ -354,7 +354,6 @@ export function RoxySocialApp() {
   const [preview, setPreview] = useState<Generation | FeedCard | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface>("private");
   const [toast, setToast] = useState("");
-  const [onboarding, setOnboarding] = useState<Record<string, any> | null>(null);
   const [createLaunch, setCreateLaunch] = useState<CreateLaunch>({ nonce: 0, kind: "new" });
   const createLaunchSeq = useRef(0);
   const deepLinkedGeneration = useRef<string | null>(null);
@@ -429,18 +428,16 @@ export function RoxySocialApp() {
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
-    setRoute(initialRoute());
+    const initial = initialRoute();
+    setRoute(initial);
 
     (async () => {
       try {
-        const [modelResult, meResult, promoResult, recentResult, feedResult, trendsResult, onboardingResult] = await Promise.allSettled([
+        const [modelResult, meResult, recentResult, trendsResult] = await Promise.allSettled([
           api.models(),
           tg?.initData ? api.me() : Promise.resolve(null),
-          tg?.initData ? api.activePromo() : Promise.resolve(null),
-          tg?.initData ? api.generations("limit=12") : Promise.resolve({ items: [] }),
-          tg?.initData ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
-          tg?.initData ? api.trends() : Promise.resolve({ items: [] }),
-          tg?.initData ? api.onboarding() : Promise.resolve(null),
+          tg?.initData && initial === "home" ? api.generations("limit=12") : Promise.resolve({ items: [] }),
+          tg?.initData && initial === "home" ? api.trends() : Promise.resolve({ items: [] }),
         ]);
         if (!active) return;
         if (modelResult.status === "fulfilled") {
@@ -449,11 +446,8 @@ export function RoxySocialApp() {
           setFamilies(modelResult.value.families?.length ? modelResult.value.families : fallbackFamilies(nextModels));
         }
         if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
-        if (promoResult.status === "fulfilled" && promoResult.value) setActivePromo(promoResult.value);
         if (recentResult.status === "fulfilled") setRecent(recentResult.value.items || []);
-        if (feedResult.status === "fulfilled") setFeed(feedResult.value.items || []);
         if (trendsResult.status === "fulfilled") setTrends(trendsResult.value.items || []);
-        if (onboardingResult.status === "fulfilled" && onboardingResult.value) setOnboarding(onboardingResult.value);
       } finally {
         if (active) setBooting(false);
       }
@@ -474,8 +468,8 @@ export function RoxySocialApp() {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
-    if (route === "catalog") void loadTrends();
-  }, [route, history.length, loadHistory, loadProfile, loadPartners, loadTrends]);
+    if (route === "catalog" || (!booting && route === "home" && trends.length === 0)) void loadTrends();
+  }, [booting, route, history.length, trends.length, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
     if (route !== "feed") return;
@@ -516,6 +510,7 @@ export function RoxySocialApp() {
     url.searchParams.set("route", next);
     url.searchParams.delete("generation");
     window.history.pushState({ roxyRoute: next }, "", `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new Event("popstate"));
     haptic(next === "create" ? "medium" : "light");
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
@@ -590,7 +585,6 @@ export function RoxySocialApp() {
 
       {walletOpen && <WalletSheet me={me} onClose={() => setWalletOpen(false)} onRefresh={refreshMe} showToast={showToast} />}
       {preview && <Preview item={preview} surface={previewSurface} onClose={() => setPreview(null)} onReuse={reuseGeneration} onPublished={async (scope) => { await Promise.allSettled([loadProfile(), loadFeed(), loadHistory()]); showToast(scope === "feed" ? "Работа опубликована в ленте и профиле" : "Работа опубликована в профиле"); }} showToast={showToast} />}
-      {onboarding?.enabled && !onboarding?.completed && <Onboarding data={onboarding} onDone={async () => { const next = await api.completeOnboarding(); setOnboarding(next); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
@@ -905,11 +899,6 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
   useEffect(() => { void Promise.allSettled([api.paymentPackages().then((data) => { setPackages(data.packages || {}); setSelected((current) => current || Object.keys(data.packages || {})[0] || ""); }), api.transactions().then(setTransactions)]); }, []);
   const pay = async () => { if (!selected) return; setPaying(true); try { const payment = await api.createPayment(selected); if (!payment.payment_url) throw new Error("Платёжная ссылка не получена"); const tg = telegram(); if (tg?.openLink) tg.openLink(payment.payment_url); else window.open(payment.payment_url, "_blank", "noopener,noreferrer"); showToast("Платёж создан"); window.setTimeout(() => void onRefresh(), 2000); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось создать платёж"); } finally { setPaying(false); } };
   return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices.RUB || 0)} RUB</small></button>)}</div><div className="segmented providers"><button type="button" className="active">ЮKassa</button></div><button className="primary wide" type="button" disabled={!selected || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
-}
-
-function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  return <div className="overlay onboarding-overlay" role="dialog" aria-modal="true"><div className="onboarding-card"><RoxyMark large/><span className="kicker">Добро пожаловать</span><h1>{data.title || "ROXY"}</h1><p>{data.body || "Студия для создания фото, видео и музыки."}</p><div className="onboarding-links">{data.rules_url && <a href={data.rules_url} target="_blank" rel="noreferrer">Правила</a>}{data.privacy_url && <a href={data.privacy_url} target="_blank" rel="noreferrer">Конфиденциальность</a>}</div><button className="primary wide" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onDone(); } finally { setBusy(false); } }}>{busy ? "Открываю…" : "Открыть ROXY"}</button></div></div>;
 }
 
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
