@@ -29,6 +29,12 @@ const birthdayTrend = {
   description: 'Шаблон из папки',
 };
 
+const birthdayPhotoTrend = {
+  ...birthdayTrend,
+  id: 'trend_birthday_photo_2',
+  title: 'Праздничный портрет',
+};
+
 const birthdayVideoTrend = {
   ...birthdayTrend,
   id: 'trend_birthday_video',
@@ -61,14 +67,14 @@ async function mockHome(page, { delayedFolderTabs = false } = {}) {
     if (path === '/api/v1/trends') return json({ items: [trend] });
     if (path === '/api/v1/trend-collections') return json({ items: [
       { id: 'trends', system_key: 'trends', title: 'Тренды', description: 'Instagram', sort_order: 0, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
-      { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 2, photo_count: 1, video_count: 1 },
+      { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 3, photo_count: 2, video_count: 1 },
     ] });
     if (path === '/api/v1/trend-collections/birthday/items') {
       const mediaType = url.searchParams.get('media_type');
       if (delayedFolderTabs) await new Promise((resolve) => setTimeout(resolve, mediaType === 'image' ? 180 : 20));
       return json({
         collection: { id: 'birthday', title: 'День рождения' },
-        items: mediaType === 'video' ? [birthdayVideoTrend] : [birthdayTrend],
+        items: mediaType === 'video' ? [birthdayVideoTrend] : [birthdayTrend, birthdayPhotoTrend],
       });
     }
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
@@ -106,10 +112,74 @@ test('home shows live trends and then category cards without an extra section he
 
   await folders.getByRole('button', { name: /День рождения/ }).click();
   await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
-  await expect(folders.getByRole('button', { name: /Категории/ })).toBeVisible();
+  const back = folders.getByRole('button', { name: /Назад/ });
+  await expect(back).toBeVisible();
   await expect(folders.getByRole('tab', { name: /Фото/ })).toBeVisible();
   await expect(folders.getByRole('tab', { name: /Видео/ })).toBeVisible();
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+
+  await expect.poll(() => folders.locator('.home-trend-folders').evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      position: style.position,
+      zIndex: style.zIndex,
+      overflowY: style.overflowY,
+    };
+  })).toEqual({ position: 'fixed', zIndex: '70', overflowY: 'auto' });
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+
+  await back.click();
+  await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
+});
+
+test('opened template category is a two-column vertical gallery on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockHome(page);
+  await page.goto('/mini-app/?route=home');
+
+  const folders = page.locator('#roxy-home-trend-folders');
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+
+  const gallery = folders.locator('.home-trend-folder-items');
+  await expect(gallery.locator('.home-trend-folder-item')).toHaveCount(2);
+  await expect(gallery.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+  await expect(gallery.locator('.home-trend-folder-item', { hasText: birthdayPhotoTrend.title })).toBeVisible();
+
+  for (const width of [320, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.poll(() => gallery.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const columns = style.gridTemplateColumns.split(' ').filter(Boolean);
+      return {
+        display: style.display,
+        columnCount: columns.length,
+        gridAutoFlow: style.gridAutoFlow,
+        overflowX: style.overflowX,
+        fitsViewport: node.scrollWidth <= node.clientWidth + 1,
+      };
+    })).toEqual({
+      display: 'grid',
+      columnCount: 2,
+      gridAutoFlow: 'row',
+      overflowX: 'visible',
+      fitsViewport: true,
+    });
+  }
+});
+
+test('opened template category owns scrolling and bottom navigation remains usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockHome(page);
+  await page.goto('/mini-app/?route=home');
+
+  const folders = page.locator('#roxy-home-trend-folders');
+  await folders.getByRole('button', { name: /День рождения/ }).click();
+  await expect.poll(() => folders.locator('.home-trend-folders').evaluate((node) => getComputedStyle(node).overflowY)).toBe('auto');
+
+  await page.locator('.bottom-nav').getByRole('button', { name: 'Лента' }).click();
+  await expect(page).toHaveURL(/route=feed/);
+  await expect(folders).toHaveCount(0);
+  await expect(page.locator('.tiktok-feed-surface')).toBeVisible();
 });
 
 test('catalog keeps live trends and category cards directly below promo before feature catalog', async ({ page }) => {
@@ -145,11 +215,27 @@ test('catalog keeps live trends and category cards directly below promo before f
   });
 
   await folders.getByRole('button', { name: /День рождения/ }).click();
-  const back = folders.getByRole('button', { name: /Категории/ });
+  const back = folders.getByRole('button', { name: /Назад/ });
   await expect(folders.getByRole('heading', { name: 'День рождения' })).toBeVisible();
   await expect(back).toBeVisible();
   await expect.poll(() => back.evaluate((node) => getComputedStyle(node).borderRadius)).toBe('999px');
   await expect(folders.locator('.home-trend-folder-item', { hasText: birthdayTrend.title })).toBeVisible();
+
+  const gallery = folders.locator('.home-trend-folder-items');
+  await expect.poll(() => gallery.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      columnCount: style.gridTemplateColumns.split(' ').filter(Boolean).length,
+      gridAutoFlow: style.gridAutoFlow,
+      overflowX: style.overflowX,
+      fitsViewport: node.scrollWidth <= node.clientWidth + 1,
+    };
+  })).toEqual({
+    columnCount: 2,
+    gridAutoFlow: 'row',
+    overflowX: 'visible',
+    fitsViewport: true,
+  });
 });
 
 test('catalog ignores stale folder responses when switching photo and video tabs quickly', async ({ page }) => {

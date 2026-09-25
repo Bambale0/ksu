@@ -100,7 +100,7 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
 
     assert 'aria-label="Категории шаблонов"' in source
     assert '"Папки трендов"' not in source
-    assert "← Категории" in source
+    assert "← Назад" in source
     assert 'folder.system_key !== "trends"' in source
     assert "Фото ·" in source
     assert "Видео ·" in source
