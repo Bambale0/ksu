@@ -150,15 +150,6 @@ export function HomeTrendFolders() {
     setError("");
   }, [selectedId, mediaType, loadItems]);
 
-  useEffect(() => {
-    if (!selectedId || !host) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [selectedId, host]);
-
   const openFolder = (folder: TrendCollection) => {
     haptic("light");
     setSelectedId(folder.id);
