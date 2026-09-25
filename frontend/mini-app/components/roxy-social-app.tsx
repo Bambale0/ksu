@@ -468,7 +468,7 @@ export function RoxySocialApp() {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
-    if (route === "catalog" || (!booting && route === "home" && trends.length === 0)) void loadTrends();
+    if (trends.length === 0 && (route === "catalog" || (!booting && route === "home"))) void loadTrends();
   }, [booting, route, history.length, trends.length, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
