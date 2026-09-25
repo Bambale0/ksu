@@ -35,3 +35,48 @@ test("route loader code-splits feed and catalog feature groups", () => {
   expect(loader).toContain('lazy(() => import("./catalog-route-features"))');
   expect(loader).toContain('addEventListener("popstate"');
 });
+
+
+test("canonical client navigation notifies route-scoped feature loading", () => {
+  const app = source("../components/roxy-social-app.tsx");
+  expect(app).toMatch(/window\.history\.pushState\([\s\S]{0,240}window\.dispatchEvent\(new Event\("popstate"\)\)/);
+});
+
+test("root bootstrap does not wait on unrelated feed, promo, or legacy onboarding requests", () => {
+  const app = source("../components/roxy-social-app.tsx");
+  const start = app.indexOf("const initial = initialRoute();");
+  const end = app.indexOf("})();", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  const bootstrap = app.slice(start, end);
+
+  expect(bootstrap).not.toContain("api.feed(");
+  expect(bootstrap).not.toContain("api.activePromo(");
+  expect(bootstrap).not.toContain("api.onboarding(");
+  expect(bootstrap).toContain('initial === "home" ? api.generations("limit=12")');
+  expect(bootstrap).toContain('initial === "home" ? api.trends()');
+  expect(app).not.toContain("<Onboarding data=");
+});
+
+test("route-only account and creation helpers stay out of the eager root graph", () => {
+  const page = source("../app/page.tsx");
+  const loader = source("../components/route-feature-loader.tsx");
+
+  for (const eagerFeature of ["CustomerParityHub", "PartnerRoxTransfer", "GlobalUxEnhancers"]) {
+    expect(page).not.toContain(`import { ${eagerFeature} }`);
+    expect(page).not.toContain(`<${eagerFeature} />`);
+  }
+
+  expect(loader).toContain('lazy(() => import("./account-route-features"))');
+  expect(loader).toContain('lazy(() => import("./interactive-route-enhancers"))');
+});
+
+test("wallet provider discovery waits until a wallet package sheet actually exists", () => {
+  const page = source("../app/page.tsx");
+  const loader = source("../components/wallet-parity-loader.tsx");
+
+  expect(page).not.toContain('import { WalletParity } from "@/components/wallet-parity";');
+  expect(page).toContain('import { WalletParityLoader } from "@/components/wallet-parity-loader";');
+  expect(loader).toContain('lazy(() => import("./wallet-parity")');
+  expect(loader).toContain('.sheet .package-grid');
+});
