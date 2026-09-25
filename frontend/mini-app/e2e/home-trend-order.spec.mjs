@@ -167,14 +167,15 @@ test('opened template category is a two-column vertical gallery on mobile', asyn
   }
 });
 
-test('leaving an open template category through bottom navigation releases the screen lock', async ({ page }) => {
+test('opened template category owns scrolling without locking the document', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockHome(page);
   await page.goto('/mini-app/?route=home');
 
   const folders = page.locator('#roxy-home-trend-folders');
   await folders.getByRole('button', { name: /День рождения/ }).click();
-  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await expect.poll(() => folders.locator('.home-trend-folders').evaluate((node) => getComputedStyle(node).overflowY)).toBe('auto');
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
 
   await page.locator('.bottom-nav').getByRole('button', { name: 'Лента' }).click();
   await expect(page).toHaveURL(/route=feed/);
