@@ -67,10 +67,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["X-Frame-Options"] = "DENY"
 
-        if path == "/mini-app" or path.startswith("/mini-app/"):
-            # Telegram WebView can retain HTML/JS/CSS aggressively between launches.
-            # Mini App assets are small and release-sensitive, so freshness wins over
-            # browser caching here. Provider/generated media is served elsewhere.
+        if path.startswith("/mini-app/_next/static/") and response.status_code == 200:
+            # Next puts content hashes in these asset names. Reusing the same URL
+            # cannot serve old code after a release, even in a persistent WebView.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path == "/mini-app" or path.startswith("/mini-app/"):
+            # HTML and release metadata must be checked on every launch.
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"

@@ -233,6 +233,7 @@ export type TrendItem = {
   description?: string;
   media_type: "image" | "video" | string;
   preview_url?: string | null;
+  preview_thumbnail_url?: string | null;
   model?: { id: string; title?: string; family?: string };
   cost_rox?: string;
   retail_cost_rox?: string;

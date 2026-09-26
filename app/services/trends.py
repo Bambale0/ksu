@@ -17,6 +17,7 @@ from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
 from app.services.model_spec_trusted_media_audit import validate_reference_duration_contracts
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
+from app.services.reference_static import ReferenceStaticStorage
 from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_user_fields import (
@@ -243,6 +244,11 @@ class TrendService:
             "description": recipe["description"],
             "media_type": recipe["media_type"],
             "preview_url": recipe["preview_url"],
+            "preview_thumbnail_url": (
+                f"/api/v1/trends/{item.id}/preview-thumbnail"
+                if ReferenceStaticStorage.is_local_url(recipe["preview_url"])
+                else None
+            ),
             "model": {"id": spec.id, "title": spec.title, "family": spec.family},
             "cost_credits": TrendService._amount(cost),
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),

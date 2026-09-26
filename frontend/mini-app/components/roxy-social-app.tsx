@@ -433,14 +433,9 @@ export function RoxySocialApp() {
 
     (async () => {
       try {
-        const [modelResult, meResult, promoResult, recentResult, feedResult, trendsResult, onboardingResult] = await Promise.allSettled([
+        const [modelResult, meResult] = await Promise.allSettled([
           api.models(),
           tg?.initData ? api.me() : Promise.resolve(null),
-          tg?.initData ? api.activePromo() : Promise.resolve(null),
-          tg?.initData ? api.generations("limit=12") : Promise.resolve({ items: [] }),
-          tg?.initData ? api.feed("recent", 0) : Promise.resolve({ items: [] }),
-          tg?.initData ? api.trends() : Promise.resolve({ items: [] }),
-          tg?.initData ? api.onboarding() : Promise.resolve(null),
         ]);
         if (!active) return;
         if (modelResult.status === "fulfilled") {
@@ -449,14 +444,19 @@ export function RoxySocialApp() {
           setFamilies(modelResult.value.families?.length ? modelResult.value.families : fallbackFamilies(nextModels));
         }
         if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
-        if (promoResult.status === "fulfilled" && promoResult.value) setActivePromo(promoResult.value);
-        if (recentResult.status === "fulfilled") setRecent(recentResult.value.items || []);
-        if (feedResult.status === "fulfilled") setFeed(feedResult.value.items || []);
-        if (trendsResult.status === "fulfilled") setTrends(trendsResult.value.items || []);
-        if (onboardingResult.status === "fulfilled" && onboardingResult.value) setOnboarding(onboardingResult.value);
       } finally {
         if (active) setBooting(false);
       }
+      if (!active || !tg?.initData) return;
+      void api.generations("limit=12")
+        .then((result) => { if (active) setRecent(result.items || []); })
+        .catch(() => {});
+      void api.trends()
+        .then((result) => { if (active) setTrends(result.items || []); })
+        .catch(() => {});
+      void api.onboarding()
+        .then((result) => { if (active && result) setOnboarding(result); })
+        .catch(() => {});
     })();
 
     const onPop = () => setRoute(initialRoute());

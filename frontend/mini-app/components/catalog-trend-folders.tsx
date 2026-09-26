@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { haptic } from "@/lib/telegram";
 import { TrendCategoryAdmin } from "@/components/trend-category-admin";
 import { TrendCollectionAdmin } from "@/components/trend-collection-admin";
@@ -180,10 +181,7 @@ export function CatalogTrendFolders() {
           setSelectedId(folder.id);
           setMediaType(Number(folder.photo_count || 0) > 0 || Number(folder.video_count || 0) === 0 ? "image" : "video");
         }}>
-          {folder.preview_url ? folder.preview_media_type === "video"
-            ? <video className="home-trend-folder-preview" src={folder.preview_url} muted autoPlay loop playsInline preload="metadata" />
-            : <img className="home-trend-folder-preview" src={folder.preview_url} alt="" loading="lazy" />
-            : null}
+          {folder.preview_url ? <TrendPreviewMedia className="home-trend-folder-preview" mediaType={folder.preview_media_type} url={folder.preview_url} thumbnailUrl={folder.preview_thumbnail_url} /> : null}
           <span className="home-trend-folder-card-copy">
             <strong>{folder.title}</strong>
             {folder.description ? <small>{folder.description}</small> : null}
@@ -200,10 +198,7 @@ export function CatalogTrendFolders() {
             haptic("light");
             window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
           }}>
-            {trend.preview_url ? trend.media_type === "video"
-              ? <video className="home-trend-folder-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
-              : <img className="home-trend-folder-media" src={trend.preview_url} alt="" loading="lazy" />
-              : null}
+            {trend.preview_url ? <TrendPreviewMedia className="home-trend-folder-media" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
             <span className="home-trend-folder-item-copy">
               <strong>{trend.title}</strong>
               {trend.description ? <small>{trend.description}</small> : null}
