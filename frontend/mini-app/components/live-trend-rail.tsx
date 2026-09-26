@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { haptic, telegramHeaders } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
 import type { TrendItem } from "@/lib/types";
@@ -180,10 +181,7 @@ export function LiveTrendRail() {
         {trends.map((trend) => (
           <article className="live-trend-card" key={trend.id}>
             <button className="live-trend-open" type="button" onClick={() => { haptic("light"); window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`); }}>
-              {trend.preview_url ? trend.media_type === "video"
-                ? <video className="live-trend-media" src={trend.preview_url} muted autoPlay loop playsInline preload="metadata" />
-                : <img className="live-trend-media" src={trend.preview_url} alt="" loading="lazy" />
-                : null}
+              {trend.preview_url ? <TrendPreviewMedia className="live-trend-media" mediaType={trend.media_type} url={trend.preview_url} thumbnailUrl={trend.preview_thumbnail_url} /> : null}
               <span className="live-trend-copy">
                 <strong>{trend.title}</strong>
                 {trend.description ? <small>{trend.description}</small> : null}

@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -19,6 +20,8 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.feed_links import mini_app_deep_link, trend_payload
 from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
+from app.services.reference_previews import ReferencePreviewService
+from app.services.reference_static import ReferenceStaticStorage
 from app.services.trend_collections import TrendCollectionService
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
@@ -332,6 +335,28 @@ async def inline_admin_trend_activate(
     except Exception as exc:
         await session.rollback()
         raise _domain_error(exc) from exc
+
+
+@router.get("/{trend_id}/preview-thumbnail")
+async def trend_preview_thumbnail(
+    trend_id: uuid.UUID,
+    session: SessionDep,
+) -> Response:
+    item = await session.get(AdminTrend, trend_id)
+    if item is None or not item.is_active:
+        raise HTTPException(status_code=404, detail="Trend preview not found")
+    source_url = str((item.payload or {}).get("preview_url") or "")
+    source = ReferenceStaticStorage.path_for_url(source_url)
+    if source is None or not source.is_file():
+        raise HTTPException(status_code=404, detail="Trend preview not found")
+    thumbnail = ReferencePreviewService.cached_or_schedule(source_url)
+    if thumbnail is None:
+        return Response(status_code=202, headers={"Cache-Control": "no-store", "Retry-After": "1"})
+    return FileResponse(
+        thumbnail,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get("/{trend_id}")

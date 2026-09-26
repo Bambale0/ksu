@@ -209,6 +209,18 @@ async def test_public_view_does_not_serialize_curated_prompt_or_settings() -> No
     assert "parameters" not in view
     assert "curated template text" not in repr(view)
     assert view["model"]["id"] == "nano-banana-pro"
+    assert view["preview_thumbnail_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_public_view_exposes_thumbnail_for_local_preview_only() -> None:
+    item = _item()
+    item.payload["preview_url"] = "https://roxy.example/uploads/refs/image/example.png"
+
+    view = await TrendService.public_view(AsyncMock(), item)
+
+    assert view["preview_thumbnail_url"].startswith(f"/api/v1/trends/{item.id}/preview-thumbnail?v=")
+    assert TrendService.preview_thumbnail_url(item.id, "https://roxy.example/uploads/refs/image/changed.png") != view["preview_thumbnail_url"]
 
 
 @pytest.mark.asyncio

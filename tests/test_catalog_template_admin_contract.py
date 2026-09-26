@@ -13,5 +13,7 @@ def test_catalog_template_admin_is_available_from_catalog() -> None:
 
 def test_catalog_category_preview_supports_video() -> None:
     source = (ROOT / "frontend/mini-app/components/catalog-trend-folders.tsx").read_text(encoding="utf-8")
-    assert 'folder.preview_media_type === "video"' in source
-    assert '<video className="home-trend-folder-preview"' in source
+    media = (ROOT / "frontend/mini-app/components/trend-preview-media.tsx").read_text(encoding="utf-8")
+    assert 'mediaType={folder.preview_media_type}' in source
+    assert '<video' in media
+    assert 'className={className}' in media

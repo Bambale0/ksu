@@ -42,7 +42,8 @@ const birthdayVideoTrend = {
   media_type: 'video',
 };
 
-async function mockHome(page, { delayedFolderTabs = false } = {}) {
+async function mockHome(page, { delayedFolderTabs = false, mediaPreviews = false, slowRecent = false, coldThumbnail = false } = {}) {
+  const thumbnailAttempts = new Map();
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -62,9 +63,21 @@ async function mockHome(page, { delayedFolderTabs = false } = {}) {
 
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00', is_admin: false });
-    if (path === '/api/v1/generations') return json({ items: [], has_more: false, next_before: null });
+    if (path === '/api/v1/generations') {
+      if (slowRecent && url.searchParams.get('limit') === '12') await new Promise((resolve) => setTimeout(resolve, 2500));
+      return json({ items: [], has_more: false, next_before: null });
+    }
     if (path === '/api/v1/feed') return json({ items: [] });
-    if (path === '/api/v1/trends') return json({ items: [trend] });
+    if (path === '/api/v1/trends') return json({ items: mediaPreviews ? [
+      { ...trend, preview_url: '/uploads/refs/image/full.png', preview_thumbnail_url: '/api/v1/trends/trend_home_order/preview-thumbnail' },
+      ...Array.from({ length: 4 }, (_, index) => ({ ...birthdayVideoTrend, id: `video_${index}`, title: `Видео ${index}`, preview_url: `/uploads/refs/video/${index}.mp4`, preview_thumbnail_url: `/api/v1/trends/video_${index}/preview-thumbnail` })),
+    ] : [trend] });
+    if (mediaPreviews && path.endsWith('/preview-thumbnail')) {
+      const attempts = (thumbnailAttempts.get(path) || 0) + 1;
+      thumbnailAttempts.set(path, attempts);
+      if (coldThumbnail && attempts <= 2) return route.fulfill({ status: 202, headers: { 'Cache-Control': 'no-store', 'Retry-After': '1' }, body: '' });
+      return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="purple"/></svg>' });
+    }
     if (path === '/api/v1/trend-collections') return json({ items: [
       { id: 'trends', system_key: 'trends', title: 'Тренды', description: 'Instagram', sort_order: 0, is_active: true, item_count: 1, photo_count: 1, video_count: 0 },
       { id: 'birthday', system_key: 'birthday', title: 'День рождения', description: 'Праздничные идеи', sort_order: 10, is_active: true, item_count: 3, photo_count: 2, video_count: 1 },
@@ -83,6 +96,44 @@ async function mockHome(page, { delayedFolderTabs = false } = {}) {
     return json({ items: [] });
   });
 }
+
+test('home leaves splash before slow recent work returns', async ({ page }) => {
+  let recentPending = false;
+  page.on('request', (request) => {
+    if (request.url().includes('/api/v1/generations?limit=12')) recentPending = true;
+  });
+  page.on('requestfinished', (request) => {
+    if (request.url().includes('/api/v1/generations?limit=12')) recentPending = false;
+  });
+  await mockHome(page, { slowRecent: true });
+  await page.goto('/mini-app/?route=home');
+
+  await expect(page.locator('.home-screen')).toBeVisible();
+  expect(recentPending).toBe(true);
+});
+
+test('trend cards load thumbnails and only fetch video near the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockHome(page, { mediaPreviews: true, coldThumbnail: true });
+  const fullImages = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/uploads/refs/image/full.png')) fullImages.push(request.url());
+  });
+  await page.goto('/mini-app/?route=home');
+
+  const rail = page.locator('.live-trend-rail');
+  const image = rail.locator('.live-trend-card').first().locator('img');
+  await expect(image).toHaveAttribute('src', '/api/v1/trends/trend_home_order/preview-thumbnail');
+  await expect.poll(() => image.evaluate((node) => node.naturalWidth)).toBeGreaterThan(0);
+  expect(fullImages).toHaveLength(0);
+
+  const distantVideo = rail.locator('.live-trend-card').last().locator('video');
+  await expect(distantVideo).not.toHaveAttribute('poster');
+  await expect(distantVideo).not.toHaveAttribute('src');
+  await distantVideo.scrollIntoViewIfNeeded();
+  await expect(distantVideo).toHaveAttribute('src', '/uploads/refs/video/3.mp4');
+  await expect(distantVideo).toHaveAttribute('poster', '/api/v1/trends/video_3/preview-thumbnail');
+});
 
 test('home shows live trends and then category cards without an extra section heading', async ({ page }) => {
   await mockHome(page);

@@ -4,13 +4,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_mini_app_static_responses_are_never_stale() -> None:
-    source = (ROOT / "app" / "core" / "http_security.py").read_text(encoding="utf-8")
+def test_mini_app_html_stays_fresh_and_hashed_assets_are_cacheable() -> None:
+    from starlette.responses import Response
+    from app.core.http_security import SecurityHeadersMiddleware
 
-    assert 'path == "/mini-app" or path.startswith("/mini-app/")' in source
-    assert '"Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"' in source
-    assert '"Pragma"] = "no-cache"' in source
-    assert '"Expires"] = "0"' in source
+    html = SecurityHeadersMiddleware._secure_response(Response(status_code=200), "request123", "/mini-app/")
+    asset = SecurityHeadersMiddleware._secure_response(
+        Response(status_code=200), "request123", "/mini-app/_next/static/chunks/3zq35mmk3c_25.css"
+    )
+    missing = SecurityHeadersMiddleware._secure_response(
+        Response(status_code=404), "request123", "/mini-app/_next/static/chunks/missing.js"
+    )
+
+    assert html.headers["Cache-Control"].startswith("no-store")
+    assert asset.headers["Cache-Control"] == "public, max-age=31536000, immutable"
+    assert "no-store" in missing.headers["Cache-Control"]
 
 
 def test_production_deploy_fails_closed_when_ssh_secrets_are_missing() -> None:

@@ -152,11 +152,12 @@ def test_category_cover_contract_handles_server_video_sources_without_broken_ima
     api = _source("app/api/v1/trend_collections.py")
     client = _source("frontend/mini-app/lib/trend-collections-api.ts")
     home = _source("frontend/mini-app/components/home-trend-folders.tsx")
+    media = _source("frontend/mini-app/components/trend-preview-media.tsx")
 
     assert '"preview_media_type": None' in api
     assert 'media_type == "image"' in api
     assert 'collection["preview_media_type"] = media_type' in api
     assert 'preview_media_type?: "image" | "video" | null' in client
-    assert 'folder.preview_media_type === "video"' in home
-    assert '<video' in home
-    assert 'onError={(event) => { event.currentTarget.style.display = "none"; }}' in home
+    assert 'mediaType={folder.preview_media_type}' in home
+    assert 'poster={poster || undefined}' in media
+    assert '<video' in media

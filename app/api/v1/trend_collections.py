@@ -124,6 +124,7 @@ async def list_trend_collections(
                 "photo_count": 0,
                 "video_count": 0,
                 "preview_url": None,
+                "preview_thumbnail_url": None,
                 "preview_media_type": None,
             }
         )
@@ -160,6 +161,7 @@ async def list_trend_collections(
             # categories still expose their real server-hosted video preview and
             # the Mini App renders it as <video> instead of a broken <img>.
             collection["preview_url"] = preview_url
+            collection["preview_thumbnail_url"] = TrendService.preview_thumbnail_url(trend.id, preview_url)
             collection["preview_media_type"] = media_type
 
     return {"items": collections}
