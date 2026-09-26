@@ -14,7 +14,8 @@ from app.db.admin_models import AdminTrend
 from app.db.models import Generation
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
-from app.services.model_catalog import ModelCatalog, ModelSpec
+from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
+from app.services.model_spec_trusted_media_audit import validate_reference_duration_contracts
 from app.services.model_ui_contract import MODEL_DEFAULTS, MODEL_FIELD_SUGGESTIONS
 from app.services.seedance_reference_integrity import seedance_reference_requirements
 from app.services.trend_collections import TrendCollectionService
@@ -156,7 +157,7 @@ class TrendService:
     async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
-        parameters = TrendService._parameters_with_references(recipe, refs)
+        parameters = await TrendService._verified_parameters_with_references(session, recipe, refs)
         try:
             await GenerationService.prepare_request(
                 session,
@@ -228,7 +229,7 @@ class TrendService:
     async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
         refs = TrendService._validation_reference_urls(recipe["min_references"])
-        parameters = TrendService._parameters_with_references(recipe, refs)
+        parameters = await TrendService._verified_parameters_with_references(session, recipe, refs)
         spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
             session,
             model_id=recipe["model_id"],
@@ -287,7 +288,7 @@ class TrendService:
             )
         if recipe["input_mode"] == "none" and refs:
             raise TrendRecipeError("This trend does not accept reference images")
-        parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
+        parameters = await TrendService._verified_parameters_with_references(session, recipe, refs, resolution=resolution)
         try:
             rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
         except TrendUserFieldsError as exc:
@@ -327,6 +328,41 @@ class TrendService:
         ]
 
     @staticmethod
+    async def _verified_parameters_with_references(
+        session: AsyncSession,
+        recipe: dict[str, Any],
+        reference_urls: list[str],
+        *,
+        resolution: str | None = None,
+    ) -> dict[str, Any]:
+        parameters = TrendService._parameters_with_references(
+            recipe, reference_urls, resolution=resolution,
+        )
+        # Explicit references remain mandatory and use normal strict validation.
+        # Only an optional, automatically added preview may be omitted when its
+        # duration has not been probed or exceeds the provider's reference limit.
+        if parameters.get("reference_video_urls"):
+            return parameters
+        candidate = dict(parameters)
+        TrendService._apply_server_owned_seedance_references(
+            recipe, candidate, spec=ModelCatalog.get(str(recipe["model_id"])),
+            include_optional_preview=True,
+        )
+        if candidate == parameters:
+            return parameters
+        try:
+            await validate_reference_duration_contracts(
+                session, model_id=str(recipe["model_id"]), parameters=candidate,
+            )
+        except InvalidModelParametersError:
+            logger.debug(
+                "Optional trend preview omitted: unverified or unsupported duration model=%s",
+                recipe["model_id"],
+            )
+            return parameters
+        return candidate
+
+    @staticmethod
     def _parameters_with_references(
         recipe: dict[str, Any],
         reference_urls: list[str],
@@ -355,14 +391,15 @@ class TrendService:
         parameters: dict[str, Any],
         *,
         spec: ModelSpec,
+        include_optional_preview: bool = False,
     ) -> None:
-        if spec.family != "seedance":
+        if spec.family != "seedance" or "reference_video_urls" not in spec.known_fields:
             return
         required = seedance_reference_requirements(str(recipe.get("prompt") or ""))
         required_videos = int(required["video"])
         preview = str(recipe.get("preview_url") or "").strip()
         preview_is_video = TrendService._looks_like_video_url(preview)
-        target_videos = max(required_videos, 1 if preview_is_video else 0)
+        target_videos = max(required_videos, 1 if preview_is_video and include_optional_preview else 0)
         if target_videos <= 0:
             return
 
@@ -439,7 +476,7 @@ class TrendService:
         default = TrendService._default_resolution(recipe) or (options[0] if options else None)
         result: list[dict[str, Any]] = []
         for resolution in options:
-            parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
+            parameters = await TrendService._verified_parameters_with_references(session, recipe, refs, resolution=resolution)
             _spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
                 session,
                 model_id=recipe["model_id"],

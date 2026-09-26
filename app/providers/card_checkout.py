@@ -241,6 +241,10 @@ class CardCheckoutClient:
     @staticmethod
     def extract_amount(payload: dict[str, Any]) -> Decimal | None:
         raw: Any = payload.get("amount")
+        if raw in (None, ""):
+            receipt = payload.get("receipt")
+            if isinstance(receipt, dict):
+                raw = receipt.get("amount")
         if isinstance(raw, dict):
             raw = raw.get("value") or raw.get("amount")
         if raw in (None, ""):
@@ -253,6 +257,10 @@ class CardCheckoutClient:
     @staticmethod
     def extract_currency(payload: dict[str, Any]) -> str | None:
         raw: Any = payload.get("currency")
+        if raw in (None, ""):
+            receipt = payload.get("receipt")
+            if isinstance(receipt, dict):
+                raw = receipt.get("currency")
         if isinstance(raw, dict):
             raw = raw.get("code") or raw.get("currency")
         if raw in (None, ""):

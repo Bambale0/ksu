@@ -712,6 +712,7 @@ async def admin_pricing_models(
     admin = await _require_callback_admin(callback, session, state)
     if admin is None:
         return
+    # Reuse the same permission gate as the existing tariff screen.
     await AdminPricingService.current(session, admin=admin)
     await state.clear()
 

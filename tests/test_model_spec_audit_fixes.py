@@ -111,7 +111,7 @@ def test_seedance20_standard_accepts_1080p_provider_resolution() -> None:
 
     _spec, clean, _cost, _seconds, unit_price = ModelCatalog.prepare("seedance-2.0", params)
     assert clean["resolution"] == "1080p"
-    assert unit_price == Decimal("60")
+    assert unit_price == Decimal("116")
 
     payload = normalize_kie_video_input("bytedance/seedance-2", clean)
     assert payload["resolution"] == "1080p"

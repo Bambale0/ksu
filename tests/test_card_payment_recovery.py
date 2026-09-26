@@ -132,6 +132,22 @@ async def test_lost_card_create_response_recovers_unique_unknown_intent(
         assert repeated.id == payment_id
 
 
+def test_lava_receipt_shape_exposes_recovery_identity_fields() -> None:
+    invoice = {
+        "id": "contract-1",
+        "status": "COMPLETED",
+        "receipt": {"amount": 6, "currency": "USD", "fee": 0},
+        "buyer": {"email": "buyer@example.com"},
+        "product": {"name": "Пакеты ROXY", "offer": "300 ROX"},
+    }
+
+    assert CardCheckoutClient.extract_invoice_id(invoice) == "contract-1"
+    assert CardCheckoutClient.extract_status(invoice) == "completed"
+    assert CardCheckoutClient.extract_amount(invoice) == Decimal("6")
+    assert CardCheckoutClient.extract_currency(invoice) == "USD"
+    assert CardCheckoutClient.extract_buyer_email(invoice) == "buyer@example.com"
+
+
 @pytest.mark.asyncio
 async def test_card_recovery_refuses_buyer_email_mismatch(
     monkeypatch: pytest.MonkeyPatch,
