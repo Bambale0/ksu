@@ -430,38 +430,74 @@ class AdminPricingService:
         path = f"generation_pricing.{normalized_model_id}.{price_key}"
         _positive_price(price, path=path)
         normalized_price = format(Decimal(str(price)), "f")
+        command_payload = {
+            "model_id": normalized_model_id,
+            "price_key": price_key,
+            "price": normalized_price,
+        }
 
-        # Serialize all tariff publishers before reading the current snapshot.
-        # The lock is transaction-scoped, so a concurrent editor reads the version
-        # committed by the previous publisher instead of rebuilding from stale data.
-        await _lock_tariff_publish(session)
-        current = await session.scalar(
-            select(TariffVersion)
-            .where(TariffVersion.status == "published")
-            .order_by(TariffVersion.version.desc())
-            .with_for_update()
-            .limit(1)
-        )
-        current_payload = dict(current.payload or {}) if current is not None else {}
-        generation_pricing = dict(current_payload.get("generation_pricing") or {})
-        existing = generation_pricing.get(normalized_model_id)
-        if isinstance(existing, dict):
-            updated = dict(existing)
-            updated[price_key] = normalized_price
-        else:
-            updated = {price_key: normalized_price}
-        generation_pricing[normalized_model_id] = updated
-        _validate_generation_pricing(generation_pricing)
+        async def operation() -> dict[str, Any]:
+            await _lock_tariff_publish(session)
+            latest = await session.scalar(
+                select(TariffVersion)
+                .order_by(TariffVersion.version.desc())
+                .with_for_update()
+                .limit(1)
+            )
+            next_version = (latest.version if latest else 0) + 1
+            published = list(
+                (
+                    await session.scalars(
+                        select(TariffVersion)
+                        .where(TariffVersion.status == "published")
+                        .order_by(TariffVersion.version.desc())
+                        .with_for_update()
+                    )
+                ).all()
+            )
+            current_payload = dict(published[0].payload or {}) if published else {}
+            generation_pricing = dict(current_payload.get("generation_pricing") or {})
+            existing = generation_pricing.get(normalized_model_id)
+            if isinstance(existing, dict):
+                updated = dict(existing)
+                updated[price_key] = normalized_price
+            else:
+                updated = {price_key: normalized_price}
+            generation_pricing[normalized_model_id] = updated
+            _validate_generation_pricing(generation_pricing)
 
-        return await AdminPricingService.publish(
+            for item in published:
+                item.status = "superseded"
+            snapshot = {**current_payload, "generation_pricing": generation_pricing}
+            item = TariffVersion(
+                version=next_version,
+                status="published",
+                payload=snapshot,
+                created_by_admin_id=admin.id,
+                published_by_admin_id=admin.id,
+                published_at=datetime.now(UTC),
+            )
+            session.add(item)
+            await session.flush()
+            return {
+                "id": str(item.id),
+                "version": item.version,
+                "status": item.status,
+                "published_at": item.published_at.isoformat(),
+            }
+
+        result, replayed = await AdminCommandLedger.execute(
             session,
-            admin=admin,
-            payload={"generation_pricing": generation_pricing},
             idempotency_key=idempotency_key,
+            admin_user_id=admin.id,
             request_id=request_id,
-            confirmed=confirmed,
-            step_up_valid=step_up_valid,
+            action="tariffs.publish_model_price",
+            target_id=normalized_model_id,
+            request_payload=command_payload,
+            operation=operation,
         )
+        await AdminPricingService.hydrate_runtime(session)
+        return result, replayed
 
     @staticmethod
     async def count_versions(session: AsyncSession) -> int:

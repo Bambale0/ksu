@@ -132,12 +132,13 @@ async def test_text_admin_model_price_patch_preserves_other_tariff_data(monkeypa
             step_up_valid=True,
         )
 
+        nano_key = f"tariff-model-price:{uuid.uuid4()}"
         result, replayed = await AdminPricingService.publish_model_price(
             session,
             admin=admin,
             model_id="nano-banana-2",
             price=Decimal("33.5"),
-            idempotency_key=f"tariff-model-price:{uuid.uuid4()}",
+            idempotency_key=nano_key,
             request_id="tariff-model-price",
             confirmed=True,
             step_up_valid=True,
@@ -175,6 +176,19 @@ async def test_text_admin_model_price_patch_preserves_other_tariff_data(monkeypa
         }
         assert second_saved["payload"]["generation_pricing"]["nano-banana-2"]["flat"] == "33.5"
         assert second_saved["payload"]["packages"] == packages
+
+        replay_result, replayed = await AdminPricingService.publish_model_price(
+            session,
+            admin=admin,
+            model_id="nano-banana-2",
+            price=Decimal("33.5"),
+            idempotency_key=nano_key,
+            request_id="tariff-model-price-retry",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        assert replayed is True
+        assert replay_result == result
 
         with pytest.raises(TariffValidationError, match="positive"):
             await AdminPricingService.publish_model_price(
