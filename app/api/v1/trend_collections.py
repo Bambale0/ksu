@@ -15,7 +15,6 @@ from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
-from app.services.reference_static import ReferenceStaticStorage
 from app.services.trend_collections import TrendCollectionError, TrendCollectionService
 from app.services.trends import TrendService
 
@@ -162,11 +161,7 @@ async def list_trend_collections(
             # categories still expose their real server-hosted video preview and
             # the Mini App renders it as <video> instead of a broken <img>.
             collection["preview_url"] = preview_url
-            collection["preview_thumbnail_url"] = (
-                f"/api/v1/trends/{trend.id}/preview-thumbnail"
-                if ReferenceStaticStorage.is_local_url(preview_url)
-                else None
-            )
+            collection["preview_thumbnail_url"] = TrendService.preview_thumbnail_url(trend.id, preview_url)
             collection["preview_media_type"] = media_type
 
     return {"items": collections}

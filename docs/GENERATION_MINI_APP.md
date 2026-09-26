@@ -222,6 +222,7 @@ Generation work is durably queued in PostgreSQL. The frontend polls generation d
 The main screen becomes usable after the model catalog and account requests settle. Recent work, trends and onboarding status continue independently; the separate onboarding gate keeps its blocking status check. Feed and profile data load when those tabs are opened.
 
 Active curated trends with product-owned preview media expose `preview_thumbnail_url`. The public thumbnail endpoint returns a cached 320px WebP still, including the first frame of local video. Card images request this still and fall back to the original preview if it fails. Video cards show the still poster and attach their video URL only near the viewport. Original media remains available on the trend detail page.
+Thumbnail URLs include a version derived from the source URL, so editing a trend preview changes the cache key.
 
 The Mini App HTML remains `no-store`. Successful content-hashed `/_next/static/` assets use an immutable browser cache so repeat launches reuse the same JS and CSS until a new build changes their URLs.
 

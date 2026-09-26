@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -47,6 +48,13 @@ class TrendRecipeError(ValueError):
 
 class TrendService:
     """Server-owned curated trend templates and one-tap generation orchestration."""
+
+    @staticmethod
+    def preview_thumbnail_url(trend_id: uuid.UUID, source_url: str | None) -> str | None:
+        if not ReferenceStaticStorage.is_local_url(source_url):
+            return None
+        version = hashlib.sha256(str(source_url).encode("utf-8")).hexdigest()[:12]
+        return f"/api/v1/trends/{trend_id}/preview-thumbnail?v={version}"
 
     @staticmethod
     def normalize_recipe(title: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -244,11 +252,7 @@ class TrendService:
             "description": recipe["description"],
             "media_type": recipe["media_type"],
             "preview_url": recipe["preview_url"],
-            "preview_thumbnail_url": (
-                f"/api/v1/trends/{item.id}/preview-thumbnail"
-                if ReferenceStaticStorage.is_local_url(recipe["preview_url"])
-                else None
-            ),
+            "preview_thumbnail_url": TrendService.preview_thumbnail_url(item.id, recipe["preview_url"]),
             "model": {"id": spec.id, "title": spec.title, "family": spec.family},
             "cost_credits": TrendService._amount(cost),
             "cost_rub": TrendService._amount(InternalCreditService.rubles_for(cost)),

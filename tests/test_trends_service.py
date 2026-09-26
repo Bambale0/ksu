@@ -219,7 +219,8 @@ async def test_public_view_exposes_thumbnail_for_local_preview_only() -> None:
 
     view = await TrendService.public_view(AsyncMock(), item)
 
-    assert view["preview_thumbnail_url"] == f"/api/v1/trends/{item.id}/preview-thumbnail"
+    assert view["preview_thumbnail_url"].startswith(f"/api/v1/trends/{item.id}/preview-thumbnail?v=")
+    assert TrendService.preview_thumbnail_url(item.id, "https://roxy.example/uploads/refs/image/changed.png") != view["preview_thumbnail_url"]
 
 
 @pytest.mark.asyncio
