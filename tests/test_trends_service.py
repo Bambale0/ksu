@@ -249,7 +249,7 @@ async def test_run_applies_validated_video_resolution_override(monkeypatch) -> N
     item = _video_item()
     session = AsyncMock()
     session.get.return_value = item
-    session.scalar.return_value = item
+    session.scalar.side_effect = [None, item]
     create = AsyncMock(return_value=_generation())
     monkeypatch.setattr(GenerationService, "create", create)
 
@@ -588,3 +588,105 @@ def test_seedance_trend_validation_refs_survive_router_without_deduplication() -
     assert routed.parameters["reference_video_urls"] == [
         "https://cdn.example.invalid/original.mp4"
     ]
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_run_binds_video_preview_without_explicit_video_alias(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    item.payload.update(
+        {
+            "prompt": "@Image1 holds the same birthday cake and candles as the reference scene",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "input_mode": "image",
+            "min_references": 1,
+            "max_references": 1,
+        }
+    )
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.side_effect = [SimpleNamespace(probe_status="ready", duration_ms=5000), item]
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    reference = "https://cdn.example.invalid/person.jpg"
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=[reference],
+    )
+
+    parameters = create.await_args.kwargs["parameters"]
+    assert parameters["reference_image_urls"] == [reference]
+    assert parameters["reference_video_urls"] == [
+        "https://cdn.example.invalid/original.mp4"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata", [
+    None,
+    SimpleNamespace(probe_status="failed", duration_ms=None),
+    SimpleNamespace(probe_status="ready", duration_ms=16000),
+])
+async def test_unverified_optional_preview_keeps_trend_visible_and_valid(metadata) -> None:
+    item = _video_item()
+    session = AsyncMock()
+    session.scalar.return_value = metadata
+    # Real generation preparation must not require upload metadata for a
+    # presentation-only preview that cannot safely be sent as a reference.
+    await TrendService.validate_recipe(session, title=item.title, payload=item.payload)
+    view = await TrendService.public_view(session, item)
+    assert view["id"] == str(item.id)
+    assert view["quality_options"]
+
+
+@pytest.mark.asyncio
+async def test_verified_optional_preview_uses_real_quote_with_video_multiplier(monkeypatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "generation_pricing_json", '{"seedance-2.0":{"per_second":47}}')
+    item = _video_item()
+    session = AsyncMock()
+    session.scalar.return_value = SimpleNamespace(
+        kind="video", status="ready", probe_status="ready", duration_ms=5000,
+    )
+    view = await TrendService.public_view(session, item)
+    assert view["cost_credits"] == "940.00"
+    assert all(option["cost_rox"] == "940.00" for option in view["quality_options"])
+
+
+@pytest.mark.asyncio
+async def test_explicit_preview_without_metadata_still_fails_validation() -> None:
+    item = _video_item()
+    item.payload["prompt"] = "Follow @Video1"
+    session = AsyncMock()
+    session.scalar.return_value = None
+    with pytest.raises(TrendRecipeError, match="duration must be verified"):
+        await TrendService.validate_recipe(session, title=item.title, payload=item.payload)
+
+
+@pytest.mark.asyncio
+async def test_unverified_optional_preview_is_not_sent_at_run(monkeypatch) -> None:
+    item = _video_item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.side_effect = [None, item]
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+    await TrendService.run(
+        session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=[],
+    )
+    assert not create.await_args.kwargs["parameters"].get("reference_video_urls")
+
+
+@pytest.mark.asyncio
+async def test_seedance_model_without_video_input_keeps_preview_presentation_only() -> None:
+    item = _video_item()
+    item.payload["model_id"] = "seedance-1.5-pro"
+    recipe = TrendService.normalize_recipe(item.title, item.payload)
+    session = AsyncMock()
+    parameters = await TrendService._verified_parameters_with_references(session, recipe, [])
+    assert not parameters.get("reference_video_urls")
+    session.scalar.assert_not_awaited()

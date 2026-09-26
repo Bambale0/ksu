@@ -177,3 +177,19 @@ def test_telegram_admin_promo_menu_uses_partner_owned_contract() -> None:
     assert "reward_credits" not in promo_section
     assert "PARTNER_USER_ID" in promo_section
     assert "partner_user_id=partner_user_id" in promo_section
+
+
+def test_telegram_admin_pricing_has_per_model_editor_contract() -> None:
+    source = _read(ROOT / "app" / "bot" / "handlers" / "admin.py")
+
+    for token in (
+        "pricing_model_value = State()",
+        "pricing_model_confirm = State()",
+        'callback_data="admin:pricing:models:0"',
+        'F.data.startswith("admin:pricing:models:")',
+        'F.data.startswith("admin:pricing:model:")',
+        "AdminPricingService.editable_model_prices()",
+        "AdminPricingService.publish_model_price(",
+        "ROX/сек",
+    ):
+        assert token in source, token
