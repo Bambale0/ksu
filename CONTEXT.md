@@ -1,3 +1,27 @@
+## Active Feature Execution — Seedance trend preview reference fidelity
+
+- **Baseline:** `main@34af239ad6e4907de1a1ad9b9c64d1348048622a`; production KSU containers were verified on the same immutable image SHA before the change.
+- **User-visible symptom:** recent Seedance curated video trends can reproduce the general prompt but scene details from the template preview — especially cake/candle appearance and placement — drift materially from the trend example.
+- **Production evidence:** fresh trend `SCORPIO ENERGY ♏️🔥 (ВИДЕО)` has a server-owned MOV preview and 13 successful KIE runs in the inspected day, while every inspected generation persisted `reference_video_urls=[]`. Runs therefore sent user image refs + text but omitted the video example.
+- **Root cause:** `TrendService._apply_server_owned_seedance_references` attached the preview video only when the hidden prompt contained an explicit typed `@VideoN` reference. A curated Seedance video trend with a real video preview but no literal `@Video1` silently lost the server-owned scene/motion reference.
+- **Behavior:** a curated Seedance video preview is now preserved as one server-owned `reference_video_urls` item even without `@Video1`; explicit typed-reference validation stays strict; user image references and non-Seedance paths remain unchanged.
+- **Schema/migrations/auth/billing:** N/A.
+- **TDD evidence:** regression `test_seedance_trend_run_binds_video_preview_without_explicit_video_alias` failed RED with missing `reference_video_urls`, then passed after the narrow service fix. `tests/test_trends_service.py`: 20/20.
+- **Verification:** focused Seedance/pricing/provider matrix 86/86; Ruff + compileall green; full backend/product regression on a fresh isolated PostgreSQL database and Redis with CI-equivalent env: 1242/1242 passed (one pre-existing SQLAlchemy warning).
+- **Risk/rollback:** donor identities in a template preview remain a provider/model limitation, so user image refs stay authoritative identity inputs. Rollback is a source revert; no data migration.
+
+## Active Feature Execution — Telegram text admin per-model generation pricing
+
+- **Baseline:** `main@34af239ad6e4907de1a1ad9b9c64d1348048622a`.
+- **User-visible request:** the Telegram/text admin must allow editing the generation price for every model without pasting the whole tariff JSON.
+- **Source of truth:** existing `TariffVersion.payload.generation_pricing → AdminPricingService.hydrate_runtime → ModelCatalog`; no second pricing store was introduced.
+- **Behavior:** `🏷 Тарифы → 🎛 Цены моделей` lists the complete `ModelCatalog` plus Suno, shows the current effective base price, distinguishes `ROX` from `ROX/сек`, accepts comma/dot decimals, requires explicit confirmation, publishes a new version, and retains the existing full-JSON editor.
+- **Integrity:** one-model edits preserve all sibling model overrides, packages, and the selected model's `by_mode` / `by_resolution` tiers. Non-finite/non-positive values are rejected. Tariff publishers are serialized with a PostgreSQL transaction advisory lock so concurrent per-model edits cannot rebuild from a stale snapshot.
+- **Security/audit:** existing active-admin checks, `pricing.read`, `tariffs.publish`, confirmation and `AdminCommandLedger` idempotency are reused. Failure logging records model/message/error type only.
+- **TDD evidence:** service test failed RED because `publish_model_price` did not exist; after implementation the model patch/tier preservation/NaN checks pass, and a real two-session concurrency regression proves two simultaneous model edits are both retained.
+- **Verification:** Telegram source contract + tariff regressions + Seedance regressions 34/34; broader affected matrix 86/86; Ruff + compileall green; full CI-equivalent backend regression 1242/1242.
+- **Schema/migrations:** N/A. Rollback is a source revert.
+- **Delivery:** local SentinelX agent went offline only after all local verification completed; the already-verified diff is being handed off through GitHub API from the exact same baseline SHA. Exact-head GitHub CI/review remains the merge gate.
 ## Active Feature Execution — Template category vertical gallery
 
 - **Baseline:** `main@630f520c4e054a097d914031ed557abbc50a6fb3`.

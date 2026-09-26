@@ -29,6 +29,13 @@ ALLOWED_TARIFF_SECTIONS = frozenset(
 )
 MUSIC_MODEL_ID = "suno-v5.5"
 _BASE_MUSIC_GENERATION_PRICE_ROX = Decimal(settings.music_generation_price_rox)
+_TARIFF_PUBLISH_LOCK_KEY = "ksu:tariff-publish"
+
+
+async def _lock_tariff_publish(session: AsyncSession) -> None:
+    await session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtext(_TARIFF_PUBLISH_LOCK_KEY)))
+    )
 
 
 class TariffValidationError(ValueError):
@@ -59,7 +66,7 @@ def _positive_price(value: Any, *, path: str) -> None:
         number = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise TariffValidationError(f"Invalid generation price at {path}") from exc
-    if number <= 0:
+    if not number.is_finite() or number <= 0:
         raise TariffValidationError(f"Generation price must be positive at {path}")
 
 
@@ -314,6 +321,7 @@ class AdminPricingService:
         validated = validate_tariff_payload(payload)
 
         async def operation() -> dict[str, Any]:
+            await _lock_tariff_publish(session)
             latest = await session.scalar(
                 select(TariffVersion)
                 .order_by(TariffVersion.version.desc())
@@ -366,6 +374,94 @@ class AdminPricingService:
         # A retry of an older command must not roll this worker back to stale prices.
         await AdminPricingService.hydrate_runtime(session)
         return result, replayed
+
+    @staticmethod
+    def editable_model_prices() -> list[dict[str, str]]:
+        items = [
+            {
+                "id": str(item["id"]),
+                "title": str(item["title"]),
+                "media_type": str(item["media_type"]),
+                "price_mode": str(item["price_mode"]),
+                "price_rox": str(item["price_rox"]),
+            }
+            for item in ModelCatalog.list()
+        ]
+        items.append(
+            {
+                "id": MUSIC_MODEL_ID,
+                "title": "Suno V5.5",
+                "media_type": "music",
+                "price_mode": "flat",
+                "price_rox": str(settings.music_generation_price_rox),
+            }
+        )
+        items.sort(key=lambda item: (item["media_type"], item["title"].casefold(), item["id"]))
+        return items
+
+    @staticmethod
+    async def publish_model_price(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        model_id: str,
+        price: Decimal | str | int | float,
+        idempotency_key: str,
+        request_id: str,
+        confirmed: bool,
+        step_up_valid: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(
+            admin,
+            "tariffs.publish",
+            confirmed=confirmed,
+            step_up_valid=step_up_valid,
+        )
+        normalized_model_id = str(model_id or "").strip()
+        if normalized_model_id == MUSIC_MODEL_ID:
+            price_key = "flat"
+        else:
+            try:
+                spec = ModelCatalog.get(normalized_model_id)
+            except UnknownModelError as exc:
+                raise TariffValidationError(f"Unknown generation model: {normalized_model_id}") from exc
+            price_key = "per_second" if spec.price_mode == "per_second" else "flat"
+
+        path = f"generation_pricing.{normalized_model_id}.{price_key}"
+        _positive_price(price, path=path)
+        normalized_price = format(Decimal(str(price)), "f")
+
+        # Serialize all tariff publishers before reading the current snapshot.
+        # The lock is transaction-scoped, so a concurrent editor reads the version
+        # committed by the previous publisher instead of rebuilding from stale data.
+        await _lock_tariff_publish(session)
+        current = await session.scalar(
+            select(TariffVersion)
+            .where(TariffVersion.status == "published")
+            .order_by(TariffVersion.version.desc())
+            .with_for_update()
+            .limit(1)
+        )
+        current_payload = dict(current.payload or {}) if current is not None else {}
+        generation_pricing = dict(current_payload.get("generation_pricing") or {})
+        existing = generation_pricing.get(normalized_model_id)
+        if isinstance(existing, dict):
+            updated = dict(existing)
+            updated[price_key] = normalized_price
+        else:
+            updated = {price_key: normalized_price}
+        generation_pricing[normalized_model_id] = updated
+        _validate_generation_pricing(generation_pricing)
+
+        return await AdminPricingService.publish(
+            session,
+            admin=admin,
+            payload={"generation_pricing": generation_pricing},
+            idempotency_key=idempotency_key,
+            request_id=request_id,
+            confirmed=confirmed,
+            step_up_valid=step_up_valid,
+        )
 
     @staticmethod
     async def count_versions(session: AsyncSession) -> int:

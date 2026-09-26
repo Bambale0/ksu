@@ -360,7 +360,10 @@ class TrendService:
             return
         required = seedance_reference_requirements(str(recipe.get("prompt") or ""))
         required_videos = int(required["video"])
-        if required_videos <= 0:
+        preview = str(recipe.get("preview_url") or "").strip()
+        preview_is_video = TrendService._looks_like_video_url(preview)
+        target_videos = max(required_videos, 1 if preview_is_video else 0)
+        if target_videos <= 0:
             return
 
         current = parameters.get("reference_video_urls")
@@ -371,10 +374,8 @@ class TrendService:
         else:
             videos = []
 
-        preview = str(recipe.get("preview_url") or "").strip()
-        if len(videos) < required_videos and TrendService._looks_like_video_url(preview):
-            if preview not in videos:
-                videos.append(preview)
+        if len(videos) < target_videos and preview_is_video and preview not in videos:
+            videos.append(preview)
         if videos:
             parameters["reference_video_urls"] = videos
 
