@@ -1,9 +1,11 @@
 import json
 import logging
 import uuid
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from prometheus_client import generate_latest
 from redis.asyncio import Redis
 
@@ -92,3 +94,47 @@ async def test_worker_heartbeat_and_distributed_event_use_real_redis(
     finally:
         await redis.delete(heartbeat_key(worker), event_key)
         await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_operational_health_fails_when_card_webhook_secret_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import health
+
+    async def healthy_worker(_redis: object, worker: str) -> dict[str, object]:
+        return {"worker": worker, "up": True, "age_seconds": 0}
+
+    monkeypatch.setattr(health, "worker_health", healthy_worker)
+    monkeypatch.setattr(settings, "card_api_key", "enabled")
+    monkeypatch.setattr(settings, "card_webhook_key", "")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=object())))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await health.operational(request)  # type: ignore[arg-type]
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["status"] == "degraded"
+    assert exc_info.value.detail["configuration"] == [
+        {"component": "card-payments", "reason": "card_webhook_key_missing"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_operational_health_allows_disabled_card_checkout_without_webhook_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import health
+
+    async def healthy_worker(_redis: object, worker: str) -> dict[str, object]:
+        return {"worker": worker, "up": True, "age_seconds": 0}
+
+    monkeypatch.setattr(health, "worker_health", healthy_worker)
+    monkeypatch.setattr(settings, "card_api_key", "")
+    monkeypatch.setattr(settings, "card_webhook_key", "")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(redis=object())))
+
+    result = await health.operational(request)  # type: ignore[arg-type]
+
+    assert result["status"] == "operational"
+    assert "configuration" not in result
