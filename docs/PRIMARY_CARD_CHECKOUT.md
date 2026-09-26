@@ -166,6 +166,8 @@ The public webhook URL is neutral:
 
 Configure the same inbound secret in the provider webhook settings and `CARD_WEBHOOK_KEY`. Webhook authentication uses `X-Api-Key` and constant-time comparison.
 
+When card checkout is enabled in production, `/health/operational` treats an empty `CARD_WEBHOOK_KEY` as a degraded configuration. This makes a missing inbound payment callback secret visible to release/operations checks instead of silently leaving confirmed purchases pending.
+
 One-time payment events handled:
 
 ```text

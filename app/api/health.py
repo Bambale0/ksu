@@ -77,9 +77,16 @@ async def operational(request: Request) -> dict[str, object]:
         await worker_health(request.app.state.redis, worker)
         for worker in OPERATIONAL_WORKERS
     ]
-    if not all(bool(item["up"]) for item in workers):
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "degraded", "workers": workers},
+    configuration: list[dict[str, str]] = []
+    if bool(str(settings.card_api_key or "").strip()) and not bool(
+        str(settings.card_webhook_key or "").strip()
+    ):
+        configuration.append(
+            {"component": "card-payments", "reason": "card_webhook_key_missing"}
         )
+    if configuration or not all(bool(item["up"]) for item in workers):
+        detail: dict[str, object] = {"status": "degraded", "workers": workers}
+        if configuration:
+            detail["configuration"] = configuration
+        raise HTTPException(status_code=503, detail=detail)
     return {"status": "operational", "workers": workers}

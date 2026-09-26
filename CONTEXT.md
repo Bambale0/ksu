@@ -1,3 +1,19 @@
+## Active Feature Execution — Lava confirmed payment not credited (2026-09-26)
+
+- **Baseline:** `main@34af239ad6e4907de1a1ad9b9c64d1348048622a`.
+- **Incident:** Telegram user `5318427431` completed a Lava Top purchase for 1000 ROX. Lava customer evidence shows payment status `Confirmed` and receipt/order `e1296344-22f8-4526-adb2-6ab233802b19`, while KSU payment `445ca572-545c-40d4-8506-f9ea7ef7e668` remains `pending`, tracks Lava contract `dceadd8f-7486-486e-927d-46737a74d0bc`, and has no wallet-credit transaction.
+- **Production evidence:** payment-worker is alive and polls the tracked Lava contract every ~60s with HTTP 200, but the authoritative invoice lookup remains `IN_PROGRESS`; wallet balance remains unchanged and idempotency key `payment:445ca572-545c-40d4-8506-f9ea7ef7e668:credit` is absent.
+- **Confirmed configuration defect:** production has `CARD_API_KEY` enabled but `CARD_WEBHOOK_KEY` empty. The card webhook handler requires `X-Api-Key`, so the production deployment cannot authenticate Lava `payment.success` callbacks. No card-webhook requests were found in current application/nginx evidence.
+- **Provider contract:** Lava documents `payment.success` as the successful purchase event; API-key webhooks use `X-Api-Key`; webhook history supports retries/resends. KSU already treats webhook delivery as a signal and re-fetches the authoritative invoice before wallet mutation.
+- **Safety invariant:** do not raw-credit the wallet. Recovery must use the payment-domain idempotency key and provider-confirmed event/state so a later webhook cannot double-credit.
+- **Root-cause fix:** make operational health fail closed when Lava/card checkout is enabled but its inbound webhook secret is absent. This turns a silent financial-integrity defect into a deployment/operations blocker without exposing secret material.
+- **Test seam:** `/health/operational` with all workers healthy: card API configured + missing webhook secret must return 503 with a non-secret configuration error; card checkout disabled must remain operational.
+- **Migration/schema:** N/A.
+- **Authorization:** unchanged.
+- **No-hardcode:** no payment amount, secret value, provider URL, or user data is added to source; the guard reads existing runtime settings.
+- **Rollback:** revert the health/config guard. No data migration.
+- **Recovery status:** direct manual payment completion was not executed; financial state remains unchanged pending provider-side webhook configuration/resend or authoritative invoice completion.
+
 ## Active Feature Execution — Template category vertical gallery
 
 - **Baseline:** `main@630f520c4e054a097d914031ed557abbc50a6fb3`.
