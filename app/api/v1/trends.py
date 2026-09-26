@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import uuid
-import asyncio
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -342,16 +341,17 @@ async def inline_admin_trend_activate(
 async def trend_preview_thumbnail(
     trend_id: uuid.UUID,
     session: SessionDep,
-) -> FileResponse:
+) -> Response:
     item = await session.get(AdminTrend, trend_id)
     if item is None or not item.is_active:
         raise HTTPException(status_code=404, detail="Trend preview not found")
     source_url = str((item.payload or {}).get("preview_url") or "")
-    if not ReferenceStaticStorage.is_local_url(source_url):
+    source = ReferenceStaticStorage.path_for_url(source_url)
+    if source is None or not source.is_file():
         raise HTTPException(status_code=404, detail="Trend preview not found")
-    thumbnail = await asyncio.to_thread(ReferencePreviewService.thumbnail_path, source_url)
+    thumbnail = ReferencePreviewService.cached_or_schedule(source_url)
     if thumbnail is None:
-        raise HTTPException(status_code=404, detail="Trend preview not found")
+        return Response(status_code=202, headers={"Cache-Control": "no-store", "Retry-After": "1"})
     return FileResponse(
         thumbnail,
         media_type="image/webp",

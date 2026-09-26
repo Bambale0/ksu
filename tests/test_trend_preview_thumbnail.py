@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import hashlib
+import asyncio
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +32,13 @@ async def test_active_stored_trend_has_small_cacheable_thumbnail(tmp_path: Path,
     session.get.return_value = SimpleNamespace(id=trend_id, is_active=True, payload={"preview_url": url})
 
     response = await trend_preview_thumbnail(trend_id, session)
+    assert response.status_code == 202
+    assert response.headers["Retry-After"] == "1"
+    for _ in range(30):
+        await asyncio.sleep(0.05)
+        response = await trend_preview_thumbnail(trend_id, session)
+        if response.status_code == 200:
+            break
 
     assert response.media_type == "image/webp"
     assert response.headers["Cache-Control"].startswith("public, max-age=")

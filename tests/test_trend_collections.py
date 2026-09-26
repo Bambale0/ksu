@@ -159,5 +159,5 @@ def test_category_cover_contract_handles_server_video_sources_without_broken_ima
     assert 'collection["preview_media_type"] = media_type' in api
     assert 'preview_media_type?: "image" | "video" | null' in client
     assert 'mediaType={folder.preview_media_type}' in home
-    assert 'poster={thumbnailUrl || undefined}' in media
+    assert 'poster={poster || undefined}' in media
     assert '<video' in media

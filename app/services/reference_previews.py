@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import threading
+import time
 import uuid
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -12,10 +15,57 @@ from app.services.reference_static import ReferenceStaticStorage
 
 _MAX_EDGE = 320
 _WEBP_QUALITY = 72
-_VIDEO_SUFFIXES = {".mp4", ".mov", ".webm", ".m4v", ".qt", ".quicktime"}
+_VIDEO_SUFFIXES = {
+    extension
+    for media_type, extension in ReferenceStaticStorage.SAFE_MEDIA_EXTENSIONS.items()
+    if media_type.startswith("video/")
+} | {".qt", ".quicktime"}
+_PREVIEW_WORKERS = 2
+_preview_executor = ThreadPoolExecutor(max_workers=_PREVIEW_WORKERS, thread_name_prefix="reference-preview")
+_preview_slots = threading.BoundedSemaphore(_PREVIEW_WORKERS)
+_preview_lock = threading.Lock()
+_preview_pending: dict[Path, Future[Path | None]] = {}
+_preview_failed_until: dict[Path, float] = {}
 
 
 class ReferencePreviewService:
+    @classmethod
+    def cached_or_schedule(cls, source_url: str) -> Path | None:
+        """Return completed media immediately; bound and coalesce cold conversions."""
+        source = ReferenceStaticStorage.path_for_url(source_url)
+        if source is None or not source.is_file():
+            return None
+        target = cls.root() / f"{source.stem}.webp"
+        if target.is_file() and target.stat().st_size > 0:
+            return target
+        with _preview_lock:
+            if source in _preview_pending or _preview_failed_until.get(source, 0) > time.monotonic():
+                return None
+            if not _preview_slots.acquire(blocking=False):
+                return None
+            try:
+                future = _preview_executor.submit(cls.thumbnail_path, source_url)
+            except RuntimeError:
+                _preview_slots.release()
+                return None
+            _preview_pending[source] = future
+
+        def finished(result: Future[Path | None]) -> None:
+            try:
+                generated = result.result()
+            except Exception:
+                generated = None
+            with _preview_lock:
+                _preview_pending.pop(source, None)
+                if generated is None:
+                    _preview_failed_until[source] = time.monotonic() + 60
+                else:
+                    _preview_failed_until.pop(source, None)
+            _preview_slots.release()
+
+        future.add_done_callback(finished)
+        return None
+
     @staticmethod
     def root() -> Path:
         root = ReferenceStaticStorage.ensure_root() / ".thumbs"
@@ -69,6 +119,6 @@ class ReferencePreviewService:
             except OSError:
                 pass
             return target
-        except (OSError, ValueError, subprocess.SubprocessError, Image.UnidentifiedImageError):
+        except (OSError, ValueError, subprocess.SubprocessError, Image.UnidentifiedImageError, Image.DecompressionBombError):
             temp.unlink(missing_ok=True)
             return None

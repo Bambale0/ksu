@@ -223,6 +223,7 @@ The main screen becomes usable after the model catalog and account requests sett
 
 Active curated trends with product-owned preview media expose `preview_thumbnail_url`. The public thumbnail endpoint returns a cached 320px WebP still, including the first frame of local video. Card images request this still and fall back to the original preview if it fails. Video cards show the still poster and attach their video URL only near the viewport. Original media remains available on the trend detail page.
 Thumbnail URLs include a version derived from the source URL, so editing a trend preview changes the cache key.
+On a cold cache the endpoint returns `202` with `Retry-After: 1` and schedules at most two thumbnail conversions per app process, coalescing requests for the same file. Cards retry briefly; image cards then fall back to the original preview if conversion is unavailable. Video poster requests start only when the card approaches the viewport.
 
 The Mini App HTML remains `no-store`. Successful content-hashed `/_next/static/` assets use an immutable browser cache so repeat launches reuse the same JS and CSS until a new build changes their URLs.
 
