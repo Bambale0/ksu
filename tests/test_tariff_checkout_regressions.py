@@ -1,16 +1,19 @@
+import asyncio
 import json
 import random
 import uuid
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import delete, select, update
 
 from app.core.config import settings
+from app.db.admin_models import AdminCommand, TariffVersion
 from app.db.models import AdminAccount, User
 from app.db.session import SessionFactory
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import CreatedPayment
-from app.services.admin_pricing import AdminPricingService
+from app.services.admin_pricing import AdminPricingService, TariffValidationError
 from app.services.card_payments import CardPackageCatalog, CardPaymentService
 from app.services.payments import PaymentService
 
@@ -89,3 +92,206 @@ async def test_admin_tariff_keeps_card_offer_and_sends_authoritative_rub(monkeyp
         assert payment.amount == Decimal("321")
         assert payment.rox_amount == Decimal("300")
         assert payment.payload["promo_package_bonus_credits"] == "37"
+
+
+@pytest.mark.asyncio
+async def test_text_admin_model_price_patch_preserves_other_tariff_data(monkeypatch):
+    for field in ("rox_packages_json", "generation_pricing_json", "music_generation_price_rox"):
+        monkeypatch.setattr(settings, field, getattr(settings, field))
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=random.randint(890_000_000_000, 899_999_999_999))
+        session.add(user)
+        await session.flush()
+        admin = AdminAccount(user_id=user.id, role="admin", is_active=True, mfa_enabled=True)
+        session.add(admin)
+        await session.flush()
+
+        packages = {
+            "review": {
+                "amount": "321",
+                "credits": "300",
+                "bonus_credits": "37",
+                "currency": "RUB",
+            }
+        }
+        initial_pricing = {
+            "nano-banana-2": {"flat": "27"},
+            "kling-motion-3.0": {
+                "per_second": "65",
+                "by_mode": {"720p": "65", "1080p": "85"},
+            },
+        }
+        await AdminPricingService.publish(
+            session,
+            admin=admin,
+            payload={"packages": packages, "generation_pricing": initial_pricing},
+            idempotency_key=f"tariff-model-seed:{uuid.uuid4()}",
+            request_id="tariff-model-seed",
+            confirmed=True,
+            step_up_valid=True,
+        )
+
+        nano_key = f"tariff-model-price:{uuid.uuid4()}"
+        result, replayed = await AdminPricingService.publish_model_price(
+            session,
+            admin=admin,
+            model_id="nano-banana-2",
+            price=Decimal("33.5"),
+            idempotency_key=nano_key,
+            request_id="tariff-model-price",
+            confirmed=True,
+            step_up_valid=True,
+        )
+
+        assert replayed is False
+        saved = await AdminPricingService.get_version(
+            session,
+            admin=admin,
+            version_id=uuid.UUID(result["id"]),
+        )
+        assert saved["payload"]["packages"] == packages
+        assert saved["payload"]["generation_pricing"]["nano-banana-2"]["flat"] == "33.5"
+        assert saved["payload"]["generation_pricing"]["kling-motion-3.0"] == initial_pricing["kling-motion-3.0"]
+        assert json.loads(settings.generation_pricing_json)["nano-banana-2"]["flat"] == "33.5"
+
+        second, _ = await AdminPricingService.publish_model_price(
+            session,
+            admin=admin,
+            model_id="kling-motion-3.0",
+            price=Decimal("70"),
+            idempotency_key=f"tariff-model-price:{uuid.uuid4()}",
+            request_id="tariff-model-price-tier-preserve",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        second_saved = await AdminPricingService.get_version(
+            session,
+            admin=admin,
+            version_id=uuid.UUID(second["id"]),
+        )
+        assert second_saved["payload"]["generation_pricing"]["kling-motion-3.0"] == {
+            "per_second": "70",
+            "by_mode": {"720p": "65", "1080p": "85"},
+        }
+        assert second_saved["payload"]["generation_pricing"]["nano-banana-2"]["flat"] == "33.5"
+        assert second_saved["payload"]["packages"] == packages
+
+        replay_result, replayed = await AdminPricingService.publish_model_price(
+            session,
+            admin=admin,
+            model_id="nano-banana-2",
+            price=Decimal("33.5"),
+            idempotency_key=nano_key,
+            request_id="tariff-model-price-retry",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        assert replayed is True
+        assert replay_result == result
+
+        with pytest.raises(TariffValidationError, match="positive"):
+            await AdminPricingService.publish_model_price(
+                session,
+                admin=admin,
+                model_id="nano-banana-2",
+                price="NaN",
+                idempotency_key=f"tariff-model-price:{uuid.uuid4()}",
+                request_id="tariff-model-price-nan",
+                confirmed=True,
+                step_up_valid=True,
+            )
+
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_model_price_edits_preserve_both_updates(monkeypatch):
+    for field in ("rox_packages_json", "generation_pricing_json", "music_generation_price_rox"):
+        monkeypatch.setattr(settings, field, getattr(settings, field))
+
+    async with SessionFactory() as setup:
+        published_before = list(
+            (
+                await setup.scalars(
+                    select(TariffVersion.id).where(TariffVersion.status == "published")
+                )
+            ).all()
+        )
+        user = User(telegram_id=random.randint(900_000_000_000, 909_999_999_999))
+        setup.add(user)
+        await setup.flush()
+        user_id = user.id
+        admin = AdminAccount(user_id=user.id, role="admin", is_active=True, mfa_enabled=True)
+        setup.add(admin)
+        await setup.flush()
+        admin_id = admin.id
+        await AdminPricingService.publish(
+            setup,
+            admin=admin,
+            payload={
+                "generation_pricing": {
+                    "nano-banana-2": {"flat": "27"},
+                    "kling-motion-3.0": {
+                        "per_second": "65",
+                        "by_mode": {"720p": "65", "1080p": "85"},
+                    },
+                }
+            },
+            idempotency_key=f"tariff-concurrency-seed:{uuid.uuid4()}",
+            request_id="tariff-concurrency-seed",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        await setup.commit()
+
+    async def publish_one(model_id: str, price: str) -> None:
+        async with SessionFactory() as session:
+            admin = await session.get(AdminAccount, admin_id)
+            assert admin is not None
+            await AdminPricingService.publish_model_price(
+                session,
+                admin=admin,
+                model_id=model_id,
+                price=price,
+                idempotency_key=f"tariff-concurrency:{model_id}:{uuid.uuid4()}",
+                request_id=f"tariff-concurrency:{model_id}",
+                confirmed=True,
+                step_up_valid=True,
+            )
+            await session.commit()
+
+    try:
+        await asyncio.gather(
+            publish_one("nano-banana-2", "34"),
+            publish_one("kling-motion-3.0", "71"),
+        )
+
+        async with SessionFactory() as verify:
+            admin = await verify.get(AdminAccount, admin_id)
+            assert admin is not None
+            current = await AdminPricingService.current(verify, admin=admin)
+            assert current is not None
+            pricing = current["payload"]["generation_pricing"]
+            assert pricing["nano-banana-2"]["flat"] == "34"
+            assert pricing["kling-motion-3.0"] == {
+                "per_second": "71",
+                "by_mode": {"720p": "65", "1080p": "85"},
+            }
+    finally:
+        async with SessionFactory() as cleanup:
+            await cleanup.execute(
+                delete(AdminCommand).where(AdminCommand.admin_user_id == admin_id)
+            )
+            await cleanup.execute(
+                delete(TariffVersion).where(TariffVersion.created_by_admin_id == admin_id)
+            )
+            if published_before:
+                await cleanup.execute(
+                    update(TariffVersion)
+                    .where(TariffVersion.id.in_(published_before))
+                    .values(status="published")
+                )
+            await cleanup.execute(delete(AdminAccount).where(AdminAccount.id == admin_id))
+            await cleanup.execute(delete(User).where(User.id == user_id))
+            await cleanup.commit()

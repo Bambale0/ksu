@@ -588,3 +588,37 @@ def test_seedance_trend_validation_refs_survive_router_without_deduplication() -
     assert routed.parameters["reference_video_urls"] == [
         "https://cdn.example.invalid/original.mp4"
     ]
+
+
+@pytest.mark.asyncio
+async def test_seedance_trend_run_binds_video_preview_without_explicit_video_alias(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    item.payload.update(
+        {
+            "prompt": "@Image1 holds the same birthday cake and candles as the reference scene",
+            "preview_url": "https://cdn.example.invalid/original.mp4",
+            "input_mode": "image",
+            "min_references": 1,
+            "max_references": 1,
+        }
+    )
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    reference = "https://cdn.example.invalid/person.jpg"
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=[reference],
+    )
+
+    parameters = create.await_args.kwargs["parameters"]
+    assert parameters["reference_image_urls"] == [reference]
+    assert parameters["reference_video_urls"] == [
+        "https://cdn.example.invalid/original.mp4"
+    ]

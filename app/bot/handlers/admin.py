@@ -49,6 +49,8 @@ class AdminStates(StatesGroup):
     promo_create = State()
     pricing_json = State()
     pricing_confirm = State()
+    pricing_model_value = State()
+    pricing_model_confirm = State()
     broadcast_title = State()
     broadcast_body = State()
     broadcast_confirm = State()
@@ -693,11 +695,248 @@ async def admin_pricing(callback: CallbackQuery, session: AsyncSession, state: F
         text += "Опубликованной версии пока нет."
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🎛 Цены моделей", callback_data="admin:pricing:models:0")],
             [InlineKeyboardButton(text="✏️ Опубликовать JSON", callback_data="admin:pricing:publish")],
             [InlineKeyboardButton(text="⬅️ Админ", callback_data="admin:home")],
         ]
     )
     await _send_or_edit(callback, text[:3900], keyboard)
+
+
+@router.callback_query(F.data.startswith("admin:pricing:models:"))
+async def admin_pricing_models(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    admin = await _require_callback_admin(callback, session, state)
+    if admin is None:
+        return
+    await AdminPricingService.current(session, admin=admin)
+    await state.clear()
+
+    raw_page = (callback.data or "").removeprefix("admin:pricing:models:")
+    try:
+        page = max(0, int(raw_page))
+    except ValueError:
+        page = 0
+
+    models = AdminPricingService.editable_model_prices()
+    page_size = 7
+    page_count = max(1, (len(models) + page_size - 1) // page_size)
+    page = min(page, page_count - 1)
+    start = page * page_size
+    end = min(len(models), start + page_size)
+
+    keyboard_rows: list[list[InlineKeyboardButton]] = []
+    icons = {"image": "🖼", "video": "🎬", "music": "🎵"}
+    for index in range(start, end):
+        item = models[index]
+        suffix = "ROX/сек" if item["price_mode"] == "per_second" else "ROX"
+        title = item["title"]
+        if len(title) > 32:
+            title = title[:29] + "…"
+        keyboard_rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{icons.get(item['media_type'], '🤖')} {title} · {item['price_rox']} {suffix}",
+                    callback_data=f"admin:pricing:model:{index}:{page}",
+                )
+            ]
+        )
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=f"admin:pricing:models:{page - 1}",
+            )
+        )
+    if page + 1 < page_count:
+        nav.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=f"admin:pricing:models:{page + 1}",
+            )
+        )
+    if nav:
+        keyboard_rows.append(nav)
+    keyboard_rows.append(
+        [InlineKeyboardButton(text="⬅️ Тарифы", callback_data="admin:pricing")]
+    )
+
+    await _send_or_edit(
+        callback,
+        (
+            "🎛 Цены моделей\n\n"
+            "Нажмите модель, чтобы изменить её базовую цену. "
+            "Tier-цены качества/режима сохраняются.\n"
+            f"Страница {page + 1}/{page_count}"
+        ),
+        InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:pricing:model:"))
+async def admin_pricing_model_select(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    admin = await _require_callback_admin(callback, session, state)
+    if admin is None:
+        return
+    await AdminPricingService.current(session, admin=admin)
+
+    raw = (callback.data or "").removeprefix("admin:pricing:model:")
+    try:
+        index_raw, page_raw = raw.split(":", 1)
+        index = int(index_raw)
+        page = max(0, int(page_raw))
+    except (ValueError, TypeError):
+        await callback.answer("Некорректный выбор модели", show_alert=True)
+        return
+
+    models = AdminPricingService.editable_model_prices()
+    if index < 0 or index >= len(models):
+        await callback.answer("Модель больше не доступна", show_alert=True)
+        return
+    item = models[index]
+    unit = "ROX/сек" if item["price_mode"] == "per_second" else "ROX"
+
+    await state.update_data(
+        pricing_model_id=item["id"],
+        pricing_model_title=item["title"],
+        pricing_model_old_price=item["price_rox"],
+        pricing_model_price_mode=item["price_mode"],
+        pricing_model_page=page,
+    )
+    await state.set_state(AdminStates.pricing_model_value)
+    await _send_or_edit(
+        callback,
+        (
+            f"🎛 {item['title']}\n\n"
+            f"Текущая цена: {item['price_rox']} {unit}\n"
+            f"Отправьте новую цену в {unit}. Можно использовать точку или запятую."
+        ),
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ К моделям",
+                        callback_data=f"admin:pricing:models:{page}",
+                    )
+                ]
+            ]
+        ),
+    )
+
+
+@router.message(AdminStates.pricing_model_value)
+async def admin_pricing_model_value(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    if await _require_message_admin(message, session, state) is None or not message.text:
+        return
+    data = await state.get_data()
+    if not data.get("pricing_model_id"):
+        await state.clear()
+        await message.answer("Выбор модели устарел. Откройте тарифы заново.", reply_markup=_back_admin())
+        return
+
+    raw = message.text.replace(",", ".").strip()
+    try:
+        price = Decimal(raw)
+    except InvalidOperation:
+        await message.answer("Введите число, например 25 или 12,5.")
+        return
+    if not price.is_finite() or price <= 0:
+        await message.answer("Цена должна быть положительным числом.")
+        return
+
+    normalized_price = format(price, "f")
+    await state.update_data(
+        pricing_model_price=normalized_price,
+        pricing_model_idempotency_key=f"tg:pricing-model:{message.chat.id}:{message.message_id}",
+    )
+    await state.set_state(AdminStates.pricing_model_confirm)
+
+    unit = "ROX/сек" if data.get("pricing_model_price_mode") == "per_second" else "ROX"
+    await message.answer(
+        (
+            f"Изменить цену {data.get('pricing_model_title', data['pricing_model_id'])}:\n"
+            f"{data.get('pricing_model_old_price', '—')} → {normalized_price} {unit}\n\n"
+            f"Введите {CONFIRM_PHRASE} для публикации новой версии тарифа."
+        )
+    )
+
+
+@router.message(AdminStates.pricing_model_confirm)
+async def admin_pricing_model_confirm(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    admin = await _require_message_admin(message, session, state)
+    if admin is None or not message.text:
+        return
+    if message.text.strip().upper() != CONFIRM_PHRASE:
+        await message.answer(f"Введите ровно: {CONFIRM_PHRASE}")
+        return
+
+    data = await state.get_data()
+    model_id = str(data.get("pricing_model_id") or "")
+    price = str(data.get("pricing_model_price") or "")
+    if not model_id or not price:
+        await state.clear()
+        await message.answer("Данные изменения цены устарели. Начните заново.", reply_markup=_back_admin())
+        return
+
+    try:
+        result, replayed = await AdminPricingService.publish_model_price(
+            session,
+            admin=admin,
+            model_id=model_id,
+            price=price,
+            idempotency_key=str(data["pricing_model_idempotency_key"]),
+            request_id=f"telegram:{message.message_id}",
+            confirmed=True,
+            step_up_valid=True,
+        )
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        logger.warning(
+            "telegram_model_price_publish_failed model=%s message_id=%s error_type=%s",
+            model_id,
+            message.message_id,
+            type(exc).__name__,
+        )
+        await state.clear()
+        await message.answer(f"Цена не опубликована: {exc}", reply_markup=_back_admin())
+        return
+
+    title = str(data.get("pricing_model_title") or model_id)
+    page = max(0, int(data.get("pricing_model_page") or 0))
+    unit = "ROX/сек" if data.get("pricing_model_price_mode") == "per_second" else "ROX"
+    await state.clear()
+    await message.answer(
+        f"✅ {title}: {price} {unit}. Tariff v{result['version']} published. Replay={replayed}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🎛 К ценам моделей",
+                        callback_data=f"admin:pricing:models:{page}",
+                    )
+                ],
+                [InlineKeyboardButton(text="⬅️ Админ", callback_data="admin:home")],
+            ]
+        ),
+    )
 
 
 @router.callback_query(F.data == "admin:pricing:publish")
