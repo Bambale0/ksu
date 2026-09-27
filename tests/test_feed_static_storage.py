@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
+import shutil
 from pathlib import Path
 
 import pytest
 
 from app.core.config import settings
-from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
+from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError, PersistedFeedMedia
 
 
 def _png() -> bytes:
@@ -15,6 +16,34 @@ def _png() -> bytes:
 
 def _mp4() -> bytes:
     return b"\x00\x00\x00\x18ftypisom0000roxy-static-feed"
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg unavailable")
+def test_feed_mp4_gets_seekable_copy_without_replacing_source(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "feed"
+    root.mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
+    source = root / "original.mp4"
+    original = (Path(__file__).parent / "fixtures" / "feed-playback.mp4").read_bytes()
+    source.write_bytes(original)
+    assert not FeedStaticStorage.mp4_has_faststart(source)
+    item = PersistedFeedMedia(
+        public_url="/uploads/feed/original.mp4", path=source,
+        content_type="video/mp4", size_bytes=len(original), sha256="", ordinal=0,
+    )
+    generation_id = uuid.uuid4()
+
+    prepared = FeedStaticStorage.faststart_copy(item, generation_id=generation_id)
+
+    assert source.read_bytes() == original
+    assert prepared.path != source
+    assert prepared.path.is_file()
+    assert FeedStaticStorage.mp4_has_faststart(prepared.path)
+    assert prepared.public_url.startswith(f"/uploads/feed/{generation_id}-1-")
+    assert FeedStaticStorage.faststart_copy(item, generation_id=generation_id) == prepared
+    assert FeedStaticStorage.faststart_copy(prepared, generation_id=generation_id) == prepared
 
 
 @pytest.mark.asyncio

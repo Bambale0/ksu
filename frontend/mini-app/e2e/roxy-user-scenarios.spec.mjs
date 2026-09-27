@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 const models = [
   {
@@ -610,4 +611,26 @@ test('feed explains a permanently missing image and offers recovery', async ({ p
   const mediaError = card.locator('.tiktok-feed-media-error');
   await expect(mediaError.getByRole('button', { name: 'Повторить' })).toBeVisible();
   await expect(mediaError.getByRole('button', { name: 'Открыть файл' })).toBeVisible();
+});
+
+test('feed actually plays the active video and resumes after scrolling', async ({ page }) => {
+  await mockRoxy(page);
+  const video = readFileSync(new URL('./fixtures/feed-playback.webm', import.meta.url));
+  const cards = [0, 1].map((index) => ({
+    ...feedCard,
+    id: `playable_video_${index}`,
+    result_url: `/uploads/feed/clip-${index}.webm`,
+    preview_url: null,
+    media: [{ url: `/uploads/feed/clip-${index}.webm`, kind: 'video' }],
+  }));
+  await page.route('**/api/v1/feed?*', (route) => json(route, { items: cards }));
+  await page.route('**/uploads/feed/clip-*.webm', (route) => route.fulfill({
+    status: 200, contentType: 'video/webm', body: video,
+  }));
+  await page.goto('/mini-app/?route=feed', { waitUntil: 'domcontentloaded' });
+  const slides = page.locator('.tiktok-feed-card');
+  await expect(slides).toHaveCount(2);
+  await expect.poll(() => slides.nth(0).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
+  await slides.nth(1).scrollIntoViewIfNeeded();
+  await expect.poll(() => slides.nth(1).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
 });
