@@ -236,3 +236,15 @@ def test_media_storage_docs_cover_bucket_lifecycle_and_worker() -> None:
     assert "media-worker" in compose
     media_block = compose.split("  media-worker:\n", 1)[1].split("\n  payment-worker:", 1)[0]
     assert "./static/uploads:/app/static/uploads" in media_block
+
+
+def test_notification_workers_can_read_durable_generation_media() -> None:
+    from pathlib import Path
+    import re
+
+    root = Path(__file__).resolve().parents[1]
+    for name in ("docker-compose.yml", "docker-compose.notifications.yml"):
+        compose = (root / name).read_text(encoding="utf-8")
+        worker = re.search(r"(?ms)^  notification-worker:\n.*?(?=^  [\w-]+:\n|\Z)", compose)
+        assert worker is not None, name
+        assert "- ./static/uploads:/app/static/uploads" in worker.group(0), name
