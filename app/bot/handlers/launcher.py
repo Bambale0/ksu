@@ -24,7 +24,6 @@ from app.core.config import settings
 from app.services.admin_security import parse_bootstrap_ids
 from app.services.feed import FeedNotFoundError, FeedService
 from app.services.feed_links import FeedDeepLink, parse_feed_deep_link, start_payload
-from app.services.notifications import NotificationDeliveryService
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.trends import TrendService
 from app.services.users import UserService
@@ -100,32 +99,6 @@ def _support_line() -> str:
     return "Поддержка: кнопка снизу или раздел «Профиль → Поддержка» в ROXY"
 
 
-async def _sync_reachable_user(
-    message: Message,
-    session: AsyncSession,
-    *,
-    inviter_telegram_id: int | None = None,
-) -> None:
-    if message.from_user is None:
-        return
-    user = await UserService.get_or_create(
-        session,
-        message.from_user,
-        inviter_telegram_id=inviter_telegram_id,
-    )
-    recovered = await NotificationDeliveryService.requeue_reachable_user_deliveries(
-        session,
-        user_id=user.id,
-    )
-    if recovered:
-        logger.info(
-            "notification_deliveries_requeued_after_user_contact",
-            extra={
-                "telegram_user_id": message.from_user.id,
-                "recovered_deliveries": recovered,
-            },
-        )
-
 async def _quick_menu_for(message: Message, session: AsyncSession) -> ReplyKeyboardMarkup:
     telegram_id = message.from_user.id if message.from_user else None
     if telegram_id is None:
@@ -193,9 +166,9 @@ async def start_app_only(
         return
     await state.clear()
     link = _start_link(message.text)
-    await _sync_reachable_user(
-        message,
+    await UserService.get_or_create(
         session,
+        message.from_user,
         inviter_telegram_id=await _validated_inviter(session, link),
     )
     await session.commit()
@@ -212,7 +185,7 @@ async def menu_shortcut(message: Message, session: AsyncSession, state: FSMConte
     if message.from_user is None:
         return
     await state.clear()
-    await _sync_reachable_user(message, session)
+    await UserService.get_or_create(session, message.from_user)
     await session.commit()
     await _send_launcher(message, session, route="catalog", payload=None)
 
@@ -222,7 +195,7 @@ async def support_shortcut(message: Message, session: AsyncSession, state: FSMCo
     if message.from_user is None:
         return
     await state.clear()
-    await _sync_reachable_user(message, session)
+    await UserService.get_or_create(session, message.from_user)
     await session.commit()
 
     handle = _support_handle()
@@ -248,7 +221,7 @@ async def retired_prompt_shortcut(message: Message, session: AsyncSession, state
     if message.from_user is None:
         return
     await state.clear()
-    await _sync_reachable_user(message, session)
+    await UserService.get_or_create(session, message.from_user)
     await session.commit()
     await message.answer(
         "Меню обновлено: снизу только меню и поддержка.",
@@ -270,6 +243,6 @@ async def redirect_everything_to_app(
     if message.from_user is None:
         return
     await state.clear()
-    await _sync_reachable_user(message, session)
+    await UserService.get_or_create(session, message.from_user)
     await session.commit()
     await _send_launcher(message, session, route="catalog", payload=None)
