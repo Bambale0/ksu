@@ -269,6 +269,12 @@ def install_feed_publication_contract() -> None:
                 "Не удалось сохранить медиа публикации на сервере"
             )
 
+        persisted = [
+            await asyncio.to_thread(
+                FeedStaticStorage.faststart_copy, item, generation_id=generation.id
+            )
+            for item in persisted
+        ]
         public_urls = [item.public_url for item in persisted]
         for url in public_urls:
             await asyncio.to_thread(FeedPreviewService.preview_url_for, url)
