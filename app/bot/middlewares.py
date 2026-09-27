@@ -1,12 +1,16 @@
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, User as TelegramUser
+from aiogram.types import TelegramObject, Update, User as TelegramUser
 from sqlalchemy import select
 
 from app.db.models import User
 from app.db.session import SessionFactory
+from app.services.notifications import NotificationDeliveryService
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseSessionMiddleware(BaseMiddleware):
@@ -26,6 +30,28 @@ class DatabaseSessionMiddleware(BaseMiddleware):
                     )
                     if existing_user is not None and not existing_user.is_active:
                         return None
+
+                    # A private inbound Telegram message proves that the bot may
+                    # address this chat again. Recover deferred transactional
+                    # deliveries before router ordering can consume the message.
+                    incoming_message = event.message if isinstance(event, Update) else None
+                    if existing_user is not None and incoming_message is not None:
+                        recovered = await NotificationDeliveryService.requeue_reachable_user_deliveries(
+                            session,
+                            user_id=existing_user.id,
+                        )
+                        if recovered:
+                            logger.info(
+                                "notification_deliveries_requeued_after_user_contact",
+                                extra={
+                                    "telegram_user_id": event_user.id,
+                                    "recovered_deliveries": recovered,
+                                },
+                            )
+                            # Persist reachability independently of the downstream
+                            # command/FSM handler so a later handler error cannot
+                            # lose the recovery signal.
+                            await session.commit()
 
                 result = await handler(event, data)
                 await session.commit()

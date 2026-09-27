@@ -9,7 +9,7 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -287,6 +287,9 @@ def _generation_success_text(generation: Generation, *, result_count: int) -> st
     )
 
 
+def _is_unreachable_chat_error(exc: TelegramBadRequest) -> bool:
+    return "chat not found" in str(exc).lower()
+
 def _friendly_generation_error(error: str | None) -> str:
     value = (error or "").strip().lower()
     if not value:
@@ -515,6 +518,21 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                 error=f"telegram_retry_after:{exc}",
                 retry_after_seconds=int(exc.retry_after),
             )
+            _sync_generation_delivery(generation, delivery)
+        except TelegramBadRequest as exc:
+            if _is_unreachable_chat_error(exc):
+                await NotificationDeliveryService.mark_terminal(
+                    session,
+                    delivery,
+                    status="undeliverable",
+                    error=f"telegram_unreachable:{exc}",
+                )
+            else:
+                await NotificationDeliveryService.mark_retry(
+                    session,
+                    delivery,
+                    error=f"telegram_bad_request:{exc}",
+                )
             _sync_generation_delivery(generation, delivery)
         except TelegramAPIError as exc:
             await NotificationDeliveryService.mark_retry(

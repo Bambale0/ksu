@@ -37,6 +37,7 @@ def test_production_dispatcher_exposes_only_operator_admin_and_mini_app_launcher
 
 def test_launcher_uses_inline_app_button_and_admin_aware_reply_keyboard() -> None:
     launcher = _read("app/bot/handlers/launcher.py")
+    middleware = _read("app/bot/middlewares.py")
     keyboards = _read("app/bot/keyboards.py")
     assert "app_launcher_menu" in launcher
     assert "reply_markup=app_launcher_menu" in launcher
@@ -45,6 +46,7 @@ def test_launcher_uses_inline_app_button_and_admin_aware_reply_keyboard() -> Non
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher
     assert "Do not expose a parallel text UI" in launcher
+    assert "requeue_reachable_user_deliveries" in middleware
     assert "ReplyKeyboardRemove" not in launcher
 
     assert "def app_launcher_menu" in keyboards

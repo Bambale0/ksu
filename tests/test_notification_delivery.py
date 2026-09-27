@@ -7,6 +7,8 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import SendMessage
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -673,3 +675,86 @@ def test_creator_admin_keyboard_opens_exact_application_and_safe_decision_flows(
     assert "action=rejected" in rows[1][1].web_app.url
     assert rows[2][0].url == "https://instagram.com/creator"
     assert rows[3][0].url == "https://t.me/creator"
+
+
+@pytest.mark.asyncio
+async def test_chat_not_found_becomes_deferred_undeliverable() -> None:
+    class ChatNotFoundBot(FakeBot):
+        async def send_message(self, *, chat_id: int, text: str, reply_markup=None, parse_mode=None):  # type: ignore[no-untyped-def]
+            raise TelegramBadRequest(
+                method=SendMessage(chat_id=chat_id, text=text),
+                message="chat not found",
+            )
+
+    bot = ChatNotFoundBot()
+    async with SessionFactory() as session:
+        user = User(telegram_id=970000000000111, first_name="Deferred")
+        session.add(user)
+        await session.flush()
+        notification = await NotificationService.create(
+            session,
+            user_id=user.id,
+            kind="push",
+            title="Готово",
+            body="Результат готов",
+        )
+        await session.commit()
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 1
+        await session.commit()
+        delivery_id = delivery.id
+
+    await _process_delivery(bot, delivery_id)  # type: ignore[arg-type]
+
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        assert delivery is not None
+        assert delivery.status == "undeliverable"
+        assert delivery.last_error is not None
+        assert "chat not found" in delivery.last_error.lower()
+
+
+@pytest.mark.asyncio
+async def test_reachable_user_message_requeues_deferred_telegram_deliveries() -> None:
+    async with SessionFactory() as session:
+        user = User(telegram_id=970000000000112, first_name="Returned")
+        session.add(user)
+        await session.flush()
+        notification = await NotificationService.create(
+            session,
+            user_id=user.id,
+            kind="push",
+            title="Готово",
+            body="Результат готов",
+        )
+        await session.flush()
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "undeliverable"
+        delivery.attempts = 99
+        delivery.last_error = "telegram_unreachable:chat not found"
+        await session.commit()
+
+        recovered = await NotificationDeliveryService.requeue_reachable_user_deliveries(
+            session,
+            user_id=user.id,
+        )
+        await session.commit()
+
+        refreshed = await session.get(NotificationDelivery, delivery.id)
+        assert recovered == 1
+        assert refreshed is not None
+        assert refreshed.status == "retry"
+        assert refreshed.attempts == 0
+        assert refreshed.last_error is None
+        assert refreshed.lease_until is None
