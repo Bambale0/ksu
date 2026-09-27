@@ -258,6 +258,8 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
                 reply_markup=reply_markup,
             )
         except TelegramBadRequest as exc:
+            if not _is_media_fetch_bad_request(exc):
+                raise
             logger.info(
                 "generation_notification_native_upload_failed",
                 extra={
