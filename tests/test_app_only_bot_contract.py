@@ -45,6 +45,7 @@ def test_launcher_uses_inline_app_button_and_admin_aware_reply_keyboard() -> Non
     assert "@router.message(CommandStart())" in launcher
     assert "@router.message()" in launcher
     assert "Do not expose a parallel text UI" in launcher
+    assert "requeue_reachable_user_deliveries" in launcher
     assert "ReplyKeyboardRemove" not in launcher
 
     assert "def app_launcher_menu" in keyboards
