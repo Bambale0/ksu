@@ -234,6 +234,7 @@ def test_media_storage_docs_cover_bucket_lifecycle_and_worker() -> None:
     ):
         assert token in doc, token
     assert "media-worker" in compose
+    assert "notification-worker" in doc
     media_block = compose.split("  media-worker:\n", 1)[1].split("\n  payment-worker:", 1)[0]
     assert "./static/uploads:/app/static/uploads" in media_block
 
