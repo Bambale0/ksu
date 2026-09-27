@@ -530,7 +530,7 @@ function FeedCardMedia({
     {type === "video" ? <video
       ref={onVideoRef}
       src={near ? originalSource : undefined}
-      poster={posterReady ? thumbnailUrl || undefined : undefined}
+      poster={posterReady && thumbnailUrl ? retryMediaUrl(thumbnailUrl, thumbnailRetry) : undefined}
       muted={muted}
       playsInline
       loop
