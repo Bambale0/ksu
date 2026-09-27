@@ -596,3 +596,18 @@ test('feed shows a video poster and defers distant video downloads', async ({ pa
   await expect(cards.nth(0).locator('video')).toHaveAttribute('src', /clip-0\.mp4/);
   await expect(cards.nth(2).locator('video')).not.toHaveAttribute('src');
 });
+
+test('feed explains a permanently missing image and offers recovery', async ({ page }) => {
+  await mockRoxy(page);
+  await page.route('**/api/v1/feed?*', (route) => json(route, {
+    items: [{ ...feedCard, preview_url: '/uploads/feed/thumbs/missing.jpg', result_url: '/uploads/feed/missing.png' }],
+  }));
+  await page.route('**/uploads/feed/thumbs/missing.jpg*', (route) => route.fulfill({ status: 404 }));
+  await page.route('**/uploads/feed/missing.png*', (route) => route.fulfill({ status: 404 }));
+  await page.goto('/mini-app/?route=feed', { waitUntil: 'domcontentloaded' });
+  const card = page.locator('.tiktok-feed-card').first();
+  await expect(card.getByText('Не удалось загрузить работу')).toBeVisible({ timeout: 10000 });
+  const mediaError = card.locator('.tiktok-feed-media-error');
+  await expect(mediaError.getByRole('button', { name: 'Повторить' })).toBeVisible();
+  await expect(mediaError.getByRole('button', { name: 'Открыть файл' })).toBeVisible();
+});

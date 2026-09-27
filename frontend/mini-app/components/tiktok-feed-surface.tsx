@@ -469,6 +469,8 @@ function retryMediaUrl(url: string, attempt: number): string {
   return attempt ? `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}` : url;
 }
 
+const MAX_PREVIEW_RETRIES = 3;
+
 function FeedCardMedia({
   type, url, thumbnailUrl, near, active, muted, onVideoRef,
 }: {
@@ -509,7 +511,7 @@ function FeedCardMedia({
     image.onload = () => { if (!cancelled) setPosterReady(true); };
     image.onerror = () => {
       if (!cancelled) {
-        if (thumbnailRetry < 10) retryTimer = window.setTimeout(() => setThumbnailRetry((value) => value + 1), 1000);
+        if (thumbnailRetry < MAX_PREVIEW_RETRIES) retryTimer = window.setTimeout(() => setThumbnailRetry((value) => value + 1), 1000);
         else setThumbnailFailed(true);
       }
     };
@@ -549,7 +551,7 @@ function FeedCardMedia({
         onLoad={() => { setLoaded(true); setOriginalFailed(false); }}
         onError={() => {
           if (thumbnailSource) {
-            if (thumbnailRetry < 10 && imageRetryTimer.current === null) {
+            if (thumbnailRetry < MAX_PREVIEW_RETRIES && imageRetryTimer.current === null) {
               imageRetryTimer.current = window.setTimeout(() => {
                 imageRetryTimer.current = null;
                 setThumbnailRetry((value) => value + 1);
