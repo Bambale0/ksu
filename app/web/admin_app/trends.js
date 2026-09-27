@@ -103,6 +103,8 @@
   }
 
   function modelReferenceCapacity(model) {
+    const advertised = Number(model?.reference_capacity);
+    if (Number.isFinite(advertised) && advertised >= 0) return advertised;
     const fields = model?.known_fields || [];
     return fields.some((field) => SINGLE_REFERENCE_FIELDS.has(field)) ? 1 : 8;
   }

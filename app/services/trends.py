@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.admin_models import AdminTrend
 from app.db.models import Generation
+from app.providers.nexus import NANO_BANANA_MAX_REFERENCES, NANO_BANANA_MODELS
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
@@ -96,7 +97,8 @@ class TrendService:
         else:
             raise TrendRecipeError("input_mode must be 'none' or 'image'")
         reference_field = TrendService._reference_field(spec)
-        default_max = 1 if reference_field in _REFERENCE_SINGLE_FIELDS else 8
+        reference_capacity = TrendService.reference_capacity(spec)
+        default_max = reference_capacity
         seedance_requirements = (
             seedance_reference_requirements(prompt) if spec.family == "seedance" else {"image": 0, "video": 0, "audio": 0}
         )
@@ -117,8 +119,14 @@ class TrendService:
             raise TrendRecipeError("Reference limits require input_mode='image'")
         if input_mode == "image" and reference_field is None:
             raise TrendRecipeError("Selected model does not accept image references")
-        if reference_field in _REFERENCE_SINGLE_FIELDS and max_references > 1:
-            raise TrendRecipeError("Selected model accepts only one reference image")
+        if input_mode == "image" and min_references > reference_capacity:
+            raise TrendRecipeError(
+                f"Selected model accepts at most {reference_capacity} reference images"
+            )
+        if input_mode == "image":
+            # Clamp legacy/admin recipes to the provider capability. Existing
+            # Nexus trends historically stored 8 even though Nexus accepts 4.
+            max_references = min(max_references, reference_capacity)
         billing_seconds_raw = payload.get("billing_seconds")
         if billing_seconds_raw is None and spec.duration_field:
             billing_seconds_raw = parameters.get(spec.duration_field)
@@ -329,6 +337,17 @@ class TrendService:
             "prompt_actions_allowed": False,
             "model": {"id": recipe["model_id"], "title": ModelCatalog.get(recipe["model_id"]).title},
         }
+
+    @staticmethod
+    def reference_capacity(spec: ModelSpec) -> int:
+        field = TrendService._reference_field(spec)
+        if field is None:
+            return 0
+        if field in _REFERENCE_SINGLE_FIELDS:
+            return 1
+        if spec.id in NANO_BANANA_MODELS:
+            return NANO_BANANA_MAX_REFERENCES
+        return 8
 
     @staticmethod
     def _validation_reference_urls(count: int) -> list[str]:

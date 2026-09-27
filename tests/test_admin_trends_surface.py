@@ -71,7 +71,8 @@ def test_admin_trend_backend_exposes_dynamic_model_options_and_editing() -> None
     assert "api_router.include_router(admin_trends.router)" in router
     assert 'router = APIRouter(prefix="/admin/trends"' in manager
     assert 'require_permission("social.moderate")' in manager
-    assert 'spec.public_dict() for spec in SPECS' in manager
+    assert 'spec.public_dict()' in manager
+    assert '"reference_capacity": TrendService.reference_capacity(spec)' in manager
     assert '@router.get("/options")' in manager
     assert '@router.patch("/{trend_id}")' in manager
     assert '@router.post("/{trend_id}/activate")' in manager

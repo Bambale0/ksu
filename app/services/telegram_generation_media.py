@@ -36,7 +36,7 @@ def _filename(generation: Generation, path: Path) -> str:
     return f"generation-{generation.id}{suffix}"
 
 
-def _is_media_fetch_bad_request(exc: TelegramBadRequest) -> bool:
+def _is_media_delivery_bad_request(exc: TelegramBadRequest) -> bool:
     message = str(exc).lower()
     return any(
         marker in message
@@ -45,6 +45,7 @@ def _is_media_fetch_bad_request(exc: TelegramBadRequest) -> bool:
             "wrong type of the web page content",
             "wrong file identifier/http url specified",
             "webpage curl failed",
+            "too big for a photo",
         )
     )
 
@@ -227,7 +228,7 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
                 reply_markup=reply_markup,
             )
         except TelegramBadRequest as exc:
-            if not _is_media_fetch_bad_request(exc):
+            if not _is_media_delivery_bad_request(exc):
                 raise
             logger.info(
                 "generation_notification_remote_media_failed",
@@ -258,7 +259,7 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
                 reply_markup=reply_markup,
             )
         except TelegramBadRequest as exc:
-            if not _is_media_fetch_bad_request(exc):
+            if not _is_media_delivery_bad_request(exc):
                 raise
             logger.info(
                 "generation_notification_native_upload_failed",

@@ -51,6 +51,8 @@ function modelAcceptsReferences(model?: TrendAdminModel | null): boolean {
 }
 
 function referenceCapacity(model?: TrendAdminModel | null): number {
+  const advertised = Number(model?.reference_capacity);
+  if (Number.isFinite(advertised) && advertised >= 0) return advertised;
   return model?.known_fields?.some((field) => SINGLE_REFERENCE_FIELDS.has(field)) ? 1 : 8;
 }
 
@@ -61,6 +63,7 @@ type TrendAdminModel = {
   media_type?: string;
   known_fields?: string[];
   required_fields?: string[];
+  reference_capacity?: number;
   price_mode?: string;
   min_seconds?: number | null;
   max_seconds?: number | null;

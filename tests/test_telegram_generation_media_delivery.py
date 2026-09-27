@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import SendDocument, SendVideo
+from aiogram.methods import SendDocument, SendPhoto, SendVideo
 from aiogram.types import FSInputFile
 
 from app.services.local_media_storage import LOCAL_MEDIA_BUCKET, LocalMediaStorage
@@ -328,4 +328,50 @@ async def test_local_asset_recipient_error_does_not_fall_back_to_document(
     assert len(bot.video_calls) == 1
     assert isinstance(bot.video_calls[0], FSInputFile)
     assert bot.document_calls == []
+    assert durable.exists()
+
+
+@pytest.mark.asyncio
+async def test_large_local_photo_falls_back_to_document(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    durable = tmp_path / "large.png"
+    durable.write_bytes(b"large-image-placeholder")
+    object_key = "generations/user/gen/000-large.png"
+    asset = SimpleNamespace(id=uuid4(), object_key=object_key, bucket=LOCAL_MEDIA_BUCKET)
+
+    def local_path(_cls: type[LocalMediaStorage], key: str) -> Path:
+        assert key == object_key
+        return durable
+
+    monkeypatch.setattr(LocalMediaStorage, "path_for_key", classmethod(local_path))
+
+    class LargePhotoBot(FallbackBot):
+        async def send_photo(self, **kwargs: Any) -> FakeMessage:
+            raise TelegramBadRequest(
+                method=SendPhoto(chat_id=1, photo="https://example.com/large.png"),
+                message=(
+                    "file of size 25484371 bytes is too big for a photo; "
+                    "the maximum size is 10485760 bytes"
+                ),
+            )
+
+    bot = LargePhotoBot()
+
+    message = await send_generation_result_media(
+        bot,  # type: ignore[arg-type]
+        session=FakeSession(asset),  # type: ignore[arg-type]
+        chat_id=1,
+        generation=generation(),  # type: ignore[arg-type]
+        media_type="image",
+        result_url="https://provider.example/expired.png",
+        caption="ready",
+        reply_markup=None,
+    )
+
+    assert message.message_id == 77
+    assert len(bot.document_calls) == 1
+    assert isinstance(bot.document_calls[0], FSInputFile)
+    assert bot.document_calls[0].filename.endswith(".png")
     assert durable.exists()
