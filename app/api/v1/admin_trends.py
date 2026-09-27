@@ -60,7 +60,11 @@ def _domain_error(exc: Exception) -> HTTPException:
 @router.get("/options")
 async def web_admin_trend_options(context: AdminSocialDep) -> dict[str, Any]:
     del context
-    models = [spec.public_dict() for spec in SPECS if spec.media_type in {"image", "video"}]
+    models = [
+        {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec)}
+        for spec in SPECS
+        if spec.media_type in {"image", "video"}
+    ]
     models.sort(key=lambda item: (str(item["media_type"]), str(item["family"]), str(item["title"])))
     return {
         "models": models,
