@@ -4,11 +4,15 @@ import uuid
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from PIL import Image
 
 from app.core.config import settings
+from app.services.feed import FeedService
 from app.services.feed_previews import FeedPreviewService
+from app.services.feed_publication_contract import install_feed_publication_contract
 from app.services.feed_static import FeedStaticStorage
 
 
@@ -70,3 +74,22 @@ def test_saved_video_gets_small_first_frame_poster(tmp_path: Path, monkeypatch) 
     with Image.open(preview) as image:
         image.load()
         assert max(image.size) <= 768
+
+
+@pytest.mark.asyncio
+async def test_feed_read_does_not_extract_missing_video_poster(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "feed"
+    root.mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
+    (root / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypisom0000roxy-video")
+    install_feed_publication_contract()
+    generation = SimpleNamespace(
+        result_url="/uploads/feed/clip.mp4",
+        parameters={"_result_urls": ["/uploads/feed/clip.mp4"]},
+    )
+    views = await FeedService._media_views(None, generation)
+    assert len(views) == 1
+    assert "preview_url" not in views[0]
+    assert not (root / "thumbs" / "clip.jpg").exists()
