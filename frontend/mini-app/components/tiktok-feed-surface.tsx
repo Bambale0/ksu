@@ -47,6 +47,17 @@ const STYLE = `
     height: 100%;
   }
   .tiktok-feed-media { background: #050507; }
+  .tiktok-feed-loading {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: #c3bccd; font-size: 13px;
+    background: radial-gradient(circle at 50% 40%, #24162e, #050507 68%);
+  }
+  .tiktok-feed-media-error {
+    position: absolute; z-index: 2; inset: 0; display: grid;
+    place-content: center; justify-items: center; gap: 12px;
+    background: #0b0910; color: #eee;
+  }
+  .tiktok-feed-media-error button { border: 1px solid #8c72a7; border-radius: 16px; padding: 10px 16px; color: #fff; background: #382448; }
   .tiktok-feed-media > img,
   .tiktok-feed-media > video {
     display: block;
@@ -454,6 +465,105 @@ function uniqueCards(cards: FeedCard[]): FeedCard[] {
   return cards.filter((card) => card?.id && !seen.has(card.id) && seen.add(card.id));
 }
 
+function retryMediaUrl(url: string, attempt: number): string {
+  return attempt ? `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}` : url;
+}
+
+function FeedCardMedia({
+  type, url, thumbnailUrl, near, active, muted, onVideoRef,
+}: {
+  type: "image" | "video" | "audio";
+  url: string;
+  thumbnailUrl?: string | null;
+  near: boolean;
+  active: boolean;
+  muted: boolean;
+  onVideoRef: (node: HTMLVideoElement | null) => void;
+}) {
+  const [thumbnailRetry, setThumbnailRetry] = useState(0);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [originalRetry, setOriginalRetry] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [originalFailed, setOriginalFailed] = useState(false);
+  const [posterReady, setPosterReady] = useState(false);
+  const imageRetryTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    setThumbnailRetry(0);
+    setThumbnailFailed(false);
+    setOriginalRetry(0);
+    setOriginalFailed(false);
+    setLoaded(false);
+    setPosterReady(false);
+    return () => {
+      if (imageRetryTimer.current !== null) window.clearTimeout(imageRetryTimer.current);
+      imageRetryTimer.current = null;
+    };
+  }, [url, thumbnailUrl]);
+
+  useEffect(() => {
+    if (!thumbnailUrl || thumbnailFailed || !near || type !== "video" || posterReady) return;
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    const image = new Image();
+    image.onload = () => { if (!cancelled) setPosterReady(true); };
+    image.onerror = () => {
+      if (!cancelled) {
+        if (thumbnailRetry < 10) retryTimer = window.setTimeout(() => setThumbnailRetry((value) => value + 1), 1000);
+        else setThumbnailFailed(true);
+      }
+    };
+    image.src = retryMediaUrl(thumbnailUrl, thumbnailRetry);
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [near, posterReady, thumbnailFailed, thumbnailRetry, thumbnailUrl, type]);
+
+  const thumbnailSource = thumbnailUrl && !thumbnailFailed ? retryMediaUrl(thumbnailUrl, thumbnailRetry) : null;
+  const originalSource = retryMediaUrl(url, originalRetry);
+  const retryOriginal = () => { setOriginalFailed(false); setLoaded(false); setOriginalRetry((value) => value + 1); };
+
+  if (type === "audio") return <div className="tiktok-feed-audio"><span><Icon name="music" size={46}/></span><strong>Аудио ROXY</strong><audio src={url} controls preload="metadata" /></div>;
+  return <>
+    {!loaded && !posterReady && !originalFailed && <span className="tiktok-feed-loading">Загружаю работу…</span>}
+    {type === "video" ? <video
+      ref={onVideoRef}
+      src={near ? originalSource : undefined}
+      poster={posterReady ? thumbnailUrl || undefined : undefined}
+      muted={muted}
+      playsInline
+      loop
+      preload={active ? "auto" : "none"}
+      onLoadedData={() => { setLoaded(true); setOriginalFailed(false); }}
+      onError={() => { if (near) setOriginalFailed(true); }}
+    /> : <>
+      <img className="tiktok-feed-cover" src={thumbnailSource || originalSource} alt="" aria-hidden="true" loading={near ? "eager" : "lazy"} />
+      <img
+        className="tiktok-feed-main-image"
+        src={thumbnailSource || originalSource}
+        alt="Работа автора"
+        loading={near ? "eager" : "lazy"}
+        decoding="async"
+        style={{ opacity: loaded ? 1 : 0 }}
+        onLoad={() => { setLoaded(true); setOriginalFailed(false); }}
+        onError={() => {
+          if (thumbnailSource) {
+            if (thumbnailRetry < 10 && imageRetryTimer.current === null) {
+              imageRetryTimer.current = window.setTimeout(() => {
+                imageRetryTimer.current = null;
+                setThumbnailRetry((value) => value + 1);
+              }, 1000);
+            }
+            else setThumbnailFailed(true);
+          } else setOriginalFailed(true);
+        }}
+      />
+    </>}
+    {originalFailed && (!thumbnailSource || type === "video") && <div className="tiktok-feed-media-error"><span>Не удалось загрузить работу</span><button type="button" onClick={(event) => { event.stopPropagation(); retryOriginal(); }}>Повторить</button><button type="button" onClick={(event) => { event.stopPropagation(); openExternalLink(url); }}>Открыть файл</button></div>}
+  </>;
+}
+
 export function TikTokFeedSurface() {
   const [visible, setVisible] = useState(false);
   const [tab, setTab] = useState<FeedTab>("for-you");
@@ -823,14 +933,15 @@ export function TikTokFeedSurface() {
             aria-label={`Работа ${authorName(card)}`}
           >
             <div className={`tiktok-feed-media${blurred ? " blurred" : ""}`} onDoubleClick={() => void toggleLike(card, true)} onClick={() => togglePlayback(card)}>
-              {type === "video" ? <video
-                ref={(node) => { if (node) videoRefs.current.set(card.id, node); else videoRefs.current.delete(card.id); }}
-                src={url}
+              <FeedCardMedia
+                type={type}
+                url={url}
+                thumbnailUrl={card.preview_url && card.preview_url !== url ? card.preview_url : null}
+                near={Math.abs(visibleItems.indexOf(card) - activeIndex) <= 1}
+                active={visibleItems[activeIndex]?.id === card.id}
                 muted={muted}
-                playsInline
-                loop
-                preload={Math.abs(visibleItems.indexOf(card) - activeIndex) <= 1 ? "auto" : "metadata"}
-              /> : type === "audio" ? <div className="tiktok-feed-audio"><span><Icon name="music" size={46}/></span><strong>Аудио ROXY</strong><audio src={url} controls preload="metadata" /></div> : <><img className="tiktok-feed-cover" src={url} alt="" aria-hidden="true"/><img className="tiktok-feed-main-image" src={url} alt={`Работа ${authorName(card)}`} loading={visibleItems.indexOf(card) <= activeIndex + 2 ? "eager" : "lazy"}/></>}
+                onVideoRef={(node) => { if (node) videoRefs.current.set(card.id, node); else videoRefs.current.delete(card.id); }}
+              />
             </div>
             <div className="tiktok-feed-gradient" />
             {blurred && <button className="tiktok-feed-reveal" type="button" onClick={(event) => { event.stopPropagation(); toggleReveal(card.id); }}>Показать работу</button>}

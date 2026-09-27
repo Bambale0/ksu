@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+import shutil
+import subprocess
 from pathlib import Path
 
 from PIL import Image
@@ -42,3 +44,29 @@ def test_video_does_not_fake_an_image_preview(tmp_path: Path, monkeypatch) -> No
     video.write_bytes(b"\x00\x00\x00\x18ftypisom0000roxy-video")
 
     assert FeedPreviewService.preview_url_for("/uploads/feed/clip.mp4") is None
+
+
+def test_saved_video_gets_small_first_frame_poster(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        import pytest
+        pytest.skip("ffmpeg unavailable")
+    root = tmp_path / "feed"
+    root.mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "")
+    source = root / "clip.mp4"
+    subprocess.run(
+        [ffmpeg, "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+         "color=c=blue:s=1280x720:d=1", "-frames:v", "12", "-pix_fmt", "yuv420p", str(source)],
+        check=True, capture_output=True, timeout=10,
+    )
+    preview_url = FeedPreviewService.preview_url_for("/uploads/feed/clip.mp4")
+    assert preview_url == "/uploads/feed/thumbs/clip.jpg"
+    preview = FeedStaticStorage.path_for_url(preview_url)
+    assert preview is not None and preview.is_file()
+    assert preview.stat().st_size <= FeedPreviewService.max_bytes()
+    with Image.open(preview) as image:
+        image.load()
+        assert max(image.size) <= 768

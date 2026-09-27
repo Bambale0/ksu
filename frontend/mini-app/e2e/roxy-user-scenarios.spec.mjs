@@ -558,3 +558,41 @@ test.describe('ROXY Mini App — 300 isolated user scenarios', () => {
     });
   }
 });
+
+test('feed shows a thumbnail after a temporary error and keeps the original for details', async ({ page }) => {
+  await mockRoxy(page);
+  await page.route('**/api/v1/feed?*', (route) => json(route, {
+    items: [{ ...feedCard, preview_url: '/uploads/feed/thumbs/sample.jpg' }],
+  }));
+  let requests = 0;
+  await page.route('**/uploads/feed/thumbs/sample.jpg*', (route) => {
+    requests += 1;
+    if (requests <= 2) return route.fulfill({ status: 503, body: '' });
+    return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlVfFsAAAAASUVORK5CYII=', 'base64') });
+  });
+  await page.goto('/mini-app/?route=feed', { waitUntil: 'domcontentloaded' });
+  const card = page.locator('.tiktok-feed-card').first();
+  await expect(card).toBeVisible();
+  const image = card.locator('.tiktok-feed-main-image');
+  await expect(image).toHaveAttribute('src', /\/uploads\/feed\/thumbs\/sample.jpg/);
+  await expect.poll(() => image.evaluate((node) => node.naturalWidth)).toBeGreaterThan(0);
+  expect(requests).toBeGreaterThan(2);
+});
+
+test('feed shows a video poster and defers distant video downloads', async ({ page }) => {
+  await mockRoxy(page);
+  const videos = [0, 1, 2].map((index) => ({
+    ...feedCard,
+    id: `video_${index}`,
+    result_url: `https://cdn.roxy.local/clip-${index}.mp4`,
+    preview_url: 'https://cdn.roxy.local/poster.jpg',
+    media: [{ url: `https://cdn.roxy.local/clip-${index}.mp4`, kind: 'video' }],
+  }));
+  await page.route('**/api/v1/feed?*', (route) => json(route, { items: videos }));
+  await page.goto('/mini-app/?route=feed', { waitUntil: 'domcontentloaded' });
+  const cards = page.locator('.tiktok-feed-card');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.nth(0).locator('video')).toHaveAttribute('poster', 'https://cdn.roxy.local/poster.jpg');
+  await expect(cards.nth(0).locator('video')).toHaveAttribute('src', /clip-0\.mp4/);
+  await expect(cards.nth(2).locator('video')).not.toHaveAttribute('src');
+});

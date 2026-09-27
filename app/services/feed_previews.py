@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 from io import BytesIO
 from pathlib import Path
 
@@ -15,6 +17,7 @@ _FEED_THUMB_MIN_QUALITY = 35
 _FEED_THUMB_MAX_QUALITY = 90
 _FEED_THUMB_BACKGROUND = (255, 255, 255)
 _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+_VIDEO_SUFFIXES = {".mp4", ".webm"}
 
 
 class FeedPreviewService:
@@ -76,7 +79,21 @@ class FeedPreviewService:
 
     @classmethod
     def _build(cls, source: Path) -> bytes:
-        with Image.open(source) as opened:
+        input_image: Path | BytesIO = source
+        if source.suffix.lower() in _VIDEO_SUFFIXES:
+            ffmpeg = shutil.which("ffmpeg")
+            if ffmpeg is None:
+                raise ValueError("Video preview requires ffmpeg")
+            frame = subprocess.run(
+                [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+                 "-protocol_whitelist", "file,pipe", "-i", str(source),
+                 "-ss", "0.2", "-frames:v", "1", "-vf",
+                 f"scale={_FEED_THUMB_MAX_SIDE}:{_FEED_THUMB_MAX_SIDE}:force_original_aspect_ratio=decrease",
+                 "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"],
+                check=True, capture_output=True, timeout=15,
+            )
+            input_image = BytesIO(frame.stdout)
+        with Image.open(input_image) as opened:
             transposed = ImageOps.exif_transpose(opened)
             transposed.load()
             image = cls._flatten(transposed)
@@ -114,7 +131,7 @@ class FeedPreviewService:
     @classmethod
     def preview_url_for(cls, media_url: str, *, create: bool = True) -> str | None:
         source = FeedStaticStorage.path_for_url(media_url)
-        if source is None or not source.is_file() or source.suffix.lower() not in _IMAGE_SUFFIXES:
+        if source is None or not source.is_file() or source.suffix.lower() not in (_IMAGE_SUFFIXES | _VIDEO_SUFFIXES):
             return None
         if "thumbs" in source.parts:
             return media_url
