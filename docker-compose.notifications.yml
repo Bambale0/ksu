@@ -6,6 +6,7 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
+      - ./static/uploads:/app/static/uploads
     restart: unless-stopped
     depends_on:
       postgres:
