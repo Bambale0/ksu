@@ -35,6 +35,8 @@ def test_inline_trend_admin_supports_durable_preview_upload_and_full_recipe() ->
     assert "input_mode" in component
     assert "min_references" in component
     assert "max_references" in component
+    assert "reference_capacity" in component
+    assert '"reference_capacity": TrendService.reference_capacity(spec)' in trends
     assert "billing_seconds" in component
     assert "sort_order" in component
     assert "Дополнительные параметры модели" in component
