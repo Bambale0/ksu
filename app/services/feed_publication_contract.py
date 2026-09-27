@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -116,7 +117,7 @@ def install_feed_publication_contract() -> None:
             view = FeedStaticStorage.media_view(url, ordinal=ordinal)
             if view is None:
                 return []
-            preview = FeedPreviewService.preview_url_for(url)
+            preview = FeedPreviewService.preview_url_for(url, create=False)
             if preview:
                 view["preview_url"] = preview
             views.append(view)
@@ -270,7 +271,7 @@ def install_feed_publication_contract() -> None:
 
         public_urls = [item.public_url for item in persisted]
         for url in public_urls:
-            FeedPreviewService.preview_url_for(url)
+            await asyncio.to_thread(FeedPreviewService.preview_url_for, url)
         if provider_urls:
             params["_provider_result_urls"] = provider_urls
         params["_result_urls"] = public_urls
