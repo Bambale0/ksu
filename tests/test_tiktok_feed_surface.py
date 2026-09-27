@@ -30,7 +30,9 @@ def test_tiktok_feed_is_fullscreen_vertical_snap_surface() -> None:
         "IntersectionObserver",
         "videoRefs.current",
         "void video.play()",
-        'loop\n                preload=',
+        "loop",
+        'preload={active ? "auto" : "none"}',
+        'src={near ? originalSource : undefined}',
         "onDoubleClick={() => void toggleLike(card, true)}",
     ):
         assert token in source, token
