@@ -288,3 +288,44 @@ async def test_recipient_bad_request_escapes_without_downloading_provider_media(
 
     assert bot.video_calls == ["https://provider.example/result.mp4"]
     assert bot.document_calls == []
+
+
+@pytest.mark.asyncio
+async def test_local_asset_recipient_error_does_not_fall_back_to_document(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    durable = tmp_path / "durable.mp4"
+    durable.write_bytes(b"durable-video-bytes")
+    object_key = "generations/user/gen/000-durable.mp4"
+    asset = SimpleNamespace(id=uuid4(), object_key=object_key, bucket=LOCAL_MEDIA_BUCKET)
+
+    def local_path(_cls: type[LocalMediaStorage], key: str) -> Path:
+        assert key == object_key
+        return durable
+
+    monkeypatch.setattr(LocalMediaStorage, "path_for_key", classmethod(local_path))
+
+    class ChatNotFoundLocalBot(FallbackBot):
+        async def send_video(self, **kwargs: Any) -> FakeMessage:
+            self.video_calls.append(kwargs["video"])
+            raise bad_video("chat not found")
+
+    bot = ChatNotFoundLocalBot()
+
+    with pytest.raises(TelegramBadRequest, match="chat not found"):
+        await send_generation_result_media(
+            bot,  # type: ignore[arg-type]
+            session=FakeSession(asset),  # type: ignore[arg-type]
+            chat_id=1,
+            generation=generation(),  # type: ignore[arg-type]
+            media_type="video",
+            result_url="https://provider.example/expired.mp4",
+            caption="ready",
+            reply_markup=None,
+        )
+
+    assert len(bot.video_calls) == 1
+    assert isinstance(bot.video_calls[0], FSInputFile)
+    assert bot.document_calls == []
+    assert durable.exists()
