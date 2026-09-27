@@ -102,6 +102,53 @@ class NotificationDeliveryService:
         return rows
 
     @staticmethod
+    async def requeue_reachable_user_deliveries(
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+    ) -> int:
+        """Re-arm transactional Telegram deliveries after the user contacts the bot.
+
+        A Mini App user can exist before Telegram allows the bot to initiate a
+        private chat. Chat-not-found and bot-blocked errors are deferred delivery
+        states, not permanent data loss. An incoming user message proves the chat
+        is reachable again and safely starts a fresh retry cycle.
+        """
+
+        now = utcnow()
+        rows = list(
+            (
+                await session.scalars(
+                    select(NotificationDelivery)
+                    .join(
+                        Notification,
+                        Notification.id == NotificationDelivery.notification_id,
+                    )
+                    .where(
+                        Notification.user_id == user_id,
+                        NotificationDelivery.channel == "telegram",
+                        NotificationDelivery.purpose == "transactional",
+                        NotificationDelivery.status.in_(["failed", "undeliverable"]),
+                        or_(
+                            NotificationDelivery.last_error.ilike("%chat not found%"),
+                            NotificationDelivery.last_error.ilike("%bot was blocked%"),
+                        ),
+                    )
+                    .order_by(NotificationDelivery.updated_at.asc())
+                    .with_for_update(skip_locked=True)
+                )
+            ).all()
+        )
+        for row in rows:
+            row.status = "retry"
+            row.attempts = 0
+            row.available_at = now
+            row.lease_until = None
+            row.last_error = None
+        await session.flush()
+        return len(rows)
+
+    @staticmethod
     async def mark_sent(
         session: AsyncSession,
         delivery: NotificationDelivery,
