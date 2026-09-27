@@ -28,6 +28,7 @@ def test_inline_trend_admin_supports_durable_preview_upload_and_full_recipe() ->
     component = _read(FRONTEND / "components" / "inline-trend-admin.tsx")
     client = _read(FRONTEND / "lib" / "trend-admin-api.ts")
     uploads = _read(ROOT / "app" / "api" / "v1" / "uploads.py")
+    trends = _read(ROOT / "app" / "api" / "v1" / "trends.py")
 
     assert "await api.upload(file)" in component
     assert 'accept="image/*,video/*"' in component
@@ -35,6 +36,8 @@ def test_inline_trend_admin_supports_durable_preview_upload_and_full_recipe() ->
     assert "input_mode" in component
     assert "min_references" in component
     assert "max_references" in component
+    assert "reference_capacity" in component
+    assert '"reference_capacity": TrendService.reference_capacity(spec)' in trends
     assert "billing_seconds" in component
     assert "sort_order" in component
     assert "Дополнительные параметры модели" in component

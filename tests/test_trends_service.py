@@ -11,6 +11,7 @@ import pytest
 from app.api.v1 import trends as trends_api
 from app.services.billing_access import BillingDecision
 from app.services.generations import GenerationService
+from app.services.model_catalog import ModelCatalog
 from app.services.model_routing import resolve_model_request
 from app.services.trends import TrendRecipeError, TrendService
 
@@ -51,6 +52,43 @@ def _generation() -> SimpleNamespace:
         cost_rox=Decimal("20.00"),
         result_url=None,
     )
+
+
+def test_nexus_trend_reference_limit_matches_provider_and_clamps_legacy_recipe() -> None:
+    recipe = TrendService.normalize_recipe(
+        "Legacy Nexus trend",
+        {
+            "model_id": "nano-banana-pro",
+            "prompt": "portrait",
+            "preview_url": "https://cdn.example.invalid/trend.jpg",
+            "media_type": "image",
+            "input_mode": "image",
+            "min_references": 1,
+            "max_references": 8,
+            "parameters": {"aspect_ratio": "1:1", "resolution": "1K"},
+        },
+    )
+
+    assert TrendService.reference_capacity(ModelCatalog.get("nano-banana-pro")) == 4
+    assert TrendService.reference_capacity(ModelCatalog.get("nano-banana-2")) == 4
+    assert recipe["max_references"] == 4
+
+
+def test_nexus_trend_rejects_minimum_above_provider_reference_limit() -> None:
+    with pytest.raises(TrendRecipeError, match="at most 4 reference images"):
+        TrendService.normalize_recipe(
+            "Invalid Nexus trend",
+            {
+                "model_id": "nano-banana-2",
+                "prompt": "portrait",
+                "preview_url": "https://cdn.example.invalid/trend.jpg",
+                "media_type": "image",
+                "input_mode": "image",
+                "min_references": 5,
+                "max_references": 8,
+                "parameters": {"aspect_ratio": "1:1", "resolution": "1K"},
+            },
+        )
 
 
 def _video_item() -> SimpleNamespace:

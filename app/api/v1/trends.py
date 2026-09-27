@@ -156,7 +156,11 @@ async def inline_admin_trend_list(
                 )
             ).all()
         )
-        models = [spec.public_dict() for spec in SPECS if spec.media_type in {"image", "video"}]
+        models = [
+            {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec)}
+            for spec in SPECS
+            if spec.media_type in {"image", "video"}
+        ]
         models.sort(key=lambda item: (str(item["media_type"]), str(item["family"]), str(item["title"])))
         return {
             "items": [TrendService.admin_view(item) for item in rows],
