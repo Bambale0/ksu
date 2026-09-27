@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
+from app.services.local_media_storage import LocalMediaStorage
 from app.services.media_assets import MediaIngestService
 from app.services.music_media import MusicMediaIngestService
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
@@ -31,6 +34,19 @@ def _suffix(value: str | None) -> str:
 def _filename(generation: Generation, path: Path) -> str:
     suffix = path.suffix.lower() or ".bin"
     return f"generation-{generation.id}{suffix}"
+
+
+def _is_media_fetch_bad_request(exc: TelegramBadRequest) -> bool:
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "failed to get http url content",
+            "wrong type of the web page content",
+            "wrong file identifier/http url specified",
+            "webpage curl failed",
+        )
+    )
 
 
 async def _ready_asset(
@@ -93,6 +109,37 @@ async def _download_original(
 ) -> Path:
     if (
         ready_asset is not None
+        and ready_asset.object_key
+        and ready_asset.bucket
+        and LocalMediaStorage.is_local_bucket(ready_asset.bucket)
+    ):
+        handle = tempfile.NamedTemporaryFile(
+            prefix="ksu-telegram-generation-",
+            suffix=_suffix(ready_asset.object_key),
+            delete=False,
+        )
+        path = Path(handle.name)
+        handle.close()
+        try:
+            source = LocalMediaStorage.path_for_key(ready_asset.object_key)
+            if not source.is_file() or source.stat().st_size <= 0:
+                raise RuntimeError("Durable local generation media is missing or empty")
+            await asyncio.to_thread(shutil.copyfile, source, path)
+            return path
+        except Exception as exc:  # noqa: BLE001 - provider source is the secondary recovery path
+            path.unlink(missing_ok=True)
+            logger.warning(
+                "generation_notification_durable_media_read_failed",
+                extra={
+                    "generation_id": str(generation.id),
+                    "asset_id": str(ready_asset.id),
+                    "storage_backend": "local",
+                    "error": str(exc),
+                },
+            )
+
+    if (
+        ready_asset is not None
         and storage is not None
         and ready_asset.object_key
         and ready_asset.bucket
@@ -120,6 +167,7 @@ async def _download_original(
                 extra={
                     "generation_id": str(generation.id),
                     "asset_id": str(ready_asset.id),
+                    "storage_backend": "s3",
                     "error": str(exc),
                 },
             )
@@ -155,32 +203,41 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
     asset = await _ready_asset(session, generation)
     storage: ObjectStorage | None = None
     remote_url = result_url
+    use_remote_fast_path = True
     if asset is not None and asset.object_key and asset.bucket:
-        try:
-            storage = ObjectStorage()
-            remote_url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
-        except ObjectStorageNotConfigured:
-            storage = None
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            # The server-local copy is our durable authority. Upload it directly
+            # instead of touching a provider URL that may already have expired.
+            use_remote_fast_path = False
+        else:
+            try:
+                storage = ObjectStorage()
+                remote_url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+            except ObjectStorageNotConfigured:
+                storage = None
 
-    try:
-        return await _send_native(
-            bot,
-            chat_id=chat_id,
-            media_type=media_type,
-            media=remote_url,
-            caption=caption,
-            reply_markup=reply_markup,
-        )
-    except TelegramBadRequest as exc:
-        logger.info(
-            "generation_notification_remote_media_failed",
-            extra={
-                "generation_id": str(generation.id),
-                "media_type": media_type,
-                "error": str(exc),
-                "durable_asset": asset is not None,
-            },
-        )
+    if use_remote_fast_path:
+        try:
+            return await _send_native(
+                bot,
+                chat_id=chat_id,
+                media_type=media_type,
+                media=remote_url,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+        except TelegramBadRequest as exc:
+            if not _is_media_fetch_bad_request(exc):
+                raise
+            logger.info(
+                "generation_notification_remote_media_failed",
+                extra={
+                    "generation_id": str(generation.id),
+                    "media_type": media_type,
+                    "error": str(exc),
+                    "durable_asset": asset is not None,
+                },
+            )
 
     path = await _download_original(
         generation=generation,
