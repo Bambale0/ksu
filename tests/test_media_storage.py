@@ -242,3 +242,9 @@ def test_media_storage_docs_cover_bucket_lifecycle_and_worker() -> None:
         "\n  admin-support-worker:", 1
     )[0]
     assert "./static/uploads:/app/static/uploads" in notification_block
+
+    standalone = (root / "docker-compose.notifications.yml").read_text(encoding="utf-8")
+    standalone_notification = standalone.split("  notification-worker:\n", 1)[1].split(
+        "\n  admin-support-worker:", 1
+    )[0]
+    assert "./static/uploads:/app/static/uploads" in standalone_notification
