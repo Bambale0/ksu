@@ -23,7 +23,7 @@ media-worker claim (FOR UPDATE SKIP LOCKED)
 MediaAsset status=ready + local object key/hash/size
 ```
 
-The Docker runtime already bind-mounts `./static/uploads:/app/static/uploads` into the API and media worker, so generated files survive container recreation on the production host just like feed/reference files. `static/uploads/media` is intentionally **not** mounted with FastAPI `StaticFiles`: unpublished user generations remain private.
+The Docker runtime bind-mounts `./static/uploads:/app/static/uploads` into the API, media worker, and notification worker, so generated files survive container recreation and Telegram delivery can read the saved originals. `static/uploads/media` is intentionally **not** mounted with FastAPI `StaticFiles`: unpublished user generations remain private.
 
 The default root is:
 
@@ -129,7 +129,7 @@ The production deploy keeps the existing bind mount:
 ./static/uploads:/app/static/uploads
 ```
 
-That mount must remain present for `app`, `generation-worker`, `media-worker`, and any worker that writes reference/feed media.
+That mount must remain present for `app`, `generation-worker`, `media-worker`, `notification-worker`, and any worker that writes reference/feed media. A standalone notification worker needs read access to this directory to deliver saved media after provider URLs expire.
 
 ## Monitoring
 
