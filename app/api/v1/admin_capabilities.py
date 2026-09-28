@@ -168,6 +168,12 @@ class PromoProgramRequest(BaseModel):
     is_active: bool
 
 
+class PartnerReferralTermsRequest(BaseModel):
+    partner_user_id: uuid.UUID
+    first_line_percent: Decimal = Field(ge=0, le=100)
+    second_line_percent: Decimal = Field(ge=0, le=100)
+
+
 class PromoStateRequest(BaseModel):
     is_active: bool
 
@@ -679,6 +685,31 @@ async def web_admin_promo_program_update(
             topup_user_rox=payload.topup_user_rox,
             topup_user_min_rub=payload.topup_user_min_rub,
             is_active=payload.is_active,
+            idempotency_key=_require_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirmed(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/promocodes/partner-terms")
+async def web_admin_partner_referral_terms_update(
+    payload: PartnerReferralTermsRequest,
+    request: Request,
+    context: AdminPromoWriteDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, object]:
+    result, replayed = await _commit(
+        session,
+        AdminPromoService.set_partner_terms(
+            session,
+            admin=context.account,
+            partner_user_id=payload.partner_user_id,
+            first_line_percent=payload.first_line_percent,
+            second_line_percent=payload.second_line_percent,
             idempotency_key=_require_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirmed(confirmation),

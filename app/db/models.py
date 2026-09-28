@@ -119,6 +119,26 @@ class PartnerPromoProgramConfig(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class PartnerReferralTerms(TimestampMixin, Base):
+    __tablename__ = "partner_referral_terms"
+    __table_args__ = (
+        CheckConstraint(
+            "first_line_percent >= 0 AND first_line_percent <= 100",
+            name="ck_partner_terms_first_line_percent_range",
+        ),
+        CheckConstraint(
+            "second_line_percent >= 0 AND second_line_percent <= 100",
+            name="ck_partner_terms_second_line_percent_range",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    first_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    second_line_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+
+
 class PromoCode(TimestampMixin, Base):
     __tablename__ = "promo_codes"
     __table_args__ = (

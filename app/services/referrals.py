@@ -132,7 +132,7 @@ class ReferralService:
         payment_amount: Decimal | None = None,
     ) -> None:
         relation = await session.get(ReferralRelation, source_user_id)
-        if relation is None or relation.source != "promo" or relation.promo_id is None:
+        if relation is None:
             return
 
         config = await PartnerPromoProgramService.get_config(session)
@@ -148,30 +148,36 @@ class ReferralService:
         if source_payment is None:
             return
 
-        promo = await session.get(PromoCode, relation.promo_id)
-        if promo is None or promo.partner_user_id != relation.inviter_user_id:
-            return
+        promo: PromoCode | None = None
+        if relation.promo_id is not None:
+            promo = await session.get(PromoCode, relation.promo_id)
+            if promo is None or promo.partner_user_id != relation.inviter_user_id:
+                return
 
         # Retained only for backwards compatibility with existing provider call
         # sites. Cash commission always comes from the authoritative Payment row.
         _ = payment_amount
+        terms = await PartnerPromoProgramService.referral_terms(
+            session,
+            relation.inviter_user_id,
+        )
         reward_basis = await cls._paid_rub_basis(
             session,
             source_user_id=source_user_id,
             source_transaction_id=source_transaction_id,
         )
-        if reward_basis is not None and Decimal(config.first_line_percent) > 0:
+        if reward_basis is not None and Decimal(terms.first_line_percent) > 0:
             await cls._create_reward(
                 session,
                 partner_user_id=relation.inviter_user_id,
                 source_user_id=source_user_id,
                 source_transaction_id=source_transaction_id,
                 level=1,
-                percent=Decimal(config.first_line_percent),
+                percent=Decimal(terms.first_line_percent),
                 payment_amount=reward_basis,
                 reason="partner_referral_commission",
-                promo_id=promo.id,
-                promo_code=promo.code,
+                promo_id=promo.id if promo is not None else None,
+                promo_code=promo.code if promo is not None else None,
                 payment_id=source_payment.id,
             )
 
@@ -186,7 +192,7 @@ class ReferralService:
                 reference_id=str(source_payment.id),
                 idempotency_key=f"partner-promo-topup:{source_transaction_id}",
                 reason="partner_referral_topup_bonus",
-                promo_code=promo.code,
+                promo_code=promo.code if promo is not None else None,
                 partner_id=relation.inviter_user_id,
                 referral_user_id=source_user_id,
                 payment_id=source_payment.id,
@@ -274,8 +280,8 @@ class ReferralService:
         percent: Decimal,
         payment_amount: Decimal,
         reason: str,
-        promo_id: uuid.UUID,
-        promo_code: str,
+        promo_id: uuid.UUID | None,
+        promo_code: str | None,
         payment_id: uuid.UUID,
     ) -> None:
         existing = await session.scalar(

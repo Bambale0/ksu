@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import PartnerPromoProgramConfig
+from app.db.models import PartnerPromoProgramConfig, PartnerReferralTerms
+
+
+@dataclass(frozen=True)
+class PartnerReferralTermsView:
+    first_line_percent: Decimal
+    second_line_percent: Decimal
 
 
 class PartnerPromoProgramService:
@@ -34,6 +42,24 @@ class PartnerPromoProgramService:
             raise RuntimeError("Partner promo program configuration is missing")
         return config
 
+    @classmethod
+    async def referral_terms(
+        cls,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+    ) -> PartnerReferralTermsView:
+        terms = await session.get(PartnerReferralTerms, user_id)
+        if terms is not None:
+            return PartnerReferralTermsView(
+                first_line_percent=Decimal(terms.first_line_percent),
+                second_line_percent=Decimal(terms.second_line_percent),
+            )
+        config = await cls.get_config(session)
+        return PartnerReferralTermsView(
+            first_line_percent=Decimal(config.first_line_percent),
+            second_line_percent=Decimal("0"),
+        )
+
     @staticmethod
     def validate_values(
         *,
@@ -55,6 +81,17 @@ class PartnerPromoProgramService:
             raise ValueError("User top-up minimum RUB must be between 0 and 100000000")
 
     @staticmethod
+    def validate_referral_terms(
+        *,
+        first_line_percent: Decimal,
+        second_line_percent: Decimal,
+    ) -> None:
+        if first_line_percent < 0 or first_line_percent > Decimal("100"):
+            raise ValueError("First-line percent must be between 0 and 100")
+        if second_line_percent < 0 or second_line_percent > Decimal("100"):
+            raise ValueError("Second-line percent must be between 0 and 100")
+
+    @staticmethod
     def view(config: PartnerPromoProgramConfig) -> dict[str, object]:
         return {
             "key": config.key,
@@ -66,4 +103,14 @@ class PartnerPromoProgramService:
             "is_active": config.is_active,
             "created_at": config.created_at.isoformat(),
             "updated_at": config.updated_at.isoformat(),
+        }
+
+    @staticmethod
+    def terms_view(terms: PartnerReferralTerms) -> dict[str, object]:
+        return {
+            "user_id": str(terms.user_id),
+            "first_line_percent": str(terms.first_line_percent),
+            "second_line_percent": str(terms.second_line_percent),
+            "created_at": terms.created_at.isoformat(),
+            "updated_at": terms.updated_at.isoformat(),
         }

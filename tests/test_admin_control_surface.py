@@ -119,9 +119,11 @@ def test_control_backend_is_thin_adapter_over_shared_services() -> None:
     assert '@router.post("/promocodes/{promo_id}/state")' in source
     assert '@router.post("/promocodes/{promo_id}/partner")' in source
     assert '@router.post("/promocodes/program")' in source
+    assert '@router.post("/promocodes/partner-terms")' in source
     assert "AdminPromoService.set_active(" in source
     assert "AdminPromoService.set_partner(" in source
     assert "AdminPromoService.update_program(" in source
+    assert "AdminPromoService.set_partner_terms(" in source
 
 
 def test_new_capability_backend_revalidates_permissions_server_side() -> None:
