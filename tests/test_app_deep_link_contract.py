@@ -105,6 +105,8 @@ def test_mini_app_entry_routes_all_public_deep_link_kinds() -> None:
     assert 'api.feedItem(generationId, "profile")' in post
     assert "api.remix(card.id, surface)" in post
     assert "api.share(card.id, surface)" in post
+    assert "const shellTitle = card ? author : model" in post
+    assert "Публичная работа автора · ${model}" in post
 
     assert "profile_link?: string" in types
     assert "stats?.profile_link" in social

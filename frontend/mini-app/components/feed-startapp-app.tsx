@@ -58,6 +58,12 @@ export function FeedStartApp({
   const authorCode = String(card?.author_referral_code || card?.author?.telegram_id || "");
   const author = card?.author?.display_name || card?.author?.username || "Автор ROXY";
   const model = String(card?.model || "ROXY");
+  const shellTitle = card ? author : model;
+  const shellCopy = card
+    ? `Публичная работа автора · ${model}`
+    : intent === "remix"
+      ? "Открой работу и собери свой вариант"
+      : "Публичная работа автора ROXY";
 
   const repeat = async () => {
     if (!card || busy) return;
@@ -86,7 +92,7 @@ export function FeedStartApp({
   };
 
   return (
-    <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={model} copy={intent === "remix" ? "Открой работу и собери свой вариант" : "Публичная работа автора ROXY"}>
+    <StandaloneShell kicker={intent === "remix" ? "Remix ROXY" : surface === "profile" ? "Профиль ROXY" : "Лента ROXY"} title={shellTitle} copy={shellCopy}>
       <div className="tool-grid" data-feed-startapp-referrer={referralCode || undefined}>
         <div className="panel tool-panel">
           {media.url && media.type === "video" ? <video className="trend-preview" src={media.url} controls playsInline /> : null}
