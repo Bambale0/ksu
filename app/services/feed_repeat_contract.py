@@ -27,7 +27,7 @@ def install_feed_repeat_contract() -> None:
     previous_to_card = FeedService.to_card
 
     def repeat_allowed(generation: Generation) -> bool:
-        if generation.source_feed_gen_id is not None or generation.action_type == "trend":
+        if generation.source_feed_gen_id is not None:
             return False
         model_id = str((generation.parameters or {}).get("_model_id") or "").strip()
         if not model_id:

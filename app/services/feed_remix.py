@@ -116,9 +116,6 @@ class FeedRemixService:
             source_generation_id,
             surface=surface,
         )
-        if source.action_type == "trend":
-            raise FeedError("Trend generations cannot be remixed")
-
         requested_model_id, effective_model_id = cls._source_model_ids(source)
         card = await FeedService.to_card(
             session,
@@ -222,9 +219,6 @@ class FeedRemixService:
             source_generation_id,
             surface=surface,
         )
-        if source.action_type == "trend":
-            raise FeedError("Trend generations cannot be remixed")
-
         requested_model_id, effective_model_id = cls._source_model_ids(source)
         requirements = cls._reference_requirements(source)
         references = await cls._owned_reference_urls(

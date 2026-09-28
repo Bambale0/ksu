@@ -74,7 +74,6 @@ def _sanitize_trend_card(card: dict[str, object], generation: Generation) -> dic
     card = dict(card)
     card["prompt"] = ""
     card["prompt_hidden"] = True
-    card["prompt_actions_allowed"] = False
     card["feed_prompt_visible"] = False
     card["reference_images"] = []
     card["reference_videos"] = []
@@ -419,8 +418,7 @@ async def remix_requires_composer(
         source = await FeedService.assert_surface_visible(
             session, generation_id, surface=payload.surface
         )
-        if source.action_type == "trend":
-            raise FeedError("Trend generations cannot be remixed")
+        del source
     except (FeedError, FeedNotFoundError) as exc:
         raise _http_error(exc) from exc
     raise HTTPException(
