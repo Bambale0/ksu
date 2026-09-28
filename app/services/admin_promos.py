@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AdminAccount, PromoCode, User
+from app.db.models import AdminAccount, PartnerReferralTerms, PromoCode, User
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
 from app.services.partner_promo_program import PartnerPromoProgramService
@@ -354,6 +354,63 @@ class AdminPromoService:
             request_id=request_id,
             action="promos.manage",
             target_id="partner-promo-program",
+            request_payload=payload,
+            operation=operation,
+        )
+
+    @staticmethod
+    async def set_partner_terms(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        partner_user_id: uuid.UUID,
+        first_line_percent: Decimal,
+        second_line_percent: Decimal,
+        idempotency_key: str,
+        request_id: str,
+        confirmed: bool,
+    ) -> tuple[dict[str, object], bool]:
+        AdminPolicy.authorize_action(admin, "promos.manage", confirmed=confirmed)
+        PartnerPromoProgramService.validate_referral_terms(
+            first_line_percent=first_line_percent,
+            second_line_percent=second_line_percent,
+        )
+        payload = {
+            "partner_user_id": str(partner_user_id),
+            "first_line_percent": str(first_line_percent),
+            "second_line_percent": str(second_line_percent),
+        }
+
+        async def operation() -> dict[str, object]:
+            partner = await session.get(User, partner_user_id)
+            if partner is None or not partner.is_active:
+                raise ValueError("Referral terms partner must be an active user")
+            terms = await session.scalar(
+                select(PartnerReferralTerms)
+                .where(PartnerReferralTerms.user_id == partner_user_id)
+                .with_for_update()
+            )
+            if terms is None:
+                terms = PartnerReferralTerms(
+                    user_id=partner_user_id,
+                    first_line_percent=first_line_percent,
+                    second_line_percent=second_line_percent,
+                )
+                session.add(terms)
+            else:
+                terms.first_line_percent = first_line_percent
+                terms.second_line_percent = second_line_percent
+            await session.flush()
+            await session.refresh(terms)
+            return PartnerPromoProgramService.terms_view(terms)
+
+        return await AdminCommandLedger.execute(
+            session,
+            idempotency_key=idempotency_key,
+            admin_user_id=admin.id,
+            request_id=request_id,
+            action="promos.manage",
+            target_id=f"partner-referral-terms:{partner_user_id}",
             request_payload=payload,
             operation=operation,
         )

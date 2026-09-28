@@ -14,6 +14,7 @@ from app.core.config import settings
 
 from app.db.models import (
     AdminAccount,
+    PartnerReferralTerms,
     Payment,
     PromoCode,
     PromoRedemption,
@@ -821,7 +822,7 @@ async def test_partner_promo_applies_small_package_bonus_without_threshold() -> 
 
 
 @pytest.mark.asyncio
-async def test_plain_referral_link_never_creates_financial_rewards() -> None:
+async def test_plain_referral_link_creates_financial_rewards_without_promo_code() -> None:
     async with SessionFactory() as session:
         partner = await _user(session, "Link partner")
         buyer = await _user(session, "Link buyer")
@@ -853,16 +854,28 @@ async def test_plain_referral_link_never_creates_financial_rewards() -> None:
         )
         await session.commit()
 
-        rewards = list(
-            (
-                await session.scalars(
-                    select(ReferralReward).where(ReferralReward.partner_user_id == partner.id)
-                )
-            ).all()
+        config = await PartnerPromoProgramService.get_config(session)
+        reward = await session.scalar(
+            select(ReferralReward).where(ReferralReward.partner_user_id == partner.id)
+        )
+        partner_bonus = await session.scalar(
+            select(WalletTransaction).where(
+                WalletTransaction.user_id == partner.id,
+                WalletTransaction.kind == "partner_promo_topup_bonus",
+                WalletTransaction.payment_id == payment.id,
+            )
         )
         partner_wallet = await session.get(Wallet, partner.id)
-        assert rewards == []
-        assert partner_wallet is None or Decimal(partner_wallet.balance) == Decimal("0")
+        assert reward is not None
+        assert reward.amount == Decimal("30.00")
+        assert reward.percent == Decimal(config.first_line_percent)
+        assert reward.promo_id is None
+        assert reward.promo_code is None
+        assert partner_bonus is not None
+        assert Decimal(partner_bonus.amount) == Decimal(config.topup_partner_rox)
+        assert partner_bonus.promo_code is None
+        assert partner_wallet is not None
+        assert Decimal(partner_wallet.balance) == Decimal(config.topup_partner_rox)
 
 
 @pytest.mark.asyncio
@@ -1061,6 +1074,54 @@ async def test_legacy_admin_program_update_retry_replays_pre_0039_hash() -> None
 
         assert replayed is True
         assert replay == first == legacy_response
+        await session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_admin_can_set_partner_specific_referral_terms_with_ledger() -> None:
+    async with SessionFactory() as session:
+        admin_user = await _user(session, "Terms admin")
+        partner = await _user(session, "Terms partner")
+        admin = AdminAccount(
+            user_id=admin_user.id,
+            role="admin",
+            permission_overrides={"allow": ["promocodes.read", "promocodes.manage"]},
+            is_active=True,
+        )
+        session.add(admin)
+        await session.flush()
+
+        key = f"partner-terms:{uuid.uuid4()}"
+        result, replayed = await AdminPromoService.set_partner_terms(
+            session,
+            admin=admin,
+            partner_user_id=partner.id,
+            first_line_percent=Decimal("35"),
+            second_line_percent=Decimal("0"),
+            idempotency_key=key,
+            request_id=f"test:{uuid.uuid4()}",
+            confirmed=True,
+        )
+        replay, second_replayed = await AdminPromoService.set_partner_terms(
+            session,
+            admin=admin,
+            partner_user_id=partner.id,
+            first_line_percent=Decimal("35"),
+            second_line_percent=Decimal("0"),
+            idempotency_key=key,
+            request_id=f"test:{uuid.uuid4()}",
+            confirmed=True,
+        )
+        terms = await session.get(PartnerReferralTerms, partner.id)
+
+        assert replayed is False
+        assert second_replayed is True
+        assert replay == result
+        assert terms is not None
+        assert Decimal(terms.first_line_percent) == Decimal("35.00")
+        assert Decimal(terms.second_line_percent) == Decimal("0.00")
+        assert result["user_id"] == str(partner.id)
+        assert Decimal(str(result["first_line_percent"])) == Decimal("35.00")
         await session.rollback()
 
 

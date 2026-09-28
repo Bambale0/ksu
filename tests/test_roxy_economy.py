@@ -9,7 +9,16 @@ from sqlalchemy import select
 
 from app.api.v1.referrals import stats
 from app.core.config import settings
-from app.db.models import Payment, PromoCode, ReferralRelation, ReferralReward, User, Wallet, WalletTransaction
+from app.db.models import (
+    PartnerReferralTerms,
+    Payment,
+    PromoCode,
+    ReferralRelation,
+    ReferralReward,
+    User,
+    Wallet,
+    WalletTransaction,
+)
 from app.db.session import SessionFactory
 from app.services.partner_promo_program import PartnerPromoProgramService
 from app.services.partner_wallet import PartnerWalletTransferService
@@ -270,6 +279,115 @@ async def test_referral_percent_uses_actual_paid_rub_not_credited_rox() -> None:
         )
         assert reward is not None
         assert reward.amount == Decimal("97.83")
+
+
+@pytest.mark.asyncio
+async def test_link_referral_payment_accrues_partner_reward_without_promo_code() -> None:
+    async with SessionFactory() as session:
+        inviter = User(telegram_id=_telegram_id(), first_name="Partner")
+        buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
+        session.add_all([inviter, buyer])
+        await session.flush()
+        session.add(
+            ReferralRelation(
+                referred_user_id=buyer.id,
+                inviter_user_id=inviter.id,
+                source="link",
+            )
+        )
+        payment_tx = await _paid_transaction(
+            session,
+            buyer=buyer,
+            paid_rub=Decimal("108.70"),
+            credited_rox=Decimal("100"),
+            key=f"link-referral-payment:{buyer.id}",
+        )
+
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+        )
+        await session.commit()
+
+        config = await PartnerPromoProgramService.get_config(session)
+        inviter_wallet = await session.get(Wallet, inviter.id)
+        reward = await session.scalar(
+            select(ReferralReward).where(
+                ReferralReward.partner_user_id == inviter.id,
+                ReferralReward.source_transaction_id == payment_tx.id,
+                ReferralReward.level == 1,
+            )
+        )
+        bonus_tx = await session.scalar(
+            select(WalletTransaction).where(
+                WalletTransaction.user_id == inviter.id,
+                WalletTransaction.kind == "partner_promo_topup_bonus",
+                WalletTransaction.reference_id == str(payment_tx.reference_id),
+            )
+        )
+
+        assert reward is not None
+        assert reward.amount == Decimal("32.61")
+        assert reward.percent == Decimal(config.first_line_percent)
+        assert reward.promo_id is None
+        assert reward.promo_code is None
+        assert bonus_tx is not None
+        assert bonus_tx.amount == Decimal(config.topup_partner_rox)
+        assert bonus_tx.promo_code is None
+        assert bonus_tx.partner_id == inviter.id
+        assert bonus_tx.referral_user_id == buyer.id
+        assert inviter_wallet is not None
+        assert inviter_wallet.balance == Decimal(config.topup_partner_rox)
+
+
+@pytest.mark.asyncio
+async def test_partner_referral_terms_override_default_first_line_percent() -> None:
+    async with SessionFactory() as session:
+        inviter = User(telegram_id=_telegram_id(), first_name="Partner")
+        buyer = User(telegram_id=_telegram_id(), first_name="Buyer")
+        session.add_all([inviter, buyer])
+        await session.flush()
+        session.add_all(
+            [
+                ReferralRelation(
+                    referred_user_id=buyer.id,
+                    inviter_user_id=inviter.id,
+                    source="link",
+                ),
+                PartnerReferralTerms(
+                    user_id=inviter.id,
+                    first_line_percent=Decimal("35"),
+                    second_line_percent=Decimal("0"),
+                ),
+            ]
+        )
+        payment_tx = await _paid_transaction(
+            session,
+            buyer=buyer,
+            paid_rub=Decimal("108.70"),
+            credited_rox=Decimal("100"),
+            key=f"partner-terms-payment:{buyer.id}",
+        )
+
+        await ReferralService.accrue_from_payment(
+            session,
+            source_user_id=buyer.id,
+            source_transaction_id=payment_tx.id,
+        )
+        await session.commit()
+
+        reward = await session.scalar(
+            select(ReferralReward).where(
+                ReferralReward.partner_user_id == inviter.id,
+                ReferralReward.source_transaction_id == payment_tx.id,
+                ReferralReward.level == 1,
+            )
+        )
+
+        assert reward is not None
+        assert reward.amount == Decimal("38.05")
+        assert reward.percent == Decimal("35.00")
 
 
 @pytest.mark.asyncio

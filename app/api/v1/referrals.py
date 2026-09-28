@@ -109,6 +109,7 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
     )
     minimum_rub = max(Decimal("0"), settings.partner_min_withdrawal_rub)
     promo_program = await PartnerPromoProgramService.get_config(session)
+    referral_terms = await PartnerPromoProgramService.referral_terms(session, user.id)
     promo_codes = list(
         (
             await session.scalars(
@@ -135,8 +136,8 @@ async def stats(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "pending_withdrawals": str(accounting["pending_withdrawals"]),
         "minimum_withdrawal": str(minimum_rub),
         "minimum_withdrawal_rub": str(minimum_rub),
-        "first_line_percent": str(promo_program.first_line_percent),
-        "second_line_percent": "0",
+        "first_line_percent": str(referral_terms.first_line_percent),
+        "second_line_percent": str(referral_terms.second_line_percent),
         "referral_payload": payload,
         "referral_link": referral_link,
         "referral_bot_link": referral_link,
