@@ -12,6 +12,7 @@ from app.db.models import Generation, User
 from app.db.session import SessionFactory
 from app.services.feed import FeedService
 from app.services.feed_links import bot_start_link, mini_app_deep_link, post_payload
+from app.services.feed_remix import FeedRemixService
 from app.services.feed_static import FeedStaticStorage
 
 
@@ -75,7 +76,7 @@ async def test_other_user_can_repeat_public_work_without_seeing_hidden_prompt() 
 
 
 @pytest.mark.asyncio
-async def test_trend_publication_does_not_advertise_unsupported_repeat() -> None:
+async def test_trend_publication_advertises_repeat_without_revealing_prompt() -> None:
     filename = f"repeat-trend-{random.randint(100_000, 999_999)}.png"
     target = FeedStaticStorage.ensure_root() / filename
     target.write_bytes(b"\x89PNG\r\n\x1a\nroxy-repeat-trend-contract")
@@ -117,8 +118,20 @@ async def test_trend_publication_does_not_advertise_unsupported_repeat() -> None
                 viewer_user_id=viewer.id,
             )
 
-            assert card["prompt_actions_allowed"] is False
-            assert card["repeat_allowed"] is False
+            draft = await FeedRemixService.prepare(
+                session,
+                source_generation_id=source.id,
+                viewer_user_id=viewer.id,
+                surface="feed",
+            )
+
+            assert card["prompt"] == ""
+            assert card["prompt_hidden"] is True
+            assert card["prompt_actions_allowed"] is True
+            assert card["repeat_allowed"] is True
+            assert draft["prompt"] == ""
+            assert draft["prompt_hidden"] is True
+            assert draft["prompt_editable"] is False
     finally:
         target.unlink(missing_ok=True)
 
