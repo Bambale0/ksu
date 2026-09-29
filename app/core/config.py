@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     bot_username: str = ""
     nexus_api_key: str = ""
     nexus_api_base_url: str = "https://nexusapi.dev"
+    neironych_api_key: str = ""
+    neironych_api_base_url: str = "https://api.xn--e1aikcel5c5a.online"
+    admin_test_media_max_bytes: int = Field(default=200 * 1024 * 1024, ge=1024 * 1024)
+    admin_test_media_total_max_bytes: int = Field(default=1024 * 1024 * 1024, ge=1024 * 1024)
+    admin_test_result_max_bytes: int = Field(default=1024 * 1024 * 1024, ge=1024 * 1024)
     nexus_test_worker_poll_seconds: int = Field(default=3, ge=1, le=30)
     nexus_test_task_lease_seconds: int = Field(default=90, ge=30, le=600)
     nexus_test_retry_max_seconds: int = Field(default=30, ge=3, le=300)
