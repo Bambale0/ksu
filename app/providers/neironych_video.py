@@ -10,7 +10,24 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SEEDANCE_TEST_MODELS = ("seedance-2.0", "seedance-2.5")\n_SEEDANCE_MODEL_ALIASES = {\n    "seedance-2.0": ("seedance-2.0", "seedance-2", "bytedance/seedance-2.0", "bytedance/seedance-2"),\n    "seedance-2.5": ("seedance-2.5", "bytedance/seedance-2.5"),\n}
+SEEDANCE_TEST_MODELS = ("seedance-2.0", "seedance-2.5")
+_SEEDANCE_MODEL_ALIASES = {
+    "seedance-2.0": (
+        "seedance-2.0",
+        "seedance-2",
+        "bytedance/seedance-2.0",
+        "bytedance/seedance-2",
+    ),
+    "seedance-2.5": (
+        "seedance-2.5",
+        "bytedance/seedance-2.5",
+    ),
+}
+_SUPPORTED_PROVIDER_MODELS = frozenset(
+    alias
+    for aliases in _SEEDANCE_MODEL_ALIASES.values()
+    for alias in aliases
+)
 _TERMINAL_SUCCESS = frozenset({"completed", "succeeded", "success", "done", "ready"})
 _TERMINAL_FAILURE = frozenset({"failed", "error", "cancelled", "canceled"})
 
@@ -28,13 +45,13 @@ class NeironychProviderError(RuntimeError):
         self.payload = payload
 
 
-_LONG_TOKEN_RE = re.compile(r"(?i)\\b[a-f0-9]{32,}\\b")
-_URL_QUERY_RE = re.compile(r"(https?://[^\\s?]+)\\?[^\\s]*")
+_LONG_TOKEN_RE = re.compile(r"(?i)\b[a-f0-9]{32,}\b")
+_URL_QUERY_RE = re.compile(r"(https?://[^\s?]+)\?[^\s]*")
 
 
 def _redact_error_text(value: str) -> str:
     value = _LONG_TOKEN_RE.sub("[REDACTED]", value)
-    return _URL_QUERY_RE.sub(r"\\1?[REDACTED]", value)
+    return _URL_QUERY_RE.sub(r"\1?[REDACTED]", value)
 
 
 def _safe_error(response: httpx.Response) -> NeironychProviderError:
