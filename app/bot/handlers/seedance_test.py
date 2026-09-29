@@ -24,7 +24,7 @@ from app.providers.neironych_video import (
     NeironychVideoClient,
     SEEDANCE_TEST_MODELS,
 )
-from app.services.seedance_admin_tasks import SeedanceAdminTaskService
+from app.services.neironych_video_contracts import (\n    NeironychVideoContractError,\n    normalize_neironych_video_input,\n)\nfrom app.services.seedance_admin_tasks import SeedanceAdminTaskService
 
 router = Router(name="seedance-admin-test")
 
@@ -70,6 +70,14 @@ def _params_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
         ]
     )
+
+
+def _seedance_default_payload() -> dict[str, object]:
+    return {
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": 5,
+    }
 
 
 async def _authorized(
@@ -119,12 +127,23 @@ async def _enqueue(
             await callback_or_message.answer("Состояние теста устарело")
         return
 
-    payload = dict(extra_payload)
-    # Trusted selections win over raw JSON. Other keys intentionally remain
-    # untouched: this is the full provider-lab escape hatch for newly added
-    # Seedance parameters.
+    candidate = dict(extra_payload)
+    # Trusted selections win over raw JSON. Unknown future provider keys remain
+    # available to the admin lab, while known-invalid Seedance fields and
+    # combinations are rejected before a durable task can spend provider balance.
+    candidate["prompt"] = prompt
+    try:
+        payload = normalize_neironych_video_input(model_name, candidate)
+    except NeironychVideoContractError as exc:
+        text = f"Параметры Seedance невалидны: {str(exc)[:1200]}"
+        if isinstance(callback_or_message, CallbackQuery):
+            if callback_or_message.message:
+                await callback_or_message.message.answer(text)
+            await callback_or_message.answer("Проверьте параметры", show_alert=True)
+        else:
+            await callback_or_message.answer(text)
+        return
     payload["model"] = model_name
-    payload["prompt"] = prompt
     chat = (
         callback_or_message.message.chat
         if isinstance(callback_or_message, CallbackQuery) and callback_or_message.message
@@ -310,15 +329,7 @@ async def seedance_default_params(
         callback_or_message=callback,
         state=state,
         session=session,
-        extra_payload={
-            "resolution": "720p",
-            "aspect_ratio": "16:9",
-            "duration": 5,
-            "generate_audio": False,
-            "return_last_frame": False,
-            "output_format": "mp4",
-            "web_search": False,
-        },
+        extra_payload=_seedance_default_payload(),
     )
 
 
