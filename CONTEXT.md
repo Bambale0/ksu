@@ -1,3 +1,13 @@
+## Active Fix Execution — Seedance resumable content delivery (2026-09-29)
+
+- **Incident:** admin task `1f8aebf6-683a-4054-82c2-482ffa1bc286` / provider request `2130bc57-0a58-40e4-bda9-7fbaa8405ebd` reached provider completion but remained in `delivering`.
+- **Production evidence:** the Neironych `/content` endpoint returned HTTP 200 with expected size 11,386,099 bytes, then repeatedly closed the response after only ~23–25 KB. The task accumulated 13 delivery retries; the old downloader reopened the MP4 from byte 0 every time, discarding all partial progress.
+- **Provider capability:** live `Range` requests return HTTP 206 with `Content-Range` and `Accept-Ranges: bytes`.
+- **Fix:** make `NeironychVideoClient.download_content_to` persist written bytes and resume from the exact offset using bounded Range requests after transport interruptions. Validate Content-Range/total size and cap consecutive zero-progress attempts so delivery cannot spin forever inside one processing call.
+- **Scope:** admin Seedance result download/delivery only. No provider generation, billing, pricing, schema or customer generation changes.
+- **TDD:** RED regression uses an interrupted async stream that writes a prefix and raises `RemoteProtocolError`; the second request must start at the last written byte and produce the complete file.
+- **Rollback:** source revert only; no migration.
+
 ## Active Fix Execution — Neironych direct media upload contract (2026-09-29)
 
 - **Baseline:** `main@ee24c4d1aadc26635f853a1e1a51e01bd7db4dea`; branch `fix/neironych-direct-media-upload-20260929`.
