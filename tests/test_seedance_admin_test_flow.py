@@ -144,20 +144,25 @@ async def test_neironych_media_upload_uses_ticket_then_direct_storage_put() -> N
         assert request.content == content
         return httpx.Response(200)
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler),
-        base_url="https://provider.example",
-    ) as http_client:
+    transport = httpx.MockTransport(handler)
+    async with (
+        httpx.AsyncClient(
+            transport=transport,
+            base_url="https://provider.example",
+            headers={"Authorization": "Bearer api-client-default"},
+        ) as http_client,
+        httpx.AsyncClient(transport=transport) as storage_client,
+    ):
         client = NeironychVideoClient(
             "secret",
             "https://provider.example",
             client=http_client,
+            storage_client=storage_client,
         )
         media_url = await client.upload_media(
             model="seedance-2.5",
             media_type="image",
             content=content,
-            filename="photo.jpg",
             mime_type="image/jpeg",
         )
 
