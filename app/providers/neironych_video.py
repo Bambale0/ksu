@@ -524,6 +524,16 @@ def resolve_seedance_model(requested: str, available: list[str]) -> str | None:
     return None
 
 
+def enabled_seedance_test_models(available: list[str]) -> tuple[str, ...]:
+    if not available:
+        return ()
+    return tuple(
+        model_name
+        for model_name in SEEDANCE_TEST_MODELS
+        if resolve_seedance_model(model_name, available) is not None
+    )
+
+
 def is_success_status(status: str) -> bool:
     return str(status or "").lower() in _TERMINAL_SUCCESS
 

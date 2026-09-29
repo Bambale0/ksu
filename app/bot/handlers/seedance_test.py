@@ -24,6 +24,7 @@ from app.providers.neironych_video import (
     NeironychProviderError,
     NeironychVideoClient,
     SEEDANCE_TEST_MODELS,
+    enabled_seedance_test_models,
 )
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
@@ -51,27 +52,64 @@ class SeedanceTestStates(StatesGroup):
     params = State()  # Expert raw-JSON escape hatch.
 
 
-def _model_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🍌 Nano Banana Pro",
-                    callback_data="nexus-test:model:nano-banana-pro",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🎬 Seedance 2",
-                    callback_data="nexus-test:model:seedance-2.0",
-                ),
-                InlineKeyboardButton(
-                    text="🎬 Seedance 2.5",
-                    callback_data="nexus-test:model:seedance-2.5",
-                ),
-            ],
-            [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
+def _model_keyboard(
+    enabled_seedance_models: tuple[str, ...] = SEEDANCE_TEST_MODELS,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="🍌 Nano Banana Pro",
+                callback_data="nexus-test:model:nano-banana-pro",
+            )
         ]
+    ]
+    seedance_buttons: list[InlineKeyboardButton] = []
+    if "seedance-2.0" in enabled_seedance_models:
+        seedance_buttons.append(
+            InlineKeyboardButton(
+                text="🎬 Seedance 2",
+                callback_data="nexus-test:model:seedance-2.0",
+            )
+        )
+    if "seedance-2.5" in enabled_seedance_models:
+        seedance_buttons.append(
+            InlineKeyboardButton(
+                text="🎬 Seedance 2.5",
+                callback_data="nexus-test:model:seedance-2.5",
+            )
+        )
+    if seedance_buttons:
+        rows.append(seedance_buttons)
+    rows.append([InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _provider_enabled_seedance_models() -> tuple[str, ...]:
+    client = NeironychVideoClient(
+        settings.neironych_api_key,
+        settings.neironych_api_base_url,
+    )
+    try:
+        available = await client.list_models()
+    except NeironychProviderError:
+        raise
+    except Exception as exc:
+        raise NeironychProviderError(
+            "Не удалось получить список моделей Seedance у провайдера."
+        ) from exc
+    finally:
+        await client.aclose()
+    return enabled_seedance_test_models(available)
+
+
+def _seedance_unavailable_text(
+    model_name: str,
+    enabled_seedance_models: tuple[str, ...],
+) -> str:
+    available = ", ".join(enabled_seedance_models) or "нет доступных Seedance-моделей"
+    return (
+        f"Модель {model_name} сейчас не включена у провайдера. "
+        f"Доступно: {available}"
     )
 
 
@@ -349,6 +387,36 @@ async def _enqueue(
         return
     payload["model"] = model_name
 
+    try:
+        enabled_seedance_models = await _provider_enabled_seedance_models()
+    except NeironychProviderError:
+        text = (
+            "Не удалось проверить доступность Seedance у провайдера. "
+            "Задача не поставлена в очередь — попробуйте ещё раз."
+        )
+        if isinstance(callback_or_message, CallbackQuery):
+            if callback_or_message.message:
+                await callback_or_message.message.answer(text)
+            await callback_or_message.answer("Не удалось проверить модель", show_alert=True)
+        else:
+            await callback_or_message.answer(text)
+        return
+    if model_name not in enabled_seedance_models:
+        text = _seedance_unavailable_text(model_name, enabled_seedance_models)
+        if isinstance(callback_or_message, CallbackQuery):
+            if callback_or_message.message:
+                await callback_or_message.message.answer(
+                    text,
+                    reply_markup=_model_keyboard(enabled_seedance_models),
+                )
+            await callback_or_message.answer("Модель сейчас недоступна", show_alert=True)
+        else:
+            await callback_or_message.answer(
+                text,
+                reply_markup=_model_keyboard(enabled_seedance_models),
+            )
+        return
+
     chat = (
         callback_or_message.message.chat
         if isinstance(callback_or_message, CallbackQuery) and callback_or_message.message
@@ -514,9 +582,29 @@ async def admin_test_start(
         await _deny_message(message, state)
         return
     await state.clear()
+    enabled_seedance_models: tuple[str, ...] = ()
+    seedance_note = ""
+    if settings.neironych_api_key.strip():
+        try:
+            enabled_seedance_models = await _provider_enabled_seedance_models()
+        except NeironychProviderError:
+            seedance_note = (
+                "\n\n⚠️ Seedance временно скрыт: "
+                "не удалось проверить доступные модели у провайдера."
+            )
+        else:
+            if not enabled_seedance_models:
+                seedance_note = (
+                    "\n\n⚠️ Для текущего тестового контура "
+                    "нет включённых моделей Seedance."
+                )
+    else:
+        seedance_note = "\n\n⚠️ Seedance test API не настроен."
+
     await message.answer(
-        "🧪 Тест моделей\n\nВыберите модель. Тесты не списывают ROX.",
-        reply_markup=_model_keyboard(),
+        "🧪 Тест моделей\n\nВыберите модель. Тесты не списывают ROX."
+        + seedance_note,
+        reply_markup=_model_keyboard(enabled_seedance_models),
     )
 
 
@@ -593,6 +681,29 @@ async def start_seedance_test(
     if model_name not in SEEDANCE_TEST_MODELS:
         await callback.answer("Неизвестная модель", show_alert=True)
         return
+
+    try:
+        enabled_seedance_models = await _provider_enabled_seedance_models()
+    except NeironychProviderError:
+        await state.clear()
+        if callback.message:
+            await callback.message.answer(
+                "Не удалось проверить доступные модели Seedance у провайдера. "
+                "Откройте тест моделей ещё раз.",
+                reply_markup=quick_menu(is_admin=True),
+            )
+        await callback.answer("Не удалось проверить модели", show_alert=True)
+        return
+    if model_name not in enabled_seedance_models:
+        await state.clear()
+        if callback.message:
+            await callback.message.answer(
+                _seedance_unavailable_text(model_name, enabled_seedance_models),
+                reply_markup=_model_keyboard(enabled_seedance_models),
+            )
+        await callback.answer("Модель сейчас недоступна", show_alert=True)
+        return
+
     await state.set_state(SeedanceTestStates.mode)
     await state.set_data(
         {
