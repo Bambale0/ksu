@@ -1,3 +1,13 @@
+## Active Fix Execution — Seedance prompt/aspect conflict guard (2026-09-29)
+
+- **Baseline:** `main@78f448bad4f3b8b8648bf8ab4fa7da56632a43fc`; branch `fix/seedance-test-aspect-prompt-conflict-20260929`.
+- **Incident evidence:** provider request `e7f3e8b2-a00e-467e-abee-ba1fee78addc` failed with only `provider_generation_failed`. A successful request one hour earlier used the same Seedance 2.5 mode, 720p, 10 sec, generate_audio=true, the exact same prompt length/content, and the exact same reference image bytes (matching SHA-256). The only meaningful generation parameter difference was `aspect_ratio`: failed `3:4`, succeeded `9:16`.
+- **Prompt conflict:** the failed prompt explicitly declares `9:16` twice while the wizard selected `3:4`.
+- **Fix:** prompt is authoritative for aspect ratio. Before enqueue/provider spend, if a non-frame prompt contains exactly one distinct supported fixed ratio, that value overrides the wizard selection in the provider payload. If the prompt contains multiple ratios (for example, conversion instructions), do not infer intent and preserve the explicit wizard selection.
+- **Scope:** admin Seedance test wizard payload normalization only. No customer generation, provider model capability, billing, pricing, schema, or upload changes.
+- **TDD:** regression reproduces the exact 9:16-prompt/3:4-selection case and asserts the outgoing payload uses 9:16; a multi-ratio prompt keeps the selected ratio.
+- **Rollback:** source revert only.
+
 ## Active Fix Execution — Seedance resumable content delivery (2026-09-29)
 
 - **Incident:** admin task `1f8aebf6-683a-4054-82c2-482ffa1bc286` / provider request `2130bc57-0a58-40e4-bda9-7fbaa8405ebd` reached provider completion but remained in `delivering`.

@@ -167,3 +167,41 @@ def test_seedance_25_edit_requires_video_reference() -> None:
                 "reference_audios": [],
             }
         )
+
+
+def test_seedance_prompt_aspect_overrides_wizard_selection() -> None:
+    payload = build_seedance_payload(
+        {
+            "model_name": "seedance-2.5",
+            "mode": "reference",
+            "prompt": (
+                "SEEDANCE 2.5 | 10 SEC | 9:16 | ULTRA PHOTOREALISTIC\n"
+                "Создай видео ровно 10 секунд, формат 9:16. @Image1 — лицо."
+            ),
+            "resolution": "720p",
+            "duration": 10,
+            "aspect_ratio": "3:4",
+            "reference_images": ["https://media.example/a.jpg"],
+            "reference_videos": [],
+            "reference_audios": [],
+        }
+    )
+
+    assert payload["aspect_ratio"] == "9:16"
+
+
+def test_seedance_prompt_with_multiple_ratios_does_not_guess_intent() -> None:
+    payload = build_seedance_payload(
+        {
+            "model_name": "seedance-2.5",
+            "mode": "reference",
+            "prompt": "Take a 16:9 composition and adapt it to 9:16 using @Image1.",
+            "resolution": "720p",
+            "duration": 10,
+            "aspect_ratio": "3:4",
+            "reference_images": ["https://media.example/a.jpg"],
+            "reference_videos": [],
+            "reference_audios": [],
+        }
+    )
+    assert payload["aspect_ratio"] == "3:4"

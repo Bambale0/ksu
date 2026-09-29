@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -24,6 +25,19 @@ class SeedanceTestSpec:
     max_audio_refs: int
     max_total_refs: int
     supports_edit: bool
+
+
+_FIXED_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "21:9")
+_ASPECT_RATIO_RE = re.compile(
+    rf"(?<!\\d)(?:{'|'.join(re.escape(value) for value in _FIXED_ASPECT_RATIOS)})(?!\\d)"
+)
+
+
+def _single_prompt_aspect_ratio(prompt: str) -> str | None:
+    values = {match.group(0) for match in _ASPECT_RATIO_RE.finditer(prompt)}
+    if len(values) == 1:
+        return next(iter(values))
+    return None
 
 
 _SPECS: dict[str, SeedanceTestSpec] = {
@@ -97,6 +111,10 @@ def build_seedance_payload(data: Mapping[str, Any]) -> dict[str, Any]:
             aspect_ratio = "adaptive"
         elif not aspect_ratio:
             raise SeedanceWizardError("Выберите соотношение сторон.")
+        else:
+            prompt_ratio = _single_prompt_aspect_ratio(prompt)
+            if prompt_ratio is not None:
+                aspect_ratio = prompt_ratio
         payload["aspect_ratio"] = aspect_ratio
 
     images = list(data.get("reference_images") or [])
