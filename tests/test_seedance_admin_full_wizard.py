@@ -198,10 +198,10 @@ def test_seedance_prompt_with_multiple_ratios_does_not_guess_intent() -> None:
             "prompt": "Take a 16:9 composition and adapt it to 9:16 using @Image1.",
             "resolution": "720p",
             "duration": 10,
-            "aspect_ratio": "9:16",
+            "aspect_ratio": "3:4",
             "reference_images": ["https://media.example/a.jpg"],
             "reference_videos": [],
             "reference_audios": [],
         }
     )
-    assert payload["aspect_ratio"] == "9:16"
+    assert payload["aspect_ratio"] == "3:4"
