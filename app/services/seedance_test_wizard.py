@@ -113,13 +113,8 @@ def build_seedance_payload(data: Mapping[str, Any]) -> dict[str, Any]:
             raise SeedanceWizardError("Выберите соотношение сторон.")
         else:
             prompt_ratio = _single_prompt_aspect_ratio(prompt)
-            if prompt_ratio is not None and prompt_ratio != aspect_ratio:
-                raise SeedanceWizardError(
-                    "В промпте явно указан формат "
-                    f"{prompt_ratio}, а в параметрах выбран {aspect_ratio}. "
-                    "Выберите совпадающее соотношение сторон или уберите "
-                    "однозначное указание формата из промпта."
-                )
+            if prompt_ratio is not None:
+                aspect_ratio = prompt_ratio
         payload["aspect_ratio"] = aspect_ratio
 
     images = list(data.get("reference_images") or [])
