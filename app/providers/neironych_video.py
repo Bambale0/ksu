@@ -198,6 +198,15 @@ class NeironychVideoClient:
         content_type = str(mime_type or "").strip().lower()
         if not content_type:
             raise NeironychProviderError("Media content type is required")
+        expected_prefix = {
+            "image": "image/",
+            "video": "video/",
+            "audio": "audio/",
+        }[kind]
+        if not content_type.startswith(expected_prefix):
+            raise NeironychProviderError(
+                f"Media content type {content_type!r} does not match type {kind!r}"
+            )
 
         response = await self._client.post(
             "/v1/media/uploads",
@@ -222,9 +231,19 @@ class NeironychVideoClient:
                 status_code=response.status_code,
             ) from exc
 
-        source = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else payload
-        upload_url = str(source.get("upload_url") or "").strip() if isinstance(source, dict) else ""
-        media_url = str(source.get("media_url") or "").strip() if isinstance(source, dict) else ""
+        source = payload
+        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            source = payload["data"]
+        upload_url = (
+            str(source.get("upload_url") or "").strip()
+            if isinstance(source, dict)
+            else ""
+        )
+        media_url = (
+            str(source.get("media_url") or "").strip()
+            if isinstance(source, dict)
+            else ""
+        )
         try:
             upload_target = httpx.URL(upload_url)
             media_target = httpx.URL(media_url)
