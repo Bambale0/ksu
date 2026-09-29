@@ -13,6 +13,7 @@ from app.providers.neironych_video import (
     SEEDANCE_TEST_MODELS,
     is_failure_status,
     is_success_status,
+    enabled_seedance_test_models,
     resolve_seedance_model,
 )
 from app.services.neironych_video_contracts import (
@@ -30,11 +31,24 @@ def _callbacks(markup) -> list[str]:
 
 
 def test_admin_test_model_picker_exposes_nano_and_both_seedance_versions() -> None:
-    callbacks = _callbacks(_model_keyboard())
+    callbacks = _callbacks(_model_keyboard(SEEDANCE_TEST_MODELS))
     assert "nexus-test:model:nano-banana-pro" in callbacks
     assert "nexus-test:model:seedance-2.0" in callbacks
     assert "nexus-test:model:seedance-2.5" in callbacks
     assert SEEDANCE_TEST_MODELS == ("seedance-2.0", "seedance-2.5")
+
+
+def test_admin_test_model_picker_hides_provider_disabled_seedance_models() -> None:
+    callbacks = _callbacks(_model_keyboard(("seedance-2.5",)))
+    assert "nexus-test:model:nano-banana-pro" in callbacks
+    assert "nexus-test:model:seedance-2.0" not in callbacks
+    assert "nexus-test:model:seedance-2.5" in callbacks
+
+
+def test_enabled_seedance_test_models_maps_live_provider_aliases() -> None:
+    assert enabled_seedance_test_models(["seedance-2.5"]) == ("seedance-2.5",)
+    assert enabled_seedance_test_models(["seedance-2"]) == ("seedance-2.0",)
+    assert enabled_seedance_test_models(["other"]) == ()
 
 
 @pytest.mark.asyncio
@@ -324,6 +338,22 @@ def test_seedance_test_is_durable_and_registered_before_customer_router() -> Non
     assert 'payload["model"] = model_name' in handler
     assert 'candidate["prompt"] = prompt' in handler
     assert "normalize_neironych_video_input(model_name, candidate)" in handler
+
+    enqueue_body = handler[
+        handler.index("async def _enqueue(") : handler.index("async def _show_review(")
+    ]
+    assert "await _provider_enabled_seedance_models()" in enqueue_body
+    assert enqueue_body.index("await _provider_enabled_seedance_models()") < enqueue_body.index(
+        "SeedanceAdminTaskService.enqueue"
+    )
+
+    picker_body = handler[
+        handler.index("async def admin_test_start(") : handler.index(
+            "async def start_nano_banana_test("
+        )
+    ]
+    assert "await _provider_enabled_seedance_models()" in picker_body
+    assert "_model_keyboard(enabled_seedance_models)" in picker_body
 
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
     assert "SeedanceAdminTaskService.claim" in worker
