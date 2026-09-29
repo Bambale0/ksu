@@ -194,7 +194,8 @@ def test_seedance_test_is_durable_and_registered_before_customer_router() -> Non
     assert "NEIRONYCH_API_KEY" in handler
     assert "json.loads" in handler
     assert 'payload["model"] = model_name' in handler
-    assert 'payload["prompt"] = prompt' in handler
+    assert 'candidate["prompt"] = prompt' in handler
+    assert "normalize_neironych_video_input(model_name, candidate)" in handler
 
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
     assert "SeedanceAdminTaskService.claim" in worker
