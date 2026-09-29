@@ -26,6 +26,7 @@ from app.db import reference_models  # noqa: F401
 from app.db import referral_models  # noqa: F401
 from app.db import reliability_models  # noqa: F401
 from app.db import social_models  # noqa: F401
+from app.db import seedance_test_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

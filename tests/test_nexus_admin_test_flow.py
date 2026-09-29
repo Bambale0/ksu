@@ -251,7 +251,8 @@ def test_handler_rechecks_live_admin_and_enqueues_durable_nexus_job() -> None:
     worker = Path("app/workers/nexus_test.py").read_text(encoding="utf-8")
     assert "NexusAdminTaskService.claim" in worker
     assert "NexusAdminTaskService.process" in worker
-    assert "if bot is None or not settings.nexus_api_key.strip()" in worker
+    assert "nexus_enabled = bool(settings.nexus_api_key.strip())" in worker
+    assert "seedance_enabled = bool(settings.neironych_api_key.strip())" in worker
     assert "await _heartbeat(redis)" in worker
 
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
