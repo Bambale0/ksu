@@ -13,6 +13,7 @@ from app.providers.neironych_video import (
     SEEDANCE_TEST_MODELS,
     is_failure_status,
     is_success_status,
+    resolve_seedance_model,
 )
 
 
@@ -153,6 +154,19 @@ async def test_seedance_provider_error_is_bounded_and_redacts_long_tokens() -> N
     assert caught.value.status_code == 422
     assert secret not in str(caught.value)
     assert "[REDACTED]" in str(caught.value)
+
+
+def test_seedance_model_resolver_accepts_live_aliases() -> None:
+    assert resolve_seedance_model("seedance-2.0", ["seedance-2"]) == "seedance-2"
+    assert (
+        resolve_seedance_model(
+            "seedance-2.0",
+            ["bytedance/seedance-2.0"],
+        )
+        == "bytedance/seedance-2.0"
+    )
+    assert resolve_seedance_model("seedance-2.5", ["seedance-2.5"]) == "seedance-2.5"
+    assert resolve_seedance_model("seedance-2.5", ["other"]) is None
 
 
 def test_seedance_status_normalization() -> None:
