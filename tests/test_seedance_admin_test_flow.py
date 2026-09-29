@@ -113,6 +113,64 @@ async def test_seedance_client_uses_documented_async_video_contract_and_raw_pass
 
 
 @pytest.mark.asyncio
+async def test_neironych_media_upload_uses_ticket_then_direct_storage_put() -> None:
+    content = b"telegram-photo-bytes"
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            assert request.url.path == "/v1/media/uploads"
+            assert request.headers["Authorization"] == "Bearer secret"
+            assert request.headers["Content-Type"].startswith("application/json")
+            assert json.loads(request.content) == {
+                "model": "seedance-2.5",
+                "type": "image",
+                "content_type": "image/jpeg",
+                "size_bytes": len(content),
+            }
+            return httpx.Response(
+                200,
+                json={
+                    "upload_url": "https://storage.example/presigned/photo",
+                    "media_url": "https://cdn.example/reference/photo.jpg",
+                },
+            )
+
+        assert request.method == "PUT"
+        assert request.url == httpx.URL("https://storage.example/presigned/photo")
+        assert "Authorization" not in request.headers
+        assert request.headers["Content-Type"] == "image/jpeg"
+        assert request.content == content
+        return httpx.Response(200)
+
+    transport = httpx.MockTransport(handler)
+    async with (
+        httpx.AsyncClient(
+            transport=transport,
+            base_url="https://provider.example",
+            headers={"Authorization": "Bearer api-client-default"},
+        ) as http_client,
+        httpx.AsyncClient(transport=transport) as storage_client,
+    ):
+        client = NeironychVideoClient(
+            "secret",
+            "https://provider.example",
+            client=http_client,
+            storage_client=storage_client,
+        )
+        media_url = await client.upload_media(
+            model="seedance-2.5",
+            media_type="image",
+            content=content,
+            mime_type="image/jpeg",
+        )
+
+    assert media_url == "https://cdn.example/reference/photo.jpg"
+    assert [request.method for request in requests] == ["POST", "PUT"]
+
+
+@pytest.mark.asyncio
 async def test_seedance_client_rejects_unsupported_model_and_short_idempotency_key() -> None:
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(500)),

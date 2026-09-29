@@ -125,6 +125,7 @@ class NeironychVideoClient:
         base_url: str,
         *,
         client: httpx.AsyncClient | None = None,
+        storage_client: httpx.AsyncClient | None = None,
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
@@ -136,6 +137,7 @@ class NeironychVideoClient:
             timeout=httpx.Timeout(60.0, connect=10.0),
             follow_redirects=True,
         )
+        self._storage_client = storage_client
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -180,16 +182,44 @@ class NeironychVideoClient:
     async def upload_media(
         self,
         *,
+        model: str,
+        media_type: str,
         content: bytes,
-        filename: str,
         mime_type: str,
     ) -> str:
+        if model not in SEEDANCE_TEST_MODELS:
+            raise NeironychProviderError(f"Unsupported admin-test model: {model}")
+        kind = str(media_type or "").strip().lower()
+        if kind not in {"image", "video", "audio"}:
+            raise NeironychProviderError(f"Unsupported media type: {media_type}")
         if not content:
             raise NeironychProviderError("Cannot upload an empty media file")
+
+        content_type = str(mime_type or "").strip().lower()
+        if not content_type:
+            raise NeironychProviderError("Media content type is required")
+        expected_prefix = {
+            "image": "image/",
+            "video": "video/",
+            "audio": "audio/",
+        }[kind]
+        if not content_type.startswith(expected_prefix):
+            raise NeironychProviderError(
+                f"Media content type {content_type!r} does not match type {kind!r}"
+            )
+
         response = await self._client.post(
             "/v1/media/uploads",
-            headers=self._headers(),
-            files={"file": (filename or "media.bin", content, mime_type or "application/octet-stream")},
+            headers={
+                **self._headers(),
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "type": kind,
+                "content_type": content_type,
+                "size_bytes": len(content),
+            },
         )
         if not response.is_success:
             raise _safe_error(response)
@@ -197,23 +227,62 @@ class NeironychVideoClient:
             payload = response.json()
         except json.JSONDecodeError as exc:
             raise NeironychProviderError(
-                "Neironych API returned malformed JSON for media upload",
+                "Neironych API returned malformed JSON for media upload ticket",
                 status_code=response.status_code,
             ) from exc
-        url = ""
-        if isinstance(payload, dict):
-            url = str(payload.get("url") or payload.get("media_url") or "").strip()
-            if not url and isinstance(payload.get("data"), dict):
-                url = str(
-                    payload["data"].get("url")
-                    or payload["data"].get("media_url")
-                    or ""
-                ).strip()
-        if not url:
+
+        source = payload
+        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            source = payload["data"]
+        upload_url = (
+            str(source.get("upload_url") or "").strip()
+            if isinstance(source, dict)
+            else ""
+        )
+        media_url = (
+            str(source.get("media_url") or "").strip()
+            if isinstance(source, dict)
+            else ""
+        )
+        try:
+            upload_target = httpx.URL(upload_url)
+            media_target = httpx.URL(media_url)
+        except Exception as exc:
+            raise NeironychProviderError("Neironych media upload ticket contains invalid URLs") from exc
+        if (
+            upload_target.scheme != "https"
+            or not upload_target.host
+            or media_target.scheme != "https"
+            or not media_target.host
+        ):
             raise NeironychProviderError(
-                f"Neironych API upload response has no media URL: {str(payload)[:800]}"
+                "Neironych media upload ticket must contain HTTPS upload_url and media_url"
             )
-        return url
+
+        # The storage URL is pre-signed. Never forward the Neironych Bearer
+        # token (or any Telegram token-bearing URL) to the storage host.
+        if self._storage_client is not None:
+            uploaded = await self._storage_client.put(
+                upload_target,
+                content=content,
+                headers={"Content-Type": content_type},
+            )
+        else:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(120.0, connect=10.0),
+                follow_redirects=True,
+            ) as storage_client:
+                uploaded = await storage_client.put(
+                    upload_target,
+                    content=content,
+                    headers={"Content-Type": content_type},
+                )
+        if not uploaded.is_success:
+            raise NeironychProviderError(
+                f"Media storage upload HTTP {uploaded.status_code}",
+                status_code=uploaded.status_code,
+            )
+        return str(media_target)
 
     async def create_video(
         self,

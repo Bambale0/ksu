@@ -1,3 +1,13 @@
+## Active Fix Execution — Neironych direct media upload contract (2026-09-29)
+
+- **Baseline:** `main@ee24c4d1aadc26635f853a1e1a51e01bd7db4dea`; branch `fix/neironych-direct-media-upload-20260929`.
+- **User-visible symptom/risk:** the Seedance admin-test client currently sends file bytes as multipart directly to `POST /v1/media/uploads`, which does not match the provider contract and can prevent reference uploads from working.
+- **Correct provider flow:** for a local Telegram file, download bytes server-side; request an upload ticket with JSON `{model,type,content_type,size_bytes}` using the Neironych Bearer token; PUT raw bytes to the returned `upload_url` with only the content type; use returned `media_url` in Seedance reference fields. If an already-public HTTPS media URL is supplied, no upload is needed.
+- **Security invariant:** the Neironych API key is sent only to the Neironych API request. It must never be forwarded to the storage `upload_url`. Telegram Bot API file URLs/tokens are never used as provider references.
+- **Scope:** provider media-upload adapter + Seedance admin-test upload caller + contract tests. No billing, customer generation, schema, pricing or queue changes.
+- **TDD:** RED test first asserts JSON ticket metadata, direct storage PUT, byte-for-byte content, and absence of Authorization on storage.
+- **Rollback:** source revert only; no migration.
+
 ## Active Feature Execution — Full Seedance admin-test wizard (2026-09-29)
 
 - **Baseline:** `main@f6127b23d3ee5c3064debe147786ffa602945136`; branch `feat/seedance-admin-test-full-wizard-20260929`.
