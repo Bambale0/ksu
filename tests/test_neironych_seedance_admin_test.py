@@ -24,14 +24,6 @@ def test_neironych_provider_adapter_exists() -> None:
     assert PROVIDER_PATH.exists(), "Seedance admin test requires a dedicated Neironych adapter"
 
 
-def test_admin_test_exposes_seedance_20_and_25_model_selection() -> None:
-    source = HANDLER_PATH.read_text(encoding="utf-8")
-    assert "seedance-2.0" in source
-    assert "seedance-2.5" in source
-    assert "nexus-test:model:" in source
-    assert "nexus-test:seedance-mode:" in source
-
-
 @pytest.mark.asyncio
 async def test_neironych_seedance_25_reference_payload_and_idempotency() -> None:
     provider = _provider()
@@ -231,6 +223,14 @@ async def test_neironych_poll_and_content_use_authenticated_video_endpoints(tmp_
         ("GET", "/v1/videos/req-1"),
         ("GET", "/v1/videos/req-1/content"),
     ]
+
+
+def test_admin_test_exposes_seedance_20_and_25_model_selection() -> None:
+    source = HANDLER_PATH.read_text(encoding="utf-8")
+    assert "seedance-2.0" in source
+    assert "seedance-2.5" in source
+    assert "nexus-test:model:" in source
+    assert "nexus-test:seedance-mode:" in source
 
 
 def test_seedance_admin_flow_covers_full_documented_modes_and_ranges() -> None:
