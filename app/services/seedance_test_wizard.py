@@ -29,7 +29,7 @@ class SeedanceTestSpec:
 
 _FIXED_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "21:9")
 _ASPECT_RATIO_RE = re.compile(
-    r"(?<!\\d)(?:1:1|16:9|9:16|4:3|3:4|21:9)(?!\\d)"
+    rf"(?<!\\d)(?:{'|'.join(re.escape(value) for value in _FIXED_ASPECT_RATIOS)})(?!\\d)"
 )
 
 
