@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,15 @@ class NeironychProviderError(RuntimeError):
         self.payload = payload
 
 
+_LONG_TOKEN_RE = re.compile(r"(?i)\\b[a-f0-9]{32,}\\b")
+_URL_QUERY_RE = re.compile(r"(https?://[^\\s?]+)\\?[^\\s]*")
+
+
+def _redact_error_text(value: str) -> str:
+    value = _LONG_TOKEN_RE.sub("[REDACTED]", value)
+    return _URL_QUERY_RE.sub(r"\\1?[REDACTED]", value)
+
+
 def _safe_error(response: httpx.Response) -> NeironychProviderError:
     try:
         payload: Any = response.json()
@@ -46,7 +56,7 @@ def _safe_error(response: httpx.Response) -> NeironychProviderError:
     # The provider may echo upload URLs/tokens in errors. Never persist an
     # unbounded upstream body in logs or the admin task row.
     return NeironychProviderError(
-        f"Neironych API HTTP {response.status_code}: {message[:800]}",
+        f"Neironych API HTTP {response.status_code}: {_redact_error_text(message)[:800]}",
         status_code=response.status_code,
         payload=payload,
     )
