@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from io import BytesIO
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -18,7 +19,7 @@ from app.bot.handlers.nexus_test import (
 from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
 from app.core.config import settings
 from app.providers.nexus import NANO_BANANA_PRO_MAX_REFERENCES
-from app.providers.neironych_video import SEEDANCE_TEST_MODELS
+from app.providers.neironych_video import NeironychProviderError, NeironychVideoClient, SEEDANCE_TEST_MODELS
 from app.services.seedance_admin_tasks import SeedanceAdminTaskService
 
 router = Router(name="seedance-admin-test")
@@ -41,7 +42,7 @@ def _model_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="🎬 Seedance 2",
-                    callback_data="nexus-test:model:seedance-2",
+                    callback_data="nexus-test:model:seedance-2.0",
                 ),
                 InlineKeyboardButton(
                     text="🎬 Seedance 2.5",
@@ -277,7 +278,9 @@ async def seedance_prompt(
     await state.set_state(SeedanceTestStates.params)
     await message.answer(
         "Теперь можно либо запустить базовый запрос, либо прислать JSON-объект "
-        "с любыми дополнительными параметрами из актуальной документации API.\n\n"
+        "с любыми дополнительными параметрами из актуальной документации API. "
+        "Фото, видео, аудио или document можно отправить прямо сюда: бот загрузит "
+        "файл в /v1/media/uploads и вернёт URL для JSON.\n\n"
         "Пример: {\"duration\": 8, \"aspect_ratio\": \"9:16\", "
         "\"resolution\": \"720p\"}\n\n"
         "Поля model и prompt задаются ботом и из JSON не переопределяются.",
@@ -295,7 +298,95 @@ async def seedance_default_params(
         callback_or_message=callback,
         state=state,
         session=session,
-        extra_payload={},
+        extra_payload={
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+            "duration": 5,
+            "generate_audio": False,
+            "return_last_frame": False,
+            "output_format": "mp4",
+            "web_search": False,
+        },
+    )
+
+
+@router.message(
+    SeedanceTestStates.params,
+    F.photo | F.video | F.audio | F.document,
+)
+async def seedance_upload_media(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    telegram_id = message.from_user.id if message.from_user else None
+    if not await _authorized(state, session, telegram_id):
+        await _deny_message(message, state)
+        return
+
+    file_id = ""
+    filename = "media.bin"
+    mime_type = "application/octet-stream"
+    file_size = 0
+    if message.photo:
+        item = message.photo[-1]
+        file_id = item.file_id
+        filename = f"{item.file_unique_id}.jpg"
+        mime_type = "image/jpeg"
+        file_size = int(item.file_size or 0)
+    elif message.video:
+        item = message.video
+        file_id = item.file_id
+        filename = item.file_name or f"{item.file_unique_id}.mp4"
+        mime_type = item.mime_type or "video/mp4"
+        file_size = int(item.file_size or 0)
+    elif message.audio:
+        item = message.audio
+        file_id = item.file_id
+        filename = item.file_name or f"{item.file_unique_id}.mp3"
+        mime_type = item.mime_type or "audio/mpeg"
+        file_size = int(item.file_size or 0)
+    elif message.document:
+        item = message.document
+        file_id = item.file_id
+        filename = item.file_name or f"{item.file_unique_id}.bin"
+        mime_type = item.mime_type or "application/octet-stream"
+        file_size = int(item.file_size or 0)
+
+    if not file_id:
+        await message.answer("Не удалось определить Telegram file_id.")
+        return
+    if file_size and file_size > settings.neironych_test_max_video_bytes:
+        await message.answer("Файл больше лимита тестового контура.")
+        return
+
+    buffer = BytesIO()
+    try:
+        await message.bot.download(file_id, destination=buffer)
+        content = buffer.getvalue()
+        if len(content) > settings.neironych_test_max_video_bytes:
+            await message.answer("Файл больше лимита тестового контура.")
+            return
+        client = NeironychVideoClient(
+            settings.neironych_api_key,
+            settings.neironych_api_base_url,
+        )
+        try:
+            url = await client.upload_media(
+                content=content,
+                filename=filename,
+                mime_type=mime_type,
+            )
+        finally:
+            await client.aclose()
+    except NeironychProviderError as exc:
+        await message.answer(f"Не удалось загрузить media: {str(exc)[:800]}")
+        return
+
+    await message.answer(
+        "✅ Media загружено. Вставьте этот URL в нужное поле JSON "
+        "(first_frame_url / last_frame_url / reference_*_urls):\n"
+        f"{url}"
     )
 
 
