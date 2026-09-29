@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from app.services.neironych_video_contracts import (\n    NeironychVideoContractError,\n    normalize_neironych_video_input,\n)\n\nlogger = logging.getLogger(__name__)
 
 SEEDANCE_TEST_MODELS = ("seedance-2.0", "seedance-2.5")
 _SEEDANCE_MODEL_ALIASES = {
@@ -223,10 +223,11 @@ class NeironychVideoClient:
         if len(idem) < 8 or len(idem) > 160:
             raise NeironychProviderError("Idempotency-Key must contain 8..160 characters")
 
-        request_payload = dict(payload)
-        # Identity is selected in trusted admin UI and cannot be overridden by
-        # raw JSON. Everything else is intentionally passed through so the lab
-        # follows provider additions without an app release.
+        try:
+            request_payload = normalize_neironych_video_input(model, payload)
+        except NeironychVideoContractError as exc:
+            raise NeironychProviderError(str(exc), status_code=422) from exc
+        # Identity is selected in trusted admin UI / runtime model resolution.
         request_payload["model"] = model
         response = await self._client.post(
             "/v1/videos/generations",
