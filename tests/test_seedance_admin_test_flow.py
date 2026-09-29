@@ -11,9 +11,9 @@ from app.providers.neironych_video import (
     NeironychProviderError,
     NeironychVideoClient,
     SEEDANCE_TEST_MODELS,
+    enabled_seedance_test_models,
     is_failure_status,
     is_success_status,
-    enabled_seedance_test_models,
     resolve_seedance_model,
 )
 from app.services.neironych_video_contracts import (
