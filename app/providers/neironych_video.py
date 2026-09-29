@@ -200,7 +200,7 @@ class NeironychVideoClient:
         payload: dict[str, Any],
         idempotency_key: str,
     ) -> str:
-        if model not in SEEDANCE_TEST_MODELS:
+        if model not in _SUPPORTED_PROVIDER_MODELS:
             raise NeironychProviderError(f"Unsupported admin-test model: {model}")
         idem = str(idempotency_key or "").strip()
         if len(idem) < 8 or len(idem) > 160:
