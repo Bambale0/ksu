@@ -10,7 +10,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SEEDANCE_TEST_MODELS = ("seedance-2", "seedance-2.5")
+SEEDANCE_TEST_MODELS = ("seedance-2.0", "seedance-2.5")\n_SEEDANCE_MODEL_ALIASES = {\n    "seedance-2.0": ("seedance-2.0", "seedance-2", "bytedance/seedance-2.0", "bytedance/seedance-2"),\n    "seedance-2.5": ("seedance-2.5", "bytedance/seedance-2.5"),\n}
 _TERMINAL_SUCCESS = frozenset({"completed", "succeeded", "success", "done", "ready"})
 _TERMINAL_FAILURE = frozenset({"failed", "error", "cancelled", "canceled"})
 
@@ -155,6 +155,44 @@ class NeironychVideoClient:
                     result.append(value)
         return result
 
+    async def upload_media(
+        self,
+        *,
+        content: bytes,
+        filename: str,
+        mime_type: str,
+    ) -> str:
+        if not content:
+            raise NeironychProviderError("Cannot upload an empty media file")
+        response = await self._client.post(
+            "/v1/media/uploads",
+            headers=self._headers(),
+            files={"file": (filename or "media.bin", content, mime_type or "application/octet-stream")},
+        )
+        if not response.is_success:
+            raise _safe_error(response)
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise NeironychProviderError(
+                "Neironych API returned malformed JSON for media upload",
+                status_code=response.status_code,
+            ) from exc
+        url = ""
+        if isinstance(payload, dict):
+            url = str(payload.get("url") or payload.get("media_url") or "").strip()
+            if not url and isinstance(payload.get("data"), dict):
+                url = str(
+                    payload["data"].get("url")
+                    or payload["data"].get("media_url")
+                    or ""
+                ).strip()
+        if not url:
+            raise NeironychProviderError(
+                f"Neironych API upload response has no media URL: {str(payload)[:800]}"
+            )
+        return url
+
     async def create_video(
         self,
         *,
@@ -258,6 +296,17 @@ class NeironychVideoClient:
         if total <= 0:
             raise NeironychProviderError("Neironych API returned empty video content")
         return content_type or "video/mp4"
+
+
+def resolve_seedance_model(requested: str, available: list[str]) -> str | None:
+    if not available:
+        return requested if requested in SEEDANCE_TEST_MODELS else None
+    aliases = _SEEDANCE_MODEL_ALIASES.get(requested, (requested,))
+    exact = {item.strip(): item.strip() for item in available if item.strip()}
+    for candidate in aliases:
+        if candidate in exact:
+            return exact[candidate]
+    return None
 
 
 def is_success_status(status: str) -> bool:
