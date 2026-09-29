@@ -132,9 +132,14 @@ def build_seedance_payload(data: Mapping[str, Any]) -> dict[str, Any]:
         payload["generate_audio"] = True
 
     try:
-        return normalize_neironych_video_input(model_name, payload)
+        normalized = normalize_neironych_video_input(model_name, payload)
     except NeironychVideoContractError as exc:
         raise SeedanceWizardError(str(exc)) from exc
+
+    # Prompt is validated here for length/reference integrity, but the durable
+    # enqueue boundary owns the trusted prompt value and injects it again.
+    normalized.pop("prompt", None)
+    return normalized
 
 
 def reference_counts(data: Mapping[str, Any]) -> tuple[int, int, int]:
