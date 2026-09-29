@@ -21,6 +21,7 @@ from app.providers.neironych_video import (
     NeironychVideoClient,
     is_failure_status,
     is_success_status,
+    resolve_seedance_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,14 +144,15 @@ class SeedanceAdminTaskService:
         )
         try:
             models = await client.list_models()
-            if models and model_name not in models:
+            provider_model = resolve_seedance_model(model_name, models)
+            if provider_model is None:
                 raise NeironychProviderError(
                     f"Модель {model_name} сейчас не включена у провайдера. "
                     f"Доступно: {', '.join(models[:30]) or 'нет моделей'}",
                     status_code=422,
                 )
             external_id = await client.create_video(
-                model=model_name,
+                model=provider_model,
                 payload=payload,
                 idempotency_key=idempotency_key,
             )
