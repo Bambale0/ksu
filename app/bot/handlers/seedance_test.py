@@ -19,7 +19,11 @@ from app.bot.handlers.nexus_test import (
 from app.bot.keyboards import QUICK_TEST_TEXT, quick_menu
 from app.core.config import settings
 from app.providers.nexus import NANO_BANANA_PRO_MAX_REFERENCES
-from app.providers.neironych_video import NeironychProviderError, NeironychVideoClient, SEEDANCE_TEST_MODELS
+from app.providers.neironych_video import (
+    NeironychProviderError,
+    NeironychVideoClient,
+    SEEDANCE_TEST_MODELS,
+)
 from app.services.seedance_admin_tasks import SeedanceAdminTaskService
 
 router = Router(name="seedance-admin-test")
@@ -121,7 +125,11 @@ async def _enqueue(
     # Seedance parameters.
     payload["model"] = model_name
     payload["prompt"] = prompt
-    chat = callback_or_message.message.chat if isinstance(callback_or_message, CallbackQuery) and callback_or_message.message else getattr(callback_or_message, "chat", None)
+    chat = (
+        callback_or_message.message.chat
+        if isinstance(callback_or_message, CallbackQuery) and callback_or_message.message
+        else getattr(callback_or_message, "chat", None)
+    )
     if chat is None:
         await state.clear()
         return
@@ -208,10 +216,14 @@ async def start_nano_banana_test(
     await callback.answer()
 
 
-@router.callback_query(F.data.in_({
-    "nexus-test:model:seedance-2",
-    "nexus-test:model:seedance-2.5",
-}))
+@router.callback_query(
+    F.data.in_(
+        {
+            "nexus-test:model:seedance-2.0",
+            "nexus-test:model:seedance-2.5",
+        }
+    )
+)
 async def start_seedance_test(
     callback: CallbackQuery,
     state: FSMContext,
