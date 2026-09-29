@@ -7,7 +7,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMessage
 from sqlalchemy import func, select
 
@@ -28,6 +28,8 @@ class FakeBot:
         self.calls: list[tuple[int, str]] = []
         self.media_calls: list[dict[str, object]] = []
         self.message_calls: list[dict[str, object]] = []
+        self.media_group_calls: list[dict[str, object]] = []
+        self.fail_action_message = False
 
     async def send_message(
         self,
@@ -37,6 +39,13 @@ class FakeBot:
         reply_markup=None,
         parse_mode=None,
     ):  # type: ignore[no-untyped-def]
+        if self.fail_action_message and text == "Действия с результатом":
+            self.fail_action_message = False
+            raise TelegramRetryAfter(
+                method=SendMessage(chat_id=chat_id, text=text),
+                message="retry after",
+                retry_after=30,
+            )
         self.calls.append((chat_id, text))
         self.message_calls.append(
             {
@@ -101,6 +110,16 @@ class FakeBot:
             }
         )
         return SimpleNamespace(message_id=780)
+
+    async def send_media_group(self, *, chat_id: int, media: list[object]):  # type: ignore[no-untyped-def]
+        call = {
+            "method": "media_group",
+            "chat_id": chat_id,
+            "media": media,
+        }
+        self.media_group_calls.append(call)
+        self.media_calls.append(call)
+        return [SimpleNamespace(message_id=880 + index) for index, _ in enumerate(media)]
 
 
 @pytest.mark.asyncio
@@ -250,6 +269,162 @@ async def test_generation_result_is_delivered_as_media_and_recorded(monkeypatch:
         assert generation.telegram_notification_status == "sent"
         assert generation.telegram_notification_sent_at is not None
         assert generation.telegram_message_id == "778"
+
+
+@pytest.mark.asyncio
+async def test_multi_image_generation_result_is_delivered_as_album(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    bot = FakeBot()
+    urls = [
+        "https://cdn.example/result-1.png",
+        "https://cdn.example/result-2.png",
+        "https://cdn.example/result-3.png",
+    ]
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=970000100000000 + (uuid.uuid4().int % 1_000_000),
+            first_name="Album",
+        )
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="image",
+            status="queued",
+            prompt="portrait set",
+            cost_rox=Decimal("45.00"),
+            parameters={"_model_id": "nano-banana-pro"},
+        )
+        session.add(generation)
+        await session.commit()
+        generation.status = "succeeded"
+        generation.result_url = urls[0]
+        generation.parameters = {
+            **generation.parameters,
+            "_result_urls": urls,
+        }
+        await session.commit()
+
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
+        assert notification is not None
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 1
+        generation.telegram_notification_status = "sending"
+        await session.commit()
+        delivery_id = delivery.id
+        generation_id = generation.id
+
+    await _process_delivery(bot, delivery_id)
+
+    assert len(bot.media_group_calls) == 1
+    album_call = bot.media_group_calls[0]
+    media = album_call["media"]
+    assert isinstance(media, list)
+    assert [item.media for item in media] == urls
+    captions = [item.caption for item in media]
+    assert "✅ Генерация завершена" in str(captions[0])
+    assert "NanoBanana PRO" in str(captions[0])
+    assert "3 фото" in str(captions[0])
+    assert captions[1:] == [None, None]
+    assert not any(call["method"] == "photo" for call in bot.media_calls)
+    action_messages = [
+        call for call in bot.media_calls
+        if call["method"] == "message" and call["text"] == "Действия с результатом"
+    ]
+    assert len(action_messages) == 1
+    keyboard = action_messages[0]["reply_markup"]
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    assert "📥 Скачать оригинал" in labels
+    assert "🚀 Открыть в ROXY" in labels
+
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        generation = await session.get(Generation, generation_id)
+        assert delivery is not None
+        assert generation is not None
+        assert delivery.status == "sent"
+        assert delivery.external_message_id == "880"
+        assert generation.telegram_notification_status == "sent"
+        assert generation.telegram_notification_sent_at is not None
+        assert generation.telegram_message_id == "880"
+
+
+@pytest.mark.asyncio
+async def test_multi_image_album_action_failure_does_not_retry_album(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    bot = FakeBot()
+    bot.fail_action_message = True
+    urls = [
+        "https://cdn.example/action-fail-1.png",
+        "https://cdn.example/action-fail-2.png",
+    ]
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=970000200000000 + (uuid.uuid4().int % 1_000_000),
+            first_name="Album actions",
+        )
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="image",
+            status="queued",
+            prompt="portrait set",
+            cost_rox=Decimal("45.00"),
+            parameters={"_model_id": "nano-banana-pro"},
+        )
+        session.add(generation)
+        await session.commit()
+        generation.status = "succeeded"
+        generation.result_url = urls[0]
+        generation.parameters = {
+            **generation.parameters,
+            "_result_urls": urls,
+        }
+        await session.commit()
+
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
+        assert notification is not None
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 1
+        generation.telegram_notification_status = "sending"
+        await session.commit()
+        delivery_id = delivery.id
+        generation_id = generation.id
+
+    await _process_delivery(bot, delivery_id)
+
+    assert len(bot.media_group_calls) == 1
+    assert bot.message_calls == []
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        generation = await session.get(Generation, generation_id)
+        assert delivery is not None
+        assert generation is not None
+        assert delivery.status == "sent"
+        assert delivery.external_message_id == "880"
+        assert generation.telegram_notification_status == "sent"
+        assert generation.telegram_message_id == "880"
 
 
 @pytest.mark.asyncio

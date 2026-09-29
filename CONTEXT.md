@@ -1,3 +1,17 @@
+## Active Feature Execution — Telegram generation image albums (2026-09-29)
+
+- **Baseline:** `main@0e29444a49adda0982b8adad6b2c91109ee7363a`.
+- **User-visible request:** when one generation returns several images, Telegram should deliver those images together instead of sending/exposing only the first result.
+- **Evidence:** `_generation_result_urls` already collects all HTTP(S) result URLs from `generation.result_url` and `parameters._result_urls`, but `_send_generation_success` passes only `urls[0]` into `send_generation_result_media`. There is no `send_media_group` path in generation-result delivery.
+- **Reuse:** keep existing single-result media delivery, durable fallback, generation notification status sync, action context creation, and caption/keyboard formatting. Add only a photo-album fast path for multi-image results.
+- **Constraints:** Telegram media groups cannot carry the existing inline keyboard on the album itself; result images will be grouped in one album and action buttons may be sent as a separate follow-up message.
+- **Scope:** no provider, billing, schema, pricing, auth, feed, or Mini App contract changes.
+- **Acceptance:** 2-10 image result URLs for an image generation are sent via Telegram media group with the success caption on the first item; delivery is marked sent using the first album message id; video/audio and single-image generations keep the existing native media path; album Telegram media-format failures fall back to the existing single-result path.
+- **Verification matrix:** unit/domain=N/A; database/repository=existing notification delivery integration seam; authorization=N/A; migrations=N/A; provider/external contract=N/A; idempotency/retry=existing outbox status path preserved; API=N/A; frontend/Mini App=N/A; smoke/deployability=compile/test; observability=existing delivery retry/error logging plus album fallback log; no-hardcode/admin=N/A; performance/query-shape=N/A; rollback=source revert.
+- **Guidance:** local `.agents/skills/diagnosing-bugs/SKILL.md` for a notification regression at the real delivery seam; `Bambale0/claw` small/reviewable/tested-change discipline; `wondelai/skills` characterization/regression testing guidance; `agentskills/agentskills` progressive-disclosure skill model; `anthropics/skills` webapp-testing checked but N/A for backend Telegram delivery; `Bambale0/dev-agents-pack` PR/checklist search found no Telegram-specific guidance.
+- **Review adjustment:** if the album succeeds but the follow-up action-button message fails, the worker now records/logs the action failure and still marks the album delivery sent, preventing duplicate albums on outbox retry.
+- **Verification:** focused album notification regressions passed 2/2; Telegram delivery source contract passed 1/1; Ruff and compileall passed on changed backend/test files. PR #509 exact-head CI passed before the review adjustment and will be rerun after the fix push.
+
 ## Active Feature Execution — Mini App media and repeat-load performance (2026-09-26)
 
 - **Baseline:** `main@e6d42837eeb6c3d1cf519f4168f15a0d3d03e462`. Existing PR #494 for route-level code splitting is open with red CI and separate review findings; this slice targets measured media/network cost without duplicating that branch.

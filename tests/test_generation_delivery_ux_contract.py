@@ -70,6 +70,7 @@ def test_generation_model_tracks_telegram_delivery_fields() -> None:
         assert token in worker
     assert "send_generation_result_media" in worker
     assert "send_photo" in media_delivery
+    assert "send_media_group" in media_delivery
     assert "send_video" in media_delivery
     assert "🚀 Открыть в ROXY" in worker
     assert "📥 Скачать оригинал" in worker

@@ -25,7 +25,10 @@ from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
-from app.services.telegram_generation_media import send_generation_result_media
+from app.services.telegram_generation_media import (
+    send_generation_result_image_album,
+    send_generation_result_media,
+)
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "notification-worker"
@@ -359,12 +362,39 @@ async def _send_generation_success(  # type: ignore[no-untyped-def]
     if not result_url:
         return await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
 
+    media_type = _generation_media_type(generation)
+    if media_type == "image" and len(urls) > 1:
+        album_message = await send_generation_result_image_album(
+            bot,
+            chat_id=chat_id,
+            generation=generation,
+            result_urls=urls,
+            caption=text,
+        )
+        if album_message is not None:
+            if keyboard is not None:
+                try:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text="Действия с результатом",
+                        reply_markup=keyboard,
+                    )
+                except TelegramAPIError as exc:
+                    logger.info(
+                        "generation_notification_album_actions_failed",
+                        extra={
+                            "generation_id": str(generation.id),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+            return album_message
+
     return await send_generation_result_media(
         bot,
         session=session,
         chat_id=chat_id,
         generation=generation,
-        media_type=_generation_media_type(generation),
+        media_type=media_type,
         result_url=result_url,
         caption=text,
         reply_markup=keyboard,
