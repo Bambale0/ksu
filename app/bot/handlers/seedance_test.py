@@ -24,6 +24,7 @@ from app.providers.neironych_video import (
     NeironychProviderError,
     NeironychVideoClient,
     SEEDANCE_TEST_MODELS,
+    enabled_seedance_test_models,
 )
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
@@ -51,27 +52,64 @@ class SeedanceTestStates(StatesGroup):
     params = State()  # Expert raw-JSON escape hatch.
 
 
-def _model_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🍌 Nano Banana Pro",
-                    callback_data="nexus-test:model:nano-banana-pro",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🎬 Seedance 2",
-                    callback_data="nexus-test:model:seedance-2.0",
-                ),
-                InlineKeyboardButton(
-                    text="🎬 Seedance 2.5",
-                    callback_data="nexus-test:model:seedance-2.5",
-                ),
-            ],
-            [InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")],
+def _model_keyboard(
+    enabled_seedance_models: tuple[str, ...] = SEEDANCE_TEST_MODELS,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                text="🍌 Nano Banana Pro",
+                callback_data="nexus-test:model:nano-banana-pro",
+            )
         ]
+    ]
+    seedance_buttons: list[InlineKeyboardButton] = []
+    if "seedance-2.0" in enabled_seedance_models:
+        seedance_buttons.append(
+            InlineKeyboardButton(
+                text="🎬 Seedance 2",
+                callback_data="nexus-test:model:seedance-2.0",
+            )
+        )
+    if "seedance-2.5" in enabled_seedance_models:
+        seedance_buttons.append(
+            InlineKeyboardButton(
+                text="🎬 Seedance 2.5",
+                callback_data="nexus-test:model:seedance-2.5",
+            )
+        )
+    if seedance_buttons:
+        rows.append(seedance_buttons)
+    rows.append([InlineKeyboardButton(text="Отмена", callback_data="nexus-test:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _provider_enabled_seedance_models() -> tuple[str, ...]:
+    client = NeironychVideoClient(
+        settings.neironych_api_key,
+        settings.neironych_api_base_url,
+    )
+    try:
+        available = await client.list_models()
+    except NeironychProviderError:
+        raise
+    except Exception as exc:
+        raise NeironychProviderError(
+            "Не удалось получить список моделей Seedance у провайдера."
+        ) from exc
+    finally:
+        await client.aclose()
+    return enabled_seedance_test_models(available)
+
+
+def _seedance_unavailable_text(
+    model_name: str,
+    enabled_seedance_models: tuple[str, ...],
+) -> str:
+    available = ", ".join(enabled_seedance_models) or "нет доступных Seedance-моделей"
+    return (
+        f"Модель {model_name} сейчас не включена у провайдера. "
+        f"Доступно: {available}"
     )
 
 
