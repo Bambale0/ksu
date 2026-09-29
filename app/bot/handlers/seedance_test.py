@@ -463,12 +463,12 @@ def _message_media(message: Message) -> tuple[str, str, str, int, str] | None:
     return None
 
 
-async def _upload_media(message: Message) -> tuple[str, str] | None:
+async def _upload_media(\n    message: Message,\n    *,\n    model_name: str,\n) -> tuple[str, str] | None:
     media = _message_media(message)
     if media is None:
         await message.answer("Пришлите фото, видео или аудио-файл.")
         return None
-    kind, file_id, filename, file_size, mime_type = media
+    kind, file_id, _filename, file_size, mime_type = media
     if file_size and file_size > settings.neironych_test_max_video_bytes:
         await message.answer("Файл больше лимита тестового контура.")
         return None
@@ -486,8 +486,9 @@ async def _upload_media(message: Message) -> tuple[str, str] | None:
         )
         try:
             url = await client.upload_media(
+                model=model_name,
+                media_type=kind,
                 content=content,
-                filename=filename,
                 mime_type=mime_type,
             )
         finally:
@@ -867,7 +868,9 @@ async def seedance_reference_media(
             )
             return
 
-    uploaded = await _upload_media(message)
+    data = await state.get_data()
+    model_name = str(data.get("model_name") or "")
+    uploaded = await _upload_media(message, model_name=model_name)
     if uploaded is None:
         return
     kind, url = uploaded
