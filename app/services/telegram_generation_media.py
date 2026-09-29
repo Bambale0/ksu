@@ -8,7 +8,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import FSInputFile, InlineKeyboardMarkup
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InputMediaPhoto
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -277,3 +277,38 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
             )
     finally:
         path.unlink(missing_ok=True)
+
+
+async def send_generation_result_image_album(  # type: ignore[no-untyped-def]
+    bot: Bot,
+    *,
+    chat_id: int,
+    generation: Generation,
+    result_urls: list[str],
+    caption: str,
+):
+    """Deliver several image results as a single Telegram media group.
+
+    Telegram media groups do not accept inline keyboards, so action buttons are
+    delivered separately by the notification worker when needed.
+    """
+
+    media = [
+        InputMediaPhoto(media=url, caption=caption if index == 0 else None)
+        for index, url in enumerate(result_urls[:10])
+    ]
+    try:
+        messages = await bot.send_media_group(chat_id=chat_id, media=media)
+    except TelegramBadRequest as exc:
+        if not _is_media_delivery_bad_request(exc):
+            raise
+        logger.info(
+            "generation_notification_album_remote_media_failed",
+            extra={
+                "generation_id": str(generation.id),
+                "result_count": len(result_urls),
+                "error": str(exc),
+            },
+        )
+        return None
+    return messages[0] if messages else None
