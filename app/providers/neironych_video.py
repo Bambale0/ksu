@@ -125,6 +125,7 @@ class NeironychVideoClient:
         base_url: str,
         *,
         client: httpx.AsyncClient | None = None,
+        storage_client: httpx.AsyncClient | None = None,
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
@@ -136,6 +137,7 @@ class NeironychVideoClient:
             timeout=httpx.Timeout(60.0, connect=10.0),
             follow_redirects=True,
         )
+        self._storage_client = storage_client
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -240,12 +242,22 @@ class NeironychVideoClient:
 
         # The storage URL is pre-signed. Never forward the Neironych Bearer
         # token (or any Telegram token-bearing URL) to the storage host.
-        uploaded = await self._client.put(
-            upload_target,
-            content=content,
-            headers={"Content-Type": content_type},
-            timeout=httpx.Timeout(120.0, connect=10.0),
-        )
+        if self._storage_client is not None:
+            uploaded = await self._storage_client.put(
+                upload_target,
+                content=content,
+                headers={"Content-Type": content_type},
+            )
+        else:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(120.0, connect=10.0),
+                follow_redirects=True,
+            ) as storage_client:
+                uploaded = await storage_client.put(
+                    upload_target,
+                    content=content,
+                    headers={"Content-Type": content_type},
+                )
         if not uploaded.is_success:
             raise NeironychProviderError(
                 f"Media storage upload HTTP {uploaded.status_code}",
