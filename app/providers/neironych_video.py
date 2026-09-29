@@ -408,7 +408,9 @@ class NeironychVideoClient:
                     ).split(";", 1)[0]
 
                     if response.status_code == 206:
-                        raw_range = str(response.headers.get("content-range") or "").strip()
+                        raw_range = str(
+                            response.headers.get("content-range") or ""
+                        ).strip()
                         match = _CONTENT_RANGE_RE.fullmatch(raw_range)
                         if match is None:
                             raise NeironychProviderError(
@@ -438,7 +440,9 @@ class NeironychVideoClient:
                             "Neironych content endpoint ignored Range during resume"
                         )
                     else:
-                        raw_length = str(response.headers.get("content-length") or "").strip()
+                        raw_length = str(
+                            response.headers.get("content-length") or ""
+                        ).strip()
                         if raw_length.isdigit():
                             advertised_total = int(raw_length)
                             if advertised_total > max_bytes:
