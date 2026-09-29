@@ -872,8 +872,6 @@ async def seedance_reference_media(
             )
             return
 
-    data = await state.get_data()
-    model_name = str(data.get("model_name") or "")
     uploaded = await _upload_media(message, model_name=model_name)
     if uploaded is None:
         return
@@ -1109,7 +1107,9 @@ async def seedance_upload_media(
     if not await _authorized(state, session, telegram_id):
         await _deny_message(message, state)
         return
-    uploaded = await _upload_media(message)
+    data = await state.get_data()
+    model_name = str(data.get("model_name") or "")
+    uploaded = await _upload_media(message, model_name=model_name)
     if uploaded is None:
         return
     kind, url = uploaded
