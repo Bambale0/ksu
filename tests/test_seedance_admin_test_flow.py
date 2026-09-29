@@ -27,9 +27,9 @@ def _callbacks(markup) -> list[str]:
 def test_admin_test_model_picker_exposes_nano_and_both_seedance_versions() -> None:
     callbacks = _callbacks(_model_keyboard())
     assert "nexus-test:model:nano-banana-pro" in callbacks
-    assert "nexus-test:model:seedance-2" in callbacks
+    assert "nexus-test:model:seedance-2.0" in callbacks
     assert "nexus-test:model:seedance-2.5" in callbacks
-    assert SEEDANCE_TEST_MODELS == ("seedance-2", "seedance-2.5")
+    assert SEEDANCE_TEST_MODELS == ("seedance-2.0", "seedance-2.5")
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,7 @@ async def test_seedance_client_uses_documented_async_video_contract_and_raw_pass
         if request.method == "GET" and request.url.path == "/v1/models":
             return httpx.Response(
                 200,
-                json={"data": [{"id": "seedance-2"}, {"id": "seedance-2.5"}]},
+                json={"data": [{"id": "seedance-2.0"}, {"id": "seedance-2.5"}]},
             )
         if request.method == "POST":
             assert request.url.path == "/v1/videos/generations"
@@ -78,7 +78,7 @@ async def test_seedance_client_uses_documented_async_video_contract_and_raw_pass
             "https://provider.example",
             client=http_client,
         )
-        assert await client.list_models() == ["seedance-2", "seedance-2.5"]
+        assert await client.list_models() == ["seedance-2.0", "seedance-2.5"]
         request_id = await client.create_video(
             model="seedance-2.5",
             payload={
@@ -122,7 +122,7 @@ async def test_seedance_client_rejects_unsupported_model_and_short_idempotency_k
             )
         with pytest.raises(NeironychProviderError, match="8..160"):
             await client.create_video(
-                model="seedance-2",
+                model="seedance-2.0",
                 payload={"prompt": "x"},
                 idempotency_key="short",
             )
