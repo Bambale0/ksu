@@ -21,6 +21,11 @@ class NexusAdminTask(TimestampMixin, Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="nexus", nullable=False)
+    model_id: Mapped[str] = mapped_column(
+        String(64), default="nano-banana-pro", nullable=False
+    )
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     references: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     aspect_ratio: Mapped[str] = mapped_column(String(16), nullable=False)
