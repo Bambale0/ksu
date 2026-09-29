@@ -174,7 +174,7 @@ async def test_seedance_download_resumes_from_last_written_byte_after_disconnect
         content_type = await client.download_content_to(
             "video-resume",
             target,
-            max_bytes=1024,
+            max_bytes=1024 * 1024,
         )
 
     assert content_type == "video/mp4"
