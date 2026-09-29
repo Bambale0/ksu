@@ -1,3 +1,19 @@
+## Active Fix Execution — Seedance live model availability in admin test (2026-09-29)
+
+- **Baseline:** `main@fa93d464e5cde6ecd375c9184e53d98b053ab204`; branch `fix/seedance-live-model-availability-20260929`.
+- **Incident:** admin selected `seedance-2.0`, task was queued, then worker failed it with “Модель seedance-2.0 сейчас не включена у провайдера. Доступно: seedance-2.5”.
+- **Production evidence:** authenticated live `GET /v1/models` for the configured Neironych key returns only `seedance-2.5`. The current Telegram model keyboard is static and always exposes both Seedance 2.0 and 2.5; provider availability is checked only later in the background worker.
+- **Root cause:** capability discovery happens too late. The UI and enqueue boundary do not use the provider's account-specific model list, so an unavailable model can enter the durable queue.
+- **Fix:** derive canonical enabled Seedance test models from live `/v1/models`; render only currently enabled Seedance buttons; re-check stale callbacks before opening the wizard; re-check again immediately before enqueue so a model disabled mid-session never creates a doomed task.
+- **Failure behavior:** if model discovery itself fails, fail closed for Seedance test actions with a short admin-visible message; Nano Banana remains available independently.
+- **Scope:** admin test model discovery/selection/enqueue only. No customer generation, pricing, billing, schema, migrations, provider payloads, or ROX changes.
+- **Provider contract:** reuse existing authenticated `NeironychVideoClient.list_models()` and `resolve_seedance_model()`; no new endpoint or environment variable.
+- **Observability:** keep provider model IDs out of secrets-sensitive logs; the existing task worker remains the final defensive check.
+- **TDD:** regression covers menu filtering to only `seedance-2.5`, live alias-to-canonical availability mapping, and source contract that the enqueue boundary performs availability verification before durable enqueue.
+- **Verification matrix:** unit/domain=availability mapping + keyboard filtering; database/repository=no schema change; authorization=existing admin guard preserved; migrations=N/A; provider contract=existing `GET /v1/models` mock coverage plus live evidence; idempotency=unchanged; API=N/A; bot E2E=keyboard/callback source contract + ROXY E2E; smoke/deployability=exact-SHA CI/deploy; observability=existing worker logs; no-hardcode=runtime provider capabilities, not a hardcoded “2.5 only” switch; performance=one small provider capability read at menu/select/launch in admin-only test flow; rollback=source revert.
+- **Guidance:** KSU `AGENTS.md`; `Bambale0/skills/skills/engineering/diagnosing-bugs/SKILL.md`; `Bambale0/claw/.agents/skills/backend-integration/SKILL.md` and `kie-seedance/SKILL.md`; WondelAI characterization-test guidance; dev-agents-pack Python backend guidance. Project-local `.agents` is not present in the deployed image and is not available through GitHub, so repository `AGENTS.md` is the local authority/fallback. AgentSkills has no task-specific runtime/provider guidance; Anthropic webapp-testing is frontend-oriented and not applicable to this backend Telegram flow.
+- **Rollback:** source revert only; no migration.
+
 ## Active Fix Execution — Seedance prompt/aspect conflict guard (2026-09-29)
 
 - **Baseline:** `main@78f448bad4f3b8b8648bf8ab4fa7da56632a43fc`; branch `fix/seedance-test-aspect-prompt-conflict-20260929`.
