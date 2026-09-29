@@ -112,6 +112,76 @@ async def test_seedance_client_uses_documented_async_video_contract_and_raw_pass
     assert len(requests) == 4
 
 
+class _InterruptedAsyncStream(httpx.AsyncByteStream):
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+
+    async def __aiter__(self):
+        for chunk in self._chunks:
+            yield chunk
+        raise httpx.RemoteProtocolError("peer closed connection early")
+
+    async def aclose(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_seedance_download_resumes_from_last_written_byte_after_disconnect(
+    tmp_path: Path,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path == "/v1/videos/video-resume/content"
+        assert request.headers["Authorization"] == "Bearer secret"
+        range_header = request.headers.get("Range")
+        if len(requests) == 1:
+            assert range_header == "bytes=0-262143"
+            return httpx.Response(
+                206,
+                headers={
+                    "content-type": "video/mp4",
+                    "content-range": "bytes 0-7/8",
+                    "content-length": "8",
+                    "accept-ranges": "bytes",
+                },
+                stream=_InterruptedAsyncStream([b"abcd"]),
+            )
+        assert range_header == "bytes=4-7"
+        return httpx.Response(
+            206,
+            headers={
+                "content-type": "video/mp4",
+                "content-range": "bytes 4-7/8",
+                "content-length": "4",
+                "accept-ranges": "bytes",
+            },
+            content=b"efgh",
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="https://provider.example",
+    ) as http_client:
+        client = NeironychVideoClient(
+            "secret",
+            "https://provider.example",
+            client=http_client,
+        )
+        target = tmp_path / "resume.mp4"
+        content_type = await client.download_content_to(
+            "video-resume",
+            target,
+            max_bytes=1024 * 1024,
+        )
+
+    assert content_type == "video/mp4"
+    assert target.read_bytes() == b"abcdefgh"
+    assert len(requests) == 2
+
+
 @pytest.mark.asyncio
 async def test_neironych_media_upload_uses_ticket_then_direct_storage_put() -> None:
     content = b"telegram-photo-bytes"
