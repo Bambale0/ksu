@@ -8,7 +8,12 @@ from typing import Any
 
 import httpx
 
-from app.services.neironych_video_contracts import (\n    NeironychVideoContractError,\n    normalize_neironych_video_input,\n)\n\nlogger = logging.getLogger(__name__)
+from app.services.neironych_video_contracts import (
+    NeironychVideoContractError,
+    normalize_neironych_video_input,
+)
+
+logger = logging.getLogger(__name__)
 
 SEEDANCE_TEST_MODELS = ("seedance-2.0", "seedance-2.5")
 _SEEDANCE_MODEL_ALIASES = {
