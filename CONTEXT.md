@@ -1,3 +1,21 @@
+## Active Feature Execution — Full Seedance admin-test wizard (2026-09-29)
+
+- **Baseline:** `main@f6127b23d3ee5c3064debe147786ffa602945136`; branch `feat/seedance-admin-test-full-wizard-20260929`.
+- **User-visible request:** replace the current Seedance test screen's base-request/raw-JSON-first UX with a complete Telegram inline-keyboard wizard for Seedance 2.0 and 2.5, including native upload and management of all supported reference media.
+- **Confirmed current gap:** PR #511 added a durable Neironych provider lab, but its Telegram UX only asks for prompt, offers one base launch button, and otherwise expects the admin to upload media manually and paste returned URLs into JSON. The default payload also contains generic fields that are not the canonical Seedance wizard contract.
+- **Provider contract source:** official Neironych contract captured during the 2026-09-29 integration audit/PR #510: `POST /v1/videos/generations`, mandatory stable `Idempotency-Key`, status `GET /v1/videos/{request_id}`, authenticated content download; runtime model resolution through `GET /v1/models`.
+- **Seedance 2.0 capabilities:** duration 4–15 s; resolutions 480p/720p/1080p/4k; fixed ratios 1:1/16:9/9:16/4:3/3:4/21:9 plus adaptive in frame mode; max 9 image + 3 video + 3 audio refs, max 12 total; audio refs require image/video; start/end-frame mode is separate from reference arrays.
+- **Seedance 2.5 capabilities:** duration 4–30 s; resolutions 480p/720p/1080p; fixed ratios for text/reference; adaptive frame mode; max 30 image + 10 video + 10 audio refs, max 50 total; omni task types auto/reference/edit; edit requires a reference video and follows source duration/aspect.
+- **UX target:** model → mode → prompt → resolution → duration → aspect ratio → reference/frame uploads → review screen → durable enqueue. Inline controls expose all ordinary supported parameters. Media messages append directly to the appropriate reference collection and show live counts/limits. Raw JSON remains an expert escape hatch, not the primary path.
+- **Modes:** text; multimodal references; first/last frame; Seedance 2.5 video edit. Frame and reference media cannot be mixed. Edit omits normal duration/aspect selection and uses source-following semantics.
+- **Payload contract:** wizard emits canonical provider fields (`reference_images`, `reference_videos`, `reference_audios`, `start_image`, `end_image`, `omni_reference_task_type`) using provider-upload URLs. Trusted model/prompt and wizard selections override raw expert input.
+- **Security/integrity:** live DB admin re-check on every mutation/launch; no ROX debit; API key remains env-only; no Telegram bot-token URLs; upload errors are bounded/redacted; idempotency key is stable per wizard run.
+- **Observability:** retain durable task/provider/model/request-id logging without prompt, secrets, or media URLs. Wizard validation errors are explicit to the admin before provider spend.
+- **Schema/migrations:** N/A; reuse existing `seedance_admin_tasks` and worker from PR #511. No customer generation or pricing changes.
+- **TDD seams:** pure wizard-spec/payload validation; inline-keyboard callbacks/state transitions; media limit/type validation; existing provider contract and durable worker regressions.
+- **Verification matrix:** unit/domain=wizard spec/payload; DB/repository=existing durable queue tests; authorization=existing live admin guard plus callback coverage; migrations=N/A; provider contract=canonical field assertions; idempotency=existing stable key; API=Neironych MockTransport; Telegram=handler/source contract; Mini App=N/A; smoke/deployability=CI/exact-SHA deploy; observability=existing task logs; no-hardcode=provider capability spec only, no business economics; rollback=source revert.
+- **Implementation plan:** add RED wizard/payload regressions → introduce typed Seedance test specs/builder → replace raw-first handler with keyboard FSM and native reference collector → retain optional raw mode → focused checks → exact-head CI/review → merge/deploy only if green.
+
 ## Active Feature Execution — Telegram generation image albums (2026-09-29)
 
 - **Baseline:** `main@0e29444a49adda0982b8adad6b2c91109ee7363a`.
