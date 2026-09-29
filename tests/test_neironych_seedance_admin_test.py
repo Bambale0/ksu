@@ -20,8 +20,11 @@ def _provider():
     return importlib.import_module("app.providers.neironych")
 
 
-def test_admin_test_exposes_seedance_20_and_25_provider_adapter() -> None:
+def test_neironych_provider_adapter_exists() -> None:
     assert PROVIDER_PATH.exists(), "Seedance admin test requires a dedicated Neironych adapter"
+
+
+def test_admin_test_exposes_seedance_20_and_25_model_selection() -> None:
     source = HANDLER_PATH.read_text(encoding="utf-8")
     assert "seedance-2.0" in source
     assert "seedance-2.5" in source
