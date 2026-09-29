@@ -286,10 +286,13 @@ class SeedanceAdminTaskService:
         finally:
             await client.aclose()
 
+        parameter_keys = ", ".join(
+            sorted(key for key in payload if key not in {"model", "prompt"})
+        ) or "базовые"
         caption = (
             f"✅ {model_name} · тест\n"
             f"Request: {external_id}\n"
-            f"Параметры: {str(payload)[:700]}"
+            f"Поля: {parameter_keys[:700]}"
         )
         try:
             message = await bot.send_video(
