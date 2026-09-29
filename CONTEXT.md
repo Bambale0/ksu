@@ -1,3 +1,19 @@
+## Active Feature Execution — Admin test Seedance 2.0 / 2.5 via Neironych API (2026-09-29)
+
+- **Baseline:** `main@e4a144515d6b333dd0489c56af36925cc8ffe5b9`; topic branch `feat/admin-test-seedance-20-25-20260929`.
+- **User-visible request:** extend the Telegram admin-only `🧪 Тест` surface with full Seedance 2.0 and Seedance 2.5 coverage using the current Neironych partner API, while preserving the existing Nexus Nano Banana Pro test.
+- **Provider contract:** `POST /v1/videos/generations` with Bearer auth and mandatory 8–160 character `Idempotency-Key`; poll `GET /v1/videos/{request_id}`; fetch the authenticated result from `GET /v1/videos/{request_id}/content`. Canonical request fields only; no legacy aliases in the new integration.
+- **Seedance 2.0:** 4–15 s; 480p/720p/1080p/4k; up to 9 image + 3 video + 3 audio refs, max 12 total; audio refs require image/video; start/end frame mode supported and kept separate from reference arrays.
+- **Seedance 2.5:** 4–30 s; 480p/720p/1080p; up to 30 image + 10 video + 10 audio refs, max 50 total; text/reference mode uses a fixed aspect ratio, frame mode uses adaptive, and edit mode requires a reference video with source-following duration/aspect semantics.
+- **Execution architecture:** keep the existing durable admin-test DB job / lease / recovery worker rather than polling inside Telegram handlers. Generalize the legacy Nexus task row minimally with provider/model/parameters so old queued Nexus rows remain compatible.
+- **Media transport:** never expose Telegram bot-token file URLs. Download admin attachments inside the worker, persist them temporarily into ROXY-owned reference static storage, expose only HTTPS product-owned URLs to the provider, and clean test media after terminal delivery. The worker must share the existing `static/uploads` volume with the app.
+- **TDD seams chosen for this task:** (1) provider HTTP contract/validation, (2) Telegram admin model/mode/configuration flow, (3) durable worker submit→poll→deliver/retry behavior and legacy Nexus compatibility. These are public/behavioral seams; tests should not depend on private implementation details unless the existing repository already uses a source-contract guard for deployment wiring.
+- **Security/integrity:** live admin re-check before spend; test jobs remain ROX-free but consume provider balance; API key only from env; finite timeouts; create retries are safe only through provider idempotency; external URLs are generated from configured `PUBLIC_BASE_URL`, not user text.
+- **Observability:** structured logs include local task id, provider, model and provider request id, never prompts, API keys or media URLs.
+- **Schema:** one additive migration after `0041_partner_referral_terms`; no destructive migration and no customer-generation schema changes.
+- **Verification gate:** focused red→green provider/handler/durable tests, Ruff, compileall, Alembic upgrade + parity, full backend regression, then exact-head PR CI/review before merge/deploy claims.
+- **Rollback:** source revert + additive-column downgrade only after confirming no in-flight Seedance admin-test rows; normal rollback is source-only because defaults preserve legacy Nexus rows.
+
 ## Active Feature Execution — Telegram generation image albums (2026-09-29)
 
 - **Baseline:** `main@0e29444a49adda0982b8adad6b2c91109ee7363a`.
