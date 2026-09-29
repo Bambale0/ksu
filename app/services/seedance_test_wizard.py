@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Mapping
 
 from app.services.neironych_video_contracts import (
@@ -24,6 +25,19 @@ class SeedanceTestSpec:
     max_audio_refs: int
     max_total_refs: int
     supports_edit: bool
+
+
+_FIXED_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "21:9")
+_ASPECT_RATIO_RE = re.compile(
+    r"(?<!\\d)(?:1:1|16:9|9:16|4:3|3:4|21:9)(?!\\d)"
+)
+
+
+def _single_prompt_aspect_ratio(prompt: str) -> str | None:
+    values = {match.group(0) for match in _ASPECT_RATIO_RE.finditer(prompt)}
+    if len(values) == 1:
+        return next(iter(values))
+    return None
 
 
 _SPECS: dict[str, SeedanceTestSpec] = {
@@ -97,6 +111,15 @@ def build_seedance_payload(data: Mapping[str, Any]) -> dict[str, Any]:
             aspect_ratio = "adaptive"
         elif not aspect_ratio:
             raise SeedanceWizardError("Выберите соотношение сторон.")
+        else:
+            prompt_ratio = _single_prompt_aspect_ratio(prompt)
+            if prompt_ratio is not None and prompt_ratio != aspect_ratio:
+                raise SeedanceWizardError(
+                    "В промпте явно указан формат "
+                    f"{prompt_ratio}, а в параметрах выбран {aspect_ratio}. "
+                    "Выберите совпадающее соотношение сторон или уберите "
+                    "однозначное указание формата из промпта."
+                )
         payload["aspect_ratio"] = aspect_ratio
 
     images = list(data.get("reference_images") or [])
