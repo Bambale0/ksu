@@ -463,7 +463,11 @@ def _message_media(message: Message) -> tuple[str, str, str, int, str] | None:
     return None
 
 
-async def _upload_media(\n    message: Message,\n    *,\n    model_name: str,\n) -> tuple[str, str] | None:
+async def _upload_media(
+    message: Message,
+    *,
+    model_name: str,
+) -> tuple[str, str] | None:
     media = _message_media(message)
     if media is None:
         await message.answer("Пришлите фото, видео или аудио-файл.")
