@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.bot.handlers.seedance_test import _model_keyboard
+from app.bot.handlers.seedance_test import _model_keyboard, _seedance_default_payload
 from app.providers.neironych_video import (
     NeironychProviderError,
     NeironychVideoClient,
@@ -14,6 +14,10 @@ from app.providers.neironych_video import (
     is_failure_status,
     is_success_status,
     resolve_seedance_model,
+)
+from app.services.neironych_video_contracts import (
+    NeironychVideoContractError,
+    normalize_neironych_video_input,
 )
 
 
@@ -201,3 +205,148 @@ def test_seedance_test_is_durable_and_registered_before_customer_router() -> Non
     assert "client.create_video(" in service
     assert "client.get_video(" in service
     assert "client.download_content_to(" in service
+
+
+def test_seedance_default_payload_contains_only_documented_minimum_fields() -> None:
+    payload = _seedance_default_payload()
+    assert payload == {
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": 5,
+    }
+    forbidden = {
+        "generate_audio",
+        "return_last_frame",
+        "output_format",
+        "web_search",
+        "nsfw_checker",
+        "fixed_lens",
+    }
+    assert forbidden.isdisjoint(payload)
+
+
+def test_neironych_normalizer_strips_known_illegal_legacy_fields() -> None:
+    payload = normalize_neironych_video_input(
+        "seedance-2.5",
+        {
+            "prompt": "cinematic",
+            "duration": "12",
+            "resolution": "720p",
+            "aspect_ratio": "9:16",
+            "generate_audio": False,
+            "return_last_frame": False,
+            "output_format": "mp4",
+            "web_search": False,
+            "nsfw_checker": True,
+            "fixed_lens": False,
+            "provider_future_option": {"enabled": True},
+        },
+    )
+    assert payload == {
+        "prompt": "cinematic",
+        "duration": 12,
+        "resolution": "720p",
+        "aspect_ratio": "9:16",
+        "provider_future_option": {"enabled": True},
+    }
+
+
+@pytest.mark.parametrize(
+    ("model", "field", "value", "message"),
+    [
+        ("seedance-2.0", "duration", 3, "4"),
+        ("seedance-2.0", "duration", 16, "15"),
+        ("seedance-2.5", "duration", 31, "30"),
+        ("seedance-2.0", "resolution", "8k", "resolution"),
+        ("seedance-2.5", "resolution", "4k", "resolution"),
+        ("seedance-2.5", "aspect_ratio", "2:1", "aspect_ratio"),
+        ("seedance-2.5", "aspect_ratio", "adaptive", "start_image"),
+    ],
+)
+def test_neironych_normalizer_rejects_invalid_documented_ranges_and_enums(
+    model: str,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    payload = {
+        "prompt": "cinematic",
+        "duration": 8,
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+    }
+    payload[field] = value
+    with pytest.raises(NeironychVideoContractError, match=message):
+        normalize_neironych_video_input(model, payload)
+
+
+def test_neironych_normalizer_allows_adaptive_only_with_frame_input() -> None:
+    payload = normalize_neironych_video_input(
+        "seedance-2.5",
+        {
+            "prompt": "animate frame",
+            "duration": 8,
+            "resolution": "1080p",
+            "aspect_ratio": "adaptive",
+            "start_image": {"url": "https://cdn.example/start.jpg"},
+        },
+    )
+    assert payload["aspect_ratio"] == "adaptive"
+    assert payload["start_image"] == {"url": "https://cdn.example/start.jpg"}
+
+
+def test_neironych_prompt_limit_is_40000_utf8_bytes_not_characters() -> None:
+    allowed = normalize_neironych_video_input(
+        "seedance-2.0",
+        {
+            "prompt": "я" * 20_000,
+            "duration": 8,
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+        },
+    )
+    assert len(allowed["prompt"].encode("utf-8")) == 40_000
+
+    with pytest.raises(NeironychVideoContractError, match="40 000"):
+        normalize_neironych_video_input(
+            "seedance-2.0",
+            {
+                "prompt": "я" * 20_001,
+                "duration": 8,
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+            },
+        )
+
+
+def test_neironych_prompt_reference_integrity_rejects_missing_typed_reference() -> None:
+    with pytest.raises(NeironychVideoContractError, match="@Image2"):
+        normalize_neironych_video_input(
+            "seedance-2.5",
+            {
+                "prompt": "Keep @Image 1 and @Image 2 consistent",
+                "duration": 8,
+                "resolution": "720p",
+                "aspect_ratio": "16:9",
+                "reference_images": [{"url": "https://cdn.example/one.jpg"}],
+            },
+        )
+
+
+def test_neironych_normalizer_converts_legacy_reference_url_aliases() -> None:
+    payload = normalize_neironych_video_input(
+        "seedance-2.0",
+        {
+            "prompt": "Use @Image 1 and @Video 1",
+            "duration": 8,
+            "resolution": "4K",
+            "aspect_ratio": "21:9",
+            "reference_image_urls": ["https://cdn.example/one.jpg"],
+            "reference_video_urls": ["https://cdn.example/motion.mp4"],
+        },
+    )
+    assert payload["resolution"] == "4k"
+    assert payload["reference_images"] == [{"url": "https://cdn.example/one.jpg"}]
+    assert payload["reference_videos"] == [{"url": "https://cdn.example/motion.mp4"}]
+    assert "reference_image_urls" not in payload
+    assert "reference_video_urls" not in payload
