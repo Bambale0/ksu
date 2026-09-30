@@ -375,3 +375,31 @@ async def test_large_local_photo_falls_back_to_document(
     assert isinstance(bot.document_calls[0], FSInputFile)
     assert bot.document_calls[0].filename.endswith(".png")
     assert durable.exists()
+
+@pytest.mark.asyncio
+async def test_pending_durable_asset_defers_without_redownloading_provider_media(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset = SimpleNamespace(id=uuid4(), status="pending", object_key=None, bucket=None)
+
+    async def must_not_download(_cls: type[MediaIngestService], _url: str) -> DownloadedMedia:
+        raise AssertionError("notification delivery duplicated the media-worker download")
+
+    monkeypatch.setattr(MediaIngestService, "_download", classmethod(must_not_download))
+    bot = FallbackBot()
+
+    with pytest.raises(RuntimeError, match="durable generation media is still being ingested"):
+        await send_generation_result_media(
+            bot,  # type: ignore[arg-type]
+            session=FakeSession(asset),  # type: ignore[arg-type]
+            chat_id=1,
+            generation=generation(),  # type: ignore[arg-type]
+            media_type="video",
+            result_url="https://provider.example/slow.mp4",
+            caption="ready",
+            reply_markup=None,
+        )
+
+    assert bot.video_calls == ["https://provider.example/slow.mp4"]
+    assert bot.document_calls == []
+
