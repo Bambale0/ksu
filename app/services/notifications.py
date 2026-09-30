@@ -176,6 +176,23 @@ class NotificationDeliveryService:
         await session.flush()
 
     @staticmethod
+    async def defer_without_attempt(
+        session: AsyncSession,
+        delivery: NotificationDelivery,
+        *,
+        error: str,
+        retry_after_seconds: int,
+    ) -> None:
+        """Retry a dependency-waiting delivery without burning its attempt budget."""
+
+        delivery.status = "retry"
+        delivery.attempts = max(0, delivery.attempts - 1)
+        delivery.lease_until = None
+        delivery.available_at = utcnow() + timedelta(seconds=max(1, retry_after_seconds))
+        delivery.last_error = error[:4000]
+        await session.flush()
+
+    @staticmethod
     async def mark_retry(
         session: AsyncSession,
         delivery: NotificationDelivery,

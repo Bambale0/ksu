@@ -12,14 +12,19 @@ from aiogram.types import FSInputFile, InlineKeyboardMarkup, InputMediaPhoto
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.services.local_media_storage import LocalMediaStorage
-from app.services.media_assets import MediaIngestService
+from app.services.media_assets import MediaIngestError, MediaIngestService
 from app.services.music_media import MusicMediaIngestService
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 logger = logging.getLogger(__name__)
+
+
+class GenerationMediaPending(RuntimeError):
+    """Durable media exists but its ingest job has not completed yet."""
 
 
 def _suffix(value: str | None) -> str:
@@ -50,7 +55,7 @@ def _is_media_delivery_bad_request(exc: TelegramBadRequest) -> bool:
     )
 
 
-async def _ready_asset(
+async def _generation_asset(
     session: AsyncSession,
     generation: Generation,
 ) -> MediaAsset | None:
@@ -59,9 +64,6 @@ async def _ready_asset(
         .where(
             MediaAsset.generation_id == generation.id,
             MediaAsset.user_id == generation.user_id,
-            MediaAsset.status == "ready",
-            MediaAsset.object_key.is_not(None),
-            MediaAsset.bucket.is_not(None),
         )
         .order_by(MediaAsset.ordinal.asc())
         .limit(1)
@@ -173,11 +175,17 @@ async def _download_original(
                 },
             )
 
-    if media_type == "audio":
-        downloaded_audio = await MusicMediaIngestService._download(result_url)
-        return downloaded_audio.path
-    downloaded = await MediaIngestService._download(result_url)
-    return downloaded.path
+    try:
+        async with asyncio.timeout(settings.notification_media_download_timeout_seconds):
+            if media_type == "audio":
+                downloaded_audio = await MusicMediaIngestService._download(result_url)
+                return downloaded_audio.path
+            downloaded = await MediaIngestService._download(result_url)
+            return downloaded.path
+    except TimeoutError as exc:
+        raise MediaIngestError(
+            "Provider media download exceeded notification delivery timeout"
+        ) from exc
 
 
 async def send_generation_result_media(  # type: ignore[no-untyped-def]
@@ -201,19 +209,31 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
     an expired provider URL cannot break a later retry.
     """
 
-    asset = await _ready_asset(session, generation)
+    asset = await _generation_asset(session, generation)
+    asset_status = str(getattr(asset, "status", "ready")) if asset is not None else None
+    ready_asset = (
+        asset
+        if asset is not None
+        and asset_status == "ready"
+        and asset.object_key
+        and asset.bucket
+        else None
+    )
     storage: ObjectStorage | None = None
     remote_url = result_url
     use_remote_fast_path = True
-    if asset is not None and asset.object_key and asset.bucket:
-        if LocalMediaStorage.is_local_bucket(asset.bucket):
+    if ready_asset is not None and ready_asset.object_key and ready_asset.bucket:
+        if LocalMediaStorage.is_local_bucket(ready_asset.bucket):
             # The server-local copy is our durable authority. Upload it directly
             # instead of touching a provider URL that may already have expired.
             use_remote_fast_path = False
         else:
             try:
                 storage = ObjectStorage()
-                remote_url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+                remote_url = storage.presign_get(
+                    key=ready_asset.object_key,
+                    bucket=ready_asset.bucket,
+                )
             except ObjectStorageNotConfigured:
                 storage = None
 
@@ -237,14 +257,28 @@ async def send_generation_result_media(  # type: ignore[no-untyped-def]
                     "media_type": media_type,
                     "error": str(exc),
                     "durable_asset": asset is not None,
+                    "durable_asset_status": asset_status,
                 },
             )
+
+    if asset is not None and asset_status == "pending":
+        logger.info(
+            "generation_notification_waiting_for_durable_media",
+            extra={
+                "generation_id": str(generation.id),
+                "media_type": media_type,
+                "asset_id": str(asset.id),
+            },
+        )
+        raise GenerationMediaPending(
+            "durable generation media is still being ingested"
+        )
 
     path = await _download_original(
         generation=generation,
         media_type=media_type,
         result_url=result_url,
-        ready_asset=asset,
+        ready_asset=ready_asset,
         storage=storage,
     )
     try:

@@ -26,6 +26,7 @@ from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
 from app.services.telegram_generation_media import (
+    GenerationMediaPending,
     send_generation_result_image_album,
     send_generation_result_media,
 )
@@ -533,6 +534,14 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                     chat_id=user.telegram_id,
                     text=_notification_text(notification),
                 )
+        except GenerationMediaPending as exc:
+            await NotificationDeliveryService.defer_without_attempt(
+                session,
+                delivery,
+                error=f"generation_media_pending:{exc}",
+                retry_after_seconds=settings.notification_media_pending_retry_seconds,
+            )
+            _sync_generation_delivery(generation, delivery)
         except TelegramForbiddenError as exc:
             await NotificationDeliveryService.mark_terminal(
                 session,
