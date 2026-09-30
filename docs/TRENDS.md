@@ -52,7 +52,9 @@ The public trend DTO exposes only presentation data, the safe model identity, au
 
 ## One-tap generation
 
-`TrendService.run()` merges only the validated user reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. For Seedance templates, explicit typed tags are also part of the recipe contract: the highest `@ImageN` automatically defines the minimum number of user image uploads, validation uses distinct placeholder URLs for every required image, and a video preview can serve as the server-owned `@Video1` reference. The actual launch still passes through the normal Seedance reference-integrity checks, so missing or out-of-range `@ImageN/@VideoN/@AudioN` tags fail closed.
+`TrendService.run()` merges only the validated user image reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Video previews are presentation-only: they are never sent as generation inputs and do not add a video-reference surcharge, regardless of whether their duration metadata is verified.
+
+Video references are not supported in trends. Recipes containing video-input parameters (including legacy aliases) or Seedance `@VideoN` tags are rejected before generation or billing. For Seedance templates, the highest `@ImageN` automatically defines the minimum number of user image uploads, and validation uses distinct placeholder URLs for every required image. Existing reference-integrity checks still reject missing or out-of-range references. Ordinary generation outside Trends retains video-reference support.
 
 Therefore trend jobs reuse KSU's existing:
 
@@ -87,6 +89,8 @@ The Mini App Trends runner:
 ## Compatibility and rollout
 
 Existing legacy `admin_trends` rows are not migrated automatically. Public listing skips active rows that cannot be normalized against the current recipe contract. Operators should recreate or update such entries through the validated admin path before relying on them in production.
+
+Legacy trends with video inputs or `@VideoN` tags need an admin recipe/prompt update before they can be listed or run. Their display videos can remain uploaded; removing or re-uploading the preview is not necessary. Hidden creative prompts are never rewritten automatically.
 
 No Alembic migration is required for this epic because the existing `admin_trends` table is reused.
 

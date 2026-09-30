@@ -169,11 +169,11 @@ Support and campaign workers own eventual Telegram delivery. Verify lease recove
 
 The shared backend admin service/policy/audit layer is the authoritative mutation path. Telegram handlers, signed internal HTTP and browser controls are adapters. New privileged writes — including pricing writes — must be implemented in the domain/policy layer first, never only in JavaScript or a transport handler.
 
-### Curated Seedance preview references
+### Trend video previews are presentation-only
 
-A curated Seedance video preview can also serve as the provider's scene/motion reference without a literal `@Video1` in the prompt. Automatic binding requires verified upload duration metadata within the selected model's limits. Upload the video through ROXY to obtain this metadata; an external/generated preview URL alone does not provide it. An optional preview without usable metadata remains presentation-only, so existing trends stay visible and retain their image/text path. Explicit `@VideoN` references still require strict validation and are never silently omitted.
+A curated video preview is a display example. It is never sent to the provider as a scene/motion reference and never adds the video-reference surcharge, regardless of whether its upload duration metadata is verified. Trend recipes that contain video inputs (including legacy aliases) or Seedance `@VideoN` tags are rejected before generation and billing, so quotes and wallet debits are identical with or without a preview. Active trends that still carry such recipes are skipped by public listings and direct links return "not found" until an operator updates the hidden prompt/parameters through the validated admin path; the uploaded display files themselves do not need to be removed.
 
-Every video reference actually sent to the provider, including an automatically attached preview, applies the existing ×2 price multiplier. The public trend price, quality options and wallet debit share this calculation.
+Ordinary (non-trend) generations keep full video-reference support, including the existing ×2 price multiplier.
 
 ### Telegram model price editor
 
