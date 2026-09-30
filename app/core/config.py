@@ -172,6 +172,8 @@ class Settings(BaseSettings):
     notification_delivery_max_attempts: int = 8
     notification_retry_base_seconds: int = 5
     notification_retry_max_seconds: int = 900
+    notification_media_pending_retry_seconds: int = 10
+    notification_media_download_timeout_seconds: float = 30.0
     notification_delivery_batch_size: int = 50
 
     support_outbox_worker_poll_seconds: int = 3

@@ -18,6 +18,7 @@ from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
 from app.services.notification_events import register_notification_events
 from app.services.notifications import NotificationDeliveryService, NotificationService
+from app.services.telegram_generation_media import GenerationMediaPending
 from app.workers.notifications import _creator_partnership_admin_keyboard, _process_delivery
 
 register_notification_events()
@@ -933,3 +934,74 @@ async def test_reachable_user_message_requeues_deferred_telegram_deliveries() ->
         assert refreshed.attempts == 0
         assert refreshed.last_error is None
         assert refreshed.lease_until is None
+
+
+@pytest.mark.asyncio
+async def test_generation_media_pending_defers_without_burning_delivery_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def media_pending(*_args: object, **_kwargs: object):
+        raise GenerationMediaPending("durable generation media is still being ingested")
+
+    monkeypatch.setattr(
+        "app.workers.notifications.send_generation_result_media",
+        media_pending,
+    )
+    bot = FakeBot()
+
+    async with SessionFactory() as session:
+        user = User(
+            telegram_id=970000300000000 + (uuid.uuid4().int % 1_000_000),
+            first_name="Pending media",
+        )
+        session.add(user)
+        await session.flush()
+        generation = Generation(
+            user_id=user.id,
+            kind="video",
+            status="queued",
+            prompt="slow provider video",
+            cost_rox=Decimal("40.00"),
+            parameters={"_model_id": "seedance-2.5"},
+        )
+        session.add(generation)
+        await session.commit()
+        generation.status = "succeeded"
+        generation.result_url = "https://provider.example/slow.mp4"
+        generation.parameters = {
+            **generation.parameters,
+            "_result_urls": [generation.result_url],
+        }
+        await session.commit()
+
+        notification = await session.scalar(
+            select(Notification).where(Notification.generation_id == generation.id)
+        )
+        assert notification is not None
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(
+                NotificationDelivery.notification_id == notification.id
+            )
+        )
+        assert delivery is not None
+        delivery.status = "sending"
+        delivery.attempts = 3
+        generation.telegram_notification_status = "sending"
+        await session.commit()
+        delivery_id = delivery.id
+        generation_id = generation.id
+
+    await _process_delivery(bot, delivery_id)
+
+    async with SessionFactory() as session:
+        delivery = await session.get(NotificationDelivery, delivery_id)
+        generation = await session.get(Generation, generation_id)
+        assert delivery is not None
+        assert generation is not None
+        assert delivery.status == "retry"
+        assert delivery.attempts == 2
+        assert delivery.lease_until is None
+        assert delivery.last_error is not None
+        assert delivery.last_error.startswith("generation_media_pending:")
+        assert generation.telegram_notification_status == "retry"
+        assert bot.media_calls == []
