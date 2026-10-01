@@ -13,7 +13,7 @@ from app.db.admin_models import AdminRuntimeSetting
 _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "seedance-2.0": ("neironych", "kie"),
     "seedance-2.5": ("neironych", "kie"),
-    "nano-banana-pro": ("nexus", "neironych"),
+    "nano-banana-pro": ("neironych", "nexus"),
 }
 
 ROUTES_SETTING_KEY = "generation_provider_routes"

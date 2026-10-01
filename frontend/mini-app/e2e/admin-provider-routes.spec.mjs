@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 // Exercise the real standalone admin form while keeping provider requests mocked.
 test('admin provider routes preserve revision and idempotency through MFA retry', async ({ page }) => {
   const adminRoot = new URL('../../../app/web/admin_app/', import.meta.url);
-  const routes = { 'seedance-2.0': ['neironych', 'kie'], 'seedance-2.5': ['neironych', 'kie'], 'nano-banana-pro': ['nexus', 'neironych'] };
+  const routes = { 'seedance-2.0': ['neironych', 'kie'], 'seedance-2.5': ['neironych', 'kie'], 'nano-banana-pro': ['neironych', 'nexus'] };
   const options = Object.fromEntries(Object.entries(routes).map(([model, route]) => [model, [route, [route[0]], [route[1]]]]));
   let revision = 7;
   let verified = false;
@@ -44,8 +44,8 @@ test('admin provider routes preserve revision and idempotency through MFA retry'
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Провайдеры генерации', exact: true }).click();
   const nano = page.locator('select[name="nano-banana-pro"]');
-  await expect(nano).toHaveValue('nexus,neironych');
-  await nano.selectOption('neironych');
+  await expect(nano).toHaveValue('neironych,nexus');
+  await nano.selectOption('nexus');
   await page.getByRole('button', { name: 'Сохранить маршруты', exact: true }).click();
   await expect(page.locator('#controlStepDialog')).toBeVisible();
   await page.locator('#controlStepOtp').fill('123456');
@@ -57,7 +57,7 @@ test('admin provider routes preserve revision and idempotency through MFA retry'
   expect(writes[1].headers['x-admin-confirm']).toBe('confirmed');
   expect(writes[1].headers.authorization).toBe('Bearer test-token');
   await page.getByRole('button', { name: 'Провайдеры генерации', exact: true }).click();
-  await expect(nano).toHaveValue('neironych');
+  await expect(nano).toHaveValue('nexus');
   await page.getByRole('button', { name: 'Сохранить маршруты', exact: true }).click();
   await expect(page.locator('#controlFormMessage')).toContainText('reload settings');
   await expect(page.locator('#controlFormDialog')).toBeVisible();

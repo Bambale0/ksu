@@ -490,7 +490,10 @@ for new requests must not move already accepted work to another provider.
 
 ### Provider routes and Nano Banana Pro fallback
 
-New Nano Banana Pro requests default to Nexus, with Neironych as the fallback.
+New Nano Banana Pro requests default to Neironych, with Nexus as the fallback.
+Definite Neironych rejections may switch to Nexus; ambiguous synchronous image
+outcomes (transport/5xx/409) never create a second request on another provider.
+Existing jobs retain their saved route. For a saved Nexus -> Neironych route,
 Explicit Nexus HTTP 401/402/404/429 before a task is accepted, an open circuit
 before submission, or a confirmed terminal technical failure can use the saved
 fallback. Transport/5xx uncertainty is recovered on Nexus using its original

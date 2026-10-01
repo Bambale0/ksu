@@ -11,8 +11,8 @@ def test_new_seedance_routes_neironych_primary() -> None:
     assert route_for_model("seedance-2.5") == ("neironych", "kie")
 
 
-def test_new_nano_pro_routes_nexus_primary() -> None:
-    assert route_for_model("nano-banana-pro") == ("nexus", "neironych")
+def test_new_nano_pro_routes_neironych_primary() -> None:
+    assert route_for_model("nano-banana-pro") == ("neironych", "nexus")
 
 
 def test_unmanaged_models_are_untouched() -> None:

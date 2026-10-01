@@ -26,11 +26,11 @@ from app.services.nexus_generation_provider import NexusGenerationProviderServic
 from app.services.wallet import WalletService
 
 
-def test_nano_default_keeps_nexus_primary():
-    assert route_for_model("nano-banana-pro") == ("nexus", "neironych")
+def test_nano_default_keeps_nexus_fallback():
+    assert route_for_model("nano-banana-pro") == ("neironych", "nexus")
 
 
-@pytest.mark.parametrize("route", [[], ["nexus", "nexus"], ["kie"], ["neironych", "nexus"]])
+@pytest.mark.parametrize("route", [[], ["nexus", "nexus"], ["kie"], ["nexus", "neironych"]])
 def test_unsupported_nano_routes_fail_closed(route):
     with pytest.raises(ValueError):
         validate_routes(
@@ -85,7 +85,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
         await session.commit()
         context = SimpleNamespace(account=admin, session=admin_session, user=user)
         before = await configured_routes(session)
-        routes = before["routes"] | {"nano-banana-pro": ["neironych"]}
+        routes = before["routes"] | {"nano-banana-pro": ["nexus"]}
 
         async def authenticated_context():
             return context
@@ -118,7 +118,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     model_id="nano-banana-pro",
                     prompt="old snapshot",
                 )
-                assert old.provider == "nexus"
+                assert old.provider == "neironych"
                 first = await client.post(path, json=payload, headers=headers)
                 assert first.status_code == 200, first.text
                 assert first.json()["revision"] == 2
@@ -138,10 +138,10 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     model_id="nano-banana-pro",
                     prompt="new snapshot",
                 )
-                assert new.provider == "neironych"
+                assert new.provider == "nexus"
                 assert new.parameters["_provider_route_revision"] == 2
                 await session.refresh(old)
-                assert old.provider == "nexus" and old.parameters["_provider_route_revision"] == 1
+                assert old.provider == "neironych" and old.parameters["_provider_route_revision"] == 1
                 command = await session.scalar(
                     select(AdminCommand).where(AdminCommand.idempotency_key == idem)
                 )
