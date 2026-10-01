@@ -147,7 +147,9 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
     for field in _ALWAYS_DROP_FIELDS:
         payload.pop(field, None)
     if payload.get("generate_audio") is False:
-        payload.pop("generate_audio", None)
+        raise NeironychVideoContractError(
+            "generate_audio=false не поддерживается Нейронычем для Seedance."
+        )
     elif "generate_audio" in payload and not isinstance(payload["generate_audio"], bool):
         raise NeironychVideoContractError("generate_audio должен быть boolean.")
 

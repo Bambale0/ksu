@@ -64,6 +64,79 @@ class MediaIngestError(RuntimeError):
 
 class MediaAssetService:
     @classmethod
+    async def persist_ready_local_file(
+        cls,
+        session: AsyncSession,
+        generation: Generation,
+        *,
+        path: Path,
+        content_type: str,
+        source_url: str,
+        ordinal: int = 0,
+    ) -> MediaAsset:
+        if not path.is_file():
+            raise MediaIngestError("Local provider result file does not exist")
+        size = path.stat().st_size
+        if size <= 0:
+            raise MediaIngestError("Local provider result file is empty")
+        if size > settings.media_ingest_max_bytes:
+            raise MediaIngestError("Local provider result exceeds MEDIA_INGEST_MAX_BYTES")
+
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        sha256 = digest.hexdigest()
+        suffix = MediaIngestService._suffix_for(source_url, content_type)
+
+        asset = await session.scalar(
+            select(MediaAsset)
+            .where(
+                MediaAsset.generation_id == generation.id,
+                MediaAsset.ordinal == ordinal,
+            )
+            .with_for_update()
+        )
+        if asset is None:
+            asset = MediaAsset(
+                id=uuid.uuid4(),
+                generation_id=generation.id,
+                user_id=generation.user_id,
+                ordinal=ordinal,
+                source_url=source_url,
+                status="pending",
+            )
+            session.add(asset)
+            await session.flush()
+
+        downloaded = DownloadedMedia(
+            path=path,
+            size_bytes=size,
+            sha256=sha256,
+            content_type=content_type or "application/octet-stream",
+            suffix=suffix,
+        )
+        key = MediaIngestService._object_key(asset, downloaded)
+        await asyncio.to_thread(LocalMediaStorage.persist_file, path, key=key)
+
+        asset.status = "ready"
+        asset.bucket = LOCAL_MEDIA_BUCKET
+        asset.object_key = key
+        asset.content_type = downloaded.content_type
+        asset.size_bytes = size
+        asset.sha256 = sha256
+        asset.etag = None
+        asset.error = None
+
+        job = await session.get(MediaIngestJob, asset.id, with_for_update=True)
+        if job is not None:
+            job.status = "completed"
+            job.lease_until = None
+            job.completed_at = utcnow()
+            job.last_error = None
+        return asset
+
+    @classmethod
     async def enqueue_results(
         cls,
         session: AsyncSession,

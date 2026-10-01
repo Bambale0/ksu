@@ -9,27 +9,36 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.models import Generation
 from app.db.session import SessionFactory
-from app.services.abuse_protection import AbuseProtectionService, ResourcePolicyError
+from app.services.abuse_protection import (
+    AbuseProtectionService,
+    ProviderCircuitOpen,
+    ResourcePolicyError,
+)
 from app.services.generation_provider import GenerationProviderService
+from app.services.generation_provider_routing import switch_to_fallback
 from app.services.generation_reliability import GenerationOutboxService, utcnow
 from app.services.nexus_generation_provider import NexusGenerationProviderService
+from app.services.neironych_generation_provider import NeironychGenerationProviderService
 from app.services.pinterest_quality_gate import PinterestRepeatQualityGate
 
 logger = logging.getLogger(__name__)
-_PROVIDER_NAMES = ("kie", "nexus")
+_PROVIDER_NAMES = ("kie", "nexus", "neironych")
 
 
 class GenerationWorkerService:
     @staticmethod
     def _provider_name(generation: Generation) -> str:
         stored = str(generation.provider or "").strip().lower()
-        # Once an upstream task id exists, the persisted provider is authoritative.
-        # This preserves pre-migration KIE tasks for Nano Banana Pro/2 instead of
-        # trying to poll their ids through Nexus after deploy.
+        route = (generation.parameters or {}).get("_provider_route")
+        if isinstance(route, list) and stored in {
+            str(item).strip().lower() for item in route
+        }:
+            return stored
+        # Bound upstream work always stays on its persisted provider.
         if generation.external_id and stored in _PROVIDER_NAMES:
             return stored
-        if stored == "nexus":
-            return "nexus"
+        if stored in {"nexus", "neironych"}:
+            return stored
         return NexusGenerationProviderService.provider_name(generation)
 
     @classmethod
@@ -126,6 +135,47 @@ class GenerationWorkerService:
                         )
                     return True
 
+                if provider == "neironych":
+                    try:
+                        refreshed = await NeironychGenerationProviderService.sync_video(
+                            session,
+                            request_id=str(generation.external_id),
+                            generation_id=generation.id,
+                        )
+                    except Exception as exc:
+                        logger.exception("Neironych polling failed for %s", generation.id)
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error=f"Neironych polling failed: {exc}",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                        return True
+                    if refreshed is None:
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error="Neironych task could not be reconciled",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                    elif refreshed.status in {"succeeded", "failed"}:
+                        return True
+                    elif refreshed.status == "retry":
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error=f"Neironych fallback scheduled: {refreshed.provider}",
+                            delay_seconds=1,
+                        )
+                    else:
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error="Neironych video task is still processing",
+                            delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                        )
+                    return True
+
                 if generation.action_type == "pinterest_repeat":
                     await GenerationOutboxService.complete_submission_stage(
                         session,
@@ -157,6 +207,28 @@ class GenerationWorkerService:
 
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, provider)
+            except ProviderCircuitOpen as exc:
+                if provider == "neironych":
+                    fallback = await switch_to_fallback(
+                        session,
+                        generation.id,
+                        reason=str(exc),
+                    )
+                    if fallback is not None:
+                        await GenerationOutboxService.release(
+                            session,
+                            claim.outbox_id,
+                            error=f"Neironych circuit fallback scheduled: {fallback.provider}",
+                            delay_seconds=1,
+                        )
+                        return True
+                await GenerationOutboxService.release(
+                    session,
+                    claim.outbox_id,
+                    error=str(exc),
+                    delay_seconds=exc.retry_after,
+                )
+                return True
             except ResourcePolicyError as exc:
                 await GenerationOutboxService.release(
                     session,
@@ -169,6 +241,8 @@ class GenerationWorkerService:
             try:
                 if provider == "nexus":
                     result = await NexusGenerationProviderService.submit(session, generation.id)
+                elif provider == "neironych":
+                    result = await NeironychGenerationProviderService.submit(session, generation.id)
                 else:
                     result = await GenerationProviderService.submit_kie(session, generation.id)
             except Exception as exc:
@@ -218,6 +292,13 @@ class GenerationWorkerService:
                         session,
                         claim.outbox_id,
                         error="Nexus image task submitted; polling result",
+                        delay_seconds=max(1, settings.generation_worker_poll_seconds),
+                    )
+                elif provider == "neironych" and result.status != "succeeded":
+                    await GenerationOutboxService.release(
+                        session,
+                        claim.outbox_id,
+                        error="Neironych task submitted; polling result",
                         delay_seconds=max(1, settings.generation_worker_poll_seconds),
                     )
                 elif result.action_type == "pinterest_repeat":
@@ -376,6 +457,12 @@ class GenerationWorkerService:
                         await NexusGenerationProviderService.sync_task(
                             session,
                             task_id=str(external_id),
+                            generation_id=generation_id,
+                        )
+                    elif provider == "neironych":
+                        await NeironychGenerationProviderService.sync_video(
+                            session,
+                            request_id=str(external_id),
                             generation_id=generation_id,
                         )
                     else:
