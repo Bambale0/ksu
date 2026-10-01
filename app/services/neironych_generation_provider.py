@@ -106,6 +106,12 @@ class NeironychGenerationProviderService:
         # provider request was in flight. Never refund that newer state.
         if generation.provider != "neironych" or generation.status in {"succeeded", "failed"}:
             return generation
+        if generation.external_id and not terminal_failure:
+            # A concurrent worker already bound an accepted provider task (for
+            # example after replaying the same idempotency key). A late
+            # fallback-eligible error must not discard authoritative upstream
+            # work; the bound task keeps polling to a terminal outcome.
+            return generation
         if (generation.parameters or {}).get("_submission_uncertain") and not terminal_failure:
             return generation
         await GenerationProviderService.fail_and_refund(session, generation.id, reason)

@@ -15,6 +15,9 @@ class MemorySession:
     async def scalar(self, *_args, **_kwargs):
         return self.generation
 
+    async def get(self, *_args, **_kwargs):
+        return self.generation
+
     async def commit(self):
         pass
 
@@ -55,6 +58,34 @@ async def test_bound_task_cannot_switch_without_terminal_evidence():
     )
     assert await switch_to_fallback(MemorySession(generation), generation.id, reason="slow") is None
     assert generation.external_id == "accepted-task"
+
+
+@pytest.mark.asyncio
+async def test_late_submit_error_keeps_concurrently_bound_task(monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services.generation_provider import GenerationProviderService
+
+    generation = SimpleNamespace(
+        id=uuid.uuid4(),
+        provider="neironych",
+        status="generating",
+        external_id="concurrently-bound-task",
+        parameters={
+            "_model_id": "seedance-2.5",
+            "_provider_route": ["neironych", "kie"],
+            "_provider_route_index": 0,
+        },
+    )
+    refund = AsyncMock()
+    monkeypatch.setattr(GenerationProviderService, "fail_and_refund", refund)
+    result = await NeironychGenerationProviderService._fallback_or_fail(
+        MemorySession(generation),
+        generation,
+        reason="Neironych API HTTP 429: rate limited",
+    )
+    assert result is generation
+    assert generation.provider == "neironych"
+    refund.assert_not_awaited()
 
 
 @pytest.mark.asyncio
