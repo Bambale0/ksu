@@ -10,6 +10,7 @@
 - Progress: PR #520 merged as `a37d28e926369c2e6fb31fe1862e27ef79671729` after exact-head checks passed and the P1 concurrency review was resolved. Its main release gates/deploy are running before this second release.
 - Verification: two RED regressions proved late Nexus errors could refund a bound/switched attempt; both fixed. Focused provider suite 55 passed. Clean isolated PostgreSQL full suite 1366 passed, one pre-existing SQLAlchemy warning. Ruff, JavaScript syntax and Alembic model/schema parity passed. Real admin browser journey passes Chromium, including revisioned options, MFA retry with the same idempotency key and visible stale-edit error. Local WebKit launch lacks OS libraries; exact-head CI supplies its browser environment.
 - Separate review: checked authorization, confirmation, concurrency/identity refresh, frozen routes, wallet ownership, ambiguity/policy handling, secret-safe logging, no schema change and admin rollback. Exact-head CI and production markers remain required before completion.
+- Final race review reproduced a late Neironych image timeout resurrecting a refunded row from the session cache. Refresh the locked row, preserve terminal/provider state and the first uncertainty timestamp; submission also refreshes state before any provider spend. RED confirmed the former failure; 37 image/Seedance regression checks and Ruff pass after the fix. PR #521 head CI reruns with this final guard.
 
 ## Active Feature Execution — Seedance migration first (2026-10-01)
 

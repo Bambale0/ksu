@@ -297,3 +297,24 @@ async def test_nexus_late_error_does_not_overwrite_newer_attempt(monkeypatch, st
     await NexusGenerationProviderService._record_submission_error(session, g.id, err)
     refund.assert_not_awaited()
     assert g.external_id == "accepted-task"
+
+
+@pytest.mark.asyncio
+async def test_late_neironych_image_error_cannot_resurrect_refunded_task():
+    from app.services.neironych_generation_provider import NeironychGenerationProviderService
+
+    async with SessionFactory() as session:
+        g = await create_nexus_job(session)
+        g.provider = "neironych"
+        g.status = "submitting"
+        await session.commit()
+        async with SessionFactory() as other:
+            await GenerationProviderService.fail_and_refund(other, g.id, "recovery timeout")
+        result = await NeironychGenerationProviderService._mark_image_uncertain(
+            session,
+            g,
+            error="late transport timeout",
+        )
+        assert result.status == "failed"
+        wallet = await session.get(Wallet, g.user_id)
+        assert wallet.balance == Decimal("100")
