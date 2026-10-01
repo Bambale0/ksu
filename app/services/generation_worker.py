@@ -187,6 +187,19 @@ class GenerationWorkerService:
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
+                if provider == "neironych" and (generation.parameters or {}).get("_model_id") in {
+                    "seedance-2.0", "seedance-2.5",
+                }:
+                    # Video POST is replayable with the original idempotency key.
+                    # A worker interruption may have lost an accepted request ID.
+                    params = dict(generation.parameters or {})
+                    params["_submission_uncertain"] = True
+                    params.setdefault("_submission_uncertain_at", generation.updated_at.isoformat())
+                    generation.parameters = params
+                    generation.status = "retry"
+                    await session.commit()
+
+            if generation.status == "submitting" and generation.external_id is None:
                 age = utcnow() - generation.updated_at
                 if age.total_seconds() >= settings.generation_submission_unknown_timeout_seconds:
                     message = f"{provider} submission outcome remained unknown after worker interruption"
@@ -205,6 +218,15 @@ class GenerationWorkerService:
                 await GenerationOutboxService.complete(session, claim.outbox_id)
                 return True
 
+            uncertain_at = (generation.parameters or {}).get("_submission_uncertain_at")
+            if provider == "neironych" and uncertain_at:
+                elapsed = (utcnow() - datetime.fromisoformat(uncertain_at)).total_seconds()
+                if elapsed >= settings.generation_submission_unknown_timeout_seconds:
+                    await GenerationProviderService.fail_and_refund(
+                        session, generation.id, "Neironych submission outcome could not be recovered",
+                    )
+                    return True
+
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, provider)
             except ProviderCircuitOpen as exc:
@@ -213,6 +235,7 @@ class GenerationWorkerService:
                         session,
                         generation.id,
                         reason=str(exc),
+                        expected_provider=provider,
                     )
                     if fallback is not None:
                         await GenerationOutboxService.release(

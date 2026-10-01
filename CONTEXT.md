@@ -1,3 +1,17 @@
+## Active Feature Execution — Seedance migration first (2026-10-01)
+
+- User priority: finish and deploy Seedance 2.0/2.5 first; Nano Pro and runtime admin routes remain in the separate follow-up worktree.
+- Baseline: `1248044c305ed672fa9df51207681819ef4382e8`; exact deployed SHA and CI green. Audit confirmed uncertain video -> circuit fallback risk and unrecognized expired status.
+- Reuse: Neironych adapter, generation outbox, wallet idempotency, owned media. No schema or pricing changes. Preserve existing bound Kie/Neironych jobs and Nano routing in this stage.
+- Plan: RED safety regressions; preserve uncertainty through retry/circuit/restart; bind recovered provider request; terminate expired tasks; reject stale fallback transitions; verify provider lifecycle/one debit/refund; exact-head CI + review; merge/deploy exact SHA and check health.
+- Acceptance: new Seedance defaults Neironych; unknown upstream outcome never switches providers; same-key retries recover original ID; bounded unknown recovery; expired terminates; terminal unknown/content-policy failures do not bypass restrictions through fallback.
+- Verification matrix: domain=state/error regressions; DB=durable worker/attempt and wallet tests; authorization=unchanged existing suite; migrations=N/A no schema; provider=mocked submit/poll/download; idempotency=lost-response/circuit/restart; API/E2E=existing CI; smoke=release SHA/health; observability=attempt IDs/timestamps + uncertainty metadata; config=existing timeouts, route control plane deferred to stage 2; performance=bounded retries; rollback=drain bound tasks, keep provider adapter until completion.
+- Risks: no new paid test requests; inherited JSON route storage retained. Use isolated database for all tests, never production .env.
+- Guidance: local debugger; Bambale0/skills diagnosing-bugs; claw/dev-agents-pack api-integrator; wondelai release-it; agentskills/agentskills and anthropics/skills inspected, no additional task-specific workflow. Shared baseline unchanged.
+- Progress: RED harness reproduced expired/uncertain/bound-task failures. Implemented safety guards, same-key crash recovery, bounded uncertainty, terminal expiry and fail-closed unknown/policy errors; attempt metadata preserves upstream identity. Clean isolated PostgreSQL full suite: 1346 passed (one pre-existing SQLAlchemy warning). Initial reused-DB run had duplicate fixture IDs and a PUBLIC_BASE_URL mismatch; rerun used a new database and CI-like environment. Focused post-review suite plus Ruff/migration parity pass; exact-head CI and deployment pending. Second-pass review checked frozen routes, wallet idempotency, late-result/refund races, provider contract and unchanged Nano routing.
+
+- PR #520 review: preserve a concurrently bound task after a late fallback-eligible submit error; the new regression confirms no refund and continued polling. Focused safety suite: 10 passed; Ruff passed. Updated head CI is required before merge.
+
 ## Active Feature Execution — Persisted generation provider routing + Neironych migration (2026-10-01)
 
 - **Baseline / scope:** `main@e40c755a3c9ec525a626890cd1113498c1587253`; branch `feat/provider-routing-neironych-20261001`. Only `seedance-2.0`, `seedance-2.5`, and `nano-banana-pro` provider routing changes. All other model routes remain unchanged.

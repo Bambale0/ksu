@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -44,12 +45,22 @@ async def switch_to_fallback(
     generation_id: uuid.UUID,
     *,
     reason: str,
+    expected_provider: str | None = None,
+    terminal_failure: bool = False,
 ) -> Generation | None:
     generation = await session.scalar(
         select(Generation).where(Generation.id == generation_id).with_for_update()
+        .execution_options(populate_existing=True)
     )
     if generation is None or generation.status in {"succeeded", "failed"}:
-        return generation
+        return None
+
+    if expected_provider is not None and generation.provider != expected_provider:
+        return None
+    if not terminal_failure and (
+        generation.external_id or (generation.parameters or {}).get("_submission_uncertain")
+    ):
+        return None
 
     route = route_snapshot(generation.parameters)
     if not route:
@@ -75,12 +86,16 @@ async def switch_to_fallback(
             "provider": current_provider,
             "outcome": "fallback",
             "reason": str(reason or "")[:500],
+            "external_id": generation.external_id,
+            "idempotency_key": idempotency_key(generation),
+            "at": datetime.now(UTC).isoformat(),
         }
     )
     params["_provider_attempts"] = history[-8:]
     params["_provider_route_index"] = next_index
     params.pop("_submission_uncertain", None)
     params.pop("_submission_uncertain_at", None)
+    params.pop("_provider_submitted_at", None)
 
     generation.parameters = params
     generation.provider = route[next_index]
