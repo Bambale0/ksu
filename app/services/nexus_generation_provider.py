@@ -17,6 +17,7 @@ from app.providers.kie import KieTask
 from app.providers.nexus import NANO_BANANA_MODELS, NexusClient, NexusProviderError
 from app.services.feed_static import FeedStaticStorage
 from app.services.generation_provider import GenerationProviderService
+from app.services.generation_provider_routing import switch_to_fallback
 from app.services.reference_static import ReferenceStaticStorage
 
 
@@ -132,15 +133,29 @@ class NexusGenerationProviderService:
         generation_id: uuid.UUID,
         exc: Exception,
     ) -> None:
-        disposition = cls._error_disposition(exc)
-        if disposition == "permanent":
-            await GenerationProviderService.fail_and_refund(session, generation_id, str(exc))
-            return
-
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
-        if generation is None or generation.status in {"succeeded", "failed"}:
+        if (
+            generation is None or generation.provider != "nexus"
+            or generation.status in {"succeeded", "failed"} or generation.external_id
+        ):
+            return
+        disposition = cls._error_disposition(exc)
+        # Only explicit pre-task availability rejections permit a new provider.
+        # Transport errors/5xx may hide an accepted, chargeable Nexus task.
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in {401, 402, 404, 429}:
+            fallback = await switch_to_fallback(
+                session, generation_id, reason=f"Nexus HTTP {exc.response.status_code}",
+                expected_provider="nexus",
+            )
+            if fallback is not None:
+                return
+        if (generation.parameters or {}).get("_submission_uncertain"):
+            disposition = "uncertain"
+        if disposition == "permanent":
+            await GenerationProviderService.fail_and_refund(session, generation_id, str(exc))
             return
 
         now = datetime.now(timezone.utc)
@@ -155,7 +170,7 @@ class NexusGenerationProviderService:
         parameters = dict(generation.parameters or {})
         if disposition == "uncertain":
             parameters["_submission_uncertain"] = True
-            parameters["_submission_uncertain_at"] = now.isoformat()
+            parameters.setdefault("_submission_uncertain_at", now.isoformat())
         else:
             parameters.pop("_submission_uncertain", None)
             parameters.pop("_submission_uncertain_at", None)
@@ -166,10 +181,15 @@ class NexusGenerationProviderService:
     async def submit(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if generation is None:
             raise LookupError("Generation not found")
         if generation.status not in {"queued", "retry"}:
+            return generation
+        if generation.external_id or (
+            (generation.parameters or {}).get("_provider_route") and generation.provider != "nexus"
+        ):
             return generation
         if not cls.handles(generation):
             raise NexusGenerationContractError("Generation is not routed to Nexus")
@@ -184,14 +204,9 @@ class NexusGenerationProviderService:
             input_data = GenerationProviderService._input_for(generation)
             normalized = cls._normalize_input(model_id, input_data)
 
-            log_input = {k: v for k, v in normalized.items()}
-            if "prompt" in log_input:
-                log_input["prompt"] = (log_input["prompt"] or "")[:200]
-            if "image_urls" in log_input:
-                log_input["image_urls"] = f"count={len(log_input['image_urls'])}"
             logger.info(
-                "nexus_submit submitting gen=%s model=%s normalized=%s",
-                generation_id, model_id, log_input,
+                "nexus_submit submitting gen=%s model=%s references=%s",
+                generation_id, model_id, len(normalized["image_urls"]),
             )
 
             client = NexusClient(settings.nexus_api_key, settings.nexus_api_base_url)
@@ -208,14 +223,21 @@ class NexusGenerationProviderService:
                 await client.aclose()
         except Exception as exc:
             await cls._record_submission_error(session, generation.id, exc)
+            refreshed = await session.get(Generation, generation.id)
+            if refreshed is not None and (
+                refreshed.provider != "nexus" or refreshed.external_id
+                or refreshed.status == "succeeded"
+            ):
+                return refreshed
             raise
 
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if generation is None:
             raise LookupError("Generation disappeared after Nexus submission")
-        if generation.status in {"succeeded", "failed"}:
+        if generation.provider != "nexus" or generation.status in {"succeeded", "failed"}:
             return generation
         if generation.external_id and generation.external_id != task_id:
             return generation
@@ -242,10 +264,12 @@ class NexusGenerationProviderService:
             select(Generation)
             .where(Generation.provider == "nexus", Generation.external_id == task_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if generation is None and generation_id is not None:
             candidate = await session.scalar(
                 select(Generation).where(Generation.id == generation_id).with_for_update()
+                .execution_options(populate_existing=True)
             )
             if (
                 candidate is not None
@@ -276,6 +300,22 @@ class NexusGenerationProviderService:
             if task.status == "failed"
             else task.status
         )
+        if task.status == "failed":
+            # Generic failure and content-policy rejection are not proof of a
+            # technical outage. Only explicitly technical terminal failures retry.
+            reason = str(task.error or "").lower()
+            policy = any(word in reason for word in (
+                "policy", "copyright", "moderation", "safety", "nsfw",
+                "forbidden content", "content violation",
+            ))
+            technical = any(word in reason for word in ("timeout", "timed out", "unavailable", "internal server error"))
+            if technical and not policy:
+                fallback = await switch_to_fallback(
+                    session, generation.id, reason="Nexus terminal technical failure",
+                    expected_provider="nexus", terminal_failure=True,
+                )
+                if fallback is not None:
+                    return fallback
         logger.info(
             "nexus_sync_task gen=%s task=%s nexus_status=%s state=%s urls=%s",
             generation_id, task_id, task.status, state,

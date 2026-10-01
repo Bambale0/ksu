@@ -211,6 +211,7 @@ def test_public_nexus_ui_matches_provider_capabilities(
 async def test_uncertain_nexus_create_is_requeued_for_idempotent_replay() -> None:
     generation = SimpleNamespace(
         status="submitting",
+        external_id=None,
         error=None,
         updated_at=None,
         provider="nexus",

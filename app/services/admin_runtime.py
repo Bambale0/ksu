@@ -6,12 +6,16 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 
 from app.core.config import settings
 from app.db.admin_models import AdminRuntimeSetting, TariffVersion
 from app.db.models import AdminAccount
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
+from app.services.generation_provider_routing import (
+    ROUTES_SETTING_KEY, configured_routes, route_options, validate_routes,
+)
 
 
 class AdminRuntimeService:
@@ -26,7 +30,40 @@ class AdminRuntimeService:
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "runtime.manage")
         rows = list((await session.scalars(select(AdminRuntimeSetting))).all())
-        return {item.key: item.value for item in rows}
+        config = await configured_routes(session)
+        return {**{item.key: item.value for item in rows}, ROUTES_SETTING_KEY: {
+            **config, "options": route_options(),
+        }}
+
+    @staticmethod
+    async def set_provider_routes(
+        session: AsyncSession, *, admin: AdminAccount, routes: dict[str, list[str]],
+        expected_revision: int, idempotency_key: str, request_id: str, confirmed: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(admin, "runtime.reload", confirmed=confirmed)
+        validated = validate_routes(routes)
+
+        async def operation() -> dict[str, Any]:
+            initial = await configured_routes(session)
+            await session.execute(insert(AdminRuntimeSetting).values(
+                key=ROUTES_SETTING_KEY, value=initial, updated_by_admin_id=admin.id,
+            ).on_conflict_do_nothing(index_elements=[AdminRuntimeSetting.key]))
+            row = await session.scalar(select(AdminRuntimeSetting).where(
+                AdminRuntimeSetting.key == ROUTES_SETTING_KEY,
+            ).with_for_update().execution_options(populate_existing=True))
+            if row is None or int(row.value["revision"]) != expected_revision:
+                raise ValueError("Provider routes changed; reload settings before saving")
+            row.value = {"revision": expected_revision + 1, "routes": validated}
+            row.updated_by_admin_id = admin.id
+            await session.flush()
+            return dict(row.value)
+
+        return await AdminCommandLedger.execute(
+            session, idempotency_key=idempotency_key, admin_user_id=admin.id,
+            request_id=request_id, action="runtime.reload", target_id=ROUTES_SETTING_KEY,
+            request_payload={"routes": validated, "expected_revision": expected_revision},
+            operation=operation,
+        )
 
     @staticmethod
     async def subscription_required(session: AsyncSession) -> bool:

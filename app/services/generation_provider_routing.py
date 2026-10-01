@@ -8,12 +8,46 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
+from app.db.admin_models import AdminRuntimeSetting
 
 _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "seedance-2.0": ("neironych", "kie"),
     "seedance-2.5": ("neironych", "kie"),
-    "nano-banana-pro": ("neironych", "nexus"),
+    "nano-banana-pro": ("nexus", "neironych"),
 }
+
+ROUTES_SETTING_KEY = "generation_provider_routes"
+
+
+def route_options() -> dict[str, list[list[str]]]:
+    return {model: [list(route), [route[0]], [route[1]]] for model, route in _PROVIDER_ROUTES.items()}
+
+
+def validate_routes(routes: dict[str, Any]) -> dict[str, list[str]]:
+    if set(routes) != set(_PROVIDER_ROUTES):
+        raise ValueError("Specify routes for Seedance 2.0, Seedance 2.5 and Nano Banana Pro")
+    validated: dict[str, list[str]] = {}
+    for model in _PROVIDER_ROUTES:
+        route = routes[model]
+        allowed = route_options()[model]
+        if route not in allowed:
+            raise ValueError(f"Unsupported provider route for {model}")
+        validated[model] = list(route)
+    return validated
+
+
+async def configured_routes(session: AsyncSession) -> dict[str, Any]:
+    row = await session.get(AdminRuntimeSetting, ROUTES_SETTING_KEY, populate_existing=True)
+    if row is None:
+        return {"revision": 1, "routes": {k: list(v) for k, v in _PROVIDER_ROUTES.items()}}
+    return {"revision": int(row.value["revision"]), "routes": validate_routes(row.value["routes"])}
+
+
+async def configured_route(session: AsyncSession, model: str) -> tuple[tuple[str, ...] | None, int]:
+    if model not in _PROVIDER_ROUTES:
+        return None, 0
+    config = await configured_routes(session)
+    return tuple(config["routes"][model]), config["revision"]
 
 
 def route_for_model(model_id: str) -> tuple[str, ...] | None:
