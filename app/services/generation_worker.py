@@ -230,7 +230,7 @@ class GenerationWorkerService:
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, provider)
             except ProviderCircuitOpen as exc:
-                if provider == "neironych":
+                if provider in {"neironych", "nexus"}:
                     fallback = await switch_to_fallback(
                         session,
                         generation.id,
@@ -241,7 +241,7 @@ class GenerationWorkerService:
                         await GenerationOutboxService.release(
                             session,
                             claim.outbox_id,
-                            error=f"Neironych circuit fallback scheduled: {fallback.provider}",
+                            error=f"{provider} circuit fallback scheduled: {fallback.provider}",
                             delay_seconds=1,
                         )
                         return True

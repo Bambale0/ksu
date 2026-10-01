@@ -157,10 +157,11 @@ class NeironychGenerationProviderService:
     ) -> Generation:
         locked = await session.scalar(
             select(Generation).where(Generation.id == generation.id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if locked is None:
             raise LookupError("Generation disappeared after Neironych image submission")
-        if locked.status in {"succeeded", "failed"}:
+        if locked.provider != "neironych" or locked.status in {"succeeded", "failed"}:
             return locked
         now = datetime.now(timezone.utc)
         locked.provider = "neironych"
@@ -168,7 +169,7 @@ class NeironychGenerationProviderService:
         locked.error = f"Neironych image outcome uncertain: {error}"[:4000]
         params = dict(locked.parameters or {})
         params["_submission_uncertain"] = True
-        params["_submission_uncertain_at"] = now.isoformat()
+        params.setdefault("_submission_uncertain_at", now.isoformat())
         locked.parameters = params
         await session.commit()
         return locked
@@ -227,10 +228,11 @@ class NeironychGenerationProviderService:
     async def submit(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if generation is None:
             raise LookupError("Generation not found")
-        if generation.status not in {"queued", "retry"}:
+        if generation.status not in {"queued", "retry"} or generation.external_id:
             return generation
         if str(generation.provider or "") != "neironych" or not cls.handles(generation):
             raise ValueError("Generation is not routed to Neironych")

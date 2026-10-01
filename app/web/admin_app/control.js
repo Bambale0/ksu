@@ -1001,6 +1001,28 @@
     const subscription = Boolean(data.subscription_required?.enabled);
     const body = pre(data);
     const controls = actions(
+      button("Провайдеры генерации", "table-action", () => {
+        const config = data.generation_provider_routes;
+        if (!config?.routes || !config?.options) return toast("Маршруты недоступны. Обновите страницу.", "error");
+        openForm({
+          title: "Провайдеры новых генераций",
+          submitLabel: "Сохранить маршруты",
+          fields: Object.entries(config.routes).map(([model, route]) => ({
+            name: model, label: model, type: "select", value: route.join(","),
+            options: config.options[model].map((choice) => [choice.join(","), choice.join(" → ")]),
+          })),
+          onSubmit: async (values) => {
+            await mutate("/api/v1/admin/runtime/provider-routes", {
+              body: {
+                routes: Object.fromEntries(Object.entries(values).map(([model, route]) => [model, route.split(",")])),
+                expected_revision: config.revision,
+              },
+              label: "Изменить провайдеров для новых генераций? Уже принятые задачи сохранят свой маршрут.",
+            });
+            await renderRuntime();
+          },
+        });
+      }),
       button(`Обязательная подписка: ${subscription ? "включена" : "выключена"}`, "table-action", async () => {
         try {
           await mutate("/api/v1/admin/runtime/subscription-required", {
