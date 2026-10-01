@@ -185,7 +185,8 @@ test('changing identity photos revokes the previous rights confirmation', async 
   await page.goto('/mini-app/pinterest-repeat/');
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
-  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+  await expect(page.getByAltText('Референс сцены')).toBeVisible();
+  await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles(identityFile);
 
   const consent = page.getByLabel('Подтверждаю права на фото');
   const create = page.getByRole('button', { name: 'Создать →' });
