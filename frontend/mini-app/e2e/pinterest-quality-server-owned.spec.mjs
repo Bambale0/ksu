@@ -99,7 +99,8 @@ test('Pinterest quality retry is server-owned and the client submits one paid ge
     mimeType: 'image/jpeg',
     buffer: Buffer.from('scene'),
   });
-  await page.locator('input[type="file"]').first().setInputFiles({
+  await expect(page.getByAltText('Референс сцены')).toBeVisible();
+  await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles({
     name: 'me.jpg',
     mimeType: 'image/jpeg',
     buffer: Buffer.from('identity'),
