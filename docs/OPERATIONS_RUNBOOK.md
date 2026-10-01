@@ -467,3 +467,24 @@ Prioritize:
 - Referral attachment is immutable after user creation and admitted under server-side controls.
 - Secrets never belong in `.env.example`, docs, logs or issue/PR bodies.
 - Runtime-affecting PRs update maintained docs/config examples in the same PR.
+
+### Seedance Neironych recovery
+
+Seedance 2.0/2.5 start on Neironych and retain the provider route stored when the
+request was created. A lost video POST response or interrupted worker is recovered
+with the same provider idempotency key. While the submission outcome is unknown,
+an open provider circuit delays recovery; it must never launch a Kie fallback.
+Recovery is bounded by `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`. An
+unrecoverable request receives the existing idempotent customer refund and does
+not trigger another paid provider request.
+
+`expired` is a terminal provider state. Confirmed technical failures/expiry can
+use the saved Kie fallback. Generic `provider_generation_failed` and policy errors
+fail closed instead of trying another provider. Attempt metadata retains the
+previous external request ID and timestamp for reconciliation. Operator diagnosis
+must distinguish provider expense from customer ROX: refunding a lost result does
+not prove the upstream provider did not charge.
+
+This safety release does not change Nano Banana Pro routing. Before rolling back
+the adapter, drain accepted Neironych tasks; changing routes for new requests must
+not move already accepted work to another provider.

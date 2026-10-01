@@ -34,7 +34,7 @@ _SUPPORTED_PROVIDER_MODELS = frozenset(
     for alias in aliases
 )
 _TERMINAL_SUCCESS = frozenset({"completed", "succeeded", "success", "done", "ready"})
-_TERMINAL_FAILURE = frozenset({"failed", "error", "cancelled", "canceled"})
+_TERMINAL_FAILURE = frozenset({"failed", "expired", "error", "cancelled", "canceled"})
 _DOWNLOAD_RANGE_CHUNK_BYTES = 256 * 1024
 _DOWNLOAD_ZERO_PROGRESS_LIMIT = 4
 _CONTENT_RANGE_RE = re.compile(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$")

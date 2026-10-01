@@ -87,8 +87,12 @@ class NeironychGenerationProviderService:
         generation: Generation,
         *,
         reason: str,
+        terminal_failure: bool = False,
     ) -> Generation:
-        fallback = await switch_to_fallback(session, generation.id, reason=reason)
+        fallback = await switch_to_fallback(
+            session, generation.id, reason=reason, expected_provider="neironych",
+            terminal_failure=terminal_failure,
+        )
         if fallback is not None:
             logger.warning(
                 "neironych_fallback generation=%s model=%s next_provider=%s reason=%s",
@@ -98,6 +102,12 @@ class NeironychGenerationProviderService:
                 str(reason)[:300],
             )
             return fallback
+        # Another worker may have bound/completed/switched the attempt while the
+        # provider request was in flight. Never refund that newer state.
+        if generation.provider != "neironych" or generation.status in {"succeeded", "failed"}:
+            return generation
+        if (generation.parameters or {}).get("_submission_uncertain") and not terminal_failure:
+            return generation
         await GenerationProviderService.fail_and_refund(session, generation.id, reason)
         refreshed = await session.get(Generation, generation.id)
         if refreshed is None:
@@ -114,18 +124,19 @@ class NeironychGenerationProviderService:
     ) -> Generation:
         locked = await session.scalar(
             select(Generation).where(Generation.id == generation.id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if locked is None:
             raise LookupError("Generation disappeared after Neironych submission")
-        if locked.status in {"succeeded", "failed"}:
+        if locked.status in {"succeeded", "failed"} or locked.provider != "neironych" or locked.external_id:
             return locked
         locked.provider = "neironych"
         locked.status = "retry"
         locked.error = str(error)[:4000]
         locked.external_id = None
         params = dict(locked.parameters or {})
-        params.pop("_submission_uncertain", None)
-        params.pop("_submission_uncertain_at", None)
+        params["_submission_uncertain"] = True
+        params.setdefault("_submission_uncertain_at", datetime.now(timezone.utc).isoformat())
         locked.parameters = params
         await session.commit()
         return locked
@@ -168,10 +179,11 @@ class NeironychGenerationProviderService:
     ) -> Generation:
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if generation is None:
             raise LookupError("Generation disappeared before Neironych completion")
-        if generation.status == "succeeded":
+        if generation.status in {"succeeded", "failed"} or generation.provider != "neironych":
             return generation
 
         asset = await MediaAssetService.persist_ready_local_file(
@@ -267,15 +279,22 @@ class NeironychGenerationProviderService:
 
         locked = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if locked is None:
             raise LookupError("Generation disappeared after Neironych submission")
+        if locked.status in {"succeeded", "failed"} or locked.provider != "neironych":
+            return locked
         if locked.external_id and locked.external_id != request_id:
             raise RuntimeError("Neironych request identity changed")
         locked.external_id = request_id
         locked.provider = "neironych"
         locked.status = "generating"
         locked.error = None
+        params = dict(locked.parameters or {})
+        params.pop("_submission_uncertain", None)
+        params.pop("_submission_uncertain_at", None)
+        locked.parameters = params
         GenerationProviderService._mark_provider_task_bound(
             locked,
             now=datetime.now(timezone.utc),
@@ -408,9 +427,23 @@ class NeironychGenerationProviderService:
                 finally:
                     path.unlink(missing_ok=True)
             if is_failure_status(status):
+                generation = await session.scalar(
+                    select(Generation).where(Generation.id == generation_id).with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+                if generation is None or generation.status in {"succeeded", "failed"}:
+                    return generation
+                if generation.provider != "neironych" or generation.external_id != request_id:
+                    return generation
                 reason = provider_error or f"Neironych generation failed ({status})"
-                if not cls._policy_error(reason):
-                    return await cls._fallback_or_fail(session, generation, reason=reason)
+                technical = status == "expired" or any(
+                    marker in reason.lower()
+                    for marker in ("timeout", "timed out", "unavailable", "internal server error")
+                )
+                if technical and not cls._policy_error(reason):
+                    return await cls._fallback_or_fail(
+                        session, generation, reason=reason, terminal_failure=True,
+                    )
                 await GenerationProviderService.fail_and_refund(session, generation.id, reason)
                 return await session.get(Generation, generation.id)
 
