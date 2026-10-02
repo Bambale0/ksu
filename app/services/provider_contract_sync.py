@@ -256,7 +256,7 @@ def install_provider_contract_sync() -> None:
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {}).update(
             {"mode": "normal", "resolution": "480p", "aspect_ratio": "16:9", "nsfw_checker": False}
         )
-        ui_contract.KIE_DURATION_OPTIONS[model_id] = list(range(1, 31))
+        ui_contract.KIE_DURATION_OPTIONS[model_id] = list(range(6, 31))
 
     grok15 = ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault("grok-video-1.5", {})
     grok15["aspect_ratio"] = ["auto", "1:1", "16:9", "9:16", "3:2", "2:3"]

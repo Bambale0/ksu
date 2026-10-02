@@ -424,7 +424,11 @@ def _normalize_grok(model: str, payload: dict[str, Any]) -> None:
             if payload.get("mode") in (None, ""):
                 payload["mode"] = "normal"
             _enum(payload, "mode", {"normal"})
-        _int_range(payload, "duration", minimum=1, maximum=30)
+            _int_range(payload, "duration", minimum=6, maximum=30)
+        else:
+            # Keep the preview contract unchanged; only the base Grok generators
+            # are known to reject sub-six-second requests.
+            _int_range(payload, "duration", minimum=1, maximum=30)
         if model == "grok-imagine/image-to-video":
             _list(payload, "image_urls", maximum=1)
         return

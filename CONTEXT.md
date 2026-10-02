@@ -1,3 +1,14 @@
+## Active Fix Execution — Grok Video duration contract (2026-10-02)
+
+- Baseline: `main@d1e60e4e1adc0d19037d50397e9e66f64ce090e8`; branch `fix/grok-video-duration-contract-20261002`.
+- Production evidence: Grok I2V generation `906293c0-dd1e-464f-aafc-d893dcbf9658` used duration=5 and Kie rejected createTask with a provider range error. Bounded 30-day production history shows duration=6/10/11 successes and no successful duration<6; the only five-second attempt is the range failure. The other observed Grok failure at duration=10 was content moderation, not duration.
+- Root cause: ROXY exposed and accepted Grok video durations 1..30 while the currently observed provider contract rejects 5 seconds. The invalid value passed pre-billing validation and reached the paid provider boundary before refund.
+- Change: reject Grok T2V/I2V duration below 6 before billing, enforce the same 6..30 invariant at the Kie normalization boundary, and expose only 6..30 in the dynamic Mini App schema. No pricing, provider routing, wallet, Telegram, schema, secrets or existing generation records change.
+- RED: regression tests now require duration=5 to fail at ModelCatalog and Kie normalization, and require UI suggestions to begin at 6. GREEN/exact-SHA CI/deploy evidence pending.
+- Verification plan: focused contract/UI/provider tests, Ruff, exact-head required workflows, merge only when green, exact-main workflows, standard production deploy, then health/release-marker/container-SHA smoke. No paid synthetic generation will be launched.
+- Rollback: normal code revert; no migration or data rewrite.
+- Guidance: KSU AGENTS + local systematic-debugging; WondelAI release-it; Bambale0/claw evidence/minimal-change guidance; dev-agents-pack release manager/debugger. AgentSkills has no runtime-specific release procedure; Anthropic webapp-testing applies to Mini App regression coverage only.
+
 ## Active Feature Execution — Consolidate stale open pull requests (2026-10-02)
 
 - **CI follow-up:** candidate `435e342` passed ROXY E2E, Release Gate, Admin Console and Batch; backend collection exposed that standalone `pytest` does not import the uninstalled `scripts` namespace. The new integration test now loads the exact CLI file through importlib, matching the established backfill test seam. All 12 focused media regression tests and Ruff pass after the correction; every behavior assertion is retained and a fresh exact-head CI run is required.
