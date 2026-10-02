@@ -216,7 +216,7 @@ def _normalize_seedance(model: str, payload: dict[str, Any]) -> None:
     if model == "bytedance/seedance-1.5-pro":
         for field in ("fixed_lens", "generate_audio", "nsfw_checker"):
             _bool(payload, field)
-        _int_range(payload, "duration", minimum=1, maximum=30)
+        _int_range(payload, "duration", minimum=6, maximum=30)
         _list(payload, "input_urls", maximum=2)
         return
 
