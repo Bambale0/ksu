@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
+import { isReferralDiscoveryLaunch } from "@/lib/referral-entry";
 import { getStartParamFallback, haptic, initTelegram, notify, openExternalLink } from "@/lib/telegram";
 import type { Me } from "@/lib/types";
 import styles from "./user-onboarding.module.css";
@@ -126,6 +127,7 @@ export function UserOnboardingGate() {
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [statusError, setStatusError] = useState("");
   const [statusAttempt, setStatusAttempt] = useState(0);
+  const [deferDiscoveryTour, setDeferDiscoveryTour] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -141,6 +143,7 @@ export function UserOnboardingGate() {
     tg?.ready?.();
     tg?.expand?.();
     let active = true;
+    setDeferDiscoveryTour(isReferralDiscoveryLaunch());
     setStatusError("");
     Promise.allSettled([api.onboarding(), tg?.initData ? api.me() : Promise.resolve(null)]).then(([onboardingResult, meResult]) => {
       if (!active) return;
@@ -229,6 +232,10 @@ export function UserOnboardingGate() {
     haptic("light");
     setStep((value) => Math.min(STEPS.length - 1, value + 1));
   };
+
+  // Referral visitors can browse first. Protected actions still receive the
+  // backend's 428 redirect to onboarding=1; no completion is recorded here.
+  if (deferDiscoveryTour) return null;
 
   if (status === null) {
     return <div className={`onboarding-overlay roxy-onboarding-v2 ${styles.overlay}`} role="dialog" aria-modal="true" aria-labelledby="roxy-onboarding-status-title">

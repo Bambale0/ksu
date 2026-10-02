@@ -26,6 +26,7 @@ import type {
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
 import { RouteFeatureLoader } from "./route-feature-loader";
+import { TelegramChatConnection } from "./telegram-chat-connection";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
@@ -601,6 +602,7 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
+        {route === "home" && me && <TelegramChatConnection key={me.telegram_id} me={me} />}
         {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
           if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
           try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }

@@ -35,7 +35,14 @@ class DatabaseSessionMiddleware(BaseMiddleware):
                     # address this chat again. Recover deferred transactional
                     # deliveries before router ordering can consume the message.
                     incoming_message = event.message if isinstance(event, Update) else None
-                    if existing_user is not None and incoming_message is not None:
+                    if (
+                        existing_user is not None
+                        and incoming_message is not None
+                        and incoming_message.chat.type == "private"
+                        and incoming_message.chat.id == event_user.id
+                        and incoming_message.from_user is not None
+                        and incoming_message.from_user.id == event_user.id
+                    ):
                         recovered = await NotificationDeliveryService.requeue_reachable_user_deliveries(
                             session,
                             user_id=existing_user.id,

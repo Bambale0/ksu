@@ -9,12 +9,14 @@ export type TelegramUser = {
   username?: string;
   language_code?: string;
   photo_url?: string;
+  allows_write_to_pm?: boolean;
 };
 
 export type Me = {
   id: string;
   telegram_id: number;
   profile_link?: string | null;
+  bot_chat_link?: string | null;
   username?: string | null;
   first_name?: string | null;
   last_name?: string | null;

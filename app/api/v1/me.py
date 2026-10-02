@@ -8,6 +8,7 @@ from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Wallet, WalletTransaction
 from app.services.account_profile import AccountProfileService
 from app.services.billing_access import BillingAccessService
+from app.services.feed_links import bot_start_link
 from app.services.profile_preferences import ProfilePreferenceService
 from app.services.partner import PartnerService
 
@@ -44,6 +45,7 @@ async def me(user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
         "id": str(user.id),
         "telegram_id": user.telegram_id,
         "profile_link": PartnerService.profile_link(user.telegram_id),
+        "bot_chat_link": bot_start_link("connect"),
         "username": user.username,
         "first_name": user.first_name,
         "last_name": user.last_name,

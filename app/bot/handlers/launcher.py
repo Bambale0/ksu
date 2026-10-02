@@ -148,6 +148,32 @@ async def _send_launcher(
         )
 
 
+@router.message(F.write_access_allowed)
+async def write_access_allowed(message: Message) -> None:
+    """Consent is not /start: preserve referral attribution and any active FSM.
+
+    Telegram can send this before the first signed Mini App request. Never create
+    an account here: doing so would consume first-touch referral attribution.
+    The existing middleware recovers deferred deliveries for registered users.
+    """
+    if (
+        message.from_user is None
+        or message.chat.type != "private"
+        or message.chat.id != message.from_user.id
+    ):
+        return
+    logger.info(
+        "telegram_write_access_allowed user_id=%s message_id=%s",
+        message.from_user.id,
+        message.message_id,
+    )
+    await message.answer(
+        "Чат ROXY подключён. Здесь будут сообщения о готовых работах. "
+        "Сами работы также сохраняются в истории приложения.",
+        reply_markup=app_launcher_menu(route="home"),
+    )
+
+
 @router.callback_query(F.data == "app:unavailable")
 async def app_unavailable(callback: CallbackQuery) -> None:
     await callback.answer(

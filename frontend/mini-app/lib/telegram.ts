@@ -29,6 +29,8 @@ export type TelegramWebApp = {
   setBottomBarColor?: (color: string) => void;
   openLink?: (url: string) => void;
   openTelegramLink?: (url: string) => void;
+  requestWriteAccess?: (callback?: (allowed: boolean) => void) => void;
+  isVersionAtLeast?: (version: string) => boolean;
   showPopup?: (params: unknown) => void;
   hideKeyboard?: () => void;
   BackButton?: BackButton;
