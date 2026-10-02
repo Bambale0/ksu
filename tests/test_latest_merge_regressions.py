@@ -15,7 +15,17 @@ from app.db.session import SessionFactory
 from app.services.feed import FeedMediaUnavailableError, FeedService
 from app.services.feed_previews import FeedPreviewService
 from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError, PersistedFeedMedia
-from scripts import backfill_feed_faststart as command
+# CLI helpers are not part of the installed application package. Resolve the
+# real file, as the existing backfill tests do, so both pytest entrypoints work.
+import importlib.util
+import sys
+
+_command_path = Path(__file__).resolve().parents[1] / "scripts" / "backfill_feed_faststart.py"
+_command_spec = importlib.util.spec_from_file_location("faststart_integration_command", _command_path)
+assert _command_spec is not None and _command_spec.loader is not None
+command = importlib.util.module_from_spec(_command_spec)
+sys.modules[_command_spec.name] = command
+_command_spec.loader.exec_module(command)
 
 
 async def publication(scope: str, urls: list[str], *, order: int = 0) -> uuid.UUID:
