@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
+import subprocess
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -169,6 +171,71 @@ class FeedStaticStorage:
             raise FeedStaticStorageError("Unsupported or invalid feed media file")
         suffix, content_type = detected
         return suffix, content_type, size, digest.hexdigest()
+
+    @staticmethod
+    def mp4_has_faststart(path: Path) -> bool:
+        """Return whether the MP4 index precedes its media data."""
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            offset = 0
+            while offset + 8 <= size:
+                handle.seek(offset)
+                header = handle.read(8)
+                box_size = int.from_bytes(header[:4], "big")
+                header_size = 8
+                if box_size == 1:
+                    box_size = int.from_bytes(handle.read(8), "big")
+                    header_size = 16
+                elif box_size == 0:
+                    box_size = size - offset
+                if box_size < header_size or offset + box_size > size:
+                    return False
+                if header[4:] == b"moov":
+                    return True
+                if header[4:] == b"mdat":
+                    return False
+                offset += box_size
+        return False
+
+    @classmethod
+    def faststart_copy(cls, item: PersistedFeedMedia, *, generation_id: uuid.UUID) -> PersistedFeedMedia:
+        """Keep the source intact and publish a seekable MP4 under a new URL."""
+        if item.content_type != "video/mp4" or cls.mp4_has_faststart(item.path):
+            return item
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise FeedStaticStorageError("MP4 publication requires ffmpeg")
+        root = cls.ensure_root()
+        with tempfile.NamedTemporaryFile(prefix=".feed-faststart-", suffix=".mp4", dir=root, delete=False) as handle:
+            temp_path = Path(handle.name)
+        try:
+            try:
+                subprocess.run(
+                    [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+                     "-protocol_whitelist", "file,pipe", "-i", str(item.path),
+                     "-map", "0", "-c", "copy", "-movflags", "+faststart",
+                     "-y", str(temp_path)],
+                    check=True, capture_output=True, timeout=120,
+                )
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                raise FeedStaticStorageError("Could not prepare MP4 for feed playback") from exc
+            if not cls.mp4_has_faststart(temp_path):
+                raise FeedStaticStorageError("Prepared MP4 has no faststart index")
+            suffix, content_type, size, digest = cls._inspect_file(temp_path)
+            filename = f"{generation_id}-{item.ordinal + 1}-{digest[:16]}{suffix}"
+            target = root / filename
+            if target.exists():
+                existing = cls._inspect_file(target)
+                if existing != (suffix, content_type, size, digest):
+                    raise FeedStaticStorageError("Static feed media collision detected")
+            else:
+                os.replace(temp_path, target)
+            return PersistedFeedMedia(
+                public_url=cls.public_url_for(filename), path=target,
+                content_type=content_type, size_bytes=size, sha256=digest, ordinal=item.ordinal,
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     @classmethod
     async def _download_external(cls, source_url: str) -> tuple[Path, str, str, int, str]:
