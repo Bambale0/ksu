@@ -7,6 +7,7 @@ from sqlalchemy import func, select, update
 
 from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Notification
+from app.services.generation_progress import GENERATION_PROGRESS_KIND
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -30,7 +31,10 @@ async def list_notifications(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
-    statement = select(Notification).where(Notification.user_id == user.id)
+    statement = select(Notification).where(
+        Notification.user_id == user.id,
+        Notification.kind != GENERATION_PROGRESS_KIND,
+    )
     if unread_only:
         statement = statement.where(Notification.is_read.is_(False))
     rows = list(
@@ -45,6 +49,7 @@ async def list_notifications(
             await session.scalar(
                 select(func.count()).select_from(Notification).where(
                     Notification.user_id == user.id,
+                    Notification.kind != GENERATION_PROGRESS_KIND,
                     Notification.is_read.is_(False),
                 )
             )
@@ -69,6 +74,7 @@ async def mark_notification_read(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user.id,
+            Notification.kind != GENERATION_PROGRESS_KIND,
         )
     )
     if item is None:
@@ -88,6 +94,7 @@ async def mark_all_notifications_read(
         update(Notification)
         .where(
             Notification.user_id == user.id,
+            Notification.kind != GENERATION_PROGRESS_KIND,
             Notification.is_read.is_(False),
         )
         .values(is_read=True)

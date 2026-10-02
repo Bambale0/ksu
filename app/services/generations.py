@@ -13,6 +13,7 @@ from app.services.abuse_protection import AbuseProtectionService, GenerationAdmi
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_progress import enqueue_generation_progress
 from app.services.generation_provider_routing import configured_route
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
 from app.services.model_routing import resolve_model_request, video_references
@@ -370,6 +371,7 @@ class GenerationService:
                     reference_id=str(generation.id),
                     idempotency_key=f"generation:{generation.id}:charge",
                 )
+            await enqueue_generation_progress(session, generation)
         await session.commit()
 
         try:

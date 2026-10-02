@@ -170,6 +170,8 @@ class Settings(BaseSettings):
     card_payment_route_by_currency_json: str = "{}"
 
     notification_worker_poll_seconds: int = 3
+    telegram_generation_progress_enabled: bool = True
+    telegram_generation_progress_interval_seconds: int = Field(default=15, ge=5, le=300)
     notification_delivery_lease_seconds: int = 90
     notification_delivery_max_attempts: int = 8
     notification_retry_base_seconds: int = 5
