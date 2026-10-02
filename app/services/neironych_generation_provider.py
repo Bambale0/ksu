@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -15,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
-from app.providers.neironych_image import NeironychImageClient
+from app.providers.neironych_errors import error_disposition, request_identifier
+from app.providers.neironych_image import NeironychImageClient, prepare_image_payload
+from app.providers.neironych_submission import SNAPSHOT_KEY, freeze_submission, saved_body
 from app.providers.neironych_video import (
     NeironychProviderError,
     NeironychVideoClient,
@@ -32,6 +35,7 @@ from app.services.neironych_video_contracts import (
     normalize_neironych_video_input,
 )
 from app.services.reference_static import ReferenceStaticStorage
+from app.services.neironych_reference_validation import validate_reference_payload, ReferenceValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +229,94 @@ class NeironychGenerationProviderService:
         return generation
 
     @classmethod
+    async def _record_response(
+        cls, session: AsyncSession, generation: Generation, *,
+        request_id: str | None = None, error: NeironychProviderError | None = None,
+    ) -> Generation:
+        # The same session may hold an old identity-map value after provider I/O.
+        expected_key = idempotency_key(generation)
+        locked = await session.scalar(
+            select(Generation).where(Generation.id == generation.id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if locked is None:
+            raise LookupError("Generation disappeared after provider response")
+        if locked.provider != "neironych" or locked.status in {"succeeded", "failed"} or idempotency_key(locked) != expected_key:
+            return locked
+        params = dict(locked.parameters or {})
+        metadata = {
+            "provider": "neironych", "idempotency_key": expected_key,
+            "request_id": request_identifier(error.request_id if error else request_id),
+            "http_status": error.status_code if error else 200,
+            "error_code": error.error_code if error else None,
+            "retry_after": error.retry_after if error else None,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        params["_provider_response"] = metadata
+        locked.parameters = params
+        await session.flush()
+        logger.info("neironych_response generation=%s provider_request_id=%s status=%s code=%s",
+                    locked.id, metadata["request_id"], metadata["http_status"], metadata["error_code"])
+        return locked
+
+    @classmethod
+    async def _handle_submission_error(
+        cls, session: AsyncSession, generation: Generation, exc: NeironychProviderError,
+        *, video: bool,
+    ) -> Generation:
+        locked = await cls._record_response(session, generation, error=exc)
+        if locked.provider != "neironych" or locked.status in {"succeeded", "failed"} or locked.external_id:
+            return locked
+        disposition = error_disposition(exc)
+        message = str(exc) if exc.local_validation else (
+            f"Neironych API HTTP {exc.status_code}: {exc.error_code or 'unclassified_provider_error'}"
+        )
+        if disposition == "fallback":
+            return await cls._fallback_or_fail(session, locked, reason=message)
+        if disposition == "reject":
+            await GenerationProviderService.fail_and_refund(session, locked.id, message)
+            return locked
+        if video:
+            return await cls._mark_video_retry(session, locked, error=message)
+        return await cls._mark_image_uncertain(session, locked, error=message)
+
+    @classmethod
+    async def _freeze_new_submission(cls, session: AsyncSession, generation: Generation) -> None:
+        params = dict(generation.parameters or {})
+        model = cls._model_id(generation)
+        key = idempotency_key(generation)
+        snapshot = params.get(SNAPSHOT_KEY)
+        if snapshot is not None:
+            saved_body(snapshot, model=model, key=key, base_url=settings.neironych_api_base_url)
+            return
+        if params.get("_submission_uncertain"):
+            # Pre-upgrade unknown POST has no immutable original wire body. Do
+            # not guess a new body/key. Bound tasks remain pollable as before.
+            raise ValueError("Original Neironych request body unavailable; reconciliation required")
+        raw = GenerationProviderService._input_for(generation)
+        endpoint = "/v1/videos/generations"
+        if model in _SEEDANCE_MODELS:
+            payload = normalize_neironych_video_input(model, raw)
+            await validate_reference_payload(model, payload)
+        else:
+            refs_raw = raw.get("image_input") or raw.get("image_urls") or []
+            refs_raw = refs_raw if isinstance(refs_raw, (list, tuple)) else [refs_raw]
+            refs = [cls._public_reference_url(str(item.get("url") if isinstance(item, dict) else item))
+                    for item in refs_raw]
+            endpoint, payload = prepare_image_payload(
+                prompt=str(raw.get("prompt") or generation.prompt or ""),
+                aspect_ratio=str(raw.get("aspect_ratio") or "1:1"),
+                resolution=str(raw.get("resolution") or raw.get("image_size") or "2K"),
+                image_urls=refs, idempotency_key=key,
+            )
+        snapshot = freeze_submission(model=model, payload=payload, key=key,
+            base_url=settings.neironych_api_base_url, endpoint=endpoint)
+        snapshot["output_format"] = str(raw.get("output_format") or "jpg")
+        params[SNAPSHOT_KEY] = snapshot
+        generation.parameters = params
+        # Caller commits this together with submitting before any paid POST.
+
+    @classmethod
     async def submit(cls, session: AsyncSession, generation_id: uuid.UUID) -> Generation:
         generation = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -238,6 +330,27 @@ class NeironychGenerationProviderService:
             raise ValueError("Generation is not routed to Neironych")
 
         model_id = cls._model_id(generation)
+        try:
+            await cls._freeze_new_submission(session, generation)
+        except NeironychVideoContractError as exc:
+            # Only known Kie-compatible settings may cross providers. Malformed
+            # input or media is a validation failure, never a policy bypass.
+            if "generate_audio=false" in str(exc) or "aspect_ratio=adaptive" in str(exc):
+                return await cls._fallback_or_fail(session, generation, reason=f"Neironych contract: {exc}")
+            await GenerationProviderService.fail_and_refund(session, generation.id, str(exc))
+            return generation
+        except NeironychProviderError as exc:
+            raw = GenerationProviderService._input_for(generation)
+            if model_id == "nano-banana-pro" and raw.get("aspect_ratio") == "auto":
+                # Legacy drafts/explicit Nexus auto requests remain valid on
+                # Nexus. Never silently turn auto into a square image.
+                return await cls._fallback_or_fail(session, generation, reason="Neironych does not support aspect_ratio=auto")
+            return await cls._handle_submission_error(session, generation, exc, video=model_id in _SEEDANCE_MODELS)
+        except (ValueError, ReferenceValidationError) as exc:
+            if (generation.parameters or {}).get("_submission_uncertain"):
+                return await cls._mark_video_retry(session, generation, error=str(exc))
+            await GenerationProviderService.fail_and_refund(session, generation.id, str(exc))
+            return generation
         generation.status = "submitting"
         generation.error = None
         await session.commit()
@@ -252,38 +365,23 @@ class NeironychGenerationProviderService:
         if generation is None:
             raise LookupError("Generation not found")
         model_id = cls._model_id(generation)
-        raw = GenerationProviderService._input_for(generation)
+        snapshot = (generation.parameters or {})[SNAPSHOT_KEY]
+        body = saved_body(snapshot, model=model_id, key=idempotency_key(generation),
+                          base_url=settings.neironych_api_base_url)
+        client = None
         try:
-            payload = normalize_neironych_video_input(model_id, raw)
-        except NeironychVideoContractError as exc:
-            return await cls._fallback_or_fail(session, generation, reason=f"Neironych contract: {exc}")
-
-        client = NeironychVideoClient(settings.neironych_api_key, settings.neironych_api_base_url)
-        try:
-            try:
-                request_id = await client.create_video(
-                    model=model_id,
-                    payload=payload,
-                    idempotency_key=idempotency_key(generation),
-                )
-            except NeironychProviderError as exc:
-                status = exc.status_code
-                if (
-                    status in {400, 401, 402, 403, 404, 405, 413, 415, 422, 429}
-                    and not cls._policy_error(str(exc))
-                ):
-                    return await cls._fallback_or_fail(session, generation, reason=str(exc))
-                if status is not None and 400 <= status < 500:
-                    await GenerationProviderService.fail_and_refund(session, generation.id, str(exc))
-                    refreshed = await session.get(Generation, generation.id)
-                    if refreshed is None:
-                        raise LookupError("Generation disappeared after Neironych rejection")
-                    return refreshed
-                return await cls._mark_video_retry(session, generation, error=str(exc))
-            except httpx.RequestError as exc:
-                return await cls._mark_video_retry(session, generation, error=str(exc))
+            client = NeironychVideoClient(settings.neironych_api_key, settings.neironych_api_base_url)
+            request_id = await client.create_video(
+                model=model_id, payload=json.loads(body), request_body=body,
+                idempotency_key=idempotency_key(generation),
+            )
+        except NeironychProviderError as exc:
+            return await cls._handle_submission_error(session, generation, exc, video=True)
+        except httpx.RequestError as exc:
+            return await cls._mark_video_retry(session, generation, error=type(exc).__name__)
         finally:
-            await client.aclose()
+            if client is not None:
+                await client.aclose()
 
         locked = await session.scalar(
             select(Generation).where(Generation.id == generation_id).with_for_update()
@@ -300,6 +398,12 @@ class NeironychGenerationProviderService:
         locked.status = "generating"
         locked.error = None
         params = dict(locked.parameters or {})
+        params["_provider_response"] = {
+            "provider": "neironych", "request_id": request_identifier(request_id),
+            "http_status": 202, "error_code": None,
+            "idempotency_key": idempotency_key(locked),
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
         params.pop("_submission_uncertain", None)
         params.pop("_submission_uncertain_at", None)
         locked.parameters = params
@@ -315,54 +419,31 @@ class NeironychGenerationProviderService:
         generation = await session.get(Generation, generation_id)
         if generation is None:
             raise LookupError("Generation not found")
-        raw = GenerationProviderService._input_for(generation)
-        refs_raw = raw.get("image_input")
-        if refs_raw in (None, ""):
-            refs_raw = raw.get("image_urls")
-        if refs_raw in (None, ""):
-            refs: list[str] = []
-        elif isinstance(refs_raw, (list, tuple)):
-            refs = []
-            for item in refs_raw:
-                raw_url = item.get("url") if isinstance(item, dict) else item
-                if str(raw_url or "").strip():
-                    refs.append(cls._public_reference_url(str(raw_url)))
-        else:
-            raw_url = refs_raw.get("url") if isinstance(refs_raw, dict) else refs_raw
-            refs = [cls._public_reference_url(str(raw_url))]
-
-        client = NeironychImageClient(settings.neironych_api_key, settings.neironych_api_base_url)
+        snapshot = (generation.parameters or {})[SNAPSHOT_KEY]
+        body = saved_body(snapshot, model="nano-banana-pro", key=idempotency_key(generation),
+                          base_url=settings.neironych_api_base_url)
+        payload = json.loads(body)
+        refs = [item["image_url"] for item in payload.get("images", [])]
+        client = None
         try:
-            try:
-                result = await client.create_nano_banana_pro(
-                    prompt=str(raw.get("prompt") or generation.prompt or ""),
-                    aspect_ratio=str(raw.get("aspect_ratio") or "1:1"),
-                    resolution=str(raw.get("resolution") or raw.get("image_size") or "2K"),
-                    image_urls=refs,
-                    idempotency_key=idempotency_key(generation),
-                )
-            except NeironychProviderError as exc:
-                status = exc.status_code
-                if status == 409:
-                    return await cls._mark_image_uncertain(session, generation, error=str(exc))
-                if (
-                    status in {400, 401, 402, 403, 404, 405, 413, 415, 422, 429}
-                    and not cls._policy_error(str(exc))
-                ):
-                    return await cls._fallback_or_fail(session, generation, reason=str(exc))
-                if status is not None and 400 <= status < 500:
-                    await GenerationProviderService.fail_and_refund(session, generation.id, str(exc))
-                    refreshed = await session.get(Generation, generation.id)
-                    if refreshed is None:
-                        raise LookupError("Generation disappeared after Neironych rejection")
-                    return refreshed
-                return await cls._mark_image_uncertain(session, generation, error=str(exc))
-            except httpx.RequestError as exc:
-                return await cls._mark_image_uncertain(session, generation, error=str(exc))
+            client = NeironychImageClient(settings.neironych_api_key, settings.neironych_api_base_url)
+            result = await client.create_nano_banana_pro(
+                prompt=payload["prompt"], aspect_ratio=payload["aspect_ratio"],
+                resolution=payload["resolution"], image_urls=refs,
+                idempotency_key=idempotency_key(generation), request_body=body,
+            )
+        except NeironychProviderError as exc:
+            return await cls._handle_submission_error(session, generation, exc, video=False)
+        except httpx.RequestError as exc:
+            return await cls._mark_image_uncertain(session, generation, error=type(exc).__name__)
         finally:
-            await client.aclose()
+            if client is not None:
+                await client.aclose()
 
-        output_format = str(raw.get("output_format") or "jpg").strip().lower()
+        generation = await cls._record_response(session, generation, request_id=result.request_id)
+        if generation.status in {"succeeded", "failed"} or generation.provider != "neironych":
+            return generation
+        output_format = str(snapshot.get("output_format") or "jpg").strip().lower()
         if output_format == "jpeg":
             output_format = "jpg"
         suffix = ".png" if output_format == "png" else ".jpg"
@@ -402,15 +483,42 @@ class NeironychGenerationProviderService:
         request_id: str,
         generation_id: uuid.UUID,
     ) -> Generation | None:
-        generation = await session.get(Generation, generation_id)
+        generation = await session.scalar(
+            select(Generation).where(Generation.id == generation_id).with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if generation is None or generation.status in {"succeeded", "failed"}:
             return generation
         if generation.provider != "neironych" or generation.external_id != request_id:
             return generation
 
+        # The outbox and recovery scan can reach the same upstream task.
+        # Atomically reserve its next GET so both honor provider poll cadence.
+        now = datetime.now(timezone.utc)
+        params = dict(generation.parameters or {})
+        next_poll = params.get("_neironych_next_poll_at")
+        if next_poll:
+            try:
+                if datetime.fromisoformat(next_poll) > now:
+                    return generation
+            except (TypeError, ValueError):
+                pass
+        params["_neironych_next_poll_at"] = (now + timedelta(seconds=settings.neironych_poll_seconds)).isoformat()
+        generation.parameters = params
+        await session.commit()
+
         client = NeironychVideoClient(settings.neironych_api_key, settings.neironych_api_base_url)
         try:
-            status, provider_error, _ = await client.get_video(request_id)
+            try:
+                status, provider_error, _ = await client.get_video(request_id)
+            except NeironychProviderError as exc:
+                generation = await cls._record_response(session, generation, error=exc)
+                if generation.provider == "neironych" and generation.status not in {"succeeded", "failed"}:
+                    delay = max(settings.neironych_poll_seconds, exc.retry_after or 0)
+                    generation.parameters = {**(generation.parameters or {}),
+                        "_neironych_next_poll_at": (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()}
+                    await session.commit()
+                return generation
             if is_success_status(status):
                 handle = tempfile.NamedTemporaryFile(
                     prefix="ksu-neironych-video-",

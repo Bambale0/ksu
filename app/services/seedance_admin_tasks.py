@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.providers.neironych_errors import error_disposition
+from app.providers.neironych_submission import SNAPSHOT_KEY, freeze_submission, saved_body
+from app.services.neironych_video_contracts import normalize_neironych_video_input
+from app.services.neironych_reference_validation import validate_reference_payload
 from app.db.seedance_test_models import SeedanceAdminTask
 from app.db.session import SessionFactory
 from app.providers.neironych_video import (
@@ -36,8 +41,8 @@ def utcnow() -> datetime:
 
 def _retry_delay(attempts: int) -> int:
     exponent = min(max(attempts - 1, 0), 5)
-    delay = max(settings.nexus_test_worker_poll_seconds, 1 << exponent)
-    return min(settings.nexus_test_retry_max_seconds, delay)
+    delay = max(settings.neironych_poll_seconds, 1 << exponent)
+    return max(settings.neironych_poll_seconds, min(settings.nexus_test_retry_max_seconds, delay))
 
 
 class SeedanceAdminTaskService:
@@ -113,7 +118,8 @@ class SeedanceAdminTaskService:
             task.attempts += 1
             task.error = str(exc)[:2000]
             task.lease_until = None
-            task.available_at = utcnow() + timedelta(seconds=_retry_delay(task.attempts))
+            delay = max(_retry_delay(task.attempts), getattr(exc, "retry_after", None) or 0)
+            task.available_at = utcnow() + timedelta(seconds=delay)
             await session.commit()
 
     @staticmethod
@@ -130,32 +136,40 @@ class SeedanceAdminTaskService:
 
     @staticmethod
     async def _submit(task_id: uuid.UUID) -> None:
-        async with SessionFactory() as session:
-            task = await session.get(SeedanceAdminTask, task_id)
-            if task is None or task.status in _TERMINAL_STATUSES or task.external_id:
-                return
-            model_name = task.model_name
-            payload = dict(task.request_payload or {})
-            idempotency_key = task.idempotency_key
-
-        client = NeironychVideoClient(
-            settings.neironych_api_key,
-            settings.neironych_api_base_url,
-        )
+        client = NeironychVideoClient(settings.neironych_api_key, settings.neironych_api_base_url)
         try:
-            models = await client.list_models()
-            provider_model = resolve_seedance_model(model_name, models)
-            if provider_model is None:
-                raise NeironychProviderError(
-                    f"Модель {model_name} сейчас не включена у провайдера. "
-                    f"Доступно: {', '.join(models[:30]) or 'нет моделей'}",
-                    status_code=422,
-                )
-            external_id = await client.create_video(
-                model=provider_model,
-                payload=payload,
-                idempotency_key=idempotency_key,
-            )
+            async with SessionFactory() as session:
+                task = await session.get(SeedanceAdminTask, task_id, with_for_update=True)
+                if task is None or task.status in _TERMINAL_STATUSES or task.external_id:
+                    return
+                model_name = task.model_name
+                key = task.idempotency_key
+                payload = dict(task.request_payload or {})
+                snapshot = payload.get(SNAPSHOT_KEY)
+                if snapshot is None:
+                    if task.status == "submitting" or task.attempts:
+                        raise NeironychProviderError(
+                            "Original admin request body unavailable; reconciliation required",
+                            error_code="submission_outcome_unknown",
+                        )
+                    models = await client.list_models()
+                    provider_model = resolve_seedance_model(model_name, models)
+                    if provider_model is None:
+                        raise NeironychProviderError("Seedance model is not currently available",
+                            status_code=404, error_code="model_not_available")
+                    raw = {k: v for k, v in payload.items() if not k.startswith("_")}
+                    normalized = normalize_neironych_video_input(provider_model, raw)
+                    await validate_reference_payload(model_name, normalized)
+                    snapshot = freeze_submission(model=provider_model, payload=normalized,
+                        key=key, base_url=settings.neironych_api_base_url)
+                    task.request_payload = {**payload, SNAPSHOT_KEY: snapshot}
+                provider_model = snapshot["model"]
+                body = saved_body(snapshot, model=provider_model, key=key,
+                                  base_url=settings.neironych_api_base_url)
+                task.status = "submitting"
+                await session.commit()
+            external_id = await client.create_video(model=provider_model,
+                payload=json.loads(body), request_body=body, idempotency_key=key)
         finally:
             await client.aclose()
 
@@ -171,7 +185,7 @@ class SeedanceAdminTaskService:
             task.status = "generating"
             task.error = None
             task.lease_until = None
-            task.available_at = utcnow() + timedelta(seconds=settings.nexus_test_worker_poll_seconds)
+            task.available_at = utcnow() + timedelta(seconds=settings.neironych_poll_seconds)
             await session.commit()
 
         logger.info(
@@ -216,7 +230,7 @@ class SeedanceAdminTaskService:
                 task.available_at = utcnow()
             else:
                 task.status = "generating"
-                task.available_at = utcnow() + timedelta(seconds=settings.nexus_test_worker_poll_seconds)
+                task.available_at = utcnow() + timedelta(seconds=settings.neironych_poll_seconds)
             task.lease_until = None
             await session.commit()
 
@@ -289,7 +303,7 @@ class SeedanceAdminTaskService:
             await client.aclose()
 
         parameter_keys = ", ".join(
-            sorted(key for key in payload if key not in {"model", "prompt"})
+            sorted(key for key in payload if key not in {"model", "prompt"} and not key.startswith("_"))
         ) or "базовые"
         caption = (
             f"✅ {model_name} · тест\n"
@@ -364,7 +378,15 @@ class SeedanceAdminTaskService:
             else:
                 await cls._submit(task_id)
         except NeironychProviderError as exc:
-            if exc.status_code in _NON_RETRYABLE_HTTP:
+            async with SessionFactory() as session:
+                task = await session.get(SeedanceAdminTask, task_id, with_for_update=True)
+                if task is not None and task.status not in _TERMINAL_STATUSES:
+                    task.request_payload = {**(task.request_payload or {}), "_provider_response": {
+                        "request_id": exc.request_id, "http_status": exc.status_code,
+                        "error_code": exc.error_code, "retry_after": exc.retry_after,
+                    }}
+                    await session.commit()
+            if error_disposition(exc) == "reject" or exc.status_code in _NON_RETRYABLE_HTTP:
                 await cls._set_failure_pending(task_id, str(exc))
                 await cls._deliver_failure(task_id, bot)
                 return

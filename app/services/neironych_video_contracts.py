@@ -58,7 +58,7 @@ def _url_item(value: Any, *, field: str) -> dict[str, str]:
         raw = value
     url = str(raw or "").strip()
     parsed = urlsplit(url)
-    if parsed.scheme != "https" or not parsed.netloc:
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
         raise NeironychVideoContractError(f"{field}: нужен HTTPS URL.")
     return {"url": url}
 
@@ -153,15 +153,28 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
     elif "generate_audio" in payload and not isinstance(payload["generate_audio"], bool):
         raise NeironychVideoContractError("generate_audio должен быть boolean.")
 
+    task_type = str(payload.get("omni_reference_task_type") or "").strip()
+    is_edit = family == "seedance-2.5" and task_type == "edit"
+    if "seed" in payload:
+        raise NeironychVideoContractError("seed is not supported by Seedance")
+    if "watermark" in payload and payload["watermark"] is not False:
+        raise NeironychVideoContractError("watermark=true is not supported by Seedance")
+    if "n" in payload and (type(payload["n"]) is not int or payload["n"] != 1):
+        raise NeironychVideoContractError("Seedance requires n=1")
+    if is_edit and payload.get("size") not in (None, ""):
+        raise NeironychVideoContractError("Seedance 2.5 edit follows source size")
+
     prompt = _validate_prompt(payload)
 
     duration = payload.get("duration")
     if duration not in (None, ""):
+        if isinstance(duration, (bool, float)):
+            raise NeironychVideoContractError("duration must be integer seconds")
         try:
             normalized_duration = int(duration)
         except (TypeError, ValueError) as exc:
             raise NeironychVideoContractError("duration должен быть целым числом.") from exc
-        minimum, maximum = _DURATION_RANGES[family]
+        minimum, maximum = (-1, -1) if is_edit else _DURATION_RANGES[family]
         if not minimum <= normalized_duration <= maximum:
             raise NeironychVideoContractError(
                 f"duration для {family}: от {minimum} до {maximum} секунд."
@@ -222,6 +235,8 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
 
     has_frames = bool(start_image or end_image)
     has_refs = bool(image_refs or video_refs or audio_refs)
+    if is_edit and has_frames:
+        raise NeironychVideoContractError("Seedance 2.5 edit cannot use start_image/end_image")
     if has_frames and has_refs:
         raise NeironychVideoContractError(
             "Frame mode нельзя смешивать с reference media."
@@ -229,8 +244,10 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
 
     aspect_ratio = str(payload.get("aspect_ratio") or "").strip()
     if aspect_ratio:
+        if (is_edit or (family == "seedance-2.5" and has_frames)) and aspect_ratio != "adaptive":
+            raise NeironychVideoContractError("Seedance 2.5 frame/edit requires adaptive or omitted aspect_ratio")
         if aspect_ratio == "adaptive":
-            if not has_frames:
+            if not (has_frames or is_edit):
                 raise NeironychVideoContractError(
                     "aspect_ratio=adaptive разрешён только со start_image/end_image."
                 )

@@ -198,7 +198,11 @@ async def test_seedance_download_resumes_from_last_written_byte_after_disconnect
 
 @pytest.mark.asyncio
 async def test_neironych_media_upload_uses_ticket_then_direct_storage_put() -> None:
-    content = b"telegram-photo-bytes"
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (600, 600)).save(buffer, format="JPEG")
+    content = buffer.getvalue()
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

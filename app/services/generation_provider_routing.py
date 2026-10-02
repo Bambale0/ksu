@@ -127,6 +127,7 @@ async def switch_to_fallback(
     )
     params["_provider_attempts"] = history[-8:]
     params["_provider_route_index"] = next_index
+    params.pop("_neironych_submission", None)
     params.pop("_submission_uncertain", None)
     params.pop("_submission_uncertain_at", None)
     params.pop("_provider_submitted_at", None)

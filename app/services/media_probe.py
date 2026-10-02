@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import BinaryIO, Any
 
@@ -19,6 +20,7 @@ class MediaProbe:
     container: str | None = None
     video_codec: str | None = None
     audio_codec: str | None = None
+    fps: float | None = None
 
     @property
     def duration_seconds(self) -> int | None:
@@ -73,8 +75,14 @@ def _parse_probe(payload: dict[str, Any]) -> MediaProbe:
     video_codec = str(video.get("codec_name") or "").strip() or None
     audio_codec = str(audio.get("codec_name") or "").strip() or None
 
+    try:
+        fps = float(Fraction(str(video.get("avg_frame_rate") or video.get("r_frame_rate") or "0")))
+        fps = fps if math.isfinite(fps) and fps > 0 else None
+    except (ValueError, ZeroDivisionError, OverflowError):
+        fps = None
     return MediaProbe(
         status="ready",
+        fps=fps,
         duration_ms=duration_ms,
         width=_positive_int(video.get("width")),
         height=_positive_int(video.get("height")),
@@ -105,10 +113,12 @@ def probe_media_stream(stream: BinaryIO, filename: str = "upload") -> MediaProbe
             temporary.flush()
             command = [
                 ffprobe,
+                "-protocol_whitelist",
+                "file,pipe",
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration,format_name:stream=codec_type,codec_name,width,height,duration",
+                "format=duration,format_name:stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate",
                 "-of",
                 "json",
                 temporary.name,

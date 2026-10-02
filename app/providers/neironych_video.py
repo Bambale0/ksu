@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -8,6 +9,12 @@ from typing import Any
 
 import httpx
 
+from app.providers.neironych_errors import (
+    NeironychProviderError,
+    provider_error as _safe_error,
+)
+
+from app.providers.neironych_submission import encode_body
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
     normalize_neironych_video_input,
@@ -38,53 +45,6 @@ _TERMINAL_FAILURE = frozenset({"failed", "expired", "error", "cancelled", "cance
 _DOWNLOAD_RANGE_CHUNK_BYTES = 256 * 1024
 _DOWNLOAD_ZERO_PROGRESS_LIMIT = 4
 _CONTENT_RANGE_RE = re.compile(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$")
-
-
-class NeironychProviderError(RuntimeError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        status_code: int | None = None,
-        payload: Any = None,
-    ) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.payload = payload
-
-
-_LONG_TOKEN_RE = re.compile(r"(?i)\b[a-f0-9]{32,}\b")
-_URL_QUERY_RE = re.compile(r"(https?://[^\s?]+)\?[^\s]*")
-
-
-def _redact_error_text(value: str) -> str:
-    value = _LONG_TOKEN_RE.sub("[REDACTED]", value)
-    return _URL_QUERY_RE.sub(r"\1?[REDACTED]", value)
-
-
-def _safe_error(response: httpx.Response) -> NeironychProviderError:
-    try:
-        payload: Any = response.json()
-    except Exception:
-        payload = None
-    message = ""
-    if isinstance(payload, dict):
-        error = payload.get("error")
-        if isinstance(error, dict):
-            message = str(error.get("message") or error.get("detail") or "").strip()
-        if not message:
-            message = str(payload.get("message") or payload.get("detail") or "").strip()
-    if not message:
-        message = (response.text or "").strip()
-    if not message:
-        message = f"HTTP {response.status_code}"
-    # The provider may echo upload URLs/tokens in errors. Never persist an
-    # unbounded upstream body in logs or the admin task row.
-    return NeironychProviderError(
-        f"Neironych API HTTP {response.status_code}: {_redact_error_text(message)[:800]}",
-        status_code=response.status_code,
-        payload=payload,
-    )
 
 
 def _request_id(payload: Any) -> str:
@@ -132,13 +92,13 @@ class NeironychVideoClient:
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
-            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured")
+            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured", status_code=401, error_code="api_key_required", local_validation=True)
         self._authorization = f"Bearer {clean_key}"
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
             base_url=str(base_url or "").rstrip("/"),
             timeout=httpx.Timeout(60.0, connect=10.0),
-            follow_redirects=True,
+            follow_redirects=False,
         )
         self._storage_client = storage_client
 
@@ -211,6 +171,12 @@ class NeironychVideoClient:
                 f"Media content type {content_type!r} does not match type {kind!r}"
             )
 
+        from app.services.neironych_reference_validation import inspect_upload, ReferenceValidationError
+        try:
+            await asyncio.to_thread(inspect_upload, model, kind, content, content_type)
+        except ReferenceValidationError as exc:
+            raise NeironychProviderError(str(exc), status_code=422, local_validation=True) from exc
+
         response = await self._client.post(
             "/v1/media/uploads",
             headers={
@@ -273,7 +239,7 @@ class NeironychVideoClient:
         else:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(120.0, connect=10.0),
-                follow_redirects=True,
+                follow_redirects=False,
             ) as storage_client:
                 uploaded = await storage_client.put(
                     upload_target,
@@ -293,6 +259,7 @@ class NeironychVideoClient:
         model: str,
         payload: dict[str, Any],
         idempotency_key: str,
+        request_body: str | None = None,
     ) -> str:
         if model not in _SUPPORTED_PROVIDER_MODELS:
             raise NeironychProviderError(f"Unsupported admin-test model: {model}")
@@ -300,12 +267,18 @@ class NeironychVideoClient:
         if len(idem) < 8 or len(idem) > 160:
             raise NeironychProviderError("Idempotency-Key must contain 8..160 characters")
 
-        try:
-            request_payload = normalize_neironych_video_input(model, payload)
-        except NeironychVideoContractError as exc:
-            raise NeironychProviderError(str(exc), status_code=422) from exc
-        # Identity is selected in trusted admin UI / runtime model resolution.
-        request_payload["model"] = model
+        if request_body is None:
+            try:
+                request_payload = normalize_neironych_video_input(model, payload)
+                request_body = encode_body({**request_payload, "model": model})
+            except (NeironychVideoContractError, ValueError) as exc:
+                raise NeironychProviderError(str(exc), status_code=422, local_validation=True) from exc
+        else:
+            # The service persisted/verified the exact wire body before POST.
+            # Re-normalizing here would change it after a deploy.
+            data = json.loads(request_body)
+            if not isinstance(data, dict) or data.get("model") != model:
+                raise NeironychProviderError("Saved request model mismatch", status_code=422, local_validation=True)
         response = await self._client.post(
             "/v1/videos/generations",
             headers={
@@ -313,7 +286,7 @@ class NeironychVideoClient:
                 "Content-Type": "application/json",
                 "Idempotency-Key": idem,
             },
-            json=request_payload,
+            content=request_body.encode("utf-8"),
         )
         if not response.is_success:
             raise _safe_error(response)
@@ -327,7 +300,8 @@ class NeironychVideoClient:
         request_id = _request_id(data)
         if not request_id:
             raise NeironychProviderError(
-                f"Neironych API create response has no request_id: {str(data)[:800]}"
+                "Neironych API create response has no request_id",
+                request_id=response.headers.get("X-Request-Id"), error_code="provider_response_invalid",
             )
         return request_id
 
