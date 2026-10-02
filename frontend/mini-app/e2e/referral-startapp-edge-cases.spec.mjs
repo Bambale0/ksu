@@ -191,7 +191,8 @@ test('start_payload has priority over startapp when both are present', async ({ 
 test('malformed feed payload is ignored and does not call feed item APIs', async ({ page }) => {
   const audit = await openWithPayload(page, '?startapp=feed_not-a-uuid_ref_777');
 
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.preview-card')).toHaveCount(0);
   expect(audit.feedItemCalls).toEqual([]);
   expect(audit.remixCalls()).toBe(0);
@@ -200,7 +201,8 @@ test('malformed feed payload is ignored and does not call feed item APIs', async
 test('bare referral payload opens the normal app shell, not a random work', async ({ page }) => {
   const audit = await openWithPayload(page, '?startapp=ref_777');
 
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('.preview-card')).toHaveCount(0);
   expect(audit.feedItemCalls).toEqual([]);
 });
@@ -276,7 +278,8 @@ test('legacy posts startapp opens a matching author profile', async ({ page }) =
 test('mismatched profile startapp is ignored instead of opening another author', async ({ page }) => {
   const audit = await openWithPayload(page, '?startapp=profile_777_ref_999');
 
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   expect(audit.profileFeedCalls).toEqual([]);
   expect(audit.feedItemCalls).toEqual([]);
 });
@@ -284,7 +287,8 @@ test('mismatched profile startapp is ignored instead of opening another author',
 test('mismatched legacy posts startapp is ignored instead of opening another author', async ({ page }) => {
   const audit = await openWithPayload(page, '?startapp=posts_777_ref_999');
 
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   expect(audit.profileFeedCalls).toEqual([]);
   expect(audit.feedItemCalls).toEqual([]);
 });

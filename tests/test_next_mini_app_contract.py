@@ -80,6 +80,10 @@ def test_react_app_owns_all_primary_customer_routes() -> None:
 def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     layout = _read(FRONTEND / "app" / "layout.tsx")
     page = _read(FRONTEND / "app" / "page.tsx")
+    app = _read(FRONTEND / "components" / "roxy-social-app.tsx")
+    route_loader = _read(FRONTEND / "components" / "route-feature-loader.tsx")
+    catalog_features = _read(FRONTEND / "components" / "catalog-route-features.tsx")
+    feed_features = _read(FRONTEND / "components" / "feed-route-features.tsx")
     feed = _read(FRONTEND / "components" / "tiktok-feed-surface.tsx")
     public_dir = FRONTEND / "public"
     styles_dir = FRONTEND / "app"
@@ -90,9 +94,14 @@ def test_catalog_is_not_replaced_by_a_second_feed_overlay() -> None:
     assert not (public_dir / "feed-social-polish.js").exists()
     assert not (styles_dir / "feed-social.css").exists()
     assert not (styles_dir / "feed-social-interactions.css").exists()
-    assert "<CatalogFeatureHub />" in page
-    assert "<TikTokFeedSurface />" in page
+    assert "<RouteFeatureLoader />" not in page
+    assert "<RouteFeatureLoader" in app and "route={route}" in app
+    assert 'lazy(() => import("./catalog-route-features"))' in route_loader
+    assert 'lazy(() => import("./feed-route-features"))' in route_loader
+    assert "<CatalogFeatureHub />" in catalog_features
+    assert "<TikTokFeedSurface />" in feed_features
     assert "SingleFeedSurfaceGuard" not in page
+    assert "SingleFeedSurfaceGuard" not in route_loader
     assert 'searchParams.get("route") === "feed"' in feed
     assert 'label === "Лента"' in feed
     assert 'className="tiktok-feed-surface"' in feed

@@ -199,8 +199,10 @@ function handleCustomerBack(tg: TelegramWebApp): boolean {
 }
 
 function shouldUseTelegramCloseChrome(): boolean {
-  return isMainMiniAppPath()
-    && currentMainRoute() === "catalog"
+  const route = currentMainRoute();
+  // A root URL is not yet a rendered root: auth/deep-link gates still need Back.
+  return isCustomerMainSurface()
+    && (route === "home" || route === "catalog")
     && !hasTransientCustomerLayer();
 }
 
@@ -363,8 +365,8 @@ export function initTelegram(): TelegramWebApp | null {
   stampMiniAppRootEntry();
   installMiniAppReturnTracker();
 
-  // Reset native navigation to the current screen baseline. The catalog is the
-  // WebView root and therefore leaves Telegram's own Close affordance visible;
+  // Reset native navigation to the current screen baseline. Canonical Home is
+  // the Catalog/WebView root and therefore leaves Telegram's own Close affordance visible;
   // every other customer surface keeps the native Back button available.
   try {
     tg.BackButton?.hide?.();

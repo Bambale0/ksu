@@ -13,9 +13,12 @@ def _read(path: Path) -> str:
 def test_main_app_mounts_real_tiktok_feed_instead_of_pinterest_guard() -> None:
     page = _read(MINI / "app" / "page.tsx")
 
-    assert 'import { TikTokFeedSurface } from "@/components/tiktok-feed-surface"' in page
-    assert "<TikTokFeedSurface />" in page
-    assert "SingleFeedSurfaceGuard" not in page
+    feed = _read(MINI / "components/feed-route-features.tsx")
+    loader = _read(MINI / "components/route-feature-loader.tsx")
+    assert 'import { TikTokFeedSurface } from "./tiktok-feed-surface"' in feed
+    assert "<TikTokFeedSurface />" in feed
+    assert 'import("./feed-route-features")' in loader
+    assert "SingleFeedSurfaceGuard" not in page + feed
 
 
 def test_tiktok_feed_is_fullscreen_vertical_snap_surface() -> None:

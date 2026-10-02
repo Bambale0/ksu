@@ -193,7 +193,9 @@ test('tablet home uses tablet grid instead of phone carousel', async ({ page }) 
   await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
   await expect(page.locator('.home-screen')).toBeVisible();
-  expect(await page.locator('.format-grid').evaluate((node) => getComputedStyle(node).display)).toBe('grid');
+  const features = page.locator('.catalog-feature-grid').first();
+  await expect(features).toBeVisible();
+  expect(await features.evaluate((node) => getComputedStyle(node).display)).toBe('grid');
   const shellWidth = await page.locator('.main-shell').evaluate((node) => node.getBoundingClientRect().width);
   expect(shellWidth).toBeGreaterThan(780);
 });

@@ -25,6 +25,7 @@ import type {
   UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { RouteFeatureLoader } from "./route-feature-loader";
 import { TelegramChatConnection } from "./telegram-chat-connection";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
@@ -159,7 +160,17 @@ function normalizeMediaFilter(value: string | null): MediaFilter {
 
 function initialRoute(): Route {
   if (typeof window === "undefined") return "home";
-  const route = new URL(window.location.href).searchParams.get("route");
+  const url = new URL(window.location.href);
+  const route = url.searchParams.get("route");
+  if (route === "catalog") {
+    url.searchParams.set("route", "home");
+    window.history.replaceState(
+      { ...(window.history.state || {}), roxyRoute: "home", roxyRootEntry: true },
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    return "home";
+  }
   return isRoute(route) ? route : "home";
 }
 
@@ -337,10 +348,11 @@ export function RoxySocialApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [models, setModels] = useState<GenerationModel[]>([]);
   const [families, setFamilies] = useState<GenerationModelFamily[]>([]);
-  const [recent, setRecent] = useState<Generation[]>([]);
   const [feed, setFeed] = useState<FeedCard[]>([]);
   const [feedSort, setFeedSort] = useState<"recent" | "top_day" | "top">("recent");
   const [trends, setTrends] = useState<TrendItem[]>([]);
+  const [trendsStatus, setTrendsStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [trendsError, setTrendsError] = useState("");
   const [history, setHistory] = useState<Generation[]>([]);
   const [historyBefore, setHistoryBefore] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
@@ -355,7 +367,6 @@ export function RoxySocialApp() {
   const [preview, setPreview] = useState<Generation | FeedCard | null>(null);
   const [previewSurface, setPreviewSurface] = useState<PreviewSurface>("private");
   const [toast, setToast] = useState("");
-  const [onboarding, setOnboarding] = useState<Record<string, any> | null>(null);
   const [createLaunch, setCreateLaunch] = useState<CreateLaunch>({ nonce: 0, kind: "new" });
   const createLaunchSeq = useRef(0);
   const deepLinkedGeneration = useRef<string | null>(null);
@@ -380,9 +391,24 @@ export function RoxySocialApp() {
   }, [feedSort]);
 
   const loadTrends = useCallback(async () => {
-    const payload = await api.trends();
-    setTrends(payload.items || []);
-    return payload.items || [];
+    setTrendsStatus("loading");
+    setTrendsError("");
+    try {
+      const payload = await api.trends();
+      const items = payload.items || [];
+      setTrends(items);
+      setTrendsStatus("loaded");
+      return items;
+    } catch (error) {
+      setTrends([]);
+      setTrendsError(error instanceof Error ? error.message : "Не удалось загрузить сценарии");
+      setTrendsStatus("error");
+      return [];
+    }
+  }, []);
+
+  const handleTrendDeleted = useCallback((trendId: string) => {
+    setTrends((current) => current.filter((trend) => trend.id !== trendId));
   }, []);
 
   const loadHistory = useCallback(async (append = false, before?: string | null) => {
@@ -430,7 +456,8 @@ export function RoxySocialApp() {
     tg?.onEvent?.("safeAreaChanged", safe);
     tg?.onEvent?.("contentSafeAreaChanged", safe);
     tg?.onEvent?.("viewportChanged", safe);
-    setRoute(initialRoute());
+    const initial = initialRoute();
+    setRoute(initial);
 
     (async () => {
       try {
@@ -449,15 +476,6 @@ export function RoxySocialApp() {
         if (active) setBooting(false);
       }
       if (!active || !tg?.initData) return;
-      void api.generations("limit=12")
-        .then((result) => { if (active) setRecent(result.items || []); })
-        .catch(() => {});
-      void api.trends()
-        .then((result) => { if (active) setTrends(result.items || []); })
-        .catch(() => {});
-      void api.onboarding()
-        .then((result) => { if (active && result) setOnboarding(result); })
-        .catch(() => {});
     })();
 
     const onPop = () => setRoute(initialRoute());
@@ -475,8 +493,8 @@ export function RoxySocialApp() {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
-    if (route === "catalog") void loadTrends();
-  }, [route, history.length, loadHistory, loadProfile, loadPartners, loadTrends]);
+    if (trendsStatus === "idle" && (route === "catalog" || (!booting && route === "home"))) void loadTrends();
+  }, [booting, route, history.length, trendsStatus, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
     if (route !== "feed") return;
@@ -510,14 +528,16 @@ export function RoxySocialApp() {
   }, [booting, loadHistory, showToast]);
 
   const navigate = useCallback((next: Route) => {
+    const canonical = next === "catalog" ? "home" : next;
     setWalletOpen(false);
     setPreview(null);
-    setRoute(next);
+    setRoute(canonical);
     const url = new URL(window.location.href);
-    url.searchParams.set("route", next);
+    url.searchParams.set("route", canonical);
     url.searchParams.delete("generation");
-    window.history.pushState({ roxyRoute: next }, "", `${url.pathname}${url.search}${url.hash}`);
-    haptic(next === "create" ? "medium" : "light");
+    window.history.pushState({ roxyRoute: canonical }, "", `${url.pathname}${url.search}${url.hash}`);
+    window.dispatchEvent(new Event("popstate"));
+    haptic(canonical === "create" ? "medium" : "light");
     window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
@@ -563,6 +583,14 @@ export function RoxySocialApp() {
 
   return (
     <div className="roxy-app">
+      <RouteFeatureLoader
+        route={route}
+        trends={trends}
+        isAdmin={Boolean(me?.is_admin)}
+        trendError={trendsError}
+        onTrendDeleted={handleTrendDeleted}
+        onRetryTrends={loadTrends}
+      />
       <header className="topbar">
         <button className="brand" type="button" data-roxy-customer-route="home" onClick={() => navigate("home")} aria-label="ROXY — главная">
           <RoxyMark />
@@ -575,14 +603,18 @@ export function RoxySocialApp() {
 
       <main className="main-shell">
         {route === "home" && me && <TelegramChatConnection key={me.telegram_id} me={me} />}
-        {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={(media) => startNewGeneration(media)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
+          if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
+          try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
+          catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
+        }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
         {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
           if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
           try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
           catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
         }} />}
-        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
+        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
@@ -592,7 +624,6 @@ export function RoxySocialApp() {
 
       {walletOpen && <WalletSheet me={me} onClose={() => setWalletOpen(false)} onRefresh={refreshMe} showToast={showToast} />}
       {preview && <Preview item={preview} surface={previewSurface} onClose={() => setPreview(null)} onReuse={reuseGeneration} onPublished={async (scope) => { await Promise.allSettled([loadProfile(), loadFeed(), loadHistory()]); showToast(scope === "feed" ? "Работа опубликована в ленте и профиле" : "Работа опубликована в профиле"); }} showToast={showToast} />}
-      {onboarding?.enabled && !onboarding?.completed && <Onboarding data={onboarding} onDone={async () => { const next = await api.completeOnboarding(); setOnboarding(next); }} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
@@ -606,23 +637,6 @@ function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
 }
 
-function HomeScreen({ models, recent, trends, onNavigate, onCreate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: CreationMedia) => void; onPreview: (item: Generation) => void }) {
-  const counts = useMemo(() => ({ image: models.filter((m) => m.media_type === "image").length, video: models.filter((m) => m.media_type === "video").length, audio: models.filter((m) => m.media_type === "audio").length }), [models]);
-  return <section className="screen home-screen">
-    <div className="promo-slider" aria-label="Промо ROXY">{PROMO_SLIDES.map((slide) => <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("partners")}><img src={slide.src} alt={slide.title} /></button>)}</div>
-    <SectionTitle kicker="Студия" title="Что создаём?" />
-    <div className="format-grid"><FormatCard icon="image" title="Фото" count={counts.image} onClick={() => onCreate("image")} /><FormatCard icon="video" title="Видео" count={counts.video} onClick={() => onCreate("video")} /><FormatCard icon="music" title="Музыка" count={counts.audio} onClick={() => onCreate("audio")} /></div>
-    <SectionTitle kicker="Тренды" title="Быстрый старт" action="Каталог" onAction={() => onNavigate("catalog")} />
-    <TrendStrip items={trends.slice(0, 6)} />
-    <SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} />
-    <MediaGrid items={recent.filter((item) => item.status === "succeeded").slice(0, 9)} empty="Готовые работы появятся здесь." onClick={onPreview} />
-  </section>;
-}
-
-function FormatCard({ icon, title, count, onClick }: { icon: IconName; title: string; count: number; onClick: () => void }) {
-  return <button className="format-card" type="button" onClick={onClick}><span className="format-icon"><Icon name={icon}/></span><strong>{title}</strong><small>{count ? `${count} моделей` : "Скоро"}</small><Icon name="chevron" className="format-chevron"/></button>;
-}
-
 function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: FeedCard[]; sort: "recent" | "top_day" | "top"; setSort: (sort: "recent" | "top_day" | "top") => void; onRefresh: () => void; onPreview: (item: FeedCard) => void }) {
   return <section className="screen"><ScreenHead kicker="Лента" title="Работы сообщества" copy="Смотрите свежие идеи, сохраняйте понравившееся и повторяйте работы в своём стиле." />
     <div className="segmented scrollable"><button className={sort === "recent" ? "active" : ""} type="button" onClick={() => setSort("recent")}>Новые</button><button className={sort === "top_day" ? "active" : ""} type="button" onClick={() => setSort("top_day")}>Топ дня</button><button className={sort === "top" ? "active" : ""} type="button" onClick={() => setSort("top")}>Топ</button><button type="button" onClick={onRefresh}>Обновить</button></div>
@@ -630,13 +644,13 @@ function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: Fee
   </section>;
 }
 
-function CatalogScreen({ models, families, trends, onCreate, onOpenPartners, onRunTrend }: { models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onOpenPartners: () => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
+function CatalogScreen({ canonicalHome = false, models, families, trends, onCreate, onOpenPartners, onRunTrend }: { canonicalHome?: boolean; models: GenerationModel[]; families: GenerationModelFamily[]; trends: TrendItem[]; onCreate: (model: GenerationModel) => void; onOpenPartners: () => void; onRunTrend: (trend: TrendItem) => void | Promise<void> }) {
   const [media, setMedia] = useState<MediaFilter>("all");
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const filteredFamilies = media === "all" ? families : families.filter((family) => family.media_types?.includes(media));
   const filteredTrends = media === "all" || media === "audio" ? trends : trends.filter((trend) => trend.media_type === media);
-  return <section className="screen"><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Начните с готового сценария или выберите модель под свою идею." />
+  return <section className={canonicalHome ? "screen home-screen" : "screen"}><PromoCarousel onOpenPartners={onOpenPartners} /><ScreenHead kicker="Каталог" title="Тренды и модели" copy="Начните с готового сценария или выберите модель под свою идею." />
     <div className="segmented scrollable">{(["all", "image", "video", "audio"] as const).map((key) => <button key={key} type="button" className={media === key ? "active" : ""} onClick={() => setMedia(key)}>{key === "all" ? "Все" : key === "image" ? "Фото" : key === "video" ? "Видео" : "Музыка"}</button>)}</div>
     <SectionTitle kicker="Тренды" title="Готовые сценарии" />
     <div className="model-grid">{filteredTrends.slice(0, 12).map((trend) => <button className="model-card" type="button" key={trend.id} onClick={() => void onRunTrend(trend)}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Тренд"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></button>)}</div>
@@ -670,11 +684,6 @@ function PromoCarousel({ onOpenPartners }: { onOpenPartners: () => void }) {
       {PROMO_SLIDES.map((item, index) => <button key={item.src} className={index === active ? "active" : ""} type="button" role="tab" aria-selected={index === active} aria-label={`Слайд ${index + 1}`} onClick={() => select(index)} />)}
     </div>
   </div>;
-}
-
-function TrendStrip({ items }: { items: TrendItem[] }) {
-  if (!items.length) return <Empty text="Тренды скоро появятся здесь." />;
-  return <div className="model-grid">{items.map((trend) => <div className="model-card" key={trend.id}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Готовый сценарий"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></div>)}</div>;
 }
 
 function CreateScreen({ launch, models, families, me, onBalance, onCreated, showToast }: { launch: CreateLaunch; models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {
@@ -909,14 +918,9 @@ function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onC
   return <div className="overlay sheet-overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose}/><section className="sheet"><div className="sheet-handle"/><header><div><span className="kicker">Баланс</span><h2>{me ? `${compact(me.balance_rox)} ROX` : "Баланс"}</h2></div><button className="icon-button" type="button" onClick={onClose}><Icon name="close"/></button></header><SectionTitle kicker="Пополнение" title="Выберите пакет"/><div className="package-grid">{Object.entries(packages).map(([id, pack]) => <button type="button" key={id} className={selected === id ? "package active" : "package"} onClick={() => setSelected(id)}><strong>{compact(pack.credits)} ROX</strong><small>{compact(pack.prices.RUB || 0)} RUB</small></button>)}</div><div className="segmented providers"><button type="button" className="active">ЮKassa</button></div><button className="primary wide" type="button" disabled={!selected || paying} onClick={() => void pay()}>{paying ? "Готовлю оплату…" : "Перейти к оплате"}</button><SectionTitle kicker="История" title="Последние движения"/><div className="transaction-list">{transactions.slice(0, 12).map((tx) => <div className="transaction" key={tx.id}><div><strong>{transactionLabel(tx.kind)}</strong><small>{dateLabel(tx.created_at)}</small></div><span className={Number(tx.amount) >= 0 ? "positive" : "negative"}>{Number(tx.amount) >= 0 ? "+" : ""}{compact(tx.amount)} ROX</span></div>)}</div></section></div>;
 }
 
-function Onboarding({ data, onDone }: { data: Record<string, any>; onDone: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  return <div className="overlay onboarding-overlay" role="dialog" aria-modal="true"><div className="onboarding-card"><RoxyMark large/><span className="kicker">Добро пожаловать</span><h1>{data.title || "ROXY"}</h1><p>{data.body || "Студия для создания фото, видео и музыки."}</p><div className="onboarding-links">{data.rules_url && <a href={data.rules_url} target="_blank" rel="noreferrer">Правила</a>}{data.privacy_url && <a href={data.privacy_url} target="_blank" rel="noreferrer">Конфиденциальность</a>}</div><button className="primary wide" type="button" disabled={busy} onClick={async () => { setBusy(true); try { await onDone(); } finally { setBusy(false); } }}>{busy ? "Открываю…" : "Открыть ROXY"}</button></div></div>;
-}
-
 function BottomNav({ route, onNavigate }: { route: Route; onNavigate: (route: Route) => void }) {
-  const menu: Array<[Route, IconName, string]> = [["home", "home", "Студия"], ["feed", "heart", "Лента"], ["catalog", "catalog", "Каталог"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
-  return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label]) => <button type="button" key={key} data-roxy-customer-route={key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
+  const menu: Array<[Route, IconName, string, string?]> = [["home", "catalog", "Каталог", "catalog"], ["feed", "heart", "Лента"], ["create", "create", "Создать"], ["partners", "share", "Партнёры"], ["profile", "profile", "Профиль"]];
+  return <nav className="bottom-nav" aria-label="Основная навигация">{menu.map(([key, icon, label, customerRoute]) => <button type="button" key={key} data-roxy-customer-route={customerRoute || key} className={`${route === key ? "active " : ""}${key === "create" ? "central" : ""}`} onClick={() => onNavigate(key)} aria-current={route === key ? "page" : undefined}><span><Icon name={icon}/></span><small>{label}</small></button>)}</nav>;
 }
 
 function SectionTitle({ kicker, title, action, onAction }: { kicker: string; title: string; action?: string; onAction?: () => void }) {

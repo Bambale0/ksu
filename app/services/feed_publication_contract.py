@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -12,6 +13,7 @@ from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
 from app.services.reference_static import ReferenceStaticStorage
 
 _INSTALLED = False
+logger = logging.getLogger(__name__)
 
 
 def install_feed_publication_contract() -> None:
@@ -269,6 +271,21 @@ def install_feed_publication_contract() -> None:
                 "Не удалось сохранить медиа публикации на сервере"
             )
 
+        try:
+            persisted = [
+                await asyncio.to_thread(
+                    FeedStaticStorage.faststart_copy, item, generation_id=generation.id
+                )
+                for item in persisted
+            ]
+        except (FeedStaticStorageError, OSError) as exc:
+            logger.warning(
+                "feed_faststart_failed generation_id=%s error_type=%s",
+                generation.id, type(exc).__name__,
+            )
+            raise FeedMediaUnavailableError(
+                "Не удалось подготовить видео к публикации. Попробуйте ещё раз."
+            ) from exc
         public_urls = [item.public_url for item in persisted]
         for url in public_urls:
             await asyncio.to_thread(FeedPreviewService.preview_url_for, url)

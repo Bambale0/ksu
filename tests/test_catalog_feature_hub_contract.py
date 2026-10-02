@@ -24,8 +24,11 @@ def test_catalog_uses_feature_hub_not_services_launcher() -> None:
     page = _read(FRONTEND / "app" / "page.tsx")
     layout = _read(FRONTEND / "app" / "layout.tsx")
 
-    assert 'import { CatalogFeatureHub } from "@/components/catalog-feature-hub";' in page
-    assert "<CatalogFeatureHub />" in page
+    catalog = _read(FRONTEND / "components" / "catalog-route-features.tsx")
+    loader = _read(FRONTEND / "components" / "route-feature-loader.tsx")
+    assert 'import { CatalogFeatureHub } from "./catalog-feature-hub";' in catalog
+    assert "<CatalogFeatureHub />" in catalog
+    assert 'import("./catalog-route-features")' in loader
     assert "ServicesLauncher" not in page
     assert 'import "./services.css";' not in layout
 

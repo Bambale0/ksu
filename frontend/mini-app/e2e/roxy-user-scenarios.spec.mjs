@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 const models = [
   {
@@ -243,7 +244,7 @@ async function boot(page, scenario) {
   await expect(nav).toBeVisible();
   const visibleButtons = nav.locator('button:visible');
   await expect(visibleButtons).toHaveCount(5);
-  await expect(visibleButtons.locator('small')).toHaveText(['Лента', 'Каталог', 'Создать', 'Партнёры', 'Профиль']);
+  await expect(visibleButtons.locator('small')).toHaveText(['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']);
   await expect(page.locator('.bottom-nav button.central small')).toHaveText('Создать');
 }
 
@@ -278,26 +279,25 @@ async function chooseFamily(page, name) {
 
 async function runHome(page, check) {
   if (check === 'shell') {
-    await expect(page.getByText('Что создаём?')).toBeVisible();
-    await expect(page.locator('.format-card')).toHaveCount(3);
+    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
   } else if (check === 'create-image') {
-    await page.locator('.format-card').filter({ hasText: 'Фото' }).click();
+    await page.locator('[data-catalog-feature="create-image"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'create-video') {
-    await page.locator('.format-card').filter({ hasText: 'Видео' }).click();
+    await page.locator('[data-catalog-feature="create-video"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
     await expect(page.getByText('Seedance').first()).toBeVisible();
   } else if (check === 'create-audio') {
-    await page.locator('.format-card').filter({ hasText: 'Музыка' }).click();
+    await page.locator('[data-catalog-feature="create-audio"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'catalog') {
-    await bottomButton(page, 'Каталог').click();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
   } else if (check === 'history') {
-    await page.getByRole('button', { name: 'Все' }).last().click();
+    await page.locator('[data-catalog-feature="history"]').click();
     await expect(page.getByText('Все работы')).toBeVisible();
   } else if (check === 'partners') {
-    await page.locator('.promo-slide').first().click();
+    await page.locator('[data-catalog-feature="partners"]').click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();
@@ -610,4 +610,26 @@ test('feed explains a permanently missing image and offers recovery', async ({ p
   const mediaError = card.locator('.tiktok-feed-media-error');
   await expect(mediaError.getByRole('button', { name: 'Повторить' })).toBeVisible();
   await expect(mediaError.getByRole('button', { name: 'Открыть файл' })).toBeVisible();
+});
+
+test('feed actually plays the active video and resumes after scrolling', async ({ page }) => {
+  await mockRoxy(page);
+  const video = readFileSync(new URL('./fixtures/feed-playback.webm', import.meta.url));
+  const cards = [0, 1].map((index) => ({
+    ...feedCard,
+    id: `playable_video_${index}`,
+    result_url: `/uploads/feed/clip-${index}.webm`,
+    preview_url: null,
+    media: [{ url: `/uploads/feed/clip-${index}.webm`, kind: 'video' }],
+  }));
+  await page.route('**/api/v1/feed?*', (route) => json(route, { items: cards }));
+  await page.route('**/uploads/feed/clip-*.webm', (route) => route.fulfill({
+    status: 200, contentType: 'video/webm', body: video,
+  }));
+  await page.goto('/mini-app/?route=feed', { waitUntil: 'domcontentloaded' });
+  const slides = page.locator('.tiktok-feed-card');
+  await expect(slides).toHaveCount(2);
+  await expect.poll(() => slides.nth(0).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
+  await slides.nth(1).scrollIntoViewIfNeeded();
+  await expect.poll(() => slides.nth(1).locator('video').evaluate((node) => node.currentTime)).toBeGreaterThan(0);
 });

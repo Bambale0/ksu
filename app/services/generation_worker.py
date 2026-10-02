@@ -28,6 +28,14 @@ _PROVIDER_NAMES = ("kie", "nexus", "neironych")
 
 class GenerationWorkerService:
     @staticmethod
+    def _protection_provider(generation: Generation, provider: str) -> str:
+        # Protect slow synchronous images independently from accepted video jobs.
+        # This is only a circuit namespace; never persist it as the real provider.
+        if provider == "neironych" and (generation.parameters or {}).get("_model_id") == "nano-banana-pro":
+            return AbuseProtectionService.NEIRONYCH_IMAGE_CIRCUIT
+        return provider
+
+    @staticmethod
     def _neironych_delay(generation: Generation | None = None) -> int:
         delay = settings.neironych_poll_seconds
         metadata = (generation.parameters or {}).get("_provider_response", {}) if generation else {}
@@ -108,6 +116,7 @@ class GenerationWorkerService:
                 return True
 
             provider = cls._provider_name(generation)
+            protection_provider = cls._protection_provider(generation, provider)
             if generation.external_id and generation.status in {"generating", "submitting"}:
                 if provider == "nexus":
                     try:
@@ -242,7 +251,7 @@ class GenerationWorkerService:
                     return True
 
             try:
-                await AbuseProtectionService.provider_submission_gate(redis, provider)
+                await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
             except ProviderCircuitOpen as exc:
                 if provider in {"neironych", "nexus"}:
                     fallback = await switch_to_fallback(
@@ -284,7 +293,7 @@ class GenerationWorkerService:
                     result = await GenerationProviderService.submit_kie(session, generation.id)
             except Exception as exc:
                 if AbuseProtectionService.availability_failure(exc):
-                    await AbuseProtectionService.record_provider_failure(redis, provider)
+                    await AbuseProtectionService.record_provider_failure(redis, protection_provider)
                 logger.exception("%s generation submission failed: %s", provider, generation.id)
                 refreshed = await session.get(Generation, generation.id)
                 if refreshed is None:
@@ -321,11 +330,11 @@ class GenerationWorkerService:
             # the provider circuit breaker for unrelated new requests.
             response = (result.parameters or {}).get("_provider_response", {})
             if provider == "neironych" and response.get("http_status") in {429, 500, 502, 503, 504}:
-                await AbuseProtectionService.record_provider_failure(redis, provider)
+                await AbuseProtectionService.record_provider_failure(redis, protection_provider)
             elif result.status in {"generating", "succeeded"} and not result.error:
-                await AbuseProtectionService.record_provider_success(redis, provider)
+                await AbuseProtectionService.record_provider_success(redis, protection_provider)
             elif provider == "neironych" and (result.parameters or {}).get("_submission_uncertain"):
-                await AbuseProtectionService.record_provider_failure(redis, provider)
+                await AbuseProtectionService.record_provider_failure(redis, protection_provider)
             if result.status == "failed":
                 await GenerationOutboxService.fail(
                     session,

@@ -203,6 +203,10 @@ class Settings(BaseSettings):
     kie_circuit_failure_threshold: int = 5
     kie_circuit_failure_window_seconds: int = 60
     kie_circuit_open_seconds: int = 60
+    # Synchronous images can fail more slowly than the legacy 60-second window.
+    neironych_image_circuit_failure_threshold: int = Field(default=3, ge=0)
+    neironych_image_circuit_failure_window_seconds: int = Field(default=900, ge=1)
+    neironych_image_circuit_open_seconds: int = Field(default=300, ge=1)
 
     log_level: str = "INFO"
     json_logs: bool = True

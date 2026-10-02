@@ -62,3 +62,19 @@ class ProfilePreferenceService:
         preference.profile_discoverable = bool(profile_discoverable)
         await session.flush()
         return preference
+
+
+    @classmethod
+    async def update_language(
+        cls,
+        session: AsyncSession,
+        *,
+        user_id: uuid.UUID,
+        ui_language: str,
+    ) -> UserPreference:
+        if ui_language not in cls.ALLOWED_LANGUAGES:
+            raise ValueError("Unsupported interface language")
+        preference = await cls.get_or_create(session, user_id)
+        preference.ui_language = ui_language
+        await session.flush()
+        return preference

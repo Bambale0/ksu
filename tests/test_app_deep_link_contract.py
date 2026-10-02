@@ -30,7 +30,7 @@ def test_referral_launcher_url_matches_banano_tanyapi_contract(monkeypatch: pyte
     assert parsed.scheme == "https"
     assert parsed.netloc == "roxy.example"
     assert parsed.path == "/mini-app/"
-    assert query["route"] == ["catalog"]
+    assert query["route"] == ["home"]
     assert query["start_payload"] == ["ref_123456"]
     assert query["startapp"] == ["ref_123456"]
     assert query["ref"] == ["123456"]

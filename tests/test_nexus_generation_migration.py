@@ -273,5 +273,10 @@ def test_generation_worker_preserves_existing_provider_and_polls_nexus_durably()
     assert "NexusGenerationProviderService.sync_task" in source
     assert "Nexus image task submitted; polling result" in source
     assert 'Generation.provider.in_(_PROVIDER_NAMES)' in source
-    assert 'AbuseProtectionService.provider_submission_gate(redis, provider)' in source
-    assert 'record_provider_success(redis, provider)' in source
+    assert 'AbuseProtectionService.provider_submission_gate(redis, protection_provider)' in source
+    assert 'record_provider_success(redis, protection_provider)' in source
+    # A separate Neironych image circuit must not rename persisted providers or
+    # change the protection namespace of existing Kie/Nexus work.
+    for generation in (pre_migration_kie, new_nexus, retry_nexus):
+        provider = GenerationWorkerService._provider_name(generation)
+        assert GenerationWorkerService._protection_provider(generation, provider) == provider

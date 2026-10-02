@@ -368,8 +368,11 @@ def test_wallet_stays_clean_while_payments_explains_package_and_promo_bonuses() 
     wallet = (FRONTEND / "components" / "wallet-parity.tsx").read_text(encoding="utf-8")
     payments = (FRONTEND / "app" / "payments" / "page.tsx").read_text(encoding="utf-8")
 
-    assert 'import { WalletParity } from "@/components/wallet-parity";' in page
-    assert "<WalletParity />" in page
+    loader = (FRONTEND / "components" / "wallet-parity-loader.tsx").read_text(encoding="utf-8")
+    assert 'import { WalletParityLoader } from "@/components/wallet-parity-loader";' in page
+    assert "<WalletParityLoader />" in page
+    assert 'import("./wallet-parity")' in loader
+    assert "<WalletParity />" in loader
     assert "package-bonus-live" not in wallet
     assert "bonus_credits" not in wallet
     assert "Обычный бонус пакета начисляется независимо от промокода" not in payments

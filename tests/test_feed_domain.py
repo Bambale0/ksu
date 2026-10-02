@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
@@ -68,7 +69,7 @@ async def _pending_generation(
 
 def _fixture_media_bytes(suffix: str) -> bytes:
     if suffix.lower() in {".mp4", ".mov"}:
-        return b"\x00\x00\x00\x18ftypisom0000roxy-feed-fixture"
+        return (Path(__file__).parent / "fixtures" / "feed-playback.mp4").read_bytes()
     if suffix.lower() == ".webm":
         return b"\x1aE\xdf\xa3roxy-feed-fixture"
     if suffix.lower() in {".jpg", ".jpeg"}:

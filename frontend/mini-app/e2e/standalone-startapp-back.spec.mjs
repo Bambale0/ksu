@@ -102,7 +102,8 @@ test('direct public profile native Back reaches Home instead of reopening itself
   await pressTelegramBack(page);
 
   await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('Профиль ROXY')).toHaveCount(0);
 });
 

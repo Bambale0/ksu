@@ -38,7 +38,7 @@ def test_catalog_uses_native_close_chrome_while_other_customer_routes_keep_back(
     assert "tg.BackButton?.hide?.();" in init
     assert "Telegram's own Close affordance visible" in init
     assert "function shouldUseTelegramCloseChrome(): boolean" in source
-    assert 'currentMainRoute() === "catalog"' in source
+    assert 'route === "home" || route === "catalog"' in source
     assert "&& !hasTransientCustomerLayer();" in source
     assert "if (shouldUseTelegramCloseChrome()) rawHide?.();" in source
     assert "else if (isMainMiniAppPath()) rawShow?.();" in source

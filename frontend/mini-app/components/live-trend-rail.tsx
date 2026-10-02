@@ -1,9 +1,8 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { api } from "@/lib/api";
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { haptic, telegramHeaders } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
@@ -11,8 +10,9 @@ import type { TrendItem } from "@/lib/types";
 
 function catalogScreen(): HTMLElement | null {
   for (const node of Array.from(document.querySelectorAll<HTMLElement>(".main-shell > .screen"))) {
+    if (node.classList.contains("home-screen")) continue;
     const kicker = node.querySelector<HTMLElement>(".screen-head .kicker")?.textContent?.trim();
-    if (kicker === "Каталог" || node.classList.contains("roxy-catalog-feature-mode")) return node;
+    if (kicker === "Каталог") return node;
   }
   return null;
 }
@@ -40,7 +40,7 @@ function ensureCatalogHost(screen: HTMLElement): HTMLElement {
 function ensureHomeHost(screen: HTMLElement): HTMLElement | null {
   const existing = screen.querySelector<HTMLElement>("#roxy-home-live-trends");
   if (existing) return existing;
-  const promo = screen.querySelector<HTMLElement>(":scope > .promo-slider");
+  const promo = screen.querySelector<HTMLElement>(":scope > .promo-carousel, :scope > .promo-slider");
   if (!promo) return null;
   const host = document.createElement("div");
   host.id = "roxy-home-live-trends";
@@ -90,10 +90,22 @@ type TrendHosts = {
   catalog: HTMLElement | null;
 };
 
-export function LiveTrendRail() {
+type LiveTrendRailProps = {
+  trends: TrendItem[];
+  isAdmin: boolean;
+  trendError: string;
+  onTrendDeleted: (trendId: string) => void;
+  onRetryTrends: () => void | Promise<TrendItem[]>;
+};
+
+export function LiveTrendRail({
+  trends,
+  isAdmin,
+  trendError,
+  onTrendDeleted,
+  onRetryTrends,
+}: LiveTrendRailProps) {
   const [hosts, setHosts] = useState<TrendHosts>({ home: null, catalog: null });
-  const [trends, setTrends] = useState<TrendItem[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
 
@@ -119,22 +131,6 @@ export function LiveTrendRail() {
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, []);
 
-  const refresh = useCallback(async () => {
-    try {
-      const payload = await api.trends();
-      setTrends(payload.items || []);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить сценарии");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hosts.home && !hosts.catalog) return;
-    void refresh();
-    void api.me().then((me) => setIsAdmin(Boolean(me.is_admin))).catch(() => setIsAdmin(false));
-  }, [hosts.home, hosts.catalog, refresh]);
-
   const remove = async (trend: TrendItem) => {
     if (!isAdmin || busyId) return;
     if (!window.confirm(`Удалить «${trend.title}» навсегда?`)) return;
@@ -142,7 +138,7 @@ export function LiveTrendRail() {
     setError("");
     try {
       await deleteTrend(trend.id);
-      setTrends((current) => current.filter((item) => item.id !== trend.id));
+      onTrendDeleted(trend.id);
       haptic("medium");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось удалить тренд");
@@ -176,7 +172,10 @@ export function LiveTrendRail() {
       <div className="section-title">
         <div><span className="kicker">Тренды</span><h2>Актуальные тренды</h2></div>
       </div>
-      {error ? <div className="inline-trend-error" role="alert">{error}</div> : null}
+      {error || trendError ? <div className="inline-trend-error" role="alert">
+        {error || trendError}
+        {!error && trendError ? <button className="secondary" type="button" onClick={onRetryTrends}>Повторить</button> : null}
+      </div> : null}
       {trends.length ? <div className="live-trend-rail">
         {trends.map((trend) => (
           <article className="live-trend-card" key={trend.id}>

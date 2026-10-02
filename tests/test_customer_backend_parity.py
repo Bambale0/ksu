@@ -43,9 +43,15 @@ def test_main_mini_app_exposes_parity_surfaces() -> None:
     profile_hub = (root / "components/customer-parity-hub.tsx").read_text(encoding="utf-8")
     catalog_hub = (root / "components/catalog-parity-features.tsx").read_text(encoding="utf-8")
 
-    assert "<CustomerParityHub />" in page
-    assert "<CatalogParityFeatures />" in page
-    assert "<WalletParity />" in page
+    account = (root / "components/account-route-features.tsx").read_text(encoding="utf-8")
+    catalog = (root / "components/catalog-route-features.tsx").read_text(encoding="utf-8")
+    wallet = (root / "components/wallet-parity-loader.tsx").read_text(encoding="utf-8")
+    loader = (root / "components/route-feature-loader.tsx").read_text(encoding="utf-8")
+    assert "<CustomerParityHub />" in account
+    assert "<CatalogParityFeatures />" in catalog
+    assert "<WalletParityLoader />" in page and "<WalletParity />" in wallet
+    assert 'import("./account-route-features")' in loader
+    assert 'import("./catalog-route-features")' in loader
 
     for path in (
         "/mini-app/account/",

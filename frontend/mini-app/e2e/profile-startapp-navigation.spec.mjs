@@ -58,9 +58,11 @@ test('public profile can leave a sticky Telegram start_param for ROXY and Feed',
   await openProfile(page);
   await page.getByRole('button', { name: 'Открыть ROXY' }).click();
   await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
   await page.waitForTimeout(300);
-  await expect(page.getByText('Что создаём?')).toBeVisible();
+  await expect(page.locator('.home-screen')).toBeVisible();
+  await expect(page.locator('.bottom-nav [data-roxy-customer-route="catalog"]')).toHaveAttribute('aria-current', 'page');
 
   // An explicit fresh deep link to the same profile must still work in this WebView session.
   await openProfile(page);
