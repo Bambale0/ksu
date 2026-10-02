@@ -82,6 +82,13 @@ def install_model_spec_audit_fixes() -> None:
         previous_rules(spec, clean)
 
         if spec.id in {"grok-video-t2v", "grok-video-i2v"}:
+            try:
+                duration = int(clean.get("duration"))
+            except (TypeError, ValueError) as exc:
+                raise catalog.InvalidModelParametersError("Grok duration must be an integer") from exc
+            if not 6 <= duration <= 30:
+                raise catalog.InvalidModelParametersError("Grok duration must be between 6 and 30 seconds")
+            clean["duration"] = duration
             mode = str(clean.get("mode") or "normal")
             if mode not in {"fun", "normal", "spicy"}:
                 raise catalog.InvalidModelParametersError("Grok mode must be fun, normal or spicy")
