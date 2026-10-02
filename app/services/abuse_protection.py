@@ -47,6 +47,22 @@ class RateLimitResult:
 
 
 class AbuseProtectionService:
+    NEIRONYCH_IMAGE_CIRCUIT = "neironych:image"
+
+    @classmethod
+    def _circuit_policy(cls, provider: str) -> tuple[int, int, int]:
+        if provider == cls.NEIRONYCH_IMAGE_CIRCUIT:
+            return (
+                settings.neironych_image_circuit_failure_window_seconds,
+                settings.neironych_image_circuit_failure_threshold,
+                settings.neironych_image_circuit_open_seconds,
+            )
+        return (
+            settings.kie_circuit_failure_window_seconds,
+            settings.kie_circuit_failure_threshold,
+            settings.kie_circuit_open_seconds,
+        )
+
     RATE_LUA = """
 local current = redis.call('INCRBY', KEYS[1], ARGV[1])
 if current == tonumber(ARGV[1]) then
@@ -179,9 +195,11 @@ return {failures, ttl}
                 ) from exc
             logger.warning("Provider circuit check failed open for %s: %s", provider, exc)
 
+        # Circuit isolation must not multiply the upstream submission quota.
+        rate_provider = "neironych" if provider == cls.NEIRONYCH_IMAGE_CIRCUIT else provider
         await cls.consume(
             redis,
-            key=f"abuse:provider-submit:{provider}",
+            key=f"abuse:provider-submit:{rate_provider}",
             limit=settings.kie_submit_rate_limit_per_minute,
             window_seconds=60,
             message=f"{provider} submission rate limit reached",
@@ -189,18 +207,24 @@ return {failures, ttl}
 
     @classmethod
     async def record_provider_failure(cls, redis: Redis, provider: str = "kie") -> None:
-        if not cls._enabled() or settings.kie_circuit_failure_threshold <= 0:
+        window, threshold, cooldown = cls._circuit_policy(provider)
+        if not cls._enabled() or threshold <= 0:
             return
         try:
-            await redis.eval(
+            result = await redis.eval(
                 cls.CIRCUIT_FAILURE_LUA,
                 2,
                 f"abuse:circuit:{provider}:failures",
                 f"abuse:circuit:{provider}:open",
-                settings.kie_circuit_failure_window_seconds,
-                settings.kie_circuit_failure_threshold,
-                settings.kie_circuit_open_seconds,
+                window,
+                threshold,
+                cooldown,
             )
+            if isinstance(result, (list, tuple)) and result and int(result[0]) == threshold:
+                logger.warning(
+                    "provider_circuit_opened scope=%s failures=%s window_seconds=%s cooldown_seconds=%s",
+                    provider, threshold, window, cooldown,
+                )
         except (RedisError, AttributeError, TypeError):
             logger.exception("Could not record %s provider failure", provider)
 

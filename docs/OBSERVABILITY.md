@@ -347,3 +347,35 @@ After workers have started, all three `ksu_worker_up` series should be `1`. A fr
 ## External guidance
 
 Implementation follows the current OpenTelemetry Python SDK/OTLP exporter guidance and Prometheus instrumentation guidance. Metric labels are deliberately bounded to avoid high-cardinality resource growth, while traces/logs carry per-operation debugging identifiers.
+
+
+## Slow synchronous image circuit
+
+Nano Banana Pro uses the `neironych:image` circuit namespace. This is not a
+stored provider identifier: the durable route remains `neironych`/`nexus`.
+Successful video submissions cannot reset the image failure counter, while
+all Neironych submissions still share `abuse:provider-submit:neironych`.
+
+The canonical configuration fields are:
+
+- `NEIRONYCH_IMAGE_CIRCUIT_FAILURE_THRESHOLD=3` (0 disables new failure recording).
+- `NEIRONYCH_IMAGE_CIRCUIT_FAILURE_WINDOW_SECONDS=900`.
+- `NEIRONYCH_IMAGE_CIRCUIT_OPEN_SECONDS=300`.
+
+These defaults cover sequential long-running failures that cannot accumulate
+inside the legacy 60-second window. A successful image clears its own failure
+counter, not a currently open circuit; the cooldown still expires naturally.
+Existing Kie/Nexus/video policies remain unchanged. Redis protection failures
+retain the existing fail-closed policy.
+
+The warning `provider_circuit_opened` records only scope, threshold, window and
+cooldown. Alert on repeated openings, new `submission_outcome_unknown` responses,
+and nonterminal image age; do not log prompts, signed references or credentials.
+
+A circuit is checked before the paid POST. The existing durable route may use
+its next provider only when no accepted/uncertain attempt exists. Never replay
+an uncertain synchronous image or change its idempotency key: the documented
+Neironych image contract returns 409 rather than replaying an image result.
+HTTP 524 from ArgoLink is a separate upstream timeout; changing a local timeout
+cannot recover that lost response. A circuit limits new exposure, not upstream
+job recovery or retrospective reconciliation.

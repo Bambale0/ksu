@@ -1,3 +1,12 @@
+## Active Fix Execution - Nano Banana slow upstream circuit (2026-10-02)
+
+- Baseline: `128f0a7f861a365c0d53d90b95104a7afda888c8`; branch `fix/nano-banana-slow-provider-circuit`. Evidence/plan: `docs/agents/EXECUTION/nano-banana-524-20261002.md`.
+- Confirmed: ArgoLink HTTP 524 becomes Neironych 503 after roughly 126 seconds. Image idempotency does not replay results. No prompt-escaping defect demonstrated.
+- RED: four focused protection regressions fail on baseline. Plan: configurable image-scoped circuit; preserve provider-wide rate limits, Seedance policies, frozen bodies, uncertain-task/fallback guards and billing.
+- Runtime route containment was attempted through the audited service but blocked by the tool. It was NOT applied and will not be retried through another route. No production route, generation or balance has been changed in this incident.
+- Verification: RED 4 failures, GREEN 12 new regressions; focused provider/outbox/refund suite 111 passed; full backend on a fresh isolated PostgreSQL/Redis database 1451 passed (one existing trend-assignment warning). Ruff, compileall, migration application/parity and diff check passed. Existing Kie/Nexus namespace behavior and unknown-POST protection are covered.
+- Status: small image-scoped circuit patch ready for PR; exact-head CI and deployment remain unverified. This mitigates new exposure; it does not claim to repair ArgoLink's HTTP 524. Existing workstream/domain sections below remain intact.
+
 ## Active Fix Execution - Neironych admin preflight retry (2026-10-02)
 
 - Baseline: main@b348ecccb3399727d05aeec8a628aa8fbd7baeea, PR #523 contract remediation.
