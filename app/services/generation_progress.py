@@ -138,10 +138,10 @@ async def deliver_generation_progress(
                 reply_markup=keyboard,
             )
         except TelegramBadRequest as exc:
-            message = str(exc).lower()
-            if "message is not modified" in message:
+            error_text = str(exc).lower()
+            if "message is not modified" in error_text:
                 pass
-            elif "message to edit not found" in message or "message can't be edited" in message:
+            elif "message to edit not found" in error_text or "message can't be edited" in error_text:
                 # Do not replace a deleted status on every tick. Final media delivery
                 # has its own outbox row and remains independent of this message.
                 await NotificationDeliveryService.mark_terminal(
