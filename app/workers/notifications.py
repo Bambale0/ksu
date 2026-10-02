@@ -25,6 +25,7 @@ from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.notifications import NotificationDeliveryService
+from app.services.generation_progress import GENERATION_PROGRESS_KIND, deliver_generation_progress
 from app.services.telegram_generation_media import (
     GenerationMediaPending,
     send_generation_result_image_album,
@@ -287,6 +288,7 @@ def _generation_success_text(generation: Generation, *, result_count: int) -> st
         "✅ Генерация завершена\n\n"
         f"{_generation_model_title(generation)} · "
         f"{_media_count_label(media_type, result_count)} · {_money(generation.cost_rox)} ROX\n\n"
+        f"UUID задачи: {generation.id}\n\n"
         "Результат готов 👇"
     )
 
@@ -320,7 +322,7 @@ def _generation_failure_text(generation: Generation) -> str:
         "❌ Генерация не выполнена\n\n"
         f"{_generation_model_title(generation)}\n"
         f"{_friendly_generation_error(generation.error)}"
-        f"{refund}"
+        f"{refund}\n\nUUID задачи: {generation.id}"
     )
 
 
@@ -505,6 +507,13 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             return
 
         try:
+            if notification.kind == GENERATION_PROGRESS_KIND:
+                await deliver_generation_progress(
+                    bot, session=session, notification=notification,
+                    delivery=delivery, chat_id=user.telegram_id,
+                )
+                await session.commit()
+                return
             action_context_ids: dict[str, uuid.UUID] = {}
             if generation is not None:
                 action_context_ids = await _ensure_action_contexts(session, generation)
@@ -551,12 +560,18 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             )
             _sync_generation_delivery(generation, delivery)
         except TelegramRetryAfter as exc:
-            await NotificationDeliveryService.mark_retry(
-                session,
-                delivery,
-                error=f"telegram_retry_after:{exc}",
-                retry_after_seconds=int(exc.retry_after),
-            )
+            if notification.kind == GENERATION_PROGRESS_KIND:
+                await NotificationDeliveryService.defer_without_attempt(
+                    session, delivery, error="telegram_progress_retry_after",
+                    retry_after_seconds=int(exc.retry_after),
+                )
+            else:
+                await NotificationDeliveryService.mark_retry(
+                    session,
+                    delivery,
+                    error=f"telegram_retry_after:{exc}",
+                    retry_after_seconds=int(exc.retry_after),
+                )
             _sync_generation_delivery(generation, delivery)
         except TelegramBadRequest as exc:
             if _is_unreachable_chat_error(exc):
