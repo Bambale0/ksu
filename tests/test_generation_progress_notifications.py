@@ -372,3 +372,20 @@ async def test_disable_progress_finishes_existing_anchor_without_new_messages(mo
     async with SessionFactory() as session:
         delivery = await session.get(NotificationDelivery, delivery_id)
         assert delivery.status == "sent"
+
+
+@pytest.mark.asyncio
+async def test_progress_uuid_survives_the_production_log_formatter(caplog: pytest.LogCaptureFixture) -> None:
+    import json
+    import logging
+    from app.core.logging import JsonFormatter
+
+    generation_id, delivery_id = await progress_fixture()
+    with caplog.at_level(logging.INFO, logger="app.services.generation_progress"):
+        await _process_delivery(ProgressBot(), delivery_id)
+    records = [r for r in caplog.records if r.name == "app.services.generation_progress"]
+    assert records
+    rendered = json.loads(JsonFormatter().format(records[-1]))
+    assert str(generation_id) in rendered["message"]
+    assert str(delivery_id) in rendered["message"]
+    assert "Private prompt" not in rendered["message"]

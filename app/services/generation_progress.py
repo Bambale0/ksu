@@ -170,11 +170,9 @@ async def deliver_generation_progress(
         await NotificationDeliveryService.mark_sent(
             session, delivery, external_message_id=delivery.external_message_id,
         )
+    # JsonFormatter allowlists only HTTP extras. Keep correlation in the message
+    # rather than silently dropping it, without expanding the global log schema.
     logger.info(
-        "generation_progress_updated",
-        extra={
-            "generation_id": str(generation.id), "delivery_id": str(delivery.id),
-            "generation_status": generation.status, "progress_operation": operation,
-            "progress_terminal": not active,
-        },
+        "generation_progress_updated generation=%s delivery=%s status=%s operation=%s terminal=%s",
+        generation.id, delivery.id, generation.status, operation, not active,
     )
