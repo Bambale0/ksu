@@ -9,7 +9,6 @@ import { InlineTrendAdmin } from "@/components/inline-trend-admin";
 import { KlingMultishotGuard } from "@/components/kling-multishot-guard";
 import { PostPublishSharePrompt } from "@/components/post-publish-share-prompt";
 import { PrivateRepeatLinkUx } from "@/components/private-repeat-link-ux";
-import { RouteFeatureLoader } from "@/components/route-feature-loader";
 import { UnpublishFeedbackGuard } from "@/components/unpublish-feedback-guard";
 import { UploadInputResetGuard } from "@/components/upload-input-reset-guard";
 import { UserOnboardingGate } from "@/components/user-onboarding";
@@ -23,7 +22,6 @@ export default function Page() {
       <ClientErrorReporter />
       <AppEntryGate />
       <UserOnboardingGate />
-      <RouteFeatureLoader />
       <BalanceAnchorGuard />
       <WalletParityLoader />
       <WalletEmailInputGuard />

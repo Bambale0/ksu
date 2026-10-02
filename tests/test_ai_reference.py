@@ -132,7 +132,7 @@ def test_ai_reference_ui_exposes_all_three_working_scenarios() -> None:
     home_entry = Path("frontend/mini-app/components/ai-reference-home-entry.tsx").read_text(
         encoding="utf-8"
     )
-    home = Path("frontend/mini-app/app/page.tsx").read_text(encoding="utf-8")
+    app = Path("frontend/mini-app/components/roxy-social-app.tsx").read_text(encoding="utf-8")
     catalog_features = Path("frontend/mini-app/components/catalog-route-features.tsx").read_text(encoding="utf-8")
     route_loader = Path("frontend/mini-app/components/route-feature-loader.tsx").read_text(encoding="utf-8")
 
@@ -149,7 +149,7 @@ def test_ai_reference_ui_exposes_all_three_working_scenarios() -> None:
     assert "AI РЕФЕРЕНС" in home_entry
     assert 'document.querySelector<HTMLElement>("#roxy-home-trend-folders")' in home_entry
     assert "host.prepend(mount)" in home_entry
-    assert "<RouteFeatureLoader />" in home
+    assert "<RouteFeatureLoader" in app and "route={route}" in app
     assert 'lazy(() => import("./catalog-route-features"))' in route_loader
     assert "<AiReferenceHomeEntry />" in catalog_features
     assert "<HomeTrendFolders />" in catalog_features

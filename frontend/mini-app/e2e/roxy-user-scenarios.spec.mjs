@@ -244,7 +244,7 @@ async function boot(page, scenario) {
   await expect(nav).toBeVisible();
   const visibleButtons = nav.locator('button:visible');
   await expect(visibleButtons).toHaveCount(5);
-  await expect(visibleButtons.locator('small')).toHaveText(['Лента', 'Каталог', 'Создать', 'Партнёры', 'Профиль']);
+  await expect(visibleButtons.locator('small')).toHaveText(['Каталог', 'Лента', 'Создать', 'Партнёры', 'Профиль']);
   await expect(page.locator('.bottom-nav button.central small')).toHaveText('Создать');
 }
 
@@ -279,26 +279,25 @@ async function chooseFamily(page, name) {
 
 async function runHome(page, check) {
   if (check === 'shell') {
-    await expect(page.getByText('Что создаём?')).toBeVisible();
-    await expect(page.locator('.format-card')).toHaveCount(3);
+    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
   } else if (check === 'create-image') {
-    await page.locator('.format-card').filter({ hasText: 'Фото' }).click();
+    await page.locator('[data-catalog-feature="create-image"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'create-video') {
-    await page.locator('.format-card').filter({ hasText: 'Видео' }).click();
+    await page.locator('[data-catalog-feature="create-video"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
     await expect(page.getByText('Seedance').first()).toBeVisible();
   } else if (check === 'create-audio') {
-    await page.locator('.format-card').filter({ hasText: 'Музыка' }).click();
+    await page.locator('[data-catalog-feature="create-audio"]').click();
     await expect(page.getByText('Новая работа')).toBeVisible();
   } else if (check === 'catalog') {
-    await bottomButton(page, 'Каталог').click();
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
   } else if (check === 'history') {
-    await page.getByRole('button', { name: 'Все' }).last().click();
+    await page.locator('[data-catalog-feature="history"]').click();
     await expect(page.getByText('Все работы')).toBeVisible();
   } else if (check === 'partners') {
-    await page.locator('.promo-slide').first().click();
+    await page.locator('[data-catalog-feature="partners"]').click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'wallet') {
     await page.locator('.balance-button').click();

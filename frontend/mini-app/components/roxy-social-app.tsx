@@ -25,6 +25,7 @@ import type {
   UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { RouteFeatureLoader } from "./route-feature-loader";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
@@ -346,10 +347,11 @@ export function RoxySocialApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [models, setModels] = useState<GenerationModel[]>([]);
   const [families, setFamilies] = useState<GenerationModelFamily[]>([]);
-  const [recent, setRecent] = useState<Generation[]>([]);
   const [feed, setFeed] = useState<FeedCard[]>([]);
   const [feedSort, setFeedSort] = useState<"recent" | "top_day" | "top">("recent");
   const [trends, setTrends] = useState<TrendItem[]>([]);
+  const [trendsStatus, setTrendsStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [trendsError, setTrendsError] = useState("");
   const [history, setHistory] = useState<Generation[]>([]);
   const [historyBefore, setHistoryBefore] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
@@ -388,9 +390,24 @@ export function RoxySocialApp() {
   }, [feedSort]);
 
   const loadTrends = useCallback(async () => {
-    const payload = await api.trends();
-    setTrends(payload.items || []);
-    return payload.items || [];
+    setTrendsStatus("loading");
+    setTrendsError("");
+    try {
+      const payload = await api.trends();
+      const items = payload.items || [];
+      setTrends(items);
+      setTrendsStatus("loaded");
+      return items;
+    } catch (error) {
+      setTrends([]);
+      setTrendsError(error instanceof Error ? error.message : "Не удалось загрузить сценарии");
+      setTrendsStatus("error");
+      return [];
+    }
+  }, []);
+
+  const handleTrendDeleted = useCallback((trendId: string) => {
+    setTrends((current) => current.filter((trend) => trend.id !== trendId));
   }, []);
 
   const loadHistory = useCallback(async (append = false, before?: string | null) => {
@@ -458,15 +475,6 @@ export function RoxySocialApp() {
         if (active) setBooting(false);
       }
       if (!active || !tg?.initData) return;
-      void api.generations("limit=12")
-        .then((result) => { if (active) setRecent(result.items || []); })
-        .catch(() => {});
-      void api.trends()
-        .then((result) => { if (active) setTrends(result.items || []); })
-        .catch(() => {});
-      void api.onboarding()
-        .then((result) => { if (active && result) setOnboarding(result); })
-        .catch(() => {});
     })();
 
     const onPop = () => setRoute(initialRoute());
@@ -484,8 +492,8 @@ export function RoxySocialApp() {
     if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
-    if (trends.length === 0 && (route === "catalog" || (!booting && route === "home"))) void loadTrends();
-  }, [booting, route, history.length, trends.length, loadHistory, loadProfile, loadPartners, loadTrends]);
+    if (trendsStatus === "idle" && (route === "catalog" || (!booting && route === "home"))) void loadTrends();
+  }, [booting, route, history.length, trendsStatus, loadHistory, loadProfile, loadPartners, loadTrends]);
 
   useEffect(() => {
     if (route !== "feed") return;
@@ -574,6 +582,14 @@ export function RoxySocialApp() {
 
   return (
     <div className="roxy-app">
+      <RouteFeatureLoader
+        route={route}
+        trends={trends}
+        isAdmin={Boolean(me?.is_admin)}
+        trendError={trendsError}
+        onTrendDeleted={handleTrendDeleted}
+        onRetryTrends={loadTrends}
+      />
       <header className="topbar">
         <button className="brand" type="button" data-roxy-customer-route="home" onClick={() => navigate("home")} aria-label="ROXY — главная">
           <RoxyMark />
@@ -596,7 +612,7 @@ export function RoxySocialApp() {
           try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
           catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
         }} />}
-        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setRecent((current) => [item, ...current.filter((x) => x.id !== item.id)].slice(0, 12)); setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
+        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
@@ -617,18 +633,6 @@ function Splash() {
 
 function RoxyMark({ large = false }: { large?: boolean }) {
   return <span className={`roxy-mark${large ? " large" : ""}`} aria-hidden="true"><span>RX</span></span>;
-}
-
-function HomeScreen({ recent, onNavigate, onPreview }: { models: GenerationModel[]; recent: Generation[]; trends: TrendItem[]; onNavigate: (route: Route) => void; onCreate: (media: CreationMedia) => void; onPreview: (item: Generation) => void }) {
-  return <section className="screen home-screen">
-    <div className="promo-slider" aria-label="Промо ROXY">{PROMO_SLIDES.map((slide) => <button className="promo-slide" type="button" key={slide.src} onClick={() => onNavigate("partners")}><img src={slide.src} alt={slide.title} /></button>)}</div>
-    <SectionTitle kicker="Недавнее" title="Последние работы" action="Все" onAction={() => onNavigate("history")} />
-    <MediaGrid items={recent.filter((item) => item.status === "succeeded").slice(0, 9)} empty="Готовые работы появятся здесь." onClick={onPreview} />
-  </section>;
-}
-
-function FormatCard({ icon, title, count, onClick }: { icon: IconName; title: string; count: number; onClick: () => void }) {
-  return <button className="format-card" type="button" onClick={onClick}><span className="format-icon"><Icon name={icon}/></span><strong>{title}</strong><small>{count ? `${count} моделей` : "Скоро"}</small><Icon name="chevron" className="format-chevron"/></button>;
 }
 
 function FeedScreen({ items, sort, setSort, onRefresh, onPreview }: { items: FeedCard[]; sort: "recent" | "top_day" | "top"; setSort: (sort: "recent" | "top_day" | "top") => void; onRefresh: () => void; onPreview: (item: FeedCard) => void }) {
@@ -678,11 +682,6 @@ function PromoCarousel({ onOpenPartners }: { onOpenPartners: () => void }) {
       {PROMO_SLIDES.map((item, index) => <button key={item.src} className={index === active ? "active" : ""} type="button" role="tab" aria-selected={index === active} aria-label={`Слайд ${index + 1}`} onClick={() => select(index)} />)}
     </div>
   </div>;
-}
-
-function TrendStrip({ items }: { items: TrendItem[] }) {
-  if (!items.length) return <Empty text="Тренды скоро появятся здесь." />;
-  return <div className="model-grid">{items.map((trend) => <div className="model-card" key={trend.id}><span className="model-icon"><Icon name={modelIcon(trend.media_type)}/></span><div><strong>{trend.title}</strong><small>{trend.description || trend.model?.title || "Готовый сценарий"}</small></div><span className="price-pill">{priceLabel(trend.cost_rox)}</span></div>)}</div>;
 }
 
 function CreateScreen({ launch, models, families, me, onBalance, onCreated, showToast }: { launch: CreateLaunch; models: GenerationModel[]; families: GenerationModelFamily[]; me: Me | null; onBalance: () => Promise<Me>; onCreated: (item: Generation) => void; showToast: (message: string) => void }) {

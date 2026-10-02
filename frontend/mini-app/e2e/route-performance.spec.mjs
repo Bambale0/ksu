@@ -9,9 +9,11 @@ const source = (relativePath) => readFileSync(
 
 test("root Mini App keeps route-heavy surfaces out of the eager startup graph", () => {
   const page = source("../app/page.tsx");
+  const app = source("../components/roxy-social-app.tsx");
 
-  expect(page).toContain('import { RouteFeatureLoader } from "@/components/route-feature-loader";');
-  expect(page).toContain("<RouteFeatureLoader />");
+  expect(app).toContain('import { RouteFeatureLoader } from "./route-feature-loader";');
+  expect(app).toMatch(/<RouteFeatureLoader\s+route=\{route\}[\s\S]*?\/>/);
+  expect(page).not.toContain("RouteFeatureLoader");
 
   for (const eagerFeature of [
     "TikTokFeedSurface",
@@ -33,7 +35,8 @@ test("route loader code-splits feed and catalog feature groups", () => {
 
   expect(loader).toContain('lazy(() => import("./feed-route-features"))');
   expect(loader).toContain('lazy(() => import("./catalog-route-features"))');
-  expect(loader).toContain('addEventListener("popstate"');
+  expect(loader).toContain("type RouteFeatureLoaderProps");
+  expect(loader).toContain("route: Route;");
 });
 
 
@@ -51,10 +54,11 @@ test("root bootstrap does not wait on unrelated feed, promo, or legacy onboardin
   const bootstrap = app.slice(start, end);
 
   expect(bootstrap).not.toContain("api.feed(");
+  expect(bootstrap).not.toContain('api.generations("limit=12")');
+  expect(bootstrap).not.toContain("api.trends(");
   expect(bootstrap).not.toContain("api.activePromo(");
   expect(bootstrap).not.toContain("api.onboarding(");
-  expect(bootstrap).toContain('initial === "home" ? api.generations("limit=12")');
-  expect(bootstrap).toContain('initial === "home" ? api.trends()');
+  expect(app).toContain('route === "catalog" || (!booting && route === "home")');
   expect(app).not.toContain("<Onboarding data=");
 });
 
@@ -77,6 +81,6 @@ test("wallet provider discovery waits until a wallet package sheet actually exis
 
   expect(page).not.toContain('import { WalletParity } from "@/components/wallet-parity";');
   expect(page).toContain('import { WalletParityLoader } from "@/components/wallet-parity-loader";');
-  expect(loader).toContain('lazy(() => import("./wallet-parity")');
+    expect(loader).toMatch(/lazy\(\(\) =>\s*import\("\.\/wallet-parity"\)/);
   expect(loader).toContain('.sheet .package-grid');
 });
