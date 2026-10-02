@@ -103,7 +103,7 @@ test('sticky referral does not hijack deliberate history navigation after reload
   await setup(page);
   await page.goto('/mini-app/?startapp=ref_777');
   await expect(page.locator('.home-screen')).toBeVisible();
-  await page.locator('.home-screen').getByRole('button', { name: 'Все', exact: true }).click();
+  await page.locator('.home-screen [data-catalog-feature="history"]').click();
   await expect(page).toHaveURL(/route=history/);
   await page.reload();
   await expect(page).toHaveURL(/route=history/);

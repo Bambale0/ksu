@@ -54,6 +54,7 @@ jobs:
           e2e/frontend-production-readiness.spec.mjs
           e2e/trend-category-admin.spec.mjs
           e2e/trend-back-navigation.spec.mjs
+          e2e/home-is-catalog-current.spec.mjs
           e2e/referral-home-chat.spec.mjs
           e2e/referral-tanyapi-cold-start.spec.mjs
           e2e/admin-provider-routes.spec.mjs

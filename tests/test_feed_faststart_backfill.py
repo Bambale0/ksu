@@ -77,6 +77,9 @@ def _install_sessions(monkeypatch: pytest.MonkeyPatch, sessions: list[_Session])
 def _generation(generation_id: uuid.UUID, result_url: str) -> SimpleNamespace:
     return SimpleNamespace(
         id=generation_id,
+        status="succeeded",
+        publication_scope="feed",
+        is_profile_visible=True,
         result_url=result_url,
         parameters={"_result_urls": [result_url]},
     )
@@ -229,3 +232,48 @@ async def test_restore_only_reverts_generations_still_on_backfilled_url(
     assert restored_session.commits == 1
     assert changed_session.commits == 0
     assert "restored=1 skipped=1" in capsys.readouterr().out
+
+@pytest.mark.asyncio
+async def test_restore_does_not_overwrite_changed_secondary_media(tmp_path, monkeypatch, capsys):
+    generation = _generation(uuid.uuid4(), "/uploads/feed/new-1.mp4")
+    generation.parameters["_result_urls"] = [generation.result_url, "/uploads/feed/user-newer.mp4"]
+    backup = tmp_path / "multi.jsonl"
+    backup.write_text(json.dumps({
+        "id": str(generation.id), "old_url": "/uploads/feed/old-1.mp4",
+        "new_url": generation.result_url,
+        "old_urls": ["/uploads/feed/old-1.mp4", "/uploads/feed/old-2.mp4"],
+        "new_urls": [generation.result_url, "/uploads/feed/new-2.mp4"],
+    }) + "\n")
+    session = _Session(generation=generation)
+    _install_sessions(monkeypatch, [session])
+    await backfill_feed_faststart.restore(backup)
+    assert generation.parameters["_result_urls"][1] == "/uploads/feed/user-newer.mp4"
+    assert session.commits == 0
+    assert "restored=0 skipped=1" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_backfill_rechecks_public_visibility_after_lock(tmp_path, monkeypatch):
+    generation = _generation(uuid.uuid4(), "/uploads/feed/video.mp4")
+    generation.publication_scope = "private"
+    generation.is_profile_visible = False
+    row_session = _Session(generation=generation)
+    _install_sessions(monkeypatch, [_Session(generation_ids=[generation.id]), row_session])
+    backup = tmp_path / "hidden.jsonl"
+    await backfill_feed_faststart.backfill(apply=True, backup_path=backup, limit=1)
+    assert row_session.commits == 0
+    assert backup.read_text() == ""
+    assert generation.result_url == "/uploads/feed/video.mp4"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [0, -1])
+async def test_invalid_batch_limit_does_not_open_database_or_backup(tmp_path, monkeypatch, limit):
+    def unexpected_session():
+        raise AssertionError("database must not open")
+
+    monkeypatch.setattr(backfill_feed_faststart, "SessionFactory", unexpected_session)
+    backup = tmp_path / "invalid.jsonl"
+    with pytest.raises(ValueError, match="limit must be positive"):
+        await backfill_feed_faststart.backfill(apply=True, backup_path=backup, limit=limit)
+    assert not backup.exists()

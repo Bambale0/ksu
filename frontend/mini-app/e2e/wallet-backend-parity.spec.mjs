@@ -183,8 +183,9 @@ test('quick wallet keeps YooKassa primary with Lava reserve and CryptoBot availa
   await expect(page.getByRole('button', { name: 'CryptoBot', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '2328', exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Есть промокод?' })).toBeVisible();
-  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(2);
-  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/crypto/packages')).toHaveLength(2);
+  // Only the payment screen discovers providers; Profile no longer preloads them.
+  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/card/packages')).toHaveLength(1);
+  expect(providerCatalogRequests.filter((path) => path === '/api/v1/payments/crypto/packages')).toHaveLength(1);
   expect(providerCatalogRequests).not.toContain('/api/v1/payments/crypto/2328/packages');
 });
 

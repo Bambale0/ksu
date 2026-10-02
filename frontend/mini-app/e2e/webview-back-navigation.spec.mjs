@@ -99,7 +99,7 @@ test('Catalog leaves Telegram Close chrome visible while other main surfaces use
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(true);
 
   await page.locator('button[data-roxy-customer-route="catalog"]').click();
-  await expect(page).toHaveURL(/\/mini-app\/?\?route=catalog/);
+  await expect(page).toHaveURL(/\/mini-app\/?\?route=home/);
   await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
 });
 
@@ -108,7 +108,7 @@ test('Profile -> Wallet -> native Back returns to Profile, then Home, then close
   await mockWebView(page);
   await page.goto('/mini-app/?route=home');
   await expect(page.locator('.bottom-nav')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__telegramBackVisible)).toBe(false);
 
   await page.locator('button[data-roxy-customer-route="profile"]').click();
   await expect(page).toHaveURL(/\/mini-app\/?\?route=profile/);

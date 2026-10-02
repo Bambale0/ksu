@@ -292,7 +292,7 @@ test('bottom navigation swaps lazy route features without a reload', async ({ pa
   await expect(page.locator('#roxy-home-live-trends')).toHaveCount(0);
 
   await page.locator('[data-roxy-customer-route="catalog"]').click();
-  await expect(page).toHaveURL(/route=catalog/);
+  await expect(page).toHaveURL(/route=home/);
   await expect(page.locator('#roxy-catalog-feature-hub')).toBeVisible();
   await expect(page.locator('.tiktok-feed-surface')).toHaveCount(0);
 });

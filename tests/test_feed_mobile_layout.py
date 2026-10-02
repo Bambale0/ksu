@@ -8,8 +8,11 @@ MODERATION = ROOT / "frontend" / "mini-app" / "components" / "feed-admin-moderat
 
 
 def test_responsive_feed_layout_is_mounted_after_feed_surface() -> None:
-    source = PAGE.read_text(encoding="utf-8")
-    assert 'import { FeedResponsiveLayout } from "@/components/feed-responsive-layout";' in source
+    source = (RESPONSIVE.parent / "feed-route-features.tsx").read_text(encoding="utf-8")
+    loader = (RESPONSIVE.parent / "route-feature-loader.tsx").read_text(encoding="utf-8")
+    assert 'import("./feed-route-features")' in loader
+    assert 'route === "feed" ? <FeedRouteFeatures />' in loader
+    assert 'import { FeedResponsiveLayout } from "./feed-responsive-layout";' in source
     assert source.index("<TikTokFeedSurface />") < source.index("<FeedResponsiveLayout />")
     assert source.index("<FeedResponsiveLayout />") < source.index("<FeedAdminModeration />")
 

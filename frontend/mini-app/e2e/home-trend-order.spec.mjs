@@ -97,19 +97,16 @@ async function mockHome(page, { delayedFolderTabs = false, mediaPreviews = false
   });
 }
 
-test('home leaves splash before slow recent work returns', async ({ page }) => {
-  let recentPending = false;
+test('canonical Home does not request obsolete recent work during startup', async ({ page }) => {
+  const recentRequests = [];
   page.on('request', (request) => {
-    if (request.url().includes('/api/v1/generations?limit=12')) recentPending = true;
-  });
-  page.on('requestfinished', (request) => {
-    if (request.url().includes('/api/v1/generations?limit=12')) recentPending = false;
+    if (request.url().includes('/api/v1/generations?limit=12')) recentRequests.push(request.url());
   });
   await mockHome(page, { slowRecent: true });
   await page.goto('/mini-app/?route=home');
-
   await expect(page.locator('.home-screen')).toBeVisible();
-  expect(recentPending).toBe(true);
+  await expect(page.locator('#roxy-home-live-trends .live-trend-card')).toBeVisible();
+  expect(recentRequests).toEqual([]);
 });
 
 test('trend cards load thumbnails and only fetch video near the viewport', async ({ page }) => {
@@ -140,7 +137,7 @@ test('home shows live trends and then category cards without an extra section he
   await page.goto('/mini-app/?route=home');
 
   const home = page.locator('.home-screen');
-  const promo = home.locator(':scope > .promo-slider');
+  const promo = home.locator(':scope > .promo-carousel');
   const trends = home.locator(':scope > #roxy-home-live-trends');
   const folders = home.locator(':scope > #roxy-home-trend-folders');
 
@@ -152,7 +149,7 @@ test('home shows live trends and then category cards without an extra section he
   await expect(folders.getByRole('heading', { name: 'Папки трендов' })).toHaveCount(0);
 
   await expect.poll(() => home.evaluate((node) => {
-    const promo = node.querySelector(':scope > .promo-slider');
+    const promo = node.querySelector(':scope > .promo-carousel');
     const trends = node.querySelector(':scope > #roxy-home-live-trends');
     const folders = node.querySelector(':scope > #roxy-home-trend-folders');
     return {
@@ -238,8 +235,8 @@ test('catalog keeps live trends and category cards directly below promo before f
   await page.goto('/mini-app/?route=catalog');
 
   const catalog = page.locator('.roxy-catalog-feature-mode');
-  const trends = catalog.locator(':scope > #roxy-live-trends');
-  const folders = catalog.locator(':scope > #roxy-catalog-trend-folders');
+  const trends = catalog.locator(':scope > #roxy-home-live-trends');
+  const folders = catalog.locator(':scope > #roxy-home-trend-folders');
   await expect(catalog).toBeVisible();
   await expect(trends.locator('.live-trend-card', { hasText: trend.title })).toBeVisible();
   await expect(folders.getByRole('button', { name: /День рождения/ })).toBeVisible();
@@ -249,8 +246,8 @@ test('catalog keeps live trends and category cards directly below promo before f
   await expect.poll(() => catalog.evaluate((screen) => {
     const children = Array.from(screen.children);
     const promo = screen.querySelector(':scope > .promo-carousel');
-    const trends = screen.querySelector(':scope > #roxy-live-trends');
-    const folders = screen.querySelector(':scope > #roxy-catalog-trend-folders');
+    const trends = screen.querySelector(':scope > #roxy-home-live-trends');
+    const folders = screen.querySelector(':scope > #roxy-home-trend-folders');
     const foldersIndex = folders ? children.indexOf(folders) : -1;
     const featureHub = screen.querySelector(':scope > #roxy-catalog-feature-hub');
     const featureHubIndex = featureHub ? children.indexOf(featureHub) : -1;
@@ -293,7 +290,7 @@ test('catalog ignores stale folder responses when switching photo and video tabs
   await mockHome(page, { delayedFolderTabs: true });
   await page.goto('/mini-app/?route=catalog');
 
-  const folders = page.locator('#roxy-catalog-trend-folders');
+  const folders = page.locator('#roxy-home-trend-folders');
   await folders.getByRole('button', { name: /День рождения/ }).click();
   await folders.getByRole('tab', { name: /Видео/ }).click();
 

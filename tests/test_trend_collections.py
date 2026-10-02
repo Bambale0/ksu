@@ -110,7 +110,11 @@ def test_home_category_ux_has_unlabeled_grid_photo_video_tabs_and_trend_launcher
     assert "Готовые шаблоны" in admin
     assert "Хэштеги категории" in admin
     assert "Управление трендами" in admin
-    assert "HomeTrendFolders" in page
+    catalog = _source("frontend/mini-app/components/catalog-route-features.tsx")
+    loader = _source("frontend/mini-app/components/route-feature-loader.tsx")
+    assert "<AppEntryGate />" in page
+    assert "<HomeTrendFolders />" in catalog
+    assert 'import("./catalog-route-features")' in loader
 
 
 def test_mini_app_admin_can_edit_reassign_and_hide_existing_trends() -> None:

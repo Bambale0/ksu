@@ -200,7 +200,8 @@ function handleCustomerBack(tg: TelegramWebApp): boolean {
 
 function shouldUseTelegramCloseChrome(): boolean {
   const route = currentMainRoute();
-  return isMainMiniAppPath()
+  // A root URL is not yet a rendered root: auth/deep-link gates still need Back.
+  return isCustomerMainSurface()
     && (route === "home" || route === "catalog")
     && !hasTransientCustomerLayer();
 }
