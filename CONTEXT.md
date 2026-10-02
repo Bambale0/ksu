@@ -1,3 +1,10 @@
+## Active Fix Execution - Neironych admin preflight retry (2026-10-02)
+
+- Baseline: main@b348ecccb3399727d05aeec8a628aa8fbd7baeea, PR #523 contract remediation.
+- Final release review finding: admin task attempts include pre-submit model/reference read failures; treating every nonzero attempt without a wire snapshot as a legacy ambiguous POST prevents safe retries of newly enqueued work.
+- Verification: RED reproduced a newly queued retry being incorrectly rejected (1 failed, 1 passed); the focused admin/contract suite and Ruff pass after the two-boundary fix. Exact-head CI and main release gates remain required.
+- Plan: reproduce at the real admin submit seam, mark new enqueue records with a private protocol version, permit those queued preflight retries while retaining the fail-closed rule for legacy unknown POSTs. The marker must never enter the provider JSON. No route, billing, schema or customer generation changes. Existing guidance/release gates from the contract execution ledger apply.
+
 ## Active Fix Execution — Neironych documented contract release (2026-10-02)
 
 - Baseline: `68baa83e16acad9f6bc6cc338a3498dd3b5ecc52`; branch `fix/neironych-contract-release-20261002`. User authorized all fixes from the contract audit through reviewed/CI-gated production release. Preserve Neironych -> Kie for Seedance 2.0/2.5 and Neironych -> Nexus for Nano Pro; other model routes and pricing stay unchanged.
