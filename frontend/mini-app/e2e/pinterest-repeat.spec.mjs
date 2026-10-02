@@ -127,9 +127,9 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
   await expect(page.getByText('Разбираем сцену, позу, свет и эмоцию…')).toBeVisible();
 
-  // Once the reference upload control disappears, the first remaining file input
-  // is the identity picker. Empty MIME + .heic mirrors iOS/WebView uploads.
-  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+  // Target identity independently of the asynchronous scene input replacement.
+  // Empty MIME + .heic mirrors iOS/WebView uploads.
+  await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles(identityFile);
   const identityPreviews = page.getByAltText('Ваш ракурс 1');
   await expect(identityPreviews).toHaveCount(2);
   await expect(identityPreviews.nth(0)).toBeVisible();
@@ -185,7 +185,8 @@ test('changing identity photos revokes the previous rights confirmation', async 
   await page.goto('/mini-app/pinterest-repeat/');
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
-  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+  await expect(page.getByAltText('Референс сцены')).toBeVisible();
+  await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles(identityFile);
 
   const consent = page.getByLabel('Подтверждаю права на фото');
   const create = page.getByRole('button', { name: 'Создать →' });
@@ -304,7 +305,8 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
 
   await page.goto('/mini-app/pinterest-repeat/');
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
-  await page.locator('input[type="file"]').first().setInputFiles(identityFile);
+  await expect(page.getByAltText('Референс сцены')).toBeVisible();
+  await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles(identityFile);
 
   await expect(page.getByText('сцена, свет и поза считаны с референса')).toBeVisible();
   const create = page.getByRole('button', { name: 'Создать →' });

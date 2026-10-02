@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -10,8 +11,9 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import SendDocument, SendPhoto, SendVideo
 from aiogram.types import FSInputFile
 
+from app.core.config import settings
 from app.services.local_media_storage import LOCAL_MEDIA_BUCKET, LocalMediaStorage
-from app.services.media_assets import DownloadedMedia, MediaIngestService
+from app.services.media_assets import DownloadedMedia, MediaIngestError, MediaIngestService
 from app.services.telegram_generation_media import send_generation_result_media
 
 
@@ -375,3 +377,57 @@ async def test_large_local_photo_falls_back_to_document(
     assert isinstance(bot.document_calls[0], FSInputFile)
     assert bot.document_calls[0].filename.endswith(".png")
     assert durable.exists()
+
+@pytest.mark.asyncio
+async def test_pending_durable_asset_defers_without_redownloading_provider_media(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset = SimpleNamespace(id=uuid4(), status="pending", object_key=None, bucket=None)
+
+    async def must_not_download(_cls: type[MediaIngestService], _url: str) -> DownloadedMedia:
+        raise AssertionError("notification delivery duplicated the media-worker download")
+
+    monkeypatch.setattr(MediaIngestService, "_download", classmethod(must_not_download))
+    bot = FallbackBot()
+
+    with pytest.raises(RuntimeError, match="durable generation media is still being ingested"):
+        await send_generation_result_media(
+            bot,  # type: ignore[arg-type]
+            session=FakeSession(asset),  # type: ignore[arg-type]
+            chat_id=1,
+            generation=generation(),  # type: ignore[arg-type]
+            media_type="video",
+            result_url="https://provider.example/slow.mp4",
+            caption="ready",
+            reply_markup=None,
+        )
+
+    assert bot.video_calls == ["https://provider.example/slow.mp4"]
+    assert bot.document_calls == []
+
+
+
+@pytest.mark.asyncio
+async def test_provider_fallback_download_has_wall_clock_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "notification_media_download_timeout_seconds", 0.01)
+
+    async def slow_download(_cls: type[MediaIngestService], _url: str) -> DownloadedMedia:
+        await asyncio.sleep(1)
+        raise AssertionError("download should have been cancelled by the wall-clock budget")
+
+    monkeypatch.setattr(MediaIngestService, "_download", classmethod(slow_download))
+    bot = FallbackBot()
+
+    with pytest.raises(MediaIngestError, match="notification delivery timeout"):
+        await send_generation_result_media(
+            bot,  # type: ignore[arg-type]
+            session=FakeSession(),  # type: ignore[arg-type]
+            chat_id=1,
+            generation=generation(),  # type: ignore[arg-type]
+            media_type="video",
+            result_url="https://provider.example/slow.mp4",
+            caption="ready",
+            reply_markup=None,
+        )

@@ -79,6 +79,9 @@ async def test_generation_create_is_durable_when_redis_wakeup_fails() -> None:
         assert wallet is not None
         assert generation.cost_rox == Decimal("25.00")
         assert wallet.balance == Decimal("75.00")
+        assert generation.provider == "neironych"
+        assert generation.parameters["_provider_route"] == ["neironych", "nexus"]
+        assert generation.parameters["_provider_route_index"] == 0
 
         await GenerationOutboxService.mark_generation_terminal(
             session,

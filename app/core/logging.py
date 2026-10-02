@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -34,13 +35,23 @@ class ObservabilityFilter(logging.Filter):
         return True
 
 
+def redact_log_text(value: str) -> str:
+    # HTTP clients log request URLs even when our own events omit them. Signed
+    # media query strings and Telegram token-bearing paths must not reach disk.
+    value = re.sub(r"(/signed/\d+/)[a-f0-9]{32,}", r"\1[REDACTED]", value)
+    value = re.sub(r"(https?://)[^/@\s]+@", r"\1[REDACTED]@", value)
+    value = re.sub(r"(https?://[^\s?]+)\?[^\s]*", r"\1?[REDACTED]", value)
+    value = re.sub(r"(https://api\.telegram\.org/(?:file/)?bot)[^/\s]+", r"\1[REDACTED]", value)
+    return re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+", r"\1[REDACTED]", value)
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_log_text(record.getMessage()),
             "request_id": str(getattr(record, "request_id", "") or ""),
             "trace_id": str(getattr(record, "trace_id", "") or ""),
             "span_id": str(getattr(record, "span_id", "") or ""),
@@ -50,7 +61,7 @@ class JsonFormatter(logging.Formatter):
             if value is not None:
                 payload[field] = value
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_log_text(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 

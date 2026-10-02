@@ -24,7 +24,7 @@ const models = [
     family: 'seedance',
     operation: 'auto',
     media_type: 'video',
-    price_rox: '72.00',
+    price_rox: '60.00',
     ui_schema: {
       defaults: { prompt: '' },
       fields: [{ name: 'prompt', label: 'Промпт', control: 'textarea', required: true }],
@@ -61,8 +61,8 @@ const families = [
     title: 'Seedance',
     media_types: ['video'],
     variant_count: 1,
-    price_from_rox: '72.00',
-    variants: [{ id: 'seedance-2.5', title: 'Seedance 2.5', version: '2.5', media_type: 'video', operation: 'auto', price_rox: '72.00' }],
+    price_from_rox: '60.00',
+    variants: [{ id: 'seedance-2.5', title: 'Seedance 2.5', version: '2.5', media_type: 'video', operation: 'auto', price_rox: '60.00' }],
   },
   {
     id: 'music',
@@ -107,7 +107,7 @@ const feedCard = {
 };
 const trends = [
   { id: 'trend_portrait', title: 'Неоновый портрет', description: 'Готовая идея для яркого аватара', media_type: 'image', cost_rox: '25.00', model: { title: 'Nano Banana 2' } },
-  { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', cost_rox: '72.00', model: { title: 'Seedance 2.5' } },
+  { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', cost_rox: '60.00', model: { title: 'Seedance 2.5' } },
 ];
 const promptTools = [
   { id: 'image_analysis', title: 'Описание по фото', model: 'gemini-2.5-pro', enabled: true, cost_credits: '1.00', retail_cost_credits: '1.00', cost_rub: '1.00' },

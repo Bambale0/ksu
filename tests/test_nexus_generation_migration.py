@@ -201,7 +201,9 @@ def test_public_nexus_ui_matches_provider_capabilities(
 
     assert fields["image_input"]["max_items"] == 4
     assert "output_format" not in fields
-    assert fields["aspect_ratio"]["suggestions"] == DOCUMENTED_NEXUS_NANO_RATIOS
+    expected_ratios = [ratio for ratio in DOCUMENTED_NEXUS_NANO_RATIOS
+                       if model_id != "nano-banana-pro" or ratio != "auto"]
+    assert fields["aspect_ratio"]["suggestions"] == expected_ratios
     assert fields["resolution"]["suggestions"] == ["1K", "2K", "4K"]
     assert "output_format" not in schema["defaults"]
     assert schema["defaults"]["aspect_ratio"] == expected_default_ratio
@@ -211,6 +213,7 @@ def test_public_nexus_ui_matches_provider_capabilities(
 async def test_uncertain_nexus_create_is_requeued_for_idempotent_replay() -> None:
     generation = SimpleNamespace(
         status="submitting",
+        external_id=None,
         error=None,
         updated_at=None,
         provider="nexus",

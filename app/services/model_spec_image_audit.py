@@ -82,7 +82,10 @@ def install_model_spec_image_audit() -> None:
 
     for model_id in nexus_nano_ids:
         suggestions = ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault(model_id, {})
-        suggestions["aspect_ratio"] = list(nexus_nano_ratios)
+        suggestions["aspect_ratio"] = [
+            ratio for ratio in nexus_nano_ratios
+            if model_id != "nano-banana-pro" or ratio != "auto"
+        ]
         suggestions["resolution"] = ["1K", "2K", "4K"]
         suggestions.pop("output_format", None)
         defaults = ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})

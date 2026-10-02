@@ -5,7 +5,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
-engine_kwargs: dict[str, object] = {"pool_pre_ping": True}
+engine_kwargs: dict[str, object] = {"pool_pre_ping": True, "hide_parameters": True}
 if settings.app_env.lower() == "test":
     # pytest-asyncio may use a fresh event loop per test. Avoid reusing asyncpg
     # connections that were created by a previous loop.

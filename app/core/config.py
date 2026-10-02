@@ -17,8 +17,8 @@ DEFAULT_GENERATION_PRICING_JSON = (
     '"seedream-4.5-edit":{"flat":20},'
     '"seedream-5-pro-t2i":{"flat":20},'
     '"seedream-5-pro-i2i":{"flat":20},'
-    '"seedance-2.0":{"per_second":47,"by_resolution":{"480p":22,"720p":47,"1080p":116}},'
-    '"seedance-2.5":{"per_second":72,"by_resolution":{"480p":32,"720p":72,"1080p":130}},'
+    '"seedance-2.0":{"per_second":40,"by_resolution":{"480p":20,"720p":40,"1080p":95}},'
+    '"seedance-2.5":{"per_second":60,"by_resolution":{"480p":30,"720p":60,"1080p":130}},'
     '"kling-2.5-turbo-pro-t2v":{"per_second":8},'
     '"kling-2.5-turbo-pro-i2v":{"per_second":8},'
     '"kling-avatar-standard":{"per_second":100},'
@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     nexus_test_task_lease_seconds: int = Field(default=90, ge=30, le=600)
     nexus_test_retry_max_seconds: int = Field(default=30, ge=3, le=300)
     nexus_test_hard_timeout_seconds: int = Field(default=1800, ge=60, le=7200)
+    neironych_api_key: str = ""
+    neironych_poll_seconds: int = Field(default=10, ge=10, le=60)
+    neironych_reference_validation_timeout_seconds: int = Field(default=60, ge=10, le=300)
+    neironych_api_base_url: str = "https://api.xn--e1aikcel5c5a.online"
+    neironych_test_hard_timeout_seconds: int = Field(default=3600, ge=60, le=14400)
+    neironych_test_max_video_bytes: int = Field(
+        default=250 * 1024 * 1024,
+        ge=1024 * 1024,
+        le=1024 * 1024 * 1024,
+    )
     telegram_mini_app_short_name: str = ""
     support_telegram_url: str = ""
     partner_telegram_url: str = ""
@@ -164,6 +174,8 @@ class Settings(BaseSettings):
     notification_delivery_max_attempts: int = 8
     notification_retry_base_seconds: int = 5
     notification_retry_max_seconds: int = 900
+    notification_media_pending_retry_seconds: int = 10
+    notification_media_download_timeout_seconds: float = 30.0
     notification_delivery_batch_size: int = 50
 
     support_outbox_worker_poll_seconds: int = 3

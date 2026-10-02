@@ -79,6 +79,10 @@ AdminRuntimeDep = Annotated[
     AdminContext,
     Depends(require_permission("runtime.manage")),
 ]
+AdminRuntimeWriteDep = Annotated[
+    AdminContext,
+    Depends(require_permission("runtime.manage", step_up=True)),
+]
 AdminPartnerReadDep = Annotated[
     AdminContext,
     Depends(require_permission("partners.read")),
@@ -195,6 +199,11 @@ class FeedModerationRequest(BaseModel):
 
 class RuntimeSubscriptionRequest(BaseModel):
     enabled: bool
+
+
+class ProviderRoutesRequest(BaseModel):
+    routes: dict[str, list[str]]
+    expected_revision: int = Field(ge=1)
 
 
 class WithdrawalStateRequest(BaseModel):
@@ -931,6 +940,22 @@ async def web_admin_runtime_reload(
             confirmed=_confirmed(confirmation),
         ),
     )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/runtime/provider-routes")
+async def web_admin_provider_routes(
+    payload: ProviderRoutesRequest, request: Request,
+    context: AdminRuntimeWriteDep, session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(session, AdminRuntimeService.set_provider_routes(
+        session, admin=context.account, routes=payload.routes,
+        expected_revision=payload.expected_revision,
+        idempotency_key=_require_idempotency(idempotency_key),
+        request_id=_request_id(request), confirmed=_confirmed(confirmation),
+    ))
     return {**result, "idempotency_replayed": replayed}
 
 
