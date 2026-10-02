@@ -18,7 +18,7 @@ const models = [
     },
   },
   {
-    id: 'seedance-2.5', title: 'Seedance 2.5', family: 'seedance', operation: 'auto', media_type: 'video', price_rox: '72.00',
+    id: 'seedance-2.5', title: 'Seedance 2.5', family: 'seedance', operation: 'auto', media_type: 'video', price_rox: '60.00',
     known_fields: ['prompt', 'image_url', 'duration'], required_fields: ['prompt'], duration_field: 'duration',
     ui_schema: {
       defaults: { prompt: '' },
@@ -40,7 +40,7 @@ const models = [
 
 const families = [
   { id: 'nano-banana', title: 'Nano Banana', media_types: ['image'], variant_count: 1, price_from_rox: '25.00', variants: [{ id: 'nano-banana-2', title: 'Nano Banana 2', version: '2', media_type: 'image', operation: 'auto', price_rox: '25.00' }] },
-  { id: 'seedance', title: 'Seedance', media_types: ['video'], variant_count: 1, price_from_rox: '72.00', variants: [{ id: 'seedance-2.5', title: 'Seedance 2.5', version: '2.5', media_type: 'video', operation: 'auto', price_rox: '72.00' }] },
+  { id: 'seedance', title: 'Seedance', media_types: ['video'], variant_count: 1, price_from_rox: '60.00', variants: [{ id: 'seedance-2.5', title: 'Seedance 2.5', version: '2.5', media_type: 'video', operation: 'auto', price_rox: '60.00' }] },
   { id: 'music', title: 'Музыка', media_types: ['audio'], variant_count: 1, price_from_rox: '100.00', variants: [{ id: 'roxy-music', title: 'ROXY Music', version: 'Music', media_type: 'audio', operation: 'text_to_audio', price_rox: '100.00' }] },
 ];
 
@@ -61,7 +61,7 @@ const otherFeedCard = {
 
 const publicTrends = [
   { id: 'trend_portrait', title: 'Неоновый портрет', description: 'Готовая идея для яркого аватара', media_type: 'image', preview_url: resultImage, cost_rox: '25.00', model: { title: 'Nano Banana 2' } },
-  { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', preview_url: resultImage, cost_rox: '72.00', model: { title: 'Seedance 2.5' } },
+  { id: 'trend_video', title: 'Короткий клип', description: 'Видео для Reels и Shorts', media_type: 'video', preview_url: resultImage, cost_rox: '60.00', model: { title: 'Seedance 2.5' } },
 ];
 
 const promptTools = [
@@ -316,7 +316,7 @@ const cases = [
   { name: 'catalog-video-variant-price', route: 'catalog', run: async (page) => {
     await page.getByRole('button', { name: 'Видео', exact: true }).click();
     await page.locator('.model-card').filter({ hasText: 'Seedance' }).last().click();
-    await expect(page.locator('.variant-row').filter({ hasText: 'Seedance 2.5' })).toContainText('72 ROX');
+    await expect(page.locator('.variant-row').filter({ hasText: 'Seedance 2.5' })).toContainText('60 ROX');
   } },
   { name: 'catalog-audio-variant-price', route: 'catalog', run: async (page) => {
     await page.getByRole('button', { name: 'Музыка', exact: true }).click();
