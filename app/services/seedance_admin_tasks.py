@@ -65,7 +65,7 @@ class SeedanceAdminTaskService:
                 chat_id=chat_id,
                 status="queued",
                 model_name=model_name,
-                request_payload=request_payload,
+                request_payload={**request_payload, "_neironych_wire_version": 1},
                 idempotency_key=idempotency_key,
                 attempts=0,
                 available_at=utcnow(),
@@ -147,7 +147,9 @@ class SeedanceAdminTaskService:
                 payload = dict(task.request_payload or {})
                 snapshot = payload.get(SNAPSHOT_KEY)
                 if snapshot is None:
-                    if task.status == "submitting" or task.attempts:
+                    if task.status == "submitting" or (
+                        task.attempts and payload.get("_neironych_wire_version") != 1
+                    ):
                         raise NeironychProviderError(
                             "Original admin request body unavailable; reconciliation required",
                             error_code="submission_outcome_unknown",
