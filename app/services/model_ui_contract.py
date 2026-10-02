@@ -61,8 +61,8 @@ KIE_DURATION_OPTIONS: dict[str, list[int]] = {
     "seedance-2.5": list(range(4, 31)),
     "seedance-1.5-pro": [8],
     "kling-3.0": list(range(3, 16)),
-    "grok-video-t2v": list(range(1, 31)),
-    "grok-video-i2v": list(range(1, 31)),
+    "grok-video-t2v": list(range(6, 31)),
+    "grok-video-i2v": list(range(6, 31)),
     "grok-video-1.5": list(range(1, 16)),
     "gemini-omni-video": [4, 6, 8, 10],
 }
