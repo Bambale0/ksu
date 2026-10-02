@@ -633,15 +633,15 @@ async def test_unverified_optional_preview_keeps_trend_visible_and_valid(metadat
 async def test_verified_preview_does_not_add_video_surcharge(monkeypatch) -> None:
     from app.core.config import settings
 
-    monkeypatch.setattr(settings, "generation_pricing_json", '{"seedance-2.0":{"per_second":47}}')
+    monkeypatch.setattr(settings, "generation_pricing_json", '{"seedance-2.0":{"per_second":40}}')
     item = _video_item()
     session = AsyncMock()
     session.scalar.return_value = SimpleNamespace(
         kind="video", status="ready", probe_status="ready", duration_ms=5000,
     )
     view = await TrendService.public_view(session, item)
-    assert view["cost_credits"] == "470.00"
-    assert all(option["cost_rox"] == "470.00" for option in view["quality_options"])
+    assert view["cost_credits"] == "400.00"
+    assert all(option["cost_rox"] == "400.00" for option in view["quality_options"])
     assert view["preview_url"] == item.payload["preview_url"]
 
 
@@ -685,7 +685,7 @@ def test_trend_recipe_rejects_video_input_aliases(field) -> None:
 async def test_seedance25_preview_quotes_image_only_prices_at_all_qualities(monkeypatch) -> None:
     from app.core.config import settings
 
-    monkeypatch.setattr(settings, "generation_pricing_json", '{"seedance-2.5":{"per_second":72,"by_resolution":{"480p":32,"720p":72,"1080p":130}}}')
+    monkeypatch.setattr(settings, "generation_pricing_json", '{"seedance-2.5":{"per_second":60,"by_resolution":{"480p":30,"720p":60,"1080p":130}}}')
     item = _video_item()
     item.payload.update({"model_id": "seedance-2.5", "prompt": "Animate @Image1", "input_mode": "image"})
     item.payload["parameters"] = {"duration": 10}
@@ -693,9 +693,9 @@ async def test_seedance25_preview_quotes_image_only_prices_at_all_qualities(monk
     session.scalar.return_value = SimpleNamespace(probe_status="ready", duration_ms=5000)
     await TrendService.validate_recipe(session, title=item.title, payload=item.payload)
     view = await TrendService.public_view(session, item)
-    assert view["cost_credits"] == "720.00"
+    assert view["cost_credits"] == "600.00"
     assert {q["value"]: q["cost_rox"] for q in view["quality_options"]} == {
-        "480p": "320.00", "720p": "720.00", "1080p": "1300.00",
+        "480p": "300.00", "720p": "600.00", "1080p": "1300.00",
     }
     assert view["preview_url"] == item.payload["preview_url"]
     assert "prompt" not in view

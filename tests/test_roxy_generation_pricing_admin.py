@@ -26,8 +26,8 @@ REQUESTED_BASE_PRICES = {
     "seedream-4.5-edit": ("flat", Decimal("20")),
     "seedream-5-pro-t2i": ("flat", Decimal("20")),
     "seedream-5-pro-i2i": ("flat", Decimal("20")),
-    "seedance-2.0": ("per_second", Decimal("47")),
-    "seedance-2.5": ("per_second", Decimal("72")),
+    "seedance-2.0": ("per_second", Decimal("40")),
+    "seedance-2.5": ("per_second", Decimal("60")),
     "kling-2.5-turbo-pro-t2v": ("per_second", Decimal("8")),
     "kling-2.5-turbo-pro-i2v": ("per_second", Decimal("8")),
     "kling-avatar-standard": ("per_second", Decimal("100")),
@@ -176,19 +176,19 @@ def test_seedance_prices_follow_selected_resolution(monkeypatch: pytest.MonkeyPa
 
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.0", parameters={"resolution": "480p"}
-    ) == Decimal("22")
+    ) == Decimal("20")
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.0", parameters={"resolution": "720p"}
-    ) == Decimal("47")
+    ) == Decimal("40")
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.0", parameters={"resolution": "1080p"}
-    ) == Decimal("116")
+    ) == Decimal("95")
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.5", parameters={"resolution": "480p"}
-    ) == Decimal("32")
+    ) == Decimal("30")
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.5", parameters={"resolution": "720p"}
-    ) == Decimal("72")
+    ) == Decimal("60")
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.5", parameters={"resolution": "1080p"}
     ) == Decimal("130")
