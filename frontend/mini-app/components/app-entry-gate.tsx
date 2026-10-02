@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { prepareReferralLanding } from "@/lib/referral-entry";
 import { getStartParamFallback, initTelegram } from "@/lib/telegram";
 import { FeedStartApp } from "./feed-startapp-app";
 import { GenerationActionGate } from "./generation-action-app";
@@ -165,6 +166,7 @@ export function AppEntryGate() {
   const [target, setTarget] = useState<Target | null>(null);
 
   useEffect(() => {
+    prepareReferralLanding();
     const parsed = parseTarget();
     if (parsed?.kind === "trend") prepareTrendReturnLocation();
     const tg = initTelegram();

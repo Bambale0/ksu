@@ -6,9 +6,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_roxy_bot_launcher_uses_welcoming_copy_and_support() -> None:
     launcher = (ROOT / "app" / "bot" / "handlers" / "launcher.py").read_text(encoding="utf-8")
-    block = launcher.split("async def _send_launcher", 1)[1].split(
-        "@router.callback_query", 1
-    )[0]
+    # Isolate the welcome function, not neighboring handlers or their logs.
+    import ast
+
+    function = next(
+        node for node in ast.parse(launcher).body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_send_launcher"
+    )
+    block = ast.get_source_segment(launcher, function)
+    assert block is not None
 
     assert "<b>Добро пожаловать в ROXY ✨</b>" in block
     assert "Создавайте изображения, видео и музыку" in block

@@ -1,0 +1,7 @@
+.card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.copy { flex: 1 1 230px; min-width: 0; }
+.copy h2 { margin: 0; font-size: 14px; }
+.copy p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button { min-height: 44px; }
+@media (max-width: 520px) { .actions, .actions button { width: 100%; } }
