@@ -142,6 +142,27 @@ def test_grok_i2v_task_reference_preserves_exact_current_contract() -> None:
     assert not payload.get("image_urls")
 
 
+
+def test_grok_video_rejects_subsix_duration_before_billing_and_provider() -> None:
+    for model_id, params in (
+        ("grok-video-t2v", {"prompt": "move", "duration": 5}),
+        (
+            "grok-video-i2v",
+            {
+                "prompt": "animate",
+                "image_urls": ["https://cdn.example/source.png"],
+                "duration": 5,
+            },
+        ),
+    ):
+        with pytest.raises(InvalidModelParametersError, match="between 6 and 30"):
+            ModelCatalog.prepare(model_id, params)
+        spec = ModelCatalog.get(model_id)
+        with pytest.raises(KieVideoContractError, match="between 6 and 30"):
+            normalize_kie_video_input(spec.kie_model, params)
+
+
+
 def test_grok_i2v_external_image_spicy_mode_is_rejected_before_billing_and_provider() -> None:
     params = {
         "image_urls": ["https://cdn.example/source.png"],
