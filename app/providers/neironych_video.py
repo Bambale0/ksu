@@ -8,6 +8,11 @@ from typing import Any
 
 import httpx
 
+from app.providers.neironych_errors import (
+    NeironychProviderError,
+    provider_error as _safe_error,
+)
+
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
     normalize_neironych_video_input,
@@ -38,53 +43,6 @@ _TERMINAL_FAILURE = frozenset({"failed", "expired", "error", "cancelled", "cance
 _DOWNLOAD_RANGE_CHUNK_BYTES = 256 * 1024
 _DOWNLOAD_ZERO_PROGRESS_LIMIT = 4
 _CONTENT_RANGE_RE = re.compile(r"^bytes\s+(\d+)-(\d+)/(\d+|\*)$")
-
-
-class NeironychProviderError(RuntimeError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        status_code: int | None = None,
-        payload: Any = None,
-    ) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.payload = payload
-
-
-_LONG_TOKEN_RE = re.compile(r"(?i)\b[a-f0-9]{32,}\b")
-_URL_QUERY_RE = re.compile(r"(https?://[^\s?]+)\?[^\s]*")
-
-
-def _redact_error_text(value: str) -> str:
-    value = _LONG_TOKEN_RE.sub("[REDACTED]", value)
-    return _URL_QUERY_RE.sub(r"\1?[REDACTED]", value)
-
-
-def _safe_error(response: httpx.Response) -> NeironychProviderError:
-    try:
-        payload: Any = response.json()
-    except Exception:
-        payload = None
-    message = ""
-    if isinstance(payload, dict):
-        error = payload.get("error")
-        if isinstance(error, dict):
-            message = str(error.get("message") or error.get("detail") or "").strip()
-        if not message:
-            message = str(payload.get("message") or payload.get("detail") or "").strip()
-    if not message:
-        message = (response.text or "").strip()
-    if not message:
-        message = f"HTTP {response.status_code}"
-    # The provider may echo upload URLs/tokens in errors. Never persist an
-    # unbounded upstream body in logs or the admin task row.
-    return NeironychProviderError(
-        f"Neironych API HTTP {response.status_code}: {_redact_error_text(message)[:800]}",
-        status_code=response.status_code,
-        payload=payload,
-    )
 
 
 def _request_id(payload: Any) -> str:
@@ -138,7 +96,7 @@ class NeironychVideoClient:
         self._client = client or httpx.AsyncClient(
             base_url=str(base_url or "").rstrip("/"),
             timeout=httpx.Timeout(60.0, connect=10.0),
-            follow_redirects=True,
+            follow_redirects=False,
         )
         self._storage_client = storage_client
 
@@ -273,7 +231,7 @@ class NeironychVideoClient:
         else:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(120.0, connect=10.0),
-                follow_redirects=True,
+                follow_redirects=False,
             ) as storage_client:
                 uploaded = await storage_client.put(
                     upload_target,
