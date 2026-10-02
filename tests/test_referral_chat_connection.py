@@ -53,3 +53,55 @@ async def test_consent_does_not_create_unattributed_user_or_clear_fsm(monkeypatc
     finally:
         await dispatcher.storage.close()
         await bot.session.close()
+
+
+@pytest.mark.asyncio
+async def test_consent_precedes_stateful_admin_handlers_in_production_dispatcher(monkeypatch):
+    from contextlib import asynccontextmanager
+    from aiogram import Router
+    from app.bot import dispatcher as dispatcher_module, middlewares
+
+    session = SimpleNamespace(scalar=AsyncMock(return_value=None), commit=AsyncMock(), rollback=AsyncMock())
+
+    @asynccontextmanager
+    async def sessions():
+        yield session
+
+    monkeypatch.setattr(middlewares, "SessionFactory", sessions)
+    monkeypatch.setattr(dispatcher_module, "RedisStorage", lambda **kwargs: MemoryStorage())
+    # Real dispatcher composition with an eager downstream admin handler: only
+    # the root consent registration can prevent that handler from consuming it.
+    for module in (dispatcher_module.admin, dispatcher_module.admin_extensions,
+                   dispatcher_module.seedance_test, dispatcher_module.nexus_test,
+                   dispatcher_module.launcher):
+        monkeypatch.setattr(module, "router", Router())
+    intercepted = AsyncMock(side_effect=AssertionError("consent reached admin input"))
+    async def admin_input(message):
+        await intercepted(message)
+
+    dispatcher_module.admin.router.message.register(admin_input)
+    create_user = AsyncMock(side_effect=AssertionError("consent registered an unattributed user"))
+    monkeypatch.setattr(launcher.UserService, "get_or_create", create_user)
+    monkeypatch.setattr(launcher.settings, "public_base_url", "https://example.test")
+    answer = AsyncMock(return_value=SimpleNamespace(message_id=12))
+    monkeypatch.setattr(Message, "answer", answer)
+    dispatcher = dispatcher_module.create_dispatcher(None)
+    bot = Bot("123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk")
+    state = dispatcher.fsm.get_context(bot=bot, chat_id=999, user_id=999)
+    await state.set_state("admin:editing")
+    await state.set_data({"draft": "unchanged"})
+    event = Update(update_id=88, message=Message(
+        message_id=89, date=datetime.now(UTC), chat=Chat(id=999, type="private"),
+        from_user=User(id=999, is_bot=False, first_name="Test"),
+        write_access_allowed=WriteAccessAllowed(from_request=True),
+    ))
+    try:
+        await dispatcher.feed_update(bot, event)
+        assert await state.get_state() == "admin:editing"
+        assert await state.get_data() == {"draft": "unchanged"}
+        intercepted.assert_not_awaited()
+        create_user.assert_not_awaited()
+        answer.assert_awaited_once()
+    finally:
+        await dispatcher.storage.close()
+        await bot.session.close()

@@ -25,6 +25,7 @@ import type {
   UiScenarioItem,
 } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
+import { TelegramChatConnection } from "./telegram-chat-connection";
 
 const ROUTES: Route[] = ["home", "feed", "catalog", "create", "history", "profile", "partners"];
 const MODEL_KEY = "ksu-selected-model";
@@ -573,6 +574,7 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
+        {route === "home" && me && <TelegramChatConnection key={me.telegram_id} me={me} />}
         {route === "home" && <HomeScreen models={models} recent={recent} trends={trends} onNavigate={navigate} onCreate={(media) => startNewGeneration(media)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
         {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {

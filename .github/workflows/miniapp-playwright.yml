@@ -54,6 +54,8 @@ jobs:
           e2e/frontend-production-readiness.spec.mjs
           e2e/trend-category-admin.spec.mjs
           e2e/trend-back-navigation.spec.mjs
+          e2e/referral-home-chat.spec.mjs
+          e2e/referral-tanyapi-cold-start.spec.mjs
           e2e/admin-provider-routes.spec.mjs
           --project=webkit-mobile
       - name: Verify upload deadlines in iPhone WebKit
