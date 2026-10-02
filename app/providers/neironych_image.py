@@ -14,6 +14,8 @@ from app.providers.neironych_errors import (
     request_identifier,
 )
 
+from app.providers.neironych_submission import encode_body
+
 NANO_PRO_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9")
 
 
@@ -34,7 +36,7 @@ class NeironychImageClient:
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
-            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured")
+            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured", status_code=401, error_code="api_key_required", local_validation=True)
         self._authorization = f"Bearer {clean_key}"
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
@@ -87,32 +89,20 @@ class NeironychImageClient:
         resolution: str,
         image_urls: list[str],
         idempotency_key: str,
+        request_body: str | None = None,
     ) -> NeironychImageResult:
-        refs = list(dict.fromkeys(str(item).strip() for item in image_urls if str(item).strip()))
-        self._validate(
-            prompt=prompt,
-            aspect_ratio=aspect_ratio,
-            resolution=resolution,
-            image_urls=refs,
-            idempotency_key=idempotency_key,
+        path, payload = prepare_image_payload(
+            prompt=prompt, aspect_ratio=aspect_ratio, resolution=resolution,
+            image_urls=image_urls, idempotency_key=idempotency_key,
         )
-        payload: dict[str, Any] = {
-            "model": "nano-banana-pro",
-            "prompt": str(prompt).strip(),
-            "n": 1,
-            "resolution": str(resolution).lower(),
-            "aspect_ratio": str(aspect_ratio).strip(),
-            "response_format": "b64_json",
-        }
-        path = "/v1/images/generations"
-        if refs:
-            path = "/v1/images/edits"
-            payload["images"] = [{"image_url": url} for url in refs]
-
+        if request_body is not None:
+            frozen = json.loads(request_body)
+            if frozen != payload:
+                raise NeironychProviderError("Saved image request identity changed", local_validation=True)
         response = await self._client.post(
             path,
             headers=self._headers(idempotency_key),
-            json=payload,
+            content=request_body.encode("utf-8") if request_body is not None else encode_body(payload).encode("utf-8"),
         )
         if not response.is_success:
             raise provider_error(response)
@@ -137,3 +127,16 @@ class NeironychImageClient:
         if not content:
             raise NeironychProviderError("Neironych image response decoded to empty content", request_id=response.headers.get("X-Request-Id"), error_code="provider_response_invalid")
         return NeironychImageResult(content=content, request_id=request_identifier(response.headers.get("X-Request-Id")))
+
+
+def prepare_image_payload(*, prompt: str, aspect_ratio: str, resolution: str,
+                          image_urls: list[str], idempotency_key: str) -> tuple[str, dict[str, Any]]:
+    refs = list(dict.fromkeys(str(item).strip() for item in image_urls if str(item).strip()))
+    NeironychImageClient._validate(prompt=prompt, aspect_ratio=aspect_ratio,
+        resolution=resolution, image_urls=refs, idempotency_key=idempotency_key)
+    payload: dict[str, Any] = {"model": "nano-banana-pro", "prompt": str(prompt).strip(),
+        "n": 1, "resolution": str(resolution).lower(), "aspect_ratio": str(aspect_ratio).strip(),
+        "response_format": "b64_json"}
+    if refs:
+        payload["images"] = [{"image_url": url} for url in refs]
+    return ("/v1/images/edits" if refs else "/v1/images/generations"), payload

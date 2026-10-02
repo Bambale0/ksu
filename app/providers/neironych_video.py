@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.providers.neironych_errors import (
     provider_error as _safe_error,
 )
 
+from app.providers.neironych_submission import encode_body
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
     normalize_neironych_video_input,
@@ -90,7 +92,7 @@ class NeironychVideoClient:
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
-            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured")
+            raise NeironychProviderError("NEIRONYCH_API_KEY is not configured", status_code=401, error_code="api_key_required", local_validation=True)
         self._authorization = f"Bearer {clean_key}"
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
@@ -168,6 +170,12 @@ class NeironychVideoClient:
             raise NeironychProviderError(
                 f"Media content type {content_type!r} does not match type {kind!r}"
             )
+
+        from app.services.neironych_reference_validation import inspect_upload, ReferenceValidationError
+        try:
+            await asyncio.to_thread(inspect_upload, model, kind, content, content_type)
+        except ReferenceValidationError as exc:
+            raise NeironychProviderError(str(exc), status_code=422, local_validation=True) from exc
 
         response = await self._client.post(
             "/v1/media/uploads",
@@ -251,6 +259,7 @@ class NeironychVideoClient:
         model: str,
         payload: dict[str, Any],
         idempotency_key: str,
+        request_body: str | None = None,
     ) -> str:
         if model not in _SUPPORTED_PROVIDER_MODELS:
             raise NeironychProviderError(f"Unsupported admin-test model: {model}")
@@ -258,12 +267,18 @@ class NeironychVideoClient:
         if len(idem) < 8 or len(idem) > 160:
             raise NeironychProviderError("Idempotency-Key must contain 8..160 characters")
 
-        try:
-            request_payload = normalize_neironych_video_input(model, payload)
-        except NeironychVideoContractError as exc:
-            raise NeironychProviderError(str(exc), status_code=422) from exc
-        # Identity is selected in trusted admin UI / runtime model resolution.
-        request_payload["model"] = model
+        if request_body is None:
+            try:
+                request_payload = normalize_neironych_video_input(model, payload)
+                request_body = encode_body({**request_payload, "model": model})
+            except (NeironychVideoContractError, ValueError) as exc:
+                raise NeironychProviderError(str(exc), status_code=422, local_validation=True) from exc
+        else:
+            # The service persisted/verified the exact wire body before POST.
+            # Re-normalizing here would change it after a deploy.
+            data = json.loads(request_body)
+            if not isinstance(data, dict) or data.get("model") != model:
+                raise NeironychProviderError("Saved request model mismatch", status_code=422, local_validation=True)
         response = await self._client.post(
             "/v1/videos/generations",
             headers={
@@ -271,7 +286,7 @@ class NeironychVideoClient:
                 "Content-Type": "application/json",
                 "Idempotency-Key": idem,
             },
-            json=request_payload,
+            content=request_body.encode("utf-8"),
         )
         if not response.is_success:
             raise _safe_error(response)
@@ -285,7 +300,8 @@ class NeironychVideoClient:
         request_id = _request_id(data)
         if not request_id:
             raise NeironychProviderError(
-                f"Neironych API create response has no request_id: {str(data)[:800]}"
+                "Neironych API create response has no request_id",
+                request_id=response.headers.get("X-Request-Id"), error_code="provider_response_invalid",
             )
         return request_id
 

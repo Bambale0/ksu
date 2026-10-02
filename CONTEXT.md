@@ -7,7 +7,7 @@
 - Verification: RED regressions at real adapter/service seams -> narrow fixes -> focused contracts and isolated PostgreSQL integration/concurrency/recovery/wallet tests -> full backend + JS/batch/browser CI -> independent diff review -> exact-head merge -> exact-main CI/deploy and readiness/SHA/log smoke. Do not claim paid E2E unless actually run; no additional live paid requests are currently needed.
 - Guidance: refreshed KSU/local .agents instructions and local debugger; Bambale0/skills diagnosing-bugs; claw and dev-agents-pack API integrator; release-it reliability guidance. AgentSkills/Anthropic catalogs inspected for this integration, no additional provider-specific workflow. Shared Start baseline unchanged.
 - Rollback: preserve adapters and bound upstream tasks; revert release or change configured routes for new requests only. Never mutate/refund active upstream work merely because a deploy occurred.
-- Progress: execution worktree created from the exact live SHA; release not yet changed.
+- Progress: core RED 20 failures/2 passes; core GREEN 60 passes; expanded provider/recovery suite 98 passes; full isolated PostgreSQL backend 1435 passes after final error-policy review (one pre-existing trend assignment warning). Additional late-pending/refund regression passes. Ruff/compileall and schema parity pass. Exact-head CI and controlled production release remain pending. Detailed contract/safety/rollback ledger: `docs/agents/EXECUTION/neironych-contract-20261002.md`.
 
 ## Active Fix Execution — Browser CI dependency installation (2026-10-01)
 

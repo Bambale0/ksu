@@ -127,6 +127,17 @@ async def test_worker_recovers_lost_video_response_without_switch(monkeypatch, i
         await session.flush()
         claim = ClaimedGeneration(outbox.id, g.id, 1)
         gid = g.id
+        if initial_status == "submitting":
+            # A new-version worker persists wire bytes before it can crash in
+            # submitting. Legacy rows without those bytes have a separate
+            # fail-closed regression and must not guess a replacement body.
+            from app.core.config import settings
+            from app.providers.neironych_submission import freeze_submission
+            from app.services.generation_provider_routing import idempotency_key
+            body = {"prompt": g.prompt, "duration": 4, "resolution": "480p", "aspect_ratio": "16:9"}
+            g.parameters = {**g.parameters, "_neironych_submission": freeze_submission(
+                model="seedance-2.5", payload=body, key=idempotency_key(g),
+                base_url=settings.neironych_api_base_url)}
         await session.commit()
     keys = []
 
