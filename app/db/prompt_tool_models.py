@@ -44,7 +44,7 @@ class PromptToolTask(TimestampMixin, Base):
     )
     tool: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="queued", nullable=False)
-    provider: Mapped[str] = mapped_column(String(32), default="kie", nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), default="nexus", nullable=False)
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     input_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     result_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)

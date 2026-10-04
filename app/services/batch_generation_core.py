@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_provider_routing import configured_route
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_presentation import public_model_title
@@ -162,37 +163,44 @@ async def enqueue_generation(
 ) -> Generation:
     effective_cost = Decimal("0.00") if admin_free else Decimal(prepared.cost)
     provider_model = GenerationService._provider_model_snapshot(prepared.spec, prepared.clean)
+    provider_route, route_revision = await configured_route(session, prepared.spec.id)
+    generation_parameters = {
+        **prepared.clean,
+        "_model_id": prepared.spec.id,
+        "_model_title": public_model_title(prepared.spec.id, prepared.spec.title),
+        "_model_family": prepared.spec.family,
+        "_operation": prepared.spec.operation,
+        "_media_type": prepared.spec.media_type,
+        "_kie_model": prepared.spec.kie_model,
+        "_provider_model": provider_model,
+        "_billing_mode": prepared.spec.price_mode,
+        "_billing_seconds": prepared.billing_seconds,
+        "_unit_price_rox": str(prepared.unit_price),
+        "_retail_cost_rox": str(prepared.cost),
+        "_admin_free": admin_free,
+        "_batch_id": str(batch_id),
+        "_batch_item_id": str(item_id),
+        "_batch_ordinal": ordinal,
+        "_batch_retry": retry_count,
+        **(
+            {"_admin_free_generation": True, "_quoted_cost_rox": str(prepared.cost)}
+            if admin_free
+            else {}
+        ),
+    }
+    if provider_route:
+        generation_parameters["_provider_route"] = list(provider_route)
+        generation_parameters["_provider_route_index"] = 0
+        generation_parameters["_provider_route_revision"] = route_revision
+
     generation = Generation(
         user_id=user_id,
         kind=prepared.spec.operation,
         prompt=str(prepared.clean.get("prompt") or prompt or ""),
         input_url=prepared.input_url,
         cost_rox=effective_cost,
-        provider="kie",
-        parameters={
-            **prepared.clean,
-            "_model_id": prepared.spec.id,
-            "_model_title": public_model_title(prepared.spec.id, prepared.spec.title),
-            "_model_family": prepared.spec.family,
-            "_operation": prepared.spec.operation,
-            "_media_type": prepared.spec.media_type,
-            "_kie_model": prepared.spec.kie_model,
-            "_provider_model": provider_model,
-            "_billing_mode": prepared.spec.price_mode,
-            "_billing_seconds": prepared.billing_seconds,
-            "_unit_price_rox": str(prepared.unit_price),
-            "_retail_cost_rox": str(prepared.cost),
-            "_admin_free": admin_free,
-            "_batch_id": str(batch_id),
-            "_batch_item_id": str(item_id),
-            "_batch_ordinal": ordinal,
-            "_batch_retry": retry_count,
-            **(
-                {"_admin_free_generation": True, "_quoted_cost_rox": str(prepared.cost)}
-                if admin_free
-                else {}
-            ),
-        },
+        provider=provider_route[0] if provider_route else "kie",
+        parameters=generation_parameters,
         status="queued",
         parent_generation_id=parent_generation_id,
         action_type="batch_retry" if retry_count else "batch",

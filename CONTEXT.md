@@ -1,3 +1,27 @@
+## Provider Audit — remaining non-Nexus paths (2026-10-04)
+
+- Full code audit after Nexus media migration found two genuine bypasses and two internal AI paths:
+  - batch generation hard-coded `Generation(provider="kie")`, bypassing `generation_provider_routes`;
+  - `PromptToolTask.provider` ORM default still pointed to Kie even though new service tasks route explicitly;
+  - Pinterest Repeat scene analysis used Kie Gemini directly;
+  - Pinterest quality gate used Kie Gemini directly.
+- Fixes in this branch:
+  - batch jobs now persist the same provider route/revision snapshot as normal generations and start on Nexus for routed models;
+  - prompt-tool ORM default is Nexus;
+  - Pinterest scene analysis uses Nexus GPT-6 Sol vision;
+  - Pinterest quality uses Nexus GPT-6 Sol when 1-2 identity images are supplied (scene + candidate + identities stays within the verified four-image Nexus vision limit); 3-5 identity images remain on Kie so no user reference is silently discarded.
+- Live Nexus verification: GPT-6 Luna/Sol vision accepts image_url; GPT-5.5 returns explicit vision_not_supported; Nexus vision rejects >4 images with too_many_images; data URIs are rejected and require public HTTPS. Prompt-video implementation therefore publishes four temporary JPEG frames under product-owned HTTPS storage and deletes them after the request.
+- Remaining direct non-Nexus code after this branch is intentional/contractual:
+  - Kie generation fallback and models with no equivalent Nexus contract;
+  - Suno V5.5 music (Nexus currently exposes Suno V6 only, with a materially smaller prompt/instrumental schema);
+  - Pinterest quality only for 3-5 identity refs because Nexus max is four images/request;
+  - persisted legacy Kie prompt tasks;
+  - Kie media upload transport used only by the above Kie paths;
+  - Neironych configured fallbacks plus admin/test Seedance tools;
+  - Grok stays excluded by explicit product requirement.
+- Model-catalog audit: every KSU model with a compatible current Nexus contract is already represented in the Nexus route registry. Non-routed non-Grok models are older/different contracts (Seedream 3/4/4.5, GPT Image 1.5, Wan image/edit/r2v, Seedance 1.5 Pro, Kling Motion 3.0, Kling 2.5 Turbo Pro contract mismatch, Kling Avatar) and must not be silently version-swapped.
+- Verification: 45 focused prompt/batch/Pinterest tests pass; Ruff and git diff --check pass. Three local DB-backed batch tests are not valid evidence because the host test DB is stale and lacks `wallet_transactions.reason`; clean exact-head CI must provide integration evidence.
+
 ## Active Feature Execution — Prompt media fully on Nexus (2026-10-04)
 
 - Request: move the remaining `image_prompt_provider` and `video_prompt_provider` off Kie to Nexus too.
