@@ -13,6 +13,7 @@ from app.providers.kie_pinterest_quality import (
     KiePinterestQualityClient,
     PinterestQualityProviderError,
 )
+from app.providers.nexus_pinterest_quality import NexusPinterestQualityClient
 from app.services.abuse_protection import AbuseProtectionService, ResourcePolicyError
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
@@ -118,6 +119,12 @@ class PinterestRepeatQualityGate:
             score -= 20.0
         return score
 
+    @staticmethod
+    def _quality_provider_key(identity_urls: list[str]) -> str:
+        if len(identity_urls) <= NexusPinterestQualityClient.MAX_IDENTITY_IMAGES:
+            return "nexus-pinterest-repeat-quality"
+        return "kie-pinterest-repeat-quality"
+
     @classmethod
     async def _evaluate(
         cls,
@@ -127,25 +134,42 @@ class PinterestRepeatQualityGate:
         identity_urls: list[str],
         candidate_url: str,
     ) -> dict[str, Any]:
-        await AbuseProtectionService.provider_submission_gate(redis, "kie-pinterest-repeat-quality")
-        prepared = await ProviderMediaTransport.prepare(
-            {
-                "scene_url": scene_url,
-                "identity_urls": identity_urls,
-                "candidate_url": candidate_url,
-            }
-        )
-        client = KiePinterestQualityClient(settings.kie_api_key, settings.kie_base_url)
-        try:
-            result = await client.evaluate(
-                scene_url=str(prepared.get("scene_url") or ""),
-                identity_urls=[str(item) for item in prepared.get("identity_urls") or []],
-                candidate_url=str(prepared.get("candidate_url") or ""),
+        provider_key = cls._quality_provider_key(identity_urls)
+        await AbuseProtectionService.provider_submission_gate(redis, provider_key)
+
+        if provider_key.startswith("nexus-"):
+            client = NexusPinterestQualityClient(
+                settings.nexus_api_key,
+                settings.nexus_api_base_url,
             )
-        finally:
-            await client.aclose()
+            try:
+                result = await client.evaluate(
+                    scene_url=scene_url,
+                    identity_urls=identity_urls,
+                    candidate_url=candidate_url,
+                )
+            finally:
+                await client.aclose()
+        else:
+            prepared = await ProviderMediaTransport.prepare(
+                {
+                    "scene_url": scene_url,
+                    "identity_urls": identity_urls,
+                    "candidate_url": candidate_url,
+                }
+            )
+            client = KiePinterestQualityClient(settings.kie_api_key, settings.kie_base_url)
+            try:
+                result = await client.evaluate(
+                    scene_url=str(prepared.get("scene_url") or ""),
+                    identity_urls=[str(item) for item in prepared.get("identity_urls") or []],
+                    candidate_url=str(prepared.get("candidate_url") or ""),
+                )
+            finally:
+                await client.aclose()
+
         evaluation = cls.normalize_evaluation(result.payload, model=result.model)
-        await AbuseProtectionService.record_provider_success(redis, "kie-pinterest-repeat-quality")
+        await AbuseProtectionService.record_provider_success(redis, provider_key)
         return evaluation
 
     @classmethod
@@ -240,6 +264,7 @@ class PinterestRepeatQualityGate:
         params = dict(generation.parameters or {})
         retry_count = int(params.get("_quality_retry_count") or 0)
 
+        quality_provider_key = cls._quality_provider_key(identity_urls)
         try:
             evaluation = await cls._evaluate(
                 redis,
@@ -253,7 +278,7 @@ class PinterestRepeatQualityGate:
             if AbuseProtectionService.availability_failure(exc):
                 await AbuseProtectionService.record_provider_failure(
                     redis,
-                    "kie-pinterest-repeat-quality",
+                    quality_provider_key,
                 )
             if not isinstance(exc, (PinterestQualityProviderError, ProviderMediaTransportError)):
                 logger.exception("Pinterest quality gate failed for %s", generation.id)

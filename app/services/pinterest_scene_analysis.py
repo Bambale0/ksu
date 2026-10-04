@@ -11,15 +11,9 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
-from app.providers.kie_pinterest_analysis import (
-    KiePinterestAnalysisClient,
-    PinterestSceneAnalysisProviderError,
-)
+from app.providers.kie_pinterest_analysis import PinterestSceneAnalysisProviderError
+from app.providers.nexus_pinterest_analysis import NexusPinterestAnalysisClient
 from app.services.abuse_protection import AbuseProtectionService
-from app.services.provider_media_transport import (
-    ProviderMediaTransport,
-    ProviderMediaTransportError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +81,7 @@ class PinterestSceneAnalysisService:
     @classmethod
     async def _analyze_provider(
         cls,
-        client: KiePinterestAnalysisClient,
+        client: NexusPinterestAnalysisClient,
         *,
         image_url: str,
         user_id: uuid.UUID,
@@ -129,7 +123,7 @@ class PinterestSceneAnalysisService:
                 payload = json.loads(decoded)
                 if isinstance(payload, dict):
                     normalized = cls._normalize(payload.get("analysis") or {})
-                    model = str(payload.get("model") or KiePinterestAnalysisClient.MODEL)
+                    model = str(payload.get("model") or NexusPinterestAnalysisClient.MODEL)
                     return normalized, model, True
             except (ValueError, TypeError, json.JSONDecodeError, PinterestSceneAnalysisError):
                 logger.warning("Ignoring invalid Pinterest analysis cache entry for %s", user_id)
@@ -141,32 +135,38 @@ class PinterestSceneAnalysisService:
             window_seconds=60,
             message="Pinterest scene analysis rate limit exceeded",
         )
-        await AbuseProtectionService.provider_submission_gate(redis, "kie-pinterest-repeat-analysis")
+        await AbuseProtectionService.provider_submission_gate(redis, "nexus-pinterest-repeat-analysis")
 
         try:
-            provider_input = await ProviderMediaTransport.prepare({"image_url": clean_url})
-            provider_url = str(provider_input.get("image_url") or "").strip()
-            if not provider_url:
-                raise PinterestSceneAnalysisError("Не удалось подготовить референс для AI-анализа")
-
-            client = KiePinterestAnalysisClient(settings.kie_api_key, settings.kie_base_url)
+            client = NexusPinterestAnalysisClient(
+                settings.nexus_api_key,
+                settings.nexus_api_base_url,
+            )
             try:
                 analysis, provider_result = await cls._analyze_provider(
                     client,
-                    image_url=provider_url,
+                    image_url=clean_url,
                     user_id=user_id,
                 )
             finally:
                 await client.aclose()
-            await AbuseProtectionService.record_provider_success(redis, "kie-pinterest-repeat-analysis")
+            await AbuseProtectionService.record_provider_success(
+                redis, "nexus-pinterest-repeat-analysis"
+            )
         except PinterestSceneAnalysisError:
-            await AbuseProtectionService.record_provider_failure(redis, "kie-pinterest-repeat-analysis")
+            await AbuseProtectionService.record_provider_failure(
+                redis, "nexus-pinterest-repeat-analysis"
+            )
             raise
-        except (PinterestSceneAnalysisProviderError, ProviderMediaTransportError) as exc:
-            await AbuseProtectionService.record_provider_failure(redis, "kie-pinterest-repeat-analysis")
+        except PinterestSceneAnalysisProviderError as exc:
+            await AbuseProtectionService.record_provider_failure(
+                redis, "nexus-pinterest-repeat-analysis"
+            )
             raise PinterestSceneAnalysisError("Не удалось разобрать сцену референса") from exc
         except Exception as exc:
-            await AbuseProtectionService.record_provider_failure(redis, "kie-pinterest-repeat-analysis")
+            await AbuseProtectionService.record_provider_failure(
+                redis, "nexus-pinterest-repeat-analysis"
+            )
             logger.exception("Pinterest scene analysis failed for user %s", user_id)
             raise PinterestSceneAnalysisError("Не удалось разобрать сцену референса") from exc
 
