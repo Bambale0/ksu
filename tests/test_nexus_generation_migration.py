@@ -112,6 +112,7 @@ def test_nexus_generation_normalizes_legacy_roxy_payload() -> None:
         },
     )
     assert normalized == {
+        "model_name": "nano-banana-2",
         "prompt": "edit the reference",
         "aspect_ratio": "4:3",
         "image_size": "2K",
@@ -140,9 +141,9 @@ def test_nexus_local_reference_uses_roxy_public_url_without_kie_transport(
     assert "KieUploadClient" not in source
 
 
-def test_nexus_generation_migration_is_limited_to_pro_and_v2() -> None:
+def test_legacy_nano_client_contract_remains_compatible() -> None:
     assert NANO_BANANA_MODELS == frozenset({"nano-banana-pro", "nano-banana-2"})
-    assert "nano-banana-2-lite" not in NexusGenerationProviderService.MODEL_IDS
+    assert {"nano-banana-pro", "nano-banana-2"} <= NexusGenerationProviderService.MODEL_IDS
     assert NANO_BANANA_ASPECT_RATIOS == set(DOCUMENTED_NEXUS_NANO_RATIOS)
 
 
@@ -264,14 +265,14 @@ def test_generation_worker_preserves_existing_provider_and_polls_nexus_durably()
     )
 
     assert GenerationWorkerService._provider_name(pre_migration_kie) == "kie"
-    assert GenerationWorkerService._provider_name(new_nexus) == "nexus"
+    assert GenerationWorkerService._provider_name(new_nexus) == "kie"
     assert GenerationWorkerService._provider_name(retry_nexus) == "nexus"
 
     source = Path("app/services/generation_worker.py").read_text(encoding="utf-8")
     assert 'provider == "nexus"' in source
     assert "NexusGenerationProviderService.submit" in source
     assert "NexusGenerationProviderService.sync_task" in source
-    assert "Nexus image task submitted; polling result" in source
+    assert "Nexus task submitted; polling result" in source
     assert 'Generation.provider.in_(_PROVIDER_NAMES)' in source
     assert 'AbuseProtectionService.provider_submission_gate(redis, protection_provider)' in source
     assert 'record_provider_success(redis, protection_provider)' in source

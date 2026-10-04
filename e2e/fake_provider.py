@@ -45,6 +45,31 @@ async def checkout(payment_id: str) -> HTMLResponse:
     return HTMLResponse(f"<html><body><h1>E2E checkout {payment_id}</h1></body></html>")
 
 
+@app.post("/generate")
+async def nexus_generate(request: Request) -> dict[str, Any]:
+    payload = await request.json()
+    task_id = _task("nexus", payload)
+    return {"task_id": task_id, "status": "queued"}
+
+
+@app.get("/tasks/{task_id}")
+async def nexus_task(task_id: str) -> dict[str, Any]:
+    payload = _tasks.get(task_id, {})
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    model = str(params.get("model_name") or "")
+    result_key = "video_urls" if any(
+        token in model for token in ("seedance", "kling", "veo", "wan/", "gemini")
+    ) else "image_urls"
+    return {
+        "task_id": task_id,
+        "status": "completed",
+        "result": {
+            result_key: ["http://127.0.0.1:18081/media/result.png"],
+        },
+        "error": None,
+    }
+
+
 @app.post("/api/v1/jobs/createTask")
 async def create_task(request: Request) -> dict[str, Any]:
     payload = await request.json()

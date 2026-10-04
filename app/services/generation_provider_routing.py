@@ -11,21 +11,56 @@ from app.db.models import Generation
 from app.db.admin_models import AdminRuntimeSetting
 
 _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
-    "seedance-2.0": ("neironych", "kie"),
-    "seedance-2.5": ("neironych", "kie"),
-    "nano-banana-pro": ("neironych", "nexus"),
+    "nano-banana": ("nexus", "kie"),
+    "nano-banana-edit": ("nexus", "kie"),
+    "nano-banana-pro": ("nexus", "neironych", "kie"),
+    "nano-banana-2": ("nexus", "kie"),
+    "nano-banana-2-lite": ("nexus", "kie"),
+    "gpt-image-2-t2i": ("nexus", "kie"),
+    "gpt-image-2-i2i": ("nexus", "kie"),
+    "seedream-5-lite-t2i": ("nexus", "kie"),
+    "seedream-5-lite-i2i": ("nexus", "kie"),
+    "seedream-5-pro-t2i": ("nexus", "kie"),
+    "seedream-5-pro-i2i": ("nexus", "kie"),
+    "seedance-2.0": ("nexus", "neironych", "kie"),
+    "seedance-2.0-fast": ("nexus", "kie"),
+    "seedance-2.0-mini": ("nexus", "kie"),
+    "seedance-2.5": ("nexus", "neironych", "kie"),
+    "wan-2.7-t2v": ("nexus", "kie"),
+    "wan-2.7-i2v": ("nexus", "kie"),
+    "kling-3.0": ("nexus", "kie"),
+    "kling-motion-2.6": ("nexus", "kie"),
+    "veo-3.1": ("nexus", "kie"),
+    "gemini-omni-video": ("nexus", "kie"),
 }
 
 ROUTES_SETTING_KEY = "generation_provider_routes"
 
 
 def route_options() -> dict[str, list[list[str]]]:
-    return {model: [list(route), [route[0]], [route[1]]] for model, route in _PROVIDER_ROUTES.items()}
+    options: dict[str, list[list[str]]] = {}
+    for model, route in _PROVIDER_ROUTES.items():
+        choices: list[list[str]] = [list(route)]
+        for provider in route:
+            choice = [provider]
+            if choice not in choices:
+                choices.append(choice)
+        if len(route) > 2:
+            for start in range(len(route)):
+                choice = list(route[start:])
+                if len(choice) > 1 and choice not in choices:
+                    choices.append(choice)
+            for fallback in route[1:]:
+                choice = [route[0], fallback]
+                if choice not in choices:
+                    choices.append(choice)
+        options[model] = choices
+    return options
 
 
 def validate_routes(routes: dict[str, Any]) -> dict[str, list[str]]:
     if set(routes) != set(_PROVIDER_ROUTES):
-        raise ValueError("Specify routes for Seedance 2.0, Seedance 2.5 and Nano Banana Pro")
+        raise ValueError("Specify routes for every managed generation model")
     validated: dict[str, list[str]] = {}
     for model in _PROVIDER_ROUTES:
         route = routes[model]
@@ -38,9 +73,15 @@ def validate_routes(routes: dict[str, Any]) -> dict[str, list[str]]:
 
 async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     row = await session.get(AdminRuntimeSetting, ROUTES_SETTING_KEY, populate_existing=True)
+    defaults = {k: list(v) for k, v in _PROVIDER_ROUTES.items()}
     if row is None:
-        return {"revision": 1, "routes": {k: list(v) for k, v in _PROVIDER_ROUTES.items()}}
-    return {"revision": int(row.value["revision"]), "routes": validate_routes(row.value["routes"])}
+        return {"revision": 1, "routes": defaults}
+    stored_routes = row.value.get("routes") if isinstance(row.value, dict) else None
+    # A route registry expansion is an explicit provider migration. Old rows
+    # must not pin the three legacy Neironych routes forever or make reads fail.
+    if not isinstance(stored_routes, dict) or set(stored_routes) != set(_PROVIDER_ROUTES):
+        return {"revision": int(row.value.get("revision", 1)), "routes": defaults}
+    return {"revision": int(row.value["revision"]), "routes": validate_routes(stored_routes)}
 
 
 async def configured_route(session: AsyncSession, model: str) -> tuple[tuple[str, ...] | None, int]:
