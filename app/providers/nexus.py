@@ -72,6 +72,38 @@ class NexusClient:
         if self._owns_client:
             await self._client.aclose()
 
+    async def create_generation(
+        self,
+        *,
+        params: dict[str, Any],
+        idempotency_key: str | None = None,
+    ) -> str:
+        model_name = str(params.get("model_name") or "").strip()
+        if not model_name:
+            raise NexusProviderError("Nexus model_name must not be empty")
+        response = await self._client.post(
+            "/generate",
+            headers={
+                "Authorization": self._authorization,
+                "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
+            },
+            json={"params": params},
+        )
+        if not response.is_success:
+            logger.error(
+                "nexus_client.create FAILED model=%s http=%s body=%s",
+                model_name,
+                response.status_code,
+                (response.text or "")[:500],
+            )
+        response.raise_for_status()
+        payload = response.json()
+        task_id = payload.get("task_id")
+        if not task_id:
+            raise NexusProviderError(f"NexusAPI /generate returned no task_id: {payload!r}")
+        logger.info("nexus_client.create OK model=%s task_id=%s", model_name, task_id)
+        return str(task_id)
+
     async def create_nano_banana(
         self,
         *,
@@ -113,43 +145,13 @@ class NexusClient:
         }
         if references:
             params["image_urls"] = references
-            logger.info(
-                "nexus_client.create references=%s",
-                [u[:80] + "..." if len(u) > 80 else u for u in references],
-            )
 
-        log_payload = {k: (v[:120] + "..." if k == "prompt" and len(v) > 120 else v) for k, v in params.items()}
-        if "image_urls" in log_payload:
-            log_payload["image_urls"] = f"count={len(params['image_urls'])}"
         logger.info("nexus_client.create sending model=%s ar=%s size=%s refs=%s idem=%s",
                      params["model_name"], params["aspect_ratio"], params["image_size"],
                      len(references) if references else 0,
                      idempotency_key or "auto")
 
-        response = await self._client.post(
-            "/generate",
-            headers={
-                "Authorization": self._authorization,
-                "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
-            },
-            json={"params": params},
-        )
-
-        if not response.is_success:
-            body_preview = (response.text or "")[:500]
-            logger.error(
-                "nexus_client.create FAILED http=%s body=%s params=%s",
-                response.status_code, body_preview, log_payload,
-            )
-
-        response.raise_for_status()
-        payload = response.json()
-        task_id = payload.get("task_id")
-        if not task_id:
-            raise NexusProviderError(f"NexusAPI /generate returned no task_id: {payload!r}")
-
-        logger.info("nexus_client.create OK task_id=%s", task_id)
-        return str(task_id)
+        return await self.create_generation(params=params, idempotency_key=idempotency_key)
 
     async def create_nano_banana_pro(
         self,
@@ -184,9 +186,9 @@ class NexusClient:
         payload = response.json()
         status = str(payload.get("status") or "unknown").lower()
         result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
-        image_urls = _extract_image_urls(result)
+        image_urls = _extract_result_urls(result)
         logger.info(
-            "nexus_client.get_task task=%s status=%s image_urls=%s error=%s",
+            "nexus_client.get_task task=%s status=%s result_urls=%s error=%s",
             task_id, status, f"count={len(image_urls)}" if image_urls else "none",
             payload.get("error") or "",
         )
@@ -212,7 +214,7 @@ class NexusClient:
             if task.status == "completed":
                 if not task.image_urls:
                     raise NexusProviderError(
-                        f"NexusAPI task {task_id} completed without image URL"
+                        f"NexusAPI task {task_id} completed without result URL"
                     )
                 return task
             if task.status == "failed":
@@ -221,7 +223,7 @@ class NexusClient:
         raise NexusProviderError(f"NexusAPI task {task_id} timed out")
 
 
-def _extract_image_urls(result: dict[str, Any]) -> list[str]:
+def _extract_result_urls(result: dict[str, Any]) -> list[str]:
     candidates: list[Any] = []
     image_urls = result.get("image_urls")
     if isinstance(image_urls, list):
@@ -229,6 +231,18 @@ def _extract_image_urls(result: dict[str, Any]) -> list[str]:
     image_url = result.get("image_url")
     if image_url:
         candidates.append(image_url)
+    video_urls = result.get("video_urls")
+    if isinstance(video_urls, list):
+        candidates.extend(video_urls)
+    video_url = result.get("video_url")
+    if video_url:
+        candidates.append(video_url)
+    urls_field = result.get("urls")
+    if isinstance(urls_field, list):
+        candidates.extend(urls_field)
+    url_field = result.get("url")
+    if url_field:
+        candidates.append(url_field)
 
     urls: list[str] = []
     for raw in candidates:
@@ -247,3 +261,7 @@ def _extract_error(raw: Any) -> str:
             if value:
                 return str(value)[:1000]
     return str(raw or "")[:1000]
+
+
+# Backward-compatible private alias for older tests/callers.
+_extract_image_urls = _extract_result_urls

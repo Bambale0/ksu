@@ -56,10 +56,10 @@ class GenerationWorkerService:
             str(item).strip().lower() for item in route
         }:
             return stored
-        # Bound upstream work always stays on its persisted provider.
-        if generation.external_id and stored in _PROVIDER_NAMES:
-            return stored
-        if stored in {"nexus", "neironych"}:
+        # Existing work always stays on its persisted provider. New generations
+        # receive an explicit route snapshot at admission, so provider migration
+        # never silently reroutes pre-migration queued rows.
+        if stored in _PROVIDER_NAMES:
             return stored
         return NexusGenerationProviderService.provider_name(generation)
 
@@ -136,7 +136,7 @@ class GenerationWorkerService:
                         return True
 
                     # sync_task owns terminal outbox transitions and Pinterest
-                    # quality-stage requeueing. Only a still-running image task
+                    # quality-stage requeueing. Only a still-running Nexus task
                     # needs another short durable poll.
                     if refreshed is None:
                         await GenerationOutboxService.release(
@@ -346,7 +346,7 @@ class GenerationWorkerService:
                     await GenerationOutboxService.release(
                         session,
                         claim.outbox_id,
-                        error="Nexus image task submitted; polling result",
+                        error="Nexus task submitted; polling result",
                         delay_seconds=max(1, settings.generation_worker_poll_seconds),
                     )
                 elif provider == "neironych" and result.status != "succeeded":

@@ -20,22 +20,27 @@ from app.services.generation_provider_routing import (
     configured_routes,
     route_for_model,
     validate_routes,
+    route_options,
 )
 from app.services.generations import GenerationService
 from app.services.nexus_generation_provider import NexusGenerationProviderService
 from app.services.wallet import WalletService
 
 
-def test_nano_default_keeps_nexus_fallback():
-    assert route_for_model("nano-banana-pro") == ("neironych", "nexus")
+def test_nano_default_routes_nexus_primary_with_safe_fallbacks():
+    assert route_for_model("nano-banana-pro") == ("nexus", "neironych", "kie")
 
 
-@pytest.mark.parametrize("route", [[], ["nexus", "nexus"], ["kie"], ["nexus", "neironych"]])
+@pytest.mark.parametrize(
+    "route",
+    [[], ["nexus", "nexus"], ["unknown"], ["neironych", "nexus"]],
+)
 def test_unsupported_nano_routes_fail_closed(route):
+    routes = {model: choices[0] for model, choices in route_options().items()}
+    routes["nano-banana-pro"] = route
     with pytest.raises(ValueError):
-        validate_routes(
-            {"seedance-2.0": ["neironych"], "seedance-2.5": ["kie"], "nano-banana-pro": route}
-        )
+        validate_routes(routes)
+
 
 
 class WakeRedis:
@@ -85,7 +90,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
         await session.commit()
         context = SimpleNamespace(account=admin, session=admin_session, user=user)
         before = await configured_routes(session)
-        routes = before["routes"] | {"nano-banana-pro": ["nexus"]}
+        routes = before["routes"] | {"nano-banana-pro": ["kie"]}
 
         async def authenticated_context():
             return context
@@ -118,7 +123,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     model_id="nano-banana-pro",
                     prompt="old snapshot",
                 )
-                assert old.provider == "neironych"
+                assert old.provider == "nexus"
                 first = await client.post(path, json=payload, headers=headers)
                 assert first.status_code == 200, first.text
                 assert first.json()["revision"] == 2
@@ -138,10 +143,10 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     model_id="nano-banana-pro",
                     prompt="new snapshot",
                 )
-                assert new.provider == "nexus"
+                assert new.provider == "kie"
                 assert new.parameters["_provider_route_revision"] == 2
                 await session.refresh(old)
-                assert old.provider == "neironych" and old.parameters["_provider_route_revision"] == 1
+                assert old.provider == "nexus" and old.parameters["_provider_route_revision"] == 1
                 command = await session.scalar(
                     select(AdminCommand).where(AdminCommand.idempotency_key == idem)
                 )
@@ -171,7 +176,7 @@ async def create_nexus_job(session):
         cost_rox=Decimal("25"),
         parameters={
             "_model_id": "nano-banana-pro",
-            "_provider_route": ["nexus", "neironych"],
+            "_provider_route": ["nexus", "neironych", "kie"],
             "_provider_route_index": 0,
         },
     )
@@ -198,7 +203,7 @@ async def test_nexus_submit_failure_route_and_wallet(monkeypatch, code):
         async def aclose(self):
             pass
 
-        async def create_nano_banana(self, **kwargs):
+        async def create_generation(self, **kwargs):
             response = httpx.Response(
                 code, request=httpx.Request("POST", "https://nexus.example/generate")
             )

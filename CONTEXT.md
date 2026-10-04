@@ -1,3 +1,15 @@
+## Active Feature Execution — Nexus primary migration for supported bot models (2026-10-04)
+
+- Baseline: `main@8fa9f591acb6325373c836ed1d04f6483b97d684`; isolated branch `feat/nexus-primary-all-supported-20261004`.
+- Request: move every KSU bot model that Nexus currently exposes back to Nexus as the primary provider, explicitly excluding the whole Grok family.
+- Fresh provider evidence: Nexus public OpenAPI and `/public/models` were fetched from `nexusapi.dev`. Confirmed overlapping KSU products include Nano Banana/base/edit/2/Lite/Pro, GPT Image 2, Seedream 5 Lite/Pro, Seedance 2.0/Fast/Mini/2.5, Wan 2.7 T2V/I2V, Kling 3, Kling Motion 2.6, Veo 3.1 and Gemini Omni Flash Video. Grok is excluded even if provider availability changes later.
+- Compatibility rule: Nexus is primary only when the submitted KSU request can be represented without changing user-selected semantics. Unsupported richer KSU modes fall back before remote submission to the existing provider; accepted/uncertain Nexus submissions never cross providers.
+- Safety: preserve per-generation route snapshots, idempotency, single debit/refund, existing records and existing bound provider tasks. No schema or pricing mutation. Provider routes remain admin-visible/runtime-managed.
+- TDD seams: route selection at generation admission; Nexus request adapter payload; generic Nexus task result extraction; safe pre-submit fallback; persisted-provider worker dispatch.
+- Verification: RED first failed on the missing generic Nexus result adapter. GREEN: 38 focused Nexus/routing regressions and 120 broader provider/model contract tests pass; Ruff on changed provider/routing/tests passes. Local DB-backed Neironych release tests are not valid evidence because that host database is behind current main migrations (`notifications.generation_id` and `wallet_transactions.reason` are missing); exact-head CI must provide the isolated migrated PostgreSQL/Redis integration result. Diff review, exact-head CI, merge only when green, then exact-main deploy/health markers remain mandatory. No paid synthetic generation.
+- Rollback: provider routes can be switched away through runtime admin control; code rollback is a normal revert with no data migration.
+- Guidance: KSU AGENTS and local api-integration/tdd/code-review/release skills; Bambale0/skills diagnosing-bugs+tdd+code-review; Bambale0/claw backend-integration+release-hardening; WondelAI release-it; dev-agents-pack API integrator+release manager. AgentSkills and Anthropic catalogs have no Nexus-specific runtime procedure.
+
 ## Active Fix Execution — Grok Video duration contract (2026-10-02)
 
 - Baseline: `main@d1e60e4e1adc0d19037d50397e9e66f64ce090e8`; branch `fix/grok-video-duration-contract-20261002`.
