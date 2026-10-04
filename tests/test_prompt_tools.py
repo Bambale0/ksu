@@ -112,6 +112,8 @@ async def test_prompt_tool_create_is_idempotent_and_charges_once(monkeypatch: py
         assert replayed_first is False
         assert replayed_second is True
         assert first.id == second.id
+        assert first.provider == "nexus"
+        assert first.model == "gpt-5.5"
         assert Decimal(first.cost_credits) == Decimal("1.00")
         assert first.input_payload["_retail_cost_credits"] == "1.00"
         assert wallet is not None
@@ -142,7 +144,7 @@ async def test_prompt_tool_worker_persists_structured_success(
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
 
-    class FakeClient:
+    class FakeNexusClient:
         def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
             pass
 
@@ -151,12 +153,12 @@ async def test_prompt_tool_worker_persists_structured_success(
 
         async def build_prompt(self, **_kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
             return PromptToolProviderResult(
-                model="gpt-5-5",
+                model="gpt-5.5",
                 payload={"prompt_ru": "Русский промпт", "prompt_en": "English prompt"},
                 credits_consumed=Decimal("0.1234"),
             )
 
-    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FakeClient)
+    monkeypatch.setattr("app.services.prompt_tools.NexusPromptToolsClient", FakeNexusClient)
 
     async with SessionFactory() as session:
         user, _admin = await _fixture_user_and_tariff(session)

@@ -1,3 +1,13 @@
+## Active Feature Execution — GPT-5.5 text prompt builder to Nexus (2026-10-04)
+
+- Request: migrate GPT-5.5 back to Nexus; prior media-provider migration did not cover prompt-tools.
+- Root cause: PromptToolTask creation hard-coded provider=`kie`, and PromptToolProcessor always instantiated `KiePromptToolsClient`. GPT-5.5 lives in this separate prompt-tools pipeline, not generation_provider_routing.
+- Fresh Nexus contract: `POST /v1/chat/completions`, exact model id `gpt-5.5`, text messages, streaming/tools supported. Current GPT-5.5 Nexus contract does not support image/video content blocks.
+- Migration: text-only `prompt_builder` -> persisted provider `nexus`, model `gpt-5.5`; image-bearing prompt-builder remains Kie/photo chain; `video_prompt` remains Kie because it supplies the video itself to GPT-5.5 and Nexus cannot represent that input without semantic loss.
+- Compatibility: existing persisted Kie prompt tasks stay on Kie after deploy. Worker dispatches by persisted task.provider. Legacy/stub rows without provider default to Kie.
+- TDD: RED failed on missing Nexus prompt adapter. GREEN: 16 prompt-provider/parity tests pass; Ruff and git diff --check pass. Local DB-backed prompt-tool tests are not valid integration evidence because the host test DB is behind current migrations (`wallet_transactions.reason` missing); exact-head CI must provide clean migrated DB evidence.
+- No paid synthetic GPT-5.5 request has been issued yet.
+
 ## Active Feature Execution — Nexus primary migration for supported bot models (2026-10-04)
 
 - Baseline: `main@8fa9f591acb6325373c836ed1d04f6483b97d684`; isolated branch `feat/nexus-primary-all-supported-20261004`.

@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
+from app.providers.nexus_prompt_tools import NexusPromptToolsClient
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
 from app.services.notifications import NotificationService
@@ -29,9 +30,18 @@ PromptToolName = Literal["image_analysis", "prompt_builder", "video_prompt"]
 
 _TOOL_MODEL = {
     "image_analysis": "gpt-5-4",
-    "prompt_builder": "gpt-5-5",
+    "prompt_builder": "gpt-5.5",
     "video_prompt": "gpt-5-5",
 }
+
+
+def _provider_for_prompt_tool(tool: PromptToolName, payload: dict[str, Any]) -> str:
+    # Nexus GPT-5.5 currently exposes a text-only OpenAI-compatible chat
+    # contract. Media-bearing prompt workflows stay on the existing Kie path
+    # so user input is never silently dropped.
+    if tool == "prompt_builder" and not payload.get("image_url"):
+        return "nexus"
+    return "kie"
 _TOOL_TITLE = {
     "image_analysis": "Prompt по фото",
     "prompt_builder": "Prompt по описанию",
@@ -262,7 +272,7 @@ class PromptToolService:
             user_id=user_id,
             tool=tool,
             status="queued",
-            provider="kie",
+            provider=_provider_for_prompt_tool(tool, clean),
             model=_TOOL_MODEL[tool],
             input_payload={
                 **clean,
@@ -493,37 +503,58 @@ class PromptToolProcessor:
         task = await session.get(PromptToolTask, claimed.task_id)
         if task is None:
             return
+        provider = str(getattr(task, "provider", None) or "kie").strip().lower()
+        protection_provider = f"{provider}-prompt-tools"
         try:
-            await AbuseProtectionService.provider_submission_gate(redis, "kie-prompt-tools")
-            client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
-            try:
-                data = task.input_payload or {}
-                if task.tool == "image_analysis":
-                    result = await client.analyze_image(
-                        image_url=str(data.get("image_url") or ""),
-                        instruction=str(data.get("instruction") or ""),
+            await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+            data = task.input_payload or {}
+            if provider == "nexus":
+                if task.tool != "prompt_builder" or data.get("image_url"):
+                    raise PromptToolProviderError(
+                        "Persisted Nexus prompt task is not compatible with the text-only GPT-5.5 contract"
                     )
-                elif task.tool == "prompt_builder":
+                client = NexusPromptToolsClient(
+                    settings.nexus_api_key,
+                    settings.nexus_api_base_url,
+                )
+                try:
                     result = await client.build_prompt(
                         text=str(data.get("text") or ""),
-                        image_url=str(data.get("image_url") or "") or None,
                     )
-                elif task.tool == "video_prompt":
-                    from app.services.provider_media_transport import ProviderMediaTransport
+                finally:
+                    await client.aclose()
+            elif provider == "kie":
+                client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
+                try:
+                    if task.tool == "image_analysis":
+                        result = await client.analyze_image(
+                            image_url=str(data.get("image_url") or ""),
+                            instruction=str(data.get("instruction") or ""),
+                        )
+                    elif task.tool == "prompt_builder":
+                        result = await client.build_prompt(
+                            text=str(data.get("text") or ""),
+                            image_url=str(data.get("image_url") or "") or None,
+                        )
+                    elif task.tool == "video_prompt":
+                        from app.services.provider_media_transport import ProviderMediaTransport
 
-                    raw_duration = data.get("duration_seconds")
-                    provider_input = await ProviderMediaTransport.prepare(
-                        {"video_url": str(data.get("video_url") or "")}
-                    )
-                    result = await client.build_video_prompt(
-                        video_url=str(provider_input.get("video_url") or ""),
-                        instruction=str(data.get("instruction") or ""),
-                        duration_seconds=int(raw_duration) if raw_duration else None,
-                    )
-                else:
-                    raise ValueError(f"Unknown prompt tool: {task.tool}")
-            finally:
-                await client.aclose()
+                        raw_duration = data.get("duration_seconds")
+                        provider_input = await ProviderMediaTransport.prepare(
+                            {"video_url": str(data.get("video_url") or "")}
+                        )
+                        result = await client.build_video_prompt(
+                            video_url=str(provider_input.get("video_url") or ""),
+                            instruction=str(data.get("instruction") or ""),
+                            duration_seconds=int(raw_duration) if raw_duration else None,
+                        )
+                    else:
+                        raise ValueError(f"Unknown prompt tool: {task.tool}")
+                finally:
+                    await client.aclose()
+            else:
+                raise PromptToolProviderError(f"Unsupported prompt-tool provider: {provider}")
+
             await PromptToolOutboxService.complete(
                 session,
                 claimed,
@@ -531,10 +562,10 @@ class PromptToolProcessor:
                 model=result.model,
                 provider_credits=result.credits_consumed,
             )
-            await AbuseProtectionService.record_provider_success(redis, "kie-prompt-tools")
+            await AbuseProtectionService.record_provider_success(redis, protection_provider)
         except Exception as exc:
             await session.rollback()
-            await AbuseProtectionService.record_provider_failure(redis, "kie-prompt-tools")
+            await AbuseProtectionService.record_provider_failure(redis, protection_provider)
             if claimed.attempts < settings.generation_submission_max_attempts:
                 await PromptToolOutboxService.release(session, claimed, str(exc))
                 return

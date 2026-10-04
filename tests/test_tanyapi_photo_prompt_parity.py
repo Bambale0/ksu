@@ -149,6 +149,7 @@ async def test_video_prompt_uploads_roxy_owned_reference_before_kie_submission(
 
     task_id = uuid.uuid4()
     task = SimpleNamespace(
+        provider="kie",
         tool="video_prompt",
         input_payload={"video_url": url, "instruction": "motion", "duration_seconds": 5},
     )
