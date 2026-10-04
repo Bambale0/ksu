@@ -25,8 +25,8 @@ router = Router(name="trends")
 
 
 def _runner_url(trend_id: str) -> str:
-    base = f"{settings.public_base_url.rstrip('/')}/mini-app/trends.html"
-    return f"{base}?{urlencode({'trend': trend_id})}"
+    base = f"{settings.public_base_url.rstrip('/')}/mini-app/trend/"
+    return f"{base}?{urlencode({'id': trend_id})}"
 
 
 def _caption(card: dict[str, object]) -> str:

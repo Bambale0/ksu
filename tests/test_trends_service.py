@@ -184,6 +184,23 @@ async def test_video_public_view_exposes_quality_options_from_resolution_pricing
 
 
 @pytest.mark.asyncio
+async def test_public_view_exposes_only_fixed_aspect_ratio_choices(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+
+    async def prepare(_session, *, model_id, prompt, parameters, billing_seconds):  # type: ignore[no-untyped-def]
+        spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
+        return spec, parameters, Decimal("500.00"), billing_seconds, Decimal("50.00")
+
+    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+
+    view = await TrendService.public_view(AsyncMock(), item)
+
+    assert view["aspect_ratio_options"] == ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]
+    assert "adaptive" not in view["aspect_ratio_options"]
+    assert "auto" not in view["aspect_ratio_options"]
+
+
+@pytest.mark.asyncio
 async def test_video_public_view_preserves_recipe_resolution_absent_from_suggestions(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     item = _video_item()
     item.payload["parameters"]["resolution"] = "4K"
@@ -279,6 +296,7 @@ async def test_run_uses_server_owned_recipe_and_only_merges_reference_urls(monke
         user_id=user_id,
         trend_id=item.id,
         reference_urls=[reference],
+        aspect_ratio="1:1",
     )
 
     assert returned is generation
@@ -310,6 +328,7 @@ async def test_run_applies_validated_video_resolution_override(monkeypatch) -> N
         trend_id=item.id,
         reference_urls=[],
         resolution="480p",
+        aspect_ratio="16:9",
     )
 
     assert create.await_args.kwargs["parameters"]["resolution"] == "480p"
@@ -323,6 +342,83 @@ async def test_run_applies_validated_video_resolution_override(monkeypatch) -> N
             trend_id=item.id,
             reference_urls=[],
             resolution="4K",
+            aspect_ratio="16:9",
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_requires_explicit_fixed_aspect_ratio(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    with pytest.raises(TrendRecipeError, match="Aspect ratio is required"):
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=[],
+            resolution="720p",
+        )
+
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_image_run_requires_explicit_fixed_aspect_ratio(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    with pytest.raises(TrendRecipeError, match="Aspect ratio is required"):
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=["https://cdn.example.invalid/reference.jpg"],
+        )
+
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_overrides_recipe_with_explicit_fixed_aspect_ratio(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    item = _video_item()
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    await TrendService.run(
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=[],
+        resolution="720p",
+        aspect_ratio="9:16",
+    )
+
+    assert create.await_args.kwargs["parameters"]["aspect_ratio"] == "9:16"
+
+    with pytest.raises(TrendRecipeError, match="Unsupported aspect ratio"):
+        await TrendService.run(
+            session,
+            AsyncMock(),
+            user_id=uuid.uuid4(),
+            trend_id=item.id,
+            reference_urls=[],
+            resolution="720p",
+            aspect_ratio="adaptive",
         )
 
 
@@ -341,6 +437,7 @@ async def test_usage_counter_failure_does_not_fail_created_generation(monkeypatc
         user_id=uuid.uuid4(),
         trend_id=item.id,
         reference_urls=["https://cdn.example.invalid/reference.jpg"],
+        aspect_ratio="1:1",
     )
 
     assert returned is generation
@@ -402,6 +499,7 @@ async def test_run_applies_admin_selected_values_as_server_side_overrides(monkey
         trend_id=item.id,
         reference_urls=["https://cdn.example.invalid/user.jpg"],
         user_values={"Возраст": "31", "Надпись": "С юбилеем!"},
+        aspect_ratio="1:1",
     )
     rendered = create.await_args.kwargs["prompt"]
     assert rendered.startswith("Birthday portrait with a cake and text from the original recipe")
@@ -418,6 +516,7 @@ async def test_run_applies_admin_selected_values_as_server_side_overrides(monkey
             trend_id=item.id,
             reference_urls=["https://cdn.example.invalid/user.jpg"],
             user_values={"Возраст": "31", "Надпись": "С юбилеем!", "prompt": "steal"},
+            aspect_ratio="1:1",
         )
 
 
@@ -439,6 +538,7 @@ async def test_run_validates_auto_number_without_admin_ranges(monkeypatch) -> No
         trend_id=item.id,
         reference_urls=["https://cdn.example.invalid/user.jpg"],
         user_values={"Возраст": "121"},
+        aspect_ratio="1:1",
     )
     assert "- Возраст: 121" in create.await_args.kwargs["prompt"]
 
@@ -450,6 +550,7 @@ async def test_run_validates_auto_number_without_admin_ranges(monkeypatch) -> No
             trend_id=item.id,
             reference_urls=["https://cdn.example.invalid/user.jpg"],
             user_values={"Возраст": "тридцать"},
+            aspect_ratio="1:1",
         )
 
 
@@ -471,6 +572,7 @@ async def test_run_substitutes_legacy_tokens_and_keeps_overrides(monkeypatch) ->
         trend_id=item.id,
         reference_urls=["https://cdn.example.invalid/user.jpg"],
         user_values={"Возраст": "31", "Имя": "Игорь"},
+        aspect_ratio="1:1",
     )
     rendered = create.await_args.kwargs["prompt"]
     assert "На торте должно быть 31 свечей, подпись Игорь" in rendered
@@ -604,6 +706,7 @@ async def test_seedance_trend_run_keeps_video_preview_presentation_only(monkeypa
         user_id=uuid.uuid4(),
         trend_id=item.id,
         reference_urls=[reference],
+        aspect_ratio="9:16",
     )
 
     parameters = create.await_args.kwargs["parameters"]
@@ -654,7 +757,12 @@ async def test_unverified_optional_preview_is_not_sent_at_run(monkeypatch) -> No
     create = AsyncMock(return_value=_generation())
     monkeypatch.setattr(GenerationService, "create", create)
     await TrendService.run(
-        session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id, reference_urls=[],
+        session,
+        AsyncMock(),
+        user_id=uuid.uuid4(),
+        trend_id=item.id,
+        reference_urls=[],
+        aspect_ratio="16:9",
     )
     assert not create.await_args.kwargs["parameters"].get("reference_video_urls")
 

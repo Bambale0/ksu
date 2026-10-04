@@ -276,6 +276,7 @@ class TrendService:
                 "max": recipe["max_references"],
             },
             "user_fields": recipe["user_fields"],
+            "aspect_ratio_options": TrendService._aspect_ratio_options(recipe),
             "tags": recipe["tags"],
             "usage_count": recipe["usage_count"],
             "sort_order": recipe["sort_order"],
@@ -299,6 +300,7 @@ class TrendService:
         reference_urls: list[str],
         user_values: dict[str, str] | None = None,
         resolution: str | None = None,
+        aspect_ratio: str | None = None,
     ) -> tuple[Generation, dict[str, Any]]:
         item = await session.get(AdminTrend, trend_id)
         if item is None or not item.is_active:
@@ -311,7 +313,13 @@ class TrendService:
             )
         if recipe["input_mode"] == "none" and refs:
             raise TrendRecipeError("This trend does not accept reference images")
-        parameters = TrendService._parameters_with_references(recipe, refs, resolution=resolution)
+        parameters = TrendService._parameters_with_references(
+            recipe,
+            refs,
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            require_aspect_ratio=True,
+        )
         try:
             rendered_prompt = render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)
         except TrendUserFieldsError as exc:
@@ -367,9 +375,17 @@ class TrendService:
         reference_urls: list[str],
         *,
         resolution: str | None = None,
+        aspect_ratio: str | None = None,
+        require_aspect_ratio: bool = False,
     ) -> dict[str, Any]:
         parameters = dict(recipe.get("parameters") or {})
         TrendService._apply_resolution_override(recipe, parameters, resolution=resolution)
+        TrendService._apply_aspect_ratio_override(
+            recipe,
+            parameters,
+            aspect_ratio=aspect_ratio,
+            required=require_aspect_ratio,
+        )
         spec = ModelCatalog.get(str(recipe["model_id"]))
         for field in (*_REFERENCE_LIST_FIELDS, *_REFERENCE_SINGLE_FIELDS):
             parameters.pop(field, None)
@@ -382,6 +398,46 @@ class TrendService:
             raise TrendRecipeError("Selected model requires exactly one reference image")
         parameters[field] = reference_urls if field in _REFERENCE_LIST_FIELDS else reference_urls[0]
         return parameters
+
+    @staticmethod
+    def _aspect_ratio_options(recipe: dict[str, Any]) -> list[str]:
+        model_id = str(recipe["model_id"])
+        spec = ModelCatalog.get(model_id)
+        if "aspect_ratio" not in set(spec.known_fields):
+            return []
+        suggestions = MODEL_FIELD_SUGGESTIONS.get(model_id, {}).get("aspect_ratio") or []
+        parameters = recipe.get("parameters") if isinstance(recipe.get("parameters"), dict) else {}
+        current = str(parameters.get("aspect_ratio") or "").strip()
+        options: list[str] = []
+        for raw in (current, *suggestions):
+            value = str(raw or "").strip()
+            if not value or value.lower() in {"auto", "adaptive"}:
+                continue
+            if value not in options:
+                options.append(value)
+        return options
+
+    @staticmethod
+    def _apply_aspect_ratio_override(
+        recipe: dict[str, Any],
+        parameters: dict[str, Any],
+        *,
+        aspect_ratio: str | None,
+        required: bool = False,
+    ) -> None:
+        options = TrendService._aspect_ratio_options(recipe)
+        if not options:
+            if aspect_ratio not in (None, ""):
+                raise TrendRecipeError("This trend does not support aspect ratio selection")
+            return
+        if aspect_ratio in (None, ""):
+            if required:
+                raise TrendRecipeError("Aspect ratio is required")
+            return
+        selected = str(aspect_ratio).strip()
+        if selected not in options:
+            raise TrendRecipeError("Unsupported aspect ratio")
+        parameters["aspect_ratio"] = selected
 
     @staticmethod
     def _resolution_options(recipe: dict[str, Any]) -> list[str]:

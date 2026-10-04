@@ -33,6 +33,7 @@ class RunTrendRequest(BaseModel):
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
     user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
     resolution: str | None = Field(default=None, max_length=32)
+    aspect_ratio: str | None = Field(default=None, max_length=16)
 
 
 class InlineTrendWriteRequest(BaseModel):
@@ -426,6 +427,7 @@ async def run_trend(
             reference_urls=payload.reference_urls,
             user_values=payload.user_values,
             resolution=payload.resolution,
+            aspect_ratio=payload.aspect_ratio,
         )
     except Exception as exc:
         await session.rollback()

@@ -75,6 +75,7 @@ const referenceTrend = {
   model: { id: model.id, title: model.title, family: model.family },
   cost_rox: '15.00',
   reference_requirements: { kind: 'image', min: 2, max: 2 },
+  aspect_ratio_options: ['1:1', '9:16', '16:9'],
   prompt_hidden: true,
   prompt_actions_allowed: false,
 };
@@ -87,6 +88,7 @@ const simpleTrend = {
   model: { id: model.id, title: model.title, family: model.family },
   cost_rox: '15.00',
   reference_requirements: { kind: 'none', min: 0, max: 0 },
+  aspect_ratio_options: ['1:1', '9:16', '16:9'],
   prompt_hidden: true,
   prompt_actions_allowed: false,
 };
@@ -99,6 +101,7 @@ const personalizedTrend = {
   model: { id: model.id, title: model.title, family: model.family },
   cost_rox: '15.00',
   reference_requirements: { kind: 'none', min: 0, max: 0 },
+  aspect_ratio_options: ['1:1', '9:16', '16:9'],
   user_fields: [
     { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
     { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
@@ -117,6 +120,7 @@ const videoTrend = {
   cost_rox: '500.00',
   billing_seconds: 10,
   reference_requirements: { kind: 'none', min: 0, max: 0 },
+  aspect_ratio_options: ['16:9', '9:16', '1:1'],
   quality_options: [
     { value: '480p', label: '480p', cost_rox: '400.00', retail_cost_rox: '400.00', default: false },
     { value: '720p', label: '720p', cost_rox: '500.00', retail_cost_rox: '500.00', default: true },
@@ -332,14 +336,18 @@ test('personalized trend shows empty tanyapi-style fields and submits only user 
   await age.fill('31');
   await caption.fill('С юбилеем!');
   await date.fill('2026-09-07');
-  await expect(generate).toBeEnabled();
+  await expect(generate).toBeDisabled();
   expect(runBody).toBeNull();
+
+  await page.getByRole('radio', { name: '9:16', exact: true }).click();
+  await expect(generate).toBeEnabled();
 
   await generate.click();
   await expect.poll(() => runBody?.user_values?.['Возраст'] || '').toBe('31');
   expect(runBody).toEqual({
     reference_urls: [],
     user_values: { Возраст: '31', Надпись: 'С юбилеем!', Дата: '2026-09-07' },
+    aspect_ratio: '9:16',
   });
   await expect(page.getByText(/hidden prompt|скрытый prompt/i)).toHaveCount(0);
 });
@@ -354,6 +362,9 @@ test('video trend lets customers choose cheaper quality before launch', async ({
 
   await page.goto('/mini-app/trend/?id=trend_video');
   await expect(page.getByRole('radio', { name: /720p/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: /Сгенерировать · 500 ROX/ })).toBeDisabled();
+
+  await page.getByRole('radio', { name: '9:16', exact: true }).click();
   await expect(page.getByRole('button', { name: /Сгенерировать · 500 ROX/ })).toBeEnabled();
 
   await page.getByRole('radio', { name: /480p/ }).click();
@@ -362,7 +373,7 @@ test('video trend lets customers choose cheaper quality before launch', async ({
 
   await page.getByRole('button', { name: /Сгенерировать · 400 ROX/ }).click();
   await expect.poll(() => runBody?.resolution || '').toBe('480p');
-  expect(runBody).toEqual({ reference_urls: [], resolution: '480p' });
+  expect(runBody).toEqual({ reference_urls: [], resolution: '480p', aspect_ratio: '9:16' });
 });
 
 test('reference trend waits for all files and sends them only on explicit Generate', async ({ page }) => {
@@ -382,8 +393,12 @@ test('reference trend waits for all files and sends them only on explicit Genera
     { name: 'two.png', mimeType: 'image/png', buffer: Buffer.from('two') },
   ]);
   await expect(page.locator('.tool-file-chip')).toHaveCount(2);
-  await expect(generate).toBeEnabled();
+  await expect(generate).toBeDisabled();
   expect(runBody).toBeNull();
+
+  await page.getByRole('radio', { name: '1:1', exact: true }).click();
+  await expect(generate).toBeEnabled();
   await generate.click();
   await expect.poll(() => runBody?.reference_urls?.length || 0).toBe(2);
+  expect(runBody.aspect_ratio).toBe('1:1');
 });

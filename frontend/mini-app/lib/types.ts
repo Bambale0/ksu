@@ -244,6 +244,7 @@ export type TrendItem = {
   billing_seconds?: number | null;
   reference_requirements?: { kind?: string; min?: number; max?: number };
   user_fields?: TrendUserField[];
+  aspect_ratio_options?: string[];
   quality_options?: TrendQualityOption[];
   tags?: string[];
   usage_count?: number;
