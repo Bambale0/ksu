@@ -59,6 +59,8 @@ jobs:
       ABUSE_PROTECTION_ENABLED: false
       KIE_API_KEY: e2e-kie-key
       KIE_BASE_URL: http://127.0.0.1:18081
+      NEXUS_API_KEY: e2e-nexus-key
+      NEXUS_API_BASE_URL: http://127.0.0.1:18081
       CRYPTOPAY_API_TOKEN: e2e-crypto-token
       CRYPTOPAY_BASE_URL: http://127.0.0.1:18081
       TBANK_TERMINAL_KEY: e2e-terminal
