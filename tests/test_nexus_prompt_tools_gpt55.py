@@ -59,15 +59,15 @@ async def test_nexus_gpt55_prompt_builder_uses_openai_chat_completions_and_retri
     assert "Previous response was not valid" in calls[1]["messages"][1]["content"]
 
 
-def test_prompt_tool_provider_routes_only_text_gpt55_to_nexus() -> None:
+def test_prompt_tool_provider_routes_new_tasks_to_nexus() -> None:
     assert _provider_for_prompt_tool(
         "prompt_builder", {"text": "portrait", "image_url": None}
     ) == "nexus"
     assert _provider_for_prompt_tool(
         "prompt_builder", {"text": "match image", "image_url": "https://example.test/ref.jpg"}
-    ) == "kie"
-    assert _provider_for_prompt_tool("video_prompt", {"video_url": "https://example.test/ref.mp4"}) == "kie"
-    assert _provider_for_prompt_tool("image_analysis", {"image_url": "https://example.test/ref.jpg"}) == "kie"
+    ) == "nexus"
+    assert _provider_for_prompt_tool("video_prompt", {"video_url": "https://example.test/ref.mp4"}) == "nexus"
+    assert _provider_for_prompt_tool("image_analysis", {"image_url": "https://example.test/ref.jpg"}) == "nexus"
 
 
 @pytest.mark.asyncio
@@ -94,8 +94,9 @@ async def test_prompt_processor_dispatches_persisted_nexus_provider(
         async def aclose(self) -> None:
             return None
 
-        async def build_prompt(self, *, text: str) -> PromptToolProviderResult:
+        async def build_prompt(self, *, text: str, image_url: str | None = None) -> PromptToolProviderResult:
             assert text == "portrait"
+            assert image_url is None
             return PromptToolProviderResult(
                 model="gpt-5.5",
                 payload={"prompt_ru": "RU", "prompt_en": "EN"},

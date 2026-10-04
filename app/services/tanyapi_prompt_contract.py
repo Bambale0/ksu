@@ -4,12 +4,8 @@ import asyncio
 from pathlib import Path
 
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderResult
-from app.providers.tanyapi_photo_prompt import PRIMARY_MODEL, build_photo_prompt
-from app.providers.tanyapi_video_prompt import (
-    VIDEO_MODEL,
-    _download_video_bytes,
-    build_video_prompt,
-)
+from app.providers.tanyapi_photo_prompt import build_photo_prompt
+from app.providers.tanyapi_video_prompt import _download_video_bytes, build_video_prompt
 from app.services.feed_static import FeedStaticStorage
 from app.services.photo_analysis_media import image_source_to_analysis_input
 from app.services.reference_static import ReferenceStaticStorage
@@ -111,8 +107,6 @@ def install_tanyapi_prompt_contract() -> None:
         )
 
     prompt_module.PromptToolService._safe_media_url = staticmethod(safe_media_url)  # type: ignore[method-assign]
-    prompt_module._TOOL_MODEL["image_analysis"] = PRIMARY_MODEL
-    prompt_module._TOOL_MODEL["video_prompt"] = VIDEO_MODEL
     KiePromptToolsClient.analyze_image = analyze_image  # type: ignore[method-assign]
     KiePromptToolsClient.build_prompt = build_prompt  # type: ignore[method-assign]
     KiePromptToolsClient.build_video_prompt = build_video  # type: ignore[method-assign]

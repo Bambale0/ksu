@@ -199,7 +199,7 @@ async def test_image_prompt_success_queues_full_prompt_for_telegram(
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
 
-    class FakeClient:
+    class FakeNexusClient:
         def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
             pass
 
@@ -208,14 +208,14 @@ async def test_image_prompt_success_queues_full_prompt_for_telegram(
 
         async def analyze_image(self, **_kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
             return PromptToolProviderResult(
-                model="gpt-5-4",
+                model="gpt-6-sol",
                 payload={
                     "prompt_ru": "Полный русский промпт по фотографии <без сокращения>",
                     "prompt_en": "Full English photo prompt",
                 },
             )
 
-    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FakeClient)
+    monkeypatch.setattr("app.services.prompt_tools.NexusPromptToolsClient", FakeNexusClient)
 
     async with SessionFactory() as session:
         user, _admin = await _fixture_user_and_tariff(session)
@@ -227,6 +227,8 @@ async def test_image_prompt_success_queues_full_prompt_for_telegram(
             payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
             idempotency_key=f"photo-chat-{uuid.uuid4()}",
         )
+        assert task.provider == "nexus"
+        assert task.model == "gpt-6-sol"
         claimed = await PromptToolOutboxService.claim(session)
         assert claimed is not None
         assert claimed.task_id == task.id
@@ -346,7 +348,7 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
 
-    class FakeClient:
+    class FakeNexusClient:
         def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
             pass
 
@@ -356,7 +358,7 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
         async def build_video_prompt(self, **kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
             assert kwargs["duration_seconds"] == 10
             return PromptToolProviderResult(
-                model="gemini-2.5-pro",
+                model="gpt-6-sol",
                 payload={
                     "prompt_ru": "Русский видео prompt",
                     "prompt_en": "English video prompt",
@@ -367,7 +369,7 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
                 credits_consumed=Decimal("0.5000"),
             )
 
-    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FakeClient)
+    monkeypatch.setattr("app.services.prompt_tools.NexusPromptToolsClient", FakeNexusClient)
 
     async with SessionFactory() as session:
         user, _admin = await _fixture_user_and_tariff(session)
@@ -384,6 +386,8 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
             idempotency_key=f"video-prompt-{uuid.uuid4()}",
         )
         task_id = task.id
+        assert task.provider == "nexus"
+        assert task.model == "gpt-6-sol"
         wallet_after_charge = await session.get(Wallet, user.id)
         assert wallet_after_charge is not None
         assert Decimal(wallet_after_charge.balance) == Decimal("10.00")
@@ -423,7 +427,7 @@ async def test_terminal_provider_failure_refunds_user(
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
     monkeypatch.setattr(settings, "generation_submission_max_attempts", 1)
 
-    class FailingClient:
+    class FailingNexusClient:
         def __init__(self, *_args, **_kwargs) -> None:  # type: ignore[no-untyped-def]
             pass
 
@@ -433,7 +437,7 @@ async def test_terminal_provider_failure_refunds_user(
         async def analyze_image(self, **_kwargs) -> PromptToolProviderResult:  # type: ignore[no-untyped-def]
             raise PromptToolProviderError("provider unavailable")
 
-    monkeypatch.setattr("app.services.prompt_tools.KiePromptToolsClient", FailingClient)
+    monkeypatch.setattr("app.services.prompt_tools.NexusPromptToolsClient", FailingNexusClient)
 
     async with SessionFactory() as session:
         user, _admin = await _fixture_user_and_tariff(session)

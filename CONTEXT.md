@@ -1,3 +1,22 @@
+## Active Feature Execution — Prompt media fully on Nexus (2026-10-04)
+
+- Request: move the remaining `image_prompt_provider` and `video_prompt_provider` off Kie to Nexus too.
+- Fresh Nexus evidence:
+  - `gpt-6-luna` and `gpt-6-sol` vision requests with public `image_url` return HTTP 200.
+  - `gpt-5.5` vision returns HTTP 422 `vision_not_supported` and explicitly points to gpt-6-luna/sol.
+  - data-URI images are rejected: Nexus requires public HTTP(S) URLs.
+  - vision accepts at most 4 images per request; 6 returns HTTP 422 `too_many_images`.
+  - a JPEG served from ROXY production `/uploads/refs/...` was fetched by Nexus successfully (HTTP 200), proving the public frame transport boundary.
+- New routing for newly created prompt-tool tasks:
+  - text-only prompt_builder -> Nexus GPT-5.5;
+  - image_analysis -> Nexus GPT-6 Sol;
+  - prompt_builder with an image -> Nexus GPT-6 Sol;
+  - video_prompt -> local ffprobe + four evenly sampled JPEG frames -> temporary ROXY HTTPS URLs -> Nexus GPT-6 Sol.
+- New prompt tasks persist `provider=nexus`; model snapshot is `gpt-5.5` for text and `gpt-6-sol` for media. Existing persisted `provider=kie` tasks continue on the legacy Kie adapter for backward compatibility.
+- Video frames are written only under random `/uploads/refs/prompt-frames/<uuid>/`, removed in `finally`, and stale directories are recovered by periodic prompt-worker cleanup after 15 minutes. External URLs that merely mimic `/uploads/refs/` are not treated as owned files unless their host matches PUBLIC_BASE_URL.
+- TDD: RED failed on the missing Nexus vision contract. GREEN: 32 prompt/provider/parity/transport tests pass; Ruff, compileall and git diff --check pass. Clean DB integration remains delegated to exact-head CI because the host test DB is stale.
+- One combined high-reasoning pre-merge smoke exceeded the 180s diagnostic timeout; its temporary files were verified and removed before any retry. Vision reasoning was reduced to medium with a 3072 output cap. Follow-up live smokes passed: full image prompt on GPT-6 Sol returned structured RU/EN output, and a synthetic MP4 completed the full ffprobe -> 4 public frames -> GPT-6 Sol path in 103s with structured RU/EN output and a 4-beat timeline. The isolated smoke root was removed.
+
 ## Active Feature Execution — GPT-5.5 text prompt builder to Nexus (2026-10-04)
 
 - Request: migrate GPT-5.5 back to Nexus; prior media-provider migration did not cover prompt-tools.

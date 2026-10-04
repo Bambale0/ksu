@@ -159,12 +159,12 @@ def _frame_content(*, user_instruction: str, frame_data_urls: list[str]) -> list
     return content
 
 
-def _extract_frame_data_urls_sync(
+def _extract_frame_jpeg_bytes_sync(
     video_bytes: bytes,
     *,
     duration_seconds: int | float = 0,
     max_frames: int = VIDEO_PROMPT_FRAME_COUNT,
-) -> list[str]:
+) -> list[bytes]:
     if not video_bytes:
         raise PromptToolProviderError("video bytes are required for frame fallback")
 
@@ -210,14 +210,31 @@ def _extract_frame_data_urls_sync(
                 f"Не удалось извлечь кадры из видео: {stderr[:300]}"
             ) from exc
 
-        frames: list[str] = []
-        for frame_path in sorted(temp_path.glob("frame_*.jpg"))[:max_frames]:
-            encoded = base64.b64encode(frame_path.read_bytes()).decode("ascii")
-            frames.append(f"data:image/jpeg;base64,{encoded}")
+        frames = [
+            frame_path.read_bytes()
+            for frame_path in sorted(temp_path.glob("frame_*.jpg"))[:max_frames]
+        ]
 
     if not frames:
         raise PromptToolProviderError("Не удалось извлечь кадры из видео")
     return frames
+
+
+def _extract_frame_data_urls_sync(
+    video_bytes: bytes,
+    *,
+    duration_seconds: int | float = 0,
+    max_frames: int = VIDEO_PROMPT_FRAME_COUNT,
+) -> list[str]:
+    frames = _extract_frame_jpeg_bytes_sync(
+        video_bytes,
+        duration_seconds=duration_seconds,
+        max_frames=max_frames,
+    )
+    return [
+        f"data:image/jpeg;base64,{base64.b64encode(frame).decode('ascii')}"
+        for frame in frames
+    ]
 
 
 async def _post_responses(
