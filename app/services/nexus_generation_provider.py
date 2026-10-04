@@ -152,6 +152,12 @@ class NexusGenerationProviderService:
         params: dict[str, Any] = {"model_name": nexus_model, "prompt": prompt}
 
         if model_id.startswith("nano-banana"):
+            if model_id in {"nano-banana", "nano-banana-edit"}:
+                output_format = str(input_data.get("output_format") or "png").lower()
+                if output_format not in {"", "png"}:
+                    raise NexusGenerationUnsupportedInput(
+                        "Nano Banana output format is not configurable through Nexus"
+                    )
             refs = cls._media_list(input_data, "image_input", "image_urls", max_items=4)
             if refs:
                 params["image_urls"] = refs
@@ -163,6 +169,10 @@ class NexusGenerationProviderService:
             return params
 
         if model_id.startswith("gpt-image-2-"):
+            if input_data.get("resolution") not in (None, ""):
+                raise NexusGenerationUnsupportedInput(
+                    "GPT Image 2 resolution is not configurable through Nexus"
+                )
             refs = cls._media_list(input_data, "input_urls", "image_urls", max_items=4)
             if refs:
                 params["image_urls"] = refs
@@ -170,19 +180,36 @@ class NexusGenerationProviderService:
             return params
 
         if model_id.startswith("seedream-5-lite-"):
+            if input_data.get("aspect_ratio") not in (None, ""):
+                raise NexusGenerationUnsupportedInput(
+                    "Seedream 5 Lite aspect ratio is not configurable through Nexus"
+                )
+            if input_data.get("nsfw_checker") is True:
+                raise NexusGenerationUnsupportedInput(
+                    "Seedream 5 Lite NSFW checker is not configurable through Nexus"
+                )
             refs = cls._media_list(input_data, "image_urls", max_items=14)
             if refs:
                 params["image_urls"] = refs
             quality = str(input_data.get("quality") or "basic").lower()
-            if quality not in {"basic", "high", "ultra"}:
+            if quality not in {"basic", "high"}:
                 raise NexusGenerationUnsupportedInput(
-                    "Unsupported Seedream quality for Nexus"
+                    "Seedream 5 Lite Ultra/unknown quality is not available through Nexus"
                 )
             params["resolution"] = "2K" if quality == "basic" else "3K"
             params["output_format"] = str(input_data.get("output_format") or "png").lower()
             return params
 
         if model_id.startswith("seedream-5-pro-"):
+            if input_data.get("nsfw_checker") is True:
+                raise NexusGenerationUnsupportedInput(
+                    "Seedream 5 Pro NSFW checker is not configurable through Nexus"
+                )
+            ratio = str(input_data.get("aspect_ratio") or "1:1")
+            if ratio == "21:9":
+                raise NexusGenerationUnsupportedInput(
+                    "Seedream 5 Pro 21:9 is not available through Nexus"
+                )
             refs = cls._media_list(input_data, "image_urls", max_items=10)
             if refs:
                 params["image_urls"] = refs
@@ -192,11 +219,27 @@ class NexusGenerationProviderService:
                     "Unsupported Seedream quality for Nexus"
                 )
             params["resolution"] = "1K" if quality == "basic" else "2K"
-            params["aspect_ratio"] = str(input_data.get("aspect_ratio") or "1:1")
+            params["aspect_ratio"] = ratio
             params["output_format"] = str(input_data.get("output_format") or "png").lower()
             return params
 
         if model_id.startswith("seedance-"):
+            if input_data.get("web_search") is True:
+                raise NexusGenerationUnsupportedInput(
+                    "Seedance web search is not available through Nexus"
+                )
+            if model_id == "seedance-2.5":
+                if input_data.get("return_last_frame") is True:
+                    raise NexusGenerationUnsupportedInput(
+                        "Seedance 2.5 return_last_frame is not available through Nexus"
+                    )
+                output_format = str(input_data.get("output_format") or "mp4").lower()
+                if output_format != "mp4":
+                    raise NexusGenerationUnsupportedInput(
+                        "Seedance 2.5 MOV output is not available through Nexus"
+                    )
+                if input_data.get("nsfw_checker") not in (None, ""):
+                    params["content_filter"] = bool(input_data.get("nsfw_checker"))
             images = cls._media_list(input_data, "reference_image_urls", max_items=30)
             videos = cls._media_list(input_data, "reference_video_urls", max_items=10)
             audios = cls._media_list(input_data, "reference_audio_urls", max_items=10)
@@ -225,12 +268,19 @@ class NexusGenerationProviderService:
             params["duration"] = duration
             for key in (
                 "negative_prompt", "resolution", "prompt_extend", "watermark",
-                "seed", "aspect_ratio", "audio_url",
+                "seed", "audio_url",
             ):
                 cls._put_if_present(params, input_data, key)
+            ratio = input_data.get("ratio") or input_data.get("aspect_ratio")
+            if ratio not in (None, ""):
+                params["aspect_ratio"] = ratio
             return params
 
         if model_id == "wan-2.7-i2v":
+            if input_data.get("aspect_ratio") not in (None, ""):
+                raise NexusGenerationUnsupportedInput(
+                    "Wan 2.7 image-to-video aspect ratio is not configurable through Nexus"
+                )
             duration = int(input_data.get("duration") or 5)
             if not 2 <= duration <= 10:
                 raise NexusGenerationUnsupportedInput(

@@ -227,3 +227,95 @@ def test_nexus_materially_incompatible_options_fall_back(
 ) -> None:
     with pytest.raises(NexusGenerationUnsupportedInput, match=message):
         NexusGenerationProviderService._normalize_input(model_id, payload)
+
+
+def test_nexus_wan_t2v_maps_kie_ratio_to_nexus_aspect_ratio() -> None:
+    normalized = NexusGenerationProviderService._normalize_input(
+        "wan-2.7-t2v",
+        {
+            "prompt": "flight",
+            "duration": 5,
+            "ratio": "9:16",
+            "resolution": "1080p",
+        },
+    )
+    assert normalized["model_name"] == "wan/2-7-text-to-video"
+    assert normalized["aspect_ratio"] == "9:16"
+
+
+@pytest.mark.parametrize(
+    ("model_id", "payload", "message"),
+    [
+        (
+            "nano-banana",
+            {"prompt": "image", "output_format": "jpeg", "aspect_ratio": "1:1"},
+            "output format",
+        ),
+        (
+            "gpt-image-2-t2i",
+            {"prompt": "image", "resolution": "1K", "aspect_ratio": "1:1"},
+            "resolution",
+        ),
+        (
+            "seedream-5-lite-t2i",
+            {"prompt": "image", "aspect_ratio": "1:1", "quality": "basic"},
+            "aspect ratio",
+        ),
+        (
+            "seedream-5-lite-t2i",
+            {"prompt": "image", "quality": "ultra"},
+            "Ultra",
+        ),
+        (
+            "seedream-5-pro-t2i",
+            {"prompt": "image", "aspect_ratio": "21:9", "quality": "basic"},
+            "21:9",
+        ),
+        (
+            "wan-2.7-i2v",
+            {
+                "prompt": "move",
+                "duration": 5,
+                "aspect_ratio": "16:9",
+                "first_frame_url": "https://example.test/a.jpg",
+            },
+            "aspect ratio",
+        ),
+        (
+            "seedance-2.0",
+            {"prompt": "video", "duration": 5, "web_search": True},
+            "web search",
+        ),
+        (
+            "seedance-2.5",
+            {"prompt": "video", "duration": 5, "output_format": "mov"},
+            "MOV",
+        ),
+    ],
+)
+def test_nexus_does_not_silently_drop_user_selected_semantics(
+    model_id: str, payload: dict[str, object], message: str
+) -> None:
+    with pytest.raises(NexusGenerationUnsupportedInput, match=message):
+        NexusGenerationProviderService._normalize_input(model_id, payload)
+
+
+def test_seedream_quality_maps_to_documented_nexus_resolution() -> None:
+    lite_basic = NexusGenerationProviderService._normalize_input(
+        "seedream-5-lite-t2i", {"prompt": "image", "quality": "basic"}
+    )
+    lite_high = NexusGenerationProviderService._normalize_input(
+        "seedream-5-lite-t2i", {"prompt": "image", "quality": "high"}
+    )
+    pro_basic = NexusGenerationProviderService._normalize_input(
+        "seedream-5-pro-t2i",
+        {"prompt": "image", "quality": "basic", "aspect_ratio": "1:1"},
+    )
+    pro_high = NexusGenerationProviderService._normalize_input(
+        "seedream-5-pro-t2i",
+        {"prompt": "image", "quality": "high", "aspect_ratio": "16:9"},
+    )
+    assert lite_basic["resolution"] == "2K"
+    assert lite_high["resolution"] == "3K"
+    assert pro_basic["resolution"] == "1K"
+    assert pro_high["resolution"] == "2K"
