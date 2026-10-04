@@ -19,12 +19,14 @@
   font-size: 12px;
 }
 
+.aspectOptions,
 .qualityOptions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
+.aspectOptions button,
 .qualityOptions button {
   min-width: 0;
   min-height: 54px;
@@ -38,11 +40,13 @@
   padding: 9px 8px;
 }
 
+.aspectOptions button[aria-checked="true"],
 .qualityOptions button[aria-checked="true"] {
   border-color: rgba(186, 109, 255, .75);
   background: linear-gradient(135deg, rgba(143, 85, 255, .28), rgba(255, 87, 191, .18));
 }
 
+.aspectOptions span,
 .qualityOptions span {
   font-weight: 850;
 }
@@ -53,6 +57,10 @@
 }
 
 @media (max-width: 520px) {
+  .aspectOptions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .qualityOptions {
     grid-template-columns: 1fr;
   }

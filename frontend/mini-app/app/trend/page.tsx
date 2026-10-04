@@ -54,6 +54,7 @@ export default function TrendPage() {
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [selectedQuality, setSelectedQuality] = useState("");
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function TrendPage() {
         setTrend(item);
         setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, ""])));
         setSelectedQuality(defaultQualityValue(item));
+        setSelectedAspectRatio("");
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть тренд"))
       .finally(() => setLoading(false));
@@ -77,12 +79,14 @@ export default function TrendPage() {
   const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
   const userFields = (trend?.user_fields || []).slice(0, 6);
   const qualityOptions = trend?.quality_options || [];
+  const aspectRatioOptions = trend?.aspect_ratio_options || [];
   const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;
   const displayedCost = chosenQuality?.cost_rox || trend?.cost_rox;
   const displayedRetailCost = chosenQuality?.retail_cost_rox || trend?.retail_cost_rox;
   const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
-  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady;
+  const aspectRatioReady = !aspectRatioOptions.length || Boolean(selectedAspectRatio);
+  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady && aspectRatioReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";
     if (!minimum) return "Референсы не нужны — сценарий можно запустить сразу.";
@@ -155,7 +159,10 @@ export default function TrendPage() {
         trend.id,
         references.map((item) => item.url),
         userValues,
-        chosenQuality ? { resolution: chosenQuality.value } : {},
+        {
+          ...(chosenQuality ? { resolution: chosenQuality.value } : {}),
+          ...(selectedAspectRatio ? { aspectRatio: selectedAspectRatio } : {}),
+        },
       );
       window.location.assign(`/mini-app/?route=history&generation=${encodeURIComponent(result.id)}`);
     } catch (reason) {
@@ -184,6 +191,33 @@ export default function TrendPage() {
               {trend.billing_seconds ? <span>{trend.billing_seconds} сек</span> : null}
               {chosenQuality ? <span>{chosenQuality.label || chosenQuality.value}</span> : null}
             </div>
+            {aspectRatioOptions.length ? (
+              <section className={styles.quality} aria-label="Формат кадра">
+                <div className={styles.qualityHead}>
+                  <strong>Формат кадра *</strong>
+                  <span>{selectedAspectRatio ? "Выбран" : "Обязательно"}</span>
+                </div>
+                <div className={styles.aspectOptions} role="radiogroup" aria-label="Формат кадра">
+                  {aspectRatioOptions.map((option) => {
+                    const active = option === selectedAspectRatio;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => {
+                          haptic("light");
+                          setSelectedAspectRatio(option);
+                        }}
+                      >
+                        <span>{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
             {qualityOptions.length > 1 ? (
               <section className={styles.quality} aria-label="Качество видео">
                 <div className={styles.qualityHead}>

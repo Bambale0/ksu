@@ -40,15 +40,20 @@ Authenticated product endpoints:
 - `GET /api/v1/trends/{trend_id}`
 - `POST /api/v1/trends/{trend_id}/run`
 
-The run request accepts only:
+The run request accepts only customer-owned inputs that the public trend contract explicitly exposes:
 
 ```json
-{"reference_urls": ["https://..."]}
+{
+  "reference_urls": ["https://..."],
+  "user_values": {"Имя": "Игорь"},
+  "resolution": "720p",
+  "aspect_ratio": "9:16"
+}
 ```
 
-The browser cannot choose or override the model, prompt, provider settings, duration, price, aspect ratio, quality or other recipe fields. They are loaded server-side from the curated record. User reference URLs must be HTTP(S); browser-local `blob:` and `data:` URLs are rejected.
+The browser cannot choose or override the model, hidden prompt, provider route/settings, duration, price or arbitrary recipe fields. Resolution is restricted to server-published quality options. Aspect ratio is restricted to fixed values from the selected model's authoritative UI contract; `auto` and `adaptive` are not offered by the Trend launcher. When a model exposes fixed aspect ratios, `aspect_ratio` is mandatory at run time and a missing or unsupported value is rejected with HTTP 422 before generation/billing. User reference URLs must be HTTP(S); browser-local `blob:` and `data:` URLs are rejected.
 
-The public trend DTO exposes only presentation data, the safe model identity, authoritative current price, reference requirements, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
+The public trend DTO exposes only presentation data, safe model identity, authoritative current price, reference requirements, user-field schema, `aspect_ratio_options`, optional quality options, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
 
 ## One-tap generation
 
@@ -75,13 +80,14 @@ This prevents the generic history/recreate API from becoming an alternate route 
 
 ## Telegram and Mini App
 
-Telegram supports `/trends` and the compatibility alias `/prompts`. The carousel shows image/video previews, public copy, model, authoritative price and reference requirements. The repeat action opens `/mini-app/trends.html?trend=<uuid>`.
+Telegram supports `/trends` and the compatibility alias `/prompts`. The carousel shows image/video previews, public copy, model, authoritative price and reference requirements. The repeat action opens the canonical `/mini-app/trend/?id=<uuid>` launcher, so Telegram cannot bypass required reference, personalization, quality or aspect-ratio choices.
 
 The Mini App Trends runner:
 
 - lists and filters image/video trends;
 - uploads only the required user reference images through the existing Kie upload endpoint;
-- submits only `reference_urls` to the trend run endpoint;
+- requires an explicit fixed aspect-ratio choice whenever the model exposes fixed ratios;
+- submits only validated customer inputs (`reference_urls`, optional user fields/quality, and the required fixed aspect ratio) to the trend run endpoint;
 - polls the normal generation detail endpoint for the result;
 - never stores Telegram initData or reference URLs in browser storage;
 - builds dynamic content with DOM/textContent APIs rather than HTML injection.
