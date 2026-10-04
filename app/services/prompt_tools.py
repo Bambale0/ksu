@@ -18,7 +18,7 @@ from app.core.config import settings
 from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
 from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
-from app.providers.nexus_prompt_tools import NexusPromptToolsClient
+from app.providers.nexus_prompt_tools import NEXUS_VISION_MODEL, NexusPromptToolsClient
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
 from app.services.notifications import NotificationService
@@ -29,19 +29,21 @@ logger = logging.getLogger(__name__)
 PromptToolName = Literal["image_analysis", "prompt_builder", "video_prompt"]
 
 _TOOL_MODEL = {
-    "image_analysis": "gpt-5-4",
+    "image_analysis": NEXUS_VISION_MODEL,
     "prompt_builder": "gpt-5.5",
-    "video_prompt": "gpt-5-5",
+    "video_prompt": NEXUS_VISION_MODEL,
 }
 
 
 def _provider_for_prompt_tool(tool: PromptToolName, payload: dict[str, Any]) -> str:
-    # Nexus GPT-5.5 currently exposes a text-only OpenAI-compatible chat
-    # contract. Media-bearing prompt workflows stay on the existing Kie path
-    # so user input is never silently dropped.
-    if tool == "prompt_builder" and not payload.get("image_url"):
-        return "nexus"
-    return "kie"
+    del tool, payload
+    return "nexus"
+
+
+def _model_for_prompt_tool(tool: PromptToolName, payload: dict[str, Any]) -> str:
+    if tool == "prompt_builder" and payload.get("image_url"):
+        return NEXUS_VISION_MODEL
+    return _TOOL_MODEL[tool]
 _TOOL_TITLE = {
     "image_analysis": "Prompt по фото",
     "prompt_builder": "Prompt по описанию",
@@ -273,7 +275,7 @@ class PromptToolService:
             tool=tool,
             status="queued",
             provider=_provider_for_prompt_tool(tool, clean),
-            model=_TOOL_MODEL[tool],
+            model=_model_for_prompt_tool(tool, clean),
             input_payload={
                 **clean,
                 "_request_hash": request_hash,
@@ -509,18 +511,30 @@ class PromptToolProcessor:
             await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
             data = task.input_payload or {}
             if provider == "nexus":
-                if task.tool != "prompt_builder" or data.get("image_url"):
-                    raise PromptToolProviderError(
-                        "Persisted Nexus prompt task is not compatible with the text-only GPT-5.5 contract"
-                    )
                 client = NexusPromptToolsClient(
                     settings.nexus_api_key,
                     settings.nexus_api_base_url,
                 )
                 try:
-                    result = await client.build_prompt(
-                        text=str(data.get("text") or ""),
-                    )
+                    if task.tool == "image_analysis":
+                        result = await client.analyze_image(
+                            image_url=str(data.get("image_url") or ""),
+                            instruction=str(data.get("instruction") or ""),
+                        )
+                    elif task.tool == "prompt_builder":
+                        result = await client.build_prompt(
+                            text=str(data.get("text") or ""),
+                            image_url=str(data.get("image_url") or "") or None,
+                        )
+                    elif task.tool == "video_prompt":
+                        raw_duration = data.get("duration_seconds")
+                        result = await client.build_video_prompt(
+                            video_url=str(data.get("video_url") or ""),
+                            instruction=str(data.get("instruction") or ""),
+                            duration_seconds=int(raw_duration) if raw_duration else None,
+                        )
+                    else:
+                        raise ValueError(f"Unknown prompt tool: {task.tool}")
                 finally:
                     await client.aclose()
             elif provider == "kie":

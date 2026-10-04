@@ -186,9 +186,9 @@ async def test_runtime_video_prompt_uses_probed_duration_and_reuses_download(
     assert build.await_args.kwargs["instruction"] == "Сохрани движение"
 
 
-def test_installed_prompt_contract_exposes_tanyapi_models() -> None:
-    assert prompt_module._TOOL_MODEL["image_analysis"] == "gpt-5-4"
-    assert prompt_module._TOOL_MODEL["video_prompt"] == "gpt-5-5"
+def test_installed_prompt_contract_exposes_nexus_media_models() -> None:
+    assert prompt_module._TOOL_MODEL["image_analysis"] == "gpt-6-sol"
+    assert prompt_module._TOOL_MODEL["video_prompt"] == "gpt-6-sol"
     assert KiePromptToolsClient.build_video_prompt.__module__ == "app.services.tanyapi_prompt_contract"
 
 
