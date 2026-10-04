@@ -19,9 +19,11 @@ def test_personalized_trend_fields_follow_tanyapi_auto_field_architecture() -> N
     assert 'render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)' in service
     assert 'user_values=payload.user_values' in api
     assert 'api.runTrend(' in page
-    assert 'chosenQuality ? { resolution: chosenQuality.value } : {}' in page
+    assert 'const aspectRatioReady = !aspectRatioOptions.length || Boolean(selectedAspectRatio);' in page
+    assert '...(selectedAspectRatio ? { aspectRatio: selectedAspectRatio } : {})' in page
     assert 'user_values: userValues' in client
     assert 'resolution: options.resolution' in client
+    assert 'aspect_ratio: options.aspectRatio' in client
     assert 'prompt:' not in client[client.index('runTrend:'):client.index('promptTools:')]
 
     assert 'TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"]' in admin
@@ -66,3 +68,33 @@ def test_existing_trend_can_be_upgraded_with_user_fields_without_new_id() -> Non
     assert 'select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()' in manager
     assert 'item.payload = recipe' in manager
     assert 'item.title = title' in manager
+
+
+def test_trend_runner_requires_model_owned_aspect_ratio_before_launch() -> None:
+    api = read("app/api/v1/trends.py")
+    service = read("app/services/trends.py")
+    page = read("frontend/mini-app/app/trend/page.tsx")
+    client = read("frontend/mini-app/lib/api.ts")
+    types = read("frontend/mini-app/lib/types.ts")
+    social = read("frontend/mini-app/components/roxy-social-app.tsx")
+    telegram = read("app/bot/handlers/trends.py")
+
+    assert "aspect_ratio: str | None = Field(default=None, max_length=16)" in api
+    assert "aspect_ratio=payload.aspect_ratio" in api
+    assert '"aspect_ratio_options": TrendService._aspect_ratio_options(recipe)' in service
+    assert 'value.lower() in {"auto", "adaptive"}' in service
+    assert 'raise TrendRecipeError("Aspect ratio is required")' in service
+    assert 'raise TrendRecipeError("Unsupported aspect ratio")' in service
+    assert 'parameters["aspect_ratio"] = selected' in service
+
+    assert 'aspect_ratio_options?: string[];' in types
+    assert 'Формат кадра *' in page
+    assert 'role="radiogroup" aria-label="Формат кадра"' in page
+    assert 'const [selectedAspectRatio, setSelectedAspectRatio] = useState("");' in page
+    assert 'disabled={!ready || uploading || running}' in page
+    assert 'aspect_ratio: options.aspectRatio' in client
+
+    assert social.count("api.runTrend(") == 0
+    assert social.count("/mini-app/trend/?id=") >= 2
+    assert "/mini-app/trend/" in telegram
+    assert "urlencode({'id': trend_id})" in telegram

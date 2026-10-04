@@ -603,16 +603,12 @@ export function RoxySocialApp() {
 
       <main className="main-shell">
         {route === "home" && me && <TelegramChatConnection key={me.telegram_id} me={me} />}
-        {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
-          if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
-          try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
-          catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
+        {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={(trend) => {
+          window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
         }} />}
         {route === "feed" && <FeedScreen items={feed} sort={feedSort} setSort={setFeedSort} onRefresh={() => void loadFeed(feedSort)} onPreview={(item) => { setPreviewSurface("feed"); setPreview(item); }} />}
-        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={async (trend) => {
-          if ((trend.reference_requirements?.min || 0) > 0) { showToast("Для этого тренда нужен пример. Скоро откроем удобную форму."); return; }
-          try { const run = await api.runTrend(trend.id); const item = await api.generation(run.id); setPreviewSurface("private"); setPreview(item); showToast("Тренд запущен"); }
-          catch (error) { showToast(error instanceof Error ? error.message : "Не удалось запустить тренд"); }
+        {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={(trend) => {
+          window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
         }} />}
         {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
         {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
