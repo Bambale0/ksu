@@ -37,7 +37,7 @@ def test_worker_respects_persisted_provider() -> None:
 
 
 @pytest.mark.asyncio
-async def test_legacy_runtime_route_row_bootstraps_new_nexus_registry() -> None:
+async def test_legacy_runtime_route_row_bootstraps_current_registry() -> None:
     class Row:
         value = {
             "revision": 7,
