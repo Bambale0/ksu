@@ -22,10 +22,10 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "seedream-5-lite-i2i": ("nexus", "kie"),
     "seedream-5-pro-t2i": ("nexus", "kie"),
     "seedream-5-pro-i2i": ("nexus", "kie"),
-    "seedance-2.0": ("nexus", "neironych", "kie"),
+    "seedance-2.0": ("neironych", "nexus", "kie"),
     "seedance-2.0-fast": ("nexus", "kie"),
     "seedance-2.0-mini": ("nexus", "kie"),
-    "seedance-2.5": ("nexus", "neironych", "kie"),
+    "seedance-2.5": ("neironych", "nexus", "kie"),
     "wan-2.7-t2v": ("nexus", "kie"),
     "wan-2.7-i2v": ("nexus", "kie"),
     "kling-3.0": ("nexus", "kie"),
@@ -35,6 +35,24 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
 }
 
 ROUTES_SETTING_KEY = "generation_provider_routes"
+
+# Previous code-owned defaults shipped when the Nexus migration made these
+# two Seedance models Nexus-first. If a persisted runtime row still contains
+# exactly those defaults, treat them as superseded defaults rather than an
+# explicit operator override. Other valid custom routes remain untouched.
+_SUPERSEDED_DEFAULT_ROUTES: dict[str, tuple[str, ...]] = {
+    "seedance-2.0": ("nexus", "neironych", "kie"),
+    "seedance-2.5": ("nexus", "neironych", "kie"),
+}
+
+
+def _migrate_superseded_defaults(routes: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(routes)
+    for model, previous in _SUPERSEDED_DEFAULT_ROUTES.items():
+        route = migrated.get(model)
+        if isinstance(route, list) and tuple(str(item) for item in route) == previous:
+            migrated[model] = list(_PROVIDER_ROUTES[model])
+    return migrated
 
 
 def route_options() -> dict[str, list[list[str]]]:
@@ -81,7 +99,8 @@ async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     # must not pin the three legacy Neironych routes forever or make reads fail.
     if not isinstance(stored_routes, dict) or set(stored_routes) != set(_PROVIDER_ROUTES):
         return {"revision": int(row.value.get("revision", 1)), "routes": defaults}
-    return {"revision": int(row.value["revision"]), "routes": validate_routes(stored_routes)}
+    migrated_routes = _migrate_superseded_defaults(stored_routes)
+    return {"revision": int(row.value["revision"]), "routes": validate_routes(migrated_routes)}
 
 
 async def configured_route(session: AsyncSession, model: str) -> tuple[tuple[str, ...] | None, int]:
