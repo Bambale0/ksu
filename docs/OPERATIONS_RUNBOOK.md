@@ -473,13 +473,12 @@ Prioritize:
 Seedance 2.0/2.5 start on Neironych with Nexus and then Kie as ordered fallbacks,
 and retain the provider route stored when the request was created. A lost video POST response or interrupted worker is recovered
 with the same provider idempotency key. While the submission outcome is unknown,
-an open provider circuit delays recovery; it must never launch a Kie fallback.
+an open provider circuit delays recovery; it must never launch any cross-provider fallback.
 Recovery is bounded by `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`. An
 unrecoverable request receives the existing idempotent customer refund and does
 not trigger another paid provider request.
 
-`expired` is a terminal provider state. Confirmed technical failures/expiry can
-use the saved Kie fallback. Generic `provider_generation_failed` and policy errors
+`expired` is a terminal provider state. Confirmed technical failures/expiry can advance to the next saved fallback (Nexus, then Kie when present). Generic `provider_generation_failed` and policy errors
 fail closed instead of trying another provider. Attempt metadata retains the
 previous external request ID and timestamp for reconciliation. Operator diagnosis
 must distinguish provider expense from customer ROX: refunding a lost result does
@@ -491,8 +490,7 @@ for new requests must not move already accepted work to another provider.
 ### Provider routes and Nano Banana Pro fallback
 
 New Nano Banana Pro requests remain Nexus-primary, with Neironych and Kie as configured fallbacks.
-Definite Neironych rejections may switch to Nexus; ambiguous synchronous image
-outcomes (transport/5xx/409) never create a second request on another provider.
+Explicit fallback-safe Nexus failures may advance to Neironych; ambiguous Nexus submissions never cross providers. Once on Neironych, definite no-task rejections may advance to Kie, while ambiguous synchronous image outcomes (transport/5xx/409) never create a second request on another provider.
 Existing jobs retain their saved route. For a saved Nexus -> Neironych route,
 Explicit Nexus HTTP 401/402/404/429 before a task is accepted, an open circuit
 before submission, or a confirmed terminal technical failure can use the saved
