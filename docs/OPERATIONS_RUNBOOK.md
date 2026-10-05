@@ -470,8 +470,8 @@ Prioritize:
 
 ### Seedance Neironych recovery
 
-Seedance 2.0/2.5 start on Neironych and retain the provider route stored when the
-request was created. A lost video POST response or interrupted worker is recovered
+Seedance 2.0/2.5 start on Neironych with Nexus and then Kie as ordered fallbacks,
+and retain the provider route stored when the request was created. A lost video POST response or interrupted worker is recovered
 with the same provider idempotency key. While the submission outcome is unknown,
 an open provider circuit delays recovery; it must never launch a Kie fallback.
 Recovery is bounded by `GENERATION_SUBMISSION_UNKNOWN_TIMEOUT_SECONDS`. An
@@ -490,7 +490,7 @@ for new requests must not move already accepted work to another provider.
 
 ### Provider routes and Nano Banana Pro fallback
 
-New Nano Banana Pro requests default to Neironych, with Nexus as the fallback.
+New Nano Banana Pro requests remain Nexus-primary, with Neironych and Kie as configured fallbacks.
 Definite Neironych rejections may switch to Nexus; ambiguous synchronous image
 outcomes (transport/5xx/409) never create a second request on another provider.
 Existing jobs retain their saved route. For a saved Nexus -> Neironych route,
@@ -501,9 +501,7 @@ idempotency key; a later availability rejection cannot erase that uncertainty.
 Generic failures and content-policy rejections do not start another provider.
 The generation keeps one customer debit and one final idempotent refund.
 
-In the web admin runtime settings, choose **Провайдеры генерации**. Supported
-choices are the default ordered pair or either provider alone for Seedance 2.0,
-Seedance 2.5 and Nano Banana Pro. Saving requires `runtime.manage`, a fresh MFA
+In the web admin runtime settings, choose **Провайдеры генерации**. Supported choices include the default ordered route and approved subsets/single-provider routes. Seedance 2.0/2.5 default to Neironych → Nexus → Kie; Nano Banana Pro remains Nexus → Neironych → Kie. Saving requires `runtime.manage`, a fresh MFA
 step-up and confirmation. `GET /api/v1/admin/runtime` returns
 `generation_provider_routes` with `revision`, `routes` and allowed `options`.
 `POST /api/v1/admin/runtime/provider-routes` accepts `routes` and
