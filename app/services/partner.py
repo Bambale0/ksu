@@ -344,10 +344,10 @@ class PartnerService:
 
     @staticmethod
     def referral_link(telegram_id: int) -> str | None:
-        """Canonical public referral link: open ROXY Mini App directly."""
+        """Canonical public referral link: connect the private bot chat first."""
 
         payload = referral_payload(telegram_id)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
+        return bot_start_link(payload)
 
     @staticmethod
     def referral_mini_app_link(telegram_id: int) -> str | None:
@@ -361,4 +361,4 @@ class PartnerService:
         """Public author profile link with referral attribution preserved."""
 
         payload = profile_payload(telegram_id)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
+        return bot_start_link(payload)

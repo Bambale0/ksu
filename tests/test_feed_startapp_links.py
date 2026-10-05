@@ -13,13 +13,13 @@ from app.services.feed import FeedService
 from app.services.feed_links import parse_feed_deep_link
 
 
-def test_legacy_feed_bot_link_upgrades_to_tanyapi_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_public_feed_link_preserves_bot_first_entry(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "roxy_bot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
     generation_id = uuid.uuid4()
     legacy = f"https://t.me/roxy_bot?start=feed_{generation_id}_ref_777"
     direct = _direct_mini_app_link(legacy)
-    assert direct == f"https://t.me/roxy_bot?startapp=feed_{generation_id}_ref_777"
+    assert direct == f"https://t.me/roxy_bot?start=feed_{generation_id}_ref_777"
 
 
 @pytest.mark.asyncio

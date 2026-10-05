@@ -11,14 +11,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
-from app.core.config import settings
 from app.db.admin_models import AdminTrend
 from app.db.models import AdminAccount
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
-from app.services.feed_links import mini_app_deep_link, trend_payload
+from app.services.feed_links import bot_start_link, trend_payload
 from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
 from app.services.reference_previews import ReferencePreviewService
 from app.services.reference_static import ReferenceStaticStorage
@@ -392,12 +391,9 @@ async def share_trend(
 
     title = str(item.get("title") if isinstance(item, dict) else getattr(item, "title", "Тренд"))
     payload = trend_payload(trend_id, user.telegram_id)
-    base = str(settings.public_base_url or "").strip().rstrip("/")
-    fallback_query = urlencode({"id": str(trend_id), "start_payload": payload, "startapp": payload})
-    fallback = f"{base}/mini-app/trend/?{fallback_query}" if base else None
-    link = mini_app_deep_link(payload, fallback_url=fallback)
+    link = bot_start_link(payload)
     if not link:
-        raise HTTPException(status_code=503, detail="Public Mini App link is not configured")
+        raise HTTPException(status_code=503, detail="Public bot link is not configured")
 
     share_text = f"Попробуй тренд «{title}» в ROXY ✨"
     share_url = f"https://t.me/share/url?{urlencode({'url': link, 'text': share_text})}"

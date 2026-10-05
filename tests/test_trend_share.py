@@ -41,7 +41,7 @@ async def test_share_trend_returns_native_telegram_share_payload_with_sharer_ref
         AsyncMock(),
     )
 
-    expected_link = f"https://t.me/RoxyExampleBot?startapp=trend_{trend_id}_ref_777"
+    expected_link = f"https://t.me/RoxyExampleBot?start=trend_{trend_id}_ref_777"
     assert result["id"] == str(trend_id)
     assert result["link"] == expected_link
     assert result["copy_link"] == expected_link
@@ -56,35 +56,15 @@ async def test_share_trend_returns_native_telegram_share_payload_with_sharer_ref
 
 
 @pytest.mark.asyncio
-async def test_share_trend_fallback_keeps_sharer_referral_payload(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    trend_id = uuid.uuid4()
-    monkeypatch.setattr(
-        TrendService,
-        "get_public",
-        AsyncMock(return_value={"id": str(trend_id), "title": "Кино-тренд"}),
-    )
+async def test_share_trend_requires_bot_username(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(TrendService, "get_public", AsyncMock(return_value={"title": "Тренд"}))
     monkeypatch.setattr(settings, "bot_username", "")
     monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
-
-    result = await share_trend(
-        trend_id,
-        SimpleNamespace(telegram_id=777),
-        AsyncMock(),
-    )
-
-    parsed = urlparse(result["link"])
-    query = parse_qs(parsed.query)
-    expected_payload = trend_payload(trend_id, 777)
-    assert (parsed.scheme, parsed.netloc, parsed.path) == (
-        "https",
-        "roxy.example",
-        "/mini-app/trend/",
-    )
-    assert query["id"] == [str(trend_id)]
-    assert query["start_payload"] == [expected_payload]
-    assert query["startapp"] == [expected_payload]
+    with pytest.raises(HTTPException) as failure:
+        await share_trend(uuid.uuid4(), SimpleNamespace(telegram_id=777), AsyncMock())
+    assert failure.value.status_code == 503
 
 
 @pytest.mark.asyncio

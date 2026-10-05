@@ -22,7 +22,6 @@ from app.services.generations import GenerationService
 from app.services.media_assets import MediaAssetService
 from app.services.feed_links import (
     bot_start_link,
-    mini_app_deep_link,
     post_payload,
     profile_payload,
     remix_payload,
@@ -1032,14 +1031,13 @@ class FeedService:
     @classmethod
     def post_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
         payload = post_payload(generation_id, author_referral_code)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
+        return bot_start_link(payload)
 
     @classmethod
     def share_payload(cls, generation: Generation, author_telegram_id: int) -> dict[str, object]:
         """Post-publish share payload for author-side success/share screens.
 
-        ``link`` is the direct Mini App post deep link (``startapp`` form so it
-        opens inside the app), ``share_url`` is a ready ``t.me/share/url`` link
+        ``link`` opens the post preview in the bot chat (``start``), ``share_url`` is a ready ``t.me/share/url`` link
         for Telegram-native sharing and ``copy_link`` is the value a user copies
         into any messenger.
         """
@@ -1062,12 +1060,12 @@ class FeedService:
     @classmethod
     def profile_deep_link(cls, author_referral_code: str) -> str | None:
         payload = profile_payload(author_referral_code)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
+        return bot_start_link(payload)
 
     @classmethod
     def remix_deep_link(cls, generation_id: uuid.UUID, author_referral_code: str) -> str | None:
         payload = remix_payload(generation_id, author_referral_code)
-        return mini_app_deep_link(payload, fallback_url=bot_start_link(payload))
+        return bot_start_link(payload)
 
     @staticmethod
     async def author_by_referral_code(session: AsyncSession, referral_code: str) -> User:

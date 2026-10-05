@@ -136,7 +136,7 @@ async def test_trend_publication_advertises_repeat_without_revealing_prompt() ->
         target.unlink(missing_ok=True)
 
 
-def test_public_post_link_uses_main_mini_app_even_without_short_name(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_public_post_link_uses_bot_entry_and_preserves_explicit_miniapp(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "")
     payload = post_payload("7c585918-e99a-42a9-a616-0dbbfc6f7c02", 123456)
@@ -151,7 +151,8 @@ def test_public_post_link_uses_main_mini_app_even_without_short_name(monkeypatch
         "feed_7c585918-e99a-42a9-a616-0dbbfc6f7c02_ref_123456"
     )
     assert mini_app_deep_link(payload) == direct
-    assert _direct_mini_app_link(legacy) == direct
+    assert _direct_mini_app_link(legacy) == legacy
+    assert _direct_mini_app_link(direct) == legacy
 
 
 def test_feed_surfaces_expose_repeat_and_resilient_share_actions() -> None:
