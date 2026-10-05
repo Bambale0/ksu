@@ -7,8 +7,8 @@ import { FeedStartApp } from "./feed-startapp-app";
 import { GenerationActionGate } from "./generation-action-app";
 import { ProfileStartApp } from "./profile-startapp-app";
 
-const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
-const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_ref_(\d+)$/i;
+const POST_LINK = /^feed_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
+const REMIX_LINK = /^remix_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
 const PRIVATE_REPEAT_LINK = /^repeat_([0-9a-f]{32}_[A-Za-z0-9_-]{16})$/;
 const TREND_LINK = /^trend_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_ref_(\d+))?$/i;
 const LEGACY_PROFILE_LINK = /^posts_(\d+)_ref_(\d+)$/;
@@ -105,11 +105,11 @@ function parseTarget(): Target | null {
 
   if (POST_LINK.test(payload)) {
     const match = POST_LINK.exec(payload)!;
-    return { kind: "post", generationId: match[1], referralCode: match[2] };
+    return { kind: "post", generationId: match[1], referralCode: match[2] || "" };
   }
   if (REMIX_LINK.test(payload)) {
     const match = REMIX_LINK.exec(payload)!;
-    return { kind: "remix", generationId: match[1], referralCode: match[2] };
+    return { kind: "remix", generationId: match[1], referralCode: match[2] || "" };
   }
   if (PRIVATE_REPEAT_LINK.test(payload)) {
     // Telegram keeps start_param sticky for the WebView session. Once ROXY has

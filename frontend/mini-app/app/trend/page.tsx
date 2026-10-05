@@ -179,6 +179,12 @@ export default function TrendPage() {
     >
       {trend ? (
         <div className="tool-grid">
+          {trend.description?.trim() ? (
+            <aside className={styles.instructions} role="note" aria-label="Инструкция к тренду">
+              <strong>Перед запуском</strong>
+              <p>{trend.description}</p>
+            </aside>
+          ) : null}
           {trend.preview_url ? previewIsVideo(trend)
             ? <video className="trend-preview" src={trend.preview_url} muted autoPlay loop playsInline controls preload="metadata" />
             : <img className="trend-preview" src={trend.preview_url} alt={trend.title} />

@@ -20,6 +20,7 @@ from app.bot.keyboards import (
     quick_menu,
 )
 from app.bot.support_links import direct_support_handle
+from app.bot.public_resource_entry import send_public_resource_entry
 from app.core.config import settings
 from app.services.admin_security import parse_bootstrap_ids
 from app.services.feed import FeedNotFoundError, FeedService
@@ -192,12 +193,16 @@ async def start_app_only(
         return
     await state.clear()
     link = _start_link(message.text)
-    await UserService.get_or_create(
+    user = await UserService.get_or_create(
         session,
         message.from_user,
         inviter_telegram_id=await _validated_inviter(session, link),
     )
     await session.commit()
+    if await send_public_resource_entry(
+        message, session, viewer_user_id=user.id, link=link, payload=start_payload(message.text),
+    ):
+        return
     await _send_launcher(
         message,
         session,

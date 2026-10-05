@@ -25,18 +25,18 @@ def test_direct_mini_app_link_contract_matches_tanyapi(monkeypatch) -> None:  # 
     )
 
 
-def test_production_partner_referral_opens_main_mini_app(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_production_partner_referral_opens_bot(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(settings, "bot_username", "roxy_aicreativebot")
     monkeypatch.setattr(settings, "telegram_mini_app_short_name", "app")
 
     assert PartnerService.referral_link(339795159) == (
-        "https://t.me/roxy_aicreativebot?startapp=ref_339795159"
+        "https://t.me/roxy_aicreativebot?start=ref_339795159"
     )
     assert PartnerService.referral_mini_app_link(339795159) == (
         "https://t.me/roxy_aicreativebot?startapp=ref_339795159"
     )
     assert PartnerService.profile_link(339795159) == (
-        "https://t.me/roxy_aicreativebot?startapp=profile_339795159_ref_339795159"
+        "https://t.me/roxy_aicreativebot?start=profile_339795159_ref_339795159"
     )
 
 
@@ -49,10 +49,10 @@ def test_missing_short_name_does_not_fall_back_to_bot_chat(monkeypatch) -> None:
         fallback_url=bot_start_link("ref_339795159"),
     ) == "https://t.me/roxy_aicreativebot?startapp=ref_339795159"
     assert PartnerService.referral_link(339795159) == (
-        "https://t.me/roxy_aicreativebot?startapp=ref_339795159"
+        "https://t.me/roxy_aicreativebot?start=ref_339795159"
     )
     assert PartnerService.profile_link(339795159) == (
-        "https://t.me/roxy_aicreativebot?startapp=profile_339795159_ref_339795159"
+        "https://t.me/roxy_aicreativebot?start=profile_339795159_ref_339795159"
     )
 
 

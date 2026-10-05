@@ -15,8 +15,8 @@ def test_profile_share_does_not_depend_on_partner_stats() -> None:
     assert 'aria-label="Поделиться профилем"' in source
 
 
-def test_profile_link_is_direct_main_mini_app(monkeypatch) -> None:
+def test_profile_link_opens_bot_first(monkeypatch) -> None:
     monkeypatch.setattr(settings, "bot_username", "RoxyExampleBot")
     assert PartnerService.profile_link(123456) == (
-        "https://t.me/RoxyExampleBot?startapp=profile_123456_ref_123456"
+        "https://t.me/RoxyExampleBot?start=profile_123456_ref_123456"
     )

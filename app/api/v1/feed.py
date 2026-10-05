@@ -18,7 +18,7 @@ from app.services.feed import (
     FeedPublicationError,
     FeedService,
 )
-from app.services.feed_links import mini_app_deep_link
+from app.services.feed_links import bot_start_link
 
 router = APIRouter(tags=["feed"])
 
@@ -57,14 +57,14 @@ def _http_error(exc: Exception) -> HTTPException:
 
 
 def _direct_mini_app_link(link: str | None) -> str | None:
-    """Turn a verified bot start payload into a direct Mini App link."""
+    """Normalize existing public links to bot-first entry (legacy helper name)."""
 
     if not link:
         return None
     parsed = urlparse(link)
     payload = (parse_qs(parsed.query).get("start") or parse_qs(parsed.query).get("startapp") or [""])[0]
     if payload:
-        return mini_app_deep_link(payload)
+        return bot_start_link(payload)
     return link
 
 

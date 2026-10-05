@@ -85,8 +85,8 @@ def mini_app_deep_link(
 ) -> str | None:
     """Build the canonical Telegram Main Mini App link used by tanyapi.
 
-    Public repeat, feed, profile and referral links must open ROXY immediately,
-    without landing in the bot chat first. Telegram's Main Mini App deep-link
+    Use for explicit in-app launches and private task/repeat flows. Public
+    social and referral share links use bot_start_link to connect the chat first. Telegram's Main Mini App deep-link
     syntax is ``https://t.me/<bot>?startapp=<payload>`` and does not depend on a
     named Mini App short name. ``fallback_url`` is only used when the bot
     username itself is unavailable.
@@ -102,7 +102,7 @@ def mini_app_deep_link(
 
 
 def bot_start_link(payload: str | None, *, bot_username: str | None = None) -> str | None:
-    """Compatibility link for legacy bot /start surfaces."""
+    """Canonical public referral/share entry through the bot private chat."""
 
     username = _clean_bot_username(bot_username or settings.bot_username)
     if not username:

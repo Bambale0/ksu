@@ -710,3 +710,48 @@ Partner promo codes activate paid referral attribution; the separate registratio
 - **Implementation order:** RED backend + browser regressions → model-driven contract/service implementation → Mini App selector/API wiring → docs → focused backend/frontend verification → code review → PR/required CI → merge/deploy → exact production SHA + live contract smoke.
 
 - **Progress / verification:** RED reproduced with 3 backend contract failures and a Chromium browser failure showing Generate incorrectly enabled before ratio selection. GREEN implementation now exposes model-owned fixed ratios, filters auto/adaptive, requires an explicit selection in TrendService.run, forwards/persists it, routes Home/Catalog/Telegram through the canonical Trend launcher, and updates docs. Focused TrendService suite: 48 passed. Adjacent backend/source contracts: 83 passed. Full backend regression on isolated PostgreSQL 17 + Redis 7.4 with migrations and alembic check: 1533 passed, 1 pre-existing SQLAlchemy warning. Ruff full repo, compileall and ROXY release contract passed. Mini App typecheck passed; Chromium all-user-surfaces: 47 passed across 320x568, 390x844 and 430x932. Local WebKit launch was blocked before app startup by missing host GTK/GStreamer/WebKit libraries; GitHub Mini App Playwright E2E remains the authoritative WebKit gate. Read-only production audit: 196 active trends; every currently valid configurable model has fixed options (Nano Banana Pro 107, Seedance 2.0 56, Seedance 2.5 28, Grok Video 1.5 3); 2 pre-existing invalid recipes are already excluded by TrendService. Exact original Scorpio recipe replay with selected 9:16 reaches Nexus normalizer as aspect_ratio=9:16, resolution=720p, duration=10, one reference, without creating a paid task. Remote main remained unchanged at baseline before commit.
+
+
+## Active Feature Execution: bot-first public referral entry (2026-10-05)
+
+Baseline: d569b79d53ba4a5f9d5aef5a86dffbb2e1fc1bf2 (main and production verified).
+Worktree: isolated fix/referral-bot-resource-entry-20261005; production checkout remains untouched.
+
+Audit: public FeedService/PartnerService links, runtime mini_app_link_contract overrides, feed API normalizer and trend share endpoint currently force startapp. /start validates inviter and preserves launch payload but always shows a generic welcome. Public card services and MiniApp exact-resource routing already exist. Private-message middleware already recovers unreachable transactional deliveries; no outbox or balance change is needed.
+
+Plan: public social/referral producers return bot start links; preserve the explicit MiniApp helper and historical startapp parsing. On /start, resolve a single visible public trend/post using existing services, send its public preview and a MiniApp button carrying the same payload. Missing/private/moderated resources fail closed. Referrer remains the sharer with registration-only attribution. No private repeat/task link change.
+
+Test seams: public link helpers and share endpoints; bot start handler with Telegram and DB/domain boundaries mocked (existing project convention); legacy MiniApp route contract. Add regression tests before production code. Verify photo/video/audio, unavailable media fallback, hidden resources, sharer preservation, aliases and old links. Tests run only in this worktree with test environment and a non-production database URL. No live messaging, retry/requeue/refund, merge or deployment.
+
+Guidance inspected remotely: Bambale0/skills engineering/tdd (literal expected fixtures, behavior seams), code-review; Bambale0/start AGENTS and test strategy (server-side visibility, exact SHA); Bambale0/claw AGENTS (small compatible changes); wondelai/skills working-with-legacy-code (characterization); Bambale0/dev-agents-pack Telegram agent/tests (duplicate-safe business effects); agentskills/agentskills specification (progressive discovery, no Telegram-specific guidance); anthropics/skills webapp-testing (future browser QA). Local .agents systematic-debugging: evidence before fix. No scripts from external skills executed.
+
+Verification matrix: unit/contract and authorization-negative tests planned; DB/referrer invariant existing tests inspected; schema/migrations N/A; external Telegram mocked; E2E/build planned as available; live smoke/deploy N/A (not authorized); exact-head CI requires publication authorization. Main risks: media delivery fallback, legacy entry preservation, runtime link override, public moderation bypass. Rollback is reverting this isolated code change before any separately authorized release.
+
+
+### Verification update (2026-10-05 09:18 UTC)
+
+Implementation complete in the isolated worktree, not committed/pushed/merged/deployed. New bot entry regression initially reproduced the previous behavior (9 failures), then passed. Expanded suite: 79 targeted/backend architecture tests passed plus 2 feed-share contract tests passed (81 total selected tests). Ruff for the complete checkout passed; backend app/tests compileall passed. MiniApp typecheck passed. Production Next build passed with 24 static pages; E2E build using the repository's ROXY_E2E=1 mode passed. Chromium: 4 browser tests passed, covering exact post with and without referrer, remix without referrer, and legacy profile/Back navigation.
+
+Additional regressions cover repeated /start (one preview per request), registration-only behavior for existing accounts (no repeated welcome credit or referral attach), profile-only public posts, missing previews, blurred posts, runtime link override, and no text fallback on forbidden/network/chat-not-found. A red chat-not-found fallback test found and fixed an unnecessary second send attempt.
+
+Environment-only issues: Turbopack rejected a node_modules symlink outside its root; a separate copy of existing dependencies inside the isolated worktree fixed build without changing production dependencies. Initial browser tests used production Telegram SDK and lost the mock; using the project's existing ROXY_E2E=1 build mode fixed Chromium. WebKit could not launch due to missing system libraries; no host package installation was performed.
+
+Independent review remains incomplete because its read-only call was cancelled. That call and the cancelled historical SQL were not retried or bypassed. Full DB integration suite, live Telegram smoke, WebKit, and exact-head CI remain unverified. CI requires separately authorized publication; production requires a separately authorized release. No claim of release readiness.
+
+Runtime change: new public links are bot-first. Already distributed startapp URLs remain direct-MiniApp compatibility links and cannot be retroactively rewritten. Existing private-message recovery remains unchanged; this patch does not backfill or replay the historical notification tail.
+
+
+## Active Feature Execution: visible trend instructions (2026-10-05)
+
+Separate logical UI change over the existing unpublished bot-first worktree; no publication/release authorized. Both user screenshots were materialized and visually inspected. The circled trend-card description disappears on the runner, which shows generic text instead. Root cause: app/ux-polish.css globally hides .screen-head p and supplies generic ::after copy, although TrendPage passes trend.description. Source of truth is AdminTrend.payload.description -> TrendService.public_view.description -> TrendItem.description, also used by catalog cards.
+
+Plan: duplicate the existing public description in a semantic, prominent callout above preview/form on the trend runner. Preserve newlines, order and all wording; render plain React text, no hidden prompt or HTML. Empty description means no callout. Do not infer new global reference limits; existing reference_requirements stays authoritative. Use existing violet/dark tokens, readable typography, wrapping and no animation. Local frontend-design and frontend-ux-audit read; existing current remote engineering guidance continues to apply.
+
+Acceptance: visible before file upload, correct description per trend, newline/long-text/XSS safety, min/max unaffected, no auto-upload/generation, repeated opens/native Back/return intact. Add browser behavior tests before implementation, then typecheck/build/lint and relevant regressions; verify mobile screenshot. No production data or paid generations.
+
+
+### Trend instruction verification (2026-10-05 09:49 UTC)
+
+New browser regression reproduced the issue before implementation: 4 failed, 1 empty-state passed. After the minimal page.tsx and CSS-module change: typecheck/build pass; 11 Chromium browser tests pass (5 new instruction cases plus existing trend Back/share/reopen and bot-entry regressions). Backend selected suite rerun: 79 passed; full Ruff passes. Mobile 393px screenshot visually inspected: violet-bordered instruction panel above references, readable white text and preserved line breaks. 320px long unbroken content wraps without horizontal overflow. Test strings are synthetic fixtures, not newly assigned production trend instructions. No description/min/max/backend changes.
+
+User approved publishing, merging after successful checks, and deployment of both changes at 09:48 UTC. Publication is pending read-only final-review clearance and exact-head CI. No paid generations or historical sends/refunds are in scope. Independent review cancellation and WebKit environment limitation remain explicitly recorded.
