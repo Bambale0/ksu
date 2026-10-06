@@ -142,7 +142,7 @@ test('explicit feed route escapes a sticky Telegram feed start_param', async ({ 
   await page.getByRole('button', { name: 'Открыть всю ленту' }).click();
 
   await expect(page).toHaveURL(/\/mini-app\/?\?route=feed/);
-  await expect(page.getByText('Работы сообщества')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Работы сообщества', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Открыть всю ленту' })).toHaveCount(0);
 });
 
