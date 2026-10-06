@@ -1,14 +1,11 @@
-## Active Fix Execution — Seedance 2.0/2.5 Neironych primary (2026-10-05)
+## Active Fix Execution — Seedance Neironych test-only / customer fallback (2026-10-05)
 
-- **Baseline / request:** `main@96e4dab0bc9a03a4c0af7f4efc047ecbbb412211`; make customer `seedance-2.0` and `seedance-2.5` start on Neironych again.
-- **Fresh audit:** both models are already fully implemented by `NeironychGenerationProviderService`; current code-owned routes are `Nexus -> Neironych -> Kie`. Provider selection is snapshotted per generation, so existing accepted/in-flight jobs remain on their persisted provider.
-- **Root cause:** the 2026-10-04 Nexus-primary migration intentionally reordered Seedance to Nexus first. A full persisted admin route row can also retain that former code default after a later code-default change.
-- **Change:** reorder only Seedance 2.0/2.5 defaults to `Neironych -> Nexus -> Kie`. Treat the exact former Nexus-first Seedance route as a superseded code-owned default when reading runtime settings, while preserving other explicit admin custom routes. Nano Banana Pro and every unrelated model remain unchanged.
-- **No-hardcode/control plane:** routes stay visible/editable through the existing admin runtime provider-route control. The compatibility normalization only recognizes the exact former Seedance default; custom single-provider or alternate allowed routes are not rewritten.
-- **Safety:** no pricing, wallet, schema, provider credentials, payload contract, or existing-generation mutation. Neironych uncertain submissions keep same-provider reconciliation; only confirmed fallback-safe failures may advance to Nexus/Kie through the existing route machinery.
-- **Tests:** RED/GREEN route-order assertions plus regression for a persisted full registry containing the former Nexus-first defaults; existing worker-persisted-provider behavior remains covered. Exact-head CI and exact-main deployment required before production completion.
-- **Rollback:** admin can select Nexus/Kie for new jobs; code rollback is a normal revert. Existing jobs never move because their route snapshot/provider is persisted.
-- **Guidance:** KSU `AGENTS.md`; repository-local `.agents` paths are not present on GitHub main, so documented fallback guidance was used. Current remote guidance inspected from Bambale0/claw backend-integration/release-hardening, WondelAI integration/release guidance, dev-agents-pack API integrator/tests/release, AgentSkills (no task-specific runtime guidance), Anthropic catalog (no Seedance-specific runtime guidance). Bambale0/skills search returned no directly matching indexed result; KSU's embedded TDD/evidence-first baseline applies.
+- **Corrected requirement:** Neironych must remain primary only in the admin/test Seedance contour. Customer Seedance 2.0/2.5 must stay Nexus-primary with Neironych as fallback.
+- **Customer route:** `seedance-2.0` and `seedance-2.5` = `Nexus -> Neironych -> Kie`. Existing generation route snapshots remain unchanged.
+- **Test contour:** the dedicated Seedance admin test wizard/queue already talks directly to Neironych, checks Neironych model availability, validates against the Neironych contract, and spends only the test API balance; no customer ROX route is involved.
+- **Correction:** revert the immediately previous customer-route change that made Neironych primary. Do not alter the dedicated admin-test Neironych path.
+- **Safety:** no pricing, wallet, schema, secrets, or existing jobs are changed. Neironych remains available as customer fallback under the existing fallback-safety/idempotency rules.
+- **Verification:** route regression must assert Nexus-first customer routes; Seedance admin-test tests continue to assert direct Neironych usage. Exact-head CI and exact-main production deployment required.
 
 ## Provider Audit — remaining non-Nexus paths (2026-10-04)
 
