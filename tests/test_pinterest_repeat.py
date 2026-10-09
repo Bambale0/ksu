@@ -209,6 +209,67 @@ async def test_resolve_reference_follows_only_pinterest_redirects_and_reads_og_i
 
 
 @pytest.mark.asyncio
+async def test_resolve_reference_accepts_pin_it_redirect_chain_via_pinterest_ru() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "pin.it":
+            return httpx.Response(
+                308,
+                headers={
+                    "location": (
+                        "https://api.pinterest.com/url_shortener/"
+                        "6P6WjrDXp/redirect/"
+                    )
+                },
+                request=request,
+            )
+        if request.url.host == "api.pinterest.com":
+            return httpx.Response(
+                302,
+                headers={
+                    "location": (
+                        "https://www.pinterest.ru/pin/660199626666725842/sent/"
+                        "?invite_code=test&sfo=1"
+                    )
+                },
+                request=request,
+            )
+        if request.url.host == "www.pinterest.ru":
+            return httpx.Response(
+                308,
+                headers={
+                    "location": (
+                        "https://ru.pinterest.com/pin/660199626666725842/sent/"
+                        "?invite_code=test&sfo=1"
+                    )
+                },
+                request=request,
+            )
+        if request.url.host == "ru.pinterest.com":
+            return httpx.Response(
+                200,
+                text=(
+                    '<html><head><meta property="og:image" '
+                    'content="https://i.pinimg.com/originals/aa/bb/cc/photo.jpg">'
+                    "</head></html>"
+                ),
+                headers={"content-type": "text/html"},
+                request=request,
+            )
+        raise AssertionError(f"Unexpected request: {request.url}")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        resolved = await PinterestRepeatService.resolve_reference(
+            "https://pin.it/6P6WjrDXp",
+            client=client,
+        )
+
+    assert resolved.source_url.startswith(
+        "https://ru.pinterest.com/pin/660199626666725842/sent/"
+    )
+    assert resolved.reference_url == "https://i.pinimg.com/originals/aa/bb/cc/photo.jpg"
+
+
+@pytest.mark.asyncio
 async def test_resolve_reference_falls_back_to_widget_when_pin_page_is_blocked() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "pin.it":
