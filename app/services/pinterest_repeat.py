@@ -77,7 +77,13 @@ class PinterestRepeatService:
     @staticmethod
     def _is_pinterest_host(hostname: str) -> bool:
         host = hostname.lower().rstrip(".")
-        return host == "pin.it" or host == "pinterest.com" or host.endswith(".pinterest.com")
+        return (
+            host == "pin.it"
+            or host == "pinterest.com"
+            or host.endswith(".pinterest.com")
+            or host == "pinterest.ru"
+            or host.endswith(".pinterest.ru")
+        )
 
     @staticmethod
     def _is_pinimg_host(hostname: str) -> bool:
