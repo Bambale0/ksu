@@ -28,7 +28,7 @@ def test_production_deploy_waits_for_exact_main_green_sha() -> None:
         "head_sha=${DEPLOY_SHA}",
         "/git/ref/heads/main",
         "superseded=true",
-        'git reset --hard "${DEPLOY_SHA}"',
+        'git checkout --detach --no-overwrite-ignore "${DEPLOY_SHA}"',
         'test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"',
     ):
         assert token in workflow
@@ -143,12 +143,41 @@ def test_dns_helper_preserves_the_active_immutable_release_image() -> None:
     assert "refusing to restart app as ksu-app:local" in helper
 
 
-def test_production_deploy_prunes_old_release_tags_but_keeps_one_rollback() -> None:
+def test_production_deploy_preserves_backups_and_release_images() -> None:
     workflow = _workflow()
 
-    assert 'rollback_image_name="ksu-app:${previous_sha}"' in workflow
-    assert "^ksu-app:([0-9a-f]{40})$" in workflow
-    assert '"${release_sha}" == "${DEPLOY_SHA}"' in workflow
-    assert '"${release_sha}" == "${previous_sha}"' in workflow
-    assert "docker images --format '{{.Repository}}:{{.Tag}}' ksu-app" in workflow
-    assert 'docker image rm "${image_ref}"' in workflow
+    for destructive_command in (
+        'rm -f "${old_backup}"',
+        "find backups",
+        "docker image rm",
+        "docker image prune",
+        "docker system prune",
+        "docker rmi",
+    ):
+        assert destructive_command not in workflow
+    assert "pg_dump -U ksu -d ksu -Fc" in workflow
+    assert 'pg_restore --list < "${backup}"' in workflow
+    assert 'sha256sum "${backup}" > "${backup}.sha256"' in workflow
+    assert "existing backups and release images are preserved" in workflow
+
+
+def test_production_deploy_does_not_run_historical_media_maintenance() -> None:
+    workflow = _workflow()
+
+    assert "run_backfill" not in workflow
+    assert "scripts.backfill_" not in workflow
+    assert "maintenance requires a separate explicit manual action" in workflow
+
+
+def test_production_deploy_fails_closed_before_changing_checkout_or_credentials() -> None:
+    workflow = _workflow()
+
+    assert "git reset --hard" not in workflow
+    assert "git clean" not in workflow
+    assert "git diff --quiet" in workflow
+    assert "git diff --cached --quiet" in workflow
+    assert 'git checkout --detach --no-overwrite-ignore "${DEPLOY_SHA}"' in workflow
+    assert "ADMIN_SECURITY_KEY must be configured with at least 32 characters" in workflow
+    assert "Generated persistent ADMIN_SECURITY_KEY" not in workflow
+    assert "/dev/urandom" not in workflow
+    assert "chmod 600 .env" not in workflow
