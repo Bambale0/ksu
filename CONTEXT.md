@@ -767,17 +767,22 @@ User approved publishing, merging after successful checks, and deployment of bot
 
 ### 2026-10-10 video prompt Nexus gateway incident
 
-- Read-only production evidence: all seven video_prompt tasks observed in
-  the 48h period failed; five had Nexus HTTP 503 and two had an open
-  nexus-prompt-tools circuit. All seven task charges were zero ROX.
-- Authenticated /v1/models responded HTTP 200 and listed gpt-6-sol;
-  missing credentials or nonexistent model were not demonstrated.
-- Resilience gap: the prompt processor persisted Nexus-only video routing,
-  without a fallback for explicit transient upstream gateway failures.
-- Isolated opt-in fallback to the existing Kie GPT-5.5 video pipeline.
-  Disabled by default, does not handle moderation/4xx or uncertain network
-  timeouts, and preserves one ROX task ledger. Unit regressions include
-  503, open circuit, 400, disabled toggle and both providers failing.
-- No live customer video or billed provider generation was run.
-  Kie live success, economics and outbox lease budget remain rollout risks
-  requiring authorized smoke tests.
+- Production evidence: seven failed video_prompt tasks (five Nexus HTTP 503,
+  two circuit-open); all seven task charges were zero ROX.
+- Nexus GET /v1/models listed gpt-6-sol, so credentials and model existence
+  were not the immediate failure. The missing piece was provider failover.
+- PR #542 originally proposed Kie backup. User requested Neironych Grok 4.5
+  instead. Official live docs list grok-4.5 with POST /v1/responses and Vision;
+  GET /v1/models confirmed Grok 4.5 is currently available.
+- Provider bridge reads video via existing ROXY safe media downloader, measures
+  duration, samples 4 JPEG frames and sends Responses input_image data URLs.
+  Before first Grok POST, a fenced outbox transaction pins provider/model to
+  Neironych/Grok45. Retries never switch back to Nexus. Stable provider
+  Idempotency-Key derives from task UUID; stale claims do not pay suppliers.
+- Automatic fallback only for Nexus 502/503/504 or an open circuit, never
+  for moderation 4xx, unknown timeout or JSON error. Kie is not used in the
+  fallback but old persisted Kie jobs remain supported.
+- New flag defaults false; no live paid AI request or production switch made.
+  A dedicated video prompt outbox lease defaults to 600s (vs general 90s)
+  to prevent duplicate concurrent provider submissions. Need safe smoke and
+  economics check before enabling.

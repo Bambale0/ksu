@@ -24,6 +24,7 @@ from app.providers.kie_prompt_tools import (
     PromptToolProviderError,
     PromptToolProviderResult,
 )
+from app.providers.neironych_video_prompt import GROK45_MODEL, NeironychVideoPromptClient
 from app.providers.nexus_prompt_tools import NEXUS_VISION_MODEL, NexusPromptToolsClient
 from app.services.abuse_protection import AbuseProtectionService, ProviderCircuitOpen
 from app.services.billing_access import BillingAccessService
@@ -90,6 +91,15 @@ def _utcnow() -> datetime:
 
 def _retry_delay(attempt: int) -> int:
     return min(180, 2 ** max(1, min(attempt, 7)))
+
+
+def _prompt_tool_lease_seconds(tool: str | None) -> int:
+    if tool == "video_prompt":
+        return max(
+            settings.generation_outbox_lease_seconds,
+            settings.prompt_tool_video_outbox_lease_seconds,
+        )
+    return settings.generation_outbox_lease_seconds
 
 
 def _primary_prompt(result: dict[str, Any]) -> str:
@@ -392,11 +402,13 @@ class PromptToolOutboxService:
         )
         if row is None:
             return None
+        task = await session.get(PromptToolTask, row.task_id)
         row.status = "processing"
         row.attempts += 1
-        row.lease_until = now + timedelta(seconds=settings.generation_outbox_lease_seconds)
+        row.lease_until = now + timedelta(
+            seconds=_prompt_tool_lease_seconds(task.tool if task is not None else None)
+        )
         row.last_error = None
-        task = await session.get(PromptToolTask, row.task_id)
         if task is not None and task.status in {"queued", "processing"}:
             task.status = "processing"
         await session.commit()
@@ -429,6 +441,29 @@ class PromptToolOutboxService:
         if task is None:
             return None
         return task, row
+
+    @staticmethod
+    async def route_to_provider(
+        session: AsyncSession,
+        claimed: ClaimedPromptTool,
+        *,
+        provider: str,
+        model: str,
+    ) -> bool:
+        # Persist the alternate supplier BEFORE a potentially chargeable POST.
+        # A reclaimed lease must never resubmit the task to a different supplier.
+        locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
+        if locked is None:
+            await session.rollback()
+            return False
+        task, _row = locked
+        if task.tool != "video_prompt" or task.status not in {"queued", "processing"}:
+            await session.rollback()
+            return False
+        task.provider = provider
+        task.model = model
+        await session.commit()
+        return True
 
     @staticmethod
     async def release(session: AsyncSession, claimed: ClaimedPromptTool, error: str) -> None:
@@ -522,19 +557,19 @@ class PromptToolOutboxService:
 
 class PromptToolProcessor:
     @staticmethod
-    async def _kie_video_prompt(data: dict[str, Any]) -> PromptToolProviderResult:
-        from app.services.provider_media_transport import ProviderMediaTransport
-
-        client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
+    async def _neironych_video_prompt(
+        data: dict[str, Any], *, task_id: uuid.UUID
+    ) -> PromptToolProviderResult:
+        client = NeironychVideoPromptClient(
+            settings.neironych_api_key, settings.neironych_api_base_url
+        )
         try:
-            provider_input = await ProviderMediaTransport.prepare(
-                {"video_url": str(data.get("video_url") or "")}
-            )
             raw_duration = data.get("duration_seconds")
             return await client.build_video_prompt(
-                video_url=str(provider_input.get("video_url") or ""),
+                video_url=str(data.get("video_url") or ""),
                 instruction=str(data.get("instruction") or ""),
                 duration_seconds=int(raw_duration) if raw_duration else None,
+                idempotency_key=str(task_id),
             )
         finally:
             await client.aclose()
@@ -553,8 +588,8 @@ class PromptToolProcessor:
         fallback_allowed = bool(
             provider == "nexus"
             and task.tool == "video_prompt"
-            and settings.prompt_tool_video_kie_fallback_enabled
-            and settings.kie_api_key.strip()
+            and settings.prompt_tool_video_neironych_fallback_enabled
+            and settings.neironych_api_key.strip()
         )
         try:
             try:
@@ -562,11 +597,15 @@ class PromptToolProcessor:
             except ProviderCircuitOpen:
                 if not fallback_allowed:
                     raise
-                provider = "kie"
-                protection_provider = "kie-prompt-tools"
+                provider = "neironych"
+                protection_provider = "neironych-prompt-tools"
                 await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+                if not await PromptToolOutboxService.route_to_provider(
+                    session, claimed, provider=provider, model=GROK45_MODEL
+                ):
+                    return
                 logger.warning(
-                    "prompt_tool_video_fallback task_id=%s from=nexus to=kie reason=circuit_open",
+                    "prompt_tool_video_fallback task_id=%s from=nexus to=neironych model=grok-4.5 reason=circuit_open",
                     task.id,
                 )
             data = task.input_payload or {}
@@ -597,25 +636,35 @@ class PromptToolProcessor:
                         except PromptToolProviderError as exc:
                             if not fallback_allowed or not _nexus_video_gateway_unavailable(exc):
                                 raise
-                            # Nexus explicitly declined the request. Isolate the
-                            # failure signal from a successful fallback at Kie.
+                            # Nexus explicitly rejected the request. Keep the
+                            # separate provider circuit counters accurate.
                             await AbuseProtectionService.record_provider_failure(
                                 redis, protection_provider
                             )
-                            provider = "kie"
-                            protection_provider = "kie-prompt-tools"
+                            provider = "neironych"
+                            protection_provider = "neironych-prompt-tools"
                             logger.warning(
-                                "prompt_tool_video_fallback task_id=%s from=nexus to=kie reason=gateway_unavailable",
+                                "prompt_tool_video_fallback task_id=%s from=nexus to=neironych model=grok-4.5 reason=gateway_unavailable",
                                 task.id,
                             )
                             await AbuseProtectionService.provider_submission_gate(
                                 redis, protection_provider
                             )
-                            result = await PromptToolProcessor._kie_video_prompt(data)
+                            if not await PromptToolOutboxService.route_to_provider(
+                                session, claimed, provider=provider, model=GROK45_MODEL
+                            ):
+                                return
+                            result = await PromptToolProcessor._neironych_video_prompt(
+                                data, task_id=task.id
+                            )
                     else:
                         raise ValueError(f"Unknown prompt tool: {task.tool}")
                 finally:
                     await client.aclose()
+            elif provider == "neironych" and task.tool == "video_prompt":
+                result = await PromptToolProcessor._neironych_video_prompt(
+                    data, task_id=task.id
+                )
             elif provider == "kie":
                 client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
                 try:
