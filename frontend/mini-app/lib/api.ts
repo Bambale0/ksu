@@ -1,4 +1,5 @@
 import { initTelegram, telegramHeaders } from "./telegram";
+import { rememberGenerationIds } from "./generation-delivery";
 import { fetchWithTimeout, uploadTimeoutForFile, userSafeHttpError } from "./http-errors";
 import type {
   ActivePromo,
@@ -168,6 +169,12 @@ function beginFeedRemix(id: string, surface: FeedSurface): Promise<never> {
   return new Promise<never>(() => undefined);
 }
 
+async function trackGenerationStart<T extends { id: string; ids?: string[] }>(promise: Promise<T>): Promise<T> {
+  const result = await promise;
+  rememberGenerationIds(result.ids?.length ? result.ids : [result.id]);
+  return result;
+}
+
 export const api = {
   me: currentUser,
   overview: () => request<Record<string, any>>("/api/v1/me/overview"),
@@ -178,7 +185,7 @@ export const api = {
   generation: (id: string) => request<Generation>(`/api/v1/generations/${encodeURIComponent(id)}`),
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: async (body: Record<string, unknown>) => normalizeCustomerQuote(await request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) })),
-  create: (body: Record<string, unknown>) => request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) }),
+  create: (body: Record<string, unknown>) => trackGenerationStart(request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) })),
   upload: (file: File) => {
     const form = new FormData();
     form.append("file", file, file.name);
@@ -232,14 +239,14 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
-  launchRemix: (id: string, body: FeedRemixComposition) => request<{ id: string; status: string; source_feed_gen_id: string; parent_generation_id: string; action_type: string; cost_rox: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix/launch`, {
+  launchRemix: (id: string, body: FeedRemixComposition) => trackGenerationStart(request<{ id: string; status: string; source_feed_gen_id: string; parent_generation_id: string; action_type: string; cost_rox: string }>(`/api/v1/feed/${encodeURIComponent(id)}/remix/launch`, {
     method: "POST",
     body: JSON.stringify(body),
-  }),
+  })),
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string } = {}) => request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({
       reference_urls: referenceUrls,
@@ -247,7 +254,7 @@ export const api = {
       ...(options.resolution ? { resolution: options.resolution } : {}),
       ...(options.aspectRatio ? { aspect_ratio: options.aspectRatio } : {}),
     }),
-  }),
+  })),
   promptTools: () => request<{ admin_free: boolean; items: PromptToolCatalogItem[] }>("/api/v1/prompt-tools"),
   promptToolTask: (id: string) => request<PromptToolTask>(`/api/v1/prompt-tools/${encodeURIComponent(id)}`),
   buildPrompt: (body: PromptBuilderBody) => request<PromptToolTask>("/api/v1/prompt-tools/prompt-builder", {

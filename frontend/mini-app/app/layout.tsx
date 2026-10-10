@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ClipboardCompatibilityBridge } from "@/components/clipboard-compatibility-bridge";
 import { OnboardingRequiredBoundary } from "@/components/onboarding-required-boundary";
 import { TelegramAuthBoundary } from "@/components/telegram-auth-boundary";
+import { GenerationDeliveryBridge } from "@/components/generation-delivery-bridge";
 import "./globals.css";
 import "./browser-landing.css";
 import "./loader.css";
@@ -86,6 +87,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/profile-id-ux.js" strategy="afterInteractive" />
         <ClipboardCompatibilityBridge />
         <TelegramAuthBoundary>
+          <GenerationDeliveryBridge />
           <OnboardingRequiredBoundary>{children}</OnboardingRequiredBoundary>
         </TelegramAuthBoundary>
       </body>

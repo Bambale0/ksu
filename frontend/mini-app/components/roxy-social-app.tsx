@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { isGenerationMediaReady, isTerminalGeneration, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { SavedReferencePicker } from "@/lib/reference-memory";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type {
@@ -114,7 +115,34 @@ function displayName(me: Me | null): string {
 }
 
 function resultMediaUrl(item: Generation | FeedCard): string {
+  if (item.media_delivery) {
+    // Never confuse a temporary provider URL with a durable customer asset.
+    return item.media?.find((asset) => asset.url)?.url || "";
+  }
   return item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
+}
+
+function deliveryStatusLabel(item: Generation | FeedCard): string {
+  if (item.status !== "succeeded") return statusLabel(item.status);
+  if (item.media_delivery?.state === "failed") return "Не все файлы сохранены";
+  if (item.media_delivery?.state === "pending" ||
+      (item.media_delivery === undefined && !resultMediaUrl(item))) return "Сохраняем файл";
+  return "Готово";
+}
+
+function freshestGeneration(server: Generation, observed?: Generation): Generation {
+  // Only the server's visible history listing can authorize restoration.
+  // A cached hidden detail must not suppress a work the user restored later.
+  if (!observed || server.hidden_from_history || observed.hidden_from_history) return server;
+  if (isTerminalGeneration(observed.status) && !isTerminalGeneration(server.status)) return observed;
+  if (isTerminalGeneration(server.status) && !isTerminalGeneration(observed.status)) return server;
+  const mediaCount = server.media?.filter((asset) => asset.url).length || 0;
+  const observedCount = observed.media?.filter((asset) => asset.url).length || 0;
+  if (observedCount > mediaCount ||
+      (isGenerationMediaReady(observed) && !isGenerationMediaReady(server))) return observed;
+  const observedAt = Date.parse(observed.updated_at || "") || 0;
+  const serverAt = Date.parse(server.updated_at || "") || 0;
+  return observedAt > serverAt ? observed : server;
 }
 
 function mediaUrl(item: Generation | FeedCard): string {
@@ -370,6 +398,7 @@ export function RoxySocialApp() {
   const [createLaunch, setCreateLaunch] = useState<CreateLaunch>({ nonce: 0, kind: "new" });
   const createLaunchSeq = useRef(0);
   const deepLinkedGeneration = useRef<string | null>(null);
+  const latestDelivery = useRef(new Map<string, Generation>());
   const toastTimer = useRef<number | null>(null);
 
   const showToast = useCallback((message: string) => {
@@ -414,7 +443,14 @@ export function RoxySocialApp() {
   const loadHistory = useCallback(async (append = false, before?: string | null) => {
     const query = `limit=24${before ? `&before=${encodeURIComponent(before)}` : ""}`;
     const payload = await api.generations(query);
-    setHistory((current) => append ? [...current, ...payload.items] : payload.items);
+    const fresh = (payload.items || [])
+      .map((item) => freshestGeneration(item, latestDelivery.current.get(item.id)))
+      .filter((item) => !item.hidden_from_history);
+    setHistory((current) => {
+      if (!append) return fresh;
+      const ids = new Set(fresh.map((item) => item.id));
+      return [...current.filter((item) => !ids.has(item.id)), ...fresh];
+    });
     setHistoryBefore(payload.next_before || null);
     setHistoryHasMore(Boolean(payload.has_more));
     return payload.items;
@@ -428,13 +464,53 @@ export function RoxySocialApp() {
     ]);
     const ownPublished = works.items.filter(isPublishedGeneration);
     const publishedIds = new Set((publications.items || []).map((item) => item.id));
-    setProfileWorks(works.items);
+    setProfileWorks(works.items.map((item) =>
+      freshestGeneration(item, latestDelivery.current.get(item.id)),
+    ).filter((item) => !item.hidden_from_history));
     setProfilePublications([
       ...(publications.items || []),
       ...ownPublished.filter((item) => !publishedIds.has(item.id)),
     ]);
     if (promo) setActivePromo(promo);
   }, [me]);
+
+  useEffect(() => subscribeToGenerationUpdates(({ generation, terminal, ready, mediaFailed, mediaTimedOut, trackingExpired }) => {
+    latestDelivery.current.set(generation.id, generation);
+    if (latestDelivery.current.size > 64) {
+      const oldest = latestDelivery.current.keys().next().value;
+      if (oldest) latestDelivery.current.delete(oldest);
+    }
+    setHistory((items) => {
+      if (generation.hidden_from_history) return items.filter((item) => item.id !== generation.id);
+      // Keep existing cards in place to avoid UI jumps during polling.
+      if (items.some((item) => item.id === generation.id)) {
+        return items.map((item) => item.id === generation.id ? { ...item, ...generation } : item);
+      }
+      return [generation, ...items].slice(0, 24);
+    });
+    setProfileWorks((items) => {
+      if (generation.hidden_from_history || generation.status !== "succeeded") {
+        return items.filter((item) => item.id !== generation.id);
+      }
+      if (items.some((item) => item.id === generation.id)) {
+        return items.map((item) => item.id === generation.id ? { ...item, ...generation } : item);
+      }
+      return [generation, ...items].slice(0, 36);
+    });
+    if (previewSurface === "private") {
+      setPreview((current) => current?.id === generation.id ? { ...current, ...generation } : current);
+    }
+    if (terminal && (ready || mediaFailed || mediaTimedOut || trackingExpired || generation.status !== "succeeded")) {
+      if (route === "history") void loadHistory();
+      if (route === "profile") void loadProfile();
+      if (ready) showToast("Работа готова в ROXY.");
+      else if (trackingExpired) showToast("Задача слишком долго не завершается. Проверьте историю.");
+      else if (mediaFailed || mediaTimedOut) showToast("Файл не удалось сохранить. Проверьте историю.");
+      else if (["failed", "canceled", "cancelled"].includes(generation.status)) {
+        showToast("Генерация завершилась с ошибкой.");
+      }
+    }
+  }), [route, previewSurface, loadHistory, loadProfile, showToast]);
 
   const loadPartners = useCallback(async () => {
     const [stats, rewards, invitations] = await Promise.allSettled([
@@ -490,11 +566,14 @@ export function RoxySocialApp() {
   }, []);
 
   useEffect(() => {
-    if (route === "history" && history.length === 0) void loadHistory();
     if (route === "profile") void loadProfile();
     if (route === "partners") void loadPartners();
     if (trendsStatus === "idle" && (route === "catalog" || (!booting && route === "home"))) void loadTrends();
-  }, [booting, route, history.length, trendsStatus, loadHistory, loadProfile, loadPartners, loadTrends]);
+  }, [booting, route, trendsStatus, loadProfile, loadPartners, loadTrends]);
+
+  useEffect(() => {
+    if (route === "history") void loadHistory();
+  }, [route, loadHistory]);
 
   useEffect(() => {
     if (route !== "feed") return;
@@ -783,7 +862,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
       let item: Generation = { id: created.id, status: created.status || "queued", model: selected, created_at: new Date().toISOString() };
       try { item = await api.generation(created.id); } catch {}
       notify("success");
-      showToast("Генерация запущена. ROXY можно закрыть — результат придёт в Telegram.");
+      showToast("Генерация запущена. ROXY можно закрыть — готовая работа появится в приложении, даже без чата.");
       onCreated(item);
     } catch (error) {
       notify("error");
@@ -828,7 +907,7 @@ function safeFileName(url: string): string {
 }
 
 function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {
-  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {statusLabel(item.status)}</small>{item.error && <p>Не получилось создать работу. Попробуйте ещё раз или измените описание.</p>}</div><span className={`status ${item.status}`}>{statusLabel(item.status)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
+  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {deliveryStatusLabel(item)}</small>{item.error && <p>Не получилось создать работу. Попробуйте ещё раз или измените описание.</p>}</div><span className={`status ${item.status}`}>{deliveryStatusLabel(item)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
 }
 
 function ProfileScreen({ me, avatar, stats, activePromo, tab, setTab, works, publications, onPreview, onWallet, onCopy }: { me: Me | null; avatar: string; stats: PartnerStats | null; activePromo: ActivePromo | null; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: ProfilePublication[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void; onCopy: (value: string | null | undefined) => Promise<void> }) {
@@ -862,7 +941,7 @@ function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, rea
 function MediaThumb({ item }: { item: Generation | FeedCard }) {
   const url = mediaUrl(item);
   const type = mediaType(item);
-  if (!url) return <span className="media-placeholder"><Icon name={type === "video" ? "video" : type === "audio" ? "music" : "image"}/><small>{statusLabel(item.status) || "Готовим"}</small></span>;
+  if (!url) return <span className="media-placeholder"><Icon name={type === "video" ? "video" : type === "audio" ? "music" : "image"}/><small>{deliveryStatusLabel(item) || "Готовим"}</small></span>;
   if (type === "video") return <video src={url} muted playsInline preload="metadata"/>;
   if (type === "audio") return <span className="media-placeholder audio"><Icon name="music"/><small>Аудио</small></span>;
   return <img src={url} alt="" loading="lazy"/>;
@@ -870,6 +949,7 @@ function MediaThumb({ item }: { item: Generation | FeedCard }) {
 
 function Preview({ item, surface, onClose, onReuse, onPublished, showToast }: { item: Generation | FeedCard; surface: PreviewSurface; onClose: () => void; onReuse: (generationId: string) => Promise<void>; onPublished: (scope: "profile" | "feed") => Promise<void>; showToast: (message: string) => void }) {
   const [current, setCurrent] = useState<Generation | FeedCard>(item);
+  useEffect(() => setCurrent(item), [item]);
   const [publishing, setPublishing] = useState<"profile" | "feed" | null>(null);
   const [promptVisible, setPromptVisible] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -901,7 +981,7 @@ function Preview({ item, surface, onClose, onReuse, onPublished, showToast }: { 
   const remix = async () => { setBusy("remix"); try { await api.remix(current.id, socialSurface); showToast("Повтор запущен"); } catch (error) { showToast(error instanceof Error ? error.message : "Не удалось повторить"); } finally { setBusy(null); } };
   const removePublication = async () => { setBusy("remove"); try { await api.removePublication(current.id, "private"); notify("success"); onClose(); await onPublished("profile"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Не удалось убрать публикацию"); } finally { setBusy(null); } };
 
-  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "Работа ROXY"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{(referenceImages.length > 0 || referenceVideos.length > 0) && <div className="panel" style={{ padding: 12 }}><span className="kicker">Примеры</span><div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>{referenceImages.map((reference, index) => { const durable = reference.includes("/uploads/refs/"); const suffix = `?surface=${encodeURIComponent(socialSurface)}`; const thumb = durable ? `/api/v1/feed/reference-image/${encodeURIComponent(current.id)}/${index}/thumbnail${suffix}` : reference; const full = durable ? `/api/v1/feed/reference-image/${encodeURIComponent(current.id)}/${index}/full${suffix}` : reference; return <a key={`${reference}-${index}`} href={full} target="_blank" rel="noreferrer" aria-label={`Открыть пример ${index + 1}`}><img src={thumb} alt="" loading="lazy" style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover" }} /></a>; })}{referenceVideos.map((reference, index) => <a key={`${reference}-${index}`} href={reference} target="_blank" rel="noreferrer" aria-label={`Открыть видео-пример ${index + 1}`}><video src={reference} muted playsInline preload="metadata" style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover" }} /></a>)}</div></div>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать описание</strong><small>Будет видно в публикации только если включить</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canReuse && <button className="secondary" type="button" disabled={busy === "reuse"} onClick={() => void reuseSettings()}><Icon name="create" size={16}/>{busy === "reuse" ? "Переношу…" : "Использовать настройки"}</button>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Обсуждение</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Комментариев пока нет."/>}</div></div>}</div></div></div>;
+  return <div className="overlay" role="dialog" aria-modal="true"><button className="overlay-backdrop" type="button" onClick={onClose} aria-label="Закрыть"/><div className="preview-card"><button className="preview-close" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button><div className="preview-media">{url && type === "video" ? <video src={url} controls playsInline autoPlay={false}/> : url && type === "audio" ? <audio src={url} controls/> : url ? <img src={url} alt="Результат"/> : <span className="media-placeholder"><Icon name="image"/><small>{current.status === "failed" ? "Генерация не удалась" : current.status === "succeeded" ? deliveryStatusLabel(current) : "Генерация выполняется…"}</small></span>}</div><div className="preview-copy"><span className="kicker">{surface === "private" ? "Моя работа" : surface === "profile" ? "Профиль" : "Лента"}</span><h2>{modelOf(current)?.title || card.model || "Работа ROXY"}</h2><p className="muted">{dateLabel(current.created_at || card.feed_published_at)}</p>{current.prompt && !current.prompt_hidden && <p className="prompt-copy">{current.prompt}</p>}{(referenceImages.length > 0 || referenceVideos.length > 0) && <div className="panel" style={{ padding: 12 }}><span className="kicker">Примеры</span><div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>{referenceImages.map((reference, index) => { const durable = reference.includes("/uploads/refs/"); const suffix = `?surface=${encodeURIComponent(socialSurface)}`; const thumb = durable ? `/api/v1/feed/reference-image/${encodeURIComponent(current.id)}/${index}/thumbnail${suffix}` : reference; const full = durable ? `/api/v1/feed/reference-image/${encodeURIComponent(current.id)}/${index}/full${suffix}` : reference; return <a key={`${reference}-${index}`} href={full} target="_blank" rel="noreferrer" aria-label={`Открыть пример ${index + 1}`}><img src={thumb} alt="" loading="lazy" style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover" }} /></a>; })}{referenceVideos.map((reference, index) => <a key={`${reference}-${index}`} href={reference} target="_blank" rel="noreferrer" aria-label={`Открыть видео-пример ${index + 1}`}><video src={reference} muted playsInline preload="metadata" style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover" }} /></a>)}</div></div>}{canPublish && <div className="panel" style={{ padding: 12 }}><label className="toggle-row"><span><strong>Показать описание</strong><small>Будет видно в публикации только если включить</small></span><input type="checkbox" checked={promptVisible} onChange={(e) => setPromptVisible(e.target.checked)}/><i/></label></div>}<div className="preview-actions">{url && <a className="primary" href={url} target="_blank" rel="noreferrer">Открыть результат</a>}{canReuse && <button className="secondary" type="button" disabled={busy === "reuse"} onClick={() => void reuseSettings()}><Icon name="create" size={16}/>{busy === "reuse" ? "Переношу…" : "Использовать настройки"}</button>}{canPublish && <button className="secondary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("profile")}>{publishing === "profile" ? "Публикую…" : "В профиль"}</button>}{canPublish && <button className="primary" type="button" disabled={Boolean(publishing)} onClick={() => void publish("feed")}>{publishing === "feed" ? "Публикую…" : "В ленту + профиль"}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "like"} onClick={() => void toggleLike()}><Icon name="heart" size={16}/>{card.liked_by_me ? "Лайк есть" : "Лайк"} · {compact(card.likes_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "share"} onClick={() => void share()}><Icon name="share" size={16}/>Поделиться · {compact(card.shares_count)}</button>}{canSocial && <button className="secondary" type="button" disabled={busy === "comments"} onClick={() => void loadComments()}><Icon name="comment" size={16}/>Комментарии · {compact(card.comments_count)}</button>}{canSocial && card.prompt_actions_allowed !== false && <button className="secondary" type="button" disabled={busy === "remix"} onClick={() => void remix()}><Icon name="create" size={16}/>Повторить</button>}{canSocial && isMine && <button className="secondary" type="button" disabled={busy === "remove"} onClick={() => void removePublication()}>Убрать</button>}</div>{commentsOpen && <div className="panel" style={{ padding: 12 }}><div className="section-title"><div><span className="kicker">Обсуждение</span><h2>Комментарии</h2></div><button type="button" onClick={() => setCommentsOpen(false)}>Закрыть</button></div><div className="form-stack"><textarea className="control textarea" maxLength={300} placeholder="Ваш комментарий" value={commentText} onChange={(event) => setCommentText(event.target.value)}/><button className="primary wide" type="button" disabled={!commentText.trim() || busy === "comment"} onClick={() => void addComment()}>{busy === "comment" ? "Отправляю…" : "Отправить"}</button></div><div className="transaction-list">{comments.length ? comments.map((comment) => <div className="transaction" key={comment.id}><div><strong>{comment.author?.display_name || comment.author?.username || "Пользователь"}</strong><small>{dateLabel(comment.created_at)}</small></div><span>{comment.text}</span></div>) : <Empty text="Комментариев пока нет."/>}</div></div>}</div></div></div>;
 }
 
 function WalletSheet({ me, onClose, onRefresh, showToast }: { me: Me | null; onClose: () => void; onRefresh: () => Promise<Me>; showToast: (message: string) => void }) {
