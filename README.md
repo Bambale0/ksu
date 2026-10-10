@@ -180,3 +180,38 @@ New public referral, trend, post, profile and remix links use Telegram bot `?sta
 Previously shared `?startapp=` links remain supported and still open the Mini App directly; already distributed Telegram URLs cannot be rewritten by this server change. Explicit Mini App/private repeat/task links retain their existing behavior. Private, removed or unavailable resources must not expose media through bot previews. Blurred posts show the resource button without unblurred media.
 
 Receiving a private bot message, including `/start`, already re-enables eligible transactional notifications that were deferred because Telegram could not reach the chat. This change does not backfill historical notifications or perform refunds.
+
+## Video-prompt resilience: Grok 4.5 on Neironych (opt-in)
+
+The video_prompt tool keeps Nexus GPT-6 Sol Vision as primary. On explicit
+Nexus HTTP 502/503/504 or an open nexus-prompt-tools circuit, operators may
+enable backup using PROMPT_TOOL_VIDEO_NEIRONYCH_FALLBACK_ENABLED=true and
+the existing NEIRONYCH_API_KEY.
+
+Backup model is grok-4.5 via POST /v1/responses on
+https://api.xn--e1aikcel5c5a.online (NOT Grok Imagine Video).
+The adapter safely reads ROXY video (maximum 30 MB), measures the actual
+duration, samples four JPEG frames, and submits input_image data URLs.
+The API does not document native video-file input for Grok 4.5. Frame-only
+analysis cannot detect sound and may miss brief motion details.
+
+Before the Neironych POST, the outbox transaction pins provider=neironych
+and model=grok-4.5 under the active fenced claim. A stale claim cannot
+initiate a new supplier request. Neironych calls additionally use a stable
+task-derived Idempotency-Key and X-Client-Request-Id; retries use the same
+key and supplier. There is no fallback for moderation 4xx, invalid JSON or
+uncertain network timeouts. Kie is NOT an automatic backup.
+
+Flag defaults false. Before activation, verify Grok 4.5 model availability
+via GET /v1/models, vision multi-image behavior, provider economics and a
+synthetic paid smoke. User ROX ledger debits once; upstream spend still needs
+monitoring after timeouts. Successful failovers record provider=neironych and
+model=grok-4.5, preserving the task identity and existing UI result format.
+
+Monitor prompt_tool_video_fallback logs, provider-specific circuit health,
+latency, outbox attempts, wallet and external spend. Video prompt claims
+have a dedicated 600-second lease (PROMPT_TOOL_VIDEO_OUTBOX_LEASE_SECONDS)
+instead of the usual 90 seconds.
+Measure worst-case pre-processing and inference before raising concurrency:
+a lost worker requires waiting for the lease to expire before recovery.
+Rollback: set the flag false and restart the prompt-tool worker only.
