@@ -7,10 +7,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.api.deps import CurrentUserDep, OptionalCurrentUserDep, RedisDep, SessionDep
 from app.db.history_models import GenerationHistoryState
+from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
@@ -128,6 +129,7 @@ def _generation_view(
     *,
     hidden: bool = False,
     owned_media: list[dict[str, object]] | None = None,
+    media_progress: dict[str, int] | None = None,
 ) -> dict[str, object]:
     cost = Decimal(generation.cost_rox)
     params = generation.parameters or {}
@@ -135,7 +137,17 @@ def _generation_view(
     admin_free = bool(params.get("_admin_free"))
     owned_media = owned_media or []
     owned_urls = [str(item["url"]) for item in owned_media if item.get("url")]
-    result_urls = owned_urls or _provider_result_urls(generation)
+    provider_urls = list(dict.fromkeys(_provider_result_urls(generation)))
+    result_urls = owned_urls or provider_urls
+    progress = media_progress or {}
+    expected = max(len(provider_urls), len(owned_urls), sum(progress.values()))
+    ready = min(len(owned_urls), int(progress.get("ready", len(owned_urls))))
+    failed = max(0, min(expected - ready, int(progress.get("failed", 0))))
+    media_state = (
+        "failed" if failed else
+        "ready" if expected > 0 and ready == expected else
+        "pending"
+    )
     trend_hidden = generation.action_type == "trend"
     model = _model_view(generation)
     view: dict[str, object] = {
@@ -158,6 +170,12 @@ def _generation_view(
         "result_url": result_urls[0] if result_urls else None,
         "result_urls": result_urls,
         "media": owned_media,
+        "media_delivery": {
+            "expected": expected,
+            "ready": ready,
+            "failed": failed,
+            "state": media_state,
+        },
         "result_storage": "owned" if owned_urls else "provider",
         "error": generation.error,
         "hidden_from_history": hidden,
@@ -191,6 +209,30 @@ async def _owned_media_views(
     for generation_id, rows in assets.items():
         result[generation_id] = [MediaAssetService.public_view(row, storage) for row in rows]
     return result
+
+
+async def _media_delivery_progress(
+    session: SessionDep,
+    *,
+    user_id: uuid.UUID,
+    generations: list[Generation],
+) -> dict[uuid.UUID, dict[str, int]]:
+    if not generations:
+        return {}
+    counts = (
+        await session.execute(
+            select(MediaAsset.generation_id, MediaAsset.status, func.count(MediaAsset.id))
+            .where(
+                MediaAsset.user_id == user_id,
+                MediaAsset.generation_id.in_([item.id for item in generations]),
+            )
+            .group_by(MediaAsset.generation_id, MediaAsset.status)
+        )
+    ).all()
+    grouped: dict[uuid.UUID, dict[str, int]] = {}
+    for generation_id, state, count in counts:
+        grouped.setdefault(generation_id, {})[str(state)] = int(count)
+    return grouped
 
 
 async def _owned_generation(
@@ -458,9 +500,10 @@ async def list_generations(
     has_more = len(rows) > limit
     page = rows[:limit]
     media = await _owned_media_views(session, user_id=user.id, generations=page)
+    progress = await _media_delivery_progress(session, user_id=user.id, generations=page)
     return {
         "items": [
-            _generation_view(row, owned_media=media.get(row.id, []))
+            _generation_view(row, owned_media=media.get(row.id, []), media_progress=progress.get(row.id))
             for row in page
         ],
         "has_more": has_more,
@@ -478,7 +521,11 @@ async def get_generation(
     history_state = await session.get(GenerationHistoryState, generation.id)
     hidden = bool(history_state and history_state.user_id == user.id and history_state.hidden_at)
     media = await _owned_media_views(session, user_id=user.id, generations=[generation])
-    return _generation_view(generation, hidden=hidden, owned_media=media.get(generation.id, []))
+    progress = await _media_delivery_progress(session, user_id=user.id, generations=[generation])
+    return _generation_view(
+        generation, hidden=hidden, owned_media=media.get(generation.id, []),
+        media_progress=progress.get(generation.id),
+    )
 
 
 @router.get("/{generation_id}/recreate")

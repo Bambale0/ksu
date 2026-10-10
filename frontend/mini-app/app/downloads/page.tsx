@@ -31,8 +31,9 @@ export default function DownloadsPage() {
   };
 
   useEffect(() => { void load(); }, []);
-  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation }) => {
-    if (ready) void load();
+  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation, mediaFailed }) => {
+    if (generation.status === "succeeded" && (generation.media?.length || 0) > 0 ||
+        ready || mediaFailed || terminal && generation.status !== "succeeded") void load();
   }), []);
 
   return (
@@ -43,9 +44,10 @@ export default function DownloadsPage() {
         <div className="transaction-list">{items.length ? items.map((item) => {
           const model = typeof item.model === "object" ? item.model?.title : String(item.model || "ROXY");
           const owned = (item.media || []).filter((media) => media.id && media.download_url);
-          const fallback = item.result_url || item.result_urls?.[0] || "";
+          const fallback = item.media_delivery ? "" : item.result_url || item.result_urls?.[0] || "";
+          const delivery = item.media_delivery;
           return <div className="transaction" key={item.id} style={{ alignItems: "flex-start" }}>
-            <div><strong>{model || "ROXY"}</strong><small>{dateTime(item.created_at)}</small>{item.prompt && !item.prompt_hidden ? <small>{item.prompt.slice(0, 120)}</small> : null}</div>
+            <div><strong>{model || "ROXY"}</strong><small>{dateTime(item.created_at)}</small>{delivery?.state === "pending" ? <small>Сохраняем файлы: {delivery.ready}/{delivery.expected}</small> : null}{delivery?.state === "failed" ? <small>Не все файлы сохранены: {delivery.ready}/{delivery.expected}</small> : null}{item.prompt && !item.prompt_hidden ? <small>{item.prompt.slice(0, 120)}</small> : null}</div>
             <span style={{ display: "grid", gap: 8 }}>
               {owned.map((media, index) => <a key={media.id} href={media.download_url} target="_blank" rel="noreferrer">Скачать {owned.length > 1 ? index + 1 : ""}{sizeLabel(media.size_bytes) ? ` · ${sizeLabel(media.size_bytes)}` : ""}</a>)}
               {!owned.length && fallback ? <a href={fallback} target="_blank" rel="noreferrer">Открыть результат</a> : null}

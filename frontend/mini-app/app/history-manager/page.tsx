@@ -8,7 +8,9 @@ import type { Generation } from "@/lib/types";
 import { subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 
 function resultUrl(item: Generation): string {
-  return item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
+  return item.media_delivery
+    ? item.media?.find((asset) => asset.url)?.url || ""
+    : item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
 }
 
 export default function HistoryManagerPage() {

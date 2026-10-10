@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
+import { isGenerationMediaReady, isTerminalGeneration, rememberGenerationIds, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { telegramHeaders } from "@/lib/telegram";
-import type { GenerationModel, UiField } from "@/lib/types";
+import type { Generation, GenerationModel, UiField } from "@/lib/types";
 
 const INPUT_FIELDS = new Set(["image_url", "image_urls", "image_input", "input_urls"]);
 const BATCH_UNSUPPORTED_FIELDS = new Set(["bbox_list"]);
@@ -102,18 +103,56 @@ export default function BatchPage() {
   const [jobs, setJobs] = useState<BatchJob[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const delivered = useRef(new Map<string, Generation>());
+  const refreshTimer = useRef<number | null>(null);
+
+  const mergeDelivery = useCallback((job: BatchJob): BatchJob => ({
+    ...job,
+    items: job.items?.map((item) => {
+      const latest = delivered.current.get(item.generation.id);
+      if (!latest) return item;
+      const url = isGenerationMediaReady(latest) ? latest.media?.[0]?.url || null : null;
+      return {
+        ...item,
+        generation: {
+          ...item.generation,
+          status: latest.status,
+          result_url: url,
+          error: latest.media_delivery?.state === "failed" ? "Не все файлы сохранены" : latest.error,
+        },
+      };
+    }),
+  }), []);
 
   const selected = useMemo(() => models.find((model) => model.id === modelId) || null, [modelId, models]);
   const fields = useMemo(() => batchFields(selected), [selected]);
 
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       const payload = await request<{ items: BatchJob[] }>("/api/v1/batch-generations?limit=10");
-      setJobs(payload.items || []);
+      const next = payload.items || [];
+      rememberGenerationIds(next.flatMap((job) =>
+        (job.items || []).filter((item) => !isTerminalGeneration(item.generation.status))
+          .map((item) => item.generation.id),
+      ));
+      setJobs(next.map(mergeDelivery));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить пакеты");
     }
-  };
+  }, [mergeDelivery]);
+
+  useEffect(() => subscribeToGenerationUpdates(({ generation, ready, terminal, mediaFailed }) => {
+    delivered.current.set(generation.id, generation);
+    setJobs((current) => current.map(mergeDelivery));
+    if (terminal && (ready || mediaFailed || generation.status !== "succeeded")) {
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+      refreshTimer.current = window.setTimeout(() => { void loadJobs(); }, 650);
+    }
+  }), [loadJobs, mergeDelivery]);
+
+  useEffect(() => () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+  }, []);
 
   useEffect(() => {
     void Promise.all([
@@ -130,7 +169,7 @@ export default function BatchPage() {
       }),
       loadJobs(),
     ]).catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть Batch"));
-  }, []);
+  }, [loadJobs]);
 
   const chooseModel = (id: string) => {
     const model = models.find((item) => item.id === id);
@@ -221,7 +260,8 @@ export default function BatchPage() {
       setFiles([]);
       setUrls([]);
       setQuote(null);
-      setJobs((current) => [result, ...current.filter((item) => item.id !== result.id)]);
+      rememberGenerationIds((result.items || []).map((item) => item.generation.id));
+      setJobs((current) => [mergeDelivery(result), ...current.filter((item) => item.id !== result.id)]);
       window.setTimeout(() => void loadJobs(), 1000);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось запустить пакет");
@@ -238,7 +278,8 @@ export default function BatchPage() {
         method: "POST",
         headers: { "Idempotency-Key": idem("batch-retry") },
       });
-      setJobs((current) => current.map((item) => item.id === result.id ? result : item));
+      rememberGenerationIds((result.items || []).map((item) => item.generation.id));
+      setJobs((current) => current.map((item) => item.id === result.id ? mergeDelivery(result) : item));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось повторить ошибки");
     } finally { setBusy(false); }

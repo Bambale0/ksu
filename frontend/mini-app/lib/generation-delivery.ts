@@ -1,6 +1,5 @@
 import type { Generation } from "./types";
 
-
 import { telegram } from "./telegram";
 
 export const GENERATION_TRACK_EVENT = "roxy:generation-track";
@@ -18,6 +17,19 @@ export function isTerminalGeneration(status: string): boolean {
 
 export function hasOwnedGenerationMedia(item: Generation): boolean {
   return Boolean(item.media?.some((media) => media.url));
+}
+
+export function isGenerationMediaReady(item: Generation): boolean {
+  if (item.status !== "succeeded" || !hasOwnedGenerationMedia(item)) return false;
+  if (item.media_delivery) return item.media_delivery.state === "ready";
+  // Older API releases do not expose ingestion progress; fall back to
+  // checking known result count, without trusting a provider URL as delivery.
+  return (item.media?.filter((asset) => asset.url).length || 0) >=
+    Math.max(1, item.result_urls?.length || 0);
+}
+
+export function isGenerationMediaFailed(item: Generation): boolean {
+  return item.status === "succeeded" && item.media_delivery?.state === "failed";
 }
 
 export function signedUserHint(): number | null {
@@ -41,7 +53,14 @@ export function readPendingGenerationIds(telegramId: number): string[] {
 }
 
 export const GENERATION_UPDATE_EVENT = "roxy:generation-update";
-export type GenerationDeliveryUpdate = { generation: Generation; ready: boolean; terminal: boolean };
+export type GenerationDeliveryUpdate = {
+  generation: Generation;
+  ready: boolean;
+  terminal: boolean;
+  mediaFailed?: boolean;
+  mediaTimedOut?: boolean;
+  trackingExpired?: boolean;
+};
 
 
 export function savePendingGenerationIds(telegramId: number, ids: string[]): void {

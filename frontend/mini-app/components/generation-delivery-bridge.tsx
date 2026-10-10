@@ -5,7 +5,8 @@ import { api } from "@/lib/api";
 import {
   announceGenerationUpdate,
   GENERATION_TRACK_EVENT,
-  hasOwnedGenerationMedia,
+  isGenerationMediaReady,
+  isGenerationMediaFailed,
   isGenerationId,
   isTerminalGeneration,
   readPendingGenerationIds,
@@ -26,6 +27,8 @@ const MAX_RETRY_MS = 30000;
 const MAX_IN_FLIGHT = 4;
 const MAX_MEDIA_WAIT_MS = 10 * 60 * 1000;
 const SLOW_INGEST_POLL_MS = 60000;
+const MAX_TRACK_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_DISCOVERY_RETRIES = 5;
 
 // One observer per authenticated Mini App WebView, shared by all routes.
 // It never depends on whether a private Telegram chat exists.
@@ -39,6 +42,8 @@ export function GenerationDeliveryBridge() {
     let polling = false;
     let timer: number | null = null;
     let lastDiscovery = 0;
+    let discoveryAttempts = 0;
+    let discoveryTimer: number | null = null;
 
     const visible = () => document.visibilityState !== "hidden" && navigator.onLine !== false;
 
@@ -76,16 +81,28 @@ export function GenerationDeliveryBridge() {
         const item = await api.generation(id);
         if (disposed || !pending.has(id)) return;
         const terminal = isTerminalGeneration(item.status);
-        const ready = item.status === "succeeded" && hasOwnedGenerationMedia(item);
-        const signature = JSON.stringify([item.status, item.updated_at, item.result_url, item.error, item.media?.length || 0]);
+        const ready = isGenerationMediaReady(item);
+        const mediaFailed = isGenerationMediaFailed(item);
+        const createdAt = item.created_at ? new Date(item.created_at).getTime() : Date.now();
+        const pastDeadline = Number.isFinite(createdAt) && Date.now() - createdAt > MAX_TRACK_AGE_MS;
+        const mediaTimedOut = item.status === "succeeded" && !ready && !mediaFailed && pastDeadline;
+        const trackingExpired = !terminal && pastDeadline;
+        const signature = JSON.stringify([
+          item.status, item.updated_at, item.result_url, item.error,
+          item.media?.map((asset) => asset.url),
+          item.media_delivery, mediaTimedOut, trackingExpired,
+        ]);
         if (signature !== state.signature) {
           state.signature = signature;
-          announceGenerationUpdate({ generation: item, terminal, ready });
-          if (terminal && (ready || item.status !== "succeeded")) {
+          announceGenerationUpdate({
+            generation: item, terminal: terminal || trackingExpired, ready,
+            mediaFailed, mediaTimedOut, trackingExpired,
+          });
+          if (terminal && (ready || mediaFailed || mediaTimedOut || item.status !== "succeeded")) {
             console.info("roxy_generation_delivery_complete", { generation_id: id, status: item.status, media_ready: ready });
           }
         }
-        if (terminal && (item.status !== "succeeded" || ready)) {
+        if (trackingExpired || terminal && (item.status !== "succeeded" || ready || mediaFailed || mediaTimedOut)) {
           pending.delete(id);
           persist();
           return;
@@ -148,18 +165,31 @@ export function GenerationDeliveryBridge() {
     async function discover(): Promise<void> {
       if (identity === null || disposed || !visible()) return;
       if (Date.now() - lastDiscovery < 10000) return;
-      lastDiscovery = Date.now();
+      // One bounded retry timer also works if there are no known pending IDs.
+      if (discoveryTimer !== null) {
+        window.clearTimeout(discoveryTimer);
+        discoveryTimer = null;
+      }
       try {
         const page = await api.generations("limit=24");
         if (disposed) return;
-        addTasks(page.items.filter((item) =>
-          !isTerminalGeneration(item.status) || (
-            item.status === "succeeded" && !hasOwnedGenerationMedia(item) &&
-            item.created_at && Date.now() - new Date(item.created_at).getTime() < 7 * 24 * 60 * 60 * 1000
-          ),
-        ).map((item) => item.id));
+        lastDiscovery = Date.now();
+        discoveryAttempts = 0;
+        addTasks(page.items.filter((item) => {
+          const created = item.created_at ? new Date(item.created_at).getTime() : Date.now();
+          const recent = Number.isFinite(created) && Date.now() - created < MAX_TRACK_AGE_MS;
+          return recent && (!isTerminalGeneration(item.status) ||
+            (item.status === "succeeded" && !isGenerationMediaReady(item) && !isGenerationMediaFailed(item)));
+        }).map((item) => item.id));
       } catch {
-        // Auth/network errors cannot suppress tracking of already known tasks.
+        discoveryAttempts += 1;
+        if (!disposed && discoveryAttempts <= MAX_DISCOVERY_RETRIES) {
+          const delay = Math.min(MAX_RETRY_MS, 2000 * 2 ** Math.min(discoveryAttempts, 4));
+          discoveryTimer = window.setTimeout(() => {
+            discoveryTimer = null;
+            void discover();
+          }, delay);
+        }
       }
     }
 
@@ -220,6 +250,7 @@ export function GenerationDeliveryBridge() {
     return () => {
       disposed = true;
       cancelTimer();
+      if (discoveryTimer !== null) window.clearTimeout(discoveryTimer);
       window.removeEventListener(GENERATION_TRACK_EVENT, onTracked);
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);

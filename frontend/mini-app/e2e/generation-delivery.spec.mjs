@@ -34,9 +34,10 @@ async function telegramWithoutChat(page) {
   });
 }
 
-async function fakeApi(page, { taskId, details }) {
+async function fakeApi(page, { taskId, details, failListTimes = 0 }) {
   let detailRequests = 0;
   let creates = 0;
+  let listRequests = 0;
   let lastTask = task(taskId, 'queued');
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -60,8 +61,10 @@ async function fakeApi(page, { taskId, details }) {
       return json({ id: taskId, status: 'queued' }, 202);
     }
     if (path === '/api/v1/generations' && method === 'GET') {
+      listRequests++;
+      if (listRequests <= failListTimes) return json({ detail: 'temporary server issue' }, 503);
       const succeededOnly = new URL(request.url()).searchParams.get('status') === 'succeeded';
-      const include = creates || taskId === TREND_TASK_ID;
+      const include = (creates || taskId === TREND_TASK_ID) && !lastTask.hidden_from_history;
       const items = include && (!succeededOnly || lastTask.status === 'succeeded') ? [lastTask] : [];
       return json({ items, has_more: false });
     }
@@ -80,7 +83,7 @@ async function fakeApi(page, { taskId, details }) {
     if (path === '/api/v1/trend-collections') return json({ items: [] });
     return json({ items: [] });
   });
-  return { detailRequests: () => detailRequests, creates: () => creates };
+  return { detailRequests: () => detailRequests, creates: () => creates, listRequests: () => listRequests };
 }
 
 test('pending trend result arrives in Mini App with no Telegram chat, including delayed owned media', async ({ page }) => {
@@ -177,4 +180,174 @@ test('generation polling pauses when WebView is hidden and resumes on visibility
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL, { timeout: 10000 });
+});
+
+test('multi-result generation stays pending until every owned asset is ready', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const first = { ...task(TREND_TASK_ID, 'succeeded', true), media_delivery: {
+    expected: 2, ready: 1, failed: 0, state: 'pending',
+  } };
+  const second = { ...first, media_delivery: { expected: 2, ready: 2, failed: 0, state: 'ready' },
+    media: [...first.media, { url: IMAGE_URL + '#second', ordinal: 1 }] };
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n === 1 ? task(TREND_TASK_ID, 'queued') : n < 4 ? first : second,
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect(page.locator('.history-card').first()).toContainText('Сохраняем файл', { timeout: 12000 });
+  await expect(page.locator('.history-card').first()).toContainText('Готово', { timeout: 20000 });
+  expect(counts.detailRequests()).toBeGreaterThanOrEqual(4);
+  await page.waitForTimeout(300);
+  const complete = counts.detailRequests();
+  await page.waitForTimeout(3500);
+  expect(counts.detailRequests()).toBe(complete);
+});
+
+test('terminal failed media ingest informs the user without polling forever', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n < 2 ? task(TREND_TASK_ID, 'queued') :
+      { ...task(TREND_TASK_ID, 'succeeded'), media_delivery: {
+        expected: 1, ready: 0, failed: 1, state: 'failed',
+      } },
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect(page.locator('.history-card').first()).toContainText('Не все файлы сохранены', { timeout: 12000 });
+  // Deep-link and shared observer may both fetch the terminal result once.
+  await page.waitForTimeout(2800);
+  const last = counts.detailRequests();
+  await page.waitForTimeout(3200);
+  expect(counts.detailRequests()).toBe(last);
+});
+
+test('hidden completed generation remains accessible by owner but never reappears in history', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const hidden = (status, ready = false) => ({
+    ...task(TREND_TASK_ID, status, ready), hidden_from_history: true,
+  });
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n < 2 ? hidden('queued') : hidden('succeeded', true),
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL, { timeout: 15000 });
+  await expect(page.locator('.history-card')).toHaveCount(0);
+  expect(counts.detailRequests()).toBeGreaterThanOrEqual(2);
+});
+
+test('recent-history discovery retries even without a pending local UUID', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID, failListTimes: 1,
+    details: (n) => n < 2 ? task(TREND_TASK_ID, 'queued') : task(TREND_TASK_ID, 'succeeded', true),
+  });
+  await page.goto('/mini-app/?route=home');
+  await expect.poll(() => counts.listRequests(), { timeout: 14000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => counts.detailRequests(), { timeout: 16000 }).toBeGreaterThanOrEqual(2);
+  // Route via the real popstate handler without reloading the WebView.
+  await page.evaluate(() => {
+    const target = new URL(location.href);
+    target.searchParams.set('route', 'history');
+    window.history.pushState({}, '', target);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page.locator('.history-card').first()).toContainText('Готово', { timeout: 10000 });
+});
+
+test('batch start registers each generated image and updates its thumbnails automatically', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const ids = [NORMAL_TASK_ID, '44444444-4444-4444-8444-444444444444'];
+  const detailCalls = [0, 0];
+  let launched = false;
+  const job = {
+    id: '55555555-5555-4555-8555-555555555555', status: 'running',
+    model_id: model.id, prompt: 'Пакетное тестирование', input_count: 2,
+    succeeded_count: 0, failed_count: 0, active_count: 2, progress_percent: 0,
+    total_charged_credits: '50.00',
+    items: ids.map((id, ordinal) => ({ ordinal, generation: { id, status: 'queued', result_url: null } })),
+  };
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    const json = (body, status = 200) => route.fulfill({
+      status, contentType: 'application/json', body: JSON.stringify(body),
+    });
+    if (path === '/api/v1/me') return json({ id: 'signed-user', telegram_id: 777, first_name: 'QA' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [{ ...model, known_fields: ['image_url'] }], families: [] });
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false });
+    if (path === '/api/v1/uploads/kie') return json({ url: 'https://cdn.example.invalid/mock-image.png' });
+    if (path === '/api/v1/batch-generations' && method === 'POST') {
+      launched = true;
+      return json(job, 202);
+    }
+    if (path === '/api/v1/batch-generations') return json({ items: launched ? [job] : [] });
+    for (let index = 0; index < ids.length; index++) {
+      if (path === '/api/v1/generations/' + ids[index]) {
+        detailCalls[index]++;
+        const ready = detailCalls[index] >= 2;
+        return json(task(ids[index], ready ? 'succeeded' : 'queued', ready));
+      }
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/batch/');
+  await page.locator('textarea.control').first().fill('Пакетное тестирование');
+  await page.locator('.upload-control input[type="file"]').setInputFiles([
+    { name: 'one.png', mimeType: 'image/png', buffer: Buffer.from('one') },
+    { name: 'two.png', mimeType: 'image/png', buffer: Buffer.from('two') },
+  ]);
+  await page.getByRole('button', { name: 'Запустить пакет' }).click();
+  await expect.poll(() => launched).toBe(true);
+  await expect(page.locator('.tool-result-card .media-tile img')).toHaveCount(2, { timeout: 22000 });
+  expect(detailCalls[0]).toBeGreaterThanOrEqual(2);
+  expect(detailCalls[1]).toBeGreaterThanOrEqual(2);
+});
+
+test('retrying failed batch items registers the new generation and delivers its media', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const batchId = '66666666-6666-4666-8666-666666666666';
+  let retried = false;
+  let detailRequests = 0;
+  const failed = {
+    id: batchId, model_id: model.id, prompt: 'Retry', status: 'failed',
+    input_count: 1, succeeded_count: 0, failed_count: 1, active_count: 0,
+    progress_percent: 100, total_charged_credits: '25.00',
+    items: [{ ordinal: 0, generation: { id: TREND_TASK_ID, status: 'failed', result_url: null } }],
+  };
+  await page.route('**/api/v1/**', (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    const json = (body, status = 200) => route.fulfill({
+      status, contentType: 'application/json', body: JSON.stringify(body),
+    });
+    if (path === '/api/v1/me') return json({ telegram_id: 777, first_name: 'QA' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [{ ...model, known_fields: ['image_url'] }], families: [] });
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false });
+    if (path.endsWith('/retry-quote')) return json({ failed_count: 1, total_cost_credits: '25.00' });
+    if (path.endsWith('/retry') && req.method() === 'POST') {
+      retried = true;
+      return json({
+        ...failed, status: 'running', failed_count: 0, active_count: 1,
+        items: [{ ordinal: 0, generation: { id: NORMAL_TASK_ID, status: 'queued', result_url: null } }],
+      }, 202);
+    }
+    if (path === '/api/v1/batch-generations') return json({ items: [retried ? {
+      ...failed, status: 'running', failed_count: 0, active_count: 1,
+      items: [{ ordinal: 0, generation: { id: NORMAL_TASK_ID, status: 'queued', result_url: null } }],
+    } : failed] });
+    if (path === '/api/v1/generations/' + NORMAL_TASK_ID) {
+      detailRequests++;
+      return json(task(NORMAL_TASK_ID, detailRequests >= 2 ? 'succeeded' : 'queued', detailRequests >= 2));
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/batch/');
+  await page.getByRole('button', { name: 'Повторить ошибки' }).click();
+  await expect.poll(() => retried).toBe(true);
+  await expect(page.locator('.tool-result-card .media-tile img')).toHaveCount(1, { timeout: 14000 });
+  expect(detailRequests).toBeGreaterThanOrEqual(2);
 });
