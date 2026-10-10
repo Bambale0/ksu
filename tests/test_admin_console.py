@@ -114,11 +114,14 @@ def test_admin_login_fits_short_telegram_webview_and_explains_launch_contract() 
     assert html.index('id="loginButton"') < html.index('id="loginRecovery"')
 
 
-def test_production_deploy_repairs_and_verifies_admin_security_key() -> None:
+def test_production_deploy_validates_without_changing_admin_security_key() -> None:
     workflow = _read(ROOT / ".github" / "workflows" / "deploy-production.yml")
 
     assert "ADMIN_SECURITY_KEY" in workflow
-    assert "/dev/urandom" in workflow
+    assert "/dev/urandom" not in workflow
+    assert "validate_admin_security_key" in workflow
+    assert "ADMIN_SECURITY_KEY must be configured with at least 32 characters" in workflow
+    assert "if len(key) < 32:" in workflow
     assert "normalize_admin_security_key" in workflow
     assert "s/[[:space:]]+#.*$//" in workflow
     assert "settings.admin_security_key" in workflow
