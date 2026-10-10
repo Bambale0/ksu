@@ -87,7 +87,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <Script src="/mini-app/profile-id-ux.js" strategy="afterInteractive" />
         <ClipboardCompatibilityBridge />
         <TelegramAuthBoundary>
-          <OnboardingRequiredBoundary><GenerationDeliveryBridge />{children}</OnboardingRequiredBoundary>
+          <GenerationDeliveryBridge />
+          <OnboardingRequiredBoundary>{children}</OnboardingRequiredBoundary>
         </TelegramAuthBoundary>
       </body>
     </html>
