@@ -425,6 +425,9 @@ test('more than 32 pending generations are observed without silently losing over
     return json({ items: [] });
   });
   await page.goto('/mini-app/?route=home');
+  // WebKit may return from DOMContentLoaded before React attaches listeners.
+  // Simulate a real user submission only after the interactive UI has mounted.
+  await expect(page.locator('.bottom-nav')).toBeVisible();
   await page.evaluate((taskIds) => window.dispatchEvent(new CustomEvent('roxy:generation-track', {
     detail: { ids: taskIds, telegramId: 777 },
   })), ids);
