@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import type { Generation } from "@/lib/types";
+import { subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 
 type OwnedMedia = { id?: string; url?: string; download_url?: string; public_url?: string; content_type?: string | null; size_bytes?: number | null; ordinal?: number };
 type GenerationWithMedia = Omit<Generation, "media"> & { media?: OwnedMedia[] };
@@ -30,6 +31,9 @@ export default function DownloadsPage() {
   };
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation }) => {
+    if (ready) void load();
+  }), []);
 
   return (
     <StandaloneShell kicker="Файлы" title="Скачать результаты" copy="Когда результат уже перенесён в собственное хранилище ROXY, скачивание идёт через защищённую ссылку с корректным именем файла.">

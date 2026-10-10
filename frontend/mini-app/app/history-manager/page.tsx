@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import type { Generation } from "@/lib/types";
+import { subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 
 function resultUrl(item: Generation): string {
   return item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
@@ -32,6 +33,9 @@ export default function HistoryManagerPage() {
   };
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation }) => {
+    if (terminal && (ready || generation.status !== "succeeded")) void load();
+  }), []);
 
   const hide = async (id: string) => {
     setBusy(id); setError("");
