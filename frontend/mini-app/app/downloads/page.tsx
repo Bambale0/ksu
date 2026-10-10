@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
@@ -19,22 +19,44 @@ function sizeLabel(bytes?: number | null): string {
 export default function DownloadsPage() {
   const [items, setItems] = useState<GenerationWithMedia[]>([]);
   const [error, setError] = useState("");
+  const requestVersion = useRef(0);
+  const refreshTimer = useRef<number | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setError("");
     try {
       const payload = await customerRequest<{ items: GenerationWithMedia[] }>("/api/v1/generations?limit=50&status=succeeded");
-      setItems(payload.items || []);
+      // Multiple results can finish together; a stale response must never
+      // overwrite a more recent owned-media view.
+      if (version === requestVersion.current) setItems(payload.items || []);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить файлы");
+      if (version === requestVersion.current) {
+        setError(reason instanceof Error ? reason.message : "Не удалось загрузить файлы");
+      }
     }
-  };
+  }, []);
 
-  useEffect(() => { void load(); }, []);
-  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation, mediaFailed }) => {
-    if (generation.status === "succeeded" && (generation.media?.length || 0) > 0 ||
-        ready || mediaFailed || terminal && generation.status !== "succeeded") void load();
-  }), []);
+  useEffect(() => {
+    void load();
+    return () => { requestVersion.current += 1; };
+  }, [load]);
+  useEffect(() => {
+    const unsubscribe = subscribeToGenerationUpdates(({ terminal, ready, generation, mediaFailed }) => {
+      if (generation.status === "succeeded" && (generation.media?.length || 0) > 0 ||
+          ready || mediaFailed || terminal && generation.status !== "succeeded") {
+        if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+        refreshTimer.current = window.setTimeout(() => {
+          refreshTimer.current = null;
+          void load();
+        }, 90);
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    };
+  }, [load]);
 
   return (
     <StandaloneShell kicker="Файлы" title="Скачать результаты" copy="Когда результат уже перенесён в собственное хранилище ROXY, скачивание идёт через защищённую ссылку с корректным именем файла.">

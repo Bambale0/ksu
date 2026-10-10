@@ -66,7 +66,7 @@ export function GenerationDeliveryBridge() {
     const addTasks = (ids: string[]) => {
       let added = false;
       for (const id of ids) {
-        if (!isGenerationId(id) || pending.has(id) || pending.size >= 32) continue;
+        if (!isGenerationId(id) || pending.has(id)) continue;
         pending.set(id, { nextAt: 0, errors: 0, signature: "", waitingSince: null, warnedAboutIngest: false });
         added = true;
       }
@@ -88,8 +88,9 @@ export function GenerationDeliveryBridge() {
         const mediaTimedOut = item.status === "succeeded" && !ready && !mediaFailed && pastDeadline;
         const trackingExpired = !terminal && pastDeadline;
         const signature = JSON.stringify([
-          item.status, item.updated_at, item.result_url, item.error,
-          item.media?.map((asset) => asset.url),
+          item.status, item.updated_at, item.error,
+          // Signed media URLs rotate; only asset identities and delivery counts change state.
+          item.media?.map((asset) => [asset.id, asset.ordinal, asset.kind, asset.content_type]),
           item.media_delivery, mediaTimedOut, trackingExpired,
         ]);
         if (signature !== state.signature) {

@@ -110,8 +110,15 @@ export default function BatchPage() {
     ...job,
     items: job.items?.map((item) => {
       const latest = delivered.current.get(item.generation.id);
-      if (!latest) return item;
-      const url = isGenerationMediaReady(latest) ? latest.media?.[0]?.url || null : null;
+      if (!latest) {
+        // Batch list exposes provider URLs: they may already have expired.
+        // Never display them before the authenticated detail API reconciles owned media.
+        return item.generation.status === "succeeded"
+          ? { ...item, generation: { ...item.generation, result_url: null } }
+          : item;
+      }
+      const url = isGenerationMediaReady(latest)
+        ? latest.media?.find((asset) => asset.url)?.url || null : null;
       return {
         ...item,
         generation: {
@@ -132,8 +139,10 @@ export default function BatchPage() {
       const payload = await request<{ items: BatchJob[] }>("/api/v1/batch-generations?limit=10");
       const next = payload.items || [];
       rememberGenerationIds(next.flatMap((job) =>
-        (job.items || []).filter((item) => !isTerminalGeneration(item.generation.status))
-          .map((item) => item.generation.id),
+        (job.items || []).filter((item) =>
+          !isTerminalGeneration(item.generation.status) ||
+          (item.generation.status === "succeeded" && !delivered.current.has(item.generation.id))
+        ).map((item) => item.generation.id),
       ));
       setJobs(next.map(mergeDelivery));
     } catch (reason) {
@@ -309,7 +318,7 @@ export default function BatchPage() {
           <div className="section-title"><div><span className="kicker">{job.model_id}</span><h2>{job.succeeded_count}/{job.input_count} готово</h2></div><span className={`status ${job.status}`}>{statusLabel(job.status)}</span></div>
           <div className="tool-progress"><i style={{ width: `${Math.max(0, Math.min(100, Number(job.progress_percent) || 0))}%` }}/></div>
           <div className="profile-stats"><div><strong>{job.succeeded_count}</strong><span>успешно</span></div><div><strong>{job.failed_count}</strong><span>ошибок</span></div><div><strong>{job.admin_free ? "0" : money(job.total_charged_credits)}</strong><span>ROX</span></div></div>
-          {job.items?.length ? <div className="media-grid">{job.items.map((item) => <div className="media-tile" key={item.ordinal}>{item.generation.result_url ? <img src={item.generation.result_url} alt={`Результат ${item.ordinal + 1}`}/> : <span className="media-placeholder"><small>{item.generation.error ? "Не получилось" : statusLabel(item.generation.status)}</small></span>}</div>)}</div> : null}
+          {job.items?.length ? <div className="media-grid">{job.items.map((item) => <div className="media-tile" key={item.ordinal}>{item.generation.result_url ? <img src={item.generation.result_url} alt={`Результат ${item.ordinal + 1}`}/> : <span className="media-placeholder"><small>{item.generation.error ? "Не получилось" : item.generation.status === "succeeded" ? "Сохраняем файл" : statusLabel(item.generation.status)}</small></span>}</div>)}</div> : null}
           {job.failed_count > 0 && !["running", "queued"].includes(job.status) ? <button className="secondary wide" type="button" disabled={busy} onClick={() => void retry(job)}>Повторить ошибки</button> : null}
         </article>) : <p className="muted">Пакетов пока нет.</p>}</div>
       </div>

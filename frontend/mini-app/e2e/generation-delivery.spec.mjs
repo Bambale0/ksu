@@ -370,3 +370,122 @@ test('failed first asset does not block subsequent ready files', async ({ page }
   await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL);
   expect(counts.detailRequests()).toBeGreaterThanOrEqual(4);
 });
+
+test('reopening a completed batch reconciles expired provider thumbnails to owned media', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let reads = 0;
+  const expired = 'https://provider.example.invalid/expired-original.png';
+  await page.route('**/api/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (payload) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+    if (path === '/api/v1/me') return json({ telegram_id: 777, first_name: 'QA' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [{ ...model, known_fields: ['image_url'] }], families: [] });
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false });
+    if (path === '/api/v1/batch-generations') return json({ items: [{
+      id: '66666666-6666-4666-8666-666666666666', status: 'succeeded', input_count: 1,
+      succeeded_count: 1, failed_count: 0, active_count: 0, progress_percent: 100,
+      model_id: model.id, total_charged_credits: '25.00',
+      items: [{ ordinal: 0, generation: { id: NORMAL_TASK_ID, status: 'succeeded', result_url: expired } }],
+    }] });
+    if (path === '/api/v1/generations/' + NORMAL_TASK_ID) {
+      reads++;
+      return json({ ...task(NORMAL_TASK_ID, 'succeeded', true), media_delivery: {
+        expected: 1, ready: 1, failed: 0, state: 'ready',
+      } });
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/batch/');
+  await expect(page.locator('.tool-result-card .media-tile img')).toHaveAttribute('src', IMAGE_URL, { timeout: 18000 });
+  expect(reads).toBeGreaterThan(0);
+});
+
+test('more than 32 pending generations are observed without silently losing overflow', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const ids = Array.from({ length: 42 }, (_, index) =>
+    '00000000-0000-4000-8000-' + String(index + 1).padStart(12, '0'));
+  const observed = new Set();
+  await page.route('**/api/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (payload) => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(payload),
+    });
+    if (path === '/api/v1/me') return json({ telegram_id: 777, first_name: 'QA' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false });
+    const id = path.replace('/api/v1/generations/', '');
+    if (ids.includes(id) && path.startsWith('/api/v1/generations/')) {
+      observed.add(id);
+      return json({ ...task(id, 'succeeded', true), media_delivery: {
+        expected: 1, ready: 1, failed: 0, state: 'ready',
+      } });
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/?route=home');
+  await page.evaluate((taskIds) => window.dispatchEvent(new CustomEvent('roxy:generation-track', {
+    detail: { ids: taskIds, telegramId: 777 },
+  })), ids);
+  await expect.poll(() => observed.size, { timeout: 18000 }).toBe(ids.length);
+});
+
+test('downloads never regresses when an older list response resolves after fresh media', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let requests = 0;
+  const old = { ...task(TREND_TASK_ID, 'succeeded'), media_delivery: {
+    expected: 1, ready: 0, failed: 0, state: 'pending',
+  } };
+  const fresh = { ...task(TREND_TASK_ID, 'succeeded', true), media_delivery: {
+    expected: 1, ready: 1, failed: 0, state: 'ready',
+  }, media: [{ id: 'owned1', url: IMAGE_URL, download_url: '/api/v1/media/owned1/download' }] };
+  await page.route('**/api/v1/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (payload) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+    if (path === '/api/v1/me') return json({ telegram_id: 777 });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/generations') {
+      requests++;
+      const snapshot = requests === 1 ? old : fresh;
+      if (requests === 1) await new Promise((resolve) => setTimeout(resolve, 1800));
+      return json({ items: [snapshot], has_more: false });
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/downloads/');
+  await expect.poll(() => requests).toBeGreaterThanOrEqual(1);
+  await page.evaluate((generation) => window.dispatchEvent(new CustomEvent('roxy:generation-update', {
+    detail: { generation, terminal: true, ready: true },
+  })), fresh);
+  const link = page.getByRole('link', { name: /Скачать/ }).first();
+  await expect(link).toHaveAttribute('href', '/api/v1/media/owned1/download', { timeout: 12000 });
+  await page.waitForTimeout(2000);
+  await expect(link).toHaveAttribute('href', '/api/v1/media/owned1/download');
+});
+
+test('rotating signed media URLs do not generate duplicate delivery events', async ({ page }) => {
+  await telegramWithoutChat(page);
+  await page.addInitScript(() => {
+    window.__deliveryEvents = [];
+    window.addEventListener('roxy:generation-update', (event) => {
+      window.__deliveryEvents.push(event.detail.generation);
+    });
+  });
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n === 1 ? task(TREND_TASK_ID, 'queued') : {
+      ...task(TREND_TASK_ID, 'succeeded'),
+      result_url: 'https://provider.example.invalid/video.png',
+      media: [{ id: 'stable-owned-asset', ordinal: 0, url: IMAGE_URL + '?token=' + n }],
+      media_delivery: { expected: 2, ready: 1, failed: 0, state: 'pending' },
+    },
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect.poll(() => counts.detailRequests(), { timeout: 25000 }).toBeGreaterThanOrEqual(5);
+  await page.waitForTimeout(150);
+  const partialEvents = await page.evaluate(() =>
+    window.__deliveryEvents.filter((item) => item.media_delivery?.ready === 1).length);
+  expect(partialEvents).toBe(1);
+});

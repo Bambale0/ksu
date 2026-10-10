@@ -774,3 +774,12 @@ User approved publishing, merging after successful checks, and deployment of bot
 - **API/ownership:** existing `GET /api/v1/generations/{id}` verifies authenticated owner; `GET /api/v1/generations` lists current user's generations. No schema migration or new public backend endpoint required.
 - **Regression plan:** Chromium+WebKit mocked API E2E: delayed trend success and media-ready after redirect without chat; ordinary generation while browser reloads; failed job/retry/visibility/resume; no duplicate polling after terminal. Frontend static build/typecheck, existing user-scenario E2E, PR CI and exact-SHA release/smoke.
 - **Verification matrix scope:** unit/status classification through browser contract; DB integration N/A (read-only existing APIs); auth via existing own-generation API + test of foreign-id rejection; schema migrations N/A; provider transport unchanged; idempotent client polling, API/E2E, observability through bounded diagnostic events; admin/business pricing unchanged; no destructive prod writes; rollback via reverting this front-only PR.
+
+### 2026-10-10 Mini App delivery: second-review regression closure
+
+- The first six review issues were fixed in PR #541 and regression-tested.
+- A second independent review found a finished batch could still show expired provider media on reopened screens, and a client-side 32-task tracking cap silently lost the newest launched tasks. Both were reproduced with failing browser cases before remediation.
+- Removed the arbitrary pending-ID storage/memory truncation while retaining concurrency=4 and seven-day age expiry. Batch initial load now reconciles already-succeeded generation IDs with the owner-only detail endpoint, and suppresses provider URLs while owned media is unresolved.
+- Fixed downloads overlapping-refresh races with latest-request-wins sequencing and short event coalescing. Poller state signatures use stable media asset IDs and ordinals instead of rotating signed URLs, preventing redundant notifications and unnecessary API traffic.
+- Added browser regression cases for 42 task IDs, finished batch reopened with an expired provider URL, out-of-order downloads responses, and signed URL rotation.
+- No extra migrations or balance/provider writes. Verify all six PR gates, merge via guarded SHA, then verify production release SHA and readiness.

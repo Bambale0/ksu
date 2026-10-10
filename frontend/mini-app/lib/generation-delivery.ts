@@ -46,7 +46,7 @@ export function readPendingGenerationIds(telegramId: number): string[] {
       .filter((item): item is { id: string; at: number } =>
         isGenerationId(item?.id) && typeof item.at === "number" &&
         item.at <= now && now - item.at < MAX_AGE)
-      .map((item) => item.id))].slice(-32);
+      .map((item) => item.id))];
   } catch {
     return [];
   }
@@ -75,7 +75,7 @@ export function savePendingGenerationIds(telegramId: number, ids: string[]): voi
         }
       }
     }
-    const unique = [...new Set(ids.filter(isGenerationId))].slice(-32);
+    const unique = [...new Set(ids.filter(isGenerationId))];
     const tasks = unique.map((id) => ({ id, at: previous.get(id) || now }));
     window.localStorage.setItem(KEY + telegramId, JSON.stringify(tasks));
   } catch {
