@@ -804,7 +804,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
       let item: Generation = { id: created.id, status: created.status || "queued", model: selected, created_at: new Date().toISOString() };
       try { item = await api.generation(created.id); } catch {}
       notify("success");
-      showToast("Генерация запущена. Готовая работа появится в ROXY независимо от Telegram-чата.");
+      showToast("Генерация запущена. ROXY можно закрыть — готовая работа появится в приложении, даже без чата.");
       onCreated(item);
     } catch (error) {
       notify("error");
