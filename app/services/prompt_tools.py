@@ -10,6 +10,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
+import httpx
+
 from redis.asyncio import Redis
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
-from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
+from app.providers.kie_prompt_tools import (
+    KiePromptToolsClient,
+    PromptToolProviderError,
+    PromptToolProviderResult,
+)
 from app.providers.nexus_prompt_tools import NEXUS_VISION_MODEL, NexusPromptToolsClient
-from app.services.abuse_protection import AbuseProtectionService
+from app.services.abuse_protection import AbuseProtectionService, ProviderCircuitOpen
 from app.services.billing_access import BillingAccessService
 from app.services.notifications import NotificationService
 from app.services.wallet import WalletService
@@ -92,6 +98,22 @@ def _primary_prompt(result: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _nexus_video_gateway_unavailable(error: BaseException) -> bool:
+    """Only explicit 502/503/504 can trigger cross-provider delivery.
+
+    A moderation 4xx, malformed JSON or uncertain network timeout must never
+    silently spend credits at an alternate provider.
+    """
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError):
+            return current.response.status_code in {502, 503, 504}
+        current = current.__cause__
+    return False
 
 
 class PromptToolPricingService:
@@ -431,6 +453,7 @@ class PromptToolOutboxService:
         result: dict[str, Any],
         model: str,
         provider_credits: Decimal | None,
+        provider: str | None = None,
     ) -> None:
         locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
         if locked is None:
@@ -440,6 +463,8 @@ class PromptToolOutboxService:
         now = _utcnow()
         task.status = "succeeded"
         task.model = model
+        if provider is not None:
+            task.provider = provider
         task.result_payload = result
         task.provider_credits = provider_credits
         task.error = None
@@ -497,6 +522,24 @@ class PromptToolOutboxService:
 
 class PromptToolProcessor:
     @staticmethod
+    async def _kie_video_prompt(data: dict[str, Any]) -> PromptToolProviderResult:
+        from app.services.provider_media_transport import ProviderMediaTransport
+
+        client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
+        try:
+            provider_input = await ProviderMediaTransport.prepare(
+                {"video_url": str(data.get("video_url") or "")}
+            )
+            raw_duration = data.get("duration_seconds")
+            return await client.build_video_prompt(
+                video_url=str(provider_input.get("video_url") or ""),
+                instruction=str(data.get("instruction") or ""),
+                duration_seconds=int(raw_duration) if raw_duration else None,
+            )
+        finally:
+            await client.aclose()
+
+    @staticmethod
     async def process(
         session: AsyncSession,
         redis: Redis,
@@ -507,8 +550,25 @@ class PromptToolProcessor:
             return
         provider = str(getattr(task, "provider", None) or "kie").strip().lower()
         protection_provider = f"{provider}-prompt-tools"
+        fallback_allowed = bool(
+            provider == "nexus"
+            and task.tool == "video_prompt"
+            and settings.prompt_tool_video_kie_fallback_enabled
+            and settings.kie_api_key.strip()
+        )
         try:
-            await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+            try:
+                await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+            except ProviderCircuitOpen:
+                if not fallback_allowed:
+                    raise
+                provider = "kie"
+                protection_provider = "kie-prompt-tools"
+                await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+                logger.warning(
+                    "prompt_tool_video_fallback task_id=%s from=nexus to=kie reason=circuit_open",
+                    task.id,
+                )
             data = task.input_payload or {}
             if provider == "nexus":
                 client = NexusPromptToolsClient(
@@ -528,11 +588,30 @@ class PromptToolProcessor:
                         )
                     elif task.tool == "video_prompt":
                         raw_duration = data.get("duration_seconds")
-                        result = await client.build_video_prompt(
-                            video_url=str(data.get("video_url") or ""),
-                            instruction=str(data.get("instruction") or ""),
-                            duration_seconds=int(raw_duration) if raw_duration else None,
-                        )
+                        try:
+                            result = await client.build_video_prompt(
+                                video_url=str(data.get("video_url") or ""),
+                                instruction=str(data.get("instruction") or ""),
+                                duration_seconds=int(raw_duration) if raw_duration else None,
+                            )
+                        except PromptToolProviderError as exc:
+                            if not fallback_allowed or not _nexus_video_gateway_unavailable(exc):
+                                raise
+                            # Nexus explicitly declined the request. Isolate the
+                            # failure signal from a successful fallback at Kie.
+                            await AbuseProtectionService.record_provider_failure(
+                                redis, protection_provider
+                            )
+                            provider = "kie"
+                            protection_provider = "kie-prompt-tools"
+                            logger.warning(
+                                "prompt_tool_video_fallback task_id=%s from=nexus to=kie reason=gateway_unavailable",
+                                task.id,
+                            )
+                            await AbuseProtectionService.provider_submission_gate(
+                                redis, protection_provider
+                            )
+                            result = await PromptToolProcessor._kie_video_prompt(data)
                     else:
                         raise ValueError(f"Unknown prompt tool: {task.tool}")
                 finally:
@@ -575,6 +654,7 @@ class PromptToolProcessor:
                 result=result.payload,
                 model=result.model,
                 provider_credits=result.credits_consumed,
+                provider=provider,
             )
             await AbuseProtectionService.record_provider_success(redis, protection_provider)
         except Exception as exc:

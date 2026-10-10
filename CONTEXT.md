@@ -764,3 +764,20 @@ Acceptance: visible before file upload, correct description per trend, newline/l
 New browser regression reproduced the issue before implementation: 4 failed, 1 empty-state passed. After the minimal page.tsx and CSS-module change: typecheck/build pass; 11 Chromium browser tests pass (5 new instruction cases plus existing trend Back/share/reopen and bot-entry regressions). Backend selected suite rerun: 79 passed; full Ruff passes. Mobile 393px screenshot visually inspected: violet-bordered instruction panel above references, readable white text and preserved line breaks. 320px long unbroken content wraps without horizontal overflow. Test strings are synthetic fixtures, not newly assigned production trend instructions. No description/min/max/backend changes.
 
 User approved publishing, merging after successful checks, and deployment of both changes at 09:48 UTC. Publication is pending read-only final-review clearance and exact-head CI. No paid generations or historical sends/refunds are in scope. Independent review cancellation and WebKit environment limitation remain explicitly recorded.
+
+### 2026-10-10 video prompt Nexus gateway incident
+
+- Read-only production evidence: all seven video_prompt tasks observed in
+  the 48h period failed; five had Nexus HTTP 503 and two had an open
+  nexus-prompt-tools circuit. All seven task charges were zero ROX.
+- Authenticated /v1/models responded HTTP 200 and listed gpt-6-sol;
+  missing credentials or nonexistent model were not demonstrated.
+- Resilience gap: the prompt processor persisted Nexus-only video routing,
+  without a fallback for explicit transient upstream gateway failures.
+- Isolated opt-in fallback to the existing Kie GPT-5.5 video pipeline.
+  Disabled by default, does not handle moderation/4xx or uncertain network
+  timeouts, and preserves one ROX task ledger. Unit regressions include
+  503, open circuit, 400, disabled toggle and both providers failing.
+- No live customer video or billed provider generation was run.
+  Kie live success, economics and outbox lease budget remain rollout risks
+  requiring authorized smoke tests.

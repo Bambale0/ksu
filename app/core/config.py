@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     bot_username: str = ""
     nexus_api_key: str = ""
     nexus_api_base_url: str = "https://nexusapi.dev"
+    # Explicit opt-in. Keep Nexus primary; Kie is used only during verified
+    # gateway unavailability for video-prompt analysis.
+    prompt_tool_video_kie_fallback_enabled: bool = False
     nexus_test_worker_poll_seconds: int = Field(default=3, ge=1, le=30)
     nexus_test_task_lease_seconds: int = Field(default=90, ge=30, le=600)
     nexus_test_retry_max_seconds: int = Field(default=30, ge=3, le=300)

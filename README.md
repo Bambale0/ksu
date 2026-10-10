@@ -180,3 +180,23 @@ New public referral, trend, post, profile and remix links use Telegram bot `?sta
 Previously shared `?startapp=` links remain supported and still open the Mini App directly; already distributed Telegram URLs cannot be rewritten by this server change. Explicit Mini App/private repeat/task links retain their existing behavior. Private, removed or unavailable resources must not expose media through bot previews. Blurred posts show the resource button without unblurred media.
 
 Receiving a private bot message, including `/start`, already re-enables eligible transactional notifications that were deferred because Telegram could not reach the chat. This change does not backfill historical notifications or perform refunds.
+
+## Video-prompt resilience (opt-in)
+
+The video_prompt tool continues to use Nexus Vision as its primary provider.
+For upstream gateway failures (502/503/504) or an open nexus-prompt-tools
+circuit, operators may explicitly enable
+PROMPT_TOOL_VIDEO_KIE_FALLBACK_ENABLED=true with an existing KIE_API_KEY.
+The backup uses the existing Kie GPT-5.5 native-video / sampled-frames pipeline.
+It does not activate for moderation or other 4xx responses, nor does it send
+the same request to both providers concurrently.
+
+Default is false: deployment does not silently change supplier routing.
+Run an authorized paid-provider smoke test and check costs plus outbox lease
+and retry budgets before enabling. The user is charged once through the
+idempotent ROX ledger, but external provider bills may differ on ambiguous
+timeouts/retries. Successful fallback persists the actual provider and model.
+
+Monitor prompt_tool_video_fallback logs, Nexus 503 rates, outbox attempt counts,
+latencies, wallet changes and user-visible delivery after rollout.
+Rollback: disable the flag and restart the prompt-tool worker.
