@@ -57,6 +57,8 @@ The deployment user must be able to:
 5. Let Docker Compose read the production `.env`; the file stays on the host and is not copied into Actions.
 6. Write `DEPLOY_PATH/backups/` for the pre-migration archive/checksum.
 7. Create/use the compose-managed `db_backups` Docker volume for periodic backups.
+8. Keep an existing `ADMIN_SECURITY_KEY` of at least 32 characters in the host `.env`. The deploy validates it before changing the checkout and validates the running app afterward; it never generates, replaces, prints or changes permissions on credentials. Missing/short keys require a separate explicitly authorized operator setup.
+9. Keep tracked files clean. Deployment stops on staged/unstaged changes or untracked/ignored paths that collide with the target release; operator work is never reset or cleaned automatically.
 
 The server clone must keep its own read access to the GitHub repository.
 
@@ -91,8 +93,11 @@ This prevents the old split-brain failure mode where a new API container could c
 For the exact tested SHA, the remote script performs:
 
 ```text
+validate existing ADMIN_SECURITY_KEY without modifying .env
+require a clean tracked worktree and index
 git fetch --prune origin main
-git reset --hard <tested-main-sha>
+git checkout --detach --no-overwrite-ignore <tested-main-sha>
+verify HEAD == <tested-main-sha>
 write app/web/mini_app/release.json with <tested-main-sha>
 export KSU_IMAGE_TAG=<tested-main-sha>
 docker compose config -q
@@ -111,7 +116,9 @@ require every Python application service to use the exact release image ID
 
 Long-running services use `restart: unless-stopped`. `/health/operational` requires fresh heartbeats from generation, payment, media, prompt-tool, notification, admin-support, admin-campaign and creator-partnership workers.
 
-PostgreSQL and Redis data volumes are not recreated. Pre-deploy dumps/checksums older than 14 days are pruned from the host `backups/` directory. Periodic backups are kept separately in the private `db_backups` volume according to `DB_BACKUP_RETENTION_COUNT`.
+PostgreSQL and Redis data volumes are not recreated. Ordinary deployment preserves all existing pre-deploy dumps/checksums in the host `backups/` directory and all existing release image tags. It creates and verifies a new release backup but does not apply age-based deletion or image pruning. The non-forced checkout preserves non-conflicting untracked/ignored `.env` and uploaded media; only the generated Mini App release marker is rewritten after the exact-SHA switch.
+
+Periodic backups are kept separately in the private `db_backups` volume according to the existing `DB_BACKUP_RETENTION_COUNT` policy. This patch does not change the periodic backup worker or its retention settings.
 
 Local retention is not off-host disaster recovery. See `DATABASE_BACKUPS.md` for periodic backup, restore-drill and off-host requirements.
 
@@ -140,11 +147,13 @@ If deployment fails after entering the repository, diagnostics include `docker c
 
 There is intentionally no automatic database downgrade or blind code rollback after a failed migration. Alembic downgrade is never performed implicitly; prefer a reviewed forward fix or a controlled database restore/recovery plan.
 
-## Legacy media maintenance
+## Separate explicit manual maintenance
 
-After the health and release-identity gates pass, the deployment runs the reference/feed static backfills for records created before the durable-media contract.
+Neither automatic deployment nor its manual `workflow_dispatch` runs historical media backfills, removes old release images, or deletes old pre-deploy archives/checksums. A release is not permission to do maintenance.
 
-Backfill output is inspected for `failed=N`. A non-zero legacy failure count is reported explicitly as **partial maintenance** instead of being described as a clean backfill. It does not invalidate a healthy new release because unreachable historical provider URLs can be permanently unrecoverable, but the unresolved count remains visible in deploy logs for follow-up cleanup.
+Maintenance requires a separate explicit operator decision covering the exact command, affected archives/images/records, recovery plan and intended scope. Before deleting anything, inventory disk usage, verify recoverable/off-host backups, and retain every release needed for rollback. There is deliberately no automatic pruning command in this workflow; disk capacity must be checked before deployment and managed separately.
+
+The existing `scripts.backfill_reference_static` and `scripts.backfill_feed_static` modules remain packaged in the runtime image for separately approved manual use. They can download historical media and update stored URLs; `--limit` limits the scan and is not a dry-run option. Inspect the selected script and its current options before proposing a run. No backfill is implied by a healthy release, and no maintenance command is executed by these instructions.
 
 ## Backup-specific release evidence
 
@@ -165,5 +174,5 @@ After a deployment:
 4. confirm all six exact-SHA workflow gates are green;
 5. confirm the pre-migration archive validation, all-runtime-service check, immutable image-ID parity, API health checks and Mini App SHA check are green;
 6. verify `/backups/latest.dump` checksum/catalog after the worker completes its first backup;
-7. review any reported legacy-media `failed=N` rows separately;
+7. confirm old pre-deploy backups and rollback image tags remain present; schedule any needed maintenance as a separate explicitly approved task;
 8. confirm the verified backup reaches the configured encrypted off-host durability layer.
