@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import type { Generation } from "@/lib/types";
+import { subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 
 function resultUrl(item: Generation): string {
-  return item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
+  return item.media_delivery
+    ? item.media?.find((asset) => asset.url)?.url || ""
+    : item.result_url || item.result_urls?.[0] || item.media?.[0]?.url || "";
 }
 
 export default function HistoryManagerPage() {
@@ -17,21 +20,35 @@ export default function HistoryManagerPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const load = async () => {
+  const requestVersion = useRef(0);
+
+  const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setError("");
     try {
       const [visible, archived] = await Promise.all([
         customerRequest<{ items: Generation[] }>("/api/v1/generations?limit=50"),
         customerRequest<{ items: Generation[] }>("/api/v1/generation-history/hidden?limit=50"),
       ]);
+      if (version !== requestVersion.current) return;
       setActive(visible.items || []);
       setHidden(archived.items || []);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить историю");
+      if (version === requestVersion.current) {
+        setError(reason instanceof Error ? reason.message : "Не удалось загрузить историю");
+      }
     }
-  };
+  }, []);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    return () => { requestVersion.current += 1; };
+  }, [load]);
+  useEffect(() => subscribeToGenerationUpdates(({ terminal, ready, generation, mediaFailed, mediaTimedOut, trackingExpired }) => {
+    if (generation.media?.length || terminal && (ready || mediaFailed || mediaTimedOut || trackingExpired || generation.status !== "succeeded")) {
+      void load();
+    }
+  }), [load]);
 
   const hide = async (id: string) => {
     setBusy(id); setError("");

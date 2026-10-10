@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SavedReferencePicker } from "@/lib/reference-memory";
+import { rememberGenerationIds } from "@/lib/generation-delivery";
 import {
   copyToClipboard,
   haptic,
@@ -333,6 +334,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
           action_context_id: actionContextId || null,
         }),
       });
+      rememberGenerationIds([result.id]);
       notify("success");
       haptic("medium");
       goToGeneration(result.id);

@@ -40,7 +40,7 @@ def test_generation_result_deep_link_and_background_copy_are_present() -> None:
     assert 'searchParams.get("generation")' in app
     assert 'setPreviewSurface("private")' in app
     assert 'setRoute("history")' in app
-    assert "ROXY можно закрыть — результат придёт в Telegram" in app
+    assert "ROXY можно закрыть — готовая работа появится в приложении, даже без чата." in app
     assert 'route=generation-action' not in worker  # URL is built structurally, not as an unsafe literal.
     assert '"route": "generation-action" if action else "history"' in worker
     assert 'searchParams.get("action")' in action_app

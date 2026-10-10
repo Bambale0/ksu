@@ -143,7 +143,9 @@ export type Generation = {
   batch_size?: number | null;
   result_url?: string | null;
   result_urls?: string[];
-  media?: Array<{ url?: string; kind?: string; content_type?: string | null; ordinal?: number }>;
+  media?: Array<{ id?: string; url?: string; kind?: string; content_type?: string | null; ordinal?: number }>;
+  media_delivery?: { expected: number; ready: number; failed: number; state: "pending" | "ready" | "failed" };
+  hidden_from_history?: boolean;
   error?: string | null;
   created_at?: string;
   updated_at?: string;
