@@ -144,8 +144,8 @@ def _generation_view(
     ready = min(len(owned_urls), int(progress.get("ready", len(owned_urls))))
     failed = max(0, min(expected - ready, int(progress.get("failed", 0))))
     media_state = (
-        "failed" if failed else
         "ready" if expected > 0 and ready == expected else
+        "failed" if failed and ready + failed >= expected else
         "pending"
     )
     trend_hidden = generation.action_type == "trend"

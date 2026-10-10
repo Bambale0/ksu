@@ -351,3 +351,22 @@ test('retrying failed batch items registers the new generation and delivers its 
   await expect(page.locator('.tool-result-card .media-tile img')).toHaveCount(1, { timeout: 14000 });
   expect(detailRequests).toBeGreaterThanOrEqual(2);
 });
+
+test('failed first asset does not block subsequent ready files', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const partial = { ...task(TREND_TASK_ID, 'succeeded'), media_delivery: {
+    expected: 2, ready: 0, failed: 1, state: 'pending',
+  } };
+  const final = { ...task(TREND_TASK_ID, 'succeeded', true), media_delivery: {
+    expected: 2, ready: 1, failed: 1, state: 'failed',
+  } };
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n === 1 ? task(TREND_TASK_ID, 'queued') : n < 4 ? partial : final,
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect(page.locator('.history-card').first()).toContainText('Сохраняем файл', { timeout: 12000 });
+  await expect(page.locator('.history-card').first()).toContainText('Не все файлы сохранены', { timeout: 20000 });
+  await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL);
+  expect(counts.detailRequests()).toBeGreaterThanOrEqual(4);
+});

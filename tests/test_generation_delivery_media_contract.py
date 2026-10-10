@@ -38,3 +38,11 @@ def test_failed_media_ingest_is_reported_explicitly():
                                media_progress={"ready": 1, "failed": 1})
     assert partial["status"] == "succeeded"
     assert partial["media_delivery"] == {"expected": 2, "ready": 1, "failed": 1, "state": "failed"}
+
+def test_one_failed_ordinal_does_not_stop_remaining_media_ingestion():
+    source = generation()
+    partial = _generation_view(source, owned_media=[],
+                               media_progress={"failed": 1, "pending": 1})
+    assert partial["media_delivery"] == {
+        "expected": 2, "ready": 0, "failed": 1, "state": "pending"
+    }
