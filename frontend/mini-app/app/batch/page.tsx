@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
-import { isGenerationMediaReady, isTerminalGeneration, rememberGenerationIds, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
+import { isTerminalGeneration, rememberGenerationIds, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
 import { telegramHeaders } from "@/lib/telegram";
 import type { Generation, GenerationModel, UiField } from "@/lib/types";
 
@@ -105,6 +105,7 @@ export default function BatchPage() {
   const [error, setError] = useState("");
   const delivered = useRef(new Map<string, Generation>());
   const refreshTimer = useRef<number | null>(null);
+  const requestVersion = useRef(0);
 
   const mergeDelivery = useCallback((job: BatchJob): BatchJob => ({
     ...job,
@@ -117,8 +118,8 @@ export default function BatchPage() {
           ? { ...item, generation: { ...item.generation, result_url: null } }
           : item;
       }
-      const url = isGenerationMediaReady(latest)
-        ? latest.media?.find((asset) => asset.url)?.url || null : null;
+      // A failed sibling asset must not hide media already in owned storage.
+      const url = latest.media?.find((asset) => asset.url)?.url || null;
       return {
         ...item,
         generation: {
@@ -135,8 +136,10 @@ export default function BatchPage() {
   const fields = useMemo(() => batchFields(selected), [selected]);
 
   const loadJobs = useCallback(async () => {
+    const version = ++requestVersion.current;
     try {
       const payload = await request<{ items: BatchJob[] }>("/api/v1/batch-generations?limit=10");
+      if (version !== requestVersion.current) return;
       const next = payload.items || [];
       rememberGenerationIds(next.flatMap((job) =>
         (job.items || []).filter((item) =>
@@ -146,7 +149,9 @@ export default function BatchPage() {
       ));
       setJobs(next.map(mergeDelivery));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось загрузить пакеты");
+      if (version === requestVersion.current) {
+        setError(reason instanceof Error ? reason.message : "Не удалось загрузить пакеты");
+      }
     }
   }, [mergeDelivery]);
 
@@ -160,6 +165,7 @@ export default function BatchPage() {
   }), [loadJobs, mergeDelivery]);
 
   useEffect(() => () => {
+    requestVersion.current += 1;
     if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
   }, []);
 

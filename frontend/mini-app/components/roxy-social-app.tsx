@@ -134,11 +134,19 @@ function freshestGeneration(server: Generation, observed?: Generation): Generati
   // Only the server's visible history listing can authorize restoration.
   // A cached hidden detail must not suppress a work the user restored later.
   if (!observed || server.hidden_from_history || observed.hidden_from_history) return server;
+  return freshestPrivateGeneration(server, observed);
+}
+
+function freshestPrivateGeneration(server: Generation, observed?: Generation): Generation {
+  // A private owner preview remains accessible when hidden from history.
+  if (!observed) return server;
   if (isTerminalGeneration(observed.status) && !isTerminalGeneration(server.status)) return observed;
   if (isTerminalGeneration(server.status) && !isTerminalGeneration(observed.status)) return server;
   const mediaCount = server.media?.filter((asset) => asset.url).length || 0;
   const observedCount = observed.media?.filter((asset) => asset.url).length || 0;
-  if (observedCount > mediaCount ||
+  const resolved = (server.media_delivery?.ready || 0) + (server.media_delivery?.failed || 0);
+  const observedResolved = (observed.media_delivery?.ready || 0) + (observed.media_delivery?.failed || 0);
+  if (observedCount > mediaCount || observedResolved > resolved ||
       (isGenerationMediaReady(observed) && !isGenerationMediaReady(server))) return observed;
   const observedAt = Date.parse(observed.updated_at || "") || 0;
   const serverAt = Date.parse(server.updated_at || "") || 0;
@@ -599,7 +607,7 @@ export function RoxySocialApp() {
     void api.generation(generationId)
       .then((item) => {
         setPreviewSurface("private");
-        setPreview(item);
+        setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id)));
         setRoute("history");
         void loadHistory();
       })
@@ -689,8 +697,8 @@ export function RoxySocialApp() {
         {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={(trend) => {
           window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
         }} />}
-        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(item); }} showToast={showToast} />}
-        {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(item); }} />}
+        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} showToast={showToast} />}
+        {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>

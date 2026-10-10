@@ -14,7 +14,7 @@ const model = {
 };
 
 const task = (id, status, ready = false) => ({
-  id, status, model, created_at: '2026-10-10T08:43:16Z',
+  id, status, model, created_at: new Date().toISOString(),
   result_url: ready ? IMAGE_URL : null,
   result_urls: ready ? [IMAGE_URL] : [],
   media: ready ? [{ url: IMAGE_URL, content_type: 'image/gif' }] : [],
@@ -22,6 +22,8 @@ const task = (id, status, ready = false) => ({
 
 async function telegramWithoutChat(page) {
   await page.addInitScript(() => {
+    // All API responses are mocked; network-isolated runners model an online WebView.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
     window.Telegram = {
       WebApp: {
         initData: 'query_id=delivery-no-chat&hash=test',
@@ -491,4 +493,153 @@ test('rotating signed media URLs do not generate duplicate delivery events', asy
   const partialEvents = await page.evaluate(() =>
     window.__deliveryEvents.filter((item) => item.media_delivery?.ready === 1).length);
   expect(partialEvents).toBe(1);
+});
+
+test('release review recovers pending tasks beyond the first discovery page', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let olderReads = 0;
+  const counts = await fakeApi(page, { taskId: TREND_TASK_ID, details: () => task(TREND_TASK_ID, 'succeeded', true) });
+  await page.route('**/api/v1/generations?**', (route) => {
+    const before = new URL(route.request().url()).searchParams.get('before');
+    const items = before ? [task(TREND_TASK_ID, 'queued')] : Array.from({ length: 24 }, (_, i) =>
+      task('00000000-0000-4000-8000-' + String(i + 1).padStart(12, '0'), 'succeeded', true));
+    if (before) olderReads++;
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      items, has_more: !before, next_before: before ? null : '00000000-0000-4000-8000-000000000024',
+    }) });
+  });
+  await page.goto('/mini-app/?route=home');
+  await expect.poll(() => olderReads, { timeout: 10000 }).toBeGreaterThan(0);
+  await expect.poll(() => counts.detailRequests()).toBeGreaterThan(0);
+});
+
+test('release review refreshes history manager after terminal media failure', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let terminal = false;
+  await fakeApi(page, { taskId: TREND_TASK_ID, details: () => task(TREND_TASK_ID, 'queued') });
+  await page.route('**/api/v1/generations?**', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ items: [{
+      ...task(TREND_TASK_ID, terminal ? 'succeeded' : 'queued'),
+      media_delivery: { expected: 1, ready: 0, failed: terminal ? 1 : 0, state: terminal ? 'failed' : 'pending' },
+    }], has_more: false }),
+  }));
+  await page.goto('/mini-app/history-manager/');
+  await expect(page.locator('.transaction')).toContainText('queued');
+  terminal = true;
+  await page.evaluate((generation) => window.dispatchEvent(new CustomEvent('roxy:generation-update', {
+    detail: { generation, terminal: true, ready: false, mediaFailed: true },
+  })), { ...task(TREND_TASK_ID, 'succeeded'), media_delivery: { expected: 1, ready: 0, failed: 1, state: 'failed' } });
+  await expect(page.locator('.transaction')).toContainText('succeeded', { timeout: 10000 });
+});
+
+for (const outcome of ['ready', 'hidden-ready', 'media-failed']) {
+test('release review late deep-link snapshot cannot overwrite delivered preview: ' + outcome, async ({ page }) => {
+  await telegramWithoutChat(page);
+  await fakeApi(page, { taskId: TREND_TASK_ID, details: () => task(TREND_TASK_ID, 'queued') });
+  const hidden = outcome === 'hidden-ready';
+  const failed = outcome === 'media-failed';
+  const fresh = { ...task(TREND_TASK_ID, 'succeeded', !failed), hidden_from_history: hidden,
+    media_delivery: { expected: 1, ready: failed ? 0 : 1, failed: failed ? 1 : 0, state: failed ? 'failed' : 'ready' } };
+  const stale = { ...task(TREND_TASK_ID, failed ? 'succeeded' : 'queued'), hidden_from_history: hidden,
+    media_delivery: { expected: 1, ready: 0, failed: 0, state: 'pending' } };
+  let detailCalls = 0;
+  await page.route('**/api/v1/generations/' + TREND_TASK_ID, async (route) => {
+    const index = ++detailCalls;
+    // Bridge lookup precedes the boot-gated one-shot deep-link request.
+    await new Promise((resolve) => setTimeout(resolve, index === 1 ? 900 : 2500));
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(index === 1 ? fresh : stale) });
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect.poll(() => detailCalls).toBeGreaterThanOrEqual(2);
+  if (failed) await expect(page.locator('.preview-card')).toContainText('Не все файлы сохранены', { timeout: 8000 });
+  else await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL, { timeout: 8000 });
+  await page.waitForTimeout(3000);
+  if (failed) await expect(page.locator('.preview-card')).toContainText('Не все файлы сохранены');
+  else await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL);
+});
+}
+
+test('release review stale batch list cannot remove a newly delivered job', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let listCalls = 0;
+  let releaseOld;
+  const oldPending = new Promise((resolve) => { releaseOld = resolve; });
+  await fakeApi(page, { taskId: TREND_TASK_ID, details: () => task(TREND_TASK_ID, 'succeeded', true) });
+  await page.route('**/api/v1/batch-generations?**', async (route) => {
+    listCalls++;
+    if (listCalls === 1) {
+      await oldPending;
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [] }) });
+    }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{
+      id: '66666666-6666-4666-8666-666666666666', status: 'succeeded', input_count: 1,
+      succeeded_count: 1, failed_count: 0, progress_percent: 100, model_id: model.id,
+      total_charged_credits: '25.00',
+      items: [{ ordinal: 0, generation: { id: TREND_TASK_ID, status: 'succeeded', result_url: IMAGE_URL } }],
+    }] }) });
+  });
+  await page.goto('/mini-app/batch/');
+  await expect.poll(() => listCalls).toBe(1);
+  await page.evaluate((generation) => window.dispatchEvent(new CustomEvent('roxy:generation-update', {
+    detail: { generation, terminal: true, ready: true },
+  })), task(TREND_TASK_ID, 'succeeded', true));
+  await expect(page.locator('.tool-result-card')).toHaveCount(1);
+  releaseOld();
+  await page.waitForTimeout(500);
+  await expect(page.locator('.tool-result-card')).toHaveCount(1);
+});
+
+test('release review partially failed batch retains its surviving owned thumbnail', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let reads = 0;
+  const expired = 'https://provider.example.invalid/expired-original.png';
+  await page.route('**/api/v1/**', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (payload) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+    if (path === '/api/v1/me') return json({ telegram_id: 777, first_name: 'QA' });
+    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/generations/models') return json({ models: [{ ...model, known_fields: ['image_url'] }], families: [] });
+    if (path === '/api/v1/generations') return json({ items: [], has_more: false });
+    if (path === '/api/v1/batch-generations') return json({ items: [{
+      id: '66666666-6666-4666-8666-666666666666', status: 'succeeded', input_count: 1,
+      succeeded_count: 1, failed_count: 0, active_count: 0, progress_percent: 100,
+      model_id: model.id, total_charged_credits: '25.00',
+      items: [{ ordinal: 0, generation: { id: NORMAL_TASK_ID, status: 'succeeded', result_url: expired } }],
+    }] });
+    if (path === '/api/v1/generations/' + NORMAL_TASK_ID) {
+      reads++;
+      return json({ ...task(NORMAL_TASK_ID, 'succeeded', true), media_delivery: {
+        expected: 2, ready: 1, failed: 1, state: 'failed',
+      } });
+    }
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/batch/');
+  await expect(page.locator('.tool-result-card .media-tile img')).toHaveAttribute('src', IMAGE_URL, { timeout: 18000 });
+  expect(reads).toBeGreaterThan(0);
+});
+
+test('delivery polling pauses offline and resumes after network restoration', async ({ page }) => {
+  await telegramWithoutChat(page);
+  let finished = false;
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: () => task(TREND_TASK_ID, finished ? 'succeeded' : 'generating', finished),
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect.poll(() => counts.detailRequests()).toBeGreaterThanOrEqual(2);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    window.dispatchEvent(new Event('offline'));
+  });
+  await page.waitForTimeout(200);
+  const before = counts.detailRequests();
+  await page.waitForTimeout(2900);
+  expect(counts.detailRequests()).toBe(before);
+  finished = true;
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    window.dispatchEvent(new Event('online'));
+  });
+  await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL, { timeout: 10000 });
 });

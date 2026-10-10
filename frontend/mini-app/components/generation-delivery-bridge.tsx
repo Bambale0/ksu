@@ -43,6 +43,7 @@ export function GenerationDeliveryBridge() {
     let timer: number | null = null;
     let lastDiscovery = 0;
     let discoveryAttempts = 0;
+    let discovering = false;
     let discoveryTimer: number | null = null;
 
     const visible = () => document.visibilityState !== "hidden" && navigator.onLine !== false;
@@ -164,24 +165,36 @@ export function GenerationDeliveryBridge() {
     }
 
     async function discover(): Promise<void> {
-      if (identity === null || disposed || !visible()) return;
+      if (identity === null || disposed || !visible() || discovering) return;
       if (Date.now() - lastDiscovery < 10000) return;
       // One bounded retry timer also works if there are no known pending IDs.
       if (discoveryTimer !== null) {
         window.clearTimeout(discoveryTimer);
         discoveryTimer = null;
       }
+      discovering = true;
       try {
-        const page = await api.generations("limit=24");
-        if (disposed) return;
-        lastDiscovery = Date.now();
+        // History is newest-first. Follow the owner-scoped cursor through the
+        // recovery window instead of silently losing jobs after the first page.
+        let before: string | null = null;
+        const cursors = new Set<string>();
+        while (!disposed && visible()) {
+          const page = await api.generations("limit=24" + (before ? "&before=" + encodeURIComponent(before) : ""));
+          if (disposed) return;
+          const recent = page.items.filter((item) => {
+            const created = item.created_at ? new Date(item.created_at).getTime() : Date.now();
+            return Number.isFinite(created) && Date.now() - created < MAX_TRACK_AGE_MS;
+          });
+          addTasks(recent.filter((item) => !isTerminalGeneration(item.status) ||
+            (item.status === "succeeded" && !isGenerationMediaReady(item) && !isGenerationMediaFailed(item))
+          ).map((item) => item.id));
+          if (!page.has_more || !page.next_before || !page.items.length ||
+              recent.length < page.items.length || cursors.has(page.next_before)) break;
+          before = page.next_before;
+          cursors.add(before);
+        }
+        if (!disposed && visible()) lastDiscovery = Date.now();
         discoveryAttempts = 0;
-        addTasks(page.items.filter((item) => {
-          const created = item.created_at ? new Date(item.created_at).getTime() : Date.now();
-          const recent = Number.isFinite(created) && Date.now() - created < MAX_TRACK_AGE_MS;
-          return recent && (!isTerminalGeneration(item.status) ||
-            (item.status === "succeeded" && !isGenerationMediaReady(item) && !isGenerationMediaFailed(item)));
-        }).map((item) => item.id));
       } catch {
         discoveryAttempts += 1;
         if (!disposed && discoveryAttempts <= MAX_DISCOVERY_RETRIES) {
@@ -191,6 +204,8 @@ export function GenerationDeliveryBridge() {
             void discover();
           }, delay);
         }
+      } finally {
+        discovering = false;
       }
     }
 
