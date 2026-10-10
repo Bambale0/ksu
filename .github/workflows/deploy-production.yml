@@ -243,11 +243,6 @@ jobs:
           previous_sha="$(git rev-parse HEAD)"
           echo "Previous SHA: ${previous_sha}"
 
-          git fetch --prune origin main
-          git cat-file -e "${DEPLOY_SHA}^{commit}"
-          git reset --hard "${DEPLOY_SHA}"
-          test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
-
           normalize_admin_security_key() {
             local value="$1"
             local first=""
@@ -267,11 +262,9 @@ jobs:
             printf '%s' "${value}" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
           }
 
-          ensure_admin_security_key() {
+          validate_admin_security_key() {
             local current=""
             local raw=""
-            local generated=""
-            local tmp=""
 
             if grep -q '^ADMIN_SECURITY_KEY=' .env; then
               raw="$(grep '^ADMIN_SECURITY_KEY=' .env | tail -n 1 | cut -d= -f2-)"
@@ -283,30 +276,21 @@ jobs:
               return
             fi
 
-            generated="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
-            test "${#generated}" -ge 32
-            tmp="$(mktemp)"
-            awk -v replacement="ADMIN_SECURITY_KEY=${generated}" '
-              BEGIN { replaced = 0 }
-              /^ADMIN_SECURITY_KEY=/ {
-                if (!replaced) {
-                  print replacement
-                  replaced = 1
-                }
-                next
-              }
-              { print }
-              END {
-                if (!replaced) print replacement
-              }
-            ' .env > "${tmp}"
-            cat "${tmp}" > .env
-            rm -f "${tmp}"
-            chmod 600 .env
-            echo "Generated persistent ADMIN_SECURITY_KEY for the web admin session layer."
+            echo "ADMIN_SECURITY_KEY must be configured with at least 32 characters before deployment; credential setup requires a separate explicit operator action." >&2
+            exit 1
           }
 
-          ensure_admin_security_key
+          validate_admin_security_key
+
+          # Refuse to discard operator work, including ignored-file collisions.
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Production checkout has tracked changes; refusing to overwrite operator work." >&2
+            exit 1
+          fi
+          git fetch --prune origin main
+          git cat-file -e "${DEPLOY_SHA}^{commit}"
+          git checkout --detach --no-overwrite-ignore "${DEPLOY_SHA}"
+          test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
           export KSU_IMAGE_TAG="${DEPLOY_SHA}"
           expected_image_name="ksu-app:${KSU_IMAGE_TAG}"
@@ -334,10 +318,6 @@ jobs:
           docker compose exec -T postgres pg_restore --list < "${backup}" >/dev/null
           sha256sum "${backup}" > "${backup}.sha256"
           echo "Created and verified pre-deploy database backup: ${backup}"
-          while IFS= read -r old_backup; do
-            rm -f "${old_backup}" "${old_backup}.sha256"
-          done < <(find backups -maxdepth 1 -type f -name 'predeploy-*.dump' -mtime +14 -print)
-
           # Build one immutable application image for the exact tested SHA.
           # Every Python service in docker-compose.yml resolves to this same tag.
           docker compose build --build-arg MINI_APP_RELEASE_SHA="${DEPLOY_SHA}" app </dev/null
@@ -430,38 +410,7 @@ jobs:
             exit 1
           fi
 
-          run_backfill() {
-            label="$1"
-            module="$2"
-            output="$(docker compose exec -T app python -m "${module}" 2>&1)"
-            printf '%s\n' "${output}"
-            if grep -Eq 'failed=[1-9][0-9]*' <<<"${output}"; then
-              echo "${label} completed with unresolved legacy rows; release remains healthy but maintenance is partial." >&2
-            else
-              echo "${label} completed without reported failures."
-            fi
-          }
-          run_backfill "Reference static backfill" scripts.backfill_reference_static
-          run_backfill "Feed static backfill" scripts.backfill_feed_static
-
-          # Keep one rollback image while removing older SHA-tagged releases so
-          # repeated deployments cannot fill the production host filesystem.
-          rollback_image_name="ksu-app:${previous_sha}"
-          echo "Pruning superseded release image tags; retaining ${expected_image_name} and ${rollback_image_name}."
-          while IFS= read -r image_ref; do
-            if [[ ! "${image_ref}" =~ ^ksu-app:([0-9a-f]{40})$ ]]; then
-              continue
-            fi
-            release_sha="${BASH_REMATCH[1]}"
-            if [[ "${release_sha}" == "${DEPLOY_SHA}" || "${release_sha}" == "${previous_sha}" ]]; then
-              continue
-            fi
-            if docker image rm "${image_ref}" >/dev/null 2>&1; then
-              echo "Removed superseded release image ${image_ref}."
-            else
-              echo "Could not remove ${image_ref}; it is still referenced and will be retried on a later release." >&2
-            fi
-          done < <(docker images --format '{{.Repository}}:{{.Tag}}' ksu-app)
+          echo "Existing backups and release images are preserved; maintenance requires a separate explicit manual action."
 
           echo "Production is healthy and Mini App serves ${DEPLOY_SHA}; web admin security is configured; every Python service runs ${expected_image_name}; all runtime services are running."
           docker compose ps
@@ -485,12 +434,12 @@ jobs:
             echo "- required gates: \`CI\`, \`Admin Console\`, \`Batch Generation\`, \`Mini App Playwright E2E\`, \`ROXY E2E\`, \`ROXY Release Gate\`"
             echo "- immutable application image: required for app + every Python worker"
             echo "- per-container image ID verification: required"
-            echo "- old SHA-tag release image pruning: keep current + previous rollback"
+            echo "- existing backups and release images are preserved"
             echo "- pre-deploy PostgreSQL archive validation: required"
             echo "- every production runtime service running check: required"
-            echo "- web admin security key bootstrap/verification: required"
+            echo "- web admin security key validation only (no credential changes): required"
             echo "- admin-app HTTP smoke check: required"
-            echo "- legacy reference/feed backfills: failures are reported as partial maintenance"
+            echo "- historical media maintenance requires a separate explicit manual action"
             echo "- Mini App SHA verification: required"
             echo "- workflow: \`${GITHUB_WORKFLOW}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
