@@ -53,6 +53,7 @@ async def send_public_resource_entry(
                 ) if part
             )[:1024]
             url = str(card.get("preview_url") or "")
+            media_type = _media_type(card, url)
             route = "home"
         elif link.generation_id is not None:
             try:
@@ -71,8 +72,21 @@ async def send_public_resource_entry(
                 f"Автор: {author.get('display_name') or author.get('username') or 'Автор ROXY'}\n\n"
                 "Откройте именно эту работу в приложении кнопкой ниже."
             )[:1024]
+            url = str(card.get("result_url") or "")
+            media_type = _media_type(card, url)
+            preview_url = str(card.get("preview_url") or "")
+            # The public-card contract supplies an already-ready image/poster.
+            # Classify that payload independently from the original video.
+            if (
+                media_type != "audio"
+                and preview_url
+                and preview_url != url
+                and _media_type({}, preview_url) == "image"
+            ):
+                url, media_type = preview_url, "image"
             # A Telegram preview must not bypass the app's moderation blur.
-            url = "" if card.get("feed_blurred") else str(card.get("result_url") or "")
+            if card.get("feed_blurred"):
+                url = ""
             route = "create" if link.action == "remix" else "feed"
         else:
             return False
@@ -85,7 +99,6 @@ async def send_public_resource_entry(
 
     keyboard = app_launcher_menu(route=route, start_payload=payload)
     if url:
-        media_type = _media_type(card, url)
         try:
             if media_type == "video":
                 await message.answer_video(
