@@ -93,3 +93,28 @@ async def test_feed_read_does_not_extract_missing_video_poster(tmp_path: Path, m
     assert len(views) == 1
     assert "preview_url" not in views[0]
     assert not (root / "thumbs" / "clip.jpg").exists()
+
+
+async def test_public_card_media_returns_absolute_ready_preview_without_build(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root = tmp_path / "feed"
+    root.mkdir()
+    (root / "thumbs").mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_PUBLIC_PREFIX", "/uploads/feed")
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+    Image.new("RGB", (10, 10), "blue").save(root / "original.png", "PNG")
+    Image.new("RGB", (10, 10), "blue").save(root / "thumbs" / "original.jpg", "JPEG")
+
+    def forbid_build(*args, **kwargs):
+        pytest.fail("Reading a ready public card must never generate a preview")
+
+    monkeypatch.setattr(FeedPreviewService, "_build", forbid_build)
+    generation = SimpleNamespace(
+        result_url="https://roxy.example/uploads/feed/original.png",
+        parameters={},
+    )
+    views = await FeedService._media_views(None, generation)
+    assert len(views) == 1
+    assert views[0]["preview_url"] == "https://roxy.example/uploads/feed/thumbs/original.jpg"

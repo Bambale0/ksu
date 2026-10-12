@@ -177,6 +177,8 @@ The interesting part of ROXY is not a single model integration. The project demo
 
 New public referral, trend, post, profile and remix links use Telegram bot `?start=` links. After Start, a trend/post link previews that single public resource in the chat; its button opens the same resource in the Mini App. The original sharer payload is preserved, while referral attribution remains registration-only.
 
+Public image cards use an existing lightweight JPEG preview when available. Public video cards use their existing poster as a photo, while the button opens the original video in the exact Mini App resource. Missing posters keep the original media-type fallback; audio remains audio. Preview selection never generates or downloads new media during /start. A rejected media request falls back to the same resource button; uncertain transport failures are not retried as another message.
+
 Previously shared `?startapp=` links remain supported and still open the Mini App directly; already distributed Telegram URLs cannot be rewritten by this server change. Explicit Mini App/private repeat/task links retain their existing behavior. Private, removed or unavailable resources must not expose media through bot previews. Blurred posts show the resource button without unblurred media.
 
 Receiving a private bot message, including `/start`, already re-enables eligible transactional notifications that were deferred because Telegram could not reach the chat. This change does not backfill historical notifications or perform refunds.
