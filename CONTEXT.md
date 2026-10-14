@@ -765,7 +765,7 @@ New browser regression reproduced the issue before implementation: 4 failed, 1 e
 
 User approved publishing, merging after successful checks, and deployment of both changes at 09:48 UTC. Publication is pending read-only final-review clearance and exact-head CI. No paid generations or historical sends/refunds are in scope. Independent review cancellation and WebKit environment limitation remain explicitly recorded.
 
-### 2026-10-10 video prompt Nexus gateway incident
+### 2026-10-10 video prompt Nexus gateway incident (historical, superseded by Qwen fallback)
 
 - Production evidence: seven failed video_prompt tasks (five Nexus HTTP 503,
   two circuit-open); all seven task charges were zero ROX.
@@ -786,3 +786,29 @@ User approved publishing, merging after successful checks, and deployment of bot
   A dedicated video prompt outbox lease defaults to 600s (vs general 90s)
   to prevent duplicate concurrent provider submissions. Need safe smoke and
   economics check before enabling.
+
+
+## Active Feature Execution: Nexus GPT primary, Neironych Qwen 3.8 photo/video fallback (2026-10-15)
+
+- **Baseline:** 46eac889277702183059fe12dd5e74f305cbc83e, existing draft PR #542, isolated worktree fix/ksu-qwen38-prompt-fallback-local-20261015. Production checkout untouched.
+- **Explicit user contract:** Nexus GPT remains primary for image_analysis and video_prompt; only on a recoverable Nexus upstream error, use Neironych qwen3.8-max, never Grok or Kie as automatic fallback. prompt_builder remains unchanged.
+- **Verified Neironych docs/catalog:** model id qwen3.8-max, POST /v1/chat/completions; live GET /v1/models lists it. Photo and video fallback send standard multimodal chat image_url blocks. Direct raw video upload via Qwen is not assumed; video uses the existing secure media downloader and four JPEG frames.
+- **Current code:** Nexus handles both photo/video. Draft PR #542 has a Grok-video-only flag/client, a 600-second video outbox lease, task-UUID-based provider idempotency and provider route pinning. Qwen support and image fallback are missing.
+- **Architecture:** replace Grok client with Qwen photo/video client; preserve PHOTO_SYSTEM_PROMPT/VIDEO_SYSTEM_PROMPT, result schemas, retail ROX, authorization, and existing tasks. Generalize upstream-502/503/504 classifier; no fallback on moderation/4xx or ambiguous network timeout. Persist actual provider/model before external POST, fence stale claims, stable idempotency per tool/task. Legacy Kie processing preserved but never automatic.
+- **Security:** existing validated photo URL and secure video download; avoid logging prompts, image/frame bytes, bearer secrets, raw media, or customer identifiers. Test with synthetic media and mocked HTTP; no paid API calls or production balance changes.
+- **Availability/economics risk:** previous paid Grok check returned HTTP 402 insufficient_balance for the configured Neironych key. Qwen GET /v1/models does not prove account balance or multimodal POST compatibility. Fallback flag defaults disabled pending authorized real vision smoke and provider cost review.
+- **Lease:** video stays on 600s dedicated claim; image fallback also needs adequate lease time to prevent concurrent reclaims. No DB migration; one existing prompt-task debit/outbox stays authoritative.
+- **Acceptance:** photo and video success stays on Nexus; explicit Nexus 503/open circuit switches to Qwen only when enabled; Nexus 400, uncertain timeout, disabled flag and unavailable key do not; Qwen failure follows current retry/refund; result matches ROXY schema; retries pin Qwen and never revert Nexus; no double charge.
+- **Tests:** provider HTTP mock contract, processor photo/video branches, price/idempotency/lease regression, Ruff, focused pytest, release checks, PR CI.
+- **Guidance inspected:** AGENTS, local .agents systematic-debugging, test-driven-development, async-python-patterns, api-security-best-practices; Bambale0/skills README (queried implement/tdd paths unavailable, local TDD used); Bambale0/claw debugger; wondelai/skills release-it; Bambale0/dev-agents-pack API integrator and backend; agentskills/agentskills standards (no domain-specific guide); anthropics/skills webapp-testing (no frontend changes).
+- **Rollout/rollback:** draft PR #542; no production changes until CI, independent review, model-specific paid smoke, balance/pricing and approval. Rollback by disabling fallback flag.
+
+
+### Verification update: photo + video Qwen fallback (2026-10-15)
+
+- Test-first Qwen provider contract started RED with the new adapter unavailable; routed photo/video processor regressions then failed as expected on absent config and provider interface. New adapter and routed processor implementation achieved GREEN.
+- Safe synthetic mocked Qwen Chat Completions contract verifies photo HTTPS image_url, four sampled video frames via image_url data URIs, actual video duration, signed request idempotency, structured RU/EN result, HTTP 402 single submission, incomplete/invalid responses and bad UUID rejection.
+- Both Nexus success paths continue unchanged; Nexus 503/open circuit invokes Qwen only with opt-in flag. Nexus 400 and ambiguous timeouts do not reroute. prompt_builder never uses Qwen.
+- Supplier selection persisted before Qwen POST under outbox attempt fence; image/video leases use 600 seconds if fallback enabled or already routed to Neironych; Nexus-only photo lease remains 90 seconds when disabled. Neironych permanent HTTP errors including 402 immediately fail/refund via existing ROX ledger, no paid retry loop.
+- 65 focused+integrated tests passed using fresh isolated PostgreSQL 17, after full Alembic upgrade; Ruff all app/tests, Python compilation and ROXY release gate passed. Test database is synthetic and separate from production.
+- Production remains on existing SHA and Qwen fallback defaults disabled. No paid provider POST made; Neironych vision proxy and account balance need a funded smoke before activation. PR #542 to be updated as draft, full CI and independent review pending.

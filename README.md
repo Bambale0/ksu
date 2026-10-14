@@ -181,37 +181,46 @@ Previously shared `?startapp=` links remain supported and still open the Mini Ap
 
 Receiving a private bot message, including `/start`, already re-enables eligible transactional notifications that were deferred because Telegram could not reach the chat. This change does not backfill historical notifications or perform refunds.
 
-## Video-prompt resilience: Grok 4.5 on Neironych (opt-in)
+## Photo/video prompts: Nexus GPT primary, Neironych Qwen 3.8 fallback
 
-The video_prompt tool keeps Nexus GPT-6 Sol Vision as primary. On explicit
-Nexus HTTP 502/503/504 or an open nexus-prompt-tools circuit, operators may
-enable backup using PROMPT_TOOL_VIDEO_NEIRONYCH_FALLBACK_ENABLED=true and
-the existing NEIRONYCH_API_KEY.
+The ROXY tools **Prompt по фото** (image_analysis) and **Prompt по видео**
+(video_prompt) stay on Nexus GPT Vision (gpt-6-sol) as primary. The fallback
+is exclusively Neironych Qwen 3.8 Max (model qwen3.8-max) via
+POST https://api.xn--e1aikcel5c5a.online/v1/chat/completions.
+The text-only prompt builder remains on its existing Nexus route.
+This replaces the prior draft Grok 4.5 video-only fallback. Kie is never an
+automatic fallback for these tools, but older already-recorded Kie jobs
+remain supported.
 
-Backup model is grok-4.5 via POST /v1/responses on
-https://api.xn--e1aikcel5c5a.online (NOT Grok Imagine Video).
-The adapter safely reads ROXY video (maximum 30 MB), measures the actual
-duration, samples four JPEG frames, and submits input_image data URLs.
-The API does not document native video-file input for Grok 4.5. Frame-only
-analysis cannot detect sound and may miss brief motion details.
+Set PROMPT_TOOL_QWEN_FALLBACK_ENABLED=true and NEIRONYCH_API_KEY only after
+review and a successful authorized image/video Qwen vision paid smoke.
+The default is false; deploy does not silently turn on paid routing.
+Fallback occurs only when Nexus explicitly returns 502/503/504 or its
+prompt circuit is open; never on content rejection/other 4xx,
+unexpected model output, or uncertain network timeouts.
 
-Before the Neironych POST, the outbox transaction pins provider=neironych
-and model=grok-4.5 under the active fenced claim. A stale claim cannot
-initiate a new supplier request. Neironych calls additionally use a stable
-task-derived Idempotency-Key and X-Client-Request-Id; retries use the same
-key and supplier. There is no fallback for moderation 4xx, invalid JSON or
-uncertain network timeouts. Kie is NOT an automatic backup.
+For a photo prompt Qwen receives the same public HTTPS reference URL that
+Nexus would use and the existing photo prompt schema. For a video prompt
+the existing safe ROXY downloader verifies the source (30 MB maximum),
+real duration is probed and four chronological JPEG frames are sent
+as data:image/jpeg;base64 blocks using image_url in multimodal Chat
+Completions. Direct raw-video input is not assumed. Frame analysis cannot
+infer audio or every motion detail in unseen frames. Both tools retain the
+same ROXY result shapes, customer prices and wallet idempotency.
 
-Flag defaults false. Before activation, verify Grok 4.5 model availability
-via GET /v1/models, vision multi-image behavior, provider economics and a
-synthetic paid smoke. User ROX ledger debits once; upstream spend still needs
-monitoring after timeouts. Successful failovers record provider=neironych and
-model=grok-4.5, preserving the task identity and existing UI result format.
+The outbox atomically pins provider=neironych and model=qwen3.8-max before
+any fallback POST, preserving the exact task ID after worker restarts and
+rejecting stale claims. Each tool has a task-stable provider Idempotency-Key
+and a 600-second media prompt lease (both photo/video) to avoid early
+duplicate claims. The supplier is credited/charged independently of user
+ROX; monitor real spend, errors, successes and task refunds.
+Neironych HTTP 400/401/402/403/404/413/422 are permanent for this task:
+no repeated paid supplier submissions, immediate task failure/refund.
+429/5xx use the existing bounded outbox retry with the SAME provider and key.
 
-Monitor prompt_tool_video_fallback logs, provider-specific circuit health,
-latency, outbox attempts, wallet and external spend. Video prompt claims
-have a dedicated 600-second lease (PROMPT_TOOL_VIDEO_OUTBOX_LEASE_SECONDS)
-instead of the usual 90 seconds.
-Measure worst-case pre-processing and inference before raising concurrency:
-a lost worker requires waiting for the lease to expire before recovery.
-Rollback: set the flag false and restart the prompt-tool worker only.
+After rollout monitor prompt_tool_qwen_fallback logs (without customer media),
+Nexus and Neironych prompt circuit status, supplier spend, queue attempts,
+progress/latency and customer ROX refunds.
+Rollback: disable PROMPT_TOOL_QWEN_FALLBACK_ENABLED and restart prompt-tool
+workers. Already-pinned Neironych tasks will keep their supplier for safe
+idempotent completion; switching them manually back to Nexus is unsafe.
