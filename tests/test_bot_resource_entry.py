@@ -273,3 +273,205 @@ def test_installed_link_contract_cannot_restore_startapp(monkeypatch):
         "https://t.me/RoxyExampleBot?start=feed_11111111-2222-4333-8444-555555555555_ref_777"
     )
     assert mini_app_deep_link("ref_777") == "https://t.me/RoxyExampleBot?startapp=ref_777"
+
+
+@pytest.mark.parametrize("action", ["feed", "remix"])
+async def test_public_large_image_uses_ready_preview_and_exact_resource(
+    monkeypatch, start_dependencies, action,
+):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    original = "https://roxy.example/uploads/feed/large-original.png"
+    preview = "https://roxy.example/uploads/feed/thumbs/large-original.jpg"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original, "preview_url": preview,
+        "media": [{"content_type": "image/png", "size_bytes": 7 * 1024 * 1024}],
+        "author": {"display_name": "Author"},
+    }))
+    payload = f"{action}_11111111-2222-4333-8444-555555555555_ref_777"
+    msg = message(payload)
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_photo.assert_awaited_once()
+    assert msg.answer_photo.call_args.args[0] == preview
+    msg.answer_video.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_not_awaited()
+    button = msg.answer_photo.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    query = parse_qs(urlparse(button.web_app.url).query)
+    assert query["start_payload"] == [payload]
+    assert query["startapp"] == [payload]
+
+
+@pytest.mark.parametrize("action", ["feed", "remix"])
+async def test_public_video_poster_is_photo_with_exact_original_link(
+    monkeypatch, start_dependencies, action,
+):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    original = "https://roxy.example/uploads/feed/clip.mp4"
+    poster = "https://roxy.example/uploads/feed/thumbs/clip.jpg"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original, "preview_url": poster,
+        "gen_type": "video", "media": [{"content_type": "video/mp4"}],
+        "author": {"display_name": "Author"},
+    }))
+    payload = f"{action}_11111111-2222-4333-8444-555555555555_ref_777"
+    msg = message(payload)
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_photo.assert_awaited_once()
+    assert msg.answer_photo.call_args.args[0] == poster
+    msg.answer_video.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_not_awaited()
+    button = msg.answer_photo.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    query = parse_qs(urlparse(button.web_app.url).query)
+    assert query["start_payload"] == [payload]
+    assert query["startapp"] == [payload]
+
+
+@pytest.mark.parametrize("preview", [None, "", "https://roxy.example/uploads/feed/other.mp4"])
+@pytest.mark.parametrize("kind,suffix,method", [
+    ("image", "png", "answer_photo"),
+    ("video", "mp4", "answer_video"),
+])
+async def test_public_missing_image_preview_keeps_original_media_type(
+    monkeypatch, start_dependencies, preview, kind, suffix, method,
+):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    original = f"https://roxy.example/uploads/feed/original.{suffix}"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original, "preview_url": preview,
+        "gen_type": kind, "media": [{"content_type": f"{kind}/{suffix}"}],
+        "author": {"display_name": "Author"},
+    }))
+    msg = message("feed_11111111-2222-4333-8444-555555555555")
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    sent = getattr(msg, method)
+    sent.assert_awaited_once()
+    assert sent.call_args.args[0] == original
+    for other in {"answer_photo", "answer_video", "answer_audio"} - {method}:
+        getattr(msg, other).assert_not_awaited()
+    msg.answer.assert_not_awaited()
+
+
+async def test_public_audio_keeps_audio_even_with_image_preview(monkeypatch, start_dependencies):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    original = "https://roxy.example/uploads/feed/music.mp3"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original,
+        "preview_url": "https://roxy.example/uploads/feed/thumbs/music.jpg",
+        "gen_type": "audio", "media": [{"content_type": "audio/mpeg"}],
+        "author": {"display_name": "Author"},
+    }))
+    msg = message("feed_11111111-2222-4333-8444-555555555555")
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_audio.assert_awaited_once()
+    assert msg.answer_audio.call_args.args[0] == original
+    msg.answer_photo.assert_not_awaited()
+    msg.answer_video.assert_not_awaited()
+    msg.answer.assert_not_awaited()
+
+
+@pytest.mark.parametrize("kind,suffix", [("image", "png"), ("video", "mp4")])
+async def test_blurred_post_with_ready_preview_exposes_no_media(
+    monkeypatch, start_dependencies, kind, suffix,
+):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": f"https://roxy.example/uploads/feed/original.{suffix}",
+        "preview_url": "https://roxy.example/uploads/feed/thumbs/original.jpg",
+        "gen_type": kind, "feed_blurred": True, "author": {"display_name": "Author"},
+    }))
+    payload = "feed_11111111-2222-4333-8444-555555555555_ref_777"
+    msg = message(payload)
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_photo.assert_not_awaited()
+    msg.answer_video.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_awaited_once()
+    button = msg.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert parse_qs(urlparse(button.web_app.url).query)["start_payload"] == [payload]
+
+
+@pytest.mark.parametrize("kind", ["image", "video"])
+async def test_rejected_public_preview_falls_back_once_to_exact_resource(
+    monkeypatch, start_dependencies, caplog, kind,
+):
+    import logging
+
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    suffix = "png" if kind == "image" else "mp4"
+    original = f"https://roxy.example/uploads/feed/original.{suffix}"
+    preview = "https://roxy.example/uploads/feed/thumbs/original.jpg"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original, "preview_url": preview,
+        "gen_type": kind, "author": {"display_name": "Author"},
+    }))
+    payload = "remix_11111111-2222-4333-8444-555555555555_ref_777"
+    msg = message(payload)
+    msg.answer_photo.side_effect = TelegramBadRequest(
+        method=SendPhoto(chat_id=999, photo=preview),
+        message=f"failed to fetch {preview}?secret=do-not-log",
+    )
+    with caplog.at_level(logging.INFO, logger="app.bot.public_resource_entry"):
+        await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_photo.assert_awaited_once()
+    assert msg.answer_photo.call_args.args[0] == preview
+    msg.answer_video.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_awaited_once()
+    button = msg.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    query = parse_qs(urlparse(button.web_app.url).query)
+    assert query["start_payload"] == [payload]
+    assert query["startapp"] == [payload]
+    assert "public_resource_preview_media_rejected" in caplog.text
+    assert preview not in caplog.text
+    assert original not in caplog.text
+    assert "do-not-log" not in caplog.text
+
+
+@pytest.mark.parametrize("error_kind", ["forbidden", "network", "chat_not_found"])
+async def test_public_preview_transport_failure_never_retries_original_or_text(
+    monkeypatch, start_dependencies, error_kind,
+):
+    from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
+
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    preview = "https://roxy.example/uploads/feed/thumbs/clip.jpg"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": "https://roxy.example/uploads/feed/clip.mp4",
+        "preview_url": preview, "gen_type": "video", "author": {"display_name": "Author"},
+    }))
+    method = SendPhoto(chat_id=999, photo=preview)
+    failure = {
+        "forbidden": TelegramForbiddenError(method=method, message="bot was blocked"),
+        "network": TelegramNetworkError(method=method, message="timeout"),
+        "chat_not_found": TelegramBadRequest(method=method, message="chat not found"),
+    }[error_kind]
+    msg = message("feed_11111111-2222-4333-8444-555555555555")
+    msg.answer_photo.side_effect = failure
+    with pytest.raises(type(failure)):
+        await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_photo.assert_awaited_once()
+    assert msg.answer_photo.call_args.args[0] == preview
+    msg.answer_video.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_not_awaited()
+
+
+@pytest.mark.parametrize("suffix", [".mp4", ""])
+async def test_video_original_used_as_preview_keeps_video_delivery(
+    monkeypatch, start_dependencies, suffix,
+):
+    monkeypatch.setattr(FeedService, "assert_surface_visible", AsyncMock(return_value=object()))
+    original = f"https://roxy.example/uploads/feed/original{suffix}"
+    monkeypatch.setattr(FeedService, "get_feed_generation_card", AsyncMock(return_value={
+        "id": str(RESOURCE), "result_url": original, "preview_url": original,
+        "gen_type": "video", "media": [{"content_type": "video/mp4"}],
+        "author": {"display_name": "Author"},
+    }))
+    msg = message("feed_11111111-2222-4333-8444-555555555555")
+    await launcher.start_app_only(msg, AsyncMock(), AsyncMock())
+    msg.answer_video.assert_awaited_once()
+    assert msg.answer_video.call_args.args[0] == original
+    msg.answer_photo.assert_not_awaited()
+    msg.answer_audio.assert_not_awaited()
+    msg.answer.assert_not_awaited()
