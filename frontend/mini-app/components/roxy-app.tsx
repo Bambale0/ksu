@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { generationFailureMessage } from "@/lib/generation-delivery";
 import { haptic, initTelegram, notify, syncSafeArea, telegram } from "@/lib/telegram";
 import type { Draft, FeedCard, Generation, GenerationModel, GenerationModelFamily, Me, Quote, Route, UiField } from "@/lib/types";
 import { Icon, type IconName } from "./icons";
@@ -680,7 +681,7 @@ function DynamicField({ field, value, onChange, onUpload }: { field: UiField; va
 }
 
 function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {
-  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {statusLabel(item.status)}</small>{item.error && <p>Не получилось создать работу. Попробуйте ещё раз или измените описание.</p>}</div><span className={`status ${item.status}`}>{statusLabel(item.status)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
+  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {statusLabel(item.status)}</small>{item.error && <p>{generationFailureMessage(item.error)}</p>}</div><span className={`status ${item.status}`}>{statusLabel(item.status)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
 }
 
 function ProfileScreen({ me, avatar, tab, setTab, works, publications, onPreview, onWallet }: { me: Me | null; avatar: string; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: FeedCard[]; onPreview: (item: Generation | FeedCard, surface: "private" | "feed") => void; onWallet: () => void }) {

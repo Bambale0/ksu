@@ -3,6 +3,16 @@ import type { Generation } from "./types";
 import { telegram } from "./telegram";
 
 export const GENERATION_TRACK_EVENT = "roxy:generation-track";
+export function generationFailureMessage(
+  error: string | null | undefined,
+  fallback = "Не получилось создать работу. Попробуйте ещё раз или измените описание.",
+): string {
+  const match = /^prompt_too_long:max_length=([1-9][0-9]{0,8})$/.exec(error || "");
+  return match
+    ? `Промпт слишком длинный. Максимум — ${match[1]} символов. Сократите текст и повторите генерацию.`
+    : fallback;
+}
+
 const KEY = "roxy.generation-delivery.v1.";
 const UUID_RE = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 const MAX_AGE = 7 * 24 * 60 * 60 * 1000;

@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
+from app.core.generation_errors import prompt_length_failure_message
 from app.db.models import (
     Generation,
     Notification,
@@ -183,7 +184,10 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
                     obj,
                     kind="generation_failed",
                     title="Генерация не завершилась",
-                    body="Задача завершилась с ошибкой. Проверьте историю и статус возврата ROX.",
+                    body=(
+                        prompt_length_failure_message(obj.error)
+                        or "Задача завершилась с ошибкой. Проверьте историю и статус возврата ROX."
+                    ),
                 )
         elif isinstance(obj, Payment) and _status_changed(obj):
             if obj.status == "succeeded":

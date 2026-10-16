@@ -643,3 +643,19 @@ test('delivery polling pauses offline and resumes after network restoration', as
   });
   await expect(page.locator('.preview-media img')).toHaveAttribute('src', IMAGE_URL, { timeout: 10000 });
 });
+
+test('prompt length rejection explains the limit in live feedback, history and preview', async ({ page }) => {
+  await telegramWithoutChat(page);
+  const message = 'Промпт слишком длинный. Максимум — 4000 символов. Сократите текст и повторите генерацию.';
+  const counts = await fakeApi(page, {
+    taskId: TREND_TASK_ID,
+    details: (n) => n < 3 ? task(TREND_TASK_ID, 'queued')
+      : { ...task(TREND_TASK_ID, 'failed'), error: 'prompt_too_long:max_length=4000' },
+  });
+  await page.goto('/mini-app/?route=history&generation=' + TREND_TASK_ID);
+  await expect(page.getByRole('status')).toContainText(message, { timeout: 15000 });
+  await expect(page.locator('.history-card').first()).toContainText(message);
+  await expect(page.locator('.preview-card')).toContainText(message);
+  expect(counts.creates()).toBe(0);
+  await expect(page.locator('body')).not.toContainText('prompt_too_long');
+});

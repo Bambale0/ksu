@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from app.core.generation_errors import prompt_length_error
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +49,34 @@ class NexusTask:
     image_urls: list[str]
     error: str = ""
     raw: dict[str, Any] | None = None
+
+
+def _prompt_length_error(response: httpx.Response) -> str | None:
+    if response.status_code != 422:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    details = payload.get("detail") if isinstance(payload, dict) else None
+    if not isinstance(details, list):
+        return None
+    for detail in details:
+        if not isinstance(detail, dict) or detail.get("type") != "string_too_long":
+            continue
+        location = detail.get("loc")
+        if (
+            not isinstance(location, list) or len(location) < 3
+            or location[:2] != ["body", "params"] or location[-1] != "prompt"
+        ):
+            continue
+        message = detail.get("msg")
+        if not isinstance(message, str):
+            continue
+        match = re.fullmatch(r"String should have at most ([1-9][0-9]{0,8}) characters", message)
+        if match:
+            return prompt_length_error(int(match.group(1)))
+    return None
 
 
 class NexusClient:
@@ -89,14 +120,20 @@ class NexusClient:
             },
             json={"params": params},
         )
+        error_code = _prompt_length_error(response)
         if not response.is_success:
             logger.error(
-                "nexus_client.create FAILED model=%s http=%s body=%s",
-                model_name,
-                response.status_code,
-                (response.text or "")[:500],
+                "nexus_client.create FAILED model=%s http=%s error=%s",
+                model_name, response.status_code, error_code or "http_error",
             )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if error_code:
+                raise httpx.HTTPStatusError(
+                    error_code, request=exc.request, response=exc.response,
+                ) from None
+            raise
         payload = response.json()
         task_id = payload.get("task_id")
         if not task_id:
