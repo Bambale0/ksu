@@ -47,6 +47,16 @@ POST /api/v1/uploads/kie
 
 Authenticated create/upload calls use raw signed `Telegram.WebApp.initData` in `X-Telegram-Init-Data`. `initDataUnsafe` is never an authentication source.
 
+## Prompt length failures
+
+When Nexus explicitly rejects the prompt with HTTP 422 `string_too_long`, ROXY
+shows the provider's reported character limit and asks the customer to shorten
+the text and retry. The explanation appears in Telegram, the notification inbox,
+Mini App live feedback, history and the private work preview. The limit is read
+from the validation response, rather than hardcoded per model. The prompt is
+never silently truncated. Unrelated validation failures retain generic safe copy.
+The normal failed-generation refund and notification idempotency remain in effect.
+
 ## Product grouping
 
 ROXY groups compatible backend variants into user-facing products where useful. Examples include Nano Banana, Seedream, GPT Image, WAN and Grok groups. Grouping is presentation only: the concrete backend `model_id` still controls validation, provider payload and billing.
