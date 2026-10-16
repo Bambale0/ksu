@@ -16,6 +16,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.generation_errors import prompt_length_failure_message
 from app.core.logging import configure_logging
 from app.core.observability import record_worker_heartbeat
 from app.db.models import Generation, Notification, User
@@ -297,6 +298,9 @@ def _is_unreachable_chat_error(exc: TelegramBadRequest) -> bool:
     return "chat not found" in str(exc).lower()
 
 def _friendly_generation_error(error: str | None) -> str:
+    prompt_length_message = prompt_length_failure_message(error)
+    if prompt_length_message:
+        return prompt_length_message
     value = (error or "").strip().lower()
     if not value:
         return "Сервис генерации завершил задачу с ошибкой."
