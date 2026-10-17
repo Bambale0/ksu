@@ -182,3 +182,47 @@ Public image cards use an existing lightweight JPEG preview when available. Publ
 Previously shared `?startapp=` links remain supported and still open the Mini App directly; already distributed Telegram URLs cannot be rewritten by this server change. Explicit Mini App/private repeat/task links retain their existing behavior. Private, removed or unavailable resources must not expose media through bot previews. Blurred posts show the resource button without unblurred media.
 
 Receiving a private bot message, including `/start`, already re-enables eligible transactional notifications that were deferred because Telegram could not reach the chat. This change does not backfill historical notifications or perform refunds.
+
+## Photo/video prompts: Nexus GPT primary, Neironych Qwen 3.8 fallback
+
+The ROXY tools **Prompt по фото** (image_analysis) and **Prompt по видео**
+(video_prompt) stay on Nexus GPT Vision (gpt-6-sol) as primary. The fallback
+is exclusively Neironych Qwen 3.8 Max (model qwen3.8-max) via
+POST https://api.xn--e1aikcel5c5a.online/v1/chat/completions.
+The text-only prompt builder remains on its existing Nexus route.
+This replaces the prior draft Grok 4.5 video-only fallback. Kie is never an
+automatic fallback for these tools, but older already-recorded Kie jobs
+remain supported.
+
+Set PROMPT_TOOL_QWEN_FALLBACK_ENABLED=true and NEIRONYCH_API_KEY only after
+review and a successful authorized image/video Qwen vision paid smoke.
+The default is false; deploy does not silently turn on paid routing.
+Fallback occurs only when Nexus explicitly returns 502/503/504 or its
+prompt circuit is open; never on content rejection/other 4xx,
+unexpected model output, or uncertain network timeouts.
+
+For a photo prompt Qwen receives the same public HTTPS reference URL that
+Nexus would use and the existing photo prompt schema. For a video prompt
+the existing safe ROXY downloader verifies the source (30 MB maximum),
+real duration is probed and four chronological JPEG frames are sent
+as data:image/jpeg;base64 blocks using image_url in multimodal Chat
+Completions. Direct raw-video input is not assumed. Frame analysis cannot
+infer audio or every motion detail in unseen frames. Both tools retain the
+same ROXY result shapes, customer prices and wallet idempotency.
+
+The outbox atomically pins provider=neironych and model=qwen3.8-max before
+any fallback POST, preserving the exact task ID after worker restarts and
+rejecting stale claims. Each tool has a task-stable provider Idempotency-Key
+and a 600-second media prompt lease (both photo/video) to avoid early
+duplicate claims. The supplier is credited/charged independently of user
+ROX; monitor real spend, errors, successes and task refunds.
+Neironych HTTP 400/401/402/403/404/413/422 are permanent for this task:
+no repeated paid supplier submissions, immediate task failure/refund.
+429/5xx use the existing bounded outbox retry with the SAME provider and key.
+
+After rollout monitor prompt_tool_qwen_fallback logs (without customer media),
+Nexus and Neironych prompt circuit status, supplier spend, queue attempts,
+progress/latency and customer ROX refunds.
+Rollback: disable PROMPT_TOOL_QWEN_FALLBACK_ENABLED and restart prompt-tool
+workers. Already-pinned Neironych tasks will keep their supplier for safe
+idempotent completion; switching them manually back to Nexus is unsafe.

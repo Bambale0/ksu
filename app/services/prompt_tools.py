@@ -10,6 +10,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
+import httpx
+
 from redis.asyncio import Redis
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.admin_models import TariffVersion
 from app.db.prompt_tool_models import PromptToolOutbox, PromptToolTask
-from app.providers.kie_prompt_tools import KiePromptToolsClient, PromptToolProviderError
+from app.providers.kie_prompt_tools import (
+    KiePromptToolsClient,
+    PromptToolProviderError,
+    PromptToolProviderResult,
+)
+from app.providers.neironych_qwen_prompt_tools import QWEN_MODEL, NeironychQwenPromptToolsClient
 from app.providers.nexus_prompt_tools import NEXUS_VISION_MODEL, NexusPromptToolsClient
-from app.services.abuse_protection import AbuseProtectionService
+from app.services.abuse_protection import AbuseProtectionService, ProviderCircuitOpen
 from app.services.billing_access import BillingAccessService
 from app.services.notifications import NotificationService
 from app.services.wallet import WalletService
@@ -86,12 +93,58 @@ def _retry_delay(attempt: int) -> int:
     return min(180, 2 ** max(1, min(attempt, 7)))
 
 
+def _prompt_tool_lease_seconds(tool: str | None, *, provider: str | None = None) -> int:
+    if tool == "video_prompt":
+        return max(
+            settings.generation_outbox_lease_seconds,
+            settings.prompt_tool_video_outbox_lease_seconds,
+        )
+    if tool == "image_analysis" and (
+        settings.prompt_tool_qwen_fallback_enabled or provider == "neironych"
+    ):
+        return max(
+            settings.generation_outbox_lease_seconds,
+            settings.prompt_tool_image_outbox_lease_seconds,
+        )
+    return settings.generation_outbox_lease_seconds
+
+
 def _primary_prompt(result: dict[str, Any]) -> str:
     for key in ("prompt_ru", "prompt_en"):
         value = result.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _nexus_gateway_unavailable(error: BaseException) -> bool:
+    """Only explicit 502/503/504 can trigger cross-provider delivery.
+
+    A moderation 4xx, malformed JSON or uncertain network timeout must never
+    silently spend credits at an alternate provider.
+    """
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError):
+            return current.response.status_code in {502, 503, 504}
+        current = current.__cause__
+    return False
+
+
+def _neironych_nonretryable_error(error: BaseException) -> bool:
+    """A second paid submission cannot fix an invalid key or exhausted balance."""
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError):
+            return current.response.status_code in {400, 401, 402, 403, 404, 413, 422}
+        if isinstance(current, ValueError):
+            return True  # Same idempotency key would return the same malformed output.
+        current = current.__cause__
+    return False
 
 
 class PromptToolPricingService:
@@ -370,11 +423,16 @@ class PromptToolOutboxService:
         )
         if row is None:
             return None
+        task = await session.get(PromptToolTask, row.task_id)
         row.status = "processing"
         row.attempts += 1
-        row.lease_until = now + timedelta(seconds=settings.generation_outbox_lease_seconds)
+        row.lease_until = now + timedelta(
+            seconds=_prompt_tool_lease_seconds(
+                task.tool if task is not None else None,
+                provider=task.provider if task is not None else None,
+            )
+        )
         row.last_error = None
-        task = await session.get(PromptToolTask, row.task_id)
         if task is not None and task.status in {"queued", "processing"}:
             task.status = "processing"
         await session.commit()
@@ -409,6 +467,29 @@ class PromptToolOutboxService:
         return task, row
 
     @staticmethod
+    async def route_to_provider(
+        session: AsyncSession,
+        claimed: ClaimedPromptTool,
+        *,
+        provider: str,
+        model: str,
+    ) -> bool:
+        # Persist the alternate supplier BEFORE a potentially chargeable POST.
+        # A reclaimed lease must never resubmit the task to a different supplier.
+        locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
+        if locked is None:
+            await session.rollback()
+            return False
+        task, _row = locked
+        if task.tool not in {"image_analysis", "video_prompt"} or task.status not in {"queued", "processing"}:
+            await session.rollback()
+            return False
+        task.provider = provider
+        task.model = model
+        await session.commit()
+        return True
+
+    @staticmethod
     async def release(session: AsyncSession, claimed: ClaimedPromptTool, error: str) -> None:
         locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
         if locked is None:
@@ -431,6 +512,7 @@ class PromptToolOutboxService:
         result: dict[str, Any],
         model: str,
         provider_credits: Decimal | None,
+        provider: str | None = None,
     ) -> None:
         locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
         if locked is None:
@@ -440,6 +522,8 @@ class PromptToolOutboxService:
         now = _utcnow()
         task.status = "succeeded"
         task.model = model
+        if provider is not None:
+            task.provider = provider
         task.result_payload = result
         task.provider_credits = provider_credits
         task.error = None
@@ -497,6 +581,32 @@ class PromptToolOutboxService:
 
 class PromptToolProcessor:
     @staticmethod
+    async def _neironych_media_prompt(
+        data: dict[str, Any], *, tool: str, task_id: uuid.UUID
+    ) -> PromptToolProviderResult:
+        client = NeironychQwenPromptToolsClient(
+            settings.neironych_api_key, settings.neironych_api_base_url
+        )
+        try:
+            if tool == "image_analysis":
+                return await client.analyze_image(
+                    image_url=str(data.get("image_url") or ""),
+                    instruction=str(data.get("instruction") or ""),
+                    idempotency_key=str(task_id),
+                )
+            if tool == "video_prompt":
+                raw_duration = data.get("duration_seconds")
+                return await client.build_video_prompt(
+                    video_url=str(data.get("video_url") or ""),
+                    instruction=str(data.get("instruction") or ""),
+                    duration_seconds=int(raw_duration) if raw_duration else None,
+                    idempotency_key=str(task_id),
+                )
+            raise PromptToolProviderError("Unsupported Qwen prompt-tool route")
+        finally:
+            await client.aclose()
+
+    @staticmethod
     async def process(
         session: AsyncSession,
         redis: Redis,
@@ -507,8 +617,31 @@ class PromptToolProcessor:
             return
         provider = str(getattr(task, "provider", None) or "kie").strip().lower()
         protection_provider = f"{provider}-prompt-tools"
+        fallback_allowed = bool(
+            provider == "nexus"
+            and task.tool in {"image_analysis", "video_prompt"}
+            and settings.prompt_tool_qwen_fallback_enabled
+            and settings.neironych_api_key.strip()
+        )
         try:
-            await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+            try:
+                await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
+            except ProviderCircuitOpen:
+                if not fallback_allowed:
+                    raise
+                await AbuseProtectionService.provider_submission_gate(
+                    redis, "neironych-prompt-tools"
+                )
+                if not await PromptToolOutboxService.route_to_provider(
+                    session, claimed, provider="neironych", model=QWEN_MODEL
+                ):
+                    return
+                provider = "neironych"
+                protection_provider = "neironych-prompt-tools"
+                logger.warning(
+                    "prompt_tool_qwen_fallback task_id=%s tool=%s reason=nexus_circuit_open",
+                    task.id, task.tool,
+                )
             data = task.input_payload or {}
             if provider == "nexus":
                 client = NexusPromptToolsClient(
@@ -516,27 +649,56 @@ class PromptToolProcessor:
                     settings.nexus_api_base_url,
                 )
                 try:
-                    if task.tool == "image_analysis":
-                        result = await client.analyze_image(
-                            image_url=str(data.get("image_url") or ""),
-                            instruction=str(data.get("instruction") or ""),
+                    try:
+                        if task.tool == "image_analysis":
+                            result = await client.analyze_image(
+                                image_url=str(data.get("image_url") or ""),
+                                instruction=str(data.get("instruction") or ""),
+                            )
+                        elif task.tool == "prompt_builder":
+                            result = await client.build_prompt(
+                                text=str(data.get("text") or ""),
+                                image_url=str(data.get("image_url") or "") or None,
+                            )
+                        elif task.tool == "video_prompt":
+                            raw_duration = data.get("duration_seconds")
+                            result = await client.build_video_prompt(
+                                video_url=str(data.get("video_url") or ""),
+                                instruction=str(data.get("instruction") or ""),
+                                duration_seconds=int(raw_duration) if raw_duration else None,
+                            )
+                        else:
+                            raise ValueError(f"Unknown prompt tool: {task.tool}")
+                    except PromptToolProviderError as exc:
+                        if not fallback_allowed or not _nexus_gateway_unavailable(exc):
+                            raise
+                        await AbuseProtectionService.record_provider_failure(
+                            redis, "nexus-prompt-tools"
                         )
-                    elif task.tool == "prompt_builder":
-                        result = await client.build_prompt(
-                            text=str(data.get("text") or ""),
-                            image_url=str(data.get("image_url") or "") or None,
+                        await AbuseProtectionService.provider_submission_gate(
+                            redis, "neironych-prompt-tools"
                         )
-                    elif task.tool == "video_prompt":
-                        raw_duration = data.get("duration_seconds")
-                        result = await client.build_video_prompt(
-                            video_url=str(data.get("video_url") or ""),
-                            instruction=str(data.get("instruction") or ""),
-                            duration_seconds=int(raw_duration) if raw_duration else None,
+                        if not await PromptToolOutboxService.route_to_provider(
+                            session, claimed, provider="neironych", model=QWEN_MODEL
+                        ):
+                            return
+                        provider = "neironych"
+                        protection_provider = "neironych-prompt-tools"
+                        logger.warning(
+                            "prompt_tool_qwen_fallback task_id=%s tool=%s reason=nexus_gateway",
+                            task.id, task.tool,
                         )
-                    else:
-                        raise ValueError(f"Unknown prompt tool: {task.tool}")
+                        result = await PromptToolProcessor._neironych_media_prompt(
+                            data, tool=task.tool, task_id=task.id
+                        )
                 finally:
                     await client.aclose()
+            elif provider == "neironych" and task.tool in {"image_analysis", "video_prompt"}:
+                # Provider was already pinned by an earlier worker attempt.
+                # Never resubmit to Nexus after Neironych may have charged.
+                result = await PromptToolProcessor._neironych_media_prompt(
+                    data, tool=task.tool, task_id=task.id
+                )
             elif provider == "kie":
                 client = KiePromptToolsClient(settings.kie_api_key, settings.kie_base_url)
                 try:
@@ -575,11 +737,17 @@ class PromptToolProcessor:
                 result=result.payload,
                 model=result.model,
                 provider_credits=result.credits_consumed,
+                provider=provider,
             )
             await AbuseProtectionService.record_provider_success(redis, protection_provider)
         except Exception as exc:
             await session.rollback()
             await AbuseProtectionService.record_provider_failure(redis, protection_provider)
+            if provider == "neironych" and _neironych_nonretryable_error(exc):
+                await PromptToolOutboxService.fail_and_refund(
+                    session, claimed, error=str(exc)
+                )
+                return
             if claimed.attempts < settings.generation_submission_max_attempts:
                 await PromptToolOutboxService.release(session, claimed, str(exc))
                 return
