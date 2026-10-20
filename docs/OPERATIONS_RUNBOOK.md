@@ -514,6 +514,18 @@ step-up and confirmation. `GET /api/v1/admin/runtime` returns
 are rejected; reload before retrying. The existing admin command ledger records
 actor, request, target, revision and chosen routes. No secrets belong here.
 
+Seedream 5 Pro text/image modes also allow **Kie -> Nexus**. Select that route
+for both `seedream-5-pro-t2i` and `seedream-5-pro-i2i` to make Kie primary.
+The existing catalog defaults send `nsfw_checker=false` to Kie in both modes.
+An open provider circuit before submission or an explicit Kie HTTP/envelope
+401/402/404/429 rejection can advance to the saved Nexus fallback. Accepted tasks,
+timeouts, 5xx, malformed responses and content/validation rejections do not start
+another provider. A response carrying a task ID alongside an error code is
+uncertain and waits for reconciliation. Nexus still rejects controls it cannot
+represent (including Seedream Pro 21:9) without submitting a different request.
+Before rolling back to code without this route option, save Kie-only for new work;
+already saved job routes remain intact.
+
 Routes are stored in `AdminRuntimeSetting`; no migration is needed. Until the
 first admin save, the defaults above apply. Each new generation snapshots the
 route and revision. Changes are effective on the next admission without a

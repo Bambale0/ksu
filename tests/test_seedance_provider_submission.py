@@ -8,6 +8,8 @@ from app.providers.kie import KieClient
 
 
 class _Response:
+    status_code = 200
+
     def raise_for_status(self) -> None:
         return None
 

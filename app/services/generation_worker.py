@@ -253,7 +253,7 @@ class GenerationWorkerService:
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
             except ProviderCircuitOpen as exc:
-                if provider in {"neironych", "nexus"}:
+                if provider in {"neironych", "nexus", "kie"}:
                     fallback = await switch_to_fallback(
                         session,
                         generation.id,
