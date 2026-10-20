@@ -41,6 +41,8 @@ def route_options() -> dict[str, list[list[str]]]:
     options: dict[str, list[list[str]]] = {}
     for model, route in _PROVIDER_ROUTES.items():
         choices: list[list[str]] = [list(route)]
+        if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
+            choices.append(["kie", "nexus"])
         for provider in route:
             choice = [provider]
             if choice not in choices:

@@ -8,6 +8,8 @@ from app.services.seedance_reference_modes import enforce_seedance_reference_mod
 
 
 class _Response:
+    status_code = 200
+
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
 

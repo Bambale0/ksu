@@ -13,6 +13,8 @@ from app.db.session import SessionFactory
 from app.providers.kie import KieClient, KieProviderError
 from app.services.generation_provider import GenerationProviderService
 from app.services.generation_provider_routing import route_options, validate_routes
+from app.services.model_catalog import ModelCatalog
+from app.services.nexus_generation_provider import NexusGenerationProviderService
 from app.services.wallet import WalletService
 
 
@@ -41,9 +43,11 @@ async def make_job(session, model="seedream-5-pro-t2i"):
                                kind="test_credit", idempotency_key=str(uuid.uuid4()))
     params = {"_model_id": model, "_provider_route": ["kie", "nexus"],
               "_provider_route_index": 0, "aspect_ratio": "1:1", "quality": "basic",
-              "output_format": "png", "nsfw_checker": False}
+              "output_format": "png"}
     if model.endswith("i2i"):
         params["image_urls"] = ["https://example.com/reference.png"]
+    _, clean, *_ = ModelCatalog.prepare(model, params | {"prompt": "A blue ceramic cup"})
+    params.update(clean)
     generation = Generation(user_id=user.id, provider="kie", kind="text_to_image",
                             status="queued", prompt="A blue ceramic cup", cost_rox=Decimal("20"),
                             parameters=params)
@@ -69,6 +73,22 @@ def mock_kie(monkeypatch, handler):
 @pytest.mark.parametrize("code,envelope", [(401, False), (402, False), (404, False),
                                           (429, False), (402, True), (429, True)])
 async def test_definite_kie_rejection_schedules_nexus_without_refund(monkeypatch, model, code, envelope):
+    nexus_calls = []
+    task_id = f"nexus-{uuid.uuid4()}"
+
+    class NexusClient:
+        def __init__(self, *_args):
+            pass
+
+        async def create_generation(self, *, params, idempotency_key):
+            assert params["model_name"] == "seedream-5.0-pro"
+            nexus_calls.append(idempotency_key)
+            return task_id
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr("app.services.nexus_generation_provider.NexusClient", NexusClient)
     def handler(request):
         payload = json.loads(request.content)
         assert payload["input"]["nsfw_checker"] is False
@@ -87,6 +107,12 @@ async def test_definite_kie_rejection_schedules_nexus_without_refund(monkeypatch
         assert attempt["reason"] == f"Kie unavailable HTTP/code {code}"
         wallet = await session.get(Wallet, generation.user_id)
         assert wallet.balance == Decimal("80")
+        result = await NexusGenerationProviderService.submit(session, generation.id)
+        assert result.provider == "nexus" and result.external_id == task_id
+        await NexusGenerationProviderService.submit(session, generation.id)
+        assert nexus_calls == [f"generation:{generation.id}"]
+        await session.refresh(wallet)
+        assert wallet.balance == Decimal("80")
         await GenerationProviderService.fail_and_refund(session, generation.id, "final")
         await GenerationProviderService.fail_and_refund(session, generation.id, "replay")
         await session.refresh(wallet)
@@ -94,13 +120,19 @@ async def test_definite_kie_rejection_schedules_nexus_without_refund(monkeypatch
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("outcome", ["timeout", "server", "malformed", "policy", "validation"])
+@pytest.mark.parametrize("outcome", ["timeout", "server", "malformed", "policy", "validation", "task_id", "http_task_id", "http_malformed"])
 async def test_kie_unsafe_outcomes_do_not_start_nexus(monkeypatch, outcome):
     def handler(request):
         if outcome == "timeout":
             raise httpx.ReadTimeout("timeout", request=request)
         if outcome == "malformed":
             return httpx.Response(200, text="invalid json")
+        if outcome == "task_id":
+            return httpx.Response(200, json={"code": 429, "data": {"taskId": "maybe-accepted"}})
+        if outcome == "http_task_id":
+            return httpx.Response(429, json={"code": 429, "data": {"taskId": "maybe-accepted"}})
+        if outcome == "http_malformed":
+            return httpx.Response(429, text="invalid json")
         return httpx.Response({"server": 503, "policy": 403, "validation": 422}[outcome],
                               json={"code": 500, "msg": "rejected"})
     mock_kie(monkeypatch, handler)
@@ -112,7 +144,7 @@ async def test_kie_unsafe_outcomes_do_not_start_nexus(monkeypatch, outcome):
         assert generation.provider == "kie"
         assert generation.parameters["_provider_route_index"] == 0
         wallet = await session.get(Wallet, generation.user_id)
-        if outcome in {"timeout", "server", "malformed"}:
+        if outcome in {"timeout", "server", "malformed", "task_id", "http_task_id", "http_malformed"}:
             assert generation.parameters["_submission_uncertain"] is True
             assert wallet.balance == Decimal("80")
         else:
@@ -122,6 +154,7 @@ async def test_kie_unsafe_outcomes_do_not_start_nexus(monkeypatch, outcome):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("state", ["accepted", "uncertain", "switched", "failed"])
 async def test_late_kie_availability_error_preserves_newer_outcome(monkeypatch, state):
+    accepted_task = f"accepted-{uuid.uuid4()}"
     async with SessionFactory() as session:
         generation = await make_job(session)
         async def handler(request):
@@ -129,7 +162,7 @@ async def test_late_kie_availability_error_preserves_newer_outcome(monkeypatch, 
                 row = await other.get(Generation, generation.id)
                 row.status = "generating"
                 if state == "accepted":
-                    row.external_id = "accepted-task"
+                    row.external_id = accepted_task
                 elif state == "uncertain":
                     row.status = "submitting"
                     row.parameters = row.parameters | {"_submission_uncertain": True,
@@ -145,10 +178,11 @@ async def test_late_kie_availability_error_preserves_newer_outcome(monkeypatch, 
         result = await GenerationProviderService.submit_kie(session, generation.id)
         assert not result.parameters.get("_provider_attempts")
         if state == "accepted":
-            assert result.external_id == "accepted-task" and result.status == "generating"
+            assert result.external_id == accepted_task and result.status == "generating"
         elif state == "uncertain":
             assert result.parameters["_submission_uncertain"] and result.status == "submitting"
         elif state == "switched":
             assert result.provider == "nexus" and result.parameters["_provider_route_index"] == 1
         else:
             assert result.status == "failed"
+

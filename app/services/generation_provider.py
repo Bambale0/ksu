@@ -16,6 +16,7 @@ from app.db.models import Generation
 from app.providers.kie import KieClient, KieProviderError, KieTask, kie_generation_binding
 from app.providers.kie_veo import KieVeoClient
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_provider_routing import switch_to_fallback
 from app.services.kie_image_contracts import KieImageContractError
 from app.services.kie_video_contracts import KieVideoContractError
 from app.services.media_assets import MediaAssetService
@@ -281,6 +282,34 @@ class GenerationProviderService:
                 finally:
                     await client.aclose()
         except Exception as exc:
+            # A callback or recovery worker may have bound/completed this job
+            # while createTask was in flight. Never overwrite that newer state.
+            current = await session.scalar(
+                select(Generation).where(Generation.id == generation_id).with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                raise LookupError("Generation disappeared after provider submission") from exc
+            if (
+                current.status in _TERMINAL_STATUSES
+                or current.provider != "kie"
+                or current.external_id
+                or (current.parameters or {}).get("_submission_uncertain")
+            ):
+                return current
+            code = (
+                exc.response.status_code if isinstance(exc, httpx.HTTPStatusError)
+                else exc.code if isinstance(exc, KieProviderError) else None
+            )
+            # Only definite no-task availability rejections may cross providers.
+            # Transport/5xx, validation and policy failures keep existing handling.
+            if code in {401, 402, 404, 429}:
+                fallback = await switch_to_fallback(
+                    session, generation_id, expected_provider="kie",
+                    reason=f"Kie unavailable HTTP/code {code}",
+                )
+                if fallback is not None:
+                    return fallback
             await cls._record_submission_error(session, generation.id, exc)
             raise
 
