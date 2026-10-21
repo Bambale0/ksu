@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'frontend/mini-app/**'
+      - 'tests/fixtures/trend_user_fields_catalog_20261021.json'
       - 'docker-compose.yml'
       - '.github/workflows/deploy-production.yml'
       - '.github/workflows/miniapp-playwright.yml'
@@ -59,6 +60,10 @@ jobs:
           e2e/referral-tanyapi-cold-start.spec.mjs
           e2e/admin-provider-routes.spec.mjs
           --project=webkit-mobile
+      - name: Verify personalized trend keyboards in iPhone WebKit
+        if: ${{ !cancelled() }}
+        working-directory: frontend/mini-app
+        run: npx playwright test e2e/all-user-surfaces.spec.mjs --project=webkit-mobile --grep 'personalized trend|catalog personalization'
       - name: Verify upload deadlines in iPhone WebKit
         working-directory: frontend/mini-app
         run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --project=webkit-mobile --grep 'trend preview upload'

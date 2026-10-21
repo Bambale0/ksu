@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 MAX_USER_FIELDS = 6
@@ -13,24 +14,27 @@ MAX_FIELD_VALUE_LENGTH = 160
 _TEMPLATE_RE = re.compile(r"\{\{([^{}]+)\}\}")
 _NUMBER_RE = re.compile(r"^-?\d+(?:[\.,]\d+)?$")
 
-_NUMBER_FIELD_HINTS = (
-    "возраст",
-    "число",
-    "цифр",
-    "количество",
-    "номер",
-    "рост",
-    "вес",
-    "лет",
-    "год",
-    "свеч",
+# Whole words describe the input; examples and fragments of other words do not.
+_NUMBER_FIELD_WORDS = frozenset(
+    (
+        "возраст", "возраста", "число", "числа", "чисел",
+        "цифра", "цифры", "цифр", "цифру", "цифре",
+        "цифрами", "количество", "количества", "номер", "номера",
+        "номеров", "рост", "роста", "вес", "веса",
+        "лет", "год", "года", "годы", "годов",
+        "свеча", "свечи", "свечей", "свечах",
+    )
 )
-_DATE_FIELD_HINTS = (
-    "дата",
-    "date",
-    "день рождения",
-    "birthday",
+_DATE_FIELD_WORDS = frozenset(("дата", "date", "birthday", "birthdate"))
+_TEXT_FIELD_START_WORDS = frozenset(
+    (
+        "текст", "надпись", "фраза", "слоган", "имя",
+        "фамилия", "название", "цвет", "оттенок", "палитра",
+        "caption", "text", "name", "title", "color",
+        "colour",
+    )
 )
+_EXAMPLE_WORDS = frozenset(("пример", "например", "example"))
 
 
 class TrendUserFieldsError(ValueError):
@@ -48,9 +52,36 @@ class TrendUserFieldSpec:
 
 def infer_field_type(label: str) -> str:
     normalized = str(label or "").strip().lower()
-    if any(hint in normalized for hint in _DATE_FIELD_HINTS):
+    # Remove nested explanations while retaining words after a parenthesis.
+    while True:
+        clean = re.sub(r"\([^()]*\)", " ", normalized)
+        if clean == normalized:
+            break
+        normalized = clean
+    normalized = normalized.split("(", 1)[0].split(":", 1)[0]
+    words = re.findall(r"[^\W\d_]+", normalized)
+    for index, word in enumerate(words):
+        if word in _EXAMPLE_WORDS:
+            words = words[:index]
+            break
+    if words and words[0] in _TEXT_FIELD_START_WORDS:
+        return "text"
+
+    # The phrase names a season, not a numeric year. Preserve other hints.
+    semantic_words: list[str] = []
+    index = 0
+    while index < len(words):
+        if words[index:index + 2] == ["время", "года"]:
+            index += 2
+        else:
+            semantic_words.append(words[index])
+            index += 1
+    if _DATE_FIELD_WORDS.intersection(semantic_words) or any(
+        semantic_words[index:index + 2] == ["день", "рождения"]
+        for index in range(len(semantic_words) - 1)
+    ):
         return "date"
-    if any(hint in normalized for hint in _NUMBER_FIELD_HINTS):
+    if _NUMBER_FIELD_WORDS.intersection(semantic_words):
         return "number"
     return "text"
 
@@ -164,6 +195,14 @@ def _validated_field_value(spec: TrendUserFieldSpec, raw_value: str) -> str:
         return ""
     if spec.field_type == "number" and not _NUMBER_RE.fullmatch(value):
         raise TrendUserFieldsError(f"Поле «{spec.label}» должно быть числом")
+    if spec.field_type == "date":
+        try:
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError("Non-canonical date")
+        except ValueError as exc:
+            raise TrendUserFieldsError(
+                f"Поле «{spec.label}» должно быть корректной датой"
+            ) from exc
     if len(value) > spec.max_length:
         raise TrendUserFieldsError(
             f"Поле «{spec.label}» должно быть короче {spec.max_length + 1} символов"
@@ -191,10 +230,11 @@ def render_trend_prompt(prompt: str, user_fields: list[dict[str, Any]], raw_valu
         for spec in specs
     }
 
-    rendered = base_prompt
-    for spec in specs:
-        token_pattern = re.compile(r"\{\{\s*" + re.escape(spec.key) + r"\s*\}\}")
-        rendered = token_pattern.sub(validated[spec.key], rendered)
+    # A callable replacement preserves backslashes and never re-expands user text.
+    rendered = _TEMPLATE_RE.sub(
+        lambda match: validated.get(match.group(1).strip(), match.group(0)),
+        base_prompt,
+    )
 
     overrides = "\n".join(
         f"- {spec.label}: {validated[spec.key]}"

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 
 import { api } from "@/lib/api";
 import type { TrendUserField } from "@/lib/types";
+import { inferTemplateFieldType } from "@/lib/trend-user-fields";
 import {
   trendAdminApi,
   type TrendAdminItem,
@@ -22,14 +23,6 @@ const REFERENCE_FIELDS = new Set([
 ]);
 const SINGLE_REFERENCE_FIELDS = new Set(["image_url", "first_frame_url", "first_frame"]);
 const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
-const NUMBER_FIELD_HINTS = ["возраст", "число", "цифр", "количество", "номер", "рост", "вес", "лет", "год", "свеч"];
-const DATE_FIELD_HINTS = ["дата", "date", "день рождения", "birthday"];
-
-function inferTemplateFieldType(field: string): TrendUserField["type"] {
-  const normalized = field.trim().toLowerCase();
-  if (DATE_FIELD_HINTS.some((hint) => normalized.includes(hint))) return "date";
-  return NUMBER_FIELD_HINTS.some((hint) => normalized.includes(hint)) ? "number" : "text";
-}
 
 function normalizedAdminField(label: string): TrendUserField {
   const clean = label.replace(/[{}]/g, "").trim().slice(0, 48);
