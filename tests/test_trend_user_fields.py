@@ -10,6 +10,8 @@ from app.services.trend_user_fields import (
 @pytest.mark.parametrize("label", [
     "Время года",
     "Время года (пример:зима)",
+    "Время года (пример:лето)",
+    "Время года (пример:весна)",
     "  ВРЕМЯ   ГОДА  ",
 ])
 @pytest.mark.parametrize("configured", [False, True])
@@ -31,6 +33,9 @@ def test_season_accepts_cyrillic_for_configured_and_legacy_fields(label, configu
     ("Количество свечей", "number"),
     ("Дата", "date"),
     ("Имя", "text"),
+    ("Возраст в это время года", "number"),
+    ("Дата и время года", "date"),
+    ("Время года и возраст", "number"),
 ])
 def test_season_fix_preserves_other_field_types(label, expected):
     fields = normalize_trend_user_fields([{"key": label, "label": label}], prompt="Portrait")
