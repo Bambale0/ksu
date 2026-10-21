@@ -1,0 +1,356 @@
+{
+  "checked_at": "2026-10-21T07:26:06.276204+00:00",
+  "total_trends": 283,
+  "active_trends": 276,
+  "configured_fields": 167,
+  "labels": [
+    {
+      "label": "Возраст",
+      "expected_type": "number",
+      "occurrences": 53,
+      "active_occurrences": 52
+    },
+    {
+      "label": "Марка,модель автомобиля",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цвет автомобиля",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Одежда",
+      "expected_type": "text",
+      "occurrences": 15,
+      "active_occurrences": 15
+    },
+    {
+      "label": "Возраст (цифры на капкейке)",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись",
+      "expected_type": "text",
+      "occurrences": 6,
+      "active_occurrences": 6
+    },
+    {
+      "label": "Погода",
+      "expected_type": "text",
+      "occurrences": 4,
+      "active_occurrences": 4
+    },
+    {
+      "label": "Прическа",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Обувь",
+      "expected_type": "text",
+      "occurrences": 3,
+      "active_occurrences": 3
+    },
+    {
+      "label": "Очки",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Свечи цифры",
+      "expected_type": "number",
+      "occurrences": 13,
+      "active_occurrences": 13
+    },
+    {
+      "label": "Вид животного",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Знак зодиака",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Цифры на торте",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Год рождения",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Время года (пример:зима)",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Рост",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Вес",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Время года",
+      "expected_type": "text",
+      "occurrences": 5,
+      "active_occurrences": 5
+    },
+    {
+      "label": "Город",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Надпись в лупе",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись на блокноте",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Фамилия и Имя",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цифры",
+      "expected_type": "number",
+      "occurrences": 4,
+      "active_occurrences": 4
+    },
+    {
+      "label": "Цвет машины",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Модель машины",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Сумка",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Кепка",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Автомобиль (марка и модель)",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Укажи год прошлого",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Укажи год настоящего",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись проекция",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись на торте",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цифры на шаре",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Мотоцикл",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Шлем",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Свеча цифра",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Цвет шляпы",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цвет глаз",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Срок беременности (пример: 5 месяцев)",
+      "expected_type": "text",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Сезон (зима/весна/лето/осень)",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Сезон",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Время года:",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись (на англ.языке) пример: SCORPIO",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Надпись на газете (пример: «31th Birthday»)",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цифры свечи",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Название страны",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Месяц беременности",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цвет торта",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цвет платья",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Число для шаров",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Смартфон",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Число",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Число на свечах",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цифра на левой подошве:",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Цифра на правой подошве:",
+      "expected_type": "number",
+      "occurrences": 1,
+      "active_occurrences": 1
+    },
+    {
+      "label": "Шары цифры",
+      "expected_type": "number",
+      "occurrences": 2,
+      "active_occurrences": 2
+    },
+    {
+      "label": "Срок беременности",
+      "expected_type": "text",
+      "occurrences": 1,
+      "active_occurrences": 1
+    }
+  ]
+}
