@@ -808,3 +808,17 @@ async def test_seedance25_preview_quotes_image_only_prices_at_all_qualities(monk
     assert view["preview_url"] == item.payload["preview_url"]
     assert "prompt" not in view
     session.scalar.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("label", ["Время года", "Время года (пример:зима)"])
+async def test_public_view_repairs_legacy_numeric_season_field(label) -> None:
+    item = _item()
+    item.payload["user_fields"] = [{"key": label, "label": label, "type": "number"}]
+
+    view = await TrendService.public_view(AsyncMock(), item)
+
+    assert view["user_fields"] == [
+        {"key": label, "label": label, "type": "text", "required": True, "max_length": 160}
+    ]
+    assert "prompt" not in view

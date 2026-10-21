@@ -285,7 +285,7 @@ test('new trend editor saves season as text and age as number', async ({ page })
   await form.getByPlaceholder('Другое поле, например: Цвет волос').fill('Время года (пример:зима)');
   await form.getByRole('button', { name: 'Добавить', exact: true }).click();
   await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
-  await expect.poll(() => body?.user_fields).toEqual([
+  await expect.poll(() => body?.payload?.user_fields).toEqual([
     { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
     { key: 'Время года (пример:зима)', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
   ]);
