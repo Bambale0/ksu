@@ -68,3 +68,16 @@ def test_field_examples_and_word_fragments_do_not_choose_keyboard(label, expecte
     fields = normalize_trend_user_fields([{"key": label, "label": label}], prompt="Portrait")
 
     assert fields[0]["type"] == expected
+
+
+@pytest.mark.parametrize("caption", [r"C:\Users\example", r"\1", r"\g<0>", r"\n", "{{Имя}}"])
+def test_user_text_is_inserted_literally_without_backreferences_or_second_expansion(caption):
+    prompt = "Caption={{Надпись}}; Name={{Имя}}"
+    fields = normalize_trend_user_fields(
+        [{"key": "Надпись"}, {"key": "Имя"}], prompt=prompt
+    )
+
+    rendered = render_trend_prompt(prompt, fields, {"Надпись": caption, "Имя": "Анна"})
+
+    assert rendered.startswith(f"Caption={caption}; Name=Анна")
+    assert f"- Надпись: {caption}" in rendered
