@@ -55,7 +55,11 @@ The browser cannot choose or override the model, hidden prompt, provider route/s
 
 The public trend DTO exposes only presentation data, safe model identity, authoritative current price, reference requirements, user-field schema, `aspect_ratio_options`, optional quality options, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
 
-Personalization types are inferred from field labels on both save and read. “Время года” (including an example such as “Время года (пример:зима)”) is text and accepts season words with a text keyboard. This exception applies to the season label itself (with an optional parenthesized example), rather than mixed labels such as “Возраст в это время года”. Date hints retain priority; age and birth-year fields retain numeric validation. Older saved season fields are corrected on read without editing the recipe or migrating data.
+Personalization types are inferred from the primary label on both save and read, using whole words rather than substrings. Parenthesized explanations and examples after a colon or “пример”/“например”/“example” do not determine the type. Literal text labels such as “Надпись” or “Цвет” remain text; otherwise explicit date words take priority over numeric words. The phrase “время года” describes a season rather than a numeric year, while mixed labels such as “Возраст в это время года” retain numeric validation. “Погода”, season choices and captions with a Birthday example use text inputs. Unknown labels conservatively remain text. Both admin editors share one frontend classifier; a reviewed catalog corpus verifies parity with the server.
+
+Normalization repairs old inferred types on read without editing recipes or migrating data. Numeric inputs retain their existing decimal validation. Date inputs must be real calendar dates in canonical `YYYY-MM-DD` form; invalid dates return the existing safe HTTP 422 field error before generation or billing. User text is inserted literally in one pass: backslashes are preserved, and a user-supplied `{{…}}` string is not expanded as another field.
+
+The [catalog-wide input audit](agents/EXECUTION/trend-input-audit-20261021.md) records the read-only snapshot, all reviewed labels, affected counts and verification scope.
 
 ## One-tap generation
 

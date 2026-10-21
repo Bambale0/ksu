@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'frontend/mini-app/**'
+      - 'tests/fixtures/trend_user_fields_catalog_20261021.json'
       - 'docker-compose.yml'
       - '.github/workflows/deploy-production.yml'
       - '.github/workflows/miniapp-playwright.yml'

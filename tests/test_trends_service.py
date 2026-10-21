@@ -822,3 +822,38 @@ async def test_public_view_repairs_legacy_numeric_season_field(label) -> None:
         {"key": label, "label": label, "type": "text", "required": True, "max_length": 160}
     ]
     assert "prompt" not in view
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("label", [
+    "Погода", "Время года:", "Сезон (зима/весна/лето/осень)",
+    "Надпись на газете (пример: «31th Birthday»)",
+])
+async def test_public_view_repairs_other_catalog_text_fields(label) -> None:
+    item = _item()
+    item.payload["user_fields"] = [{"key": label, "label": label, "type": "date"}]
+
+    view = await TrendService.public_view(AsyncMock(), item)
+
+    assert view["user_fields"][0]["type"] == "text"
+    assert "prompt" not in view
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["2026-02-30", "зима"])
+async def test_invalid_trend_date_never_reaches_generation(monkeypatch, value) -> None:
+    item = _item()
+    item.payload["user_fields"] = [{"key": "Дата", "label": "Дата"}]
+    session = AsyncMock()
+    session.get.return_value = item
+    create = AsyncMock()
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    with pytest.raises(TrendRecipeError, match="корректной датой"):
+        await TrendService.run(
+            session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id,
+            reference_urls=["https://cdn.example.invalid/user.jpg"],
+            user_values={"Дата": value}, aspect_ratio="1:1",
+        )
+
+    create.assert_not_awaited()

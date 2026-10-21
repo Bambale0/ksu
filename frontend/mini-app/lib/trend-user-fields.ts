@@ -1,9 +1,21 @@
 import type { TrendUserField } from "./types";
 
 // Keep semantics aligned with app/services/trend_user_fields.py and the catalog corpus.
-const NUMBER_FIELD_WORDS = new Set(["возраст","возраста","число","числа","чисел","цифра","цифры","цифр","цифру","цифре","цифрами","количество","количества","номер","номера","номеров","рост","роста","вес","веса","лет","год","года","годы","годов","свеча","свечи","свечей","свечах"]);
+const NUMBER_FIELD_WORDS = new Set([
+  "возраст", "возраста", "число", "числа", "чисел",
+  "цифра", "цифры", "цифр", "цифру", "цифре",
+  "цифрами", "количество", "количества", "номер", "номера",
+  "номеров", "рост", "роста", "вес", "веса",
+  "лет", "год", "года", "годы", "годов",
+  "свеча", "свечи", "свечей", "свечах",
+]);
 const DATE_FIELD_WORDS = new Set(["дата", "date", "birthday", "birthdate"]);
-const TEXT_FIELD_START_WORDS = new Set(["текст","надпись","фраза","слоган","имя","фамилия","название","цвет","оттенок","палитра","caption","text","name","title","color","colour"]);
+const TEXT_FIELD_START_WORDS = new Set([
+  "текст", "надпись", "фраза", "слоган", "имя",
+  "фамилия", "название", "цвет", "оттенок", "палитра",
+  "caption", "text", "name", "title", "color",
+  "colour",
+]);
 const EXAMPLE_WORDS = new Set(["пример", "например", "example"]);
 
 export function inferTemplateFieldType(label: string): TrendUserField["type"] {

@@ -49,7 +49,7 @@ def test_season_fix_preserves_other_field_types(label, expected):
             render_trend_prompt("Portrait", fields, {label: "зима"})
 
 CATALOG = json.loads(
-    (Path(__file__).parent / "fixtures/trend_user_fields_catalog_20261021.json").read_text()
+    (Path(__file__).parent / "fixtures/trend_user_fields_catalog_20261021.json").read_text(encoding="utf-8")
 )
 
 
@@ -63,7 +63,33 @@ def test_reviewed_catalog_field_types(entry, configured):
     assert fields[0]["type"] == entry["expected_type"]
 
 
-@pytest.mark.parametrize("label, expected", [["Погода (пример:солнечно)","text"],["Погода весной","text"],["Сезон: зима/весна/лето/осень","text"],["Предпочитаемое время года","text"],["Палитра","text"],["Пространство","text"],["Свечение","text"],["Летний образ","text"],["Весенний стиль","text"],["Цвет свечей","text"],["Надпись: Happy Birthday 31","text"],["Надпись на торте цифрами","text"],["Update style","text"],["Candidate","text"],["Надпись на торте (пример: 2026 год)","text"],["Возраст (пример:31)","number"],["Количество свечей","number"],["Число (пример:31st Birthday)","number"],["Дата рождения (пример:2020-12-01)","date"],["День рождения","date"],["birthday","date"],["Шары (красные) цифры","number"],["Год рождения в это время года","number"],["Дата (число/месяц/год)","date"],["Номер","number"]])
+@pytest.mark.parametrize("label, expected", [
+    ("Погода (пример:солнечно)", "text"),
+    ("Погода весной", "text"),
+    ("Сезон: зима/весна/лето/осень", "text"),
+    ("Предпочитаемое время года", "text"),
+    ("Палитра", "text"),
+    ("Пространство", "text"),
+    ("Свечение", "text"),
+    ("Летний образ", "text"),
+    ("Весенний стиль", "text"),
+    ("Цвет свечей", "text"),
+    ("Надпись: Happy Birthday 31", "text"),
+    ("Надпись на торте цифрами", "text"),
+    ("Update style", "text"),
+    ("Candidate", "text"),
+    ("Надпись на торте (пример: 2026 год)", "text"),
+    ("Возраст (пример:31)", "number"),
+    ("Количество свечей", "number"),
+    ("Число (пример:31st Birthday)", "number"),
+    ("Дата рождения (пример:2020-12-01)", "date"),
+    ("День рождения", "date"),
+    ("birthday", "date"),
+    ("Шары (красные) цифры", "number"),
+    ("Год рождения в это время года", "number"),
+    ("Дата (число/месяц/год)", "date"),
+    ("Номер", "number"),
+])
 def test_field_examples_and_word_fragments_do_not_choose_keyboard(label, expected):
     fields = normalize_trend_user_fields([{"key": label, "label": label}], prompt="Portrait")
 
