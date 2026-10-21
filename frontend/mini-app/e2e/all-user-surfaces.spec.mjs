@@ -1,4 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const reviewedCatalog = JSON.parse(readFileSync(
+  new URL('../../../tests/fixtures/trend_user_fields_catalog_20261021.json', import.meta.url), 'utf8',
+));
+const catalogChunks = Array.from({ length: Math.ceil(reviewedCatalog.labels.length / 6) }, (_, index) =>
+  reviewedCatalog.labels.slice(index * 6, index * 6 + 6),
+);
+
 
 const model = {
   id: 'nano-banana-2',
@@ -410,3 +419,39 @@ test('reference trend waits for all files and sends them only on explicit Genera
   await expect.poll(() => runBody?.reference_urls?.length || 0).toBe(2);
   expect(runBody.aspect_ratio).toBe('1:1');
 });
+
+for (const [batch, labels] of catalogChunks.entries()) {
+  test(`catalog personalization preserves every input type and submitted value, batch ${batch + 1}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockApi(page);
+    const fields = labels.map((entry) => ({
+      key: entry.label, label: entry.label, type: entry.expected_type, required: true, max_length: 160,
+    }));
+    await page.route('**/api/v1/trends/trend_personalized', (route) => route.fulfill({
+      contentType: 'application/json', body: JSON.stringify({ ...personalizedTrend, user_fields: fields }),
+    }));
+    let body = null;
+    await page.route('**/api/v1/trends/trend_personalized/run', (route) => {
+      body = route.request().postDataJSON();
+      return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: 'catalog_generation', status: 'queued' }) });
+    });
+    await page.goto('/mini-app/trend/?id=trend_personalized');
+    const expected = {};
+    for (const [index, field] of fields.entries()) {
+      const input = page.locator('label.trend-user-field').nth(index).locator('input');
+      await expect(page.locator('label.trend-user-field').nth(index)).toContainText(field.label);
+      await expect(input).toHaveAttribute('type', field.type === 'date' ? 'date' : 'text');
+      await expect(input).toHaveAttribute('inputmode', field.type === 'number' ? 'decimal' : 'text');
+      const value = field.type === 'number' ? '31' : field.type === 'date' ? '2026-10-21' : String.raw`зима \1 {{Имя}}`;
+      expected[field.key] = value;
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+    }
+    await page.getByRole('radio', { name: '9:16', exact: true }).click();
+    const generate = page.getByRole('button', { name: /Сгенерировать/ });
+    await expect(generate).toBeEnabled();
+    await generate.click();
+    await expect.poll(() => body?.user_values).toEqual(expected);
+    expect(body).not.toHaveProperty('prompt');
+  });
+}
