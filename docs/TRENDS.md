@@ -55,6 +55,8 @@ The browser cannot choose or override the model, hidden prompt, provider route/s
 
 The public trend DTO exposes only presentation data, safe model identity, authoritative current price, reference requirements, user-field schema, `aspect_ratio_options`, optional quality options, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
 
+Personalization types are inferred from field labels on both save and read. “Время года” (including an example such as “Время года (пример:зима)”) is text and accepts season words with a text keyboard. This takes precedence over the generic numeric year hint; age, birth-year and date fields retain their existing types. Older saved season fields are corrected on read without editing the recipe or migrating data.
+
 ## One-tap generation
 
 `TrendService.run()` merges only the validated user image reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Video previews are presentation-only: they are never sent as generation inputs and do not add a video-reference surcharge, regardless of whether their duration metadata is verified.
@@ -97,22 +99,3 @@ The Mini App Trends runner:
 Existing legacy `admin_trends` rows are not migrated automatically. Public listing skips active rows that cannot be normalized against the current recipe contract. Operators should recreate or update such entries through the validated admin path before relying on them in production.
 
 Legacy trends with video inputs or `@VideoN` tags need an admin recipe/prompt update before they can be listed or run. Their display videos can remain uploaded; removing or re-uploading the preview is not necessary. Hidden creative prompts are never rewritten automatically.
-
-No Alembic migration is required for this epic because the existing `admin_trends` table is reused.
-
-
-## Template categories
-
-Template categories are stored relationally:
-
-- `trend_collections` owns category metadata, ordering, visibility and hashtag aliases;
-- `trend_collection_assignments` links one `admin_trends` row to one category and records whether that move was automatic;
-- no assignment means the trend appears in the live `Тренды` root;
-- an explicit manual assignment, including a manual move to `Тренды`, is authoritative over hashtag routing.
-
-Migration `0036_trend_collections` copies the previous
-`admin_runtime_settings.trend_collections_v1` JSON state into these tables.
-The legacy setting is retained as a pre-migration fallback, while runtime reads and writes
-use the relational tables only. If migration 0036 is downgraded, the current relational
-category state is serialized back into that legacy setting before the tables are removed.
-Category mutation remains admin-only.
