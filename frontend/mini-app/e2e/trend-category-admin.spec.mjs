@@ -223,7 +223,7 @@ test('admin can edit personalized fields on an existing trend', async ({ page })
   const mobileLayout = await dialog.evaluate((node) => ({ scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }));
   expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.clientWidth + 1);
   await fields.getByRole('button', { name: '＋ Надпись' }).click();
-  for (const label of ['Время года', 'Время года (пример:зима)']) {
+  for (const label of ['Время года', 'Время года (пример:зима)', 'Возраст в это время года', 'Дата и время года']) {
     await fields.getByPlaceholder('Другое поле, например: Цвет волос').fill(label);
     await fields.getByRole('button', { name: 'Добавить', exact: true }).click();
   }
@@ -234,6 +234,8 @@ test('admin can edit personalized fields on an existing trend', async ({ page })
     { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
     { key: 'Время года', label: 'Время года', type: 'text', required: true, max_length: 160 },
     { key: 'Время года (пример:зима)', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
+    { key: 'Возраст в это время года', label: 'Возраст в это время года', type: 'number', required: true, max_length: 160 },
+    { key: 'Дата и время года', label: 'Дата и время года', type: 'date', required: true, max_length: 160 },
   ]);
 });
 
@@ -285,9 +287,15 @@ test('new trend editor saves season as text and age as number', async ({ page })
   await form.getByRole('button', { name: '＋ Возраст', exact: true }).click();
   await form.getByPlaceholder('Другое поле, например: Цвет волос').fill('Время года (пример:зима)');
   await form.getByRole('button', { name: 'Добавить', exact: true }).click();
+  for (const label of ['Возраст в это время года', 'Дата и время года']) {
+    await form.getByPlaceholder('Другое поле, например: Цвет волос').fill(label);
+    await form.getByRole('button', { name: 'Добавить', exact: true }).click();
+  }
   await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
   await expect.poll(() => body?.payload?.user_fields).toEqual([
     { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
     { key: 'Время года (пример:зима)', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
+    { key: 'Возраст в это время года', label: 'Возраст в это время года', type: 'number', required: true, max_length: 160 },
+    { key: 'Дата и время года', label: 'Дата и время года', type: 'date', required: true, max_length: 160 },
   ]);
 });
