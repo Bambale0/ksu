@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 MAX_USER_FIELDS = 6
@@ -178,6 +179,14 @@ def _validated_field_value(spec: TrendUserFieldSpec, raw_value: str) -> str:
         return ""
     if spec.field_type == "number" and not _NUMBER_RE.fullmatch(value):
         raise TrendUserFieldsError(f"Поле «{spec.label}» должно быть числом")
+    if spec.field_type == "date":
+        try:
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError("Non-canonical date")
+        except ValueError as exc:
+            raise TrendUserFieldsError(
+                f"Поле «{spec.label}» должно быть корректной датой"
+            ) from exc
     if len(value) > spec.max_length:
         raise TrendUserFieldsError(
             f"Поле «{spec.label}» должно быть короче {spec.max_length + 1} символов"
