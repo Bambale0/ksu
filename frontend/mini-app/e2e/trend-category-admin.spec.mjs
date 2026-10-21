@@ -268,7 +268,7 @@ test('category management is hidden from non-admin users', async ({ page }) => {
 test('new trend editor saves season as text and age as number', async ({ page }) => {
   await mockAdminHome(page);
   let body = null;
-  await page.route('**/api/v1/trends/manage', async (route) => {
+  await page.route('**/api/v1/trend-collections/manage/trends/items', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     body = route.request().postDataJSON();
     return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ...body, id: 'new_season' }) });
