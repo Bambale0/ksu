@@ -279,7 +279,7 @@ test('new trend editor saves season as text and age as number', async ({ page })
   await page.getByRole('dialog', { name: 'Управление трендами', exact: true }).getByRole('button', { name: '＋ Новый тренд' }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд', exact: true });
   await form.getByLabel('Название', { exact: true }).fill('Сезонный портрет');
-  await form.getByLabel('Модель', { exact: true }).selectOption(model.id);
+  await form.getByRole('combobox', { name: 'Модель', exact: true }).selectOption(model.id);
   await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/season.jpg');
   await form.getByLabel('Скрытый промпт', { exact: true }).fill('Seasonal portrait');
   await form.getByRole('button', { name: '＋ Возраст', exact: true }).click();
