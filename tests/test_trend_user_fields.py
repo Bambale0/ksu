@@ -81,3 +81,18 @@ def test_user_text_is_inserted_literally_without_backreferences_or_second_expans
 
     assert rendered.startswith(f"Caption={caption}; Name=Анна")
     assert f"- Надпись: {caption}" in rendered
+
+
+@pytest.mark.parametrize("value", ["2026-02-30", "2025-02-29", "2026-13-01", "2026-2-01", "зима"])
+def test_date_fields_reject_invalid_calendar_values(value):
+    fields = normalize_trend_user_fields([{"key": "Дата"}], prompt="Date {{Дата}}")
+
+    with pytest.raises(TrendUserFieldsError, match="корректной датой"):
+        render_trend_prompt("Date {{Дата}}", fields, {"Дата": value})
+
+
+@pytest.mark.parametrize("value", ["2024-02-29", "2026-10-21"])
+def test_date_fields_preserve_valid_iso_dates(value):
+    fields = normalize_trend_user_fields([{"key": "Дата"}], prompt="Date {{Дата}}")
+
+    assert render_trend_prompt("Date {{Дата}}", fields, {"Дата": value}).startswith("Date " + value)
