@@ -276,6 +276,7 @@ test('new trend editor saves season as text and age as number', async ({ page })
   await page.goto('/mini-app/?route=home');
   await page.locator('#roxy-home-trend-folders').getByRole('button', { name: 'Шаблоны', exact: true }).click();
   await page.getByRole('dialog', { name: 'Управление готовыми шаблонами' }).getByRole('button', { name: '＋ Новый тренд' }).click();
+  await page.getByRole('dialog', { name: 'Управление трендами', exact: true }).getByRole('button', { name: '＋ Новый тренд' }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд', exact: true });
   await form.getByLabel('Название', { exact: true }).fill('Сезонный портрет');
   await form.getByLabel('Модель', { exact: true }).selectOption(model.id);
