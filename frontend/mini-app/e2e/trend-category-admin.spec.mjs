@@ -223,11 +223,17 @@ test('admin can edit personalized fields on an existing trend', async ({ page })
   const mobileLayout = await dialog.evaluate((node) => ({ scrollWidth: node.scrollWidth, clientWidth: node.clientWidth }));
   expect(mobileLayout.scrollWidth).toBeLessThanOrEqual(mobileLayout.clientWidth + 1);
   await fields.getByRole('button', { name: '＋ Надпись' }).click();
+  for (const label of ['Время года', 'Время года (пример:зима)']) {
+    await fields.getByPlaceholder('Другое поле, например: Цвет волос').fill(label);
+    await fields.getByRole('button', { name: 'Добавить', exact: true }).click();
+  }
   await dialog.getByTestId('trend-admin-save-trend_ugc').click();
 
   await expect.poll(() => state.updatedTrendBody?.payload?.user_fields).toEqual([
     { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
     { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
+    { key: 'Время года', label: 'Время года', type: 'text', required: true, max_length: 160 },
+    { key: 'Время года (пример:зима)', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
   ]);
 });
 
@@ -257,4 +263,30 @@ test('category management is hidden from non-admin users', async ({ page }) => {
 
   await expect(page.getByTestId('trend-category-admin-open')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Шаблоны', exact: true })).toHaveCount(0);
+});
+
+test('new trend editor saves season as text and age as number', async ({ page }) => {
+  await mockAdminHome(page);
+  let body = null;
+  await page.route('**/api/v1/trends/manage', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    body = route.request().postDataJSON();
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ ...body, id: 'new_season' }) });
+  });
+  await page.goto('/mini-app/?route=home');
+  await page.locator('#roxy-home-trend-folders').getByRole('button', { name: 'Шаблоны', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Управление готовыми шаблонами' }).getByRole('button', { name: '＋ Новый тренд' }).click();
+  const form = page.getByRole('dialog', { name: 'Добавить тренд', exact: true });
+  await form.getByLabel('Название', { exact: true }).fill('Сезонный портрет');
+  await form.getByLabel('Модель', { exact: true }).selectOption(model.id);
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/season.jpg');
+  await form.getByLabel('Скрытый промпт', { exact: true }).fill('Seasonal portrait');
+  await form.getByRole('button', { name: '＋ Возраст', exact: true }).click();
+  await form.getByPlaceholder('Другое поле, например: Цвет волос').fill('Время года (пример:зима)');
+  await form.getByRole('button', { name: 'Добавить', exact: true }).click();
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => body?.user_fields).toEqual([
+    { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
+    { key: 'Время года (пример:зима)', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
+  ]);
 });

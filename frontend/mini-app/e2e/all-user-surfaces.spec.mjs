@@ -106,6 +106,7 @@ const personalizedTrend = {
     { key: 'Возраст', label: 'Возраст', type: 'number', required: true, max_length: 160 },
     { key: 'Надпись', label: 'Надпись', type: 'text', required: true, max_length: 160 },
     { key: 'Дата', label: 'Дата', type: 'date', required: true, max_length: 160 },
+    { key: 'Время года', label: 'Время года (пример:зима)', type: 'text', required: true, max_length: 160 },
   ],
   prompt_hidden: true,
   prompt_actions_allowed: false,
@@ -328,12 +329,19 @@ test('personalized trend shows empty tanyapi-style fields and submits only user 
   const caption = page.getByRole('textbox', { name: /Надпись/ });
   const date = page.locator('label.trend-user-field', { hasText: 'Дата' }).locator('input');
 
+  const season = page.getByRole('textbox', { name: /Время года/ });
+  await expect(season).toHaveAttribute('inputmode', 'text');
+  await expect(age).toHaveAttribute('inputmode', 'decimal');
+  await expect(date).toHaveAttribute('type', 'date');
+  await expect(season).toHaveValue('');
   await expect(age).toHaveValue('');
   await expect(caption).toHaveValue('');
   await expect(date).toHaveValue('');
   await expect(generate).toBeDisabled();
 
   await age.fill('31');
+  await season.fill('зима');
+  await expect(season).toHaveValue('зима');
   await caption.fill('С юбилеем!');
   await date.fill('2026-09-07');
   await expect(generate).toBeDisabled();
@@ -346,7 +354,7 @@ test('personalized trend shows empty tanyapi-style fields and submits only user 
   await expect.poll(() => runBody?.user_values?.['Возраст'] || '').toBe('31');
   expect(runBody).toEqual({
     reference_urls: [],
-    user_values: { Возраст: '31', Надпись: 'С юбилеем!', Дата: '2026-09-07' },
+    user_values: { Возраст: '31', Надпись: 'С юбилеем!', Дата: '2026-09-07', 'Время года': 'зима' },
     aspect_ratio: '9:16',
   });
   await expect(page.getByText(/hidden prompt|скрытый prompt/i)).toHaveCount(0);
