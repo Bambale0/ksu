@@ -60,6 +60,7 @@ jobs:
           e2e/admin-provider-routes.spec.mjs
           --project=webkit-mobile
       - name: Verify personalized trend keyboards in iPhone WebKit
+        if: ${{ !cancelled() }}
         working-directory: frontend/mini-app
         run: npx playwright test e2e/all-user-surfaces.spec.mjs --project=webkit-mobile --grep 'personalized trend'
       - name: Verify upload deadlines in iPhone WebKit

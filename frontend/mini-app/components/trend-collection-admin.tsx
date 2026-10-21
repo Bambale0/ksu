@@ -42,9 +42,9 @@ const TEMPLATE_FIELD_RE = /\{\{([^{}]+)\}\}/g;
 
 function inferTemplateFieldType(field: string): TrendUserField["type"] {
   const normalized = field.trim().toLowerCase();
-  // A season is text; the generic "год" hint must not select a decimal keyboard.
-  if (normalized.replace(/\s+/g, " ").includes("время года")) return "text";
   if (DATE_FIELD_HINTS.some((hint) => normalized.includes(hint))) return "date";
+  // Match the season label itself; mixed age/date labels retain their type.
+  if (/^время\s+года(?:\s*\([^)]*\))?$/u.test(normalized)) return "text";
   return NUMBER_FIELD_HINTS.some((hint) => normalized.includes(hint)) ? "number" : "text";
 }
 

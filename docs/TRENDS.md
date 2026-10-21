@@ -55,7 +55,7 @@ The browser cannot choose or override the model, hidden prompt, provider route/s
 
 The public trend DTO exposes only presentation data, safe model identity, authoritative current price, reference requirements, user-field schema, `aspect_ratio_options`, optional quality options, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
 
-Personalization types are inferred from field labels on both save and read. “Время года” (including an example such as “Время года (пример:зима)”) is text and accepts season words with a text keyboard. This takes precedence over the generic numeric year hint; age, birth-year and date fields retain their existing types. Older saved season fields are corrected on read without editing the recipe or migrating data.
+Personalization types are inferred from field labels on both save and read. “Время года” (including an example such as “Время года (пример:зима)”) is text and accepts season words with a text keyboard. This exception applies to the season label itself (with an optional parenthesized example), rather than mixed labels such as “Возраст в это время года”. Date hints retain priority; age and birth-year fields retain numeric validation. Older saved season fields are corrected on read without editing the recipe or migrating data.
 
 ## One-tap generation
 

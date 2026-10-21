@@ -48,11 +48,11 @@ class TrendUserFieldSpec:
 
 def infer_field_type(label: str) -> str:
     normalized = str(label or "").strip().lower()
-    # The season phrase is textual even though it contains the year hint "год".
-    if "время года" in " ".join(normalized.split()):
-        return "text"
     if any(hint in normalized for hint in _DATE_FIELD_HINTS):
         return "date"
+    # Match the season label itself, not age/year fields that mention a season.
+    if re.fullmatch(r"время\s+года(?:\s*\([^)]*\))?", normalized):
+        return "text"
     if any(hint in normalized for hint in _NUMBER_FIELD_HINTS):
         return "number"
     return "text"
