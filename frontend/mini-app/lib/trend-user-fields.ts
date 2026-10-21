@@ -14,7 +14,7 @@ export function inferTemplateFieldType(label: string): TrendUserField["type"] {
     normalized = clean;
   }
   normalized = normalized.split("(", 1)[0].split(":", 1)[0];
-  let words = normalized.match(/\p{L}+/gu) || [];
+  let words: string[] = normalized.match(/\p{L}+/gu) || [];
   const example = words.findIndex((word) => EXAMPLE_WORDS.has(word));
   if (example >= 0) words = words.slice(0, example);
   if (words.length && TEXT_FIELD_START_WORDS.has(words[0])) return "text";

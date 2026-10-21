@@ -205,10 +205,11 @@ def render_trend_prompt(prompt: str, user_fields: list[dict[str, Any]], raw_valu
         for spec in specs
     }
 
-    rendered = base_prompt
-    for spec in specs:
-        token_pattern = re.compile(r"\{\{\s*" + re.escape(spec.key) + r"\s*\}\}")
-        rendered = token_pattern.sub(validated[spec.key], rendered)
+    # A callable replacement preserves backslashes and never re-expands user text.
+    rendered = _TEMPLATE_RE.sub(
+        lambda match: validated.get(match.group(1).strip(), match.group(0)),
+        base_prompt,
+    )
 
     overrides = "\n".join(
         f"- {spec.label}: {validated[spec.key]}"
