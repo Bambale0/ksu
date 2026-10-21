@@ -90,8 +90,10 @@ The sanitized test fixture stores labels, expected types and occurrence counts o
 
 ## Evidence and limits
 
+A final read-only rescan at 2026-10-21T07:41:45.121913+00:00 confirmed that all inventoried schemas were unchanged.
+
 - Read-only replay of all **283 schemas / 167 fields** using synthetic prompt placeholders and test values: **0 errors**, **13 type repairs**.
 - Backend RED: 23 classification failures (catalog plus word/example collisions), 5 literal-value failures, 5 invalid-date acceptances. Configured and legacy paths are covered.
-- GREEN before final service-seam additions: **225 focused backend checks**; all **33 Chromium journeys** passed, covering every reviewed label in the runner and both editors. Current source also includes public-view repair and pre-generation invalid-date guards.
+- GREEN: **231 focused backend checks**, including public-view repair and pre-generation invalid-date guards; all **33 Chromium journeys** passed, covering every reviewed label in the runner and both editors. Typecheck/static build, Ruff, compileall and diff checks passed; independent Standards/Spec review has no remaining findings.
 - Build/typecheck, lint, exact-final-head backend/E2E/WebKit CI and independent review are delivery gates; their final exact SHA/results are recorded in PR #548 to avoid changing the verified commit after CI.
 - This audits personalization schemas and synthetic input flows. It does not certify provider execution or generated-media quality for every trend. No paid generation, database mutation, production release or physical-iPhone test was performed.
