@@ -13,24 +13,11 @@ MAX_FIELD_VALUE_LENGTH = 160
 _TEMPLATE_RE = re.compile(r"\{\{([^{}]+)\}\}")
 _NUMBER_RE = re.compile(r"^-?\d+(?:[\.,]\d+)?$")
 
-_NUMBER_FIELD_HINTS = (
-    "возраст",
-    "число",
-    "цифр",
-    "количество",
-    "номер",
-    "рост",
-    "вес",
-    "лет",
-    "год",
-    "свеч",
-)
-_DATE_FIELD_HINTS = (
-    "дата",
-    "date",
-    "день рождения",
-    "birthday",
-)
+# Whole words describe the input; examples and fragments of other words do not.
+_NUMBER_FIELD_WORDS = frozenset(["возраст","возраста","число","числа","чисел","цифра","цифры","цифр","цифру","цифре","цифрами","количество","количества","номер","номера","номеров","рост","роста","вес","веса","лет","год","года","годы","годов","свеча","свечи","свечей","свечах"])
+_DATE_FIELD_WORDS = frozenset(("дата", "date", "birthday", "birthdate"))
+_TEXT_FIELD_START_WORDS = frozenset(["текст","надпись","фраза","слоган","имя","фамилия","название","цвет","оттенок","палитра","caption","text","name","title","color","colour"])
+_EXAMPLE_WORDS = frozenset(("пример", "например", "example"))
 
 
 class TrendUserFieldsError(ValueError):
@@ -48,12 +35,36 @@ class TrendUserFieldSpec:
 
 def infer_field_type(label: str) -> str:
     normalized = str(label or "").strip().lower()
-    if any(hint in normalized for hint in _DATE_FIELD_HINTS):
-        return "date"
-    # Match the season label itself, not age/year fields that mention a season.
-    if re.fullmatch(r"время\s+года(?:\s*\([^)]*\))?", normalized):
+    # Remove nested explanations while retaining words after a parenthesis.
+    while True:
+        clean = re.sub(r"\([^()]*\)", " ", normalized)
+        if clean == normalized:
+            break
+        normalized = clean
+    normalized = normalized.split("(", 1)[0].split(":", 1)[0]
+    words = re.findall(r"[^\W\d_]+", normalized)
+    for index, word in enumerate(words):
+        if word in _EXAMPLE_WORDS:
+            words = words[:index]
+            break
+    if words and words[0] in _TEXT_FIELD_START_WORDS:
         return "text"
-    if any(hint in normalized for hint in _NUMBER_FIELD_HINTS):
+
+    # The phrase names a season, not a numeric year. Preserve other hints.
+    semantic_words: list[str] = []
+    index = 0
+    while index < len(words):
+        if words[index:index + 2] == ["время", "года"]:
+            index += 2
+        else:
+            semantic_words.append(words[index])
+            index += 1
+    if _DATE_FIELD_WORDS.intersection(semantic_words) or any(
+        semantic_words[index:index + 2] == ["день", "рождения"]
+        for index in range(len(semantic_words) - 1)
+    ):
+        return "date"
+    if _NUMBER_FIELD_WORDS.intersection(semantic_words):
         return "number"
     return "text"
 

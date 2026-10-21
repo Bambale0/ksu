@@ -10,6 +10,7 @@ import {
   type TrendAdminItem,
 } from "@/lib/trend-admin-api";
 import type { TrendUserField } from "@/lib/types";
+import { inferTemplateFieldType } from "@/lib/trend-user-fields";
 import {
   trendCollectionsApi,
   type TrendCollection,
@@ -36,17 +37,7 @@ type TrendDraft = {
 };
 
 const TEMPLATE_FIELD_PRESETS = ["Возраст", "Имя", "Надпись", "Дата", "Число"] as const;
-const NUMBER_FIELD_HINTS = ["возраст", "число", "цифр", "количество", "номер", "рост", "вес", "лет", "год", "свеч"];
-const DATE_FIELD_HINTS = ["дата", "date", "день рождения", "birthday"];
 const TEMPLATE_FIELD_RE = /\{\{([^{}]+)\}\}/g;
-
-function inferTemplateFieldType(field: string): TrendUserField["type"] {
-  const normalized = field.trim().toLowerCase();
-  if (DATE_FIELD_HINTS.some((hint) => normalized.includes(hint))) return "date";
-  // Match the season label itself; mixed age/date labels retain their type.
-  if (/^время\s+года(?:\s*\([^)]*\))?$/u.test(normalized)) return "text";
-  return NUMBER_FIELD_HINTS.some((hint) => normalized.includes(hint)) ? "number" : "text";
-}
 
 function normalizedAdminField(label: string): TrendUserField {
   const clean = label.replace(/[{}]/g, "").trim().slice(0, 48);
