@@ -1,10 +1,11 @@
 ## Active Feature Execution — Neironych fallback coverage (2026-10-22)
 
-- Baseline: `main@9bfc98c0eba2b21cfb33ecd6c60d74e341bdd2df`; main CI/deploy green.
+- Baseline: `main@9bfc98c0eba2b21cfb33ecd6c60d74e341bdd2df`; original main CI/deploy green.
 - Scope: seven matching provider models / eight KSU IDs; preserve existing primaries, add Neironych adapters/fallback and bounded real API verification.
-- Status: all eight matching KSU modes implemented; eight real API operations succeeded and files were verified. Standards/Spec review clear; 1886 backend tests, Ruff and compileall passed. Exact-head CI pending.
+- Status: [PR #551](https://github.com/Bambale0/ksu/pull/551) merged as `e4920860e46f986ed254d093b5ebabe10d3f067f`. Exact PR head `6e22d676612d48f8003cd52351dacd6b694a24e0` passed CI (1890 tests) and separate Standards/Spec reviews; eight real API operations succeeded and files were verified.
 - Authoritative execution ledger, acceptance, matrix and guidance: [Neironych fallback](docs/agents/EXECUTION/neironych-fallback-20261022.md).
-- Final outcome: implementation/live checks and separate reviews complete; exact-final-head CI remains the delivery gate. No merge/deploy claimed.
+- Release recovery: the merged SHA's Admin Console job passed, but GitHub left its workflow/check suite in progress and rejects cancellation/re-run. Refresh the release evidence in a documentation-only PR, then require all normal checks on the new exact main SHA and use the unchanged production deployment workflow.
+- Final outcome: merge verified; production still serves `9bfc98c0eba2b21cfb33ecd6c60d74e341bdd2df`. Production completion requires a successful deploy, matching release marker/application-worker images, health checks and read-only effective route verification. Final immutable-SHA evidence belongs in the PR delivery record.
 
 ## Active Fix Execution — audio reference classification and mobile upload layout (2026-10-22)
 
