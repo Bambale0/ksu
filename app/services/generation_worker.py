@@ -31,7 +31,7 @@ class GenerationWorkerService:
     def _protection_provider(generation: Generation, provider: str) -> str:
         # Protect slow synchronous images independently from accepted video jobs.
         # This is only a circuit namespace; never persist it as the real provider.
-        if provider == "neironych" and (generation.parameters or {}).get("_model_id") == "nano-banana-pro":
+        if provider == "neironych" and (generation.parameters or {}).get("_model_id") in NeironychGenerationProviderService.IMAGE_MODEL_IDS:
             return AbuseProtectionService.NEIRONYCH_IMAGE_CIRCUIT
         return provider
 
@@ -210,9 +210,7 @@ class GenerationWorkerService:
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
-                if provider == "neironych" and (generation.parameters or {}).get("_model_id") in {
-                    "seedance-2.0", "seedance-2.5",
-                }:
+                if provider == "neironych" and (generation.parameters or {}).get("_model_id") in NeironychGenerationProviderService.VIDEO_MODEL_IDS:
                     # Video POST is replayable with the original idempotency key.
                     # A worker interruption may have lost an accepted request ID.
                     params = dict(generation.parameters or {})

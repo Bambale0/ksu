@@ -11,6 +11,45 @@ class NeironychVideoContractError(ValueError):
     pass
 
 
+class NeironychVideoUnsupportedInput(NeironychVideoContractError):
+    """Valid product input that this provider cannot represent without loss."""
+
+
+def _normalize_grok(input_data: dict[str, Any]) -> dict[str, Any]:
+    prompt = str(input_data.get("prompt") or "").strip()
+    if not prompt:
+        raise NeironychVideoContractError("Prompt must not be empty")
+    duration = input_data.get("duration", 5)
+    if isinstance(duration, bool) or not isinstance(duration, int):
+        raise NeironychVideoContractError("Grok duration must be an integer")
+    if not 1 <= duration <= 15:
+        raise NeironychVideoUnsupportedInput("Grok duration must be 1-15 seconds")
+    resolution = str(input_data.get("resolution") or "480p")
+    ratio = str(input_data.get("aspect_ratio") or "16:9")
+    if resolution not in {"480p", "720p", "1080p"}:
+        raise NeironychVideoUnsupportedInput("Unsupported Grok resolution")
+    if ratio not in {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}:
+        raise NeironychVideoUnsupportedInput("Unsupported Grok aspect ratio")
+    known = {"model", "prompt", "duration", "resolution", "aspect_ratio", "image_urls", "reference_images", "nsfw_checker"}
+    if input_data.get("nsfw_checker") not in (None, False):
+        raise NeironychVideoUnsupportedInput("Grok content filter cannot be configured through Neironych")
+    if any(value not in (None, "", []) for key, value in input_data.items() if key not in known):
+        raise NeironychVideoUnsupportedInput("Unsupported Grok control")
+    source = deepcopy(input_data)
+    raw_refs = source.get("reference_images") or source.get("image_urls") or []
+    if isinstance(raw_refs, list) and len(raw_refs) > 7:
+        raise NeironychVideoUnsupportedInput("Grok supports at most seven image references")
+    refs = _reference_list(source, canonical="reference_images", legacy="image_urls", maximum=7)
+    if len(refs) > 7 or (refs and resolution == "1080p"):
+        raise NeironychVideoUnsupportedInput("Grok references require at most seven images at 480p/720p")
+    result: dict[str, Any] = {
+        "prompt": prompt, "duration": duration, "resolution": resolution, "aspect_ratio": ratio,
+    }
+    if refs:
+        result["reference_images"] = refs
+    return result
+
+
 _SEEDANCE_MODEL_FAMILY = {
     "seedance-2.0": "seedance-2.0",
     "seedance-2": "seedance-2.0",
@@ -138,6 +177,8 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
     documented Seedance invariants are enforced locally.
     """
 
+    if model == "grok-imagine-video-1.5":
+        return _normalize_grok(input_data)
     family = _family(model)
     payload = deepcopy(input_data)
 

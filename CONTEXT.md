@@ -2,9 +2,9 @@
 
 - Baseline: `main@9bfc98c0eba2b21cfb33ecd6c60d74e341bdd2df`; main CI/deploy green.
 - Scope: seven matching provider models / eight KSU IDs; preserve existing primaries, add Neironych adapters/fallback and bounded real API verification.
-- Status: audit committed before production changes; implementation pending.
+- Status: all eight matching KSU modes implemented; eight real API operations succeeded and files were verified. Standards/Spec review clear; 1886 backend tests, Ruff and compileall passed. Exact-head CI pending.
 - Authoritative execution ledger, acceptance, matrix and guidance: [Neironych fallback](docs/agents/EXECUTION/neironych-fallback-20261022.md).
-- Final outcome: pending exact-head CI and Standards/Spec review; no merge/deploy claimed.
+- Final outcome: implementation/live checks and separate reviews complete; exact-final-head CI remains the delivery gate. No merge/deploy claimed.
 
 ## Active Fix Execution — audio reference classification and mobile upload layout (2026-10-22)
 
