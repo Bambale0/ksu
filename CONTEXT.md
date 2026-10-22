@@ -1,3 +1,11 @@
+## Active Feature Execution — Neironych fallback coverage (2026-10-22)
+
+- Baseline: `main@9bfc98c0eba2b21cfb33ecd6c60d74e341bdd2df`; main CI/deploy green.
+- Scope: seven matching provider models / eight KSU IDs; preserve existing primaries, add Neironych adapters/fallback and bounded real API verification.
+- Status: audit committed before production changes; implementation pending.
+- Authoritative execution ledger, acceptance, matrix and guidance: [Neironych fallback](docs/agents/EXECUTION/neironych-fallback-20261022.md).
+- Final outcome: pending exact-head CI and Standards/Spec review; no merge/deploy claimed.
+
 ## Active Fix Execution — audio reference classification and mobile upload layout (2026-10-22)
 
 - **Report / baseline:** customer adds an audio reference and sees it offered under saved video references; hash filenames also extend outside the mobile form. Baseline `main@198e12414c39e39fa31fcd4ccbc181212a2ff565`; six product workflows and production deploy succeeded at that SHA. PR #549 concerns template-editor audio inputs and does not fix shared upload classification; preserve its independent changes.
