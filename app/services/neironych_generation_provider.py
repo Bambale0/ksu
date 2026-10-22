@@ -486,10 +486,13 @@ class NeironychGenerationProviderService:
         try:
             try:
                 with Image.open(io.BytesIO(result.content)) as image:
+                    image.load()
                     if output_format == "png":
                         image.save(handle, format="PNG")
+                    elif image.format == "JPEG" and image.mode == "RGB":
+                        handle.write(result.content)
                     else:
-                        image.convert("RGB").save(handle, format="JPEG")
+                        image.convert("RGB").save(handle, format="JPEG", quality=95)
             except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
                 return await cls._mark_image_uncertain(session, generation, error="Invalid image result")
             handle.close()

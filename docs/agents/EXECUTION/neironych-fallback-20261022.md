@@ -86,9 +86,10 @@ Live checks prove the exercised minimal contracts and file availability, not eve
 
 ## Final verification
 
-- Focused initial provider/regression matrix: 218 passed before the final review corrections. Expanded new regression file contains 48 cases; full-suite verification below supersedes this intermediate count.
-- Full backend/product regression on the final source: **1886 passed**, one existing SQLAlchemy trend-category reassignment warning, in 57.57s. Includes all 48 new adapter/route/recovery cases. Repeated partial runs used separate task databases; the final full run used a fresh isolated migrated database and CI-equivalent Settings defaults.
+- Focused initial provider/regression matrix: 218 passed before the final review corrections. Expanded new regression file contains 52 cases; full-suite verification below supersedes this intermediate count.
+- Full backend/product regression before the final JPEG-preservation slice: **1886 passed**, one existing SQLAlchemy trend-category reassignment warning, in 57.57s. The final adapter/regression subset passed 93 tests, including 52 new cases. Repeated partial runs used separate task databases; the final full run used a fresh isolated migrated database and CI-equivalent Settings defaults.
 - Ruff repository-wide, Python compileall and git diff whitespace checks passed.
 - Isolated PostgreSQL 17 created for this task and migrated to existing Alembic head; no application migration added. Dedicated Redis 7.4 used for full regression.
 - The first full-suite attempt inherited workstation package configuration and stopped at a pre-existing pricing fixture mismatch; rerun exports verified Settings defaults and isolated test URLs, with production credentials disabled. A stale batch-route expectation then reproduced the intended default-route change and was updated.
+- Final image-quality review added explicit byte preservation for valid original JPEGs and quality=95 only when converting another format to JPEG. High-quality JPEG fixtures reproduce four recompression failures on the prior committed implementation; PNG conversion and original JPEG retention pass after the correction.
 - Exact final source SHA, complete local/backend results and exact job/step CI evidence are recorded in the PR to avoid a circular commit-SHA ledger update. No merge/deploy is part of this delivery.

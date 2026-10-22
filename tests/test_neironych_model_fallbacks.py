@@ -122,9 +122,13 @@ async def new_generation(model, **inputs):
     ("nano-banana-2", []), ("nano-banana-2-lite", []),
     ("gpt-image-2-t2i", []), ("gpt-image-2-i2i", ["https://example.test/ref.png"]),
 ])
-async def test_new_image_service_freezes_correct_wire_model_and_stores_real_jpeg(monkeypatch, model, refs):
+@pytest.mark.parametrize("source_format", ["PNG", "JPEG"])
+async def test_new_image_service_freezes_correct_wire_model_and_stores_real_jpeg(monkeypatch, model, refs, source_format):
     png = io.BytesIO()
-    Image.new("RGBA", (16, 16), (0, 0, 255, 128)).save(png, format="PNG")
+    image = Image.new("RGBA", (16, 16), (0, 0, 255, 128))
+    if source_format == "JPEG":
+        image = image.convert("RGB")
+    image.save(png, format=source_format, **({"quality": 97} if source_format == "JPEG" else {}))
     calls = []
 
     async def respond(request):
@@ -142,6 +146,8 @@ async def test_new_image_service_freezes_correct_wire_model_and_stores_real_jpeg
         assert content_type == "image/jpeg" and path.suffix == ".jpg"
         with Image.open(path) as image:
             assert image.format == "JPEG" and image.mode == "RGB"
+        if source_format == "JPEG":
+            assert path.read_bytes() == png.getvalue()  # No extra lossy recompression.
         row = await session.get(Generation, generation_id)
         row.status = "succeeded"
         await session.commit()
