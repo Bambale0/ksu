@@ -274,3 +274,63 @@ test('Seedance keeps uploaded multimodal refs when user taps Text mode', async (
   await expect(page.getByRole('button', { name: 'Мультиреференсы', exact: true })).toHaveClass(/active/);
   await expect(page.getByText('1 загружено')).toBeVisible();
 });
+
+test('audio upload stays in audio parameters and long filenames fit mobile forms', async ({ page }) => {
+  const audioUrl = `https://cdn.roxy.local/${'a'.repeat(64)}.m4a`;
+  const savedAudioUrl = 'https://cdn.roxy.local/saved-audio.m4a';
+  const savedAudio = {
+    id: 'audio_1', kind: 'audio', url: savedAudioUrl, filename: 'saved-audio.m4a',
+    created_at: '2026-10-22T00:00:00Z', content_type: 'audio/mp4',
+  };
+  const uploadedAudio = { ...savedAudio, id: 'audio_2', url: audioUrl, filename: 'music.mp4' };
+  const references = [savedAudio];
+  await mockRoxy(page);
+  await page.route('**/api/v1/uploads/kie', (route) => {
+    references.push(uploadedAudio);
+    return json(route, {
+      url: audioUrl, name: 'music.mp4', mime_type: 'audio/mp4', size: 4, reference: uploadedAudio,
+    }, 201);
+  });
+  await page.route('**/api/v1/references?*', (route) => json(route, { items: references }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/mini-app/?route=create');
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const audioField = page.locator('.field').filter({ has: page.locator('input[accept="audio/*"]') });
+  const videoField = page.locator('.field').filter({ has: page.locator('input[accept="video/*"]') });
+  await audioField.locator('input[type="file"]').setInputFiles({
+    name: 'music.mp4', mimeType: 'video/mp4', buffer: Buffer.from('audio-only mp4'),
+  });
+  await expect(audioField.getByText('1 загружено')).toBeVisible();
+  await expect(videoField.locator('.upload-list')).toHaveCount(0);
+  await expect(videoField.locator('.saved-reference-pick')).toHaveCount(0);
+  await audioField.locator('.saved-reference-pick').click();
+  await expect(audioField.getByText('2 загружено')).toBeVisible();
+
+  for (const width of [320, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    const bounds = await audioField.locator('.upload-list button').first().evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const panel = button.closest('.panel').getBoundingClientRect();
+      return { left: rect.left, right: rect.right, panelRight: panel.right, width: innerWidth };
+    });
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(bounds.width);
+    expect(bounds.right).toBeLessThanOrEqual(bounds.panelRight);
+  }
+
+  // Removing one uploaded item must leave the other audio reference intact.
+  await audioField.locator('.upload-list button').first().click();
+  await expect(audioField.getByText('1 загружено')).toBeVisible();
+  await expect(audioField.locator('.saved-reference-pick[title="music.mp4"]')).toBeVisible();
+  await expect(videoField.locator('.saved-reference-pick')).toHaveCount(0);
+  await audioField.locator('.saved-reference-pick[title="music.mp4"]').click();
+  await expect(audioField.getByText('2 загружено')).toBeVisible();
+  await page.getByRole('textbox', { name: /Описание/ }).fill('Создай видео под загруженную музыку');
+  await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
+  const payload = (await submitted).postDataJSON();
+  expect(payload.parameters.reference_audio_urls).toEqual([savedAudioUrl, audioUrl]);
+  expect(payload.parameters.reference_video_urls).toBeUndefined();
+  expect(payload.parameters.reference_image_urls).toBeUndefined();
+});
