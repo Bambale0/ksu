@@ -52,11 +52,14 @@ class WakeRedis:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model,route", [
-    ("nano-banana-pro", ["kie"]),
-    ("seedream-5-pro-t2i", ["kie", "nexus"]),
+@pytest.mark.parametrize("model,route,old_provider,new_provider", [
+    ("nano-banana-pro", ["kie"], "nexus", "kie"),
+    ("seedream-5-pro-t2i", ["kie", "nexus"], "nexus", "kie"),
+    ("grok-video-1.5", ["neironych", "kie"], "kie", "neironych"),
 ])
-async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(monkeypatch, model, route):
+async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
+    monkeypatch, model, route, old_provider, new_provider,
+):
     # A unique setting key leaves all other tests on the bootstrap routes.
     key = f"route-test-{uuid.uuid4()}"
     monkeypatch.setattr("app.services.generation_provider_routing.ROUTES_SETTING_KEY", key)
@@ -126,8 +129,9 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     user_id=user.id,
                     model_id=model,
                     prompt="old snapshot",
+                    parameters={"duration": 2} if model == "grok-video-1.5" else None,
                 )
-                assert old.provider == "nexus"
+                assert old.provider == old_provider
                 first = await client.post(path, json=payload, headers=headers)
                 assert first.status_code == 200, first.text
                 assert first.json()["revision"] == 2
@@ -146,12 +150,13 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     user_id=user.id,
                     model_id=model,
                     prompt="new snapshot",
+                    parameters={"duration": 2} if model == "grok-video-1.5" else None,
                 )
-                assert new.provider == "kie"
+                assert new.provider == new_provider
                 assert new.parameters["_provider_route"] == route
                 assert new.parameters["_provider_route_revision"] == 2
                 await session.refresh(old)
-                assert old.provider == "nexus" and old.parameters["_provider_route_revision"] == 1
+                assert old.provider == old_provider and old.parameters["_provider_route_revision"] == 1
                 command = await session.scalar(
                     select(AdminCommand).where(AdminCommand.idempotency_key == idem)
                 )
