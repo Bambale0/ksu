@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "@/lib/api";
@@ -41,6 +41,20 @@ function previewIsVideo(url: string): boolean {
 
 function modelAcceptsReferences(model?: TrendAdminModel | null): boolean {
   return Boolean(model?.known_fields?.some((field) => REFERENCE_FIELDS.has(field)));
+}
+
+function recipeParameters(value: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(value || "{}");
+    if (parsed && !Array.isArray(parsed) && typeof parsed === "object") return parsed as Record<string, unknown>;
+  } catch { /* Report one actionable error for malformed recipe JSON. */ }
+  throw new Error("Дополнительные параметры должны быть корректным JSON-объектом");
+}
+
+function audioReferenceUrls(parameters: Record<string, unknown>): string[] {
+  return Array.isArray(parameters.reference_audio_urls)
+    ? parameters.reference_audio_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+    : [];
 }
 
 function referenceCapacity(model?: TrendAdminModel | null): number {
@@ -140,6 +154,7 @@ export function InlineTrendAdmin() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const draftVersion = useRef(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -199,9 +214,16 @@ export function InlineTrendAdmin() {
     [draft.modelId, models],
   );
   const referenceAllowed = modelAcceptsReferences(selectedModel);
+  const audioAllowed = Boolean(selectedModel?.known_fields?.includes("reference_audio_urls"));
+  const audioReferences = useMemo(() => {
+    try { return audioReferenceUrls(recipeParameters(draft.parameters)); }
+    catch { return []; }
+  }, [draft.parameters]);
   const capacity = referenceCapacity(selectedModel);
 
   const beginCreate = () => {
+    draftVersion.current += 1;
+    setUploading(false);
     const modelId = models[0]?.id || "";
     setEditingId(null);
     setDraft(emptyDraft(modelId));
@@ -211,6 +233,8 @@ export function InlineTrendAdmin() {
   };
 
   const beginEdit = (item: TrendAdminItem, duplicate = false) => {
+    draftVersion.current += 1;
+    setUploading(false);
     setEditingId(duplicate ? null : item.id);
     setDraft(draftFrom(item, duplicate));
     setCustomFieldName("");
@@ -265,29 +289,68 @@ export function InlineTrendAdmin() {
       setError("Выберите изображение или видео");
       return;
     }
+    const version = draftVersion.current;
     setUploading(true);
     setError("");
     try {
       const uploaded = await api.upload(file);
+      if (draftVersion.current !== version) return;
       setDraft((current) => ({ ...current, previewUrl: uploaded.url }));
     } catch (cause) {
+      if (draftVersion.current !== version) return;
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить превью");
     } finally {
-      setUploading(false);
+      if (draftVersion.current === version) setUploading(false);
+    }
+  };
+
+  const uploadAudio = async (file?: File) => {
+    if (!file || uploading || !audioAllowed) return;
+    const version = draftVersion.current;
+    setError("");
+    try {
+      const parameters = recipeParameters(draft.parameters);
+      if (!file.type.startsWith("audio/")) throw new Error("Выберите аудиофайл");
+      setUploading(true);
+      const uploaded = await api.upload(file);
+      if (draftVersion.current !== version) return;
+      if (
+        uploaded.reference?.kind !== "audio" || uploaded.probe_status !== "ready"
+        || !Number.isFinite(uploaded.duration_ms) || Number(uploaded.duration_ms) <= 0
+      ) {
+        throw new Error("Не удалось определить длительность аудио. Выберите другой файл или загрузите его повторно.");
+      }
+      parameters.reference_audio_urls = [...new Set([...audioReferenceUrls(parameters), uploaded.url])];
+      setDraft((current) => ({ ...current, parameters: JSON.stringify(parameters, null, 2) }));
+    } catch (cause) {
+      if (draftVersion.current === version) setError(cause instanceof Error ? cause.message : "Не удалось загрузить аудио");
+    } finally {
+      if (draftVersion.current === version) setUploading(false);
+    }
+  };
+
+  const removeAudio = (index: number) => {
+    try {
+      const parameters = recipeParameters(draft.parameters);
+      const urls = audioReferenceUrls(parameters).filter((_, position) => position !== index);
+      if (urls.length) parameters.reference_audio_urls = urls;
+      else delete parameters.reference_audio_urls;
+      setDraft((current) => ({ ...current, parameters: JSON.stringify(parameters, null, 2) }));
+      setError("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось удалить аудио");
     }
   };
 
   const save = async () => {
-    if (saving) return;
+    if (saving || uploading) return;
     if (!draft.title.trim() || !draft.modelId || !draft.prompt.trim() || !draft.previewUrl.trim()) {
       setError("Добавьте название, превью, модель и скрытый промпт");
       return;
     }
     let parameters: Record<string, unknown>;
     try {
-      const parsed = JSON.parse(draft.parameters || "{}");
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error();
-      parameters = parsed as Record<string, unknown>;
+      parameters = recipeParameters(draft.parameters);
     } catch {
       setError("Дополнительные параметры должны быть корректным JSON-объектом");
       return;
@@ -432,7 +495,7 @@ export function InlineTrendAdmin() {
         <label><span>Описание</span><textarea value={draft.description} maxLength={240} rows={2} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Что получит пользователь" /></label>
 
         <div className="inline-trend-two-cols">
-          <label><span>Модель</span><select value={draft.modelId} onChange={(event) => chooseModel(event.target.value)} required><option value="">Выберите модель</option>{["image", "video"].map((kind) => <optgroup label={kind === "image" ? "Фото" : "Видео"} key={kind}>{models.filter((model) => model.media_type === kind).map((model) => <option value={model.id} key={model.id}>{model.title || model.id}</option>)}</optgroup>)}</select></label>
+          <label><span>Модель</span><select value={draft.modelId} onChange={(event) => chooseModel(event.target.value)} disabled={uploading} required><option value="">Выберите модель</option>{["image", "video"].map((kind) => <optgroup label={kind === "image" ? "Фото" : "Видео"} key={kind}>{models.filter((model) => model.media_type === kind).map((model) => <option value={model.id} key={model.id}>{model.title || model.id}</option>)}</optgroup>)}</select></label>
           <label><span>Приоритет</span><input type="number" min={-100000} max={100000} value={draft.sortOrder} onChange={(event) => setDraft((current) => ({ ...current, sortOrder: Number(event.target.value || 0) }))} /></label>
         </div>
 
@@ -441,6 +504,19 @@ export function InlineTrendAdmin() {
         <label><span>URL превью</span><input type="url" value={draft.previewUrl} onChange={(event) => setDraft((current) => ({ ...current, previewUrl: event.target.value }))} placeholder="https://…" required /></label>
 
         <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+
+        {audioAllowed || audioReferences.length ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Аудиореференсы шаблона">
+          <strong>Аудиореференсы для модели</strong>
+          <small>Загрузите звук один раз — он будет использоваться при каждом запуске шаблона. В скрытом промпте укажите @Audio1 и опишите, как использовать звук. После удаления проверьте номера аудиореференсов в промпте.</small>
+          {audioAllowed ? <label><span>Добавить аудиореференс</span><input type="file" accept="audio/*" disabled={uploading || saving} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadAudio(file); }} /></label> : <small>Выбранная модель не поддерживает эти аудиореференсы. Удалите их или выберите другую модель.</small>}
+          {uploading ? <small role="status">Сохраняю файл в ROXY…</small> : null}
+          {audioReferences.map((url, index) => <div key={`${index}:${url}`}>
+            <strong>@Audio{index + 1}</strong>
+            <audio src={url} controls preload="none" style={{ width: "100%" }} aria-label={`Прослушать аудиореференс ${index + 1}`} />
+            <button type="button" className="inline-trend-secondary" disabled={uploading || saving} onClick={() => removeAudio(index)} aria-label={`Удалить аудиореференс ${index + 1}`}>Удалить</button>
+          </div>)}
+          {!audioReferences.length ? <small>Аудио пока не добавлено.</small> : null}
+        </div> : null}
 
         <div className="inline-trend-user-fields-admin">
           <div>
@@ -487,7 +563,7 @@ export function InlineTrendAdmin() {
 
         <label><span>Теги</span><input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} placeholder="trend, portrait" /><small>Через запятую, максимум 20.</small></label>
 
-        <details className="inline-trend-advanced"><summary>Дополнительные параметры модели</summary><label><span>JSON параметров</span><textarea rows={7} spellCheck={false} value={draft.parameters} onChange={(event) => setDraft((current) => ({ ...current, parameters: event.target.value }))} /></label></details>
+        <details className="inline-trend-advanced"><summary>Дополнительные параметры модели</summary><label><span>JSON параметров</span><textarea rows={7} spellCheck={false} value={draft.parameters} disabled={uploading} onChange={(event) => setDraft((current) => ({ ...current, parameters: event.target.value }))} /></label></details>
 
         {editingId ? <label className="inline-trend-checkbox"><input type="checkbox" checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} /><span>Показывать пользователям</span></label> : null}
 

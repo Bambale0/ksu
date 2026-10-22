@@ -67,6 +67,12 @@ The [catalog-wide input audit](agents/EXECUTION/trend-input-audit-20261021.md) r
 
 Video references are not supported in trends. Recipes containing video-input parameters (including legacy aliases) or Seedance `@VideoN` tags are rejected before generation or billing. For Seedance templates, the highest `@ImageN` automatically defines the minimum number of user image uploads, and validation uses distinct placeholder URLs for every required image. Existing reference-integrity checks still reject missing or out-of-range references. Ordinary generation outside Trends retains video-reference support.
 
+For models advertising `reference_audio_urls`, the Mini App template editor has an **Аудиореференсы для модели** section. An administrator can upload an audio file, listen to it, and remove it without editing JSON. Use `@Audio1`, `@Audio2`, etc. in the hidden Seedance prompt to explain how the model should use each reference; check the numbering after removing an entry. The audio is fixed in the server-owned recipe and reused on customer runs alongside their image references. It is not a user-editable input or a soundtrack applied after generation.
+
+Audio uploads use the existing authenticated ROXY upload endpoint. The editor attaches a returned URL only when the server reports audio with a ready probe and a positive measured duration. Model-specific size/count/duration limits remain enforced by the normal server validation before saving or billing. Failed or unverified uploads leave the recipe unchanged and can be retried. Saving, model changes and JSON editing are disabled while an upload is pending; a late response cannot overwrite a newly opened draft. Editing and duplication retain existing audio settings.
+
+Previously saved external or unregistered audio URLs are not repaired automatically. Remove the old entry and upload the file in this section to register its measured duration. The legacy web admin JSON editor remains compatible with `parameters.reference_audio_urls` containing already registered ROXY audio URLs. No schema migration is needed.
+
 Therefore trend jobs reuse KSU's existing:
 
 - model capability validation;

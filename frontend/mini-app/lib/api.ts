@@ -194,6 +194,8 @@ export const api = {
       name?: string;
       mime_type?: string;
       size?: number;
+      probe_status?: string | null;
+      duration_ms?: number | null;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
     }>("/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
