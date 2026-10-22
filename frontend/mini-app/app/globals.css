@@ -330,7 +330,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .toggle-row input:checked + i::after { transform: translateX(18px); }
 .upload-control { min-height: 48px; padding: 10px 12px; border: 1px dashed rgba(183,132,255,.35); border-radius: 14px; background: rgba(155,92,255,.055); color: #eeeaf5; display: flex; align-items: center; gap: 9px; cursor: pointer; }
 .upload-control input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.upload-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.upload-list { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .upload-list button { max-width: 100%; min-height: 44px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.025); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .quote-box { min-height: 103px; padding: 14px; border: 1px solid rgba(155,92,255,.19); border-radius: 16px; background: rgba(155,92,255,.06); display: grid; gap: 4px; }
 .quote-box > span { color: var(--muted); font-size: 10px; }

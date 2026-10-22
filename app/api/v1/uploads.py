@@ -88,6 +88,37 @@ def _sha256_stream(stream: BinaryIO) -> str:
     return digest.hexdigest()
 
 
+def _probed_content_type(content_type: str, probe: MediaProbe) -> str:
+    # Shared containers may arrive with a video MIME even when they contain
+    # only sound. Use verified streams and container metadata before choosing
+    # the durable storage path, extension and saved-reference kind.
+    if (
+        not content_type.startswith(("audio/", "video/"))
+        or probe.status != "ready"
+        or probe.has_video is not False
+        or not probe.audio_codec
+    ):
+        return content_type
+    containers = set((probe.container or "").split(","))
+    # MOV and MP4 share a demuxer name. Only verified MP4/M4A brands justify
+    # changing the MIME/extension; this does not transcode QuickTime bytes.
+    if containers & {"mov", "mp4", "m4a"}:
+        if probe.container_brand in {"isom", "iso2", "mp41", "mp42", "M4A", "M4B"}:
+            return "audio/mp4"
+        return content_type
+    for formats, audio_type in (
+        ({"ogg"}, "audio/ogg"),
+        ({"mp3"}, "audio/mpeg"),
+        ({"wav"}, "audio/wav"),
+        ({"aac"}, "audio/aac"),
+        ({"flac"}, "audio/flac"),
+        ({"aiff"}, "audio/aiff"),
+    ):
+        if containers & formats:
+            return audio_type
+    return content_type
+
+
 async def _persist_reference_metadata(
     session: SessionDep,
     reference: object,
@@ -155,9 +186,10 @@ async def upload_to_kie(
     )
 
     filename = file.filename or "upload"
-    kind = content_type.split("/", 1)[0]
     file_hash = await asyncio.to_thread(_sha256_stream, file.file)
     probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
+    content_type = _probed_content_type(content_type, probe)
+    kind = content_type.split("/", 1)[0]
 
     existing = await ReferenceService.get_by_hash(
         session,

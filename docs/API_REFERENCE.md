@@ -159,6 +159,8 @@ In addition to MIME allowlist and `KIE_UPLOAD_MAX_BYTES`, the endpoint enforces:
 
 If Starlette does not expose multipart size metadata, the server measures the already-spooled file so chunked clients do not bypass byte accounting. Production reverse proxy must still enforce its own request-body ceiling before application parsing.
 
+Verified audio-only uploads use their probed container to choose the saved audio kind, MIME and safe extension, even when the device declares it as video (for example, an audio-only MP4 with a recognized MP4/M4A brand and `video/mp4` becomes `audio/mp4` stored as `.m4a`). Attached cover art does not count as video. Actual video streams retain video classification. Ambiguous container subtypes (including QuickTime and WebM/Matroska), failed probes and unavailable probes retain the existing classification; downstream trusted-duration validation remains authoritative. This does not convert media or rewrite historical references. Re-upload an older misclassified supported audio file to obtain a correctly classified saved reference.
+
 ## Wallet and payments
 
 The Wallet Mini App treats backend package/payment state as authoritative. The client never submits arbitrary RUB or credit amounts and never marks a payment successful locally.
