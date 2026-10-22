@@ -12,7 +12,7 @@ def test_supported_models_route_nexus_primary() -> None:
     assert route_for_model("seedance-2.0") == ("nexus", "neironych", "kie")
     assert route_for_model("seedance-2.5") == ("nexus", "neironych", "kie")
     assert route_for_model("nano-banana-pro") == ("nexus", "neironych", "kie")
-    assert route_for_model("nano-banana-2") == ("nexus", "kie")
+    assert route_for_model("nano-banana-2") == ("nexus", "neironych", "kie")
     assert route_for_model("seedance-2.0-fast") == ("nexus", "kie")
     assert route_for_model("veo-3.1") == ("nexus", "kie")
 
@@ -58,4 +58,4 @@ async def test_legacy_runtime_route_row_bootstraps_new_nexus_registry() -> None:
     assert config["routes"]["seedance-2.0"][0] == "nexus"
     assert config["routes"]["nano-banana-pro"][0] == "nexus"
     assert config["routes"]["veo-3.1"] == ["nexus", "kie"]
-    assert all(not model.startswith("grok-") for model in config["routes"])
+    assert config["routes"]["grok-video-1.5"] == ["kie", "neironych"]
