@@ -182,6 +182,42 @@ async def test_grok_service_freezes_provider_alias_and_keeps_accepted_id(monkeyp
             assert row.parameters[SNAPSHOT_KEY]["model"] == "grok-imagine-video-1.5"
 
 
+@pytest.mark.parametrize("status,expected_provider", [(402, "kie"), (503, "neironych")])
+async def test_grok_neironych_primary_only_falls_back_on_definite_rejection(
+    monkeypatch, status, expected_provider,
+):
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(status, json={"error": {
+            "code": "insufficient_balance" if status == 402 else "provider_temporarily_unavailable",
+            "message": "Synthetic provider failure",
+        }})
+
+    async with httpx.AsyncClient(
+        base_url="https://provider.test", transport=httpx.MockTransport(respond),
+    ) as http:
+        client = NeironychVideoClient("test-key", "https://provider.test", client=http)
+        monkeypatch.setattr(
+            "app.services.neironych_generation_provider.NeironychVideoClient", lambda *_: client,
+        )
+        gid = await new_generation("grok-video-1.5", duration=2, resolution="480p")
+        async with SessionFactory() as session:
+            row = await Service.submit(session, gid)
+            assert row.provider == expected_provider and row.status == "retry"
+            assert row.external_id is None
+            if status == 402:
+                assert row.parameters["_provider_route_index"] == 1
+                assert row.parameters["_provider_attempts"][0]["provider"] == "neironych"
+                assert SNAPSHOT_KEY not in row.parameters
+            else:
+                assert row.parameters["_provider_route_index"] == 0
+                assert row.parameters["_submission_uncertain"]
+                assert not row.parameters.get("_provider_attempts")
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("refs", [[], ["https://example.test/cup.png"]])
 async def test_grok_video_sends_exact_model_and_reference_contract(refs):
     def respond(request):
