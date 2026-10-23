@@ -16,6 +16,7 @@ from app.services.model_spec_trusted_media_audit import (
     validate_owned_trusted_sources,
 )
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.services.trends import TrendRecipeError, TrendService
 
 
 async def _user(session) -> User:  # type: ignore[no-untyped-def]
@@ -271,6 +272,27 @@ async def test_unverified_duration_source_fails_closed() -> None:
                 },
                 billing_seconds=1,
             )
+
+
+@pytest.mark.asyncio
+async def test_seedance_template_requires_registered_audio_duration() -> None:
+    async with SessionFactory() as session:
+        owner = await _user(session)
+        payload = {
+            "model_id": "seedance-2.5", "media_type": "video",
+            "prompt": "Create a scene using @Audio1", "input_mode": "none",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "parameters": {
+                "duration": 10, "resolution": "720p", "aspect_ratio": "9:16",
+                "reference_audio_urls": [f"https://cdn.example.invalid/{uuid.uuid4()}.mp3"],
+            },
+        }
+        with pytest.raises(TrendRecipeError, match="Seedance 2.5 reference audio duration must be verified"):
+            await TrendService.validate_recipe(session, title="Audio template", payload=payload)
+        audio = await _trusted_reference(session, user_id=owner.id, kind="audio", seconds=10, suffix="mp3")
+        payload["parameters"]["reference_audio_urls"] = [audio.source_url]
+        recipe = await TrendService.validate_recipe(session, title="Audio template", payload=payload)
+        assert recipe["parameters"]["reference_audio_urls"] == [audio.source_url]
 
 
 def test_media_derived_models_do_not_expose_client_billing_seconds() -> None:

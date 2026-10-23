@@ -10,6 +10,7 @@ from app.db.reference_models import UserPreset
 from app.services.model_catalog import ModelCatalog
 from app.services.seedance_prompt_limits import validate_prompt_length
 from app.services.references import ReferenceService
+from app.services.template_audio import TemplateAudioService
 
 
 class PresetError(ValueError):
@@ -39,6 +40,10 @@ class UserPresetService:
                 raise PresetError(f"Maximum duration is {spec.max_seconds} seconds")
         if len(reference_ids) > 16:
             raise PresetError("A preset can contain at most 16 references")
+        try:
+            await TemplateAudioService.protect_parameters(session, parameters)
+        except ValueError as exc:
+            raise PresetError(str(exc)) from exc
         rows = await ReferenceService.resolve_owned(session, user_id=user_id, reference_ids=reference_ids)
         return clean_name, dict(parameters), billing_seconds, [str(row.id) for row in rows]
 

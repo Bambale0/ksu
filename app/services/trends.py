@@ -178,6 +178,10 @@ class TrendService:
     @staticmethod
     async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
+        from app.services.template_audio import TemplateAudioService
+
+        if TemplateAudioService.audio_urls(recipe["parameters"]):
+            await TemplateAudioService.lock(session)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
         try:
@@ -188,6 +192,7 @@ class TrendService:
                 parameters=parameters,
                 billing_seconds=recipe["billing_seconds"],
             )
+            await TemplateAudioService.pin_recipe(session, recipe["parameters"])
         except ValueError as exc:
             raise TrendRecipeError(f"Trend generation recipe is invalid: {exc}") from exc
         return recipe

@@ -715,6 +715,34 @@ async def test_seedance_trend_run_keeps_video_preview_presentation_only(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_seedance_template_audio_is_preserved_when_customer_supplies_images(monkeypatch) -> None:
+    item = _video_item()
+    audio = "https://cdn.example.invalid/template-audio.mp3"
+    item.payload.update({
+        "model_id": "seedance-2.5",
+        "prompt": "Animate @Image1 with the sound from @Audio1",
+        "input_mode": "image", "min_references": 1, "max_references": 1,
+    })
+    item.payload["parameters"]["reference_audio_urls"] = [audio]
+    session = AsyncMock()
+    session.get.return_value = item
+    session.scalar.return_value = item
+    create = AsyncMock(return_value=_generation())
+    monkeypatch.setattr(GenerationService, "create", create)
+
+    await TrendService.run(
+        session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id,
+        reference_urls=["https://cdn.example.invalid/customer.jpg"], aspect_ratio="9:16",
+    )
+
+    parameters = create.await_args.kwargs["parameters"]
+    assert parameters["reference_audio_urls"] == [audio]
+    assert parameters["reference_image_urls"] == ["https://cdn.example.invalid/customer.jpg"]
+    assert create.await_args.kwargs["prompt"] == "Animate @Image1 with the sound from @Audio1"
+    assert item.payload["parameters"]["reference_audio_urls"] == [audio]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("metadata", [
     None,
     SimpleNamespace(probe_status="failed", duration_ms=None),

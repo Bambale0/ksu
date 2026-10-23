@@ -61,8 +61,17 @@ async def _reference_for_url(
     *,
     url: str,
     user_id: uuid.UUID | None = None,
+    template_audio: bool = False,
 ):
-    from app.db.reference_models import UserReference
+    from app.db.reference_models import TemplateAudioReference, UserReference
+
+    # Owner-scoped media validation must never gain access through template metadata.
+    if template_audio and user_id is None:
+        durable = await session.scalar(select(TemplateAudioReference).where(
+            TemplateAudioReference.source_url == url,
+        ).with_for_update(read=True).execution_options(populate_existing=True))
+        if durable is not None:
+            return durable if durable.status == "ready" else None
 
     statement = select(UserReference).where(
         UserReference.status == "ready",
@@ -80,12 +89,13 @@ async def _require_reference_seconds(
     url: str,
     label: str,
     user_id: uuid.UUID | None = None,
+    template_audio: bool = False,
 ) -> int:
     from app.services.model_catalog import InvalidModelParametersError
 
     if not url:
         raise InvalidModelParametersError(f"{label} reference is required")
-    row = await _reference_for_url(session, url=url, user_id=user_id)
+    row = await _reference_for_url(session, url=url, user_id=user_id, template_audio=template_audio)
     if row is None:
         raise InvalidModelParametersError(
             f"{label} duration must be verified: upload this media through ROXY"
@@ -176,6 +186,7 @@ async def _reference_total_seconds(
     *,
     urls: Any,
     label: str,
+    template_audio: bool = False,
 ) -> int:
     from app.services.model_catalog import InvalidModelParametersError
 
@@ -189,6 +200,7 @@ async def _reference_total_seconds(
             session,
             url=str(raw or "").strip(),
             label=label,
+            template_audio=template_audio,
         )
     return total
 
@@ -253,6 +265,7 @@ async def validate_reference_duration_contracts(
             session,
             urls=parameters.get("reference_audio_urls"),
             label="Seedance reference audio",
+            template_audio=True,
         )
         if video_total > 15:
             raise InvalidModelParametersError("Seedance 2.0 reference videos may total at most 15 seconds")
@@ -269,6 +282,7 @@ async def validate_reference_duration_contracts(
             session,
             urls=parameters.get("reference_audio_urls"),
             label="Seedance 2.5 reference audio",
+            template_audio=True,
         )
         if video_total > 30:
             raise InvalidModelParametersError("Seedance 2.5 reference videos may total at most 30 seconds")

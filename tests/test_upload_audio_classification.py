@@ -248,3 +248,22 @@ async def test_audio_bytes_cannot_bypass_unsupported_mime_or_auth(audio_mp4, upl
         "/api/v1/uploads/kie", files={"file": ("sound.mp4", audio_mp4, "video/mp4")},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('media_fixture', ['audio_mp4', 'covered_audio_mp4'])
+async def test_template_endpoint_uses_probed_audio_container(media_fixture, request, upload_client):
+    from app.db.models import AdminAccount
+
+    audio_bytes = request.getfixturevalue(media_fixture)
+    client, app, _other = upload_client
+    owner = app.dependency_overrides[get_current_user]()
+    async with SessionFactory() as session:
+        session.add(AdminAccount(user_id=owner.id, role='admin'))
+        await session.commit()
+    response = await client.post('/api/v1/uploads/template-audio', files={'file': ('sound.mp4', audio_bytes, 'video/mp4')})
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload['reference']['kind'] == 'audio'
+    assert payload['mime_type'] == 'audio/mp4'
+    assert payload['url'].endswith('.m4a')

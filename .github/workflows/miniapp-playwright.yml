@@ -60,6 +60,7 @@ jobs:
           e2e/referral-home-chat.spec.mjs
           e2e/referral-tanyapi-cold-start.spec.mjs
           e2e/admin-provider-routes.spec.mjs
+          e2e/trend-audio-reference.spec.mjs
           --project=webkit-mobile
       - name: Verify personalized trend keyboards in iPhone WebKit
         if: ${{ !cancelled() }}

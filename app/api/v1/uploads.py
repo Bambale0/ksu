@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from functools import partial
 from pathlib import Path
 from typing import BinaryIO
@@ -265,4 +266,61 @@ async def upload_to_kie(
         "replayed": replayed,
         "reference": ReferenceService.public_view(reference),
         **_metadata_view(reference),
+    }
+
+
+@router.post('/template-audio', status_code=status.HTTP_201_CREATED)
+async def upload_template_audio(
+    user: CurrentUserDep,
+    redis: RedisDep,
+    session: SessionDep,
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    """Upload verified, product-owned audio without touching personal memory."""
+    import uuid
+
+    from app.api.v1.trends import _inline_admin
+    from app.db.reference_models import TemplateAudioReference
+    from app.services.admin_policy import AdminPolicyError
+
+    try:
+        await _inline_admin(session, user_id=user.id)
+    except AdminPolicyError as exc:
+        raise HTTPException(status_code=403, detail="Admin permission required") from exc
+    content_type = _upload_content_type(file)
+    if not content_type.startswith(('audio/', 'video/')) or not ReferenceStaticStorage.supports_content_type(content_type):
+        raise HTTPException(status_code=415, detail='Only supported audio files are allowed')
+    size_bytes = _upload_size(file)
+    if size_bytes > settings.kie_upload_max_bytes:
+        raise HTTPException(status_code=413, detail='File is too large')
+    await AbuseProtectionService.upload_rate_and_bytes(redis, user_id=user.id, size_bytes=size_bytes)
+    filename = file.filename or 'audio'
+    probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
+    content_type = _probed_content_type(content_type, probe)
+    if not content_type.startswith('audio/') or probe.status != 'ready' or not probe.duration_ms or probe.duration_ms <= 0 or not probe.audio_codec or probe.has_video is not False:
+        raise HTTPException(status_code=422, detail='Audio duration could not be verified')
+    file_hash = await asyncio.to_thread(_sha256_stream, file.file)
+    reference_id = uuid.uuid4()
+    # A fresh asset namespace prevents personal re-uploads or later retries from
+    # sharing bytes with an asset being disposed. Attribution is stored separately.
+    try:
+        url, _path, stored_size = await asyncio.to_thread(partial(
+            ReferenceStaticStorage.persist_stream, file.file, user_id=reference_id,
+            kind='audio', file_hash=file_hash, filename=filename,
+            content_type=content_type, expected_size=size_bytes,
+        ))
+    except ReferenceStaticStorageError as exc:
+        raise HTTPException(status_code=500, detail='Reference storage failed') from exc
+    row = TemplateAudioReference(
+        id=reference_id, source_url=url, uploaded_by=user.id, status='ready',
+        original_filename=filename[:255], content_type=content_type,
+        size_bytes=stored_size, duration_ms=probe.duration_ms, probe_status='ready',
+    )
+    session.add(row)
+    await session.commit()
+    logging.getLogger(__name__).info('template_audio_uploaded reference_id=%s actor_user_id=%s', row.id, user.id)
+    return {
+        'url': url, 'name': filename, 'mime_type': content_type, 'size': stored_size,
+        'probe_status': 'ready', 'duration_ms': probe.duration_ms,
+        'reference': {'id': str(row.id), 'kind': 'audio', 'url': url},
     }

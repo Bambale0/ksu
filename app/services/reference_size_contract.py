@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.reference_models import UserReference
 from app.services.model_catalog import InvalidModelParametersError, ModelSpec
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.services.template_audio import TemplateAudioService
 
 
 def _field_urls(value: Any) -> list[str]:
@@ -55,14 +56,17 @@ async def validate_reference_sizes(
 
     Product-owned uploads have measured sizes. The user id is either passed by the
     create boundary or inherited from the authenticated request session. Public
-    catalog/trend rendering and anonymous quotes never search another user's
+    catalog/trend rendering and anonymous quotes validate product-owned template
+    audio sizes, but never search another user's
     reference library by URL. Manual URLs have no trusted byte metadata and remain
     subject to provider/model-specific validation.
     """
 
+    try:
+        durable_rows = await TemplateAudioService.protect_parameters(session, parameters)
+    except ValueError as exc:
+        raise InvalidModelParametersError(str(exc)) from exc
     owner_id = _request_user_id(session, user_id)
-    if owner_id is None:
-        return
 
     schema = build_public_model_ui_schema(spec.public_dict())
     limits_by_url: dict[str, list[tuple[str, int]]] = defaultdict(list)
@@ -79,17 +83,13 @@ async def validate_reference_sizes(
     if not limits_by_url:
         return
 
-    rows = list(
-        (
-            await session.scalars(
-                select(UserReference).where(
-                    UserReference.user_id == owner_id,
-                    UserReference.status == "ready",
-                    UserReference.source_url.in_(list(limits_by_url)),
-                )
-            )
-        ).all()
-    )
+    rows = list(durable_rows)
+    if owner_id is not None:
+        rows.extend((await session.scalars(select(UserReference).where(
+            UserReference.user_id == owner_id,
+            UserReference.status == "ready",
+            UserReference.source_url.in_(list(limits_by_url)),
+        ))).all())
     for row in rows:
         if row.size_bytes is None:
             continue
