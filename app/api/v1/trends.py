@@ -142,6 +142,30 @@ async def list_trends(
         raise _domain_error(exc) from exc
 
 
+@router.delete("/audio/{reference_id}")
+async def discard_template_audio(
+    reference_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, bool]:
+    from app.db.reference_models import UserReference
+    from app.services.template_audio import TemplateAudioService
+
+    try:
+        await _inline_admin(session, user_id=user.id)
+        row = await TemplateAudioService.discard(session, reference_id)
+        url = row.source_url
+        # Migrated assets may still belong to personal memory: never unlink those.
+        shared = await session.scalar(select(UserReference.id).where(UserReference.source_url == url).limit(1))
+        await session.commit()
+        if shared is None:
+            ReferenceStaticStorage.remove_url(url)
+        return {"deleted": True}
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
 @router.get("/manage")
 async def inline_admin_trend_list(
     user: CurrentUserDep,

@@ -128,3 +128,37 @@ The legacy setting is retained as a pre-migration fallback, while runtime reads 
 use the relational tables only. If migration 0036 is downgraded, the current relational
 category state is serialized back into that legacy setting before the tables are removed.
 Category mutation remains admin-only.
+
+### Template audio lifetime (PR #549 repair)
+
+`POST /api/v1/uploads/template-audio` requires the existing inline-admin
+`social.moderate` permission. It preserves size/rate limits, filename-based MIME
+classification and media probing, and rejects files without an audio stream or
+with a video stream. Blank, `application/octet-stream` and `binary/octet-stream`
+MIME values are classified by the server. The client attaches only verified audio.
+
+Audio metadata lives in `template_audio_references`, outside personal reference
+limits and deletion. `uploaded_by` is nullable attribution, with `ON DELETE SET
+NULL`. New uploads use an independent storage namespace. Migration 0043 copies
+verified metadata for existing templates, including hidden templates and audio
+previously marked deleted by personal pruning. Missing/unverified media is not
+fabricated. Saving a legacy verified URL promotes it transactionally. Editing,
+duplicating, hiding and republishing preserve the shared asset by URL.
+
+Removing audio in the editor only changes the draft; saving removes that recipe
+reference. To dispose of an unused upload, an authorized administrator can call
+`DELETE /api/v1/trends/audio/{reference_id}` using the ID returned by upload.
+Disposal refuses audio referenced by **any** template (including hidden copies),
+generation history or preset. Saves and disposal serialize with a transaction
+lock; metadata reads lock the asset until their transaction completes. Disposal
+is repeatable: it tombstones metadata first, then removes local bytes only when
+no personal reference shares the URL. A failed unlink can be retried with the
+same endpoint; retained tombstones prevent accidental resurrection. Historical
+personal files are retained, not deleted by this endpoint. Abandoned drafts are
+not automatically purged; explicit disposal is conservative and has no TTL.
+
+Rollout: apply additive migration before starting the new backend/frontend.
+Code rollback must retain the new table and files; old code cannot validate new
+independent audio. Disable new audio uploads before rolling back, and restore
+metadata compatibility before serving templates with the old version. Do not
+run the schema downgrade against templates using independent audio.

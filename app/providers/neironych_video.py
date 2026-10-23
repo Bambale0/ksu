@@ -39,7 +39,7 @@ _SUPPORTED_PROVIDER_MODELS = frozenset(
     alias
     for aliases in _SEEDANCE_MODEL_ALIASES.values()
     for alias in aliases
-)
+) | {"grok-imagine-video-1.5"}
 _TERMINAL_SUCCESS = frozenset({"completed", "succeeded", "success", "done", "ready"})
 _TERMINAL_FAILURE = frozenset({"failed", "expired", "error", "cancelled", "canceled"})
 _DOWNLOAD_RANGE_CHUNK_BYTES = 256 * 1024

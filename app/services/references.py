@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.reference_models import UserReference
+from app.db.reference_models import TemplateAudioReference, UserReference
 from app.services.reference_static import ReferenceStaticStorage
 
 
@@ -145,6 +145,11 @@ class ReferenceService:
         if kind not in cls.KINDS:
             raise ReferenceError("Unsupported reference kind")
         safe_url = cls._safe_url(source_url)
+        template_audio = await session.scalar(select(TemplateAudioReference).where(
+            TemplateAudioReference.source_url == safe_url,
+        ).with_for_update(read=True))
+        if template_audio is not None and template_audio.status != "ready":
+            raise ReferenceError("Template audio was removed; upload it again")
         safe_hash = cls._safe_hash(file_hash)
         source_value = str(source or "manual").strip()[:64] or "manual"
         now = _utcnow()

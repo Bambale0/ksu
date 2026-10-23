@@ -62,7 +62,15 @@ async def _reference_for_url(
     url: str,
     user_id: uuid.UUID | None = None,
 ):
-    from app.db.reference_models import UserReference
+    from app.db.reference_models import TemplateAudioReference, UserReference
+
+    # Owner-scoped media validation must never gain access through template metadata.
+    if user_id is None:
+        durable = await session.scalar(select(TemplateAudioReference).where(
+            TemplateAudioReference.source_url == url,
+        ).with_for_update(read=True))
+        if durable is not None:
+            return durable if durable.status == "ready" else None
 
     statement = select(UserReference).where(
         UserReference.status == "ready",

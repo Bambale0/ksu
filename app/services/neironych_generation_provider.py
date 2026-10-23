@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,7 @@ from app.services.generation_reliability import GenerationOutboxService
 from app.services.media_assets import MediaAssetService
 from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
+    NeironychVideoUnsupportedInput,
     normalize_neironych_video_input,
 )
 from app.services.reference_static import ReferenceStaticStorage
@@ -40,7 +41,12 @@ from app.services.neironych_reference_validation import validate_reference_paylo
 logger = logging.getLogger(__name__)
 
 _SEEDANCE_MODELS = frozenset({"seedance-2.0", "seedance-2.5"})
-_HANDLED_MODELS = _SEEDANCE_MODELS | {"nano-banana-pro"}
+_VIDEO_MODELS = _SEEDANCE_MODELS | {"grok-video-1.5"}
+_IMAGE_MODELS = frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite",
+                          "gpt-image-2-t2i", "gpt-image-2-i2i"})
+_HANDLED_MODELS = _VIDEO_MODELS | _IMAGE_MODELS
+_PROVIDER_MODEL_MAP = {"gpt-image-2-t2i": "gpt-image-2", "gpt-image-2-i2i": "gpt-image-2",
+                       "grok-video-1.5": "grok-imagine-video-1.5"}
 _POLICY_MARKERS = (
     "copyright",
     "moderation",
@@ -53,6 +59,9 @@ _POLICY_MARKERS = (
 
 
 class NeironychGenerationProviderService:
+    IMAGE_MODEL_IDS = _IMAGE_MODELS
+    VIDEO_MODEL_IDS = _VIDEO_MODELS
+
     @staticmethod
     def _model_id(generation: Generation) -> str:
         return str((generation.parameters or {}).get("_model_id") or "").strip()
@@ -283,7 +292,8 @@ class NeironychGenerationProviderService:
     @classmethod
     async def _freeze_new_submission(cls, session: AsyncSession, generation: Generation) -> None:
         params = dict(generation.parameters or {})
-        model = cls._model_id(generation)
+        model_id = cls._model_id(generation)
+        model = _PROVIDER_MODEL_MAP.get(model_id, model_id)
         key = idempotency_key(generation)
         snapshot = params.get(SNAPSHOT_KEY)
         if snapshot is not None:
@@ -295,18 +305,26 @@ class NeironychGenerationProviderService:
             raise ValueError("Original Neironych request body unavailable; reconciliation required")
         raw = GenerationProviderService._input_for(generation)
         endpoint = "/v1/videos/generations"
-        if model in _SEEDANCE_MODELS:
+        if model_id in _VIDEO_MODELS:
+            if model_id == "grok-video-1.5":
+                for field in ("image_urls", "reference_images"):
+                    if field in raw and isinstance(raw[field], list):
+                        raw[field] = [cls._public_reference_url(str(item.get("url") if isinstance(item, dict) else item))
+                                      for item in raw[field]]
             payload = normalize_neironych_video_input(model, raw)
-            await validate_reference_payload(model, payload)
+            if model_id in _SEEDANCE_MODELS:
+                await validate_reference_payload(model, payload)
         else:
-            refs_raw = raw.get("image_input") or raw.get("image_urls") or []
+            refs_raw = raw.get("image_input") or raw.get("image_urls") or raw.get("input_urls") or []
             refs_raw = refs_raw if isinstance(refs_raw, (list, tuple)) else [refs_raw]
             refs = [cls._public_reference_url(str(item.get("url") if isinstance(item, dict) else item))
                     for item in refs_raw]
             endpoint, payload = prepare_image_payload(
+                model=model,
                 prompt=str(raw.get("prompt") or generation.prompt or ""),
-                aspect_ratio=str(raw.get("aspect_ratio") or "1:1"),
-                resolution=str(raw.get("resolution") or raw.get("image_size") or "2K"),
+                aspect_ratio=str(raw.get("aspect_ratio") or ("auto" if model == "gpt-image-2" else "1:1")),
+                resolution=str(raw.get("resolution") or raw.get("image_size") or
+                               ("" if model == "gpt-image-2" else "2K" if model == "nano-banana-pro" else "1K")),
                 image_urls=refs, idempotency_key=key,
             )
         snapshot = freeze_submission(model=model, payload=payload, key=key,
@@ -332,6 +350,8 @@ class NeironychGenerationProviderService:
         model_id = cls._model_id(generation)
         try:
             await cls._freeze_new_submission(session, generation)
+        except NeironychVideoUnsupportedInput as exc:
+            return await cls._fallback_or_fail(session, generation, reason=f"Neironych contract: {exc}")
         except NeironychVideoContractError as exc:
             # Only known Kie-compatible settings may cross providers. Malformed
             # input or media is a validation failure, never a policy bypass.
@@ -345,7 +365,7 @@ class NeironychGenerationProviderService:
                 # Legacy drafts/explicit Nexus auto requests remain valid on
                 # Nexus. Never silently turn auto into a square image.
                 return await cls._fallback_or_fail(session, generation, reason="Neironych does not support aspect_ratio=auto")
-            return await cls._handle_submission_error(session, generation, exc, video=model_id in _SEEDANCE_MODELS)
+            return await cls._handle_submission_error(session, generation, exc, video=model_id in _VIDEO_MODELS)
         except (ValueError, ReferenceValidationError) as exc:
             if (generation.parameters or {}).get("_submission_uncertain"):
                 return await cls._mark_video_retry(session, generation, error=str(exc))
@@ -355,7 +375,7 @@ class NeironychGenerationProviderService:
         generation.error = None
         await session.commit()
 
-        if model_id in _SEEDANCE_MODELS:
+        if model_id in _VIDEO_MODELS:
             return await cls._submit_video(session, generation_id)
         return await cls._submit_image(session, generation_id)
 
@@ -364,7 +384,7 @@ class NeironychGenerationProviderService:
         generation = await session.get(Generation, generation_id)
         if generation is None:
             raise LookupError("Generation not found")
-        model_id = cls._model_id(generation)
+        model_id = _PROVIDER_MODEL_MAP.get(cls._model_id(generation), cls._model_id(generation))
         snapshot = (generation.parameters or {})[SNAPSHOT_KEY]
         body = saved_body(snapshot, model=model_id, key=idempotency_key(generation),
                           base_url=settings.neironych_api_base_url)
@@ -420,18 +440,27 @@ class NeironychGenerationProviderService:
         if generation is None:
             raise LookupError("Generation not found")
         snapshot = (generation.parameters or {})[SNAPSHOT_KEY]
-        body = saved_body(snapshot, model="nano-banana-pro", key=idempotency_key(generation),
+        model = _PROVIDER_MODEL_MAP.get(cls._model_id(generation), cls._model_id(generation))
+        body = saved_body(snapshot, model=model, key=idempotency_key(generation),
                           base_url=settings.neironych_api_base_url)
         payload = json.loads(body)
         refs = [item["image_url"] for item in payload.get("images", [])]
         client = None
         try:
             client = NeironychImageClient(settings.neironych_api_key, settings.neironych_api_base_url)
-            result = await client.create_nano_banana_pro(
-                prompt=payload["prompt"], aspect_ratio=payload["aspect_ratio"],
-                resolution=payload["resolution"], image_urls=refs,
-                idempotency_key=idempotency_key(generation), request_body=body,
-            )
+            if model == "nano-banana-pro":
+                result = await client.create_nano_banana_pro(
+                    prompt=payload["prompt"], aspect_ratio=payload["aspect_ratio"],
+                    resolution=payload["resolution"], image_urls=refs,
+                    idempotency_key=idempotency_key(generation), request_body=body,
+                )
+            else:
+                result = await client.create_image(
+                    model=model, prompt=payload["prompt"],
+                    aspect_ratio=payload.get("aspect_ratio", "auto"),
+                    resolution=payload.get("resolution", ""), image_urls=refs,
+                    idempotency_key=idempotency_key(generation), request_body=body,
+                )
         except NeironychProviderError as exc:
             return await cls._handle_submission_error(session, generation, exc, video=False)
         except httpx.RequestError as exc:
@@ -455,11 +484,17 @@ class NeironychGenerationProviderService:
         )
         path = Path(handle.name)
         try:
-            if output_format == "png":
+            try:
                 with Image.open(io.BytesIO(result.content)) as image:
-                    image.save(handle, format="PNG")
-            else:
-                handle.write(result.content)
+                    image.load()
+                    if output_format == "png":
+                        image.save(handle, format="PNG")
+                    elif image.format == "JPEG" and image.mode == "RGB":
+                        handle.write(result.content)
+                    else:
+                        image.convert("RGB").save(handle, format="JPEG", quality=95)
+            except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+                return await cls._mark_image_uncertain(session, generation, error="Invalid image result")
             handle.close()
             return await cls._complete_local_file(
                 session,

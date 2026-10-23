@@ -186,7 +186,7 @@ export const api = {
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: async (body: Record<string, unknown>) => normalizeCustomerQuote(await request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) })),
   create: (body: Record<string, unknown>) => trackGenerationStart(request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) })),
-  upload: (file: File) => {
+  upload: (file: File, purpose?: "template-audio") => {
     const form = new FormData();
     form.append("file", file, file.name);
     return request<{
@@ -197,7 +197,7 @@ export const api = {
       probe_status?: string | null;
       duration_ms?: number | null;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
-    }>("/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
+    }>(purpose === "template-audio" ? "/api/v1/uploads/template-audio" : "/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),

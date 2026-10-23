@@ -310,9 +310,8 @@ export function InlineTrendAdmin() {
     setError("");
     try {
       const parameters = recipeParameters(draft.parameters);
-      if (!file.type.startsWith("audio/")) throw new Error("Выберите аудиофайл");
       setUploading(true);
-      const uploaded = await api.upload(file);
+      const uploaded = await api.upload(file, "template-audio");
       if (draftVersion.current !== version) return;
       if (
         uploaded.reference?.kind !== "audio" || uploaded.probe_status !== "ready"

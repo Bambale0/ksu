@@ -67,3 +67,22 @@ class UserPreset(TimestampMixin, Base):
     parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     billing_seconds: Mapped[int | None] = mapped_column(Integer)
     reference_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+
+
+class TemplateAudioReference(TimestampMixin, Base):
+    """Product-owned audio; uploader attribution never controls its lifetime."""
+
+    __tablename__ = "template_audio_references"
+    __table_args__ = (
+        CheckConstraint("status IN ('ready', 'deleted')", name="ck_template_audio_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(16), default="ready", nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    duration_ms: Mapped[int | None] = mapped_column(BigInteger)
+    probe_status: Mapped[str | None] = mapped_column(String(16))

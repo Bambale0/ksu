@@ -44,7 +44,7 @@ async function setup(page, { admin = true, audio = false } = {}) {
       state.items = [{ id: 'template_1', ...body }];
       return json(state.items[0]);
     }
-    if (path === '/api/v1/uploads/kie') {
+    if (path === '/api/v1/uploads/template-audio') {
       state.uploads += 1;
       expect(request.postDataBuffer().toString()).toContain('filename="reference.mp3"');
       return json({ url: audioUrl, mime_type: 'audio/mpeg', probe_status: 'ready', duration_ms: 10000, reference: { id: 'audio_1', kind: 'audio' } }, 201);
@@ -123,7 +123,7 @@ for (const response of [
   test(`${response.name} does not attach an audio URL and permits retry`, async ({ page }) => {
     const state = await setup(page);
     const form = await edit(page);
-    await page.route('**/api/v1/uploads/kie', route => route.fulfill({ status: response.status, contentType: 'application/json', body: JSON.stringify(response.body) }));
+    await page.route('**/api/v1/uploads/template-audio', route => route.fulfill({ status: response.status, contentType: 'application/json', body: JSON.stringify(response.body) }));
     await form.getByLabel('Добавить аудиореференс').setInputFiles(file);
     await expect(form.getByRole('alert')).toBeVisible();
     await expect(form.locator('audio')).toHaveCount(0);
@@ -131,7 +131,7 @@ for (const response of [
     await form.getByText('Дополнительные параметры модели', { exact: true }).click();
     expect(JSON.parse(await form.getByLabel('JSON параметров').inputValue())).toEqual(recipe.parameters);
     expect(state.writes).toEqual([]);
-    await page.unroute('**/api/v1/uploads/kie');
+    await page.unroute('**/api/v1/uploads/template-audio');
     await form.getByLabel('Добавить аудиореференс').setInputFiles(file);
     await expect(form.locator('audio')).toHaveAttribute('src', audioUrl);
     expect(state.errors).toEqual([]);
@@ -141,7 +141,7 @@ for (const response of [
 test('an upload locks conflicting edits and cannot change a newly opened draft', async ({ page }) => {
   const state = await setup(page);
   let pending;
-  await page.route('**/api/v1/uploads/kie', route => { pending = route; });
+  await page.route('**/api/v1/uploads/template-audio', route => { pending = route; });
   let form = await edit(page);
   await form.getByLabel('Добавить аудиореференс').setInputFiles(file);
   await expect.poll(() => Boolean(pending)).toBe(true);
@@ -153,7 +153,7 @@ test('an upload locks conflicting edits and cannot change a newly opened draft',
   await page.getByRole('dialog', { name: 'Управление трендами' }).getByRole('button', { name: /Новый тренд/ }).click();
   form = page.getByRole('dialog', { name: 'Добавить тренд' });
   await form.getByLabel('Название', { exact: true }).fill('Другой шаблон');
-  const response = page.waitForResponse('**/api/v1/uploads/kie');
+  const response = page.waitForResponse('**/api/v1/uploads/template-audio');
   await pending.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ url: audioUrl, probe_status: 'ready', duration_ms: 10000, reference: { kind: 'audio' } }) });
   await response;
   await expect(form.getByLabel('Название', { exact: true })).toHaveValue('Другой шаблон');
@@ -177,3 +177,16 @@ test('regular users have no template audio editor', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Готовые сценарии' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Управлять трендами' })).toHaveCount(0);
 });
+
+for (const mimeType of ['', 'application/octet-stream', 'binary/octet-stream']) {
+  test(`server classifies audio with browser MIME ${mimeType || 'empty'}`, async ({ page }) => {
+    const state = await setup(page);
+    const form = await edit(page);
+    await form.getByLabel('Добавить аудиореференс').setInputFiles({ ...file, mimeType });
+    await expect(form.locator('audio')).toHaveAttribute('src', audioUrl);
+    await form.getByRole('button', { name: 'Сохранить', exact: true }).click();
+    await expect.poll(() => state.writes.length).toBe(1);
+    expect(state.writes[0].payload.parameters.reference_audio_urls).toEqual([audioUrl]);
+    expect(state.uploads).toBe(1);
+  });
+}

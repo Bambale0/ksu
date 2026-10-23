@@ -14,10 +14,11 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "nano-banana": ("nexus", "kie"),
     "nano-banana-edit": ("nexus", "kie"),
     "nano-banana-pro": ("nexus", "neironych", "kie"),
-    "nano-banana-2": ("nexus", "kie"),
-    "nano-banana-2-lite": ("nexus", "kie"),
-    "gpt-image-2-t2i": ("nexus", "kie"),
-    "gpt-image-2-i2i": ("nexus", "kie"),
+    "nano-banana-2": ("nexus", "neironych", "kie"),
+    "nano-banana-2-lite": ("nexus", "neironych", "kie"),
+    "gpt-image-2-t2i": ("nexus", "neironych", "kie"),
+    "gpt-image-2-i2i": ("nexus", "neironych", "kie"),
+    "grok-video-1.5": ("kie", "neironych"),
     "seedream-5-lite-t2i": ("nexus", "kie"),
     "seedream-5-lite-i2i": ("nexus", "kie"),
     "seedream-5-pro-t2i": ("nexus", "kie"),
@@ -43,6 +44,8 @@ def route_options() -> dict[str, list[list[str]]]:
         choices: list[list[str]] = [list(route)]
         if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
             choices.append(["kie", "nexus"])
+        if model == "grok-video-1.5":
+            choices.append(["neironych", "kie"])
         for provider in route:
             choice = [provider]
             if choice not in choices:
@@ -79,11 +82,22 @@ async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     if row is None:
         return {"revision": 1, "routes": defaults}
     stored_routes = row.value.get("routes") if isinstance(row.value, dict) else None
-    # A route registry expansion is an explicit provider migration. Old rows
-    # must not pin the three legacy Neironych routes forever or make reads fail.
-    if not isinstance(stored_routes, dict) or set(stored_routes) != set(_PROVIDER_ROUTES):
+    # Preserve the original three-model migration, but merge subsequent
+    # registry additions without resetting deliberate admin provider choices.
+    legacy = {"seedance-2.0", "seedance-2.5", "nano-banana-pro"}
+    if not isinstance(stored_routes, dict) or set(stored_routes) == legacy:
         return {"revision": int(row.value.get("revision", 1)), "routes": defaults}
-    return {"revision": int(row.value["revision"]), "routes": validate_routes(stored_routes)}
+    if set(stored_routes) - set(_PROVIDER_ROUTES):
+        raise ValueError("Unknown managed generation model in stored routes")
+    merged = defaults | stored_routes
+    if set(stored_routes) == set(_PROVIDER_ROUTES) - {"grok-video-1.5"}:
+        # This feature explicitly expands these four historical defaults. Keep
+        # other admin choices (e.g. Kie-primary Seedream) and frozen jobs intact.
+        # After the expanded registry is saved, [nexus,kie] remains an opt-out.
+        for model in ("nano-banana-2", "nano-banana-2-lite", "gpt-image-2-t2i", "gpt-image-2-i2i"):
+            if stored_routes[model] == ["nexus", "kie"]:
+                merged[model] = defaults[model]
+    return {"revision": int(row.value["revision"]), "routes": validate_routes(merged)}
 
 
 async def configured_route(session: AsyncSession, model: str) -> tuple[tuple[str, ...] | None, int]:
