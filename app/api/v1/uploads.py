@@ -280,8 +280,12 @@ async def upload_template_audio(
 
     from app.api.v1.trends import _inline_admin
     from app.db.reference_models import TemplateAudioReference
+    from app.services.admin_policy import AdminPolicyError
 
-    await _inline_admin(session, user_id=user.id)
+    try:
+        await _inline_admin(session, user_id=user.id)
+    except AdminPolicyError as exc:
+        raise HTTPException(status_code=403, detail="Admin permission required") from exc
     content_type = _upload_content_type(file)
     if not content_type.startswith('audio/') or not ReferenceStaticStorage.supports_content_type(content_type):
         raise HTTPException(status_code=415, detail='Only supported audio files are allowed')

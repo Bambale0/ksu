@@ -24,6 +24,10 @@ def upgrade():
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.CheckConstraint("status IN ('ready', 'deleted')", name='ck_template_audio_status'),
     )
+    backfill_existing_audio()
+
+
+def backfill_existing_audio():
     # Include hidden templates and formerly pruned rows with trustworthy metadata.
     # This changes no personal reference and cannot invent missing probe results.
     op.execute("""
@@ -39,6 +43,7 @@ def upgrade():
               WHERE t.payload::jsonb @> jsonb_build_object('parameters',
                   jsonb_build_object('reference_audio_urls', jsonb_build_array(r.source_url))))
         ORDER BY r.source_url, r.created_at DESC
+        ON CONFLICT (source_url) DO NOTHING
     """)
 
 
