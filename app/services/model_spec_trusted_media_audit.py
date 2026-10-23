@@ -69,7 +69,7 @@ async def _reference_for_url(
     if template_audio and user_id is None:
         durable = await session.scalar(select(TemplateAudioReference).where(
             TemplateAudioReference.source_url == url,
-        ).with_for_update(read=True))
+        ).with_for_update(read=True).execution_options(populate_existing=True))
         if durable is not None:
             return durable if durable.status == "ready" else None
 

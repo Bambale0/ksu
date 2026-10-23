@@ -147,7 +147,7 @@ class ReferenceService:
         safe_url = cls._safe_url(source_url)
         template_audio = await session.scalar(select(TemplateAudioReference).where(
             TemplateAudioReference.source_url == safe_url,
-        ).with_for_update(read=True))
+        ).with_for_update(read=True).execution_options(populate_existing=True))
         if template_audio is not None and template_audio.status != "ready":
             raise ReferenceError("Template audio was removed; upload it again")
         safe_hash = cls._safe_hash(file_hash)

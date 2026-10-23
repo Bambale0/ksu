@@ -46,7 +46,8 @@ async def test_saved_template_audio_survives_personal_pruning_and_deletion(perso
 
 
 @pytest.mark.asyncio
-async def test_disposal_retains_hidden_duplicates_and_rejects_reuse_after_discard():
+@pytest.mark.parametrize("audio_field", ["reference_audio_urls", "audio_url", "driving_audio_url", "elements"])
+async def test_disposal_retains_hidden_duplicates_and_rejects_reuse_after_discard(audio_field):
     from app.db.reference_models import TemplateAudioReference
     from app.services.template_audio import TemplateAudioService
 
@@ -60,7 +61,9 @@ async def test_disposal_retains_hidden_duplicates_and_rejects_reuse_after_discar
         asset = TemplateAudioReference(source_url=f'https://cdn.example.invalid/{uuid.uuid4()}.mp3', duration_ms=10000, probe_status='ready')
         session.add(asset)
         await session.flush()
-        params = {'reference_audio_urls': [asset.source_url]}
+        params = {audio_field: [asset.source_url] if audio_field.endswith('_urls') else asset.source_url}
+        if audio_field == 'elements':
+            params = {'elements': [{'element_input_audio_urls': [asset.source_url]}]}
         original = AdminTrend(title='Original', payload={'parameters': params}, created_by_admin_id=admin.id)
         duplicate = AdminTrend(title='Hidden duplicate', payload={'parameters': params}, is_active=False, created_by_admin_id=admin.id)
         session.add_all([original, duplicate])
@@ -77,7 +80,7 @@ async def test_disposal_retains_hidden_duplicates_and_rejects_reuse_after_discar
         await TemplateAudioService.discard(session, asset_id)
         await session.commit()
         with pytest.raises(ValueError, match='removed'):
-            await TemplateAudioService.pin_recipe(session, params)
+            await TemplateAudioService.protect_parameters(session, params)
         await session.rollback()
 
 
@@ -238,3 +241,58 @@ async def test_migration_preserves_pruned_audio_in_hidden_template(monkeypatch):
                 await session.execute(text(statement))
         assert await session.scalar(select(TemplateAudioReference.duration_ms).where(TemplateAudioReference.source_url == url)) == 10000
         await validate_reference_duration_contracts(session, model_id='seedance-2.5', parameters={'reference_audio_urls': [url]})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('owner_id', [None, uuid.uuid4()])
+async def test_template_audio_uses_model_size_limit_even_without_personal_owner(owner_id):
+    from app.db.reference_models import TemplateAudioReference
+    from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
+    from app.services.reference_size_contract import validate_reference_sizes
+
+    async with SessionFactory() as session:
+        asset = TemplateAudioReference(source_url=f'https://cdn.example.invalid/{uuid.uuid4()}.mp3', duration_ms=10000, probe_status='ready', size_bytes=15 * 1024 * 1024)
+        session.add(asset)
+        await session.flush()
+        params = {'reference_audio_urls': [asset.source_url]}
+        await validate_reference_sizes(session, spec=ModelCatalog.get('seedance-2.5'), parameters=params, user_id=owner_id)
+        asset.size_bytes += 1
+        await session.flush()
+        with pytest.raises(InvalidModelParametersError, match='reference_audio_urls reference exceeds 15 MB'):
+            await validate_reference_sizes(session, spec=ModelCatalog.get('seedance-2.5'), parameters=params, user_id=owner_id)
+
+
+@pytest.mark.asyncio
+async def test_preset_save_and_disposal_are_serialized_in_both_orders():
+    import asyncio
+    from app.db.reference_models import TemplateAudioReference
+    from app.services.template_audio import TemplateAudioService
+    from app.services.user_presets import PresetError, UserPresetService
+
+    async with SessionFactory() as writer, SessionFactory() as cleaner:
+        owner = User(telegram_id=random.randrange(8_000_000_000_000, 8_999_999_999_999))
+        writer.add(owner)
+        await writer.flush()
+        asset = TemplateAudioReference(source_url=f'https://cdn.example.invalid/{uuid.uuid4()}.mp3', duration_ms=10000, probe_status='ready')
+        writer.add(asset)
+        await writer.commit()
+        asset_id, owner_id = asset.id, owner.id
+        args = dict(user_id=owner_id, name='Audio preset', model_id='seedance-2.5', prompt='Use @Audio1', parameters={'reference_audio_urls': [asset.source_url]}, reference_ids=[])
+        await UserPresetService.validate(writer, **args)
+        task = asyncio.create_task(TemplateAudioService.discard(cleaner, asset_id))
+        try:
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.shield(task), timeout=0.2)
+            preset = await UserPresetService.create(writer, **args)
+            with pytest.raises(ValueError, match='still used'):
+                await asyncio.wait_for(task, timeout=5)
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await cleaner.rollback()
+        await UserPresetService.remove(writer, user_id=owner_id, preset_id=preset.id)
+        await TemplateAudioService.discard(cleaner, asset_id)
+        await cleaner.commit()
+        with pytest.raises(PresetError, match='removed'):
+            await UserPresetService.create(writer, **args)

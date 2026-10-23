@@ -180,7 +180,7 @@ class TrendService:
         recipe = TrendService.normalize_recipe(title, payload)
         from app.services.template_audio import TemplateAudioService
 
-        if recipe["parameters"].get("reference_audio_urls"):
+        if TemplateAudioService.audio_urls(recipe["parameters"]):
             await TemplateAudioService.lock(session)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
@@ -255,10 +255,6 @@ class TrendService:
     @staticmethod
     async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
-        from app.services.template_audio import TemplateAudioService
-
-        if recipe["parameters"].get("reference_audio_urls"):
-            await TemplateAudioService.lock(session)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
         spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(

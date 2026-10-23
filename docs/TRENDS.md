@@ -162,3 +162,11 @@ Code rollback must retain the new table and files; old code cannot validate new
 independent audio. Disable new audio uploads before rolling back, and restore
 metadata compatibility before serving templates with the old version. Do not
 run the schema downgrade against templates using independent audio.
+
+Cleanup reachability is recursive across stored JSON, including `audio_url`,
+`driving_audio_url` and nested model audio fields. Preset saves and generation
+preparation lock referenced template assets and reject tombstones, so they cannot
+race disposal. Public catalog reads do not acquire the global save/disposal lock.
+The existing model-schema size limits also apply to independent audio metadata,
+including template validation without a personal owner; personal-library size
+lookups remain scoped to the authenticated owner.
