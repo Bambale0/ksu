@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from functools import partial
 from pathlib import Path
 from typing import BinaryIO
@@ -316,6 +317,7 @@ async def upload_template_audio(
     )
     session.add(row)
     await session.commit()
+    logging.getLogger(__name__).info('template_audio_uploaded reference_id=%s actor_user_id=%s', row.id, user.id)
     return {
         'url': url, 'name': filename, 'mime_type': content_type, 'size': stored_size,
         'probe_status': 'ready', 'duration_ms': probe.duration_ms,

@@ -149,7 +149,7 @@ Removing audio in the editor only changes the draft; saving removes that recipe
 reference. To dispose of an unused upload, an authorized administrator can call
 `DELETE /api/v1/trends/audio/{reference_id}` using the ID returned by upload.
 Disposal refuses audio referenced by **any** template (including hidden copies),
-generation history or preset. Saves and disposal serialize with a transaction
+generation history, preset or active personal reference. Saves and disposal serialize with a transaction
 lock; metadata reads lock the asset until their transaction completes. Disposal
 is repeatable: it tombstones metadata first, then removes local bytes only when
 no personal reference shares the URL. A failed unlink can be retried with the

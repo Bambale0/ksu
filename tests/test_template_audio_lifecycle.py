@@ -15,7 +15,8 @@ from app.services.references import ReferenceService
 
 
 @pytest.mark.asyncio
-async def test_saved_template_audio_survives_personal_pruning_and_deletion():
+@pytest.mark.parametrize("personal_action", ["prune", "remove"])
+async def test_saved_template_audio_survives_personal_pruning_and_deletion(personal_action):
     """Exercise the former upload -> template -> personal pruning -> run failure."""
     from app.services.template_audio import TemplateAudioService
 
@@ -36,7 +37,8 @@ async def test_saved_template_audio_survives_personal_pruning_and_deletion():
         template = AdminTrend(title='Audio lifecycle', payload={'parameters': {'reference_audio_urls': [url]}}, is_active=True, created_by_admin_id=admin.id)
         session.add(template)
         await session.commit()
-        await ReferenceService.remove(session, user_id=owner.id, reference_id=personal.id)
+        if personal_action == "remove":
+            await ReferenceService.remove(session, user_id=owner.id, reference_id=personal.id)
         for index in range(13):
             await ReferenceService.register(session, user_id=owner.id, source_url=f'https://cdn.example.invalid/{uuid.uuid4()}-{index}.mp3', kind='audio')
         assert await session.scalar(select(UserReference.status).where(UserReference.id == personal.id)) == 'deleted'

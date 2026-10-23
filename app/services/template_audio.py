@@ -67,6 +67,10 @@ class TemplateAudioService:
         ):
             if await session.scalar(select(model.id).where(cast(column, JSONB).contains(contains)).limit(1)):
                 raise ValueError('Audio is still used by a template, generation or preset')
+        if await session.scalar(select(UserReference.id).where(
+            UserReference.source_url == url, UserReference.status == 'ready',
+        ).limit(1)):
+            raise ValueError('Audio is still used by personal reference memory')
         row.status = 'deleted'
         await session.flush()
         logger.info('template_audio_discarded reference_id=%s', row.id)
