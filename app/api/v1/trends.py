@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
@@ -145,6 +146,7 @@ async def list_trends(
 @router.delete("/audio/{reference_id}")
 async def discard_template_audio(
     reference_id: uuid.UUID,
+    request: Request,
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, bool]:
@@ -158,6 +160,10 @@ async def discard_template_audio(
         # Migrated assets may still belong to personal memory: never unlink those.
         shared = await session.scalar(select(UserReference.id).where(UserReference.source_url == url).limit(1))
         await session.commit()
+        logging.getLogger(__name__).info(
+            'template_audio_metadata_discarded reference_id=%s actor_user_id=%s request_id=%s',
+            reference_id, user.id, _request_id(request),
+        )
         if shared is None:
             ReferenceStaticStorage.remove_url(url)
         return {"deleted": True}

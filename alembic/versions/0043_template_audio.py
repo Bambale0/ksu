@@ -41,6 +41,8 @@ def backfill_existing_audio():
         WHERE r.kind = 'audio' AND r.probe_status = 'ready' AND r.duration_ms > 0
           AND EXISTS (SELECT 1 FROM admin_trends t
               WHERE t.payload::jsonb @> jsonb_build_object('parameters',
+                  jsonb_build_object('reference_audio_urls', jsonb_build_array(r.source_url)))
+                 OR t.payload::jsonb @> jsonb_build_object('generation_settings',
                   jsonb_build_object('reference_audio_urls', jsonb_build_array(r.source_url))))
         ORDER BY r.source_url, r.created_at DESC
         ON CONFLICT (source_url) DO NOTHING

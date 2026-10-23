@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
@@ -11,9 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.admin_models import AdminTrend
 from app.db.models import Generation
 from app.db.reference_models import TemplateAudioReference, UserPreset, UserReference
-
-logger = logging.getLogger(__name__)
-
 
 class TemplateAudioService:
     @staticmethod
@@ -112,5 +108,4 @@ class TemplateAudioService:
             raise ValueError('Audio is still used by personal reference memory')
         row.status = 'deleted'
         await session.flush()
-        logger.info('template_audio_discarded reference_id=%s', row.id)
         return row

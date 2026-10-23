@@ -288,7 +288,7 @@ async def upload_template_audio(
     except AdminPolicyError as exc:
         raise HTTPException(status_code=403, detail="Admin permission required") from exc
     content_type = _upload_content_type(file)
-    if not content_type.startswith('audio/') or not ReferenceStaticStorage.supports_content_type(content_type):
+    if not content_type.startswith(('audio/', 'video/')) or not ReferenceStaticStorage.supports_content_type(content_type):
         raise HTTPException(status_code=415, detail='Only supported audio files are allowed')
     size_bytes = _upload_size(file)
     if size_bytes > settings.kie_upload_max_bytes:
@@ -296,7 +296,8 @@ async def upload_template_audio(
     await AbuseProtectionService.upload_rate_and_bytes(redis, user_id=user.id, size_bytes=size_bytes)
     filename = file.filename or 'audio'
     probe = await asyncio.to_thread(probe_media_stream, file.file, filename)
-    if probe.status != 'ready' or not probe.duration_ms or probe.duration_ms <= 0 or not probe.audio_codec or probe.video_codec:
+    content_type = _probed_content_type(content_type, probe)
+    if not content_type.startswith('audio/') or probe.status != 'ready' or not probe.duration_ms or probe.duration_ms <= 0 or not probe.audio_codec or probe.has_video is not False:
         raise HTTPException(status_code=422, detail='Audio duration could not be verified')
     file_hash = await asyncio.to_thread(_sha256_stream, file.file)
     reference_id = uuid.uuid4()

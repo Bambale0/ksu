@@ -170,3 +170,9 @@ race disposal. Public catalog reads do not acquire the global save/disposal lock
 The existing model-schema size limits also apply to independent audio metadata,
 including template validation without a personal owner; personal-library size
 lookups remain scoped to the authenticated owner.
+
+Backfill includes the supported legacy `generation_settings.reference_audio_urls`
+location. Shared-container MIME is normalized with the existing media-probe
+classifier before storage (for example audio-only MP4 becomes audio/mp4/M4A).
+Disposal audit is emitted only after the metadata commit and includes actor,
+asset and request IDs; a rolled-back deletion produces no success event.

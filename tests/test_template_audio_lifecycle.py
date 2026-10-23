@@ -95,7 +95,7 @@ async def test_template_upload_classifies_generic_mime_and_stays_outside_persona
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(AbuseProtectionService, 'upload_rate_and_bytes', AsyncMock())
-    monkeypatch.setattr('app.api.v1.uploads.probe_media_stream', lambda *_: MediaProbe(status='ready', duration_ms=10000, audio_codec='mp3'))
+    monkeypatch.setattr('app.api.v1.uploads.probe_media_stream', lambda *_: MediaProbe(status='ready', duration_ms=10000, audio_codec='mp3', has_video=False))
     monkeypatch.setattr(ReferenceStaticStorage, 'persist_stream', lambda *args, **kwargs: (f'/uploads/refs/audio/{kwargs["user_id"]}/test.mp3', tmp_path / 'test.mp3', 5))
     async with SessionFactory() as session:
         owner = User(telegram_id=random.randrange(8_000_000_000_000, 8_999_999_999_999))
@@ -216,7 +216,8 @@ async def test_generation_history_blocks_disposal_and_uploader_deletion_keeps_me
 
 
 @pytest.mark.asyncio
-async def test_migration_preserves_pruned_audio_in_hidden_template(monkeypatch):
+@pytest.mark.parametrize("parameter_location", ["parameters", "generation_settings"])
+async def test_migration_preserves_pruned_audio_in_hidden_template(monkeypatch, parameter_location):
     import runpy
     from sqlalchemy import text
     from app.db.reference_models import TemplateAudioReference
@@ -234,7 +235,7 @@ async def test_migration_preserves_pruned_audio_in_hidden_template(monkeypatch):
         await session.flush()
         url = f'https://cdn.example.invalid/{uuid.uuid4()}.mp3'
         session.add(UserReference(user_id=owner.id, kind='audio', status='deleted', source_url=url, duration_ms=10000, probe_status='ready'))
-        session.add(AdminTrend(title='Hidden old template', payload={'parameters': {'reference_audio_urls': [url]}}, is_active=False, created_by_admin_id=admin.id))
+        session.add(AdminTrend(title='Hidden old template', payload={parameter_location: {'reference_audio_urls': [url]}}, is_active=False, created_by_admin_id=admin.id))
         await session.flush()
         for _ in range(2):
             for statement in statements:
@@ -296,3 +297,40 @@ async def test_preset_save_and_disposal_are_serialized_in_both_orders():
         await cleaner.commit()
         with pytest.raises(PresetError, match='removed'):
             await UserPresetService.create(writer, **args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('commit_fails', [False, True])
+async def test_disposal_audit_is_attributed_and_only_emitted_after_commit(monkeypatch, caplog, commit_fails):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    from fastapi import HTTPException
+    from starlette.requests import Request
+    from app.api.v1.trends import discard_template_audio
+    from app.services.template_audio import TemplateAudioService
+    from app.services.reference_static import ReferenceStaticStorage
+
+    actor_id, asset_id = uuid.uuid4(), uuid.uuid4()
+    session = AsyncMock()
+    session.scalar.return_value = None
+    if commit_fails:
+        session.commit.side_effect = RuntimeError('commit failed')
+    monkeypatch.setattr('app.api.v1.trends._inline_admin', AsyncMock())
+    monkeypatch.setattr(TemplateAudioService, 'discard', AsyncMock(return_value=SimpleNamespace(source_url='/uploads/refs/audio/test.mp3')))
+    unlink = Mock()
+    monkeypatch.setattr(ReferenceStaticStorage, 'remove_url', unlink)
+    request = Request({'type': 'http', 'headers': [(b'x-request-id', b'audio-disposal-test')]})
+    with caplog.at_level('INFO'):
+        if commit_fails:
+            with pytest.raises(HTTPException):
+                await discard_template_audio(asset_id, request, SimpleNamespace(id=actor_id), session)
+        else:
+            await discard_template_audio(asset_id, request, SimpleNamespace(id=actor_id), session)
+    if commit_fails:
+        assert 'template_audio_metadata_discarded' not in caplog.text
+        unlink.assert_not_called()
+    else:
+        assert str(actor_id) in caplog.text
+        assert str(asset_id) in caplog.text
+        assert 'audio-disposal-test' in caplog.text
+        unlink.assert_called_once()
