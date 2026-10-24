@@ -1,3 +1,11 @@
+## Active Fix Execution — Seedance 2.5 legacy MPO JPEG references (2026-10-24)
+
+- Baseline `main`/production `2d1987d58e506373c0f114de6151ae88810ac7b0`. Read-only review of three failed Seedance 2.5 Neironych jobs confirmed the same persisted `.jpg` was a two-frame MPO (Pillow format MPO), rejected by the JPEG/PNG byte validator before provider submission. Reproduced with the actual stored image, and verified primary-frame JPEG normalization satisfies the existing byte/dimension validator.
+- Reuse the durable `ReferenceStaticStorage` URL contract, normalizer/validator and immutable Neironych submission snapshot. Conversion is provider-only, first-frame RGB JPEG with EXIF orientation, content-hash cache and atomic file publish; original references, repeat/trend links, persisted generation data, routing, prices and wallet are never mutated. No new config, schema, UI or provider fields.
+- Regression seam: `NeironychGenerationProviderService._freeze_new_submission()`, asserting converted URL is stable and original unchanged; ordinary JPEG remains untouched. The test initially failed on the exact production validation message and subsequently passed, with all 14 reference validation tests. Further CI/independent review before merge/deployment.
+- Risk: already-failed jobs are not replayed/refunded or recharged. A separate late-result Neironych 15-second job marked failed after upstream timeout subsequently returned upstream `done`; reconciliation needs separate review, not a speculative retry.
+- Full audit, verification matrix, rollout/rollback and evidence: [docs/agents/EXECUTION/seedance-mpo-reference-20261024.md](docs/agents/EXECUTION/seedance-mpo-reference-20261024.md). Working branch `fix/seedance-mpo-reference-20261024`, no production changes and no live paid test.
+
 ## Active Feature Execution — scoped provider primaries (2026-10-24)
 
 - Request: make Neironych primary across compatible generation models; retain Nexus primary for Seedance and Nano Banana for one explicitly selected account. This is a separate policy from the completed Grok repair. Baseline main/local/deployed `7bb1ba438cedf563173538832f4f52f6ce313216`; all six product workflows/deploy and 10 exact-image containers verified. No overlapping scoped-routing PR found. Preserve existing untracked browser artifacts.
