@@ -87,6 +87,17 @@ This deliberately matches the existing admin workflow where the first support re
 
 The detail endpoint returns the complete ordered message thread with author reduced to `user` or `support`; internal admin identity is not exposed.
 
+### Current Next.js conversation behavior
+
+The customer UI lives in `frontend/mini-app/app/support/page.tsx`. Selecting an
+appeal immediately replaces the previous conversation actions with loading
+feedback. A failed detail request offers a retry. Only the latest selection may
+update the dialog; closing the window invalidates pending detail requests, and
+completed create/reply/close/reopen operations respect subsequent navigation.
+Reply drafts stay with their ticket in page memory and survive switching between
+conversations. A successful send clears only that ticket's draft. Drafts are not
+persisted across page reloads. Inputs are disabled while a mutation is pending.
+
 ## Mini App placement
 
 Preferences, notifications and support are mounted inside the existing `Profile` top-level view. They do not add another bottom-navigation destination.

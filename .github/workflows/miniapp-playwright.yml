@@ -54,6 +54,7 @@ jobs:
           e2e/responsive-device-surfaces.spec.mjs
           e2e/responsive-deep-surfaces.spec.mjs
           e2e/frontend-production-readiness.spec.mjs
+          e2e/support-conversation-race.spec.mjs
           e2e/trend-category-admin.spec.mjs
           e2e/trend-back-navigation.spec.mjs
           e2e/home-is-catalog-current.spec.mjs
