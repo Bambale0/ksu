@@ -36,6 +36,7 @@ export default function SupportPage() {
   const ticketsLoadInFlight = useRef(false);
   const [selected, setSelected] = useState<TicketDetail | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const activeTicketId = useRef<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const ticketRequestVersion = useRef(0);
@@ -71,6 +72,7 @@ export default function SupportPage() {
 
   const openTicket = async (id: string) => {
     const version = ++ticketRequestVersion.current;
+    activeTicketId.current = id;
     setSelectedTicketId(id);
     setSelected(null);
     setDetailLoading(true);
@@ -90,6 +92,7 @@ export default function SupportPage() {
 
   const dismissTicket = () => {
     ticketRequestVersion.current += 1;
+    activeTicketId.current = null;
     setSelectedTicketId(null);
     setSelected(null);
     setDetailLoading(false);
@@ -112,7 +115,10 @@ export default function SupportPage() {
   useEffect(() => {
     void loadTickets();
     void loadContact();
-    return () => { ticketRequestVersion.current += 1; };
+    return () => {
+      ticketRequestVersion.current += 1;
+      activeTicketId.current = null;
+    };
   }, []);
 
   const create = async () => {
@@ -136,7 +142,6 @@ export default function SupportPage() {
 
   const sendReply = async () => {
     if (!selected || !reply.trim() || busy) return;
-    const version = ticketRequestVersion.current;
     setBusy(true);
     setError("");
     try {
@@ -145,8 +150,8 @@ export default function SupportPage() {
         body: JSON.stringify({ message: reply.trim() }),
       });
       setReply("");
+      if (activeTicketId.current === selected.id) await openTicket(selected.id);
       await loadTickets();
-      if (version === ticketRequestVersion.current) await openTicket(selected.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось отправить сообщение");
     } finally { setBusy(false); }
@@ -154,13 +159,12 @@ export default function SupportPage() {
 
   const changeState = async (action: "close" | "reopen") => {
     if (!selected || busy) return;
-    const version = ticketRequestVersion.current;
     setBusy(true);
     setError("");
     try {
       await customerRequest(`/api/v1/support/tickets/${encodeURIComponent(selected.id)}/${action}`, { method: "POST" });
+      if (activeTicketId.current === selected.id) await openTicket(selected.id);
       await loadTickets();
-      if (version === ticketRequestVersion.current) await openTicket(selected.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось обновить обращение");
     } finally { setBusy(false); }

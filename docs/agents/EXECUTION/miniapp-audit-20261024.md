@@ -21,6 +21,11 @@ Each of S1, S2, S3 and S4 was demonstrated by a failing browser test before its
 correction. S3 also has failing reply-completion probes for both dismissal and
 switching to another ticket. Additional guards cover stale errors, normal
 close/reopen and completing a new ticket after selecting another conversation.
+Independent Standards review found a return-to-A case in the first candidate:
+an unchanged-version guard skipped refreshing A after an A → B → A round trip.
+Two additional RED/GREEN regressions cover close/reply completion on return;
+mutations refresh by the currently selected ticket ID while detail responses
+retain request-version ordering. The review finding was corrected before delivery.
 Mutation inputs are disabled until completion so edits cannot be overwritten by
 a pending successful submission. Existing API payloads and ownership checks are
 unchanged. Drafts survive ticket switches, not reloads.
@@ -37,7 +42,7 @@ unchanged. Drafts survive ticket switches, not reloads.
   submitted payloads and resulting dialogs. Synthetic Telegram identity and API
   responses prevent production writes. Console/page errors fail the new suite;
   only explicitly injected 503 resource errors are permitted in their two tests.
-- The focused final static-export run includes all nine new support scenarios,
+- The focused final static-export run includes all eleven new support scenarios,
   production-readiness, support-contact and customer-backend-parity suites. Final
   results and exact-head full Chromium/WebKit CI are recorded in the delivery PR.
 - **11 backend tests passed** in 4.14s against a dedicated PostgreSQL 17 container

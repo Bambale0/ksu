@@ -210,3 +210,31 @@ test('a completed new ticket does not override a subsequently selected conversat
   await expect(page.getByRole('heading', { name: ticketB.topic, exact: true })).toBeVisible();
   expect(delayed.requests[0].postDataJSON()).toEqual({ topic: 'Новый вопрос', message: 'Проверка новой заявки' });
 });
+
+for (const action of ['close', 'reply']) {
+  test(`completing ${action} refreshes its ticket if the user has navigated away and returned`, async ({ page }) => {
+    await mockSupport(page);
+    let detail = { ...ticketA };
+    await page.route(`**/api/v1/support/tickets/${ticketA.id}`, (route) => json(route, detail));
+    await page.getByRole('button', { name: new RegExp(ticketA.topic) }).click();
+    const delayed = await holdRequest(page, `/api/v1/support/tickets/${ticketA.id}/${action === 'close' ? 'close' : 'messages'}`);
+    if (action === 'reply') await page.getByPlaceholder('Написать ответ', { exact: true }).fill('Новый ответ');
+    await page.getByRole('button', { name: action === 'close' ? 'Закрыть обращение' : 'Отправить', exact: true }).click();
+    await delayed.requested;
+    await page.getByRole('button', { name: new RegExp(ticketB.topic) }).click();
+    await expect(page.getByRole('heading', { name: ticketB.topic, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: new RegExp(ticketA.topic) }).click();
+    await expect(page.getByPlaceholder('Написать ответ', { exact: true })).toBeVisible();
+    detail = action === 'close'
+      ? { ...ticketA, status: 'closed', can_reply: false, can_close: false, can_reopen: true }
+      : { ...ticketA, messages: [{ id: 'message_return', author: 'user', body: 'Новый ответ', created_at: ticketA.created_at }] };
+    await delayed.finish(action === 'close' ? detail : detail.messages[0]);
+    await expect(page.getByRole('button', { name: 'Создать обращение', exact: true })).toBeVisible();
+    if (action === 'close') {
+      await expect(page.getByRole('button', { name: 'Переоткрыть', exact: true })).toBeVisible();
+      await expect(page.getByPlaceholder('Написать ответ', { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.locator('.transaction-list').getByText('Новый ответ', { exact: true })).toBeVisible();
+    }
+  });
+}
