@@ -174,6 +174,9 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
     Image.new("RGB", (600, 600), (48, 84, 120)).save(original, format="JPEG")
     original_bytes = original.read_bytes()
     legacy_url = ReferenceStaticStorage.public_url("legacy.jpg")
+    other = root / "regular.jpg"
+    Image.new("RGB", (600, 600), (11, 22, 33)).save(other, format="JPEG")
+    other_url = ReferenceStaticStorage.public_url("regular.jpg")
 
     # An MPO is a JPEG-based image with MPF metadata; Pillow reports its
     # format as MPO even when a storage client declared image/jpeg.
@@ -197,7 +200,7 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
             prompt="Animate the photograph",
             parameters={
                 "_model_id": "seedance-2.5",
-                "reference_image_urls": [legacy_url],
+                "reference_image_urls": [legacy_url, other_url],
                 "duration": 6,
                 "resolution": "480p",
                 "aspect_ratio": "16:9",
@@ -208,6 +211,7 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
     await NeironychGenerationProviderService._freeze_new_submission(None, first)
     body = json.loads(first.parameters[SNAPSHOT_KEY]["body_json"])
     converted_url = body["reference_images"][0]["url"]
+    assert body["reference_images"][1]["url"] == other_url
     assert converted_url != legacy_url
     assert converted_url.startswith("https://ksu.example/uploads/refs/normalized/")
     target = ReferenceStaticStorage.path_for_url(converted_url)
@@ -215,12 +219,12 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
     with real_open(target) as converted:
         assert converted.format == "JPEG" and converted.size == (600, 600)
     assert original.read_bytes() == original_bytes
-    assert first.parameters["reference_image_urls"] == [legacy_url]
+    assert first.parameters["reference_image_urls"] == [legacy_url, other_url]
 
     second = generation()
     await NeironychGenerationProviderService._freeze_new_submission(None, second)
     assert json.loads(second.parameters[SNAPSHOT_KEY]["body_json"])["reference_images"][0]["url"] == converted_url
-    assert len(list(root.rglob("*.jpg"))) == 2
+    assert len(list(root.rglob("*.jpg"))) == 3
 
 
 @pytest.mark.asyncio
