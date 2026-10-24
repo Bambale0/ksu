@@ -130,8 +130,14 @@ async def test_fixed_offer_price_mismatch_rejects_before_creating_remote_invoice
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("returned_amount", "evidence_amount"),
+    [(1086.96, "1086.96"), ("invalid", "invalid"), ("NaN", "invalid"), ("sNaN", "invalid")],
+)
 async def test_changed_create_response_total_retains_invoice_and_blocks_checkout_replay(
     monkeypatch: pytest.MonkeyPatch,
+    returned_amount: float | str,
+    evidence_amount: str,
 ) -> None:
     monkeypatch.setattr(settings, "rox_packages_json", "{}")
     monkeypatch.setattr(settings, "card_packages_json", '''{
@@ -153,7 +159,7 @@ async def test_changed_create_response_total_retains_invoice_and_blocks_checkout
             external_id=external_id,
             payment_url="https://pay.example.invalid/incorrect-price",
             raw={"data": {"id": external_id, "status": "new", "amountTotal": {
-                "amount": 1086.96, "currency": "RUB",
+                "amount": returned_amount, "currency": "RUB",
             }}},
         )
 
@@ -177,7 +183,7 @@ async def test_changed_create_response_total_retains_invoice_and_blocks_checkout
         assert replay.status == "failed"
         assert replay.amount == Decimal("1087.00")
         assert not replay.payload.get("payment_url")
-        assert replay.payload["invoice_integrity_error"]["actual"] == "1086.96"
+        assert replay.payload["invoice_integrity_error"]["actual"] == evidence_amount
         assert calls == 1
 
 
@@ -220,8 +226,10 @@ async def test_other_invoice_identity_mismatches_are_terminal_but_webhooks_still
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("refund_review", [False, True])
 async def test_stale_mismatched_poll_cannot_overwrite_concurrently_settled_payment(
     monkeypatch: pytest.MonkeyPatch,
+    refund_review: bool,
 ) -> None:
     async with SessionFactory() as session:
         user = User(telegram_id=uuid.uuid4().int % 10**14, first_name="Concurrent settlement")
@@ -235,19 +243,28 @@ async def test_stale_mismatched_poll_cannot_overwrite_concurrently_settled_payme
         session.add(payment)
         await session.commit()
 
+        first_lookup = True
+
         async def get_invoice(self: CardCheckoutClient, invoice_id: str) -> dict[str, Any]:
+            nonlocal first_lookup
+            if not first_lookup:
+                return {"id": invoice_id, "status": "REFUNDED",
+                        "receipt": {"amount": 1087, "currency": "RUB"}}
+            first_lookup = False
             # The original session still holds the pending identity-map object.
             # A verified webhook commits while its earlier lookup is in flight.
             async with SessionFactory() as webhook_session:
                 await CardPaymentService.complete(
                     webhook_session, payment_id=payment.id, provider_payload={"status": "paid"},
                 )
+                if refund_review:
+                    await CardPaymentService.reconcile(webhook_session, payment_id=payment.id)
             return {"id": invoice_id, "status": "FAILED",
                     "receipt": {"amount": 1086.96, "currency": "RUB"}}
 
         monkeypatch.setattr(CardCheckoutClient, "get_invoice", get_invoice)
         result = await CardPaymentService.reconcile(session, payment_id=payment.id)
-        assert result.status == "succeeded"
+        assert result.status == ("refund_review" if refund_review else "succeeded")
         assert "invoice_integrity_error" not in result.payload
         wallet = await session.get(Wallet, user.id)
         assert wallet is not None

@@ -252,7 +252,10 @@ class CardCheckoutClient:
         if raw in (None, ""):
             return None
         try:
-            return Decimal(str(raw))
+            amount = Decimal(str(raw))
+            if not amount.is_finite():
+                raise ValueError("Invoice amount must be finite")
+            return amount
         except Exception as exc:  # noqa: BLE001
             raise PaymentProviderError("Card checkout returned invalid invoice amount") from exc
 

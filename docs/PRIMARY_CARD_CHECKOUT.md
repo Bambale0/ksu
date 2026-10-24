@@ -143,6 +143,8 @@ identity, amount or currency must match the local intent. If a remote invoice wa
 different values, its id and original response remain stored, but the local attempt becomes
 `failed` with integrity evidence and no exposed payment link. Replaying the checkout key does not
 create another invoice or return the rejected link.
+Malformed or non-finite returned amounts also retain the known remote identity with no payable
+link; diagnostics store `invalid` rather than copying an arbitrary raw monetary value.
 
 ## Lost create-response recovery
 

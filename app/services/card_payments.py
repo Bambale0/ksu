@@ -757,7 +757,12 @@ class CardPaymentService:
         expected_id = expected_external_id or str(payment.external_id)
         if external_id and external_id != expected_id:
             raise CardInvoiceMismatchError("invoice id", expected_id, external_id)
-        amount = CardCheckoutClient.extract_amount(invoice)
+        try:
+            amount = CardCheckoutClient.extract_amount(invoice)
+        except PaymentProviderError as exc:
+            # A known remote identity must still be durably retained on create
+            # when the provider returns an invalid monetary value.
+            raise CardInvoiceMismatchError("amount", str(payment.amount), "invalid") from exc
         if amount is not None and amount != Decimal(payment.amount):
             raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
         currency = CardCheckoutClient.extract_currency(invoice)
@@ -782,7 +787,7 @@ class CardPaymentService:
         )
         if payment is None:
             raise LookupError("Payment not found")
-        if payment.status in {"succeeded", "partially_refunded", "refunded"}:
+        if payment.status in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
             return payment
         provider_status = CardCheckoutClient.extract_status(invoice)
         if provider_status not in (
