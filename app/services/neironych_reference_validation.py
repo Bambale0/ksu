@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import httpx
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.services.feed_static import FeedStaticStorage
@@ -163,6 +165,91 @@ async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: st
                 temporary.flush()
                 return await asyncio.to_thread(inspect_file, model, kind, Path(temporary.name))
     raise ReferenceValidationError("Too many Seedance reference redirects")
+
+
+def _normalize_owned_mpo_image(model: str, url: str) -> str:
+    """Make an immutable first-frame JPEG transport copy of a stored MPO.
+
+    The user's original reference URL/bytes stay untouched for trends, repeats
+    and any other provider. Only the frozen Neironych request uses the copy.
+    """
+    path = owned_path(url)
+    if path is None:
+        return url
+    size = path.stat().st_size
+    if not 0 < size <= byte_limit(model, "image"):
+        raise ReferenceValidationError(
+            "Seedance image reference exceeds file size limit or is empty"
+        )
+    try:
+        with Image.open(path) as source:
+            if source.format != "MPO":
+                return url
+            source.seek(0)
+            first_frame = ImageOps.exif_transpose(source).convert("RGB")
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ReferenceValidationError(
+            "Seedance image reference is not a valid JPEG/PNG"
+        ) from exc
+
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        directory = ReferenceStaticStorage.ensure_root() / "normalized"
+        directory.mkdir(parents=True, exist_ok=True)
+        filename = f"{digest.hexdigest()}-mpo.jpg"
+        target = directory / filename
+        normalized_url = ReferenceStaticStorage.public_url(f"normalized/{filename}")
+        if target.is_file():
+            inspect_file(model, "image", target)
+            return normalized_url
+
+        # All workers use the same durable reference volume. Atomic replacement
+        # prevents an in-flight provider GET from observing a partial image.
+        with tempfile.NamedTemporaryFile(
+            prefix=".roxy-mpo-", suffix=".jpg", dir=directory, delete=False
+        ) as temporary:
+            temp_path = Path(temporary.name)
+            try:
+                first_frame.save(temporary, format="JPEG", quality=92, optimize=True)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+                inspect_file(model, "image", temp_path)
+                os.replace(temp_path, target)
+                os.chmod(target, 0o644)
+            finally:
+                temp_path.unlink(missing_ok=True)
+        return normalized_url
+    except ReferenceValidationError:
+        raise
+    except OSError as exc:
+        raise ReferenceValidationUnavailable(
+            "Seedance stored image normalization is unavailable"
+        ) from exc
+    finally:
+        first_frame.close()
+
+
+async def normalize_seedance_mpo_references(model: str, payload: dict[str, Any]) -> None:
+    """Normalize legacy product-owned MPOs before validation and snapshot freeze."""
+    images = list(payload.get("reference_images", []))
+    images.extend(
+        payload[key] for key in ("start_image", "end_image") if payload.get(key)
+    )
+    if not images:
+        return
+    try:
+        async with asyncio.timeout(settings.neironych_reference_validation_timeout_seconds):
+            for image in images:
+                image["url"] = await asyncio.to_thread(
+                    _normalize_owned_mpo_image, model, image["url"]
+                )
+    except TimeoutError as exc:
+        raise ReferenceValidationUnavailable(
+            "Seedance stored image normalization timed out"
+        ) from exc
 
 
 async def validate_reference_payload(model: str, payload: dict[str, Any]) -> None:
