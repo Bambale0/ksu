@@ -228,6 +228,63 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("dimensions", [(6001, 4000), (6000, 2000), (299, 600)])
+async def test_oversize_mpo_rejected_before_first_frame_decode(
+    tmp_path, monkeypatch, dimensions,
+):
+    """A misleadingly small compressed MPO cannot trigger a huge RGB decode."""
+    import uuid
+    from types import SimpleNamespace
+
+    from app.services.neironych_generation_provider import NeironychGenerationProviderService
+    from app.services.reference_static import ReferenceStaticStorage
+
+    root = tmp_path / "refs"
+    root.mkdir()
+    monkeypatch.setenv("REFERENCE_STATIC_ROOT", str(root))
+    monkeypatch.setattr(settings, "public_base_url", "https://ksu.example")
+    original = root / "oversize.jpg"
+    Image.new("RGB", (600, 600)).save(original, "JPEG")
+
+    real_open = Image.open
+
+    def misleading_mpo(path, *args, **kwargs):
+        source = real_open(path, *args, **kwargs)
+        if str(path) == str(original):
+            source.format = "MPO"
+            source._size = dimensions
+        return source
+
+    monkeypatch.setattr(
+        "app.services.neironych_reference_validation.Image.open", misleading_mpo
+    )
+
+    def no_decode(*_args, **_kwargs):
+        pytest.fail("Invalid MPO must be rejected before image frame decoding")
+
+    monkeypatch.setattr(
+        "app.services.neironych_reference_validation.ImageOps.exif_transpose",
+        no_decode,
+    )
+    row = SimpleNamespace(
+        id=uuid.uuid4(),
+        input_url=None,
+        action_type="generate",
+        prompt="Test",
+        parameters={
+            "_model_id": "seedance-2.5",
+            "reference_image_urls": [ReferenceStaticStorage.public_url("oversize.jpg")],
+            "duration": 6,
+            "resolution": "480p",
+            "aspect_ratio": "16:9",
+        },
+    )
+    with pytest.raises(ReferenceValidationError, match="300-6000"):
+        await NeironychGenerationProviderService._freeze_new_submission(None, row)
+    assert not (root / "normalized").exists()
+
+
+@pytest.mark.asyncio
 async def test_seedance_normal_jpeg_remains_original_provider_url(tmp_path, monkeypatch):
     from app.services.neironych_generation_provider import NeironychGenerationProviderService
     from app.services.reference_static import ReferenceStaticStorage
