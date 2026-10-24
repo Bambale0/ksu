@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -10,11 +11,11 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.config import settings
 from app.db.admin_models import AdminRuntimeSetting, TariffVersion
-from app.db.models import AdminAccount
+from app.db.models import AdminAccount, User
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
 from app.services.generation_provider_routing import (
-    ROUTES_SETTING_KEY, configured_routes, route_options, validate_routes,
+    ROUTES_SETTING_KEY, configured_routes, route_options, validate_routes, validate_user_routes,
 )
 
 
@@ -39,9 +40,11 @@ class AdminRuntimeService:
     async def set_provider_routes(
         session: AsyncSession, *, admin: AdminAccount, routes: dict[str, list[str]],
         expected_revision: int, idempotency_key: str, request_id: str, confirmed: bool,
+        user_routes: dict[str, dict[str, list[str]]] | None = None,
     ) -> tuple[dict[str, Any], bool]:
         AdminPolicy.authorize_action(admin, "runtime.reload", confirmed=confirmed)
         validated = validate_routes(routes)
+        scoped = validate_user_routes(user_routes) if user_routes is not None else None
 
         async def operation() -> dict[str, Any]:
             initial = await configured_routes(session)
@@ -53,7 +56,17 @@ class AdminRuntimeService:
             ).with_for_update().execution_options(populate_existing=True))
             if row is None or int(row.value["revision"]) != expected_revision:
                 raise ValueError("Provider routes changed; reload settings before saving")
-            row.value = {"revision": expected_revision + 1, "routes": validated}
+            if scoped:
+                user_ids = [uuid.UUID(key) for key in scoped]
+                existing = set(await session.scalars(select(User.id).where(User.id.in_(user_ids))))
+                if existing != set(user_ids):
+                    raise ValueError("User provider route scope references an unknown user")
+            effective_scopes = (
+                scoped if scoped is not None
+                else validate_user_routes(row.value.get("user_routes", {}))
+            )
+            row.value = {"revision": expected_revision + 1, "routes": validated,
+                         "user_routes": effective_scopes}
             row.updated_by_admin_id = admin.id
             await session.flush()
             return dict(row.value)
@@ -61,7 +74,8 @@ class AdminRuntimeService:
         return await AdminCommandLedger.execute(
             session, idempotency_key=idempotency_key, admin_user_id=admin.id,
             request_id=request_id, action="runtime.reload", target_id=ROUTES_SETTING_KEY,
-            request_payload={"routes": validated, "expected_revision": expected_revision},
+            request_payload={"routes": validated, "expected_revision": expected_revision,
+                             **({"user_routes": scoped} if scoped is not None else {})},
             operation=operation,
         )
 

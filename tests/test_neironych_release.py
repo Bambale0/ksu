@@ -33,7 +33,7 @@ def test_nano_default_routes_nexus_primary_with_safe_fallbacks():
 
 @pytest.mark.parametrize(
     "route",
-    [[], ["nexus", "nexus"], ["unknown"], ["neironych", "nexus"]],
+    [[], ["nexus", "nexus"], ["unknown"], ["kie", "nexus"]],
 )
 def test_unsupported_nano_routes_fail_closed(route):
     routes = {model: choices[0] for model, choices in route_options().items()}

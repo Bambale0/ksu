@@ -314,7 +314,7 @@ class GenerationService:
         )
 
         provider_model = cls._provider_model_snapshot(spec, clean)
-        provider_route, route_revision = await configured_route(session, spec.id)
+        provider_route, route_revision = await configured_route(session, spec.id, user_id=user_id)
         batch_id = uuid.uuid4() if requested > 1 else None
         generations: list[Generation] = []
         for index in range(1, requested + 1):

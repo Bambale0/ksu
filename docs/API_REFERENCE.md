@@ -4,6 +4,14 @@
 
 This is an operational route/auth map. `/docs` and `/redoc` are available only outside production.
 
+## Generation provider routes
+
+`GET /api/v1/admin/runtime` exposes `generation_provider_routes` with `revision`, common `routes`, sparse `user_routes` and allowed `options`. Reading requires the existing admin `runtime.manage` permission. Account scopes use canonical internal user UUIDs; usernames and generation-request parameters cannot choose a scope.
+
+`POST /api/v1/admin/runtime/provider-routes` accepts the complete common `routes`, `expected_revision` and optional `user_routes`. The optional object maps existing user UUID strings to sparse model-to-provider-route mappings. Only already supported model/provider orders are accepted. The existing admin permission, verified MFA/step-up, `Idempotency-Key` and `X-Admin-Confirm: confirmed` requirements apply to both layers. Unknown users, invalid UUIDs, unsupported models/orders and stale revisions reject the mutation atomically.
+
+Omitting `user_routes` (or sending null) preserves existing account exceptions, including saves from the browser's common-route editor. Sending `{}` explicitly clears all exceptions; sending a replacement object removes scopes absent from that object. Common and account routes share one revision, command ledger and concurrency fence. Read the current configuration before modifying either layer. Normal and batch admissions freeze the selected route/revision; existing jobs are not rerouted. Roll back by submitting the saved previous common/scoped configuration with the current revision and a new idempotency key.
+
 ## Authentication classes
 
 ### Public

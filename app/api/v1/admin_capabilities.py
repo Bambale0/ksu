@@ -204,6 +204,7 @@ class RuntimeSubscriptionRequest(BaseModel):
 class ProviderRoutesRequest(BaseModel):
     routes: dict[str, list[str]]
     expected_revision: int = Field(ge=1)
+    user_routes: dict[str, dict[str, list[str]]] | None = None
 
 
 class WithdrawalStateRequest(BaseModel):
@@ -952,6 +953,7 @@ async def web_admin_provider_routes(
 ) -> dict[str, Any]:
     result, replayed = await _commit(session, AdminRuntimeService.set_provider_routes(
         session, admin=context.account, routes=payload.routes,
+        user_routes=payload.user_routes,
         expected_revision=payload.expected_revision,
         idempotency_key=_require_idempotency(idempotency_key),
         request_id=_request_id(request), confirmed=_confirmed(confirmation),

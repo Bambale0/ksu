@@ -63,6 +63,8 @@ ROXY groups compatible backend variants into user-facing products where useful. 
 
 Ordinary Grok video variants (`grok-video-t2v` and `grok-video-i2v`) default to Neironych → Kie through the existing admin-managed provider routes. Neironych uses `grok-imagine-video-1.5`; I2V passes the uploaded image as its first frame. Public model IDs, input validation and ROX prices remain unchanged. Normal mode with supported settings uses Neironych; controls it cannot represent (including fun/spicy, Kie task references or durations above 15 seconds) fall back before a paid Neironych request, preserving the original Kie input. Ambiguous submissions remain on their original provider. Existing jobs retain their saved provider/route. Admins can select Kie-only for future jobs to roll back routing.
 
+Provider routes can also have sparse account-specific exceptions. Normal and batch admission resolve these from the authenticated server-side user ID and freeze the effective route and configuration revision in each generation. A username change does not transfer an exception. Models without an account exception inherit the common route. Existing accepted jobs continue on their saved provider after a policy change. Supported choices, including Neironych-first orders retaining Nexus/Kie fallbacks, are exposed through the admin runtime API; a preference never adds provider support for an incompatible model or input.
+
 WAN 2.7 is exposed in both media families:
 
 - video: text/image/video-oriented Wan 2.7 variants;
