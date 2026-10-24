@@ -17,8 +17,9 @@ def test_supported_models_route_nexus_primary() -> None:
     assert route_for_model("veo-3.1") == ("nexus", "kie")
 
 
-def test_grok_and_nexus_incompatible_models_are_untouched() -> None:
-    assert route_for_model("grok-video-t2v") is None
+def test_unmanaged_models_are_untouched() -> None:
+    assert route_for_model("grok-video-upscale") is None
+    assert route_for_model("grok-video-extend") is None
     assert route_for_model("grok-image-t2i") is None
     assert route_for_model("seedream-5-pro-layers") is None
     assert route_for_model("kling-motion-3.0") is None
