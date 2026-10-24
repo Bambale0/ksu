@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -21,6 +22,16 @@ from app.services.promocodes import PromoCodeError, PromoCodeService
 from app.services.referrals import ReferralService
 from app.services.wallet import WalletService
 
+logger = logging.getLogger(__name__)
+
+
+class CardInvoiceMismatchError(PaymentProviderError):
+    def __init__(self, field: str, expected: str, actual: str) -> None:
+        super().__init__(f"Card checkout {field} mismatch")
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+
 
 @dataclass(frozen=True, slots=True)
 class CardPackage:
@@ -38,6 +49,7 @@ class CardPackage:
 class CardOfferResolution:
     offer_id: str
     source: str
+    prices: dict[str, Decimal] | None = None
 
 
 class CardPackageCatalog:
@@ -234,7 +246,9 @@ class CardPackageCatalog:
                 offer_id = cls._object_id(offer, product_keys=False)
                 if offer_id == configured_id:
                     return CardOfferResolution(
-                        offer_id, "exact_dynamic_offer" if cls._is_dynamic_price_offer(offer) else "offer_id"
+                        offer_id,
+                        "exact_dynamic_offer" if cls._is_dynamic_price_offer(offer) else "offer_id",
+                        cls._prices_from_offer(offer),
                     )
             if product_id == configured_id:
                 product_match_offers = offers
@@ -259,7 +273,15 @@ class CardPackageCatalog:
             if cls._object_id(offer, product_keys=False)
         ]
         if len(available_offer_ids) == 1:
-            return CardOfferResolution(available_offer_ids[0], "product_single_offer")
+            offer = next(
+                item for item in product_match_offers
+                if cls._object_id(item, product_keys=False) == available_offer_ids[0]
+            )
+            return CardOfferResolution(
+                available_offer_ids[0],
+                "product_single_offer",
+                cls._prices_from_offer(offer),
+            )
         raise PaymentProviderError(
             "CARD_OFFER_ID points to a product with multiple offers; set exact package offer_id"
         )
@@ -503,16 +525,23 @@ class CardPaymentService:
         )
         try:
             offer = await CardPackageCatalog.resolve_invoice_offer(client, package)
+            dynamic_amount = (
+                package.dynamic_amount or offer.source in cls.DYNAMIC_RESOLUTION_SOURCES
+            )
+            if not dynamic_amount and offer.prices and offer.prices.get(currency) != amount:
+                logger.warning(
+                    "card_offer_price_mismatch payment_id=%s currency=%s expected=%s actual=%s",
+                    payment.id, currency, amount, offer.prices.get(currency),
+                )
+                raise PaymentProviderValidationError(
+                    "Цена предложения оплаты не совпадает с ценой пакета. "
+                    "Выберите другой способ оплаты."
+                )
             created = await client.create_invoice(
                 email=email,
                 offer_id=offer.offer_id,
                 currency=currency,
-                amount=(
-                    amount
-                    if package.dynamic_amount
-                    or offer.source in cls.DYNAMIC_RESOLUTION_SOURCES
-                    else None
-                ),
+                amount=amount if dynamic_amount else None,
                 payment_provider=route,
             )
         except PaymentProviderValidationError as exc:
@@ -540,7 +569,14 @@ class CardPaymentService:
         finally:
             await client.aclose()
 
-        return await PaymentCreationLifecycle.mark_pending(
+        invoice = CardCheckoutClient._unwrap(created.raw)
+        invoice_error: CardInvoiceMismatchError | None = None
+        try:
+            cls._assert_invoice(payment, invoice, expected_external_id=created.external_id)
+        except CardInvoiceMismatchError as exc:
+            invoice_error = exc
+
+        payment = await PaymentCreationLifecycle.mark_pending(
             session,
             payment_id=payment.id,
             request_id=creation.request_id,
@@ -549,9 +585,19 @@ class CardPaymentService:
                 "route": route or "hosted_checkout",
                 "offer_id": offer.offer_id,
                 "offer_id_source": offer.source,
+                # Validate before the first durable binding: a concurrent replay
+                # or a process crash must never publish a rejected payable link.
+                **({"payment_url": ""} if invoice_error else {}),
             },
             missing_message="Payment disappeared after external invoice creation",
         )
+        if invoice_error is not None:
+            await cls._reject_mismatched_invoice(session, payment.id, invoice, invoice_error)
+            raise PaymentProviderValidationError(
+                "Проверка суммы или валюты счёта не пройдена. "
+                "Выберите другой способ оплаты."
+            ) from invoice_error
+        return payment
 
     @classmethod
     async def complete(
@@ -637,7 +683,15 @@ class CardPaymentService:
         finally:
             await client.aclose()
 
-        cls._assert_invoice(payment, invoice)
+        try:
+            cls._assert_invoice(payment, invoice)
+        except CardInvoiceMismatchError as exc:
+            payment = await cls._reject_mismatched_invoice(session, payment.id, invoice, exc)
+            if event_type:
+                # Preserve the webhook's non-success integrity response, even
+                # though the background poller must stop retrying this invoice.
+                raise
+            return payment
         status = CardCheckoutClient.extract_status(invoice)
         normalized_event = str(event_type or "").strip().lower()
         if normalized_event == "payment.success" or status in cls.SUCCESS_STATUSES:
@@ -693,16 +747,83 @@ class CardPaymentService:
         return payment
 
     @staticmethod
-    def _assert_invoice(payment: Payment, invoice: dict[str, Any]) -> None:
+    def _assert_invoice(
+        payment: Payment,
+        invoice: dict[str, Any],
+        *,
+        expected_external_id: str | None = None,
+    ) -> None:
         external_id = CardCheckoutClient.extract_invoice_id(invoice)
-        if external_id and external_id != str(payment.external_id):
-            raise PaymentProviderError("Card checkout invoice id mismatch")
-        amount = CardCheckoutClient.extract_amount(invoice)
-        if amount is not None and amount != Decimal(payment.amount):
-            raise PaymentProviderError("Card checkout amount mismatch")
-        currency = CardCheckoutClient.extract_currency(invoice)
-        if currency is not None and currency != payment.currency.upper():
-            raise PaymentProviderError("Card checkout currency mismatch")
+        expected_id = expected_external_id or str(payment.external_id)
+        if external_id and external_id != expected_id:
+            raise CardInvoiceMismatchError("invoice id", expected_id, external_id)
+        # Never let a matching preferred representation hide a conflicting
+        # receipt or nested money value in the same authoritative response.
+        money_sources = [invoice]
+        money_sources.extend(
+            value for key in ("amount", "amountTotal", "receipt")
+            if isinstance(value := invoice.get(key), dict)
+        )
+        for money in money_sources:
+            try:
+                amount = CardCheckoutClient.extract_amount(money)
+            except PaymentProviderError as exc:
+                # Retain the known remote id even if its total is malformed.
+                raise CardInvoiceMismatchError("amount", str(payment.amount), "invalid") from exc
+            if amount is not None and amount != Decimal(payment.amount):
+                raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
+            currency = CardCheckoutClient.extract_currency(money)
+            if currency is not None and currency != payment.currency.upper():
+                raise CardInvoiceMismatchError("currency", payment.currency.upper(), currency)
+
+    @classmethod
+    async def _reject_mismatched_invoice(
+        cls,
+        session: AsyncSession,
+        payment_id: uuid.UUID,
+        invoice: dict[str, Any],
+        error: CardInvoiceMismatchError,
+    ) -> Payment:
+        # A poll may have started before a concurrent verified webhook settled
+        # the payment. Refresh under its row lock before recording local failure.
+        payment = await session.scalar(
+            select(Payment)
+            .where(Payment.id == payment_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if payment is None:
+            raise LookupError("Payment not found")
+        if payment.status in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
+            return payment
+        provider_status = CardCheckoutClient.extract_status(invoice)
+        if provider_status not in (
+            cls.SUCCESS_STATUSES | cls.FAILED_STATUSES | cls.REFUNDED_STATUSES | {"pending", "new"}
+        ):
+            provider_status = "unknown"
+        payment.payload = {
+            **(payment.payload or {}),
+            # Retain the remote identity/response for investigation, but never
+            # expose an unsafe payable link through an idempotent checkout replay.
+            "payment_url": "",
+            "invoice_integrity_error": {
+                "field": error.field,
+                "expected": error.expected,
+                "actual": error.actual,
+                "provider_status": provider_status,
+            },
+        }
+        payment = await PaymentService.mark_reconciliation_failed(
+            session,
+            payment,
+            reason=f"invoice_{error.field.replace(' ', '_')}_mismatch",
+            error=str(error),
+        )
+        logger.warning(
+            "card_invoice_integrity_mismatch payment_id=%s field=%s provider_status=%s",
+            payment.id, error.field, provider_status,
+        )
+        return payment
 
     @staticmethod
     async def source_payment_transaction(

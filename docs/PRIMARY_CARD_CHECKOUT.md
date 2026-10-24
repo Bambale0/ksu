@@ -69,6 +69,12 @@ CARD_PACKAGES_JSON={"my-dyn": {"credits":"300","prices":{"RUB":"300"},"dynamic_a
 When a package does not pin an `offer_id` and resolution picks a single dynamic offer from the
 provider catalog, `amount` is still sent automatically.
 
+For a fixed-price offer, any prices returned by the catalog must include the requested currency
+and exactly match the configured package price before ROXY creates a payable invoice. A mismatch
+rejects checkout with `422`; operators must align the offer and published package through the
+existing pricing controls. ROXY never rounds a provider price or accepts a small difference.
+When catalog prices are unavailable, the returned invoice still undergoes the integrity check below.
+
 When `CARD_PACKAGES_JSON` is empty, legacy `ROX_PACKAGES_JSON` is exposed to this checkout only as RUB pricing. USD/EUR are unavailable until explicitly configured.
 
 Referral rewards on USD/EUR purchases use the purchased ROX accounting value as the RUB reward basis (`1 ROX = 1 RUB`) rather than pretending that the foreign-currency numeric payment amount is RUB.
@@ -131,6 +137,17 @@ Successful create stores the external invoice id and HTTPS payment URL. Mini App
 
 This preserves the direct-user-activation payment link guard.
 
+The create response's `amountTotal.amount` / `amountTotal.currency` and the authoritative lookup's
+`receipt.amount` / `receipt.currency` are both recognized by invoice validation. Any returned
+identity, amount or currency must match the local intent. If a remote invoice was created with
+different values, its id and original response remain stored, but the local attempt becomes
+`failed` with integrity evidence and no exposed payment link. Replaying the checkout key does not
+create another invoice or return the rejected link.
+Malformed or non-finite returned amounts also retain the known remote identity with no payable
+link; diagnostics store `invalid` rather than copying an arbitrary raw monetary value.
+If the same response supplies multiple money representations, every supplied amount and currency
+must agree with the intent; a matching `amountTotal` cannot hide a different `receipt` value.
+
 ## Lost create-response recovery
 
 If a verified provider webhook arrives with a `contractId` that is not yet known locally, ROXY may recover the missing `external_id` without creating a second invoice.
@@ -176,6 +193,21 @@ payment.failed
 The webhook is a signal, not settlement truth. Before wallet mutation ROXY fetches the authoritative invoice and validates provider contract identity, amount and currency. Wallet credit is idempotent.
 
 Duplicate webhook deliveries are expected and safe. Background payment reconciliation routes known `provider=card` payments through the same authoritative invoice lookup so a lost webhook does not strand a paid invoice.
+
+A deterministic invoice identity, amount or currency mismatch records `invoice_integrity_error`
+and the existing `reconciliation_terminal_error` on the payment, then removes the unresolved
+attempt from automatic polling by marking it locally `failed`. The metadata includes the exact
+expected/actual value and normalized authoritative status; local failure does not assert that the
+provider rejected or refunded the payment. No wallet credit, reversal or expected-price rewrite is
+performed. A verified webhook with a mismatch still receives a non-success response. Transient
+lookup failures remain retryable. A concurrent completed/refunded payment is refreshed under its
+row lock and cannot be overwritten by an older mismatched poll.
+
+Operators should inspect these records through the existing admin payment detail before any
+explicit recheck. Align prices for future checkouts first. A paid mismatched invoice requires
+authoritative investigation; do not mark it paid or refund it with manual SQL. Diagnostics emit
+`card_offer_price_mismatch` / `card_invoice_integrity_mismatch` without buyer emails, checkout
+URLs, credentials or full provider payloads.
 
 ## Refunds
 
