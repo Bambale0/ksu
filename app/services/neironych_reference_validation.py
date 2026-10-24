@@ -182,17 +182,12 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
             "Seedance image reference exceeds file size limit or is empty"
         )
     try:
+        # Pillow detects MPO via MPF metadata, not extension/MIME. This first
+        # open is lazy and avoids decoding a large frame on every repeat.
         with Image.open(path) as source:
             if source.format != "MPO":
                 return url
-            source.seek(0)
-            first_frame = ImageOps.exif_transpose(source).convert("RGB")
-    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
-        raise ReferenceValidationError(
-            "Seedance image reference is not a valid JPEG/PNG"
-        ) from exc
 
-    try:
         digest = hashlib.sha256()
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -206,31 +201,40 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
             inspect_file(model, "image", target)
             return normalized_url
 
-        # All workers use the same durable reference volume. Atomic replacement
-        # prevents an in-flight provider GET from observing a partial image.
-        with tempfile.NamedTemporaryFile(
-            prefix=".roxy-mpo-", suffix=".jpg", dir=directory, delete=False
-        ) as temporary:
-            temp_path = Path(temporary.name)
-            try:
-                first_frame.save(temporary, format="JPEG", quality=92, optimize=True)
-                temporary.flush()
-                os.fsync(temporary.fileno())
-                inspect_file(model, "image", temp_path)
-                os.replace(temp_path, target)
-                os.chmod(target, 0o644)
-            finally:
-                temp_path.unlink(missing_ok=True)
+        # Only cache misses decode/transcode the frame. Never change source.
+        with Image.open(path) as source:
+            if source.format != "MPO":
+                raise ReferenceValidationError("Seedance reference changed during normalization")
+            source.seek(0)
+            first_frame = ImageOps.exif_transpose(source).convert("RGB")
+        try:
+            # Atomic replacement avoids partial reads by the provider/static app.
+            with tempfile.NamedTemporaryFile(
+                prefix=".roxy-mpo-", suffix=".jpg", dir=directory, delete=False
+            ) as temporary:
+                temp_path = Path(temporary.name)
+                try:
+                    first_frame.save(temporary, format="JPEG", quality=92, optimize=True)
+                    temporary.flush()
+                    os.fsync(temporary.fileno())
+                    inspect_file(model, "image", temp_path)
+                    os.replace(temp_path, target)
+                    os.chmod(target, 0o644)
+                finally:
+                    temp_path.unlink(missing_ok=True)
+        finally:
+            first_frame.close()
         return normalized_url
     except ReferenceValidationError:
         raise
+    except (UnidentifiedImageError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ReferenceValidationError(
+            "Seedance image reference is not a valid JPEG/PNG"
+        ) from exc
     except OSError as exc:
         raise ReferenceValidationUnavailable(
             "Seedance stored image normalization is unavailable"
         ) from exc
-    finally:
-        first_frame.close()
-
 
 async def normalize_seedance_mpo_references(model: str, payload: dict[str, Any]) -> None:
     """Normalize legacy product-owned MPOs before validation and snapshot freeze."""
