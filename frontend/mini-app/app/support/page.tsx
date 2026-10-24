@@ -35,9 +35,19 @@ export default function SupportPage() {
   const [ticketsLoading, setTicketsLoading] = useState(true);
   const ticketsLoadInFlight = useRef(false);
   const [selected, setSelected] = useState<TicketDetail | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const activeTicketId = useRef<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const ticketRequestVersion = useRef(0);
   const [topic, setTopic] = useState("");
   const [message, setMessage] = useState("");
-  const [reply, setReply] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const reply = selected ? replyDrafts[selected.id] || "" : "";
+  const setReply = (value: string) => {
+    if (!selected) return;
+    setReplyDrafts((current) => ({ ...current, [selected.id]: value }));
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [contact, setContact] = useState<SupportContact | null>(null);
@@ -61,12 +71,32 @@ export default function SupportPage() {
   };
 
   const openTicket = async (id: string) => {
+    const version = ++ticketRequestVersion.current;
+    activeTicketId.current = id;
+    setSelectedTicketId(id);
+    setSelected(null);
+    setDetailLoading(true);
+    setDetailError("");
     setError("");
     try {
-      setSelected(await customerRequest<TicketDetail>(`/api/v1/support/tickets/${encodeURIComponent(id)}`));
+      const detail = await customerRequest<TicketDetail>(`/api/v1/support/tickets/${encodeURIComponent(id)}`);
+      if (version === ticketRequestVersion.current) setSelected(detail);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось открыть обращение");
+      if (version === ticketRequestVersion.current) {
+        setDetailError(reason instanceof Error ? reason.message : "Не удалось открыть обращение");
+      }
+    } finally {
+      if (version === ticketRequestVersion.current) setDetailLoading(false);
     }
+  };
+
+  const dismissTicket = () => {
+    ticketRequestVersion.current += 1;
+    activeTicketId.current = null;
+    setSelectedTicketId(null);
+    setSelected(null);
+    setDetailLoading(false);
+    setDetailError("");
   };
 
   const loadContact = async () => {
@@ -85,10 +115,15 @@ export default function SupportPage() {
   useEffect(() => {
     void loadTickets();
     void loadContact();
+    return () => {
+      ticketRequestVersion.current += 1;
+      activeTicketId.current = null;
+    };
   }, []);
 
   const create = async () => {
     if (!topic.trim() || !message.trim() || busy) return;
+    const version = ticketRequestVersion.current;
     setBusy(true);
     setError("");
     try {
@@ -99,7 +134,7 @@ export default function SupportPage() {
       setTopic("");
       setMessage("");
       await loadTickets();
-      await openTicket(ticket.id);
+      if (version === ticketRequestVersion.current) await openTicket(ticket.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось создать обращение");
     } finally { setBusy(false); }
@@ -115,7 +150,7 @@ export default function SupportPage() {
         body: JSON.stringify({ message: reply.trim() }),
       });
       setReply("");
-      await openTicket(selected.id);
+      if (activeTicketId.current === selected.id) await openTicket(selected.id);
       await loadTickets();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось отправить сообщение");
@@ -128,7 +163,7 @@ export default function SupportPage() {
     setError("");
     try {
       await customerRequest(`/api/v1/support/tickets/${encodeURIComponent(selected.id)}/${action}`, { method: "POST" });
-      await openTicket(selected.id);
+      if (activeTicketId.current === selected.id) await openTicket(selected.id);
       await loadTickets();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось обновить обращение");
@@ -161,8 +196,8 @@ export default function SupportPage() {
         <div className="panel tool-panel">
           <div className="section-title"><div><span className="kicker">Новое обращение</span><h2>Написать в поддержку</h2></div></div>
           <div className="form-stack">
-            <label className="field"><span className="label">Тема</span><input className="control" maxLength={64} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="Например: оплата или генерация" /></label>
-            <label className="field"><span className="label">Сообщение</span><textarea className="control textarea" maxLength={8000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Опишите, что произошло" /></label>
+            <label className="field"><span className="label">Тема</span><input className="control" maxLength={64} disabled={busy} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="Например: оплата или генерация" /></label>
+            <label className="field"><span className="label">Сообщение</span><textarea className="control textarea" maxLength={8000} disabled={busy} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Опишите, что произошло" /></label>
             <button className="primary wide" type="button" disabled={busy || !topic.trim() || !message.trim()} onClick={() => void create()}>{busy ? "Отправляю…" : "Создать обращение"}</button>
           </div>
         </div>
@@ -178,8 +213,14 @@ export default function SupportPage() {
           </div>}
         </div>
 
-        {selected ? <div className="panel tool-panel">
-          <div className="section-title"><div><span className="kicker">Диалог · {selected.status}</span><h2>{selected.topic}</h2></div><button type="button" onClick={() => setSelected(null)}>Закрыть окно</button></div>
+        {selectedTicketId ? <div className="panel tool-panel" aria-busy={detailLoading}>
+          <div className="section-title"><div><span className="kicker">Диалог{selected ? ` · ${selected.status}` : ""}</span><h2>{selected?.topic || tickets.find((ticket) => ticket.id === selectedTicketId)?.topic || "Обращение"}</h2></div><button type="button" onClick={dismissTicket}>Закрыть окно</button></div>
+          {detailLoading ? <p className="muted" role="status">Загружаем диалог…</p> : null}
+          {detailError ? <>
+            <div className="action-error" role="alert">{detailError}</div>
+            <button className="secondary" type="button" onClick={() => void openTicket(selectedTicketId)}>Повторить загрузку диалога</button>
+          </> : null}
+          {selected ? <>
           <div className="transaction-list">
             {(selected.messages || []).map((item) => (
               <div className="transaction" key={item.id}>
@@ -188,13 +229,14 @@ export default function SupportPage() {
             ))}
           </div>
           {selected.can_reply ? <div className="form-stack">
-            <label className="field"><span className="label">Ответ</span><textarea className="control textarea" maxLength={8000} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" /></label>
+            <label className="field"><span className="label">Ответ</span><textarea className="control textarea" maxLength={8000} disabled={busy} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Написать ответ" /></label>
             <button className="primary wide" type="button" disabled={busy || !reply.trim()} onClick={() => void sendReply()}>{busy ? "Отправляю…" : "Отправить"}</button>
           </div> : null}
           <div className="tool-actions">
             {selected.can_close ? <button className="secondary" type="button" disabled={busy} onClick={() => void changeState("close")}>Закрыть обращение</button> : null}
             {selected.can_reopen ? <button className="secondary" type="button" disabled={busy} onClick={() => void changeState("reopen")}>Переоткрыть</button> : null}
           </div>
+          </> : null}
         </div> : null}
       </div>
     </StandaloneShell>
