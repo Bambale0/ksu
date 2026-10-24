@@ -46,6 +46,19 @@ def _check_image_dimensions(model: str, width: int, height: int) -> None:
         )
 
 
+def _check_mpo_frame_dimensions(model: str, width: int, height: int) -> None:
+    """Reject oversized frames before Pillow allocates an RGB buffer.
+
+    Seedance 2.5 uses its exact provider contract. For Seedance 2.0, cap
+    conversion at that same bounded size: MPO was previously unsupported.
+    """
+    _check_image_dimensions(model, width, height)
+    if not (0 < width <= 6000 and 0 < height <= 6000):
+        raise ReferenceValidationError(
+            "Seedance MPO exceeds safe normalization dimensions (6000 px per side)"
+        )
+
+
 def inspect_file(model: str, kind: str, path: Path) -> float:
     """Inspect real bytes, not MIME/extension or the success of an HTTP GET.
 
@@ -193,7 +206,7 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
         with Image.open(path) as source:
             if source.format != "MPO":
                 return url
-            _check_image_dimensions(model, *source.size)
+            _check_mpo_frame_dimensions(model, *source.size)
 
         digest = hashlib.sha256()
         with path.open("rb") as stream:
@@ -212,7 +225,7 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
         with Image.open(path) as source:
             if source.format != "MPO":
                 raise ReferenceValidationError("Seedance reference changed during normalization")
-            _check_image_dimensions(model, *source.size)
+            _check_mpo_frame_dimensions(model, *source.size)
             source.seek(0)
             first_frame = ImageOps.exif_transpose(source).convert("RGB")
         try:
