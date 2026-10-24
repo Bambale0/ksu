@@ -246,6 +246,9 @@ async def test_grok_video_sends_exact_model_and_reference_contract(refs):
     {"image_urls": [f"https://example.test/{i}.png" for i in range(8)]},
     {"aspect_ratio": "auto"}, {"seed": 42},
     {"nsfw_checker": True},
+    {"image": {"url": "https://example.test/first.png"},
+     "image_urls": ["https://example.test/reference.png"]},
+    {"image": {"url": "http://example.test/first.png"}},
 ])
 async def test_grok_unsupported_settings_never_make_paid_request(changes):
     def forbidden(_request):
@@ -262,7 +265,8 @@ async def test_grok_unsupported_settings_never_make_paid_request(changes):
 
 async def test_route_registry_expansion_preserves_existing_admin_opt_outs():
     # Snapshot of the prior complete registry, with deliberate admin choices.
-    prior = {model: choices[0] for model, choices in route_options().items() if model != "grok-video-1.5"}
+    prior = {model: choices[0] for model, choices in route_options().items()
+             if model not in {"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"}}
     prior["nano-banana-pro"] = ["kie"]
     prior["seedream-5-pro-t2i"] = ["kie", "nexus"]
     for model in ("nano-banana-2", "nano-banana-2-lite", "gpt-image-2-t2i", "gpt-image-2-i2i"):
@@ -375,8 +379,14 @@ async def test_image_url_result_cannot_fetch_internal_host():
     assert caught.value.error_code == "provider_response_invalid"
 
 
-async def test_interrupted_grok_worker_replays_frozen_body_and_original_key(monkeypatch):
-    gid = await new_generation("grok-video-1.5", duration=2, resolution="480p")
+@pytest.mark.parametrize("model", ["grok-video-1.5", "grok-video-t2v", "grok-video-i2v"])
+async def test_interrupted_grok_worker_replays_frozen_body_and_original_key(monkeypatch, model):
+    inputs = {"duration": 6, "resolution": "480p"}
+    if model != "grok-video-1.5":
+        inputs["mode"] = "normal"
+    if model == "grok-video-i2v":
+        inputs["image_urls"] = ["https://example.test/first.png"]
+    gid = await new_generation(model, **inputs)
     async with SessionFactory() as session:
         row = await session.get(Generation, gid)
         await Service._freeze_new_submission(session, row)

@@ -56,10 +56,17 @@ class WakeRedis:
     ("nano-banana-pro", ["kie"], "nexus", "kie"),
     ("seedream-5-pro-t2i", ["kie", "nexus"], "nexus", "kie"),
     ("grok-video-1.5", ["neironych", "kie"], "kie", "neironych"),
+    ("grok-video-t2v", ["kie"], "neironych", "kie"),
+    ("grok-video-i2v", ["kie"], "neironych", "kie"),
 ])
 async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
     monkeypatch, model, route, old_provider, new_provider,
 ):
+    inputs = {"duration": 2} if model == "grok-video-1.5" else None
+    if model in {"grok-video-t2v", "grok-video-i2v"}:
+        inputs = {"duration": 6}
+        if model == "grok-video-i2v":
+            inputs["image_urls"] = ["https://example.test/first.png"]
     # A unique setting key leaves all other tests on the bootstrap routes.
     key = f"route-test-{uuid.uuid4()}"
     monkeypatch.setattr("app.services.generation_provider_routing.ROUTES_SETTING_KEY", key)
@@ -129,7 +136,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
                     user_id=user.id,
                     model_id=model,
                     prompt="old snapshot",
-                    parameters={"duration": 2} if model == "grok-video-1.5" else None,
+                    parameters=inputs,
                 )
                 assert old.provider == old_provider
                 first = await client.post(path, json=payload, headers=headers)
@@ -150,7 +157,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
                     user_id=user.id,
                     model_id=model,
                     prompt="new snapshot",
-                    parameters={"duration": 2} if model == "grok-video-1.5" else None,
+                    parameters=inputs,
                 )
                 assert new.provider == new_provider
                 assert new.parameters["_provider_route"] == route

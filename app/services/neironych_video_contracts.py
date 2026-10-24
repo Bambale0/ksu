@@ -30,7 +30,7 @@ def _normalize_grok(input_data: dict[str, Any]) -> dict[str, Any]:
         raise NeironychVideoUnsupportedInput("Unsupported Grok resolution")
     if ratio not in {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}:
         raise NeironychVideoUnsupportedInput("Unsupported Grok aspect ratio")
-    known = {"model", "prompt", "duration", "resolution", "aspect_ratio", "image_urls", "reference_images", "nsfw_checker"}
+    known = {"model", "prompt", "duration", "resolution", "aspect_ratio", "image_urls", "reference_images", "image", "nsfw_checker"}
     if input_data.get("nsfw_checker") not in (None, False):
         raise NeironychVideoUnsupportedInput("Grok content filter cannot be configured through Neironych")
     if any(value not in (None, "", []) for key, value in input_data.items() if key not in known):
@@ -40,6 +40,11 @@ def _normalize_grok(input_data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw_refs, list) and len(raw_refs) > 7:
         raise NeironychVideoUnsupportedInput("Grok supports at most seven image references")
     refs = _reference_list(source, canonical="reference_images", legacy="image_urls", maximum=7)
+    first_frame = source.get("image")
+    if first_frame not in (None, ""):
+        first_frame = _url_item(first_frame, field="image")
+        if refs:
+            raise NeironychVideoContractError("Grok first frame cannot be combined with references")
     if len(refs) > 7 or (refs and resolution == "1080p"):
         raise NeironychVideoUnsupportedInput("Grok references require at most seven images at 480p/720p")
     result: dict[str, Any] = {
@@ -47,6 +52,8 @@ def _normalize_grok(input_data: dict[str, Any]) -> dict[str, Any]:
     }
     if refs:
         result["reference_images"] = refs
+    if first_frame:
+        result["image"] = first_frame
     return result
 
 

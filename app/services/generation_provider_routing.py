@@ -19,6 +19,8 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "gpt-image-2-t2i": ("nexus", "neironych", "kie"),
     "gpt-image-2-i2i": ("nexus", "neironych", "kie"),
     "grok-video-1.5": ("kie", "neironych"),
+    "grok-video-t2v": ("neironych", "kie"),
+    "grok-video-i2v": ("neironych", "kie"),
     "seedream-5-lite-t2i": ("nexus", "kie"),
     "seedream-5-lite-i2i": ("nexus", "kie"),
     "seedream-5-pro-t2i": ("nexus", "kie"),
@@ -44,8 +46,8 @@ def route_options() -> dict[str, list[list[str]]]:
         choices: list[list[str]] = [list(route)]
         if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
             choices.append(["kie", "nexus"])
-        if model == "grok-video-1.5":
-            choices.append(["neironych", "kie"])
+        if model in {"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"}:
+            choices.append(list(reversed(route)))
         for provider in route:
             choice = [provider]
             if choice not in choices:
@@ -90,7 +92,9 @@ async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     if set(stored_routes) - set(_PROVIDER_ROUTES):
         raise ValueError("Unknown managed generation model in stored routes")
     merged = defaults | stored_routes
-    if set(stored_routes) == set(_PROVIDER_ROUTES) - {"grok-video-1.5"}:
+    if set(stored_routes) == set(_PROVIDER_ROUTES) - {
+        "grok-video-1.5", "grok-video-t2v", "grok-video-i2v",
+    }:
         # This feature explicitly expands these four historical defaults. Keep
         # other admin choices (e.g. Kie-primary Seedream) and frozen jobs intact.
         # After the expanded registry is saved, [nexus,kie] remains an opt-out.

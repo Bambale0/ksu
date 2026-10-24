@@ -41,12 +41,13 @@ from app.services.neironych_reference_validation import validate_reference_paylo
 logger = logging.getLogger(__name__)
 
 _SEEDANCE_MODELS = frozenset({"seedance-2.0", "seedance-2.5"})
-_VIDEO_MODELS = _SEEDANCE_MODELS | {"grok-video-1.5"}
+_GROK_MODELS = frozenset({"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"})
+_VIDEO_MODELS = _SEEDANCE_MODELS | _GROK_MODELS
 _IMAGE_MODELS = frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite",
                           "gpt-image-2-t2i", "gpt-image-2-i2i"})
 _HANDLED_MODELS = _VIDEO_MODELS | _IMAGE_MODELS
 _PROVIDER_MODEL_MAP = {"gpt-image-2-t2i": "gpt-image-2", "gpt-image-2-i2i": "gpt-image-2",
-                       "grok-video-1.5": "grok-imagine-video-1.5"}
+                       **{model: "grok-imagine-video-1.5" for model in _GROK_MODELS}}
 _POLICY_MARKERS = (
     "copyright",
     "moderation",
@@ -306,11 +307,22 @@ class NeironychGenerationProviderService:
         raw = GenerationProviderService._input_for(generation)
         endpoint = "/v1/videos/generations"
         if model_id in _VIDEO_MODELS:
-            if model_id == "grok-video-1.5":
+            if model_id in _GROK_MODELS:
                 for field in ("image_urls", "reference_images"):
                     if field in raw and isinstance(raw[field], list):
                         raw[field] = [cls._public_reference_url(str(item.get("url") if isinstance(item, dict) else item))
                                       for item in raw[field]]
+                if model_id in {"grok-video-t2v", "grok-video-i2v"}:
+                    if raw.get("mode") not in (None, "", "normal"):
+                        raise NeironychVideoUnsupportedInput("Neironych cannot represent this Grok mode")
+                    # 'normal' is the neutral legacy selector, not an upstream
+                    # control. Keep it in generation inputs for a possible Kie fallback.
+                    raw.pop("mode", None)
+                if model_id == "grok-video-i2v" and raw.get("image_urls"):
+                    images = raw.pop("image_urls")
+                    if len(images) != 1:
+                        raise NeironychVideoUnsupportedInput("Grok I2V requires exactly one first frame")
+                    raw["image"] = {"url": images[0]}
             payload = normalize_neironych_video_input(model, raw)
             if model_id in _SEEDANCE_MODELS:
                 await validate_reference_payload(model, payload)
