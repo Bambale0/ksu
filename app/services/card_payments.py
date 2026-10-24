@@ -757,17 +757,24 @@ class CardPaymentService:
         expected_id = expected_external_id or str(payment.external_id)
         if external_id and external_id != expected_id:
             raise CardInvoiceMismatchError("invoice id", expected_id, external_id)
-        try:
-            amount = CardCheckoutClient.extract_amount(invoice)
-        except PaymentProviderError as exc:
-            # A known remote identity must still be durably retained on create
-            # when the provider returns an invalid monetary value.
-            raise CardInvoiceMismatchError("amount", str(payment.amount), "invalid") from exc
-        if amount is not None and amount != Decimal(payment.amount):
-            raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
-        currency = CardCheckoutClient.extract_currency(invoice)
-        if currency is not None and currency != payment.currency.upper():
-            raise CardInvoiceMismatchError("currency", payment.currency.upper(), currency)
+        # Never let a matching preferred representation hide a conflicting
+        # receipt or nested money value in the same authoritative response.
+        money_sources = [invoice]
+        money_sources.extend(
+            value for key in ("amount", "amountTotal", "receipt")
+            if isinstance(value := invoice.get(key), dict)
+        )
+        for money in money_sources:
+            try:
+                amount = CardCheckoutClient.extract_amount(money)
+            except PaymentProviderError as exc:
+                # Retain the known remote id even if its total is malformed.
+                raise CardInvoiceMismatchError("amount", str(payment.amount), "invalid") from exc
+            if amount is not None and amount != Decimal(payment.amount):
+                raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
+            currency = CardCheckoutClient.extract_currency(money)
+            if currency is not None and currency != payment.currency.upper():
+                raise CardInvoiceMismatchError("currency", payment.currency.upper(), currency)
 
     @classmethod
     async def _reject_mismatched_invoice(

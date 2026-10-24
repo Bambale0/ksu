@@ -385,3 +385,43 @@ async def test_concurrent_checkout_replay_never_exposes_unvalidated_invoice_link
             resume.set()
             with pytest.raises(PaymentProviderValidationError):
                 await creation
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invoice_money",
+    [
+        {"amountTotal": {"amount": 1087, "currency": "RUB"},
+         "receipt": {"amount": 1086.96, "currency": "RUB"}},
+        {"amountTotal": {"amount": 1087, "currency": "RUB"},
+         "receipt": {"amount": 1087, "currency": "USD"}},
+        {"amount": 1087, "currency": "RUB",
+         "amountTotal": {"amount": 1086.96, "currency": "RUB"}},
+        {"amount": 1087, "currency": "RUB",
+         "receipt": {"amount": "invalid", "currency": "RUB"}},
+        {"amount": {"value": 1087, "currency": "USD"}, "currency": "RUB"},
+    ],
+)
+async def test_matching_total_cannot_hide_a_conflicting_authoritative_money_field(
+    monkeypatch: pytest.MonkeyPatch,
+    invoice_money: dict[str, Any],
+) -> None:
+    async def get_invoice(self: CardCheckoutClient, invoice_id: str) -> dict[str, Any]:
+        return {"id": invoice_id, "status": "PAID", **invoice_money}
+
+    monkeypatch.setattr(CardCheckoutClient, "get_invoice", get_invoice)
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14, first_name="Conflicting money")
+        session.add(user)
+        await session.flush()
+        payment = Payment(
+            user_id=user.id, provider="card", external_id=str(uuid.uuid4()),
+            amount=Decimal("1087.00"), currency="RUB", rox_amount=Decimal("1000"),
+            status="pending", payload={},
+        )
+        session.add(payment)
+        await session.commit()
+        result = await CardPaymentService.reconcile(session, payment_id=payment.id)
+        assert result.status == "failed"
+        assert result.payload["invoice_integrity_error"]["field"] in {"amount", "currency"}
+        assert await session.get(Wallet, user.id) is None

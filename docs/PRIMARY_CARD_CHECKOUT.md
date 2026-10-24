@@ -145,6 +145,8 @@ different values, its id and original response remain stored, but the local atte
 create another invoice or return the rejected link.
 Malformed or non-finite returned amounts also retain the known remote identity with no payable
 link; diagnostics store `invalid` rather than copying an arbitrary raw monetary value.
+If the same response supplies multiple money representations, every supplied amount and currency
+must agree with the intent; a matching `amountTotal` cannot hide a different `receipt` value.
 
 ## Lost create-response recovery
 
