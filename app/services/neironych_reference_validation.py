@@ -34,6 +34,18 @@ def byte_limit(model: str, kind: str) -> int:
     return 100 * 1024 * 1024 if model == "seedance-2.5" else 50_000_000
 
 
+def _check_image_dimensions(model: str, width: int, height: int) -> None:
+    """Enforce model image limits before decoding an MPO or reading a JPEG."""
+    if model == "seedance-2.5" and not (
+        300 <= width <= 6000
+        and 300 <= height <= 6000
+        and 0.4 <= width / height <= 2.5
+    ):
+        raise ReferenceValidationError(
+            "Seedance 2.5 images require 300-6000 px per side and ratio 0.4-2.5"
+        )
+
+
 def inspect_file(model: str, kind: str, path: Path) -> float:
     """Inspect real bytes, not MIME/extension or the success of an HTTP GET.
 
@@ -50,13 +62,7 @@ def inspect_file(model: str, kind: str, path: Path) -> float:
             with Image.open(path) as image:
                 if image.format not in {"JPEG", "PNG"}:
                     raise ReferenceValidationError("Seedance image references must be JPEG or PNG")
-                width, height = image.size
-                if model == "seedance-2.5" and not (
-                    300 <= width <= 6000 and 300 <= height <= 6000 and 0.4 <= width / height <= 2.5
-                ):
-                    raise ReferenceValidationError(
-                        "Seedance 2.5 images require 300-6000 px per side and ratio 0.4-2.5"
-                    )
+                _check_image_dimensions(model, *image.size)
                 image.verify()
         except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
             raise ReferenceValidationError(
@@ -187,6 +193,7 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
         with Image.open(path) as source:
             if source.format != "MPO":
                 return url
+            _check_image_dimensions(model, *source.size)
 
         digest = hashlib.sha256()
         with path.open("rb") as stream:
@@ -205,6 +212,7 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
         with Image.open(path) as source:
             if source.format != "MPO":
                 raise ReferenceValidationError("Seedance reference changed during normalization")
+            _check_image_dimensions(model, *source.size)
             source.seek(0)
             first_frame = ImageOps.exif_transpose(source).convert("RGB")
         try:
