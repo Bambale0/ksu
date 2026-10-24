@@ -569,6 +569,13 @@ class CardPaymentService:
         finally:
             await client.aclose()
 
+        invoice = CardCheckoutClient._unwrap(created.raw)
+        invoice_error: CardInvoiceMismatchError | None = None
+        try:
+            cls._assert_invoice(payment, invoice, expected_external_id=created.external_id)
+        except CardInvoiceMismatchError as exc:
+            invoice_error = exc
+
         payment = await PaymentCreationLifecycle.mark_pending(
             session,
             payment_id=payment.id,
@@ -578,18 +585,18 @@ class CardPaymentService:
                 "route": route or "hosted_checkout",
                 "offer_id": offer.offer_id,
                 "offer_id_source": offer.source,
+                # Validate before the first durable binding: a concurrent replay
+                # or a process crash must never publish a rejected payable link.
+                **({"payment_url": ""} if invoice_error else {}),
             },
             missing_message="Payment disappeared after external invoice creation",
         )
-        invoice = CardCheckoutClient._unwrap(created.raw)
-        try:
-            cls._assert_invoice(payment, invoice)
-        except CardInvoiceMismatchError as exc:
-            await cls._reject_mismatched_invoice(session, payment.id, invoice, exc)
+        if invoice_error is not None:
+            await cls._reject_mismatched_invoice(session, payment.id, invoice, invoice_error)
             raise PaymentProviderValidationError(
                 "Проверка суммы или валюты счёта не пройдена. "
                 "Выберите другой способ оплаты."
-            ) from exc
+            ) from invoice_error
         return payment
 
     @classmethod
@@ -740,10 +747,16 @@ class CardPaymentService:
         return payment
 
     @staticmethod
-    def _assert_invoice(payment: Payment, invoice: dict[str, Any]) -> None:
+    def _assert_invoice(
+        payment: Payment,
+        invoice: dict[str, Any],
+        *,
+        expected_external_id: str | None = None,
+    ) -> None:
         external_id = CardCheckoutClient.extract_invoice_id(invoice)
-        if external_id and external_id != str(payment.external_id):
-            raise CardInvoiceMismatchError("invoice id", str(payment.external_id), external_id)
+        expected_id = expected_external_id or str(payment.external_id)
+        if external_id and external_id != expected_id:
+            raise CardInvoiceMismatchError("invoice id", expected_id, external_id)
         amount = CardCheckoutClient.extract_amount(invoice)
         if amount is not None and amount != Decimal(payment.amount):
             raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))

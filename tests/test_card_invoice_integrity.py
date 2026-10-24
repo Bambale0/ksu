@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -7,10 +8,11 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Payment, User, Wallet, WalletTransaction
-from app.db.session import SessionFactory
+from app.db.session import SessionFactory, engine
 from app.providers.card_checkout import CardCheckoutClient
 from app.providers.payments import (
     CreatedPayment,
@@ -305,3 +307,64 @@ async def test_valid_create_total_and_repeated_reconciliation_credit_only_once(
         assert len(list((await session.scalars(
             select(WalletTransaction).where(WalletTransaction.user_id == user.id)
         )).all())) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_checkout_replay_never_exposes_unvalidated_invoice_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "rox_packages_json", "{}")
+    monkeypatch.setattr(settings, "card_packages_json", '''{
+        "integrity": {"credits":"1000", "bonus_credits":"0",
+        "prices":{"RUB":"1087.00"}, "offer_id":"fixed-integrity"}
+    }''')
+    external_id = str(uuid.uuid4())
+    bound = asyncio.Event()
+    resume = asyncio.Event()
+    calls = 0
+
+    class PausingCommitSession(AsyncSession):
+        async def commit(self) -> None:
+            await super().commit()
+            if self.info.get("binding_paused"):
+                return
+            if any(isinstance(item, Payment) and item.external_id == external_id
+                   for item in self.identity_map.values()):
+                self.info["binding_paused"] = True
+                bound.set()
+                await resume.wait()
+
+    async def get_products(self: CardCheckoutClient) -> dict[str, Any]:
+        return {"items": [{"offers": [{"id": "fixed-integrity"}]}]}
+
+    async def create_invoice(self: CardCheckoutClient, **kwargs: object) -> CreatedPayment:
+        nonlocal calls
+        calls += 1
+        return CreatedPayment(
+            external_id=external_id, payment_url="https://pay.example.invalid/unsafe",
+            raw={"id": external_id, "amountTotal": {"amount": 1086.96, "currency": "RUB"}},
+        )
+
+    monkeypatch.setattr(CardCheckoutClient, "get_products", get_products)
+    monkeypatch.setattr(CardCheckoutClient, "create_invoice", create_invoice)
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14, first_name="Concurrent replay")
+        session.add(user)
+        await session.commit()
+        request = dict(
+            user_id=user.id, package_id="integrity", currency="RUB",
+            billing_email="buyer@example.invalid", request_key=str(uuid.uuid4()),
+        )
+    async with PausingCommitSession(bind=engine, expire_on_commit=False) as admission:
+        creation = asyncio.create_task(CardPaymentService.create(admission, **request))
+        try:
+            await asyncio.wait_for(bound.wait(), timeout=10)
+            async with SessionFactory() as replay_session:
+                replay = await CardPaymentService.create(replay_session, **request)
+                assert replay.external_id == external_id
+                assert not replay.payload.get("payment_url")
+                assert calls == 1
+        finally:
+            resume.set()
+            with pytest.raises(PaymentProviderValidationError):
+                await creation
