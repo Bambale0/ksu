@@ -228,9 +228,17 @@ async def test_seedance_existing_mpo_jpeg_uses_stable_normalized_provider_image(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("dimensions", [(6001, 4000), (6000, 2000), (299, 600)])
+@pytest.mark.parametrize(
+    "model,dimensions,error",
+    [
+        ("seedance-2.5", (6001, 4000), "300-6000"),
+        ("seedance-2.5", (6000, 2000), "300-6000"),
+        ("seedance-2.5", (299, 600), "300-6000"),
+        ("seedance-2.0", (9000, 5000), "safe normalization"),
+    ],
+)
 async def test_oversize_mpo_rejected_before_first_frame_decode(
-    tmp_path, monkeypatch, dimensions,
+    tmp_path, monkeypatch, model, dimensions, error,
 ):
     """A misleadingly small compressed MPO cannot trigger a huge RGB decode."""
     import uuid
@@ -272,14 +280,14 @@ async def test_oversize_mpo_rejected_before_first_frame_decode(
         action_type="generate",
         prompt="Test",
         parameters={
-            "_model_id": "seedance-2.5",
+            "_model_id": model,
             "reference_image_urls": [ReferenceStaticStorage.public_url("oversize.jpg")],
             "duration": 6,
             "resolution": "480p",
             "aspect_ratio": "16:9",
         },
     )
-    with pytest.raises(ReferenceValidationError, match="300-6000"):
+    with pytest.raises(ReferenceValidationError, match=error):
         await NeironychGenerationProviderService._freeze_new_submission(None, row)
     assert not (root / "normalized").exists()
 
