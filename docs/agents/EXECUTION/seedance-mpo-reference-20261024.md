@@ -53,4 +53,4 @@ One other Seedance 2.5 job was first rejected by Nexus HTTP 402 and then failed 
 
 - RED: pre-fix `pytest ... -k seedance_existing_mpo` failed on `ReferenceValidationError: ... JPEG or PNG` at `inspect_file`.
 - GREEN: isolated worktree `APP_ENV=test KSU_ALLOW_TEST_DATABASE=1 python -m pytest -q tests/test_neironych_reference_validation.py` → **14 passed**; no production database use.
-- Skills: local `code-showcase-systematic-debugging`; remote Bambale0/skills `diagnosing-bugs` and `tdd`; Bambale0/claw architecture/safety, dev-agents-pack debugger/test guidance; wondelai `working-with-legacy-code` seam coverage; agentskills standard (progressive discovery); anthropics catalog inspected, no relevant production backend/video specific skill. 
+- Skills: local `code-showcase-systematic-debugging`; remote Bambale0/skills `diagnosing-bugs` and `tdd`; Bambale0/claw architecture/safety, dev-agents-pack debugger/test guidance; wondelai `working-with-legacy-code` seam coverage; agentskills standard (progressive discovery); anthropics catalog inspected, no relevant production backend/video specific skill.
