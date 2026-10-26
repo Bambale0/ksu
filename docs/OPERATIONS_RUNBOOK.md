@@ -564,3 +564,27 @@ route and revision. Changes are effective on the next admission without a
 restart and cannot move existing work, even if it has not submitted yet. For an
 operational rollback, select a single provider for new work and let already
 accepted jobs drain. Keep both provider credentials/adapters until they finish.
+
+### Neironych cash-balance alert
+
+The notification worker performs one partner-authenticated, read-only
+`GET /v1/balance` every `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS` (300 seconds by
+default). It compares the provider's cash `balance_rub`, not ROX, customer
+wallets, the credit limit or available credit. One warning is queued when cash
+is at or below the threshold, one recovery is queued after it rises above, and
+the next drop re-arms the warning. Provider errors never fabricate a zero.
+
+In web admin **Настройки**, choose **Алерт Нейроныча** to enable/disable the
+monitor or change the exact RUB threshold. Saving requires `runtime.manage`, a
+fresh MFA step-up, confirmation and an idempotency key. The policy is audited in
+`AdminRuntimeSetting`; revision conflicts require a reload. Before its first
+save, `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB=1000.00` is the bootstrap default.
+Do not disable the monitor by removing `NEIRONYCH_API_KEY`, because generation
+also uses that partner credential.
+
+Warnings go only to an active `owner` whose Telegram ID remains in
+`ADMIN_BOOTSTRAP_TELEGRAM_IDS`. The delivery path rechecks that authorization,
+uses the durable Telegram outbox and ignores optional customer marketing/mute
+preferences for these operational messages. Logs classify auth, missing route,
+rate-limit, upstream, transport, timeout and invalid-response failures without
+including credentials or response bodies.

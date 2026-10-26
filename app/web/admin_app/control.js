@@ -999,8 +999,40 @@
   async function renderRuntime() {
     const data = await api("/api/v1/admin/runtime");
     const subscription = Boolean(data.subscription_required?.enabled);
+    const balanceAlert = data.neironych_balance_alert || {
+      enabled: true, threshold_rub: "1000.00", revision: 1,
+    };
     const body = pre(data);
     const controls = actions(
+      button("Алерт Нейроныча", "table-action", () => {
+        openForm({
+          title: "Баланс Нейроныча",
+          submitLabel: "Сохранить алерт",
+          fields: [
+            {
+              name: "enabled", label: "Состояние", type: "select",
+              value: String(Boolean(balanceAlert.enabled)),
+              options: [["true", "Включён"], ["false", "Выключен"]],
+            },
+            {
+              name: "threshold_rub", label: "Порог, ₽", type: "number",
+              value: String(balanceAlert.threshold_rub || "1000.00"), step: "0.01",
+            },
+          ],
+          onSubmit: async (values) => {
+            await mutate("/api/v1/admin/runtime/neironych-balance-alert", {
+              body: {
+                enabled: values.enabled === "true",
+                threshold_rub: values.threshold_rub,
+                expected_revision: balanceAlert.revision,
+              },
+              label: "Изменить порог алерта баланса Нейроныча?",
+              sensitive: true,
+            });
+            await renderRuntime();
+          },
+        });
+      }),
       button("Провайдеры генерации", "table-action", () => {
         const config = data.generation_provider_routes;
         if (!config?.routes || !config?.options) return toast("Маршруты недоступны. Обновите страницу.", "error");

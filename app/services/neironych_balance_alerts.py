@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.admin_models import AdminRuntimeSetting
 from app.db.models import AdminAccount, Notification, User
 from app.services.notifications import NotificationService
 
@@ -20,7 +21,9 @@ logger = logging.getLogger(__name__)
 _LOW_KIND = "neironych_balance_low"
 _RECOVERED_KIND = "neironych_balance_recovered"
 _EPISODE_KINDS = (_LOW_KIND, _RECOVERED_KIND)
+BALANCE_ALERT_SETTING_KEY = "neironych_balance_alert"
 _BALANCE_LOCK = 9183001000  # Stable Postgres advisory lock namespace for this one provider.
+_MAX_THRESHOLD_RUB = Decimal("100000000.00")
 
 
 class NeironychBalanceResponseError(ValueError):
@@ -31,6 +34,20 @@ class NeironychBalanceResponseError(ValueError):
 class NeironychBalanceSnapshot:
     cash_rub: Decimal
     available_rub: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class NeironychBalanceAlertPolicy:
+    enabled: bool
+    threshold_rub: Decimal
+    revision: int
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "enabled": self.enabled,
+            "threshold_rub": f"{self.threshold_rub:.2f}",
+            "revision": self.revision,
+        }
 
 
 def _rub_amount(value: object) -> Decimal:
@@ -56,12 +73,58 @@ def _rub_amount(value: object) -> Decimal:
     return amount
 
 
+def _threshold_amount(value: object) -> Decimal:
+    amount = _rub_amount(value)
+    exponent = amount.as_tuple().exponent
+    if amount < 0 or amount > _MAX_THRESHOLD_RUB or exponent < -2:
+        raise NeironychBalanceResponseError("Neironych alert threshold is outside accepted range")
+    return amount.quantize(Decimal("0.01"))
+
+
+def balance_alert_policy(
+    *, enabled: object, threshold_rub: object, revision: object
+) -> NeironychBalanceAlertPolicy:
+    if not isinstance(enabled, bool):
+        raise NeironychBalanceResponseError("Neironych alert enabled flag is invalid")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        raise NeironychBalanceResponseError("Neironych alert revision is invalid")
+    return NeironychBalanceAlertPolicy(
+        enabled=enabled,
+        threshold_rub=_threshold_amount(threshold_rub),
+        revision=revision,
+    )
+
+
 def _bootstrap_owner_ids() -> set[int]:
     raw = settings.admin_bootstrap_telegram_ids.split(",")
     return {int(item.strip()) for item in raw if item.strip().isdigit() and int(item.strip()) > 0}
 
 
 class NeironychBalanceAlertService:
+    @staticmethod
+    async def acquire_lock(session: AsyncSession) -> None:
+        await session.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": _BALANCE_LOCK})
+
+    @staticmethod
+    async def policy(session: AsyncSession) -> NeironychBalanceAlertPolicy:
+        row = await session.get(
+            AdminRuntimeSetting,
+            BALANCE_ALERT_SETTING_KEY,
+            populate_existing=True,
+        )
+        if row is None:
+            return balance_alert_policy(
+                enabled=True,
+                threshold_rub=settings.neironych_balance_alert_threshold_rub,
+                revision=1,
+            )
+        value = row.value if isinstance(row.value, dict) else {}
+        return balance_alert_policy(
+            enabled=value.get("enabled"),
+            threshold_rub=value.get("threshold_rub"),
+            revision=value.get("revision"),
+        )
+
     @staticmethod
     async def fetch(*, client: httpx.AsyncClient | None = None) -> NeironychBalanceSnapshot:
         """Read own partner balance. No admin key, no user wallet and no paid POST."""
@@ -131,10 +194,17 @@ class NeironychBalanceAlertService:
         from app.db.session import SessionFactory
 
         async with SessionFactory() as session:
-            await session.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": _BALANCE_LOCK})
+            await NeironychBalanceAlertService.acquire_lock(session)
+            policy = await NeironychBalanceAlertService.policy(session)
+            if not policy.enabled:
+                return 0
             snapshot = await NeironychBalanceAlertService.fetch()
-            count = await NeironychBalanceAlertService.enqueue(session, snapshot)
+            count = await NeironychBalanceAlertService._enqueue_locked(session, snapshot, policy)
             await session.commit()
+            logger.info(
+                "neironych_balance_poll_succeeded cash_rub=%s threshold_rub=%s queued=%s",
+                str(snapshot.cash_rub), str(policy.threshold_rub), count,
+            )
             return count
 
     @staticmethod
@@ -145,7 +215,19 @@ class NeironychBalanceAlertService:
         NotificationService creates the inbox record and Telegram delivery
         together in this transaction. The caller commits/rolls back atomically.
         """
-        threshold = Decimal(settings.neironych_balance_alert_threshold_rub)
+        await NeironychBalanceAlertService.acquire_lock(session)
+        policy = await NeironychBalanceAlertService.policy(session)
+        if not policy.enabled:
+            return 0
+        return await NeironychBalanceAlertService._enqueue_locked(session, snapshot, policy)
+
+    @staticmethod
+    async def _enqueue_locked(
+        session: AsyncSession,
+        snapshot: NeironychBalanceSnapshot,
+        policy: NeironychBalanceAlertPolicy,
+    ) -> int:
+        threshold = policy.threshold_rub
         if not snapshot.cash_rub.is_finite() or not snapshot.available_rub.is_finite():
             raise NeironychBalanceResponseError("Balance is not finite")
         owners = _bootstrap_owner_ids()
@@ -153,9 +235,6 @@ class NeironychBalanceAlertService:
             logger.warning("neironych_balance_alert_no_bootstrap_owner_configured")
             return 0
 
-        # The advisory xact lock serializes checks across duplicated workers or
-        # overlapping restarts; the notification history survives worker restarts.
-        await session.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": _BALANCE_LOCK})
         recipients = list((await session.scalars(
             select(User)
             .join(AdminAccount, AdminAccount.user_id == User.id)

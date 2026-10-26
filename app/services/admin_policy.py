@@ -121,6 +121,9 @@ ACTION_POLICIES: dict[str, AdminActionPolicy] = {
     "prompts.moderate": AdminActionPolicy("prompts.manage", confirmation_required=True),
     "social.moderate": AdminActionPolicy("social.moderate", confirmation_required=True),
     "runtime.reload": AdminActionPolicy("runtime.manage", confirmation_required=True),
+    "runtime.neironych_balance_alert": AdminActionPolicy(
+        "runtime.manage", confirmation_required=True, step_up_required=True
+    ),
 }
 
 

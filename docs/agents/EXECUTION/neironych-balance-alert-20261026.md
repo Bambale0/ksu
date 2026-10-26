@@ -10,8 +10,8 @@ Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale
 
 - Reuse `app/workers/notifications.py`'s single poll loop and durable `NotificationService.create`/Telegram outbox (including retry/lease/reachability), no new scheduler, sidecar, migration, bypass, bot token, direct Telegram POST or admin token.
 - Recipient: current **active owner** account linked to the configured `ADMIN_BOOTSTRAP_TELEGRAM_IDS` (production presently one ID matching one owner). No IDs in source, and no broadcast of sensitive balance to other admin accounts.
-- Source: `settings.neironych_api_key` (partner key already used for generation), `GET` `/api/v1/billing/self/balance`. Strict `Decimal` RUB, compare `balance_rub` inclusive at 1000.00; do not inflate with `credit_limit_rub`. HTTPS endpoint, timeouts, no raw body or credentials in logs. No paid generation calls.
-- Every 300 seconds by default (configurable via `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS`). Default threshold 1000 RUB (configurable via `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB`). No configuration in frontend; product-visible UI or customer notifications unchanged.
+- Source: `settings.neironych_api_key` (partner key already used for generation), partner-authenticated `GET /v1/balance`. Strict `Decimal` RUB, compare `balance_rub` inclusive at the configured threshold; do not inflate with `credit_limit_rub`. HTTPS endpoint, timeouts, no raw body or credentials in logs. No paid generation calls.
+- Every 300 seconds by default (bounded through `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS`). The enabled flag and threshold are stored in the existing audited `AdminRuntimeSetting` control plane, exposed in the protected web admin with optimistic revision, explicit confirmation, fresh MFA step-up and idempotent command handling. `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB=1000.00` is only the bootstrap fallback when no admin policy exists, so first deployment remains safe without manual SQL.
 - Persist alert state using the **latest per-recipient notification** of kinds `neironych_balance_low` or `neironych_balance_recovered`. One low warning per episode; one recovery after a recheck > threshold; next drop re-arms warning. PostgreSQL transaction advisory lock prevents duplicates across worker overlaps/restarts. Existing outbox deliveries are durable and retried. Important: *at-least-once Telegram*, not guaranteed exactly-once in the send/commit crash window.
 - Operational kind bypasses users' optional marketing/notification preferences; disabled accounts receive nothing. No other user sees the provider's cash balance.
 - Failure handling: absent key, malformed response/NaN, 401/403, 5xx, timeout and absent admin recipient produce safe diagnostic log (error type/code only), **never** false low/recovered signals; next polling cycle retries. Existing notification worker must keep processing customer deliveries.
@@ -25,9 +25,10 @@ Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale
 | Domain | <=1000, >1000, negative, Decimal precision, NaN rejection |
 | HTTP | provider MockTransport, partner key Bearer only, no paid POST, no token logged, HTTP/status failure |
 | DB/outbox | active configured owner only, idempotent repeat/restart, recovery re-arm, Notification and NotificationDelivery atomic |
-| Security | no admin credential or other admin fanout, inactive owner excluded, notification preference bypass only for operational kinds |
+| Security | no admin credential or other admin fanout, inactive owner excluded, notification preference bypass only for operational kinds; policy write requires runtime permission + MFA step-up + confirmation |
 | Worker | due polling even under idle notifications, bounded fetch failures do not stop queue |
 | Migration | N/A; uses current Notification and Delivery schema |
+| Admin/config | DB-backed enabled/threshold policy, exact decimal validation, optimistic revision and replay-safe audited write; env fallback is 1000 RUB |
 | Pricing | no user ROX/wallet, paid generation or provider routes changed |
 | Performance | bounded GET every 300s per worker; advisory transaction and indexed recipient queries |
 | Release | exact-head CI, review, merge-main 6 gates, upstream dependency deployed first, exact-image deployment and health |
@@ -37,6 +38,7 @@ Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-ins
 
 ## Verification evidence
 
+- Current admin-control slice: added deterministic service/API/browser regressions for DB policy, disable behavior, exact threshold, permission, MFA step-up, confirmation, optimistic revision, idempotent replay and the real form submission. On the Windows handoff host, Node syntax checks and `git diff --check` pass. PostgreSQL tests, Ruff, full compile and browser execution must run on Linux CI because this host has no Docker/PostgreSQL and its default Python is 3.7; do not treat the earlier 15-test result below as verification of the newer admin-control commit.
 - Neironych provider [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133): 65 isolated ASGI/documentation/security tests pass on the final public /v1/balance route; Ruff pass.
 - KSU isolated PostgreSQL 17 with Alembic migrations: `tests/test_neironych_balance_alerts.py` **15 passed**, including exact Decimal boundary, malformed response fail-closed, owner-only routing, one-shot dedupe and recovered re-arm, successful owner Telegram delivery despite muted preferences, and concurrency guard via Postgres advisory lock. Ruff, compileall and `alembic check` passed. No production database written and no live provider/paid generation used in tests.
 - Recipient in production verified read-only: precisely one configured bootstrap Telegram owner matches an active owner account. The broader admin account population must not receive these alerts.

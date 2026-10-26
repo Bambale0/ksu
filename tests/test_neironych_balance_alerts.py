@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy import select
 
+from app.api.admin_deps import get_admin_context_base
 from app.core.config import settings
-from app.db.models import AdminAccount, Notification, User
+from app.db.admin_models import AdminCommand, AdminRuntimeSetting
+from app.db.models import AdminAccount, AdminSession, Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.session import SessionFactory
+from app.main import app
 from app.services.neironych_balance_alerts import (
     NeironychBalanceAlertService,
     NeironychBalanceResponseError,
@@ -377,4 +382,168 @@ async def test_concurrent_pollers_sample_provider_in_transaction_order(
             .order_by(Notification.created_at.asc())
         )).all())
         assert [item.kind for item in rows] == ["neironych_balance_low", "neironych_balance_recovered"]
+
+
+@pytest.mark.asyncio
+async def test_db_runtime_policy_controls_threshold_and_can_disable_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setting_key = f"neironych-balance-alert-{uuid4()}"
+    monkeypatch.setattr(
+        "app.services.neironych_balance_alerts.BALANCE_ALERT_SETTING_KEY", setting_key
+    )
+    monkeypatch.setattr("app.services.admin_runtime.BALANCE_ALERT_SETTING_KEY", setting_key)
+    owner_tg = 99500000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="PolicyOwner")
+        session.add(owner)
+        await session.flush()
+        account = AdminAccount(user_id=owner.id, role="owner", is_active=True)
+        session.add(account)
+        await session.flush()
+        session.add(AdminRuntimeSetting(
+            key=setting_key,
+            value={"enabled": True, "threshold_rub": "900.00", "revision": 4},
+            updated_by_admin_id=account.id,
+        ))
+        await session.commit()
+        owner_id = owner.id
+
+    async with SessionFactory() as session:
+        policy = await NeironychBalanceAlertService.policy(session)
+        assert policy.enabled is True
+        assert policy.threshold_rub == Decimal("900.00")
+        assert policy.revision == 4
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("950.00"), Decimal("950.00"))
+        ) == 0
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("900.00"), Decimal("900.00"))
+        ) == 1
+        await session.commit()
+
+        row = await session.get(AdminRuntimeSetting, setting_key)
+        row.value = {"enabled": False, "threshold_rub": "900.00", "revision": 5}
+        await session.commit()
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("0.00"), Decimal("0.00"))
+        ) == 0
+        await session.commit()
+
+        notices = list((await session.scalars(select(Notification).where(
+            Notification.user_id == owner_id,
+            Notification.kind.in_(["neironych_balance_low", "neironych_balance_recovered"]),
+        ))).all())
+        assert [notice.kind for notice in notices] == ["neironych_balance_low"]
+
+
+@pytest.mark.asyncio
+async def test_admin_api_updates_balance_policy_with_mfa_revision_and_idempotency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setting_key = f"neironych-balance-admin-{uuid4()}"
+    monkeypatch.setattr(
+        "app.services.neironych_balance_alerts.BALANCE_ALERT_SETTING_KEY", setting_key
+    )
+    monkeypatch.setattr("app.services.admin_runtime.BALANCE_ALERT_SETTING_KEY", setting_key)
+    monkeypatch.setattr(
+        settings, "admin_security_key", "test-admin-security-key-0000000000000000000000"
+    )
+    now = datetime.now(UTC)
+
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid4().int % 10**14, first_name="Balance policy admin")
+        session.add(user)
+        await session.flush()
+        admin = AdminAccount(
+            user_id=user.id,
+            role="auditor",
+            is_active=True,
+            mfa_enabled=True,
+            permission_overrides={},
+        )
+        session.add(admin)
+        await session.flush()
+        admin_session = AdminSession(
+            admin_id=admin.id,
+            token_hash=uuid4().hex,
+            created_at=now,
+            last_seen_at=now,
+            expires_at=now + timedelta(hours=1),
+            idle_expires_at=now + timedelta(hours=1),
+            mfa_verified=True,
+            step_up_until=now + timedelta(minutes=5),
+            session_version=1,
+        )
+        session.add(admin_session)
+        await session.commit()
+        context = SimpleNamespace(account=admin, session=admin_session, user=user)
+
+        async def authenticated_context():
+            return context
+
+        app.dependency_overrides[get_admin_context_base] = authenticated_context
+        try:
+            path = "/api/v1/admin/runtime/neironych-balance-alert"
+            payload = {"enabled": True, "threshold_rub": "875.50", "expected_revision": 1}
+            key = f"balance-policy-{uuid4()}"
+            headers = {"Idempotency-Key": key, "X-Admin-Confirm": "confirmed"}
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                denied = await client.post(path, json=payload, headers=headers)
+                assert denied.status_code == 403
+
+                admin.role = "admin"
+                admin_session.step_up_until = None
+                await session.commit()
+                denied = await client.post(path, json=payload, headers=headers)
+                assert denied.status_code == 403 and "step-up" in denied.text
+
+                admin_session.step_up_until = now + timedelta(minutes=5)
+                await session.commit()
+                denied = await client.post(path, json=payload, headers={"Idempotency-Key": key})
+                assert denied.status_code == 403
+                invalid = await client.post(
+                    path,
+                    json={**payload, "threshold_rub": "875.501"},
+                    headers=headers | {"Idempotency-Key": str(uuid4())},
+                )
+                assert invalid.status_code == 422
+
+                first = await client.post(path, json=payload, headers=headers)
+                assert first.status_code == 200, first.text
+                assert first.json() == {
+                    "enabled": True,
+                    "threshold_rub": "875.50",
+                    "revision": 2,
+                    "idempotency_replayed": False,
+                }
+                replay = await client.post(path, json=payload, headers=headers)
+                assert replay.status_code == 200
+                assert replay.json()["idempotency_replayed"] is True
+                stale = await client.post(
+                    path,
+                    json=payload,
+                    headers=headers | {"Idempotency-Key": str(uuid4())},
+                )
+                assert stale.status_code == 422
+                current = await client.get("/api/v1/admin/runtime")
+                assert current.status_code == 200
+                assert current.json()[setting_key] == {
+                    "enabled": True,
+                    "threshold_rub": "875.50",
+                    "revision": 2,
+                }
+
+            command = await session.scalar(
+                select(AdminCommand).where(AdminCommand.idempotency_key == key)
+            )
+            assert command is not None
+            assert command.action == "runtime.neironych_balance_alert"
+            assert command.status == "completed"
+        finally:
+            app.dependency_overrides.pop(get_admin_context_base, None)
 
