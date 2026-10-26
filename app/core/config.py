@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     neironych_poll_seconds: int = Field(default=10, ge=10, le=60)
     neironych_reference_validation_timeout_seconds: int = Field(default=60, ge=10, le=300)
     neironych_api_base_url: str = "https://api.xn--e1aikcel5c5a.online"
+    neironych_balance_alert_threshold_rub: Decimal = Field(default=Decimal("1000.00"), ge=0)
+    neironych_balance_alert_poll_seconds: int = Field(default=300, ge=60, le=3600)
     neironych_test_hard_timeout_seconds: int = Field(default=3600, ge=60, le=14400)
     neironych_test_max_video_bytes: int = Field(
         default=250 * 1024 * 1024,
