@@ -241,3 +241,140 @@ async def test_concurrent_alert_checks_do_not_queue_duplicate_warnings(
         ))).all()))
     assert count == 1
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("untrusted", [
+    "-1e999999999",
+    "1e999999999",
+    "-1e-999999999",
+    "9" * 200,
+    "999999999999999999.00",
+    "0.00000000001",
+])
+async def test_balance_untrusted_decimal_cannot_expand_into_unbounded_telegram_text(
+    monkeypatch: pytest.MonkeyPatch, untrusted: str,
+) -> None:
+    monkeypatch.setattr(settings, "neironych_api_base_url", "https://neironych.example")
+    monkeypatch.setattr(settings, "neironych_api_key", "testing-partner-secret")
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+            "partner_id": "test-owned-partner",
+            "balance_rub": untrusted,
+            "available_balance_rub": "0.00",
+        }))
+    ) as client:
+        with pytest.raises(NeironychBalanceResponseError):
+            await NeironychBalanceAlertService.fetch(client=client)
+
+
+@pytest.mark.asyncio
+async def test_revoked_bootstrap_owner_cannot_read_or_receive_pending_balance_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    from app.api.v1.notifications import (
+        list_notifications,
+        mark_all_notifications_read,
+        mark_notification_read,
+    )
+    from app.workers.notifications import _process_delivery
+    from test_notification_delivery import FakeBot
+
+    owner_tg = 99300000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        user = User(telegram_id=owner_tg, first_name="RevocableOwner")
+        session.add(user)
+        await session.flush()
+        account = AdminAccount(user_id=user.id, role="owner", is_active=True)
+        session.add(account)
+        await session.flush()
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("999.00"), Decimal("999.00"))
+        ) == 1
+        await session.commit()
+        notifications_before = await list_notifications(
+            user=user, session=session, unread_only=False, limit=50, offset=0
+        )
+        assert len(notifications_before["items"]) == 1
+        notification = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == user.id,
+                Notification.kind == "neironych_balance_low",
+            )
+        )
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(NotificationDelivery.notification_id == notification.id)
+        )
+        delivery.status = "sending"
+        delivery.attempts = 1
+        notice_id = notification.id
+        delivery_id = delivery.id
+        account.role = "admin"
+        await session.commit()
+
+        after = await list_notifications(
+            user=user, session=session, unread_only=False, limit=50, offset=0
+        )
+        assert after["items"] == []
+        assert after["unread_count"] == 0
+        with pytest.raises(HTTPException) as exc:
+            await mark_notification_read(notification_id=notice_id, user=user, session=session)
+        assert exc.value.status_code == 404
+        assert (await mark_all_notifications_read(user=user, session=session))["updated"] == 0
+
+    bot = FakeBot()
+    await _process_delivery(bot, delivery_id)
+    assert not bot.calls
+    async with SessionFactory() as session:
+        updated = await session.get(NotificationDelivery, delivery_id)
+        assert updated.status == "suppressed"
+        assert updated.last_error == "owner_authorization_revoked"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_pollers_sample_provider_in_transaction_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    owner_tg = 99400000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="OrderedSamplingOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.commit()
+        owner_id = owner.id
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[int] = []
+
+    async def fake_balance_fetch(*, client=None) -> NeironychBalanceSnapshot:
+        calls.append(len(calls))
+        if len(calls) == 1:
+            started.set()
+            await release.wait()
+            return NeironychBalanceSnapshot(Decimal("999.00"), Decimal("999.00"))
+        return NeironychBalanceSnapshot(Decimal("1250.00"), Decimal("1250.00"))
+
+    monkeypatch.setattr(NeironychBalanceAlertService, "fetch", fake_balance_fetch)
+
+    task1 = asyncio.create_task(NeironychBalanceAlertService.poll_once())
+    await asyncio.wait_for(started.wait(), timeout=3)
+    task2 = asyncio.create_task(NeironychBalanceAlertService.poll_once())
+    await asyncio.sleep(0.075)
+    assert len(calls) == 1, "Second HTTP call must wait for the first sample and transition"
+    release.set()
+    assert await asyncio.wait_for(asyncio.gather(task1, task2), timeout=6) == [1, 1]
+
+    async with SessionFactory() as session:
+        rows = list((await session.scalars(select(Notification)
+            .where(Notification.user_id == owner_id,
+                   Notification.kind.in_(["neironych_balance_low", "neironych_balance_recovered"]))
+            .order_by(Notification.created_at.asc())
+        )).all())
+        assert [item.kind for item in rows] == ["neironych_balance_low", "neironych_balance_recovered"]
+
