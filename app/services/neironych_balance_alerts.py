@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.observability import request_id_var
 from app.db.admin_models import AdminRuntimeSetting
 from app.db.models import AdminAccount, Notification, User
 from app.services.notifications import NotificationService
@@ -145,9 +146,10 @@ class NeironychBalanceAlertService:
             )
         assert client is not None
         try:
-            response = await client.get(
-                endpoint, headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}
-            )
+            headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+            if request_id := request_id_var.get():
+                headers["X-Request-ID"] = request_id
+            response = await client.get(endpoint, headers=headers)
             response.raise_for_status()
             try:
                 payload = response.json()
@@ -289,12 +291,12 @@ class NeironychBalanceAlertService:
                 kind = _RECOVERED_KIND
             else:
                 continue
-            await NotificationService.create(
+            notice = await NotificationService.create(
                 session, user_id=user.id, kind=kind, title=title, body=body, purpose="transactional"
             )
             count += 1
             logger.info(
-                "neironych_balance_alert_queued kind=%s cash_rub=%s threshold_rub=%s",
-                kind, str(snapshot.cash_rub), str(threshold),
+                "neironych_balance_alert_queued notification_id=%s kind=%s cash_rub=%s threshold_rub=%s",
+                str(notice.id), kind, str(snapshot.cash_rub), str(threshold),
             )
         return count

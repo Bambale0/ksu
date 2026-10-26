@@ -51,3 +51,32 @@ Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-ins
 - Independent read-only review found no missing cash/owner/policy behavior. Reliability review found no total poll deadline and stale delayed balance notices; security review found a revoked-owner profile badge inconsistency. Regressions cover the deadline, current-episode check, shared sensitive-kind scope, badge filter, correlation ID and duration logs.
 - Cloud Python 3.12 isolated verification before the final observability addition: Ruff, compileall and whitespace checks passed; **24 passed, 10 deselected** focused non-DB service/worker tests. Exact-final-head CI remains required.
 - Guidance used: `Bambale0/.agents` observability, API integration and Python testing; project `AGENTS.md`; `Bambale0/skills` implement/TDD/review; `Bambale0/claw` backend/release safety; `Bambale0/dev-agents-pack` backend/Telegram/API/test/review; `wondelai/skills` clean code. No skill scripts changed.
+
+
+## Authorized release continuation
+
+The user explicitly authorized merge/deployment and live exact-SHA verification,
+superseding the earlier no-merge/no-deploy task boundary. No unrelated production
+writes or paid generation are authorized. The live balance read never prints keys.
+
+Upstream prerequisite evidence (read-only): deploy run 40303655959 succeeded for
+`b057bb4c0a0c49b45db5124ea1e2c4fe2c3f52f5`; the live provider app APP_REVISION
+matches. An authenticated GET /v1/balance from KSU returned HTTP 200,
+Cache-Control: no-store, partner identity and finite Decimal cash/available fields.
+The upstream auth dependency was inspected: its path performs SELECT only.
+Thus prerequisite availability is verified before KSU activation.
+
+Standards-review follow-up at `c200549493ea65684214ad1c4633e096a9d0c3f4`:
+the per-poll request_id_var/duration logs are present. The provider HTTP read now
+propagates X-Request-ID, and enqueue logs include the created notification_id so
+operators can join the correlated poll to NotificationDelivery. A MockTransport
+regression verifies propagation. No new schema/config migration is required.
+Final exact-head CI and independent Spec/Standards results are recorded in PR #560.
+
+Current guidance refreshed remotely: Bambale0/skills current engineering
+implement/TDD/code-review; Bambale0/claw and Bambale0/dev-agents-pack PR review
+checklists; wondelai/skills release-it timeouts/stability; agentskills/agentskills
+progressive disclosure (no KSU-specific implementation guide); anthropics/skills
+webapp-testing; user-linked Bambale0/.agents fix-review/review-swarm/observability.
+Branch-local .agents instructions/index are absent; .clinerules receiving-code-review
+and verification-before-completion used as fallback. No skill scripts executed.

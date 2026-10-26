@@ -626,3 +626,26 @@ async def test_balance_retry_cannot_deliver_a_superseded_episode(
         assert old.status == "suppressed"
         assert old.last_error == "balance_episode_superseded"
 
+
+
+@pytest.mark.asyncio
+async def test_balance_fetch_propagates_poll_correlation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.observability import request_id_var
+
+    monkeypatch.setattr(settings, "neironych_api_base_url", "https://neironych.example")
+    monkeypatch.setattr(settings, "neironych_api_key", "testing-partner-secret")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-request-id"] == "balance-test-correlation"
+        return httpx.Response(200, json={
+            "partner_id": "test-partner",
+            "balance_rub": "1200.00",
+            "available_balance_rub": "1200.00",
+        })
+
+    token = request_id_var.set("balance-test-correlation")
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            await NeironychBalanceAlertService.fetch(client=client)
+    finally:
+        request_id_var.reset(token)
