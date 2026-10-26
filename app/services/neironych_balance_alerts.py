@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -26,6 +27,7 @@ BALANCE_NOTIFICATION_KINDS = _EPISODE_KINDS
 BALANCE_ALERT_SETTING_KEY = "neironych_balance_alert"
 _BALANCE_LOCK = 9183001000  # Stable Postgres advisory lock namespace for this one provider.
 _MAX_THRESHOLD_RUB = Decimal("100000000.00")
+_MAX_BALANCE_RESPONSE_BYTES = 16 * 1024
 
 
 class NeironychBalanceResponseError(ValueError):
@@ -149,11 +151,30 @@ class NeironychBalanceAlertService:
             headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
             if request_id := request_id_var.get():
                 headers["X-Request-ID"] = request_id
-            response = await client.get(endpoint, headers=headers)
-            response.raise_for_status()
+            async with client.stream("GET", endpoint, headers=headers) as response:
+                response.raise_for_status()
+                declared_length = response.headers.get("content-length")
+                if declared_length is not None:
+                    try:
+                        declared_bytes = int(declared_length)
+                    except ValueError as exc:
+                        raise NeironychBalanceResponseError(
+                            "Neironych balance response has an invalid content length"
+                        ) from exc
+                    if declared_bytes < 0 or declared_bytes > _MAX_BALANCE_RESPONSE_BYTES:
+                        raise NeironychBalanceResponseError(
+                            "Neironych balance response exceeds the accepted size"
+                        )
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > _MAX_BALANCE_RESPONSE_BYTES:
+                        raise NeironychBalanceResponseError(
+                            "Neironych balance response exceeds the accepted size"
+                        )
+                    body.extend(chunk)
             try:
-                payload = response.json()
-            except ValueError as exc:
+                payload = json.loads(bytes(body))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise NeironychBalanceResponseError("Neironych balance response was not JSON") from exc
             if not isinstance(payload, dict):
                 raise NeironychBalanceResponseError("Neironych balance response is not a JSON object")

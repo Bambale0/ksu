@@ -593,6 +593,8 @@ The complete balance poll has a 10-second deadline, including its PostgreSQL
 lock wait and transaction, so a stuck provider cannot indefinitely block customer
 delivery. Every poll gets a correlation ID and logs `duration_ms` on completion
 or failure. `category=deadline` identifies the whole-operation deadline. Delivery
+also streams the provider JSON through a 16 KiB cap, so a compromised upstream
+cannot exhaust worker memory with an oversized response. Delivery
 suppresses older low/recovery retries after a newer observation
 (`balance_episode_superseded`). Disabling the policy stops new alerts; already
 queued current notices remain durable. Revoked owners cannot read or receive

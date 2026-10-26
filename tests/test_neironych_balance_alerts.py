@@ -649,3 +649,31 @@ async def test_balance_fetch_propagates_poll_correlation(monkeypatch: pytest.Mon
             await NeironychBalanceAlertService.fetch(client=client)
     finally:
         request_id_var.reset(token)
+
+
+class _OversizedBalanceStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        yield b'{"partner_id":"test","balance_rub":"1","available_balance_rub":"1","pad":"'
+        yield b"x" * (17 * 1024)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("declared", [True, False])
+async def test_balance_fetch_rejects_oversized_response_before_json_parse(
+    monkeypatch: pytest.MonkeyPatch, declared: bool,
+) -> None:
+    monkeypatch.setattr(settings, "neironych_api_base_url", "https://neironych.example")
+    monkeypatch.setattr(settings, "neironych_api_key", "testing-partner-secret")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if declared:
+            return httpx.Response(
+                200,
+                headers={"Content-Length": str(17 * 1024)},
+                stream=_OversizedBalanceStream(),
+            )
+        return httpx.Response(200, stream=_OversizedBalanceStream())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(NeironychBalanceResponseError, match="exceeds the accepted size"):
+            await NeironychBalanceAlertService.fetch(client=client)
