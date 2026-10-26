@@ -4,6 +4,7 @@ import asyncio
 import html
 import logging
 import re
+import time
 import uuid
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -25,6 +26,7 @@ from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.neironych_balance_alerts import NeironychBalanceAlertService
 from app.services.notifications import NotificationDeliveryService
 from app.services.generation_progress import GENERATION_PROGRESS_KIND, deliver_generation_progress
 from app.services.telegram_generation_media import (
@@ -43,6 +45,8 @@ _PROMPT_TOOL_NOTIFICATION_KINDS = {
 }
 _ADMIN_OPERATIONAL_NOTIFICATION_KINDS = {
     "creator_partnership_admin_application",
+    "neironych_balance_low",
+    "neironych_balance_recovered",
 }
 
 
@@ -622,9 +626,22 @@ async def run() -> None:
         raise RuntimeError("BOT_TOKEN is required for the notification worker")
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(settings.bot_token)
+    next_balance_poll = 0.0
     try:
         while True:
             await _heartbeat(redis)
+            if time.monotonic() >= next_balance_poll:
+                next_balance_poll = time.monotonic() + settings.neironych_balance_alert_poll_seconds
+                try:
+                    snapshot = await NeironychBalanceAlertService.fetch()
+                    async with SessionFactory() as monitor_session:
+                        await NeironychBalanceAlertService.enqueue(monitor_session, snapshot)
+                        await monitor_session.commit()
+                except Exception as exc:  # noqa: BLE001 - monitoring cannot interrupt customer delivery
+                    logger.warning(
+                        "neironych_balance_poll_failed error_type=%s",
+                        type(exc).__name__,
+                    )
             async with SessionFactory() as session:
                 claimed = await NotificationDeliveryService.claim_batch(session)
                 delivery_ids = [row.id for row in claimed]
