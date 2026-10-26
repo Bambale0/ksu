@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.generation_errors import prompt_length_failure_message
 from app.core.logging import configure_logging
-from app.core.observability import record_worker_heartbeat
+from app.core.observability import record_worker_heartbeat, request_id_var
 from app.db.models import Generation, Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
@@ -38,6 +38,9 @@ from app.services.telegram_generation_media import (
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "notification-worker"
+# Whole-poll budget includes advisory-lock wait, HTTP and transaction work.
+# Per-I/O HTTP timeouts alone do not bound lock contention or slow-drip bodies.
+_BALANCE_POLL_TIMEOUT_SECONDS = 10.0
 
 _GENERATION_NOTIFICATION_KINDS = {"generation_succeeded", "generation_failed"}
 _PROMPT_TOOL_NOTIFICATION_KINDS = {
@@ -495,6 +498,15 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                 )
                 await session.commit()
                 return
+            if not await NeironychBalanceAlertService.is_current_notice(session, notification):
+                await NotificationDeliveryService.mark_terminal(
+                    session,
+                    delivery,
+                    status="suppressed",
+                    error="balance_episode_superseded",
+                )
+                await session.commit()
+                return
         preference = await session.get(UserPreference, user.id)
         if (
             preference is not None
@@ -643,8 +655,21 @@ async def run() -> None:
             await _heartbeat(redis)
             if time.monotonic() >= next_balance_poll:
                 next_balance_poll = time.monotonic() + settings.neironych_balance_alert_poll_seconds
+                poll_started = time.monotonic()
+                poll_token = request_id_var.set(f"neironych-balance:{uuid.uuid4()}")
                 try:
-                    await NeironychBalanceAlertService.poll_once()
+                    async with asyncio.timeout(_BALANCE_POLL_TIMEOUT_SECONDS):
+                        queued = await NeironychBalanceAlertService.poll_once()
+                    logger.info(
+                        "neironych_balance_poll_completed queued=%s",
+                        queued,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "neironych_balance_poll_failed category=deadline",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
                 except httpx.HTTPStatusError as exc:
                     status_code = exc.response.status_code
                     category = (
@@ -657,16 +682,26 @@ async def run() -> None:
                     logger.warning(
                         "neironych_balance_poll_failed category=%s status_code=%s",
                         category, status_code,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
                     )
                 except httpx.TimeoutException:
-                    logger.warning("neironych_balance_poll_failed category=timeout")
+                    logger.warning(
+                        "neironych_balance_poll_failed category=timeout",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
                 except httpx.TransportError:
-                    logger.warning("neironych_balance_poll_failed category=transport")
+                    logger.warning(
+                        "neironych_balance_poll_failed category=transport",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
                 except Exception as exc:  # noqa: BLE001 - monitoring cannot interrupt customer delivery
                     logger.warning(
                         "neironych_balance_poll_failed category=invalid_or_internal error_type=%s",
                         type(exc).__name__,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
                     )
+                finally:
+                    request_id_var.reset(poll_token)
             async with SessionFactory() as session:
                 claimed = await NotificationDeliveryService.claim_batch(session)
                 delivery_ids = [row.id for row in claimed]

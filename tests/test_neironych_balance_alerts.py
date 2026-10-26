@@ -323,6 +323,10 @@ async def test_revoked_bootstrap_owner_cannot_read_or_receive_pending_balance_al
         )
         assert after["items"] == []
         assert after["unread_count"] == 0
+        from app.services.account_profile import AccountProfileService
+
+        overview = await AccountProfileService.overview(session, user)
+        assert overview["notifications"]["unread"] == 0
         with pytest.raises(HTTPException) as exc:
             await mark_notification_read(notification_id=notice_id, user=user, session=session)
         assert exc.value.status_code == 404
@@ -546,4 +550,79 @@ async def test_admin_api_updates_balance_policy_with_mfa_revision_and_idempotenc
             assert command.status == "completed"
         finally:
             app.dependency_overrides.pop(get_admin_context_base, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("initial_cash,next_cash", [("999.00", "1250.00"), ("1250.00", "999.00")])
+async def test_balance_retry_cannot_deliver_a_superseded_episode(
+    monkeypatch: pytest.MonkeyPatch, initial_cash: str, next_cash: str,
+) -> None:
+    from aiogram.exceptions import TelegramRetryAfter
+    from aiogram.methods import SendMessage
+
+    from app.workers.notifications import _process_delivery
+    from test_notification_delivery import FakeBot
+
+    owner_tg = 99600000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="RetryOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.commit()
+        owner_id = owner.id
+
+    async def enqueue(cash: str):
+        async with SessionFactory() as session:
+            assert await NeironychBalanceAlertService.enqueue(
+                session, NeironychBalanceSnapshot(Decimal(cash), Decimal(cash))
+            ) == 1
+            await session.commit()
+            notice = await session.scalar(
+                select(Notification)
+                .where(Notification.user_id == owner_id)
+                .order_by(Notification.created_at.desc(), Notification.id.desc())
+                .limit(1)
+            )
+            delivery = await session.scalar(
+                select(NotificationDelivery).where(NotificationDelivery.notification_id == notice.id)
+            )
+            delivery.status = "sending"
+            delivery.attempts = 1
+            await session.commit()
+            return delivery.id
+
+    if initial_cash == "1250.00":
+        await enqueue("999.00")  # A recovery requires a preceding low episode.
+    old_id = await enqueue(initial_cash)
+
+    class RateLimitedBot(FakeBot):
+        async def send_message(self, **kwargs):
+            raise TelegramRetryAfter(
+                method=SendMessage(chat_id=owner_tg, text="fake"),
+                message="retry",
+                retry_after=60,
+            )
+
+    await _process_delivery(RateLimitedBot(), old_id)
+    async with SessionFactory() as session:
+        old = await session.get(NotificationDelivery, old_id)
+        assert old.status == "retry"
+
+    new_id = await enqueue(next_cash)
+    bot = FakeBot()
+    await _process_delivery(bot, new_id)
+    assert len(bot.calls) == 1
+    async with SessionFactory() as session:
+        old = await session.get(NotificationDelivery, old_id)
+        old.status = "sending"  # Model a later retry claim after Telegram RetryAfter.
+        old.attempts += 1
+        await session.commit()
+    await _process_delivery(bot, old_id)
+    assert len(bot.calls) == 1, "An old retry must not contradict the newer delivered state"
+    async with SessionFactory() as session:
+        old = await session.get(NotificationDelivery, old_id)
+        assert old.status == "suppressed"
+        assert old.last_error == "balance_episode_superseded"
 

@@ -4,7 +4,7 @@
 
 Notify the configured KSU owner/admin on Telegram when **Neironych partner cash balance <= 1000.00 RUB**. This is the external provider account's balance, **not** ROX, not user's wallet, and not approved credit limit. There is presently no recurring Neironych balance monitor or reliable partner-key read endpoint in Neironych. The existing Neironych `GET /api/v1/billing/partners/{id}/balance` needs a master admin token and MUST NOT be integrated into KSU.
 
-Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133) adds a partner-authenticated read-only `GET /v1/balance`. Production KSU must not be activated until this endpoint exists in production.
+Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133) adds a partner-authenticated read-only `GET /v1/balance`. Read-only GitHub inspection confirms it merged as `b057bb4c0a0c49b45db5124ea1e2c4fe2c3f52f5`; its final route and tests agree with KSU. This is not production availability evidence. Production KSU must not be activated until the authenticated endpoint works in production.
 
 ## Reuse, scope and decisions
 
@@ -14,6 +14,8 @@ Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale
 - Every 300 seconds by default (bounded through `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS`). The enabled flag and threshold are stored in the existing audited `AdminRuntimeSetting` control plane, exposed in the protected web admin with optimistic revision, explicit confirmation, fresh MFA step-up and idempotent command handling. `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB=1000.00` is only the bootstrap fallback when no admin policy exists, so first deployment remains safe without manual SQL.
 - Persist alert state using the **latest per-recipient notification** of kinds `neironych_balance_low` or `neironych_balance_recovered`. One low warning per episode; one recovery after a recheck > threshold; next drop re-arms warning. PostgreSQL transaction advisory lock prevents duplicates across worker overlaps/restarts. Existing outbox deliveries are durable and retried. Important: *at-least-once Telegram*, not guaranteed exactly-once in the send/commit crash window.
 - Operational kind bypasses users' optional marketing/notification preferences; disabled accounts receive nothing. No other user sees the provider's cash balance.
+- Whole-poll wall-clock deadline: 10 seconds around lock acquisition, HTTP, policy read and transaction. Unlike the per-I/O HTTP timeout this also bounds slow responses and contended locks. Each poll has a correlation ID and duration metric in structured logs.
+- A queued low/recovered retry is suppressed as `balance_episode_superseded` when a newer committed observation exists for that recipient. Owner revocation is rechecked both on delivery and every inbox read/count, including the account profile badge.
 - Failure handling: absent key, malformed response/NaN, 401/403, 5xx, timeout and absent admin recipient produce safe diagnostic log (error type/code only), **never** false low/recovered signals; next polling cycle retries. Existing notification worker must keep processing customer deliveries.
 - If balance is first observed above threshold, no recovery message. On <= threshold, queue immediately on next poll, even on initial run. Strict no-false-positives from credit limit or unavailable provider.
 - Audit: structured monitor events (status, count, safe balance), existing NotificationDelivery state; zero new schema, no key leakage.
@@ -32,7 +34,7 @@ Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale
 | Pricing | no user ROX/wallet, paid generation or provider routes changed |
 | Performance | bounded GET every 300s per worker; advisory transaction and indexed recipient queries |
 | Release | exact-head CI, review, merge-main 6 gates, upstream dependency deployed first, exact-image deployment and health |
-| Rollback | disable via config? Stop monitor by unsetting partner key is NOT suitable because generation needs it. Revert change/redeploy; already queued alerts remain durable. |
+| Rollback | Disable in the protected admin policy; do not unset the generation partner key. Existing current alerts remain durable; superseded or unauthorized notices are suppressed. Code rollback requires a separately controlled deployment; no schema rollback. |
 
 Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-instrumentation, api-integration and python-testing-patterns; KSU primary `Bambale0/skills` implement/tdd/code-review, `Bambale0/claw` safety, `Bambale0/dev-agents-pack` release-manager; `agentskills/agentskills` format; `anthropics/skills` no KSU-specific balance guide; `wondelai/skills` release-it. No executable skill script run.
 
@@ -42,3 +44,10 @@ Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-ins
 - Neironych provider [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133): 65 isolated ASGI/documentation/security tests pass on the final public /v1/balance route; Ruff pass.
 - KSU isolated PostgreSQL 17 with Alembic migrations: `tests/test_neironych_balance_alerts.py` **15 passed**, including exact Decimal boundary, malformed response fail-closed, owner-only routing, one-shot dedupe and recovered re-arm, successful owner Telegram delivery despite muted preferences, and concurrency guard via Postgres advisory lock. Ruff, compileall and `alembic check` passed. No production database written and no live provider/paid generation used in tests.
 - Recipient in production verified read-only: precisely one configured bootstrap Telegram owner matches an active owner account. The broader admin account population must not receive these alerts.
+
+## Continuation review and verification (2026-10-26)
+
+- Audit baseline/head: `ef06c605bc0adec7f55f63337eec99bdef0734f9`, PR base `55e0763fb512474b5c62d2229f465bcc27fb3e1e`. CI run `40340590839` succeeded: Ruff, compile, migrations, ORM parity, focused contracts and **1981 passed** full backend regression. This evidence applies to that head only.
+- Independent read-only review found no missing cash/owner/policy behavior. Reliability review found no total poll deadline and stale delayed balance notices; security review found a revoked-owner profile badge inconsistency. Regressions cover the deadline, current-episode check, shared sensitive-kind scope, badge filter, correlation ID and duration logs.
+- Cloud Python 3.12 isolated verification before the final observability addition: Ruff, compileall and whitespace checks passed; **24 passed, 10 deselected** focused non-DB service/worker tests. Exact-final-head CI remains required.
+- Guidance used: `Bambale0/.agents` observability, API integration and Python testing; project `AGENTS.md`; `Bambale0/skills` implement/TDD/review; `Bambale0/claw` backend/release safety; `Bambale0/dev-agents-pack` backend/Telegram/API/test/review; `wondelai/skills` clean code. No skill scripts changed.

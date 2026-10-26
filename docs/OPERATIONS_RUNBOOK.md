@@ -588,3 +588,16 @@ uses the durable Telegram outbox and ignores optional customer marketing/mute
 preferences for these operational messages. Logs classify auth, missing route,
 rate-limit, upstream, transport, timeout and invalid-response failures without
 including credentials or response bodies.
+
+The complete balance poll has a 10-second deadline, including its PostgreSQL
+lock wait and transaction, so a stuck provider cannot indefinitely block customer
+delivery. Every poll gets a correlation ID and logs `duration_ms` on completion
+or failure. `category=deadline` identifies the whole-operation deadline. Delivery
+suppresses older low/recovery retries after a newer observation
+(`balance_episode_superseded`). Disabling the policy stops new alerts; already
+queued current notices remain durable. Revoked owners cannot read or receive
+balance notices, and those notices do not contribute to their profile unread badge.
+
+Activation prerequisite: provider PR `Bambale0/ooo#133` must be deployed and the
+authenticated `GET /v1/balance` must be verified available. A merged upstream PR
+alone does not clear that gate.

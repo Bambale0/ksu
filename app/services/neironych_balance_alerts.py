@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _LOW_KIND = "neironych_balance_low"
 _RECOVERED_KIND = "neironych_balance_recovered"
 _EPISODE_KINDS = (_LOW_KIND, _RECOVERED_KIND)
+BALANCE_NOTIFICATION_KINDS = _EPISODE_KINDS
 BALANCE_ALERT_SETTING_KEY = "neironych_balance_alert"
 _BALANCE_LOCK = 9183001000  # Stable Postgres advisory lock namespace for this one provider.
 _MAX_THRESHOLD_RUB = Decimal("100000000.00")
@@ -182,6 +183,20 @@ class NeironychBalanceAlertService:
             )
         )
         return owner_id is not None
+
+    @staticmethod
+    async def is_current_notice(session: AsyncSession, notification: Notification) -> bool:
+        """Return false when a retry would contradict a newer balance observation."""
+        latest_id = await session.scalar(
+            select(Notification.id)
+            .where(
+                Notification.user_id == notification.user_id,
+                Notification.kind.in_(_EPISODE_KINDS),
+            )
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
+            .limit(1)
+        )
+        return latest_id == notification.id
 
     @staticmethod
     async def poll_once() -> int:

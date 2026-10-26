@@ -8,11 +8,11 @@ from sqlalchemy import func, select, update
 from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Notification
 from app.services.generation_progress import GENERATION_PROGRESS_KIND
-from app.services.neironych_balance_alerts import NeironychBalanceAlertService
+from app.services.neironych_balance_alerts import BALANCE_NOTIFICATION_KINDS, NeironychBalanceAlertService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
-_SENSITIVE_BALANCE_KINDS = ("neironych_balance_low", "neironych_balance_recovered")
+_SENSITIVE_BALANCE_KINDS = BALANCE_NOTIFICATION_KINDS
 
 
 async def _can_read_provider_balance(session: SessionDep, user: CurrentUserDep) -> bool:
