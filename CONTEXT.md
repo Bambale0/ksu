@@ -1,3 +1,11 @@
+## Active Feature Execution — Neironych RUB low balance admin alert (2026-10-26)
+
+- Requested threshold inclusive <=1000 RUB for **KSU's own partner cash balance** at Neironych. Not ROX/end-user balance; approved provider credit is not cash. No existing partner-key balance GET exists; separate [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133) adds protected self-only REST balance read, to deploy first; never give KSU Neironych's admin token.
+- Reuse the notification worker periodic loop, durable transactional notification/Telegram outbox, PostgreSQL Notification history as dedupe episode state, and existing configured bootstrap owner as the only recipient. Re-evaluate below threshold every 300s by default; one low alert, one recovery, re-arm on next low; dedupe across restart/concurrency via Postgres advisory xact lock. No migration, change to pricing/routes, paid API call, direct Telegram POST or new UI.
+- Threshold/interval via process configuration, not source-code-only product rules. HTTPS, 8s bounded read-only GET, exact Decimal, strong response validation. Safe worker failure handling; missing key/recipient or invalid/failed remote response never produces a false balance notice.
+- Tests/verification matrix, security risks, safe provider deployment dependency, observability and rollback: [docs/agents/EXECUTION/neironych-balance-alert-20261026.md](docs/agents/EXECUTION/neironych-balance-alert-20261026.md).
+- Skills: user-linked `Bambale0/.agents` observability-and-instrumentation, api-integration, python-testing-patterns; `Bambale0/skills` implement/tdd/code-review; KSU local .agents plus required companion sources. No scripts from skills executed. Work branch `feat/neironych-low-balance-alert-20261026`; production untouched until CI and provider upstream available.
+
 ## Active Fix Execution — Seedance 2.5 legacy MPO JPEG references (2026-10-24)
 
 - Baseline `main`/production `2d1987d58e506373c0f114de6151ae88810ac7b0`. Read-only review of three failed Seedance 2.5 Neironych jobs confirmed the same persisted `.jpg` was a two-frame MPO (Pillow format MPO), rejected by the JPEG/PNG byte validator before provider submission. Reproduced with the actual stored image, and verified primary-frame JPEG normalization satisfies the existing byte/dimension validator.
