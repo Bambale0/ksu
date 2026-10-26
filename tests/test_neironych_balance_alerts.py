@@ -160,3 +160,84 @@ async def test_inactive_or_unconfigured_owner_never_leaks_provider_balance(monke
         )
         await session.commit()
     assert result == 0
+
+@pytest.mark.asyncio
+async def test_low_balance_warning_reaches_owner_even_with_personal_notifications_muted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.db.profile_models import UserPreference
+    from app.workers.notifications import _process_delivery
+    from test_notification_delivery import FakeBot
+
+    owner_tg = 99100000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="MutedOwner")
+        session.add(owner)
+        await session.flush()
+        session.add_all([
+            AdminAccount(user_id=owner.id, role="owner", is_active=True),
+            UserPreference(user_id=owner.id, notifications_enabled=False),
+        ])
+        await session.flush()
+        count = await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("1000.00"), Decimal("1000.00"))
+        )
+        assert count == 1
+        await session.commit()
+        notification = await session.scalar(
+            select(Notification)
+            .where(Notification.user_id == owner.id, Notification.kind == "neironych_balance_low")
+        )
+        delivery = await session.scalar(
+            select(NotificationDelivery)
+            .where(NotificationDelivery.notification_id == notification.id)
+        )
+        delivery.status = "sending"
+        delivery.attempts = 1
+        delivery_id = delivery.id
+        await session.commit()
+
+    bot = FakeBot()
+    await _process_delivery(bot, delivery_id)
+    assert len(bot.calls) == 1
+    assert bot.calls[0][0] == owner_tg
+    assert "Нейроныч" in bot.calls[0][1] and "1000" in bot.calls[0][1]
+    async with SessionFactory() as session:
+        delivered = await session.get(NotificationDelivery, delivery_id)
+        assert delivered.status == "sent"
+        assert delivered.external_message_id == "777"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_alert_checks_do_not_queue_duplicate_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    owner_tg = 99200000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="ConcurrentOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.commit()
+        owner_id = owner.id
+
+    async def check() -> int:
+        async with SessionFactory() as session:
+            result = await NeironychBalanceAlertService.enqueue(
+                session, NeironychBalanceSnapshot(Decimal("999.50"), Decimal("999.50"))
+            )
+            await session.commit()
+            return result
+
+    assert sorted(await asyncio.gather(check(), check())) == [0, 1]
+    async with SessionFactory() as session:
+        count = len(list((await session.scalars(select(Notification).where(
+            Notification.user_id == owner_id,
+            Notification.kind == "neironych_balance_low",
+        ))).all()))
+    assert count == 1
+
