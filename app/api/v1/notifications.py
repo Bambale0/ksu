@@ -16,7 +16,7 @@ _SENSITIVE_BALANCE_KINDS = BALANCE_NOTIFICATION_KINDS
 
 
 async def _can_read_provider_balance(session: SessionDep, user: CurrentUserDep) -> bool:
-    return await NeironychBalanceAlertService.authorized_owner(session, user.id)
+    return await NeironychBalanceAlertService.authorized_owner(session, user.id, lock=True)
 
 
 

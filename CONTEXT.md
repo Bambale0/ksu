@@ -1,5 +1,6 @@
 ## Active Feature Execution — Neironych RUB low balance admin alert (2026-10-26)
 
+- Exact-head private-read race follow-up: notification inbox/read/count and account profile must call the owner authorization query with row locking, keeping User/AdminAccount stable through disclosure. Add parameterized PostgreSQL concurrency regressions proving a demotion cannot commit between authorization and inbox/profile result creation.
 - Final owner-revocation race audit at 5fc00d8: acquire the balance lock before authorization, then lock both User and AdminAccount rows through sensitive send/commit. Ordinary demotion/deactivation UPDATEs now serialize with delivery without depending on the advisory lock. Add concurrency regressions; no schema change.
 
 - Encoded-response regression correction: use a lazy `AsyncByteStream` in MockTransport so HTTPX does not attempt to decode the deliberately invalid gzip bytes while constructing the test response. The application still rejects `Content-Encoding` before iterating the stream; this change fixes only the test fixture boundary exposed by exact-head CI.

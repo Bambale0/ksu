@@ -598,7 +598,9 @@ cannot exhaust worker memory with an oversized response. Compression is refused
 and raw bytes are bounded before JSON parsing. Exact provider balances are never
 written to shared logs; operators receive state, policy revision and notification ID.
 Delivery holds the balance-state lock through the Telegram send, suppresses stale
-retries, and re-arms a low notice after owner authorization is restored. Delivery
+retries, and re-arms a low notice after owner authorization is restored. Inbox and
+profile reads hold the same owner authorization rows through disclosure, so a
+concurrent demotion/deactivation cannot commit first. Delivery
 suppresses older low/recovery retries after a newer observation
 (`balance_episode_superseded`). Disabling the policy stops new alerts; already
 queued current notices remain durable. Revoked owners cannot read or receive

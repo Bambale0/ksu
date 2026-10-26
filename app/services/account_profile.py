@@ -99,7 +99,9 @@ class AccountProfileService:
             )
             or 0
         )
-        can_read_balance = await NeironychBalanceAlertService.authorized_owner(session, user.id)
+        can_read_balance = await NeironychBalanceAlertService.authorized_owner(
+            session, user.id, lock=True
+        )
         unread = int(
             (
                 await session.scalar(

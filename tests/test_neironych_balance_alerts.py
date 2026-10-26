@@ -814,3 +814,60 @@ async def test_balance_delivery_serializes_send_with_newer_transition(
     await asyncio.wait_for(delivery_task, timeout=3)
     assert await asyncio.wait_for(recovery_task, timeout=3) == (1 if change == "balance" else 0)
     assert len(bot.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("surface", ["inbox", "profile"])
+async def test_balance_read_serializes_with_owner_revocation(
+    monkeypatch: pytest.MonkeyPatch, surface: str,
+) -> None:
+    import asyncio
+
+    from app.api.v1.notifications import list_notifications
+    from app.services.account_profile import AccountProfileService
+
+    owner_tg = 99900000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="SerializedReadOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.flush()
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("999.00"), Decimal("999.00"))
+        ) == 1
+        await session.commit()
+        owner_id = owner.id
+
+    async def demote() -> None:
+        async with SessionFactory() as session:
+            await session.execute(
+                update(AdminAccount)
+                .where(AdminAccount.user_id == owner_id)
+                .values(role="admin")
+            )
+            await session.commit()
+
+    async with SessionFactory() as read_session:
+        owner = await read_session.get(User, owner_id)
+        if surface == "inbox":
+            result = await list_notifications(
+                user=owner, session=read_session, unread_only=False, limit=50, offset=0
+            )
+            assert len(result["items"]) == 1
+        else:
+            result = await AccountProfileService.overview(read_session, owner)
+            assert result["notifications"]["unread"] == 1
+
+        demotion_task = asyncio.create_task(demote())
+        await asyncio.sleep(0.075)
+        assert not demotion_task.done(), "Revocation must wait for private read completion"
+        await read_session.commit()
+        await asyncio.wait_for(demotion_task, timeout=3)
+
+    async with SessionFactory() as session:
+        account = await session.scalar(
+            select(AdminAccount).where(AdminAccount.user_id == owner_id)
+        )
+        assert account.role == "admin"

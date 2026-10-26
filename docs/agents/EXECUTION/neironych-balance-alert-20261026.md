@@ -85,3 +85,5 @@ and verification-before-completion used as fallback. No skill scripts executed.
 
 
 Owner revocation follow-up: delivery acquires the provider advisory lock before authorization, then SELECT FOR UPDATE locks both recipient User and AdminAccount through Telegram send and commit. Ordinary user deactivation/admin demotion UPDATEs contend on these rows. The concurrency regression covers balance transitions, admin demotion and user deactivation while a fake Telegram send is in flight. No schema change.
+
+Read-disclosure follow-up: customer notification list/read/count and account profile acquire the same owner authorization row locks before exposing balance notification bodies or counts. Concurrent admin demotion/user deactivation therefore waits until the read transaction completes; parameterized PostgreSQL regressions cover inbox and profile surfaces.
