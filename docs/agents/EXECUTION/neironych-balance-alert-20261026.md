@@ -38,5 +38,5 @@ Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-ins
 ## Verification evidence
 
 - Neironych provider [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133): 65 isolated ASGI/documentation/security tests pass on the final public /v1/balance route; Ruff pass.
-- KSU isolated PostgreSQL 17 with Alembic migrations: `tests/test_neironych_balance_alerts.py` **13 passed**, including exact Decimal boundary, malformed response fail-closed, owner-only routing, one-shot dedupe and recovered re-arm. Ruff, compileall and `alembic check` passed. No production database written and no live provider/paid generation used in tests.
+- KSU isolated PostgreSQL 17 with Alembic migrations: `tests/test_neironych_balance_alerts.py` **15 passed**, including exact Decimal boundary, malformed response fail-closed, owner-only routing, one-shot dedupe and recovered re-arm, successful owner Telegram delivery despite muted preferences, and concurrency guard via Postgres advisory lock. Ruff, compileall and `alembic check` passed. No production database written and no live provider/paid generation used in tests.
 - Recipient in production verified read-only: precisely one configured bootstrap Telegram owner matches an active owner account. The broader admin account population must not receive these alerts.
