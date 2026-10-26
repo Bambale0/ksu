@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.observability import request_id_var
 from app.db.admin_models import AdminRuntimeSetting
 from app.db.models import AdminAccount, Notification, User
+from app.db.notification_models import NotificationDelivery
 from app.services.notifications import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -148,11 +149,20 @@ class NeironychBalanceAlertService:
             )
         assert client is not None
         try:
-            headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+            }
             if request_id := request_id_var.get():
                 headers["X-Request-ID"] = request_id
             async with client.stream("GET", endpoint, headers=headers) as response:
                 response.raise_for_status()
+                content_encoding = response.headers.get("content-encoding", "").strip().lower()
+                if content_encoding not in {"", "identity"}:
+                    raise NeironychBalanceResponseError(
+                        "Neironych balance response has an unsupported content encoding"
+                    )
                 declared_length = response.headers.get("content-length")
                 if declared_length is not None:
                     try:
@@ -166,7 +176,7 @@ class NeironychBalanceAlertService:
                             "Neironych balance response exceeds the accepted size"
                         )
                 body = bytearray()
-                async for chunk in response.aiter_bytes():
+                async for chunk in response.aiter_raw():
                     if len(body) + len(chunk) > _MAX_BALANCE_RESPONSE_BYTES:
                         raise NeironychBalanceResponseError(
                             "Neironych balance response exceeds the accepted size"
@@ -240,8 +250,10 @@ class NeironychBalanceAlertService:
             count = await NeironychBalanceAlertService._enqueue_locked(session, snapshot, policy)
             await session.commit()
             logger.info(
-                "neironych_balance_poll_succeeded cash_rub=%s threshold_rub=%s queued=%s",
-                str(snapshot.cash_rub), str(policy.threshold_rub), count,
+                "neironych_balance_poll_succeeded state=%s policy_revision=%s queued=%s",
+                "low" if snapshot.cash_rub <= policy.threshold_rub else "healthy",
+                policy.revision,
+                count,
             )
             return count
 
@@ -296,7 +308,23 @@ class NeironychBalanceAlertService:
                 .order_by(Notification.created_at.desc(), Notification.id.desc())
                 .limit(1)
             )
-            if low and (last is None or last.kind != _LOW_KIND):
+            rearm_suppressed_low = False
+            if low and last is not None and last.kind == _LOW_KIND:
+                last_delivery = await session.scalar(
+                    select(NotificationDelivery).where(
+                        NotificationDelivery.notification_id == last.id,
+                        NotificationDelivery.channel == "telegram",
+                    )
+                )
+                rearm_suppressed_low = bool(
+                    last_delivery is not None
+                    and last_delivery.status in {"suppressed", "undeliverable"}
+                    and last_delivery.last_error in {
+                        "owner_authorization_revoked",
+                        "user_inactive_or_missing",
+                    }
+                )
+            if low and (last is None or last.kind != _LOW_KIND or rearm_suppressed_low):
                 title = "⚠️ Нейроныч: низкий баланс"
                 body = (
                     f"Баланс API Нейроныча: {snapshot.cash_rub:.2f} ₽. "
@@ -317,7 +345,7 @@ class NeironychBalanceAlertService:
             )
             count += 1
             logger.info(
-                "neironych_balance_alert_queued notification_id=%s kind=%s cash_rub=%s threshold_rub=%s",
-                str(notice.id), kind, str(snapshot.cash_rub), str(threshold),
+                "neironych_balance_alert_queued notification_id=%s kind=%s policy_revision=%s",
+                str(notice.id), kind, policy.revision,
             )
         return count

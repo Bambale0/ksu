@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -7,7 +8,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.admin_deps import get_admin_context_base
 from app.core.config import settings
@@ -339,6 +340,20 @@ async def test_revoked_bootstrap_owner_cannot_read_or_receive_pending_balance_al
         updated = await session.get(NotificationDelivery, delivery_id)
         assert updated.status == "suppressed"
         assert updated.last_error == "owner_authorization_revoked"
+        account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
+        account.role = "owner"
+        await session.commit()
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("999.00"), Decimal("999.00"))
+        ) == 1
+        await session.commit()
+        low_count = await session.scalar(
+            select(func.count()).select_from(Notification).where(
+                Notification.user_id == user.id,
+                Notification.kind == "neironych_balance_low",
+            )
+        )
+        assert low_count == 2
 
 
 @pytest.mark.asyncio
@@ -677,3 +692,109 @@ async def test_balance_fetch_rejects_oversized_response_before_json_parse(
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         with pytest.raises(NeironychBalanceResponseError, match="exceeds the accepted size"):
             await NeironychBalanceAlertService.fetch(client=client)
+
+
+@pytest.mark.asyncio
+async def test_balance_fetch_rejects_encoded_body_before_decompression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "neironych_api_base_url", "https://neironych.example")
+    monkeypatch.setattr(settings, "neironych_api_key", "testing-partner-secret")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.headers["accept-encoding"] == "identity"
+        return httpx.Response(
+            200,
+            headers={"Content-Encoding": "gzip"},
+            content=b"compressed-body-must-never-be-decoded",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        with pytest.raises(NeironychBalanceResponseError, match="content encoding"):
+            await NeironychBalanceAlertService.fetch(client=client)
+
+
+@pytest.mark.asyncio
+async def test_balance_logs_redact_exact_provider_amounts(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    owner_tg = 99700000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="LogPrivacyOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.commit()
+        with caplog.at_level(logging.INFO, logger="app.services.neironych_balance_alerts"):
+            assert await NeironychBalanceAlertService.enqueue(
+                session,
+                NeironychBalanceSnapshot(Decimal("876.54"), Decimal("987.65")),
+            ) == 1
+            await session.commit()
+    assert "876.54" not in caplog.text
+    assert "987.65" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_balance_delivery_serializes_send_with_newer_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from app.workers.notifications import _process_delivery
+    from test_notification_delivery import FakeBot
+
+    owner_tg = 99800000000 + (uuid4().int % 1000000)
+    monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
+    async with SessionFactory() as session:
+        owner = User(telegram_id=owner_tg, first_name="SerializedDeliveryOwner")
+        session.add(owner)
+        await session.flush()
+        session.add(AdminAccount(user_id=owner.id, role="owner", is_active=True))
+        await session.flush()
+        assert await NeironychBalanceAlertService.enqueue(
+            session, NeironychBalanceSnapshot(Decimal("999.00"), Decimal("999.00"))
+        ) == 1
+        await session.commit()
+        notice = await session.scalar(
+            select(Notification).where(
+                Notification.user_id == owner.id,
+                Notification.kind == "neironych_balance_low",
+            )
+        )
+        delivery = await session.scalar(
+            select(NotificationDelivery).where(NotificationDelivery.notification_id == notice.id)
+        )
+        delivery.status = "sending"
+        delivery.attempts = 1
+        delivery_id = delivery.id
+        await session.commit()
+
+    send_started = asyncio.Event()
+    release_send = asyncio.Event()
+
+    class BlockingBot(FakeBot):
+        async def send_message(self, **kwargs):
+            send_started.set()
+            await release_send.wait()
+            return await super().send_message(**kwargs)
+
+    async def recover() -> int:
+        async with SessionFactory() as session:
+            result = await NeironychBalanceAlertService.enqueue(
+                session, NeironychBalanceSnapshot(Decimal("1250.00"), Decimal("1250.00"))
+            )
+            await session.commit()
+            return result
+
+    bot = BlockingBot()
+    delivery_task = asyncio.create_task(_process_delivery(bot, delivery_id))
+    await asyncio.wait_for(send_started.wait(), timeout=3)
+    recovery_task = asyncio.create_task(recover())
+    await asyncio.sleep(0.075)
+    assert not recovery_task.done(), "A recovery transition must wait for the older send to commit"
+    release_send.set()
+    await asyncio.wait_for(delivery_task, timeout=3)
+    assert await asyncio.wait_for(recovery_task, timeout=3) == 1
+    assert len(bot.calls) == 1

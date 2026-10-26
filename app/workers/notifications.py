@@ -498,6 +498,10 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                 )
                 await session.commit()
                 return
+            # Hold the same transaction advisory lock used by polling through
+            # Telegram send + delivery commit. A newer balance transition cannot
+            # commit after this freshness check but before the older message sends.
+            await NeironychBalanceAlertService.acquire_lock(session)
             if not await NeironychBalanceAlertService.is_current_notice(session, notification):
                 await NotificationDeliveryService.mark_terminal(
                     session,

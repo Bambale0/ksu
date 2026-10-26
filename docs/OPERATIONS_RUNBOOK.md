@@ -594,7 +594,11 @@ lock wait and transaction, so a stuck provider cannot indefinitely block custome
 delivery. Every poll gets a correlation ID and logs `duration_ms` on completion
 or failure. `category=deadline` identifies the whole-operation deadline. Delivery
 also streams the provider JSON through a 16 KiB cap, so a compromised upstream
-cannot exhaust worker memory with an oversized response. Delivery
+cannot exhaust worker memory with an oversized response. Compression is refused
+and raw bytes are bounded before JSON parsing. Exact provider balances are never
+written to shared logs; operators receive state, policy revision and notification ID.
+Delivery holds the balance-state lock through the Telegram send, suppresses stale
+retries, and re-arms a low notice after owner authorization is restored. Delivery
 suppresses older low/recovery retries after a newer observation
 (`balance_episode_superseded`). Disabling the policy stops new alerts; already
 queued current notices remain durable. Revoked owners cannot read or receive
