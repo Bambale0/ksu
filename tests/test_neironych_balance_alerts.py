@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -62,7 +61,7 @@ async def test_balance_monitor_rejects_untrustworthy_provider_cash_values(
     monkeypatch.setattr(settings, "neironych_api_base_url", "https://neironych.example")
     monkeypatch.setattr(settings, "neironych_api_key", "testing-partner-secret")
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload))
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={"partner_id": "test-partner", **payload}))
     ) as client:
         with pytest.raises(NeironychBalanceResponseError):
             await NeironychBalanceAlertService.fetch(client=client)
