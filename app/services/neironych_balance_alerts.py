@@ -61,7 +61,7 @@ class NeironychBalanceAlertService:
         parsed = urlsplit(base)
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise NeironychBalanceResponseError("Neironych API must have a trusted HTTPS base URL")
-        endpoint = f"{base}/api/v1/billing/self/balance"
+        endpoint = f"{base}/v1/balance"
         own_client = client is None
         if own_client:
             client = httpx.AsyncClient(
