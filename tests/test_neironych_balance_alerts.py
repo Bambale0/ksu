@@ -26,7 +26,7 @@ async def test_partner_balance_fetch_is_private_readonly_and_exact(monkeypatch: 
     def responder(request: httpx.Request) -> httpx.Response:
         calls.append(request)
         assert request.method == "GET"
-        assert str(request.url) == "https://neironych.example/api/v1/billing/self/balance"
+        assert str(request.url) == "https://neironych.example/v1/balance"
         assert request.headers.get("authorization") == "Bearer testing-partner-secret"
         return httpx.Response(200, json={
             "partner_id": "test-owned-partner",
