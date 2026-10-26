@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import httpx
 import logging
 import re
 import time
@@ -484,6 +485,16 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             _sync_generation_delivery(generation, delivery)
             await session.commit()
             return
+        if notification.kind in {"neironych_balance_low", "neironych_balance_recovered"}:
+            if not await NeironychBalanceAlertService.authorized_owner(session, user.id):
+                await NotificationDeliveryService.mark_terminal(
+                    session,
+                    delivery,
+                    status="suppressed",
+                    error="owner_authorization_revoked",
+                )
+                await session.commit()
+                return
         preference = await session.get(UserPreference, user.id)
         if (
             preference is not None
@@ -633,13 +644,27 @@ async def run() -> None:
             if time.monotonic() >= next_balance_poll:
                 next_balance_poll = time.monotonic() + settings.neironych_balance_alert_poll_seconds
                 try:
-                    snapshot = await NeironychBalanceAlertService.fetch()
-                    async with SessionFactory() as monitor_session:
-                        await NeironychBalanceAlertService.enqueue(monitor_session, snapshot)
-                        await monitor_session.commit()
+                    await NeironychBalanceAlertService.poll_once()
+                except httpx.HTTPStatusError as exc:
+                    status_code = exc.response.status_code
+                    category = (
+                        "auth" if status_code in {401, 403}
+                        else "endpoint_missing" if status_code == 404
+                        else "rate_limited" if status_code == 429
+                        else "upstream_error" if status_code >= 500
+                        else "http_client_error"
+                    )
+                    logger.warning(
+                        "neironych_balance_poll_failed category=%s status_code=%s",
+                        category, status_code,
+                    )
+                except httpx.TimeoutException:
+                    logger.warning("neironych_balance_poll_failed category=timeout")
+                except httpx.TransportError:
+                    logger.warning("neironych_balance_poll_failed category=transport")
                 except Exception as exc:  # noqa: BLE001 - monitoring cannot interrupt customer delivery
                     logger.warning(
-                        "neironych_balance_poll_failed error_type=%s",
+                        "neironych_balance_poll_failed category=invalid_or_internal error_type=%s",
                         type(exc).__name__,
                     )
             async with SessionFactory() as session:
