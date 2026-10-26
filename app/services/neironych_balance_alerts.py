@@ -36,12 +36,23 @@ class NeironychBalanceSnapshot:
 def _rub_amount(value: object) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, (str, int, Decimal)):
         raise NeironychBalanceResponseError("Neironych balance has an invalid numeric representation")
+    serialized = str(value)
+    if len(serialized) > 64:
+        raise NeironychBalanceResponseError("Neironych balance exceeds accepted precision")
     try:
-        amount = Decimal(str(value))
+        amount = Decimal(serialized)
     except (InvalidOperation, ValueError) as exc:
         raise NeironychBalanceResponseError("Neironych balance is not numeric") from exc
-    if not amount.is_finite():
-        raise NeironychBalanceResponseError("Neironych balance must be finite")
+    # Upstream cash is NUMERIC(18,2); cap both exponents and magnitude BEFORE
+    # formatting any fixed-point value into a Telegram notification.
+    exponent = amount.as_tuple().exponent if amount.is_finite() else None
+    if (
+        not amount.is_finite()
+        or not isinstance(exponent, int)
+        or not -6 <= exponent <= 16
+        or abs(amount) > Decimal("9999999999999999.99")
+    ):
+        raise NeironychBalanceResponseError("Neironych balance is outside accepted RUB range")
     return amount
 
 
@@ -89,6 +100,42 @@ class NeironychBalanceAlertService:
         finally:
             if own_client:
                 await client.aclose()
+
+    @staticmethod
+    async def authorized_owner(session: AsyncSession, user_id: object) -> bool:
+        """Recheck the live bootstrap owner scope before exposing balance text."""
+        recipients = _bootstrap_owner_ids()
+        if not recipients:
+            return False
+        owner_id = await session.scalar(
+            select(AdminAccount.id)
+            .join(User, User.id == AdminAccount.user_id)
+            .where(
+                User.id == user_id,
+                User.telegram_id.in_(recipients),
+                User.is_active.is_(True),
+                AdminAccount.is_active.is_(True),
+                AdminAccount.role == "owner",
+            )
+        )
+        return owner_id is not None
+
+    @staticmethod
+    async def poll_once() -> int:
+        """Serialize sampling + transition, not merely persistence of the alert.
+
+        An older delayed HTTP response cannot overwrite a newer sample from an
+        overlapping worker, because all GETs for this provider occur under the
+        same transaction-scoped lock.
+        """
+        from app.db.session import SessionFactory
+
+        async with SessionFactory() as session:
+            await session.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": _BALANCE_LOCK})
+            snapshot = await NeironychBalanceAlertService.fetch()
+            count = await NeironychBalanceAlertService.enqueue(session, snapshot)
+            await session.commit()
+            return count
 
     @staticmethod
     async def enqueue(session: AsyncSession, snapshot: NeironychBalanceSnapshot) -> int:
