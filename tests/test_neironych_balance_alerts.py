@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -88,9 +89,10 @@ async def test_balance_fetch_remote_errors_never_fabricate_zero(monkeypatch: pyt
 async def test_only_configured_active_owner_receives_one_per_low_balance_episode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    owner_tg = 99000000101
-    other_admin_tg = 99000000102
-    other_owner_tg = 99000000103
+    base_tg = 99000000000 + (uuid4().int % 1000000) * 10
+    owner_tg = base_tg + 1
+    other_admin_tg = base_tg + 2
+    other_owner_tg = base_tg + 3
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", str(owner_tg))
     async with SessionFactory() as session:
         owner = User(telegram_id=owner_tg, first_name="BalanceOwner")
@@ -129,7 +131,10 @@ async def test_only_configured_active_owner_receives_one_per_low_balance_episode
     async with SessionFactory() as session:
         notices = list((await session.scalars(
             select(Notification)
-            .where(Notification.kind.in_(["neironych_balance_low", "neironych_balance_recovered"]))
+            .where(
+                Notification.user_id == owner_id,
+                Notification.kind.in_(["neironych_balance_low", "neironych_balance_recovered"]),
+            )
             .order_by(Notification.created_at.asc())
         )).all())
         assert len(notices) == 3
