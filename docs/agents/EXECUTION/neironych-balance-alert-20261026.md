@@ -82,3 +82,6 @@ progressive disclosure (no KSU-specific implementation guide); anthropics/skills
 webapp-testing; user-linked Bambale0/.agents fix-review/review-swarm/observability.
 Branch-local .agents instructions/index are absent; .clinerules receiving-code-review
 and verification-before-completion used as fallback. No skill scripts executed.
+
+
+Owner revocation follow-up: delivery acquires the provider advisory lock before authorization, then SELECT FOR UPDATE locks both recipient User and AdminAccount through Telegram send and commit. Ordinary user deactivation/admin demotion UPDATEs contend on these rows. The concurrency regression covers balance transitions, admin demotion and user deactivation while a fake Telegram send is in flight. No schema change.

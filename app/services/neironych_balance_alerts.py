@@ -208,12 +208,14 @@ class NeironychBalanceAlertService:
                 await client.aclose()
 
     @staticmethod
-    async def authorized_owner(session: AsyncSession, user_id: object) -> bool:
+    async def authorized_owner(
+        session: AsyncSession, user_id: object, *, lock: bool = False
+    ) -> bool:
         """Recheck the live bootstrap owner scope before exposing balance text."""
         recipients = _bootstrap_owner_ids()
         if not recipients:
             return False
-        owner_id = await session.scalar(
+        statement = (
             select(AdminAccount.id)
             .join(User, User.id == AdminAccount.user_id)
             .where(
@@ -224,6 +226,9 @@ class NeironychBalanceAlertService:
                 AdminAccount.role == "owner",
             )
         )
+        if lock:
+            statement = statement.with_for_update(of=(User, AdminAccount))
+        owner_id = await session.scalar(statement)
         return owner_id is not None
 
     @staticmethod

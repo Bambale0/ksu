@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.api.admin_deps import get_admin_context_base
 from app.core.config import settings
@@ -742,8 +742,9 @@ async def test_balance_logs_redact_exact_provider_amounts(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["balance", "admin", "user"])
 async def test_balance_delivery_serializes_send_with_newer_transition(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, change: str,
 ) -> None:
     import asyncio
 
@@ -774,6 +775,7 @@ async def test_balance_delivery_serializes_send_with_newer_transition(
         delivery.status = "sending"
         delivery.attempts = 1
         delivery_id = delivery.id
+        owner_id = owner.id
         await session.commit()
 
     send_started = asyncio.Event()
@@ -787,9 +789,18 @@ async def test_balance_delivery_serializes_send_with_newer_transition(
 
     async def recover() -> int:
         async with SessionFactory() as session:
-            result = await NeironychBalanceAlertService.enqueue(
-                session, NeironychBalanceSnapshot(Decimal("1250.00"), Decimal("1250.00"))
-            )
+            if change == "balance":
+                result = await NeironychBalanceAlertService.enqueue(
+                    session, NeironychBalanceSnapshot(Decimal("1250.00"), Decimal("1250.00"))
+                )
+            elif change == "admin":
+                await session.execute(update(AdminAccount).where(
+                    AdminAccount.user_id == owner_id,
+                ).values(role="admin"))
+                result = 0
+            else:
+                await session.execute(update(User).where(User.id == owner_id).values(is_active=False))
+                result = 0
             await session.commit()
             return result
 
@@ -801,5 +812,5 @@ async def test_balance_delivery_serializes_send_with_newer_transition(
     assert not recovery_task.done(), "A recovery transition must wait for the older send to commit"
     release_send.set()
     await asyncio.wait_for(delivery_task, timeout=3)
-    assert await asyncio.wait_for(recovery_task, timeout=3) == 1
+    assert await asyncio.wait_for(recovery_task, timeout=3) == (1 if change == "balance" else 0)
     assert len(bot.calls) == 1
