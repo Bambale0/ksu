@@ -4,7 +4,7 @@
 
 Notify the configured KSU owner/admin on Telegram when **Neironych partner cash balance <= 1000.00 RUB**. This is the external provider account's balance, **not** ROX, not user's wallet, and not approved credit limit. There is presently no recurring Neironych balance monitor or reliable partner-key read endpoint in Neironych. The existing Neironych `GET /api/v1/billing/partners/{id}/balance` needs a master admin token and MUST NOT be integrated into KSU.
 
-Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133) adds a partner-authenticated read-only `GET /api/v1/billing/self/balance`. Production KSU must not be activated until this endpoint exists in production.
+Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133) adds a partner-authenticated read-only `GET /v1/balance`. Production KSU must not be activated until this endpoint exists in production.
 
 ## Reuse, scope and decisions
 
@@ -34,3 +34,9 @@ Prerequisite separate provider PR: [Bambale0/ooo#133](https://github.com/Bambale
 | Rollback | disable via config? Stop monitor by unsetting partner key is NOT suitable because generation needs it. Revert change/redeploy; already queued alerts remain durable. |
 
 Skill use: user's `Bambale0/.agents` agents-global-router, observability-and-instrumentation, api-integration and python-testing-patterns; KSU primary `Bambale0/skills` implement/tdd/code-review, `Bambale0/claw` safety, `Bambale0/dev-agents-pack` release-manager; `agentskills/agentskills` format; `anthropics/skills` no KSU-specific balance guide; `wondelai/skills` release-it. No executable skill script run.
+
+## Verification evidence
+
+- Neironych provider [Bambale0/ooo#133](https://github.com/Bambale0/ooo/pull/133): 65 isolated ASGI/documentation/security tests pass on the final public /v1/balance route; Ruff pass.
+- KSU isolated PostgreSQL 17 with Alembic migrations: `tests/test_neironych_balance_alerts.py` **13 passed**, including exact Decimal boundary, malformed response fail-closed, owner-only routing, one-shot dedupe and recovered re-arm. Ruff, compileall and `alembic check` passed. No production database written and no live provider/paid generation used in tests.
+- Recipient in production verified read-only: precisely one configured bootstrap Telegram owner matches an active owner account. The broader admin account population must not receive these alerts.
