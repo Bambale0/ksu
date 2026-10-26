@@ -672,6 +672,11 @@ class _OversizedBalanceStream(httpx.AsyncByteStream):
         yield b"x" * (17 * 1024)
 
 
+class _EncodedBalanceStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        yield b"compressed-body-must-never-be-decoded"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("declared", [True, False])
 async def test_balance_fetch_rejects_oversized_response_before_json_parse(
@@ -706,7 +711,7 @@ async def test_balance_fetch_rejects_encoded_body_before_decompression(
         return httpx.Response(
             200,
             headers={"Content-Encoding": "gzip"},
-            content=b"compressed-body-must-never-be-decoded",
+            stream=_EncodedBalanceStream(),
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
