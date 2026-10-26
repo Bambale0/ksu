@@ -564,3 +564,48 @@ route and revision. Changes are effective on the next admission without a
 restart and cannot move existing work, even if it has not submitted yet. For an
 operational rollback, select a single provider for new work and let already
 accepted jobs drain. Keep both provider credentials/adapters until they finish.
+
+### Neironych cash-balance alert
+
+The notification worker performs one partner-authenticated, read-only
+`GET /v1/balance` every `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS` (300 seconds by
+default). It compares the provider's cash `balance_rub`, not ROX, customer
+wallets, the credit limit or available credit. One warning is queued when cash
+is at or below the threshold, one recovery is queued after it rises above, and
+the next drop re-arms the warning. Provider errors never fabricate a zero.
+
+In web admin **Настройки**, choose **Алерт Нейроныча** to enable/disable the
+monitor or change the exact RUB threshold. Saving requires `runtime.manage`, a
+fresh MFA step-up, confirmation and an idempotency key. The policy is audited in
+`AdminRuntimeSetting`; revision conflicts require a reload. Before its first
+save, `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB=1000.00` is the bootstrap default.
+Do not disable the monitor by removing `NEIRONYCH_API_KEY`, because generation
+also uses that partner credential.
+
+Warnings go only to an active `owner` whose Telegram ID remains in
+`ADMIN_BOOTSTRAP_TELEGRAM_IDS`. The delivery path rechecks that authorization,
+uses the durable Telegram outbox and ignores optional customer marketing/mute
+preferences for these operational messages. Logs classify auth, missing route,
+rate-limit, upstream, transport, timeout and invalid-response failures without
+including credentials or response bodies.
+
+The complete balance poll has a 10-second deadline, including its PostgreSQL
+lock wait and transaction, so a stuck provider cannot indefinitely block customer
+delivery. Every poll gets a correlation ID and logs `duration_ms` on completion
+or failure. `category=deadline` identifies the whole-operation deadline. Delivery
+also streams the provider JSON through a 16 KiB cap, so a compromised upstream
+cannot exhaust worker memory with an oversized response. Compression is refused
+and raw bytes are bounded before JSON parsing. Exact provider balances are never
+written to shared logs; operators receive state, policy revision and notification ID.
+Delivery holds the balance-state lock through the Telegram send, suppresses stale
+retries, and re-arms a low notice after owner authorization is restored. Inbox and
+profile reads hold the same owner authorization rows through disclosure, so a
+concurrent demotion/deactivation cannot commit first. Delivery
+suppresses older low/recovery retries after a newer observation
+(`balance_episode_superseded`). Disabling the policy stops new alerts; already
+queued current notices remain durable. Revoked owners cannot read or receive
+balance notices, and those notices do not contribute to their profile unread badge.
+
+Activation prerequisite: provider PR `Bambale0/ooo#133` must be deployed and the
+authenticated `GET /v1/balance` must be verified available. A merged upstream PR
+alone does not clear that gate.

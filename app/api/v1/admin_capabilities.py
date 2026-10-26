@@ -201,6 +201,16 @@ class RuntimeSubscriptionRequest(BaseModel):
     enabled: bool
 
 
+class NeironychBalanceAlertRequest(BaseModel):
+    enabled: bool
+    threshold_rub: Decimal = Field(
+        ge=Decimal("0"),
+        le=Decimal("100000000"),
+        decimal_places=2,
+    )
+    expected_revision: int = Field(ge=1)
+
+
 class ProviderRoutesRequest(BaseModel):
     routes: dict[str, list[str]]
     expected_revision: int = Field(ge=1)
@@ -939,6 +949,32 @@ async def web_admin_runtime_reload(
             idempotency_key=_require_idempotency(idempotency_key),
             request_id=_request_id(request),
             confirmed=_confirmed(confirmation),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/runtime/neironych-balance-alert")
+async def web_admin_neironych_balance_alert(
+    payload: NeironychBalanceAlertRequest,
+    request: Request,
+    context: AdminRuntimeWriteDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminRuntimeService.set_neironych_balance_alert(
+            session,
+            admin=context.account,
+            enabled=payload.enabled,
+            threshold_rub=payload.threshold_rub,
+            expected_revision=payload.expected_revision,
+            idempotency_key=_require_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirmed(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
         ),
     )
     return {**result, "idempotency_replayed": replayed}
