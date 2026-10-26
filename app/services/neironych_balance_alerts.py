@@ -176,12 +176,21 @@ class NeironychBalanceAlertService:
                             "Neironych balance response exceeds the accepted size"
                         )
                 body = bytearray()
-                async for chunk in response.aiter_raw():
-                    if len(body) + len(chunk) > _MAX_BALANCE_RESPONSE_BYTES:
+                if response.is_stream_consumed:
+                    # Mock/injected transports may supply an already-buffered
+                    # response. The production HTTP transport remains streaming.
+                    if len(response.content) > _MAX_BALANCE_RESPONSE_BYTES:
                         raise NeironychBalanceResponseError(
                             "Neironych balance response exceeds the accepted size"
                         )
-                    body.extend(chunk)
+                    body.extend(response.content)
+                else:
+                    async for chunk in response.aiter_raw():
+                        if len(body) + len(chunk) > _MAX_BALANCE_RESPONSE_BYTES:
+                            raise NeironychBalanceResponseError(
+                                "Neironych balance response exceeds the accepted size"
+                            )
+                        body.extend(chunk)
             try:
                 payload = json.loads(bytes(body))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
