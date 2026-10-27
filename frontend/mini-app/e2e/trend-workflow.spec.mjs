@@ -80,7 +80,7 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null } = {}) {
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, externalWorkflowCover = false, safeAreaInsets = null } = {}) {
   const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
@@ -137,7 +137,12 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
     if (path === `/api/v1/trends/${TREND_ID}` && request.method() === 'GET') {
       if (hiddenTemplate) return json({}, 404);
       if (legacy) return json({ id: TREND_ID, title: 'Старый тренд', description: 'Старый сценарий', media_type: 'image', cost_rox: '25', reference_requirements: { min: 0, max: 0 } });
-      return json(workflowTrend);
+      return json(externalWorkflowCover ? {
+        ...workflowTrend,
+        media_type: 'video',
+        preview_url: 'https://media.example.invalid/workflow-cover.jpg?version=external',
+        preview_thumbnail_url: null,
+      } : workflowTrend);
     }
     if (path === `/api/v1/trends/${TREND_ID}/workflow` && request.method() === 'POST') { workflowCreated = true; state.workflowCreates += 1; if (creationLoss) { creationLoss = false; return route.abort('failed'); } return json(workflowView(), 201); }
     if (path === '/api/v1/uploads/kie') return json({ url: 'https://upload.example.invalid/photo-input.jpg', name: 'person.jpg', mime_type: 'image/jpeg' }, 201);
@@ -285,6 +290,15 @@ test('cold workflow thumbnails retry until both visual cards recover', async ({ 
   const images = stages.getByRole('img');
   await expect.poll(() => state.previewReads).toBeGreaterThanOrEqual(3);
   await expect(images).toHaveCount(2);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('external image workflow cover remains visible when the workflow output is video', async ({ page }) => {
+  await setup(page, { externalWorkflowCover: true });
+  const images = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', 'https://media.example.invalid/workflow-cover.jpg?version=external');
+  await expect(images.nth(1)).toHaveAttribute('src', 'https://media.example.invalid/workflow-cover.jpg?version=external');
   await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
 });
 
