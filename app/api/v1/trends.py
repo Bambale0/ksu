@@ -22,6 +22,7 @@ from app.services.feed_links import bot_start_link, trend_payload
 from app.services.model_catalog import InvalidModelParametersError, SPECS, UnknownModelError
 from app.services.reference_previews import ReferencePreviewService
 from app.services.reference_static import ReferenceStaticStorage
+from app.services.seedance25_contract import SEEDANCE25_MAX_VIDEO_REFS
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_workflows import TrendWorkflowConflict, TrendWorkflowService
 from app.services.model_ui_contract import build_public_model_ui_schema
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/trends", tags=["trends"])
 
 
 class RunTrendRequest(BaseModel):
+    video_reference_urls: list[str] = Field(default_factory=list, max_length=SEEDANCE25_MAX_VIDEO_REFS)
     reference_urls: list[str] = Field(default_factory=list, max_length=16)
     user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
     resolution: str | None = Field(default=None, max_length=32)
@@ -592,6 +594,7 @@ async def run_trend(
             user_id=user.id,
             trend_id=trend_id,
             reference_urls=payload.reference_urls,
+            video_reference_urls=payload.video_reference_urls,
             user_values=payload.user_values,
             resolution=payload.resolution,
             aspect_ratio=payload.aspect_ratio,

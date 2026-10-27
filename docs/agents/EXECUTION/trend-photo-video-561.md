@@ -275,3 +275,13 @@ No merge, production migration, deployment, provider spend or customer notificat
 - Scoped credential-pattern scan of the26candidate files: zero matches; this is not a claim of a full secret audit. No .env/.agents/venv/build/test-report paths are included. `git diff --check` is clean.
 
 Exact final commit/PR CI links and any broad-suite results are recorded in PR #562 without amending the verified source tree. Merge/deploy requires separate authorization and exact-SHA release checks.
+
+
+### Integration with concurrently merged main
+
+Before exact-head CI, GitHub reported a conflict because upstream main advanced from `e9037324` to `594f39e6bdf75681bcce1506dc44b61fe4f1edb6` while this feature was in review. Incoming PR#563 preserves verified Nano Banana rejection receipts; PR#564 adds one-step Seedance2.5 user video slots and trusted template preflight. Merge is performed only into `feat/trend-photo-video-561`, not into main or production.
+
+Resolved four conflicts by preserving both workstreams: all CI WebKit suites; both independent CONTEXT ledgers; workflow recovery plus nested image/video requirements in the legacy runner; the workflow admin editor plus the Seedance video-slot hint inside the legacy prompt editor. The one-step video upload/ownership/billing path remains distinct from mandatory v2 image-to-video. Existing source-code validations and transaction-owning v2 admission are retained. Re-running the full isolated backend, frontend typecheck/build and combined workflow/audio/video-slot browser regressions; exact merge-candidate evidence stays in PR#562.
+
+
+Merged-main candidate validation: **2092 backend tests passed** on a fresh isolated database, one existing SQLAlchemy warning; migrations/parity/Ruff/compile passed. Combined **52 Chromium journeys**, typecheck and24-route static build passed. The folded WebKit CI command was parsed and verified as one shell command containing workflow, v2admin and Seedancevideo suites (removed a merge-only blank line that would have separated commands). Incoming Nano Banana receipt code and E2E tooling workflow are byte-for-byte identical to incoming main. Final independent merge review and exact-head CI remain PR-recorded gates; no main merge/deploy.

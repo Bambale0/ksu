@@ -918,6 +918,11 @@ export function InlineTrendAdmin() {
           </section>
         </> : <>
           <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+        {draft.modelId === "seedance-2.5" ? <small>
+          Для видео, которое загрузит пользователь, укажите @Video1 в промпте
+          (далее @Video2 и т. д.). Превью служит только образцом результата.
+        </small> : null}
+
 
           {audioAllowed || audioReferences.length ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Аудиореференсы шаблона">
           <strong>Аудиореференсы для модели</strong>

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import httpx
 import pytest
 
 from app.providers.neironych_errors import NeironychProviderError, error_disposition
+from app.providers.neironych_image import NeironychImageClient
 from app.providers.neironych_submission import freeze_submission, saved_body
 from app.providers.neironych_video import NeironychVideoClient
 from app.services.model_catalog import ModelCatalog
@@ -96,6 +98,71 @@ async def test_video_replay_sends_saved_bytes_without_new_normalization(monkeypa
                 == "accepted-original-id"
             )
     assert received == [(body.encode(), "request-key-001")] * 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change,expected",
+    [
+        (None, "fallback"),
+        ("missing_receipt", "uncertain"),
+        ("X-Submission-State", "uncertain"),
+        ("X-Client-Request-Id", "uncertain"),
+        ("X-Idempotency-Key-Sha256", "uncertain"),
+        ("unexpected_body", "uncertain"),
+        ("unicode_client_id", "uncertain"),
+        ("unicode_digest", "uncertain"),
+        ("malformed_json", "uncertain"),
+        ("duplicate_error_fields", "uncertain"),
+        ("wrong_status", "reject"),
+        ("policy_body", "reject"),
+    ],
+)
+async def test_image_fallback_requires_exact_not_accepted_receipt(change, expected):
+    key = "generation:receipt-test:provider:0"
+
+    def handler(request):
+        assert request.headers["X-Submission-Receipt"] == "v1"
+        assert request.headers["X-Client-Request-Id"] == key
+        headers = {
+            "X-Submission-State": "not-accepted-v1",
+            "X-Client-Request-Id": key,
+            "X-Idempotency-Key-Sha256": hashlib.sha256(key.encode()).hexdigest(),
+        }
+        if change == "missing_receipt":
+            headers = {}
+        elif change in headers:
+            headers[change] = "mismatch"
+        body = {"detail": "provider_temporarily_unavailable"}
+        if change == "unexpected_body":
+            body = {"error": {"code": "provider_temporarily_unavailable"}}
+        if change == "unicode_client_id":
+            headers["X-Client-Request-Id"] = "ошибка"
+        elif change == "unicode_digest":
+            headers["X-Idempotency-Key-Sha256"] = "ошибка"
+        raw_headers = [(name.encode(), value.encode("utf-8")) for name, value in headers.items()]
+        if change == "malformed_json":
+            return httpx.Response(503, headers=raw_headers, content=b"{broken json")
+        if change == "duplicate_error_fields":
+            return httpx.Response(503, headers=raw_headers, content=b'{"detail":"safety_policy","detail":"provider_temporarily_unavailable"}')
+        if change == "policy_body":
+            body = {"detail": "content_policy_violation"}
+        return httpx.Response(422 if change == "wrong_status" else 503, headers=raw_headers, json=body)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.example"
+    ) as http:
+        client = NeironychImageClient("test", "https://api.example", client=http)
+        with pytest.raises(NeironychProviderError) as caught:
+            await client.create_image(
+                model="nano-banana-pro",
+                prompt="Synthetic receipt test",
+                aspect_ratio="1:1",
+                resolution="1K",
+                image_urls=[],
+                idempotency_key=key,
+            )
+    assert error_disposition(caught.value) == expected
 
 
 def test_nano_pro_schema_omits_auto_without_changing_nano2():

@@ -261,3 +261,25 @@ The Mini App HTML remains `no-store`. Successful content-hashed `/_next/static/`
 CI syntax-checks every Mini App JavaScript file and executes focused generation/ROXY contracts before the full Python regression suite. Pricing tests must verify both default prices and server-side overrides, including parameter tiers where applicable. Generation recovery tests must also preserve terminal-state monotonicity, ambiguous-submission handling, stale callback rejection and refund exactly-once behavior.
 
 The faststart backfill covers both feed and profile publications, never private works. Multi-result videos are prepared together; their complete old/new URL arrays are recorded before the database commit. Restore checks the entire current media list before changing anything and accepts earlier single-URL backup records. `--limit` must be positive and counts only rows needing work (or failing validation), so successive limited runs advance past already-prepared videos. Use a new backup file per apply run. The command does not delete source files or republish hidden works. A publication conversion failure is returned through the existing media-unavailable domain error and logged as `feed_faststart_failed` with the generation UUID, without private prompts or media URLs.
+
+
+### Seedance 2.5: video-reference trend slots (2026-10-27)
+Administrators can publish a scenario with @Video1 (then @Video2, etc.) in its
+hidden prompt. Each index is a required video uploaded by the customer on the
+trend screen; image slots and persistent template audio retain their previous
+behavior. The trend preview is always presentation-only and never becomes a
+provider input automatically. Static personal video URLs remain rejected in
+shared recipes because their lifetime is controlled by personal reference cleanup.
+
+The run contract adds optional video_reference_urls (maximum from the current
+Seedance 2.5 contract). Public reference_requirements includes image/video min/max.
+The Mini App offers a separate MP4/MOV uploader and blocks launch until all required
+media is present. Run validates owner, ready probe, trusted size and duration before
+billing, then uses the existing configured provider route and frozen submission.
+The existing video-reference price multiplier is applied to both public/quality
+prices and the actual generation. Prices, route config, permissions and moderation
+are unchanged. A generated result can be used as the uploaded trend preview;
+customers supply the input video specified by the scenario.
+
+Structural template preflight permits only synthetic future video slots.
+Runtime GenerationService.create/prepare_request retains full media validation.
