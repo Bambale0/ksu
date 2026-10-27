@@ -67,3 +67,27 @@ Bambale0/skills diagnosing-bugs + TDD, claw backend-integration,
 dev-agents-pack debugger, wondelai Release It, anthropics webapp-testing.
 agentskills/agentskills supplied skill format/discovery only, no applicable receipt workflow.
 Gateway #125 required three further review corrections and remains the release dependency.
+
+
+## Gateway production evidence — 2026-10-27 14:37 UTC
+- ooo#125 merged as e445aeac7ff9573d41ae93a7dbfc3549d52774f4.
+- Main CI 40520580548 succeeded. Deploy workflow 40521230818 attempt 2 succeeded
+  after a verified 193164176-byte PostgreSQL backup and concurrent index migration
+  20261027_0037. All four gateway services run image
+  sha256:db9de7c986caeb7157ea363ed050cb97cb8f5806eb76f8468375e7ef88300202
+  with that revision; public readiness has DB/Redis ok.
+- Positive receipt response was verified inside the deployed image using an
+  in-memory Generation: exact 503/body/state/client-ID/key digest, no DB/provider.
+- KSU partner authenticated GET /v1/balance returned 200. A proven malformed JSON
+  array returned live 422 without a rejection receipt, before admission.
+
+### Verification incident (explicit deviation from the no-paid-request requirement)
+An initially chosen n=2 image smoke body was mistakenly assumed invalid.
+The local precheck failed, but orchestration incorrectly continued and sent one
+POST. Gateway generation 5da3feff-68a1-4dae-a5e8-053c2cb76455 reached upstream.
+It ended failed/not_chargeable/provider_response_invalid; its partner ledger has
+zero operations and KSU was not debited. Upstream procurement outcome/cost remains
+unconfirmed and its hold remains for reconciliation. No retry, manual refund,
+balance or routing change was performed. This was an operator verification error,
+not evidence of a safe non-charging provider call. Subsequent smoke uses only
+in-memory mocks or a JSON array proven to reject before reserve.

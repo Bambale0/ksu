@@ -1024,3 +1024,7 @@ Baseline e9037324a096ea3992cd5f63e8044811a4a5bf5a. See
 [execution ledger](docs/agents/EXECUTION/nano-banana-rejection-receipt-20261027.md).
 Cloud TDD reproduced non-ASCII receipt crash and attempt-dict mismatch; both fixed.
 47 recovery/protocol tests passed; full CI and gateway-first exact-SHA release pending.
+
+Gateway dependency deployed and verified: ooo#125 -> e445aeac7ff9573d41ae93a7dbfc3549d52774f4.
+See receipt execution ledger for exact image/health/contract evidence and an explicit
+verification incident. KSU merge/deploy still pending exact-head CI.
