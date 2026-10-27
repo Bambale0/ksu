@@ -34,3 +34,9 @@ webapp-testing. agentskills catalog adds no task-specific provider guidance.
   disabled launch, exact typed request payload and zero page errors.
 - 159 focused backend/provider/pricing/audio-lifecycle tests pass; TypeScript passes.
 - Full CI and production/live verification pending; no paid generation made.
+
+Full isolated PostgreSQL backend regression: 2005 passed (one pre-existing SQLAlchemy
+delete-count warning). Ruff and migration application passed. New video journeys
+are included in both the full Chromium run and mandatory iPhone/iPad WebKit CI.
+Local WebKit cannot launch because the test host lacks its system libraries; no
+production host packages were changed to satisfy a browser-test dependency.
