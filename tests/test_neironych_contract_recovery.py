@@ -199,6 +199,46 @@ async def test_image_disposition_metadata_and_single_refund(
 
 
 @pytest.mark.asyncio
+async def test_verified_image_non_acceptance_advances_existing_route_without_refund(monkeypatch):
+    gid = await generation("nano-banana-pro")
+
+    class Client:
+        def __init__(self, *args):
+            pass
+
+        async def aclose(self):
+            pass
+
+        async def create_nano_banana_pro(self, **kwargs):
+            raise NeironychProviderError(
+                "provider_temporarily_unavailable",
+                status_code=503,
+                error_code="provider_temporarily_unavailable",
+                request_id="provider-rejection-receipt",
+                submission_rejected=True,
+            )
+
+    monkeypatch.setattr("app.services.neironych_generation_provider.NeironychImageClient", Client)
+    async with SessionFactory() as session:
+        row = await Service.submit(session, gid)
+        assert row.status == "retry" and row.provider == "nexus"
+        assert row.parameters["_provider_route_index"] == 1
+        assert row.parameters["_provider_attempts"] == [
+            {
+                "provider": "neironych",
+                "outcome": "fallback",
+                "reason": "Neironych API HTTP 503: provider_temporarily_unavailable",
+            }
+        ]
+        transactions = (
+            await session.scalars(
+                select(WalletTransaction).where(WalletTransaction.reference_id == str(gid))
+            )
+        ).all()
+        assert [transaction.kind for transaction in transactions] == ["generation"]
+
+
+@pytest.mark.asyncio
 async def test_admin_retry_uses_same_durable_wire_body(monkeypatch):
     calls = []
     tid = uuid.uuid4()

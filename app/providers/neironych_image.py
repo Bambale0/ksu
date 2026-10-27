@@ -58,6 +58,8 @@ class NeironychImageClient:
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Idempotency-Key": idempotency_key,
+            "X-Client-Request-Id": idempotency_key,
+            "X-Submission-Receipt": "v1",
         }
 
     async def create_nano_banana_pro(
@@ -107,7 +109,11 @@ class NeironychImageClient:
             content=request_body.encode("utf-8") if request_body is not None else encode_body(payload).encode("utf-8"),
         )
         if not response.is_success:
-            raise provider_error(response)
+            raise provider_error(
+                response,
+                client_request_id=idempotency_key,
+                idempotency_key=idempotency_key,
+            )
         try:
             data = response.json()
         except json.JSONDecodeError as exc:

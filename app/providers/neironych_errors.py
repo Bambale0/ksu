@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import math
 import re
 from datetime import UTC, datetime
@@ -96,6 +98,7 @@ class NeironychProviderError(RuntimeError):
         error_code: str | None = None,
         retry_after: int | None = None,
         local_validation: bool = False,
+        submission_rejected: bool = False,
     ) -> None:
         super().__init__(redact_error_text(message)[:1000])
         self.status_code = status_code
@@ -104,9 +107,41 @@ class NeironychProviderError(RuntimeError):
         self.error_code = error_code or extract_error_code(payload, message)
         self.retry_after = retry_after
         self.local_validation = local_validation
+        self.submission_rejected = submission_rejected
 
 
-def provider_error(response: httpx.Response) -> NeironychProviderError:
+def verified_rejection_receipt(
+    response: httpx.Response,
+    *,
+    client_request_id: str,
+    idempotency_key: str,
+) -> bool:
+    """Verify the gateway's proof that a paid request was never accepted."""
+    if response.status_code != 503 or not client_request_id or not idempotency_key:
+        return False
+    expected_digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+    if response.headers.get("X-Submission-State") != "not-accepted-v1":
+        return False
+    if not hmac.compare_digest(
+        response.headers.get("X-Client-Request-Id", ""), client_request_id
+    ):
+        return False
+    if not hmac.compare_digest(
+        response.headers.get("X-Idempotency-Key-Sha256", ""), expected_digest
+    ):
+        return False
+    try:
+        return response.json() == {"detail": "provider_temporarily_unavailable"}
+    except ValueError:
+        return False
+
+
+def provider_error(
+    response: httpx.Response,
+    *,
+    client_request_id: str = "",
+    idempotency_key: str = "",
+) -> NeironychProviderError:
     try:
         payload = response.json()
     except ValueError:
@@ -142,6 +177,11 @@ def provider_error(response: httpx.Response) -> NeironychProviderError:
         request_id=request_id,
         error_code=code,
         retry_after=retry_after_seconds(response.headers.get("Retry-After")),
+        submission_rejected=verified_rejection_receipt(
+            response,
+            client_request_id=client_request_id,
+            idempotency_key=idempotency_key,
+        ),
     )
 
 
@@ -166,6 +206,8 @@ def error_disposition(exc: NeironychProviderError) -> str:
     """
     if any(marker in f"{exc.error_code or ''} {exc}".lower() for marker in _POLICY):
         return "reject"
+    if exc.submission_rejected:
+        return "fallback"
     code = exc.error_code
     if code in {
         "idempotency_conflict",

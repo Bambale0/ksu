@@ -1,3 +1,9 @@
+## Active Fix Execution — Nano Banana verified pre-acceptance fallback (2026-10-27)
+
+- Baseline `main`/production `e9037324a096ea3992cd5f63e8044811a4a5bf5a`. Production evidence isolates the actionable defect to ambiguous Neironych image admission: KSU cannot safely use its configured Nexus fallback after an ordinary 503 because acceptance may have occurred. Safety-filter and definite 422 rejections are separate intended failures and must not be bypassed.
+- Provider PR `Bambale0/ooo#125` supplies an opt-in, invocation-bound `not-accepted-v1` receipt only after rollback and a durable unbilled fence. KSU will request and strictly verify that receipt; bare/malformed/mismatched responses and timeouts remain ambiguous. No route priority, price, schema, public API, historical job or wallet mutation.
+- Audit, acceptance, full verification matrix, gateway-first rollout and rollback: [docs/agents/EXECUTION/nano-banana-rejection-receipt-20261027.md](docs/agents/EXECUTION/nano-banana-rejection-receipt-20261027.md). Branch `fix/nano-banana-rejection-receipt-20261027`; no merge/deploy or production activation without separate authorization.
+
 ## Active Feature Execution — Neironych RUB low balance admin alert (2026-10-26)
 
 - Exact-head private-read race follow-up: notification inbox/read/count and account profile must call the owner authorization query with row locking, keeping User/AdminAccount stable through disclosure. Add parameterized PostgreSQL concurrency regressions proving a demotion cannot commit between authorization and inbox/profile result creation.
