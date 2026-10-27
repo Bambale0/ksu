@@ -131,7 +131,8 @@ def verified_rejection_receipt(
     ):
         return False
     try:
-        return response.json() == {"detail": "provider_temporarily_unavailable"}
+        # Preserve object pairs: duplicate fields must not conceal a policy error.
+        return response.json(object_pairs_hook=list) == [("detail", "provider_temporarily_unavailable")]
     except ValueError:
         return False
 

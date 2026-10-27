@@ -231,7 +231,7 @@ async def test_verified_image_non_acceptance_advances_existing_route_without_ref
 
         async def create_generation(self, **kwargs):
             nexus_posts.append(kwargs)
-            return "nexus-receipt-regression-task"
+            return f"nexus-receipt-regression-{gid}"
 
     monkeypatch.setattr("app.services.nexus_generation_provider.NexusClient", NexusClient)
     async with httpx.AsyncClient(
@@ -259,7 +259,7 @@ async def test_verified_image_non_acceptance_advances_existing_route_without_ref
         async with SessionFactory() as session:
             row = await NexusGenerationProviderService.submit(session, gid)
             assert row.provider == "nexus" and row.status == "generating"
-            assert row.external_id == "nexus-receipt-regression-task"
+            assert row.external_id == f"nexus-receipt-regression-{gid}"
         # A duplicate worker wake-up must not repeat either provider submission.
         async with SessionFactory() as session:
             await Service.submit(session, gid)

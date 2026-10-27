@@ -98,3 +98,9 @@ Ubuntu downloads consuming ~20 minutes before any E2E test. The ROXY E2E runner
 now uses the canonical HTTPS Ubuntu archive for those mirror entries and a
 five-minute tooling-step budget plus bounded APT retries/timeouts. Package signature
 verification and all product/browser tests remain unchanged; production OS untouched.
+
+Final fail-closed review reproduced duplicate JSON detail fields concealing a policy
+error. Receipt parsing now preserves object pairs and accepts only the single exact
+detail pair. Updated recovery mock task identity to be unique per generation, so
+repeating the regression against an existing isolated DB remains deterministic.
+48 protocol/recovery tests pass, including this additional RED -> GREEN case.

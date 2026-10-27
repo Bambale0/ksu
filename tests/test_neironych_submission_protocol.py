@@ -113,6 +113,7 @@ async def test_video_replay_sends_saved_bytes_without_new_normalization(monkeypa
         ("unicode_client_id", "uncertain"),
         ("unicode_digest", "uncertain"),
         ("malformed_json", "uncertain"),
+        ("duplicate_error_fields", "uncertain"),
         ("wrong_status", "reject"),
         ("policy_body", "reject"),
     ],
@@ -142,6 +143,8 @@ async def test_image_fallback_requires_exact_not_accepted_receipt(change, expect
         raw_headers = [(name.encode(), value.encode("utf-8")) for name, value in headers.items()]
         if change == "malformed_json":
             return httpx.Response(503, headers=raw_headers, content=b"{broken json")
+        if change == "duplicate_error_fields":
+            return httpx.Response(503, headers=raw_headers, content=b'{"detail":"safety_policy","detail":"provider_temporarily_unavailable"}')
         if change == "policy_body":
             body = {"detail": "content_policy_violation"}
         return httpx.Response(422 if change == "wrong_status" else 503, headers=raw_headers, json=body)
