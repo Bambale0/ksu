@@ -235,13 +235,13 @@ test('legacy v1 trend keeps the existing one-step controls', async ({ page }) =>
   await expect(page.getByRole('heading', { name: 'Подготовить фото' })).toHaveCount(0);
 });
 
-test('workflow cards have no horizontal overflow at mobile and desktop acceptance widths', async ({ page }) => {
+test('workflow cards have no horizontal overflow at mobile and desktop acceptance widths', async ({ page }, testInfo) => {
   await setup(page);
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 852 });
     await expect(page.getByRole('heading', { name: 'Подготовить фото', exact: true })).toBeVisible();
     await expect(page.locator('[data-step="prepare_photo"]')).toBeVisible();
-    await page.screenshot({ path: `/root/agent-work/ksu-561-control/workflow-${width}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`workflow-${width}.png`), fullPage: true });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
 });
@@ -330,17 +330,40 @@ test('quote outage can be retried without editing private inputs', async ({ page
 
 test('failed attempt refreshes quote before separate paid retry consent', async ({ page }) => {
   const state = await setup(page, { failPhoto: true });
-  await prepareWorkflowPhoto(page);
-  await expect(page.getByRole('button', { name: /Повторить фото.*25/ })).toBeDisabled();
-  expect(state.quoteBodies.length).toBeGreaterThan(1);
-  expect(state.photoRuns).toBe(1);
-  await expect(page.getByRole('checkbox', { name: /Подтверждаю новую оплату/ })).not.toBeChecked();
-  expect(state.photoRuns).toBe(1);
-  await page.getByRole('checkbox', { name: /Подтверждаю новую оплату/ }).check();
-  await page.getByRole('button', { name: /Повторить фото/ }).click();
-  await expect.poll(() => state.photoRuns).toBe(2);
-  expect(state.runBodies[1].body.retry).toBe(true);
-  expect(state.runBodies[1].key).not.toBe(state.runBodies[0].key);
+  let releaseRetryQuote;
+  const retryQuoteGate = new Promise((resolve) => { releaseRetryQuote = resolve; });
+  let retryQuoteRequested = false;
+  await page.route(`**/api/v1/trends/workflows/${RUN_ID}/steps/prepare_photo/quote`, async (route) => {
+    if (state.photoRuns > 0) {
+      retryQuoteRequested = true;
+      await retryQuoteGate;
+    }
+    await route.fallback();
+  });
+
+  try {
+    await prepareWorkflowPhoto(page);
+    // A disabled terminal-state button can render before React's quote effect.
+    // Observe the actual request, then hold its response to verify the pay gate.
+    await expect.poll(() => retryQuoteRequested).toBe(true);
+    const photo = page.locator('[data-step="prepare_photo"]');
+    await expect(photo.getByRole('button', { name: 'Считаю стоимость…' })).toBeDisabled();
+    expect(state.photoRuns).toBe(1);
+    await expect(photo.getByRole('checkbox', { name: /Подтверждаю новую оплату/ })).toHaveCount(0);
+
+    releaseRetryQuote();
+    await expect.poll(() => state.photoQuotes).toBeGreaterThan(1);
+    await expect(photo.getByRole('button', { name: /Повторить фото.*25/ })).toBeDisabled();
+    await expect(photo.getByRole('checkbox', { name: /Подтверждаю новую оплату/ })).not.toBeChecked();
+    expect(state.photoRuns).toBe(1);
+    await photo.getByRole('checkbox', { name: /Подтверждаю новую оплату/ }).check();
+    await photo.getByRole('button', { name: /Повторить фото/ }).click();
+    await expect.poll(() => state.photoRuns).toBe(2);
+    expect(state.runBodies[1].body.retry).toBe(true);
+    expect(state.runBodies[1].key).not.toBe(state.runBodies[0].key);
+  } finally {
+    releaseRetryQuote();
+  }
 });
 
 test('changed retry price is visible and has a separate consent gate', async ({ page }) => {

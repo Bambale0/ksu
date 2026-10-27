@@ -1084,3 +1084,10 @@ Cloud TDD reproduced non-ASCII receipt crash and attempt-dict mismatch; both fix
 Gateway dependency deployed and verified: ooo#125 -> e445aeac7ff9573d41ae93a7dbfc3549d52774f4.
 See receipt execution ledger for exact image/health/contract evidence and an explicit
 verification incident. KSU merge/deploy still pending exact-head CI.
+
+
+## KSU #561 — authorized production release continuation (2026-10-27)
+
+The user explicitly authorized verification and production delivery of PR#562, superseding earlier no-deploy boundaries for this feature. Final release remains gated on all six exact-head/main CI workflows, independent review, verified backup before additive migration0044, consistent immutable app/worker image IDs and live/public revision/health smoke. No paid generations or customer notifications are permitted by this verification.
+
+The sole fd694ca5 CI failure was an early synchronous quote-count observation in one WebKit regression (902Chromium/227WebKit other tests passed), not a demonstrated second charge. The regression now holds the retry quote response, verifies blocked payment/no consent/no extra POST while pending, waits for the actual fresh quote, then requires explicit consent and a new next-attempt key. Application code is unchanged in this release repair. Current main9f3294fc's CI-only bounded HTTPS tooling change is retained. Native reviewer01a17dc9-6355-7652-8ea1-ac7de9843d49 approved the bounded fix. Final run/deploy evidence is recorded in PR#562 without amending the tested tree merely to append statuses.

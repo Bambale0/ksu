@@ -285,3 +285,13 @@ Resolved four conflicts by preserving both workstreams: all CI WebKit suites; bo
 
 
 Merged-main candidate validation: **2092 backend tests passed** on a fresh isolated database, one existing SQLAlchemy warning; migrations/parity/Ruff/compile passed. Combined **52 Chromium journeys**, typecheck and24-route static build passed. The folded WebKit CI command was parsed and verified as one shell command containing workflow, v2admin and Seedancevideo suites (removed a merge-only blank line that would have separated commands). Incoming Nano Banana receipt code and E2E tooling workflow are byte-for-byte identical to incoming main. Final independent merge review and exact-head CI remain PR-recorded gates; no main merge/deploy.
+
+
+## Authorized production release continuation — 2026-10-27
+
+User explicitly requested verification and delivery to production. Refreshed AGENTS/current PR/workflow/deployment instructions and mandatory companion guidance before edits. Current feature headfd694ca5: five CI workflows green; full Mini App run40528832418 had902Chromium passes and227WebKit passes with one failure at a synchronous quote-count assertion. The failed-photo DOM is disabled before the effect-driven refresh necessarily reaches the request interceptor, so DOM-disabled alone is not a quote-request barrier. Investigating with isolated WebKit and strengthening pending-quote/no-paid-request assertions, not dropping the requirement or adding sleeps. Production runtime is not modified by this diagnostic.
+
+Applied local .agents/systematic-debugging, deployment-procedures, verification-before-completion and requesting-code-review; current Bambale0/skills implement (TDD/small change), claw QA (money/UI boundary), wondelai working-with-legacy-code (pin behavior), dev-agents-pack frontend-react (async states), agentskills README (progressive disclosure; no KSU release instructions), anthropics webapp-testing (actual browser evidence). Shared Start baseline is not modified. CI/CD is read before use; final release requires all six exact-head and exact-main checks, verified DB backup/migration, immutable images and public revision/health smoke.
+
+
+Release diagnostics: the strengthened quote case passed10/10in isolated mobileWebKit. The broader resource-bounded/read-only container revealed one test-artifact portability defect: responsive screenshots wrote to an absolute controller host path, unavailable inside the isolated container. Changed only that test to Playwright testInfo.outputPath, preserving viewport/overflow assertions and separating worker artifacts. No runtime patch or test skip. Re-run both engines after this artifact fix; original CI quote-order failure and container ENOENT are recorded separately.
