@@ -123,11 +123,11 @@ def verified_rejection_receipt(
     if response.headers.get("X-Submission-State") != "not-accepted-v1":
         return False
     if not hmac.compare_digest(
-        response.headers.get("X-Client-Request-Id", ""), client_request_id
+        response.headers.get("X-Client-Request-Id", "").encode("utf-8"), client_request_id.encode("utf-8")
     ):
         return False
     if not hmac.compare_digest(
-        response.headers.get("X-Idempotency-Key-Sha256", ""), expected_digest
+        response.headers.get("X-Idempotency-Key-Sha256", "").encode("utf-8"), expected_digest.encode("ascii")
     ):
         return False
     try:
@@ -205,6 +205,8 @@ def error_disposition(exc: NeironychProviderError) -> str:
     rejection, not an outage. It is not a licence to bypass those restrictions.
     """
     if any(marker in f"{exc.error_code or ''} {exc}".lower() for marker in _POLICY):
+        return "reject"
+    if exc.status_code == 422:
         return "reject"
     if exc.submission_rejected:
         return "fallback"

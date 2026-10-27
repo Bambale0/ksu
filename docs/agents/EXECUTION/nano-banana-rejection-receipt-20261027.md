@@ -51,3 +51,19 @@
 5. Review against this contract and repository standards; open a focused PR only after verification. No merge, deployment or runtime-route mutation without separate authorization.
 
 Guidance: repository `AGENTS.md`; local `.clinerules` systematic-debugging, TDD and verification-before-completion (local `.agents` is absent); remote `Bambale0/skills` diagnosing-bugs/TDD/code-review; `Bambale0/claw` backend integration; `Bambale0/dev-agents-pack` debugger; `wondelai/skills` Release It; `agentskills/agentskills` and `anthropics/skills` catalogs had no additional provider-receipt workflow. No skill scripts executed.
+
+## Release continuation 2026-10-27
+User now explicitly authorizes gateway-first merge/deploy and cloud execution.
+Reproduced both reported review findings. Receipt identities now compare bytes;
+non-ASCII identities and malformed JSON remain uncertain without fallback.
+HTTP 422 rejects before receipt disposition. The real HTTP-to-PostgreSQL regression
+now follows the configured Nexus step, re-enters both submission services and proves
+one Neironych POST, one Nexus submission, one original generation debit, no refund
+and no repeated charge. 47 recovery/protocol tests passed on isolated PostgreSQL 17.
+No production DB, route, price, permission or paid provider call was changed.
+
+Refreshed guidance: .agents AGENTS/README/index and pytest-skill,
+Bambale0/skills diagnosing-bugs + TDD, claw backend-integration,
+dev-agents-pack debugger, wondelai Release It, anthropics webapp-testing.
+agentskills/agentskills supplied skill format/discovery only, no applicable receipt workflow.
+Gateway #125 required three further review corrections and remains the release dependency.

@@ -200,42 +200,79 @@ async def test_image_disposition_metadata_and_single_refund(
 
 @pytest.mark.asyncio
 async def test_verified_image_non_acceptance_advances_existing_route_without_refund(monkeypatch):
-    gid = await generation("nano-banana-pro")
+    import hashlib
 
-    class Client:
+    from app.providers.neironych_image import NeironychImageClient
+    from app.services.nexus_generation_provider import NexusGenerationProviderService
+
+    gid = await generation("nano-banana-pro")
+    provider_posts, nexus_posts = [], []
+
+    def rejected(request):
+        provider_posts.append(request)
+        key = request.headers["Idempotency-Key"]
+        assert request.headers["X-Submission-Receipt"] == "v1"
+        return httpx.Response(
+            503,
+            headers={
+                "X-Submission-State": "not-accepted-v1",
+                "X-Client-Request-Id": request.headers["X-Client-Request-Id"],
+                "X-Idempotency-Key-Sha256": hashlib.sha256(key.encode()).hexdigest(),
+            },
+            json={"detail": "provider_temporarily_unavailable"},
+        )
+
+    class NexusClient:
         def __init__(self, *args):
             pass
 
         async def aclose(self):
             pass
 
-        async def create_nano_banana_pro(self, **kwargs):
-            raise NeironychProviderError(
-                "provider_temporarily_unavailable",
-                status_code=503,
-                error_code="provider_temporarily_unavailable",
-                request_id="provider-rejection-receipt",
-                submission_rejected=True,
-            )
+        async def create_generation(self, **kwargs):
+            nexus_posts.append(kwargs)
+            return "nexus-receipt-regression-task"
 
-    monkeypatch.setattr("app.services.neironych_generation_provider.NeironychImageClient", Client)
-    async with SessionFactory() as session:
-        row = await Service.submit(session, gid)
-        assert row.status == "retry" and row.provider == "nexus"
-        assert row.parameters["_provider_route_index"] == 1
-        assert row.parameters["_provider_attempts"] == [
-            {
+    monkeypatch.setattr("app.services.nexus_generation_provider.NexusClient", NexusClient)
+    async with httpx.AsyncClient(
+        base_url="https://receipt.example", transport=httpx.MockTransport(rejected)
+    ) as http:
+        monkeypatch.setattr(
+            "app.services.neironych_generation_provider.NeironychImageClient",
+            lambda *args: NeironychImageClient("test", "https://receipt.example", client=http),
+        )
+        async with SessionFactory() as session:
+            row = await Service.submit(session, gid)
+            assert row.status == "retry" and row.provider == "nexus"
+            assert row.parameters["_provider_route_index"] == 1
+            attempts = row.parameters["_provider_attempts"]
+            assert len(attempts) == 1
+            assert {name: attempts[0][name] for name in ("provider", "outcome", "reason")} == {
                 "provider": "neironych",
                 "outcome": "fallback",
                 "reason": "Neironych API HTTP 503: provider_temporarily_unavailable",
             }
-        ]
-        transactions = (
-            await session.scalars(
-                select(WalletTransaction).where(WalletTransaction.reference_id == str(gid))
-            )
-        ).all()
-        assert [transaction.kind for transaction in transactions] == ["generation"]
+            assert attempts[0]["ordinal"] == 0
+            assert attempts[0]["external_id"] is None
+            assert attempts[0]["idempotency_key"] == f"generation:{gid}:provider:0"
+            assert datetime.fromisoformat(attempts[0]["at"]).tzinfo is not None
+        async with SessionFactory() as session:
+            row = await NexusGenerationProviderService.submit(session, gid)
+            assert row.provider == "nexus" and row.status == "generating"
+            assert row.external_id == "nexus-receipt-regression-task"
+        # A duplicate worker wake-up must not repeat either provider submission.
+        async with SessionFactory() as session:
+            await Service.submit(session, gid)
+            await NexusGenerationProviderService.submit(session, gid)
+            transactions = (
+                await session.scalars(
+                    select(WalletTransaction).where(WalletTransaction.reference_id == str(gid))
+                )
+            ).all()
+            assert len(transactions) == 1
+            assert transactions[0].kind == "generation"
+            assert transactions[0].amount == Decimal("-10")
+    assert len(provider_posts) == len(nexus_posts) == 1
 
 
 @pytest.mark.asyncio

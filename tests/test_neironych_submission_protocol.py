@@ -110,6 +110,11 @@ async def test_video_replay_sends_saved_bytes_without_new_normalization(monkeypa
         ("X-Client-Request-Id", "uncertain"),
         ("X-Idempotency-Key-Sha256", "uncertain"),
         ("unexpected_body", "uncertain"),
+        ("unicode_client_id", "uncertain"),
+        ("unicode_digest", "uncertain"),
+        ("malformed_json", "uncertain"),
+        ("wrong_status", "reject"),
+        ("policy_body", "reject"),
     ],
 )
 async def test_image_fallback_requires_exact_not_accepted_receipt(change, expected):
@@ -130,7 +135,16 @@ async def test_image_fallback_requires_exact_not_accepted_receipt(change, expect
         body = {"detail": "provider_temporarily_unavailable"}
         if change == "unexpected_body":
             body = {"error": {"code": "provider_temporarily_unavailable"}}
-        return httpx.Response(503, headers=headers, json=body)
+        if change == "unicode_client_id":
+            headers["X-Client-Request-Id"] = "ошибка"
+        elif change == "unicode_digest":
+            headers["X-Idempotency-Key-Sha256"] = "ошибка"
+        raw_headers = [(name.encode(), value.encode("utf-8")) for name, value in headers.items()]
+        if change == "malformed_json":
+            return httpx.Response(503, headers=raw_headers, content=b"{broken json")
+        if change == "policy_body":
+            body = {"detail": "content_policy_violation"}
+        return httpx.Response(422 if change == "wrong_status" else 503, headers=raw_headers, json=body)
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="https://api.example"
