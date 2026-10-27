@@ -1,3 +1,10 @@
+## Active Fix Execution — two-step trend visual parity (2026-10-27)
+
+- Baseline `main`/production `9143e6f8c2258030c1ae03e3a4b251cab32394c9`. The server-enforced `sequential_photo_video` workflow is already live and correctly locks video until an owned Step 1 photo is ready, but the customer overview is text-first and a locked Step 2 click only emits an inline alert. The requested reference shows two adjacent image cards and an explicit modal directing the customer back to Step 1.
+- Scope is presentation-only for versioned two-step trends: image-backed Step 1/Step 2 cards, dimmed locked state, centered `Сначала Шаг 1` chip, and accessible modal with `Отмена` / `Перейти к Шагу 1`. Preserve workflow API, pricing, debit/idempotency, provider routing, admin recipe controls, private-media ownership and all ordinary one-step trends.
+- Audit, visual acceptance, browser seams, responsive/accessibility matrix and rollback: [docs/agents/EXECUTION/trend-workflow-visual-parity-20261027.md](docs/agents/EXECUTION/trend-workflow-visual-parity-20261027.md). Branch `fix/trend-workflow-visual-parity-20261027`.
+- Release continuation: the user explicitly authorized a full release on 2026-10-27. Publish the reviewed branch through a PR, require exact-head CI, merge only after all protected gates pass, then verify the merge SHA in the production checkout, running images/containers, public Mini App release marker, health endpoints and the live two-step trend assets/path. No paid generation is required.
+
 ## Active Fix Execution — Nano Banana verified pre-acceptance fallback (2026-10-27)
 
 - Baseline `main`/production `e9037324a096ea3992cd5f63e8044811a4a5bf5a`. Production evidence isolates the actionable defect to ambiguous Neironych image admission: KSU cannot safely use its configured Nexus fallback after an ordinary 503 because acceptance may have occurred. Safety-filter and definite 422 rejections are separate intended failures and must not be bypassed.

@@ -5,8 +5,10 @@ const RUN_ID = '56156156-2222-4222-8222-561561562222';
 const PHOTO_GENERATION_ID = '56156156-3333-4333-8333-561561563333';
 const VIDEO_GENERATION_ID = '56156156-4444-4444-8444-561561564444';
 const PHOTO_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAIAAACHPC9vAAAAJ0lEQVR4nGMMiK9goAZgooopowaNGjRq0KhBowaNGjRq0KhBA24QAK8vAWeEfhD0AAAAAElFTkSuQmCC', 'base64');
-const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg';
+const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg?X-Amz-Signature=signed-photo';
 const VIDEO_URL = 'https://media.example.invalid/video-owned.mp4';
+const PREVIEW_URL = `/api/v1/trends/${TREND_ID}/preview-thumbnail?v=fixture`;
+const EXTERNAL_IMAGE_PREVIEW_URL = 'https://media.example.invalid/asset?id=workflow-cover';
 
 const workflowTrend = {
   id: TREND_ID,
@@ -15,7 +17,8 @@ const workflowTrend = {
   schema_version: 2,
   workflow_type: 'sequential_photo_video',
   media_type: 'image',
-  preview_url: null,
+  preview_url: PREVIEW_URL,
+  preview_thumbnail_url: PREVIEW_URL,
   steps: [
     {
       id: 'prepare_photo',
@@ -78,8 +81,8 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false } = {}) {
-  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, errors: [] };
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false } = {}) {
+  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
   let quoteFailure = quoteFailsOnce;
@@ -98,37 +101,66 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
     view.steps[1].command_id = videoCommandId;
     if (photoCommandId && view.steps[0].status !== 'pending') view.steps[0].generation_id = PHOTO_GENERATION_ID;
     if (videoCommandId && view.steps[1].status !== 'pending') view.steps[1].generation_id = VIDEO_GENERATION_ID;
+    if (workflowOnlyThumbnail) {
+      view.preview_url = VIDEO_URL;
+      view.preview_thumbnail_url = PREVIEW_URL;
+    }
     return view;
   };
 
   page.on('pageerror', (error) => state.errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.addInitScript((insets) => {
     window.Telegram = { WebApp: {
       initData: 'query_id=trend-workflow&hash=test',
       initDataUnsafe: { user: { id: 777, first_name: 'QA' } },
+      ...(insets ? { contentSafeAreaInset: insets } : {}),
       ready() {}, expand() {}, close() {}, onEvent() {}, offEvent() {},
       BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
       HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
     } };
+  }, safeAreaInsets);
+  await page.route('https://media.example.invalid/**', (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/photo-owned.jpg')) {
+      state.ownedPreviewUrls.push(route.request().url());
+      if (failOwnedPreview) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    }
+    return route.fulfill({ contentType: 'image/png', body: PHOTO_BYTES });
   });
-  await page.route('https://media.example.invalid/**', (route) => route.fulfill({ contentType: 'image/png', body: PHOTO_BYTES }));
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
+    if (path === `/api/v1/trends/${TREND_ID}/preview-thumbnail`) {
+      state.previewReads += 1;
+      if (coldPreview && state.previewReads <= 2) return route.fulfill({ status: 202, contentType: 'application/json', body: '{}' });
+      return route.fulfill({ status: 200, contentType: 'image/png', body: PHOTO_BYTES });
+    }
     if (path === '/api/v1/me') return json({ id: 'viewer', telegram_id: 777, first_name: 'QA', balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === `/api/v1/trends/${TREND_ID}/workflow` && request.method() === 'GET') return workflowCreated ? json(workflowView(photoReady ? 'step1_ready' : 'created', photoReady ? 'ready' : 'pending', videoReady ? 'ready' : 'pending')) : json({}, 404);
     if (path === `/api/v1/trends/${TREND_ID}` && request.method() === 'GET') {
       if (hiddenTemplate) return json({}, 404);
       if (legacy) return json({ id: TREND_ID, title: 'Старый тренд', description: 'Старый сценарий', media_type: 'image', cost_rox: '25', reference_requirements: { min: 0, max: 0 } });
+      if (externalImagePreview) return json({
+        ...workflowTrend,
+        media_type: 'video',
+        preview_url: EXTERNAL_IMAGE_PREVIEW_URL,
+        preview_thumbnail_url: null,
+      });
+      if (workflowOnlyThumbnail) return json({
+        ...workflowTrend,
+        media_type: 'video',
+        preview_url: VIDEO_URL,
+        preview_thumbnail_url: null,
+      });
       return json(workflowTrend);
     }
     if (path === `/api/v1/trends/${TREND_ID}/workflow` && request.method() === 'POST') { workflowCreated = true; state.workflowCreates += 1; if (creationLoss) { creationLoss = false; return route.abort('failed'); } return json(workflowView(), 201); }
     if (path === '/api/v1/uploads/kie') return json({ url: 'https://upload.example.invalid/photo-input.jpg', name: 'person.jpg', mime_type: 'image/jpeg' }, 201);
     if (path === `/api/v1/trends/workflows/${RUN_ID}` && request.method() === 'GET') {
       state.workflowReads += 1;
+      if (photoReady && photoReadyGate) await photoReadyGate;
       if (videoReady) return json(workflowView('completed', 'ready', 'ready'));
       if (videoFailed) return json(workflowView('failed', 'ready', 'failed'));
       if (photoFailed) { const view = workflowView('failed', 'failed', 'pending'); view.steps[0].generation_id = PHOTO_GENERATION_ID; return json(view); }
@@ -179,13 +211,47 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
 
 const imageFile = { name: 'person.png', mimeType: 'image/png', buffer: PHOTO_BYTES };
 
-test('v2 locks the second stage and quotes semantic image inputs without legacy reference_urls', async ({ page }) => {
+test('v2 matches the two-card locked-step reference and explains Step 1 in a modal', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const state = await setup(page);
   await expect(page.getByRole('heading', { name: 'Подготовить фото' })).toBeVisible();
-  const locked = page.getByRole('button', { name: /Оживить фото.*Сначала создайте фото/ });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const photoCard = stages.getByRole('button', { name: /Шаг 1.*Подготовить фото/i });
+  const locked = stages.getByRole('button', { name: /Шаг 2.*Оживить фото.*Сначала Шаг 1/i });
+  await expect(photoCard.getByRole('img', { name: /Шаг 1/i })).toHaveAttribute('src', PREVIEW_URL);
+  await expect(locked.getByRole('img', { name: /Шаг 2/i })).toHaveAttribute('src', PREVIEW_URL);
+  await expect(locked.getByText('Сначала Шаг 1', { exact: true })).toBeVisible();
+  await expect(locked).toHaveAttribute('aria-haspopup', 'dialog');
   await expect(locked).toBeVisible();
+  const detailedLocked = page.getByRole('button', { name: 'Оживить фото. Сначала создайте фото' });
+  await expect(detailedLocked).toHaveAttribute('aria-haspopup', 'dialog');
+  await expect(detailedLocked).toHaveAttribute('aria-controls', 'workflow-lock-dialog');
   await locked.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Сначала подготовьте фото' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Сначала Шаг 1' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/загружается фото, которое вы создадите на Шаге 1/i)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Отмена' })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: 'Перейти к Шагу 1' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Отмена' })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Отмена' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(locked).toBeFocused();
+
+  await locked.click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(locked).toBeFocused();
+
+  await locked.click();
+  await dialog.locator('..').click({ position: { x: 2, y: 2 } });
+  await expect(dialog).toBeHidden();
+  await expect(locked).toBeFocused();
+
+  await locked.click();
+  await page.getByRole('dialog', { name: 'Сначала Шаг 1' }).getByRole('button', { name: 'Перейти к Шагу 1' }).click();
+  await expect(dialog).toBeHidden();
   await expect(page.locator('[data-step="prepare_photo"]')).toBeFocused();
 
   await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
@@ -196,6 +262,88 @@ test('v2 locks the second stage and quotes semantic image inputs without legacy 
     values: { occasion: 'Прогулка' },
   }));
   expect(state.quoteBodies.at(-1)).not.toHaveProperty('reference_urls');
+});
+
+test('ready Step 1 unlocks the visual Step 2 card without showing the modal', async ({ page }) => {
+  const state = await setup(page);
+  await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  await page.getByRole('button', { name: /Создать фото/ }).click();
+  await expect.poll(() => state.workflowReads).toBeGreaterThan(0);
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const videoCard = stages.getByRole('button', { name: /Шаг 2.*Оживить фото/i });
+  await expect(videoCard).not.toHaveAttribute('aria-haspopup', 'dialog');
+  await expect(videoCard.getByText('Сначала Шаг 1', { exact: true })).toHaveCount(0);
+  await videoCard.click();
+  await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1' })).toHaveCount(0);
+  await expect(page.locator('[data-step="animate_photo"]')).toBeVisible();
+});
+
+test('an open lock explanation closes when Step 1 becomes ready in the background', async ({ page }) => {
+  let releasePhotoReady;
+  const photoReadyGate = new Promise((resolve) => { releasePhotoReady = resolve; });
+  await setup(page, { photoReadyGate });
+  await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  await page.getByRole('button', { name: /Создать фото/ }).click();
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const videoCard = stages.getByRole('button', { name: /Шаг 2.*Оживить фото/i });
+  await videoCard.click();
+  await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1' })).toBeVisible();
+  releasePhotoReady();
+  await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1' })).toHaveCount(0);
+  await expect(videoCard).not.toHaveAttribute('aria-haspopup', 'dialog');
+  await expect(videoCard).toBeFocused();
+});
+
+test('cold workflow thumbnails retry until both visual cards recover', async ({ page }) => {
+  const state = await setup(page, { coldPreview: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect.poll(() => state.previewReads).toBeGreaterThanOrEqual(3);
+  await expect(images).toHaveCount(2);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('owned signed photo URLs are never mutated by card recovery', async ({ page }) => {
+  const state = await setup(page, { failOwnedPreview: true });
+  await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  await page.getByRole('button', { name: /Создать фото/ }).click();
+  const photoCardImage = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('button', { name: 'Шаг 1. Подготовить фото', exact: true }).getByRole('img');
+  await expect(photoCardImage).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => state.ownedPreviewUrls.length).toBeGreaterThan(0);
+  expect(state.ownedPreviewUrls.every((url) => url === PHOTO_URL)).toBe(true);
+});
+
+test('lock modal honors Telegram content safe-area insets', async ({ page }) => {
+  await setup(page, { safeAreaInsets: { top: 44, bottom: 34, left: 28, right: 26 } });
+  await page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('button', { name: /Шаг 2.*Оживить фото/i }).click();
+  const dialog = page.getByRole('dialog', { name: 'Сначала Шаг 1' });
+  const overlay = dialog.locator('..');
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => overlay.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft];
+  })).toEqual(['44px', '26px', '34px', '28px']);
+});
+
+test('external image workflow covers remain visible when workflow media type is video', async ({ page }) => {
+  await setup(page, { externalImagePreview: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('workflow response thumbnail covers stale trend metadata after run creation', async ({ page }) => {
+  await setup(page, { workflowOnlyThumbnail: true });
+  const images = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {
@@ -237,12 +385,25 @@ test('legacy v1 trend keeps the existing one-step controls', async ({ page }) =>
 
 test('workflow cards have no horizontal overflow at mobile and desktop acceptance widths', async ({ page }, testInfo) => {
   await setup(page);
-  for (const width of [320, 390, 768]) {
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const photoCard = stages.getByRole('button', { name: /Шаг 1.*Подготовить фото/i });
+  const videoCard = stages.getByRole('button', { name: /Шаг 2.*Оживить фото/i });
+  for (const width of [320, 375, 390, 430, 768]) {
     await page.setViewportSize({ width, height: 852 });
     await expect(page.getByRole('heading', { name: 'Подготовить фото', exact: true })).toBeVisible();
     await expect(page.locator('[data-step="prepare_photo"]')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`workflow-${width}.png`), fullPage: true });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const photoBox = await photoCard.boundingBox();
+    const videoBox = await videoCard.boundingBox();
+    const chipBox = await videoCard.getByText('Сначала Шаг 1', { exact: true }).boundingBox();
+    expect(photoBox).not.toBeNull();
+    expect(videoBox).not.toBeNull();
+    expect(chipBox).not.toBeNull();
+    expect(Math.abs(photoBox.width - videoBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs((photoBox.width / photoBox.height) - 0.8)).toBeLessThan(0.03);
+    expect(Math.abs((chipBox.x + chipBox.width / 2) - (videoBox.x + videoBox.width / 2))).toBeLessThanOrEqual(1);
+    await expect(videoCard.locator('img')).not.toHaveCSS('filter', 'none');
   }
 });
 
