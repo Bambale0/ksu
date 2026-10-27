@@ -8,7 +8,7 @@ const PHOTO_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAIAAACHPC9vAAA
 const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg?X-Amz-Signature=signed-photo';
 const VIDEO_URL = 'https://media.example.invalid/video-owned.mp4';
 const PREVIEW_URL = `/api/v1/trends/${TREND_ID}/preview-thumbnail?v=fixture`;
-const EXTERNAL_IMAGE_PREVIEW_URL = 'https://media.example.invalid/workflow-cover.jpg?version=2';
+const EXTERNAL_IMAGE_PREVIEW_URL = 'https://media.example.invalid/asset?id=workflow-cover';
 
 const workflowTrend = {
   id: TREND_ID,
@@ -81,7 +81,7 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null, externalImagePreview = false } = {}) {
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false } = {}) {
   const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
@@ -101,6 +101,10 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
     view.steps[1].command_id = videoCommandId;
     if (photoCommandId && view.steps[0].status !== 'pending') view.steps[0].generation_id = PHOTO_GENERATION_ID;
     if (videoCommandId && view.steps[1].status !== 'pending') view.steps[1].generation_id = VIDEO_GENERATION_ID;
+    if (workflowOnlyThumbnail) {
+      view.preview_url = VIDEO_URL;
+      view.preview_thumbnail_url = PREVIEW_URL;
+    }
     return view;
   };
 
@@ -142,6 +146,12 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
         ...workflowTrend,
         media_type: 'video',
         preview_url: EXTERNAL_IMAGE_PREVIEW_URL,
+        preview_thumbnail_url: null,
+      });
+      if (workflowOnlyThumbnail) return json({
+        ...workflowTrend,
+        media_type: 'video',
+        preview_url: VIDEO_URL,
         preview_thumbnail_url: null,
       });
       return json(workflowTrend);
@@ -326,6 +336,14 @@ test('external image workflow covers remain visible when workflow media type is 
   await expect(images.nth(0)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
   await expect(images.nth(1)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
   await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('workflow response thumbnail covers stale trend metadata after run creation', async ({ page }) => {
+  await setup(page, { workflowOnlyThumbnail: true });
+  const images = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {

@@ -165,9 +165,13 @@ function userFieldValid(field: TrendUserField, value: string): boolean {
   return clean.length <= Math.max(1, Math.min(160, field.max_length || 160));
 }
 
+function previewUrlHasVideoExtension(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url);
+}
+
 function previewIsVideo(trend: TrendItem): boolean {
   const previewUrl = trend.preview_url || "";
-  if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(previewUrl)) return true;
+  if (previewUrlHasVideoExtension(previewUrl)) return true;
   if (/\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)(?:[?#]|$)/i.test(previewUrl)) return false;
   return trend.media_type === "video";
 }
@@ -377,8 +381,8 @@ function TrendWorkflowRunner({
   const mediaOptions = useMemo(() => (photoStep?.media_options || []).filter((media) => Boolean(media.id && workflowMediaUrl(media))), [photoStep?.media_options]);
   const selectedMedia = mediaOptions.find((media) => media.id === selectedAssetId) || photoStep?.media;
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
-  const workflowThumbnailUrl = trend?.preview_thumbnail_url || "";
-  const workflowCoverFallbackUrl = (trend && !previewIsVideo(trend) ? trend.preview_url : "") || selectedMediaUrl;
+  const workflowThumbnailUrl = trend?.preview_thumbnail_url || workflow.preview_thumbnail_url || "";
+  const workflowCoverFallbackUrl = (trend?.preview_url && !previewUrlHasVideoExtension(trend.preview_url) ? trend.preview_url : "") || selectedMediaUrl;
   const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : (workflowThumbnailUrl || workflowCoverFallbackUrl);
   const videoOverviewUrl = workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
