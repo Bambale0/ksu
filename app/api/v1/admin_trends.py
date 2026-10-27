@@ -15,6 +15,7 @@ from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.model_catalog import SPECS
 from app.services.trends import TrendService
 from app.services.trend_workflows import TrendWorkflowService
+from app.services.model_ui_contract import build_public_model_ui_schema
 
 router = APIRouter(prefix="/admin/trends", tags=["admin-trends"])
 
@@ -62,7 +63,7 @@ def _domain_error(exc: Exception) -> HTTPException:
 async def web_admin_trend_options(context: AdminSocialDep) -> dict[str, Any]:
     del context
     models = [
-        {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec)}
+        {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec), "ui_schema": build_public_model_ui_schema(spec.public_dict())}
         for spec in SPECS
         if spec.media_type in {"image", "video"}
     ]
@@ -103,11 +104,12 @@ async def web_admin_trend_update(
 
         async def operation() -> dict[str, Any]:
             item = await session.scalar(
-                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
+                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update().execution_options(populate_existing=True)
             )
             if item is None:
                 raise LookupError("Trend not found")
             item.title = title
+            recipe["usage_count"] = max(0, int((item.payload or {}).get("usage_count", 0)))
             item.payload = recipe
             item.is_active = payload.is_active
             await session.flush()
@@ -123,7 +125,7 @@ async def web_admin_trend_update(
             request_payload={
                 "operation": "trend.update",
                 "title": title,
-                "payload": recipe,
+                "payload": payload.payload,
                 "is_active": payload.is_active,
             },
             operation=operation,

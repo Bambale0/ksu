@@ -3,6 +3,14 @@ type ErrorPayload = {
   message?: unknown;
 };
 
+export type UserSafeHttpError = Error & { status: number };
+
+function errorWithStatus(status: number, message: string): UserSafeHttpError {
+  const error = new Error(message) as UserSafeHttpError;
+  error.status = status;
+  return error;
+}
+
 function textDetail(value: unknown): string | null {
   if (typeof value === "string") {
     const text = value.trim();
@@ -24,20 +32,20 @@ function validationDetail(payload: unknown): string | null {
 }
 
 export function userSafeHttpError(status: number, payload: unknown): Error {
-  if (status >= 500) return new Error("Сервис временно недоступен. Попробуйте ещё раз.");
-  if (status === 429) return new Error("Слишком много запросов. Попробуйте чуть позже.");
-  if (status === 401) return new Error("Сессия истекла. Откройте ROXY заново.");
-  if (status === 403) return new Error("Недостаточно прав для этого действия.");
-  if (status === 404) return new Error("Данные не найдены или больше недоступны.");
+  if (status >= 500) return errorWithStatus(status, "Сервис временно недоступен. Попробуйте ещё раз.");
+  if (status === 429) return errorWithStatus(status, "Слишком много запросов. Попробуйте чуть позже.");
+  if (status === 401) return errorWithStatus(status, "Сессия истекла. Откройте ROXY заново.");
+  if (status === 403) return errorWithStatus(status, "Недостаточно прав для этого действия.");
+  if (status === 404) return errorWithStatus(status, "Данные не найдены или больше недоступны.");
   if (status === 422) {
     const detail = validationDetail(payload);
-    return new Error(detail || "Проверьте введённые данные и попробуйте ещё раз.");
+    return errorWithStatus(status, detail || "Проверьте введённые данные и попробуйте ещё раз.");
   }
 
   const body = payload && typeof payload === "object" ? payload as ErrorPayload : {};
   const detail = textDetail(body.detail) || textDetail(body.message);
-  if (detail) return new Error(detail);
-  return new Error("Не удалось выполнить действие. Попробуйте ещё раз.");
+  if (detail) return errorWithStatus(status, detail);
+  return errorWithStatus(status, "Не удалось выполнить действие. Попробуйте ещё раз.");
 }
 
 export function userSafeNetworkError(reason: unknown): Error {

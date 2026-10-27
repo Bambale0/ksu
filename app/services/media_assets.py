@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,7 +66,7 @@ class MediaIngestError(RuntimeError):
 class MediaAssetService:
     @staticmethod
     def ensure_source_readable(asset: MediaAsset) -> None:
-        """Do not charge for animation when the prepared local file is missing."""
+        """Check stored readiness/local bytes; remote objects also need async verification."""
         if asset.status != "ready" or not asset.object_key or not asset.bucket:
             raise MediaIngestError("Prepared image is not ready")
         if LocalMediaStorage.is_local_bucket(asset.bucket):
@@ -77,6 +78,20 @@ class MediaAssetService:
                 raise MediaIngestError("Prepared image is unavailable") from exc
         elif not ObjectStorage.configured():
             raise MediaIngestError("Legacy media storage is unavailable")
+
+    @classmethod
+    async def verify_source_readable(cls, asset: MediaAsset) -> None:
+        """Verify a selected private source without publishing or downloading it."""
+        cls.ensure_source_readable(asset)
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            return
+        try:
+            metadata = await ObjectStorage.head_object(key=asset.object_key, bucket=asset.bucket)
+        except (BotoCoreError, ClientError, ObjectStorageNotConfigured, OSError, ValueError) as exc:
+            raise MediaIngestError("Prepared image is unavailable") from exc
+        size = metadata.get("ContentLength") if isinstance(metadata, dict) else None
+        if type(size) is not int or size <= 0 or metadata.get("DeleteMarker"):
+            raise MediaIngestError("Prepared image is unavailable")
 
     @classmethod
     def provider_source_url(

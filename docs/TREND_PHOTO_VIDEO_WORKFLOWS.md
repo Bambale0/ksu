@@ -34,7 +34,7 @@ Private generation history exposes only a safe `trend_workflow` pointer (`id`, `
 
 ## Media boundary
 
-The workflow stores `media_asset_id`, not a temporary provider URL. Quote/start checks that the selected image belongs to the completed photo step of the same owner/run, has a ready image MIME type, and has usable storage metadata. A missing local source file cannot unlock another paid video.
+The workflow stores `media_asset_id`, not a temporary provider URL. After a photo has been selected for animation, a quote/retry that omits the optional source ID retains that stored choice (including earlier attempts that stored it only on the video step); it never silently switches to the first result. If the stored selection becomes unavailable, the request fails before billing. A different source must be selected explicitly and pass the same ownership/readiness checks. Quote/start checks that the selected image belongs to the completed photo step of the same owner/run, has a ready image MIME type, and has usable storage metadata. A missing local source file cannot unlock another paid video. Legacy S3-backed sources additionally require a successful read-only `HeadObject` probe with positive content length and no deletion marker, both before quote/admission and at provider submission. The probe runs off the event loop, uses `MEDIA_INGEST_CONNECT_TIMEOUT_SECONDS` for its connection/read budgets and makes one attempt. Missing objects, access/network errors or ambiguous metadata fail closed without publishing the image. Other S3 operations retain their existing configuration. An object can still disappear after preflight; the ordinary provider-failure/refund path remains necessary.
 
 Provider input stores an internal asset marker. Kie, Nexus and Neironych resolve that marker to a usable private source at their actual submission boundary; the marker is never an outbound provider URL. Neironych resolves before freezing its first immutable request body. Its uncertain retry reuses the original frozen body/idempotency identity; it does not silently mint a different request.
 
@@ -68,3 +68,17 @@ Lifecycle logs/metrics carry safe workflow/step/generation identifiers and phase
 Apply the additive migration only during an explicitly authorized release after a database backup. Ship backend/workers before enabling newly published v2 templates. Start with selected admin-created templates; do not convert the whole catalog. Verify exact merge SHA, deployment revision, worker/readiness health and a permitted smoke. No actual paid generation is part of ordinary mocked QA.
 
 To stop new starts, hide affected v2 templates using existing admin controls. Keep the workflow-aware backend/workers running so already accepted jobs can finish and owned runs remain readable. Do not roll workers back to code that cannot interpret their queued media markers. Do not drop0044 tables or remove durable media while runs exist: the migration downgrade explicitly refuses non-empty workflow state. A code rollback to a pre-workflow release requires drained in-flight workflow jobs and a deliberate continuity plan; hiding cards alone does not make old workers compatible.
+
+
+## Owner operation receipts
+
+Owner workflow status exposes the client-generated opaque `command_id` for each admitted step and historical attempt. A browser recovering an uncertain retry must correlate this receipt with its pending command ID; an old failed generation UUID alone does not prove that the new retry was accepted. The receipt never contains input bodies, prompts or payload hashes. An unresolved intent retains the same key across reloads and input corrections; only a separate explicitly confirmed attempt after resolution receives a new key.
+
+
+## Customer recovery and paid consent
+
+The Mini App persists only an opaque command key, its previously accepted price and the explicit retry flag, scoped to workflow/step in session storage. Request bodies, reference/preview URLs, private personalization and Telegram authentication are never written by this flow. Storage round-trip failure blocks a new paid submission and explains the recovery action.
+
+When a response is lost, the normal payment button stays disabled. Status reconciliation recognizes only the same admitted command receipt with a linked generation, including prior-attempt history; an older failed generation is not proof that a delayed retry has finished. The exact body can be replayed while it remains in memory. After reload the user can re-enter photo or video personalization, obtain a fresh quote and explicitly confirm the dedicated recovery action. It retains the original command key/retry flag, so a delayed original and a corrected request compete for one accepted operation. The accepted body hash remains immutable: changed input after acceptance conflicts, while unaccepted input correction never creates a second order key.
+
+A definite validation rejection does not discard an unresolved operation identity. Quote refresh is not a paid action. Every newly accepted attempt reaching a retryable terminal state invalidates the old quote and clears consent, even when status and user inputs are identical to the preceding failure. If the price changes, the previous/current amounts are visible and the new amount needs explicit confirmation.

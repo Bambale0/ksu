@@ -61,6 +61,7 @@ class GenerationProviderService:
                 if asset is None:
                     raise ProviderMediaTransportPermanentError("Workflow media asset is not owned")
                 try:
+                    await MediaAssetService.verify_source_readable(asset)
                     return MediaAssetService.provider_source_url(asset)
                 except MediaIngestError as exc:
                     # This failed before any external paid submission, so it is

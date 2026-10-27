@@ -24,6 +24,7 @@ from app.services.reference_previews import ReferencePreviewService
 from app.services.reference_static import ReferenceStaticStorage
 from app.services.trend_collections import TrendCollectionService
 from app.services.trend_workflows import TrendWorkflowConflict, TrendWorkflowService
+from app.services.model_ui_contract import build_public_model_ui_schema
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
@@ -218,7 +219,7 @@ async def inline_admin_trend_list(
             ).all()
         )
         models = [
-            {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec)}
+            {**spec.public_dict(), "reference_capacity": TrendService.reference_capacity(spec), "ui_schema": build_public_model_ui_schema(spec.public_dict())}
             for spec in SPECS
             if spec.media_type in {"image", "video"}
         ]
@@ -301,11 +302,12 @@ async def inline_admin_trend_update(
 
         async def operation() -> dict[str, Any]:
             item = await session.scalar(
-                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update()
+                select(AdminTrend).where(AdminTrend.id == trend_id).with_for_update().execution_options(populate_existing=True)
             )
             if item is None:
                 raise LookupError("Trend not found")
             item.title = title
+            recipe["usage_count"] = max(0, int((item.payload or {}).get("usage_count", 0)))
             item.payload = recipe
             item.is_active = payload.is_active
             await session.flush()
@@ -324,7 +326,7 @@ async def inline_admin_trend_update(
             request_id=_request_id(request),
             action="social.moderate",
             target_id=str(trend_id),
-            request_payload={"operation": "trend.update.inline", "title": title, "payload": recipe, "is_active": payload.is_active},
+            request_payload={"operation": "trend.update.inline", "title": title, "payload": payload.payload, "is_active": payload.is_active},
             operation=operation,
         )
         await session.commit()

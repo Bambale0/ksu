@@ -1015,9 +1015,9 @@ Guidance applied: KSU AGENTS and local .agents/code-review-and-quality; current 
 
 - Feature/ticket: issue #561, approved specification in `/root/agent-work/ksu-561-control/SPEC.md`.
 - Audit baseline: `feat/trend-photo-video-561` at `e9037324a096ea3992cd5f63e8044811a4a5bf5a` (main baseline); production checkout and live environments are out of scope.
-- Current state: v1 trend recipes and one-shot `TrendService.run()` exist; durable generations, wallet/outbox accounting, media ingest/assets, public trend DTOs, React Mini App, and admin trend editors exist. v2 sequential workflow, server-owned recipe validation, workflow persistence, protected step APIs, and step-aware UI/admin editing are missing.
+- Current state (continuation, 2026-10-27): v2 server-owned two-step recipes, durable owner-scoped workflow/step rows, protected quote/run/status APIs, ready-private-image binding, atomic generation/debit/outbox linkage and customer/admin UI are implemented in draft PR #562. Existing v1 remains supported. Customer/admin UI and recovery corrections are integrated. Fresh backend2074 and final focused Chromium50 checks passed, with typecheck/static build and independent backend/UI review approval. Local WebKit is environment-blocked by missing system libraries; exact-head CI (including container WebKit) remains the completion gate recorded in PR #562. This is not a production release claim.
 - Reuse: `app/services/trends.py`, `app/api/v1/trends.py`, `app/services/generations.py`, model catalog/capability validation, pricing/quote, media asset readiness, existing refund/outbox/delivery, `frontend/mini-app` trend route/components, and `app/web/admin_app/trends.*`.
-- Risks: `GenerationService.create()` owns its commit; workflow reservation must be idempotent and owner-scoped without a second billing/provider subsystem. Step 2 must require a ready owned image asset and explicit server quote before charging. v1 DTOs/history/action surfaces must not expose recipes or regress.
+- Transaction decision: workflow calls the existing `GenerationService.create(commit=False, wake=False)` so generation/debit/outbox/step linkage commit atomically; ordinary callers retain previous defaults. Legacy reservation reconciliation is retained. Step 2 requires a ready owned image and an accepted current quote. Remaining gates: UI recovery review, exact-final-head CI and independent final verification. No merge/deploy is authorized.
 - Active execution ledger: [docs/agents/EXECUTION/trend-photo-video-561.md](docs/agents/EXECUTION/trend-photo-video-561.md).
 
 ### Backend implementation audit — KSU #561 (2026-10-27)
@@ -1052,3 +1052,11 @@ Guidance applied: KSU AGENTS and local .agents/code-review-and-quality; current 
 - Exact checks: `source /root/agent-work/ksu-561-control/TEST_ENV.sh && python -m pytest -q tests/test_trend_workflows.py` → **32 passed in 4.25s**; targeted Ruff, compileall and `git diff --check` passed.
 - Quote boundary: workflow run requests require a non-negative `quoted_cost_rox` before generation work; `GenerationService` compares the effective current catalog/billing cost against that accepted quote before wallet debit. Ordinary non-workflow generation remains backward-compatible.
 - Remaining limits for controller: full suite/exact-head CI, adapter completion for all three provider submissions, real concurrency/late-callback tests, provider/media ingest integration, frontend/admin E2E, and release actions remain unverified and unperformed.
+
+
+### Continuation verification — KSU #561 (2026-10-27)
+
+- Resumed existing worktree/PR at `6e3eb9246fa756f34f7b0ad783e19004d28431c5`; retained all prior dirty UI/admin/backend work and tests. The older chronological handoff entries above describe intermediate states and are superseded by this status and the detailed ledger.
+- Fresh isolated PostgreSQL migration/parity, full Ruff and compileall passed. Full backend before the additional source-selection fix: **2061 passed**, one pre-existing category-delete SQLAlchemy warning.
+- Source-choice regression reproduced with two real PostgreSQL failures: an omitted video retry source silently selected the first output, and an unavailable selected output was substituted. The resolver now defaults to the persisted reviewed asset and fails closed; **63 workflow checks passed** after repair.
+- Native UI implementation child `01a17dbb-f6bf-7422-8c57-948ed2e1046c` uses the pinned `.agents` skills and is addressing the six recorded final UI review findings. Independent Spec/Quality reviews, final integrated tests and publication remain pending. No production or paid-provider operations.

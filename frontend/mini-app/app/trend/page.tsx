@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import { copyToClipboard, haptic, notify, openTelegramShare } from "@/lib/telegram";
 import { trendUsageLabel } from "@/lib/trend-usage";
-import type { TrendItem, TrendQualityOption, TrendUserField } from "@/lib/types";
+import type {
+  TrendItem,
+  TrendQualityOption,
+  TrendUserField,
+  TrendWorkflowInput,
+  TrendWorkflowMedia,
+  TrendWorkflowQuote,
+  TrendWorkflowRun,
+  TrendWorkflowStep,
+} from "@/lib/types";
 import styles from "./trend.module.css";
 
 const TREND_USER_NUMBER_RE = /^-?\d+(?:[.,]\d+)?$/;
@@ -14,6 +23,79 @@ const TREND_USER_NUMBER_RE = /^-?\d+(?:[.,]\d+)?$/;
 function trendId(): string {
   if (typeof window === "undefined") return "";
   return new URL(window.location.href).searchParams.get("id") || "";
+}
+
+function workflowRunId(): string {
+  if (typeof window === "undefined") return "";
+  return new URL(window.location.href).searchParams.get("workflow") || "";
+}
+
+function workflowCommandKey(trendIdValue: string): string {
+  const storageKey = `roxy:trend-workflow:${trendIdValue}`;
+  try {
+    const current = window.sessionStorage.getItem(storageKey);
+    if (current) return current;
+    const next = `workflow:${trendIdValue}:${crypto.randomUUID()}`;
+    window.sessionStorage.setItem(storageKey, next);
+    return next;
+  } catch {
+    return `workflow:${trendIdValue}`;
+  }
+}
+
+function freshCommandKey(stepId: string): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `workflow-step:${stepId}:${crypto.randomUUID()}`;
+  return `workflow-step:${stepId}:${Date.now()}`;
+}
+
+type PendingOperationMetadata = { key: string; acceptedQuotePrice?: string; retry?: boolean };
+
+function pendingCommandStorageKey(workflowId: string, stepId: string): string {
+  return `roxy:trend-operation:${workflowId}:${stepId}`;
+}
+
+function readPendingOperation(workflowId: string, stepId: string): PendingOperationMetadata | null {
+  try {
+    const raw = window.sessionStorage.getItem(pendingCommandStorageKey(workflowId, stepId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingOperationMetadata;
+    if (!parsed || typeof parsed.key !== "string" || !parsed.key) return null;
+    return {
+      key: parsed.key,
+      ...(typeof parsed.acceptedQuotePrice === "string" ? { acceptedQuotePrice: parsed.acceptedQuotePrice } : {}),
+      retry: parsed.retry === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function rememberPendingOperation(workflowId: string, stepId: string, key: string, acceptedQuotePrice?: string, retry = false): boolean {
+  try {
+    const payload: PendingOperationMetadata = { key, retry };
+    if (acceptedQuotePrice) payload.acceptedQuotePrice = acceptedQuotePrice;
+    const storageKey = pendingCommandStorageKey(workflowId, stepId);
+    const serialized = JSON.stringify(payload);
+    window.sessionStorage.setItem(storageKey, serialized);
+    return window.sessionStorage.getItem(storageKey) === serialized;
+  } catch {
+    return false;
+  }
+}
+
+function operationAccepted(step: TrendWorkflowStep | undefined, key: string): boolean {
+  if (!step || !key) return false;
+  if (step.command_id === key && step.generation_id) return true;
+  return Boolean(step.attempt_history?.some((attempt) => attempt.command_id === key && attempt.generation_id));
+}
+
+function WorkflowLockIcon() {
+  return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>;
+}
+
+
+function safeError(reason: unknown, fallback: string): string {
+  return reason instanceof Error && reason.message ? reason.message : fallback;
 }
 
 function money(value?: string | null): string {
@@ -44,9 +126,555 @@ function optionPriceLabel(option: TrendQualityOption): string {
   return value ? `${money(value)} ROX` : "";
 }
 
+type WorkflowImageValue = { url: string; name: string; previewUrl: string };
+type WorkflowUploadState = { status: "idle" | "uploading" | "error"; name?: string; message?: string };
+
+const WORKFLOW_ACTIVE_STATUSES = new Set(["running", "queued", "reconciling", "awaiting_media"]);
+
+function workflowNeedsRetryConsent(status: string): boolean {
+  return status === "failed" || status === "ready";
+}
+
+function workflowStatusLabel(status: string): string {
+  switch (status) {
+    case "pending": return "ожидает действий";
+    case "queued": return "в очереди";
+    case "running": return "выполняется";
+    case "ready": return "готово";
+    case "awaiting_media": return "сохраняем результат";
+    case "reconciling": return "проверяем результат";
+    case "failed": return "не получилось";
+    default: return status || "ожидает действий";
+  }
+}
+
+function workflowMediaUrl(media?: TrendWorkflowMedia | null): string {
+  return typeof media?.url === "string" ? media.url : "";
+}
+
+function workflowSettingsLabel(settings?: Record<string, string | number | null>): string {
+  if (!settings) return "";
+  const labels: Record<string, string> = { duration: "Длительность", resolution: "Разрешение", aspect_ratio: "Соотношение сторон" };
+  return Object.entries(settings)
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim())
+    .map(([key, value]) => `${labels[key] || key}: ${value}`)
+    .join(" · ");
+}
+
+function workflowInputValueIsValid(input: TrendWorkflowInput, value: string): boolean {
+  const clean = value.trim();
+  if (!clean) return !input.required;
+  if (input.type === "number") return /^-?\d+(?:[.,]\d+)?$/.test(clean);
+  if (input.type === "date") {
+    const parsed = new Date(`${clean}T00:00:00Z`);
+    return /^\d{4}-\d{2}-\d{2}$/.test(clean) && !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === clean;
+  }
+  if (input.type === "select") return Boolean(input.options?.includes(clean));
+  return clean.length <= 160;
+}
+
+function WorkflowInputSlot({
+  input,
+  value,
+  onChange,
+  disabled,
+}: {
+  input: TrendWorkflowInput;
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const label = `${input.label}${input.required ? " *" : ""}`;
+  const invalid = Boolean(value) && !workflowInputValueIsValid(input, value);
+  if (input.type === "select") {
+    return (
+      <label className={styles.workflowField}>
+        <span>{label}</span>
+        <select aria-label={input.label} value={value} disabled={disabled} aria-invalid={invalid} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Выберите вариант</option>
+          {(input.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <small>{input.help}</small>
+      </label>
+    );
+  }
+  return (
+    <label className={styles.workflowField}>
+      <span>{label}</span>
+      <input
+        aria-label={input.label}
+        maxLength={input.type === "date" ? undefined : 160}
+        type={input.type === "date" ? "date" : "text"}
+        inputMode={input.type === "number" ? "decimal" : undefined}
+        value={value}
+        disabled={disabled}
+        aria-invalid={invalid}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <small>{input.help}</small>
+      {invalid ? <em>Проверьте значение поля</em> : null}
+    </label>
+  );
+}
+
+function TrendWorkflowRunner({
+  trend,
+  initialWorkflow,
+  onShare,
+  onCopy,
+  sharing,
+  copying,
+}: {
+  trend: TrendItem | null;
+  initialWorkflow: TrendWorkflowRun;
+  onShare: () => void;
+  onCopy: () => void;
+  sharing: boolean;
+  copying: boolean;
+}) {
+  const [workflow, setWorkflow] = useState(initialWorkflow);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [videoValues, setVideoValues] = useState<Record<string, string>>({});
+  const [previewReady, setPreviewReady] = useState("");
+  const [quoteRevision, setQuoteRevision] = useState(0);
+  const [images, setImages] = useState<Record<string, WorkflowImageValue>>({});
+  const [uploads, setUploads] = useState<Record<string, WorkflowUploadState>>({});
+  const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [quotes, setQuotes] = useState<Record<string, TrendWorkflowQuote | null>>({});
+  const [quoteLoading, setQuoteLoading] = useState<Record<string, boolean>>({});
+  const [quoteErrors, setQuoteErrors] = useState<Record<string, string>>({});
+  const [retryConsent, setRetryConsent] = useState<Record<string, boolean>>({});
+  const [retryPreviousPrices, setRetryPreviousPrices] = useState<Record<string, string>>({});
+  const [runningStep, setRunningStep] = useState("");
+  const [error, setError] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+  const inputVersions = useRef<Record<string, number>>({});
+  const quoteVersions = useRef<Record<string, number>>({});
+  const commandKeys = useRef<Record<string, string>>({});
+  const pendingCommands = useRef<Record<string, { key: string; body: Record<string, unknown> }>>({});
+  const [uncertainStep, setUncertainStep] = useState("");
+  const pendingOperations = useRef<Record<string, PendingOperationMetadata>>({});
+  const [recoveryConsent, setRecoveryConsent] = useState(false);
+  const acceptedQuotePrices = useRef<Record<string, string>>({});
+  const seenRetryStates = useRef<Record<string, string>>({});
+  const mounted = useRef(true);
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+  useEffect(() => () => {
+    mounted.current = false;
+    for (const image of Object.values(imagesRef.current)) URL.revokeObjectURL(image.previewUrl);
+  }, []);
+  const runningRef = useRef(false);
+  const pollingRef = useRef(false);
+  const workflowRef = useRef(workflow);
+  workflowRef.current = workflow;
+
+  useEffect(() => {
+    let unresolved = "";
+    for (const step of workflow.steps) {
+      const stored = readPendingOperation(workflow.id, step.id);
+      if (!stored) continue;
+      if (stored.acceptedQuotePrice) acceptedQuotePrices.current[step.id] = stored.acceptedQuotePrice;
+      if (operationAccepted(step, stored.key)) {
+        delete pendingCommands.current[step.id];
+        delete pendingOperations.current[step.id];
+        delete commandKeys.current[step.id];
+        // If an earlier in-flight request won, show its actual selected source.
+        if (step.kind === "video" && step.command_id === stored.key) {
+          const photo = workflow.steps.find((candidate) => candidate.kind === "image");
+          if (photo?.media_asset_id) setSelectedAssetId(photo.media_asset_id);
+        }
+      } else {
+        pendingOperations.current[step.id] = stored;
+        commandKeys.current[step.id] = stored.key;
+        unresolved ||= step.id;
+      }
+    }
+    setUncertainStep(unresolved);
+  }, [workflow]);
+
+  const invalidateQuote = (stepId: string) => {
+    quoteVersions.current[stepId] = (quoteVersions.current[stepId] || 0) + 1;
+    setQuotes((current) => ({ ...current, [stepId]: null }));
+    setQuoteErrors((current) => {
+      if (!current[stepId]) return current;
+      const next = { ...current };
+      delete next[stepId];
+      return next;
+    });
+  };
+  const photoStep = workflow.steps.find((step) => step.kind === "image") || workflow.steps[0];
+  const videoStep = workflow.steps.find((step) => step.kind === "video") || workflow.steps[1];
+  const photoInputs = useMemo(() => (photoStep?.inputs || []).slice().sort((a, b) => a.order - b.order), [photoStep?.inputs]);
+  const photoImageInputs = useMemo(() => photoInputs.filter((input) => input.type === "image"), [photoInputs]);
+  const photoValueInputs = useMemo(() => photoInputs.filter((input) => input.type !== "image"), [photoInputs]);
+  const videoValueInputs = useMemo(() => (videoStep?.inputs || []).filter((input) => input.type !== "image").sort((a, b) => a.order - b.order), [videoStep?.inputs]);
+  const photoStatus = photoStep?.status || "pending";
+  const videoStatus = videoStep?.status || "pending";
+  const photoReady = photoStatus === "ready" && Boolean(photoStep?.media_asset_id) && Boolean(workflowMediaUrl(photoStep?.media));
+  const videoUnlocked = photoReady;
+  const mediaOptions = useMemo(() => (photoStep?.media_options || []).filter((media) => Boolean(media.id && workflowMediaUrl(media))), [photoStep?.media_options]);
+  const selectedMedia = mediaOptions.find((media) => media.id === selectedAssetId) || photoStep?.media;
+  const selectedMediaUrl = workflowMediaUrl(selectedMedia);
+  const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
+  const photoReadOnly = Boolean(videoStep?.generation_id);
+  const inputsLocked = Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(photoStatus);
+  const workflowUncertain = workflow.status === "reconciling" || workflow.steps.some((step) => Boolean(step.reconcile_required));
+  const stepIsUncertain = (stepId: string): boolean => workflowUncertain || uncertainStep === stepId || Boolean(pendingCommands.current[stepId]);
+
+  useEffect(() => {
+    if (!selectedAssetId && photoStep?.media_asset_id) setSelectedAssetId(photoStep.media_asset_id);
+    if (selectedAssetId && mediaOptions.length && !mediaOptions.some((media) => media.id === selectedAssetId)) {
+      setSelectedAssetId(photoStep?.media_asset_id || mediaOptions[0]?.id || "");
+    }
+  }, [mediaOptions, photoStep?.media_asset_id, selectedAssetId]);
+
+  const imageInputPayload = useMemo(() => photoImageInputs
+    .filter((input) => images[input.id]?.url)
+    .map((input) => ({ slot_id: input.id, url: images[input.id].url })), [images, photoImageInputs]);
+
+  const valuesPayload = useMemo(() => Object.fromEntries(photoValueInputs
+    .filter((input) => values[input.id] !== undefined && values[input.id] !== "")
+    .map((input) => [input.id, input.type === "number" ? Number(values[input.id].replace(",", ".")) : values[input.id]])), [photoValueInputs, values]);
+
+  const photoValid = photoImageInputs.every((input) => Boolean(images[input.id]) || !input.required)
+    && photoValueInputs.every((input) => workflowInputValueIsValid(input, values[input.id] || ""));
+  const videoValid = videoUnlocked && Boolean(selectedAssetId) && previewReady === selectionVersion
+    && videoValueInputs.every((input) => workflowInputValueIsValid(input, videoValues[input.id] || ""));
+  const videoValuesPayload = useMemo(() => Object.fromEntries(videoValueInputs
+    .filter((input) => videoValues[input.id] !== undefined && videoValues[input.id] !== "")
+    .map((input) => [input.id, videoValues[input.id]])), [videoValueInputs, videoValues]);
+  const quoteBodies = useMemo(() => ({
+    [photoStep.id]: { image_inputs: imageInputPayload, values: valuesPayload },
+    [videoStep.id]: { media_asset_id: selectedAssetId, values: videoValuesPayload },
+  }), [imageInputPayload, photoStep.id, selectedAssetId, valuesPayload, videoStep.id, videoValuesPayload]);
+  // A polling response may replace step objects, but identical user input must
+  // not re-trigger pricing merely because quote state or object identity changed.
+  const photoQuoteKey = JSON.stringify(quoteBodies[photoStep.id]);
+  const videoQuoteKey = JSON.stringify(quoteBodies[videoStep.id]);
+
+  useEffect(() => {
+    const step = photoStep;
+    if (!step || !photoValid) {
+      setQuotes((current) => ({ ...current, [step?.id || "prepare_photo"]: null }));
+      return;
+    }
+    const version = (quoteVersions.current[step.id] || 0) + 1;
+    quoteVersions.current[step.id] = version;
+    setQuoteLoading((current) => ({ ...current, [step.id]: true }));
+    setQuotes((current) => ({ ...current, [step.id]: null }));
+    setQuoteErrors((current) => ({ ...current, [step.id]: "" }));
+    void api.quoteTrendWorkflowStep(workflow.id, step.id, quoteBodies[step.id]).then((quote) => {
+      if (quoteVersions.current[step.id] === version) setQuotes((current) => ({ ...current, [step.id]: quote }));
+    }).catch((reason) => {
+      if (quoteVersions.current[step.id] === version) setQuoteErrors((current) => ({ ...current, [step.id]: safeError(reason, "Не удалось обновить стоимость фото") }));
+    }).finally(() => {
+      if (quoteVersions.current[step.id] === version) setQuoteLoading((current) => ({ ...current, [step.id]: false }));
+    });
+    return () => { if (quoteVersions.current[step.id] === version) quoteVersions.current[step.id] += 1; };
+  }, [photoStep.id, photoValid, photoQuoteKey, workflow.id, quoteRevision]);
+
+  useEffect(() => {
+    if (!videoStep || !videoValid) {
+      setQuotes((current) => ({ ...current, [videoStep?.id || "animate_photo"]: null }));
+      return;
+    }
+    const version = (quoteVersions.current[videoStep.id] || 0) + 1;
+    quoteVersions.current[videoStep.id] = version;
+    setQuoteLoading((current) => ({ ...current, [videoStep.id]: true }));
+    setQuotes((current) => ({ ...current, [videoStep.id]: null }));
+    setQuoteErrors((current) => ({ ...current, [videoStep.id]: "" }));
+    void api.quoteTrendWorkflowStep(workflow.id, videoStep.id, quoteBodies[videoStep.id]).then((quote) => {
+      if (quoteVersions.current[videoStep.id] === version) setQuotes((current) => ({ ...current, [videoStep.id]: quote }));
+    }).catch((reason) => {
+      if (quoteVersions.current[videoStep.id] === version) setQuoteErrors((current) => ({ ...current, [videoStep.id]: safeError(reason, "Не удалось обновить стоимость видео") }));
+    }).finally(() => {
+      if (quoteVersions.current[videoStep.id] === version) setQuoteLoading((current) => ({ ...current, [videoStep.id]: false }));
+    });
+    return () => { if (quoteVersions.current[videoStep.id] === version) quoteVersions.current[videoStep.id] += 1; };
+  }, [videoQuoteKey, videoStep.id, videoValid, workflow.id, quoteRevision]);
+
+  useEffect(() => {
+    const retryable = [
+      { step: photoStep, status: photoStatus, bodyKey: photoQuoteKey },
+      { step: videoStep, status: videoStatus, bodyKey: videoQuoteKey },
+    ];
+    for (const { step, status, bodyKey } of retryable) {
+      if (!step || !workflowNeedsRetryConsent(status)) continue;
+      // A later failed attempt can have the same status and inputs. Consent
+      // belongs to one accepted attempt, never to the whole recipe forever.
+      const marker = JSON.stringify([step.command_id, step.generation_id, step.attempts, status, bodyKey]);
+      if (seenRetryStates.current[step.id] === marker) continue;
+      seenRetryStates.current[step.id] = marker;
+      setRetryConsent((current) => ({ ...current, [step.id]: false }));
+      const previousPrice = acceptedQuotePrices.current[step.id];
+      if (previousPrice) setRetryPreviousPrices((current) => ({ ...current, [step.id]: previousPrice }));
+      invalidateQuote(step.id);
+      setQuoteRevision((current) => current + 1);
+    }
+  }, [photoQuoteKey, photoStatus, photoStep.command_id, photoStep.generation_id, photoStep.attempts,
+    videoQuoteKey, videoStatus, videoStep.command_id, videoStep.generation_id, videoStep.attempts]);
+
+  const refreshWorkflow = async () => {
+    const next = await api.trendWorkflow(workflow.id);
+    setWorkflow(next);
+    return next;
+  };
+
+  const pollActive = workflow.steps.some((step) => WORKFLOW_ACTIVE_STATUSES.has(step.status)) || workflow.status === "reconciling";
+
+  useEffect(() => {
+    if (!pollActive) return;
+    let disposed = false;
+    let timer: number | undefined;
+    let attempts = 0;
+    const poll = async () => {
+      if (disposed) return;
+      if (pollingRef.current || document.hidden) { timer = window.setTimeout(() => void poll(), 3000); return; }
+      pollingRef.current = true;
+      attempts += 1;
+      try {
+        const next = await api.trendWorkflow(workflowRef.current.id);
+        if (!disposed) setWorkflow(next);
+        if (!disposed && (next.steps.some((step) => WORKFLOW_ACTIVE_STATUSES.has(step.status)) || next.status === "reconciling")) timer = window.setTimeout(() => void poll(), Math.min(10_000, 1200 + attempts * 150));
+      } catch (reason) {
+        if (!disposed) setError(safeError(reason, "Не удалось обновить состояние работы"));
+        if (!disposed) timer = window.setTimeout(() => void poll(), 1800);
+      } finally {
+        pollingRef.current = false;
+      }
+    };
+    void poll();
+    return () => { disposed = true; if (timer) window.clearTimeout(timer); };
+  }, [pollActive, workflow.id]);
+
+  const uploadImage = async (input: TrendWorkflowInput, file: File) => {
+    const version = (inputVersions.current[input.id] || 0) + 1;
+    inputVersions.current[input.id] = version;
+    const previewUrl = URL.createObjectURL(file);
+    setUploads((current) => ({ ...current, [input.id]: { status: "uploading", name: file.name } }));
+    setError("");
+    try {
+      const uploaded = await api.upload(file);
+      if (!mounted.current || inputVersions.current[input.id] !== version) { URL.revokeObjectURL(previewUrl); return; }
+      invalidateQuote(photoStep.id);
+      setImages((current) => {
+        const previous = current[input.id];
+        if (previous?.previewUrl) URL.revokeObjectURL(previous.previewUrl);
+        return { ...current, [input.id]: { url: uploaded.url, name: file.name, previewUrl } };
+      });
+      setUploads((current) => ({ ...current, [input.id]: { status: "idle", name: file.name } }));
+    } catch (reason) {
+      URL.revokeObjectURL(previewUrl);
+      if (mounted.current && inputVersions.current[input.id] === version) {
+        setUploads((current) => ({ ...current, [input.id]: { status: "error", name: file.name, message: safeError(reason, "Не удалось загрузить фото") } }));
+        setError(safeError(reason, "Не удалось загрузить фото. Попробуйте ещё раз."));
+      }
+    }
+  };
+
+  const removeImage = (inputId: string) => {
+    inputVersions.current[inputId] = (inputVersions.current[inputId] || 0) + 1;
+    invalidateQuote(photoStep.id);
+    setImages((current) => { if (current[inputId]?.previewUrl) URL.revokeObjectURL(current[inputId].previewUrl); const next = { ...current }; delete next[inputId]; return next; });
+    setUploads((current) => ({ ...current, [inputId]: { status: "idle" } }));
+  };
+
+  const reconcileAfterAmbiguousRun = async (stepId: string) => {
+    setReconciling(true);
+    const key = pendingOperations.current[stepId]?.key || pendingCommands.current[stepId]?.key || readPendingOperation(workflow.id, stepId)?.key;
+    try {
+      if (!key) {
+        await refreshWorkflow();
+        setError("");
+        return;
+      }
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt) await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+        const next = await refreshWorkflow();
+        if (operationAccepted(next.steps.find((step) => step.id === stepId), key)) {
+          delete pendingCommands.current[stepId];
+          delete pendingOperations.current[stepId];
+          delete commandKeys.current[stepId];
+          setUncertainStep("");
+          setError("");
+          return;
+        }
+      }
+      setError("Запуск пока не подтверждён. Проверьте статус или восстановите тот же запуск — второй заказ не создаётся.");
+    } catch {
+      setError("Не удалось проверить запуск. Проверьте соединение и нажмите «Проверить статус».");
+    } finally { setReconciling(false); }
+  };
+
+  const runStep = async (step: TrendWorkflowStep, quote: TrendWorkflowQuote | null, retry: boolean, recover = false) => {
+    const existing = pendingCommands.current[step.id];
+    const metadata = pendingOperations.current[step.id];
+    if (runningRef.current || runningStep || reconciling || workflowUncertain) return;
+    if (stepIsUncertain(step.id) && !existing && !recover) return;
+    if (!existing && (!quote || quoteLoading[step.id])) return;
+    if (recover && (!metadata || !recoveryConsent || !(step.kind === "image" ? photoValid : videoValid))) return;
+    const effectiveRetry = metadata ? metadata.retry === true : retry;
+    const body: Record<string, unknown> = existing?.body || {
+      ...quoteBodies[step.id], quoted_cost_rox: quote!.cost_rox, ...(effectiveRetry ? { retry: true } : {}),
+    };
+    const key = existing?.key || metadata?.key || (retry ? freshCommandKey(step.id) : commandKeys.current[step.id] || freshCommandKey(step.id));
+    const acceptedPrice = String(body.quoted_cost_rox || quote?.cost_rox || acceptedQuotePrices.current[step.id] || "");
+    if (!rememberPendingOperation(workflow.id, step.id, key, acceptedPrice, effectiveRetry)) {
+      setError("Не удалось сохранить состояние запуска. Освободите хранилище приложения или откройте ROXY заново. Запуск не оплачен.");
+      return;
+    }
+    acceptedQuotePrices.current[step.id] = acceptedPrice;
+    commandKeys.current[step.id] = key;
+    pendingOperations.current[step.id] = { key, acceptedQuotePrice: acceptedPrice, retry: effectiveRetry };
+    pendingCommands.current[step.id] = { key, body };
+    runningRef.current = true;
+    setRunningStep(step.id);
+    setError("");
+    try {
+      const next = await api.runTrendWorkflowStep(workflow.id, step.id, key, body);
+      setWorkflow(next);
+      if (operationAccepted(next.steps.find((candidate) => candidate.id === step.id), key)) {
+        delete pendingCommands.current[step.id];
+        delete pendingOperations.current[step.id];
+        delete commandKeys.current[step.id];
+        setUncertainStep("");
+      } else {
+        setUncertainStep(step.id);
+        void reconcileAfterAmbiguousRun(step.id);
+      }
+    } catch (reason) {
+      const status = Number((reason as { status?: number })?.status);
+      setUncertainStep(step.id);
+      if ([401, 403, 404, 409, 422, 429].includes(status)) {
+        // A delayed original may still be in flight. Permit correction, but
+        // retain its identity until an owner-scoped receipt proves acceptance.
+        delete pendingCommands.current[step.id];
+        setRecoveryConsent(false);
+        invalidateQuote(step.id);
+        setQuoteRevision((current) => current + 1);
+        setError(status === 422 ? "Проверьте поля и актуальную стоимость перед восстановлением запуска." : safeError(reason, "Не удалось запустить шаг"));
+      } else {
+        setError("Проверяю результат запуска. Новый платный запрос не отправляется.");
+      }
+      void reconcileAfterAmbiguousRun(step.id);
+    } finally { runningRef.current = false; setRunningStep(""); }
+  };
+
+  const startAnother = async () => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    try {
+      const next = await api.createTrendWorkflow(workflow.trend_id, freshCommandKey("workflow"));
+      window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(workflow.trend_id)}&workflow=${encodeURIComponent(next.id)}`);
+    } catch (reason) { setError(safeError(reason, "Не удалось открыть новый сценарий")); }
+    finally { runningRef.current = false; }
+  };
+
+  const focusPhoto = () => {
+    const target = document.querySelector<HTMLElement>('[data-step="prepare_photo"]');
+    target?.focus({ preventScroll: false });
+    target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    setError("Сначала подготовьте фото — после этого откроется второй шаг.");
+  };
+
+  const renderQuote = (step: TrendWorkflowStep, action: string) => {
+    const quote = quotes[step.id];
+    if (!quote) return quoteLoading[step.id] ? "Считаю стоимость…" : action;
+    if (quote.admin_free) return `${action} · Бесплатно (админский доступ)`;
+    return `${action} · ${money(quote.cost_rox)} ROX`;
+  };
+
+  const refreshQuote = (stepId: string) => {
+    setError("");
+    invalidateQuote(stepId);
+    setQuoteRevision((current) => current + 1);
+  };
+
+  const retryConsentCopy = (step: TrendWorkflowStep): string => {
+    const quote = quotes[step.id];
+    return quote?.admin_free ? "Подтверждаю повторный запуск бесплатно" : `Подтверждаю новую оплату: ${money(quote?.cost_rox)} ROX`;
+  };
+
+  const uncertainWorkflowStep = workflow.steps.find((step) => step.id === uncertainStep);
+  const uncertainCommand = uncertainStep ? pendingCommands.current[uncertainStep] : undefined;
+  const recoveryQuote = quotes[uncertainStep];
+  const recoveryValid = uncertainWorkflowStep?.kind === "image" ? photoValid : videoValid;
+  const recoveryQuoteKey = JSON.stringify([uncertainStep, quoteBodies[uncertainStep], recoveryQuote?.cost_rox]);
+  useEffect(() => setRecoveryConsent(false), [recoveryQuoteKey]);
+
+  return (
+    <div className={styles.workflow}>
+      {trend?.description ? <aside className={styles.instructions} role="note" aria-label="Инструкция к тренду"><strong>Перед запуском</strong><p>{trend.description}</p></aside> : null}
+      {trend?.preview_url ? previewIsVideo(trend)
+        ? <video className="trend-preview" src={trend.preview_url} muted controls playsInline preload="metadata" />
+        : <img className="trend-preview" src={trend.preview_url} alt={trend.title} /> : null}
+      <nav className={styles.workflowOverview} aria-label="Этапы сценария">
+        <button type="button" onClick={() => { const el = document.querySelector<HTMLElement>('[data-step="prepare_photo"]'); el?.scrollIntoView({ block: "start", behavior: "smooth" }); el?.focus(); }}><span aria-hidden="true">1 · Фото</span><strong>Подготовить фото</strong><small>{photoStatus === "ready" ? "Фото готово — проверьте результат" : "Сначала создайте нужный образ"}</small></button>
+        <button type="button" aria-disabled={!videoUnlocked} onClick={() => { if (!videoUnlocked) { focusPhoto(); return; } document.querySelector<HTMLElement>('[data-step="animate_photo"]')?.scrollIntoView({ block: "start", behavior: "smooth" }); }}><span aria-hidden="true">2 · Видео {!videoUnlocked ? <WorkflowLockIcon /> : null}</span><strong>Оживить фото</strong><small>{videoUnlocked ? "Отдельный запуск после проверки фото" : "Сначала завершите шаг 1"}</small></button>
+      </nav>
+      <div className={styles.workflowGrid}>
+        <section className={`${styles.workflowCard} ${styles.workflowCardActive}`} data-step="prepare_photo" tabIndex={-1} aria-labelledby="prepare-photo-title">
+          <div className={styles.workflowCardHead}><span className={styles.stepBadge}>1</span><div><h2 id="prepare-photo-title">{photoStep.title || "Подготовить фото"}</h2><p>{photoStep.instructions}</p></div></div>
+          <div className={styles.workflowStatus} aria-live="polite">Состояние: {workflowStatusLabel(photoStatus)}{photoStep.generation_id ? <span> · задача {photoStep.generation_id}</span> : null}</div>
+          {workflowSettingsLabel(photoStep.settings_summary) ? <small className={styles.workflowSettings}>Настройки: {workflowSettingsLabel(photoStep.settings_summary)}</small> : null}
+          <div className={styles.workflowInputs}>
+            {photoInputs.map((input) => input.type === "image" ? (
+              <div className={styles.workflowField} data-slot-id={input.id} key={input.id}>
+                <span>{input.label}{input.required ? " *" : ""}</span><small>{input.help}</small>
+                {images[input.id] ? <div className={styles.workflowUploadPreview}><img src={images[input.id].previewUrl} alt={`Предпросмотр: ${input.label}`} /><button className="secondary" type="button" disabled={inputsLocked || photoReadOnly} onClick={() => removeImage(input.id)}>Удалить фото</button></div> : null}
+                <label className="upload-control"><span>{uploads[input.id]?.status === "uploading" ? "Загружаю…" : images[input.id] ? "Заменить фото" : "Выбрать фото"}</span><input type="file" accept="image/*" disabled={uploads[input.id]?.status === "uploading" || inputsLocked || photoReadOnly} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadImage(input, file); }} /></label>
+                {uploads[input.id]?.status === "error" ? <div className="action-error" role="alert">{uploads[input.id].message || "Не удалось загрузить фото"}. Выберите файл ещё раз.</div> : null}
+              </div>
+            ) : <WorkflowInputSlot key={input.id} input={input} value={values[input.id] || ""} disabled={inputsLocked || photoReadOnly} onChange={(value) => { invalidateQuote(photoStep.id); setValues((current) => ({ ...current, [input.id]: value })); }} />)}
+          </div>
+          {photoStep.attempt_history?.length ? <div className={styles.workflowHistory}><span>Предыдущих попыток: {photoStep.attempt_history.length}</span><div className={styles.workflowHistoryMedia}>{photoStep.attempt_history.map((attempt, index) => workflowMediaUrl(attempt.media) ? <img key={`${attempt.generation_id}-${attempt.attempt}`} src={workflowMediaUrl(attempt.media)} alt={`Предыдущий вариант фото ${index + 1}`} /> : null)}</div></div> : null}
+          {photoStatus === "failed" ? <div className="action-error" role="alert">Фото не готово. Проверьте входные данные и запустите повторно.</div> : null}
+          {quoteErrors[photoStep.id] ? <><div className="action-error" role="alert">{quoteErrors[photoStep.id]}</div><button className="secondary wide" type="button" disabled={quoteLoading[photoStep.id]} onClick={() => refreshQuote(photoStep.id)}>Обновить стоимость</button></> : null}
+          {workflowNeedsRetryConsent(photoStatus) && quotes[photoStep.id] ? <label className={styles.retryConsent}><input type="checkbox" checked={Boolean(retryConsent[photoStep.id])} onChange={(event) => setRetryConsent((current) => ({ ...current, [photoStep.id]: event.target.checked }))} />{retryConsentCopy(photoStep)}{retryPreviousPrices[photoStep.id] && retryPreviousPrices[photoStep.id] !== quotes[photoStep.id]?.cost_rox ? <small>Цена изменилась: было {money(retryPreviousPrices[photoStep.id])} ROX, сейчас {money(quotes[photoStep.id]?.cost_rox)} ROX.</small> : null}</label> : null}
+          <button className="primary wide" type="button" disabled={!photoValid || (!quotes[photoStep.id] && !pendingCommands.current[photoStep.id]) || stepIsUncertain(photoStep.id) || Boolean(quoteLoading[photoStep.id]) || Boolean(runningStep) || reconciling || photoReadOnly || WORKFLOW_ACTIVE_STATUSES.has(photoStatus) || (workflowNeedsRetryConsent(photoStatus) && !retryConsent[photoStep.id]) || Boolean(Object.values(uploads).some((item) => item.status === "uploading"))} onClick={() => void runStep(photoStep, quotes[photoStep.id] || null, workflowNeedsRetryConsent(photoStatus))}>{runningStep === photoStep.id ? "Запускаю…" : renderQuote(photoStep, photoStatus === "failed" ? "Повторить фото" : photoStatus === "ready" ? "Переделать фото" : "Создать фото")}</button>
+        </section>
+
+        {videoUnlocked ? (
+          <section className={`${styles.workflowCard} ${styles.workflowCardReady}`} data-step="animate_photo" aria-labelledby="animate-photo-title">
+            <div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2 id="animate-photo-title">{videoStep.title || "Оживить фото"}</h2><p>{videoStep.instructions}</p></div></div>
+            <div className={styles.workflowStatus} aria-live="polite">Состояние: {workflowStatusLabel(videoStatus)}{videoStep.generation_id ? <span> · задача {videoStep.generation_id}</span> : null}</div>
+            {workflowSettingsLabel(videoStep.settings_summary) ? <small className={styles.workflowSettings}>Настройки: {workflowSettingsLabel(videoStep.settings_summary)}</small> : null}
+            <div className={styles.selectedMedia}><img key={selectionVersion} src={selectedMediaUrl} alt="Готовое фото для оживления" onLoad={() => setPreviewReady(selectionVersion)} onError={() => { setPreviewReady(""); setError("Фото пока не удалось открыть. Проверьте статус перед оплатой видео."); }} /><strong>{previewReady === selectionVersion ? "Выбранное фото для видео" : "Загружаю выбранное фото…"}</strong></div>
+            {mediaOptions.length > 1 ? <div className={styles.mediaChoices} role="radiogroup" aria-label="Выберите готовое фото">{mediaOptions.map((media, index) => <button key={media.id} type="button" role="radio" aria-checked={selectedAssetId === media.id} className={selectedAssetId === media.id ? styles.mediaChoiceActive : ""} disabled={Boolean(runningStep || uncertainStep) || WORKFLOW_ACTIVE_STATUSES.has(videoStatus) || videoStatus === "ready"} onClick={() => { if (selectedAssetId !== media.id) { invalidateQuote(videoStep.id); setSelectedAssetId(media.id || ""); } }}><img src={workflowMediaUrl(media)} alt={`Вариант фото ${index + 1}`} /><span>{selectedAssetId === media.id ? "Выбрано" : `Вариант ${index + 1}`}</span></button>)}</div> : null}
+            {videoValueInputs.map((input) => <WorkflowInputSlot key={input.id} input={input} value={videoValues[input.id] || ""} disabled={Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(videoStatus)} onChange={(value) => { invalidateQuote(videoStep.id); setVideoValues((current) => ({ ...current, [input.id]: value })); }} />)}
+            {videoStatus === "failed" ? <div className="action-error" role="alert">Видео не получилось. Фото сохранено — можно повторить.</div> : null}
+            {quoteErrors[videoStep.id] ? <><div className="action-error" role="alert">{quoteErrors[videoStep.id]}</div><button className="secondary wide" type="button" disabled={quoteLoading[videoStep.id]} onClick={() => refreshQuote(videoStep.id)}>Обновить стоимость</button></> : null}
+            {workflowNeedsRetryConsent(videoStatus) && quotes[videoStep.id] ? <label className={styles.retryConsent}><input type="checkbox" checked={Boolean(retryConsent[videoStep.id])} onChange={(event) => setRetryConsent((current) => ({ ...current, [videoStep.id]: event.target.checked }))} />{retryConsentCopy(videoStep)}{retryPreviousPrices[videoStep.id] && retryPreviousPrices[videoStep.id] !== quotes[videoStep.id]?.cost_rox ? <small>Цена изменилась: было {money(retryPreviousPrices[videoStep.id])} ROX, сейчас {money(quotes[videoStep.id]?.cost_rox)} ROX.</small> : null}</label> : null}
+            <button className="primary wide" type="button" disabled={!videoValid || (!quotes[videoStep.id] && !pendingCommands.current[videoStep.id]) || stepIsUncertain(videoStep.id) || Boolean(quoteLoading[videoStep.id]) || Boolean(runningStep) || reconciling || WORKFLOW_ACTIVE_STATUSES.has(videoStatus) || videoStatus === "ready" || (workflowNeedsRetryConsent(videoStatus) && !retryConsent[videoStep.id])} onClick={() => void runStep(videoStep, quotes[videoStep.id] || null, workflowNeedsRetryConsent(videoStatus))}>{runningStep === videoStep.id ? "Запускаю…" : videoStatus === "ready" ? "Видео готово" : renderQuote(videoStep, videoStatus === "failed" ? "Повторить видео" : "Оживить это фото")}</button>
+            {videoStatus === "ready" && workflowMediaUrl(videoStep.media) ? <video className={styles.workflowResult} src={workflowMediaUrl(videoStep.media)} controls playsInline preload="metadata" /> : null}
+          </section>
+        ) : (
+          <button className={`${styles.workflowCard} ${styles.workflowCardLocked}`} type="button" onClick={focusPhoto} aria-label="Оживить фото. Сначала создайте фото"><div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2>Оживить фото</h2><p>Сначала создайте фото</p></div><span className={styles.lockIcon} aria-hidden="true"><WorkflowLockIcon /></span></div><p className={styles.lockCopy}>После готового фото здесь появится выбор результата и отдельная стоимость видео.</p></button>
+        )}
+      </div>
+      <button className="secondary wide" type="button" disabled={reconciling || Boolean(runningStep)} onClick={() => void reconcileAfterAmbiguousRun(uncertainStep || videoStep.id)}>Проверить статус</button>
+      {uncertainCommand && uncertainWorkflowStep ? <button className="secondary wide" type="button" disabled={reconciling || Boolean(runningStep)} onClick={() => void runStep(uncertainWorkflowStep, null, false)}>Повторить тот же запрос</button> : null}
+      {uncertainWorkflowStep && !uncertainCommand ? <section className={styles.workflowCard} aria-label="Восстановление запуска">
+        <p>Ответ на запуск потерян. При необходимости загрузите фото и заполните данные заново. Будет восстановлен тот же заказ: уже принятая операция повторно не оплачивается.</p>
+        {acceptedQuotePrices.current[uncertainStep] && recoveryQuote && acceptedQuotePrices.current[uncertainStep] !== recoveryQuote.cost_rox ? <p>Цена изменилась: было {money(acceptedQuotePrices.current[uncertainStep])} ROX, сейчас {money(recoveryQuote.cost_rox)} ROX.</p> : null}
+        <label className={styles.retryConsent}><input type="checkbox" checked={recoveryConsent} disabled={!recoveryQuote || quoteLoading[uncertainStep]} onChange={(event) => setRecoveryConsent(event.target.checked)} />Подтверждаю восстановление запуска: {recoveryQuote?.admin_free ? "бесплатно" : `${money(recoveryQuote?.cost_rox)} ROX`}</label>
+        <button className="secondary wide" type="button" disabled={!recoveryValid || !recoveryQuote || !recoveryConsent || Boolean(quoteLoading[uncertainStep]) || reconciling || Boolean(runningStep) || workflowUncertain || WORKFLOW_ACTIVE_STATUSES.has(uncertainWorkflowStep.status)} onClick={() => void runStep(uncertainWorkflowStep, recoveryQuote || null, false, true)}>{renderQuote(uncertainWorkflowStep, "Восстановить тот же запуск")}</button>
+      </section> : null}
+      {videoStatus === "ready" ? <button className="secondary wide" type="button" onClick={() => void startAnother()}>Создать ещё раз</button> : null}
+      {reconciling ? <p className={styles.workflowNotice} aria-live="polite">Проверяю результат запуска…</p> : null}
+      {error ? <div className="action-error" role="alert">{error}</div> : null}
+      <button className="secondary wide" type="button" disabled={sharing} onClick={onShare}>{sharing ? "Открываю Telegram…" : "Поделиться трендом"}</button>
+      <button className="secondary wide" type="button" disabled={copying} onClick={onCopy}>{copying ? "Копирую…" : "Скопировать ссылку тренда"}</button>
+    </div>
+  );
+}
+
 export default function TrendPage() {
   const [trend, setTrend] = useState<TrendItem | null>(null);
+  const [workflow, setWorkflow] = useState<TrendWorkflowRun | null>(null);
   const [loading, setLoading] = useState(true);
+  const [workflowRecovery, setWorkflowRecovery] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [running, setRunning] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -59,21 +687,101 @@ export default function TrendPage() {
 
   useEffect(() => {
     const id = trendId();
+    const runId = workflowRunId();
     if (!id) {
       setError("Тренд не выбран");
       setLoading(false);
       return;
     }
-    void api.trend(id)
-      .then((item) => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (runId) {
+          const snapshot = await api.trendWorkflow(runId);
+          if (cancelled) return;
+          setWorkflow(snapshot);
+          setTrend({
+            id: snapshot.trend_id,
+            title: snapshot.title || "Тренд",
+            description: snapshot.description,
+            media_type: "video",
+            preview_url: snapshot.preview_url,
+            preview_thumbnail_url: snapshot.preview_thumbnail_url,
+            workflow_type: snapshot.workflow_type,
+            schema_version: snapshot.recipe_version,
+          });
+          setLoading(false);
+          return;
+        }
+        const latest = await api.latestTrendWorkflow(id);
+        if (latest?.workflow_type === "sequential_photo_video" && Array.isArray(latest.steps) && latest.steps.length === 2) {
+          if (cancelled) return;
+          setWorkflow(latest);
+          setTrend({ id: latest.trend_id, title: latest.title || "Тренд", description: latest.description, media_type: "video", preview_url: latest.preview_url, preview_thumbnail_url: latest.preview_thumbnail_url, workflow_type: latest.workflow_type, schema_version: latest.recipe_version });
+          window.history.replaceState(null, "", `/mini-app/trend/?id=${encodeURIComponent(latest.trend_id)}&workflow=${encodeURIComponent(latest.id)}`);
+          return;
+        }
+        const item = await api.trend(id);
+        if (cancelled) return;
         setTrend(item);
         setUserValues(Object.fromEntries((item.user_fields || []).slice(0, 6).map((field) => [field.key, ""])));
         setSelectedQuality(defaultQualityValue(item));
         setSelectedAspectRatio("");
-      })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось открыть тренд"))
-      .finally(() => setLoading(false));
+        if (item.workflow_type === "sequential_photo_video" || item.schema_version === 2) {
+          if (latest) throw new Error("Не удалось прочитать состояние сценария. Обновите страницу.");
+          setWorkflowRecovery(true);
+          const commandKey = workflowCommandKey(id);
+          try {
+            const created = await api.createTrendWorkflow(id, commandKey);
+            if (cancelled) return;
+            setWorkflow(created);
+            setWorkflowRecovery(false);
+            window.history.replaceState(null, "", `/mini-app/trend/?id=${encodeURIComponent(created.trend_id)}&workflow=${encodeURIComponent(created.id)}`);
+          } catch (creationReason) {
+            if (cancelled) return;
+            const recovered = await api.latestTrendWorkflow(id);
+            if (recovered?.workflow_type === "sequential_photo_video" && recovered.steps?.length === 2) {
+              setWorkflow(recovered);
+              setWorkflowRecovery(false);
+              window.history.replaceState(null, "", `/mini-app/trend/?id=${encodeURIComponent(recovered.trend_id)}&workflow=${encodeURIComponent(recovered.id)}`);
+            } else {
+              setError(safeError(creationReason, "Не удалось подтвердить создание сценария. Проверьте статус и повторите попытку."));
+            }
+          }
+        }
+      } catch (reason) {
+        if (!cancelled) setError(safeError(reason, "Не удалось открыть тренд"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, []);
+
+  const retryWorkflowRecovery = async () => {
+    const id = trend?.id;
+    if (!id || running) return;
+    setRunning(true);
+    setError("");
+    try {
+      const recovered = await api.latestTrendWorkflow(id);
+      if (recovered?.workflow_type === "sequential_photo_video" && recovered.steps?.length === 2) {
+        setWorkflow(recovered);
+        setWorkflowRecovery(false);
+        window.history.replaceState(null, "", `/mini-app/trend/?id=${encodeURIComponent(recovered.trend_id)}&workflow=${encodeURIComponent(recovered.id)}`);
+        return;
+      }
+      const created = await api.createTrendWorkflow(id, workflowCommandKey(id));
+      setWorkflow(created);
+      setWorkflowRecovery(false);
+      window.history.replaceState(null, "", `/mini-app/trend/?id=${encodeURIComponent(created.trend_id)}&workflow=${encodeURIComponent(created.id)}`);
+    } catch (reason) {
+      setError(safeError(reason, "Не удалось подтвердить сценарий. Повторите проверку позже."));
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const minimum = Number(trend?.reference_requirements?.min || 0);
   const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
@@ -118,12 +826,13 @@ export default function TrendPage() {
   };
 
   const share = async () => {
-    if (!trend || sharing) return;
+    const id = trend?.id || workflow?.trend_id;
+    if (!id || sharing) return;
     setSharing(true);
     setError("");
     haptic("light");
     try {
-      const result = await api.shareTrend(trend.id);
+      const result = await api.shareTrend(id);
       openTelegramShare(result.share_url);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось поделиться трендом");
@@ -174,10 +883,18 @@ export default function TrendPage() {
   return (
     <StandaloneShell
       kicker="Тренд"
-      title={trend?.title || (loading ? "Загружаю сценарий" : "Тренд")}
-      copy={trend?.description || "Готовый сценарий ROXY с описанием и настройками."}
+      title={trend?.title || workflow?.title || (loading ? "Загружаю сценарий" : "Тренд")}
+      copy={trend?.description || workflow?.description || "Готовый сценарий ROXY с описанием и настройками."}
     >
-      {trend ? (
+      {workflow?.workflow_type === "sequential_photo_video" ? (
+        <TrendWorkflowRunner trend={trend} initialWorkflow={workflow} onShare={() => void share()} onCopy={() => void copyLink()} sharing={sharing} copying={copying} />
+      ) : workflowRecovery && trend?.workflow_type === "sequential_photo_video" ? (
+        <div className={styles.workflowRecovery} role="alert">
+          <strong>Восстанавливаю сценарий</strong>
+          <p>Создание сценария уже могло завершиться. Проверим owner-состояние перед новой попыткой.</p>
+          <button className="secondary wide" type="button" disabled={running} onClick={() => void retryWorkflowRecovery()}>{running ? "Проверяю…" : "Проверить сценарий"}</button>
+        </div>
+      ) : trend ? (
         <div className="tool-grid">
           {trend.description?.trim() ? (
             <aside className={styles.instructions} role="note" aria-label="Инструкция к тренду">

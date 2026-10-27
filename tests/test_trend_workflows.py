@@ -561,7 +561,7 @@ async def test_unresolved_reservation_is_publicly_safe_reconcile_state(monkeypat
     step = SimpleNamespace(
         id=uuid4(), workflow_id=run_id, step_key="prepare_photo", kind="image", ordinal=0,
         status="queued", generation_id=None, media_asset_id=None, attempts=1,
-        reserved_generation_id=uuid4(), attempt_history=[],
+        reserved_generation_id=uuid4(), attempt_history=[], command_key="unresolved-command",
     )
     run = SimpleNamespace(id=run_id, user_id=uuid4(), trend_id=uuid4(), recipe_version=2,
                           recipe_snapshot=_v2_payload(), status="running")
@@ -575,6 +575,8 @@ async def test_unresolved_reservation_is_publicly_safe_reconcile_state(monkeypat
     )
 
     view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=run.user_id)
+    assert view["steps"][0]["command_id"] == "unresolved-command"
+    assert view["steps"][0]["generation_id"] is None
 
     assert view["status"] == "reconciling"
     assert view["steps"][0]["reconcile_required"] is True
@@ -681,10 +683,11 @@ async def test_explicit_retry_keeps_attempt_history_and_rejects_replay_of_old_ke
     monkeypatch.setattr(TrendWorkflowService, "_owned_step", AsyncMock(return_value=(run, step)))
     session = AsyncMock()
     session.get.return_value = old_generation
+    session.scalar.return_value = None
     new_generation = SimpleNamespace(id=uuid4(), status="queued", parameters={})
     monkeypatch.setattr(GenerationService, "create", AsyncMock(return_value=new_generation))
 
-    request_b = {"reference_urls": ["https://owned.invalid/b.jpg"], "values": {}, "quoted_cost_rox": "12.00"}
+    request_b = {"reference_urls": ["https://owned.invalid/b.jpg"], "values": {}, "quoted_cost_rox": "12.00", "retry": True}
     await TrendWorkflowService.run_step(
         session, AsyncMock(), run_id=run_id, step_key="prepare_photo", user_id=run.user_id,
         command_key="photo-b", request=request_b,
@@ -700,9 +703,14 @@ async def test_explicit_retry_keeps_attempt_history_and_rejects_replay_of_old_ke
 
 
 @pytest.mark.asyncio
-async def test_provider_submission_resolves_fresh_owned_media_url(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_provider_submission_resolves_fresh_owned_media_url(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PIL import Image
+    from app.services.local_media_storage import LOCAL_MEDIA_BUCKET
+
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path))
+    Image.new("RGB", (2, 2)).save(tmp_path / "asset.png")
     owner_id = uuid4()
-    asset = SimpleNamespace(id=uuid4(), user_id=owner_id, status="ready", object_key="asset.png", bucket="local")
+    asset = SimpleNamespace(id=uuid4(), user_id=owner_id, status="ready", object_key="asset.png", bucket=LOCAL_MEDIA_BUCKET)
     session = AsyncMock()
     session.scalar.return_value = asset
     monkeypatch.setattr("app.services.media_assets.MediaAssetService.provider_source_url", lambda _asset: "https://fresh.invalid/signed.png")

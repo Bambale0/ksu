@@ -210,3 +210,68 @@ Backend UI contract is already implemented/tested: read control/backend-ui-contr
 ### Full regression cross-surface feedback
 
 Controller fresh-schema integration run:2050passed/4failed (existing frontend source contracts in the unfinished admin/type changes). Migration parity passes. Detailed actual failures and preservation requirements are in control/admin-regression-feedback.md; do not remove tests to conceal v1 behavior changes. This is not a completed green release run.
+
+
+## Final independent backend review corrections
+
+Reviewer child01a17d2c-58ef-79e1-9484-b2c95c076ec8 used requesting-code-review/TDD. Controller reproduced five failures at real PostgreSQL/API and normalization seams: echoed v2 metadata lost steps; failed attempt admitted new payment without retry flag; selected second photo lost on reload; previous photo absent from attempt history. Separately, actual admin HTTP save reset usage8to0. Regression tests failed before correction.
+
+Corrections: metadata PATCH preserves omitted steps with downconvert guard; explicit retry=true for failed attempts; chosen photo stored atomically with video admission; previous owned output/history media options preserved; locked fresh-row usage and stable incoming-command hash. Existing explicit-retry fixture now expresses retry=true and no conflicting next-step row. Admin integration command keys are unique per fixture while replay within the test retains the same key. **60 focused tests passed**; targeted Ruff passed. Logs:control/backend-review-regressions-red.log,admin-counter-red.log,backend-review-regressions-green.log. No paid calls or production writes.
+
+
+### Admin contract verified against actual API
+
+Controller discovered browser fixtures advertised ui_schema that real admin model responses lacked. Added the existing authoritative schema builder to both admin option surfaces; real authenticated HTTP regression failed before and passed after (duration/defaults/fields + privileged parity). No provider/model hardcode. Evidence:control/admin-live-schema-red.log and-green.log.
+
+
+### Integrated browser regression fixes
+
+Fresh static-export Chromium run on isolated3028:57passed/4failed. Two failures shared an actual v1 regression: new-template default was changed from the first server model to the first image model, hiding audio controls for a server-first Seedance model. Restored the existing server order; kept both original audio tests unchanged. Invalid-I2V UI correctly refused submission but its accessible label included help text; gave the selector a precise label plus described-by help. The lost-response fixture intentionally keeps the accepted task running, so its assertion now verifies the original task UUID/status and exactly one submitted command rather than incorrectly requiring a completed image. No validation/idempotency assertion was removed. Added both workflow/admin specs to the existing mobile-WebKit CI list without removing other tests.
+
+
+## Continuation audit — 2026-10-27
+
+Resumed the existing dirty worktree at backend HEAD `6e3eb9246fa756f34f7b0ad783e19004d28431c5`, draft PR #562; no writer was active. Preserved all prior backend, customer/admin UI and E2E work. Fresh isolated PostgreSQL migration, Alembic parity, Ruff, compileall and full backend run passed: **2061 tests**, one existing category-delete SQLAlchemy warning. The six final UI recovery review findings remain open and are assigned to a bounded native-subagent repair followed by separate Spec/Quality reviews, using the pinned `.agents` library. No production or paid provider operations.
+
+Controller source inspection identified a remaining source-choice edge: after choosing a non-first photo for video, a later quote/retry omitting `media_asset_id` queries the first asset instead of the persisted photo-step selection. Add real PostgreSQL regressions for omitted selection and unavailable selected media, then retain the explicit choice or fail closed; do not silently animate another image. Controller owns this small backend seam; the UI agent owns only frontend/helper/E2E files.
+
+
+### Continuation source-choice RED/GREEN
+
+Added `test_video_retry_without_asset_uses_persisted_photo_or_fails_closed` with two real PostgreSQL variants. RED: wrong first-image marker and missing rejection for a failed selected asset, **2 failures**. Minimal fix makes `_ready_step1_asset` use the photo step's persisted `media_asset_id` only when the request omits its selection, preserving all owner/generation/readiness filters. GREEN: all workflow test files **63 passed in 9.78s**; targeted Ruff passed. Logs: `control/resume-source-choice-red.log` and `resume-source-choice-green.log`. Independent read-only native-subagent review is requested.
+
+UI recovery repair is assigned to native child `01a17dbb-f6bf-7422-8c57-948ed2e1046c`, coordinator `01a17dba-3de4-7561-8c90-8fc9c82fb2be`; both use the pinned `.agents` library and preserve existing work. Only one UI implementation writer is active. Controller source-choice changes are isolated to backend/test/docs files.
+
+
+### Independent source review follow-up
+
+Read-only native reviewer `01a17dbd-f461-7ed2-a01d-27fd57173343` identified two compatibility/readiness gaps: older workflow attempts stored selection only on the video step, and a configured optional S3 backend did not prove that an owned remote object still exists. Reproduced the older-selection cases (**2 failed / 2 passed**) and added fallback to the stored video-step source while retaining owner/generation filters. Added semantic remote-source probe regressions before implementation. Remote validation will use a bounded read-only metadata probe off the event loop; no real external storage/provider requests are part of tests.
+
+
+## Continuation integrated candidate — 2026-10-27
+
+The customer/admin UI is now implemented in the existing branch, not a new workstream. The final owner-only receipt contract exposes opaque `command_id` on current and historical attempts, with no request bodies/hashes. Real PostgreSQL concurrency demonstrates that re-entered inputs and a delayed original using the same key create exactly one generation/debit. Legacy source selection remains pinned and remote owned media gets a finite off-loop metadata preflight before charge/submission.
+
+Fresh isolated backend verification on the integrated candidate: **2074 passed**, one pre-existing category-delete SQLAlchemy warning; migration0044, Alembic parity, full Ruff and compileall passed. Evidence is `control/verified-backend-{summary.json,tests.log}`. A test-only fake unresolved reservation was strengthened to include the real ORM command field and assert that a receipt without generation remains unresolved; no production invariant was weakened.
+
+The initial native UI child `01a17dbb-f6bf-7422-8c57-948ed2e1046c` implemented six recovery fixes, editor same-file retry and targeted tests. Independent native Spec reviewer `01a17dc9-6355-7652-8ea1-ac7de9843d49` found gaps in ambiguous reload and repeated-failure consent. Controller completed the bounded repair after an additional CLI invocation failed with model capacity, preserving all prior work. No fictional sub-agent completion is claimed. The controller's four corrected-selector RED journeys all failed for the actual behavior, then **47 focused Chromium journeys passed**, with typecheck and 24-route static export. The first exploratory RED run had locator mistakes and is not counted as behavioral evidence.
+
+Final review then reproduced two consecutive failed attempts with unchanged input retaining consent (both image and video) and a disabled private-video input after reload: **3 additional RED failures**. Retry state is now keyed by command/generation/attempt plus status/input, and key-only video recovery permits re-entry. The final candidate reruns the 50 focused Chromium journeys and attempts the workflow/admin mobile WebKit suite; exact final outcomes belong to PR #562 and the local `final-ui-*` artifacts to avoid modifying the tested SHA merely to update CI links.
+
+Independent source/receipt reviewer `01a17dcf-d3a5-7c02-91a4-72fe45d47f16` approved the bounded backend follow-up with no remaining Critical/Important findings; it was closed after its report. The UI reviewer is rechecking its final consent finding against the new regression. Source-specific review limits and live final disposition are recorded in PR #562. All real agents were instructed to use the pinned `.agents` library. Mandatory companion guidance was refreshed through GitHub and applied; no Start baseline change.
+
+Known out-of-scope observation from read-only UI review: existing `browser-auth-session.ts` stores browser-login initData; the workflow adds no such storage. Assess that pre-existing authentication/session design separately rather than silently changing login during this feature. Physical Telegram iOS/Android, real paid generation and production deployment remain unverified and were not performed.
+
+No merge, production migration, deployment, provider spend or customer notification. Rollout requires the existing release permission/gates; hiding v2 templates does not make old workers compatible with already queued owned-media markers.
+
+
+### Final local candidate verification
+
+- Full isolated backend: **2074 passed / 1 pre-existing warning**, migration/parity/Ruff/compile green; no backend changes since that run.
+- Current frontend: typecheck and static export of24routes green; **50 focused Chromium tests passed** (customer workflow25, editor5, audio/share/back/instruction regressions20), including all seven controller recovery/consent RED/GREEN regressions.
+- Mobile WebKit launch was attempted but failed before application startup because host GTK/GStreamer/other libraries are missing; **no WebKit pass claimed** and no system packages were installed on the production host. The CI Playwright container supplies those dependencies and explicitly includes new workflow/editor tests.
+- Final mocked visual smoke on320/390/768px: no horizontal overflow, no page exceptions and zero paid POSTs; inspected screenshots use synthetic media, not customer data.
+- Native independent UI reviewer `01a17dc9-6355-7652-8ea1-ac7de9843d49` approved the final bounded Spec and Quality fix after the per-attempt consent correction. No remaining Critical/Important finding in that reviewed scope. Reviewer did not run tests; controller verification is reported separately. `control/final-ui-rereview.md` contains the actual result.
+- Scoped credential-pattern scan of the26candidate files: zero matches; this is not a claim of a full secret audit. No .env/.agents/venv/build/test-report paths are included. `git diff --check` is clean.
+
+Exact final commit/PR CI links and any broad-suite results are recorded in PR #562 without amending the verified source tree. Merge/deploy requires separate authorization and exact-SHA release checks.

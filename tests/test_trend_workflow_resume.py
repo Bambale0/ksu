@@ -227,3 +227,300 @@ async def test_stale_quote_rolls_back_generation_wallet_outbox_usage_and_attempt
             assert row.attempts == 0 and row.command_key is None
     finally:
         await redis.aclose()
+
+
+@pytest.mark.parametrize("metadata", [
+    {"schema_version": 2, "description": "Updated"},
+    {"workflow_type": "sequential_photo_video", "description": "Updated"},
+])
+def test_metadata_update_can_echo_version_without_losing_steps(metadata) -> None:
+    existing = _recipe()
+    merged = TrendWorkflowService.merge_admin_payload(existing, metadata)
+    result = TrendWorkflowService.normalize_recipe("Updated title", merged)
+    assert result["description"] == "Updated"
+    assert result["steps"][0]["prompt"] == "PRIVATE_STEP_PHOTO"
+    assert result["steps"][1]["model_id"] == "seedance-2.5"
+
+
+@pytest.mark.asyncio
+async def test_failed_attempt_requires_explicit_paid_retry_intent() -> None:
+    from sqlalchemy import func, select
+    from app.db.models import WalletTransaction
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    body = {"image_inputs": [{"slot_id": "person_photo", "url": "https://example.invalid/user.jpg"}], "values": {}}
+    try:
+        async with SessionFactory() as session:
+            quote = await TrendWorkflowService.quote_step(session, run_id=run_id, step_key="photo", user_id=user.id, request=body)
+            body["quoted_cost_rox"] = quote["cost_rox"]
+            step = await TrendWorkflowService.run_step(session, redis, run_id=run_id, step_key="photo", user_id=user.id, command_key="first", request=body)
+            gen = await session.get(Generation, step.generation_id)
+            gen.status = "failed"
+            gen.error = "Synthetic provider rejection"
+            await session.commit()
+        async with SessionFactory() as session:
+            with pytest.raises(ValueError, match="retry"):
+                await TrendWorkflowService.run_step(session, redis, run_id=run_id, step_key="photo", user_id=user.id, command_key="new-key-without-consent", request=body)
+            await session.rollback()
+        async with SessionFactory() as session:
+            assert await session.scalar(select(func.count()).select_from(Generation).where(Generation.user_id == user.id)) == 1
+            assert await session.scalar(select(func.count()).select_from(WalletTransaction).where(WalletTransaction.user_id == user.id)) == 1
+    finally:
+        await redis.aclose()
+
+
+async def _ready_photos(user, run_id, redis, tmp_path):
+    from PIL import Image
+    from app.services.media_assets import MediaAssetService
+    body = {"image_inputs": [{"slot_id": "person_photo", "url": "https://example.invalid/user.jpg"}], "values": {}}
+    async with SessionFactory() as session:
+        quote = await TrendWorkflowService.quote_step(session, run_id=run_id, step_key="photo", user_id=user.id, request=body)
+        body["quoted_cost_rox"] = quote["cost_rox"]
+        step = await TrendWorkflowService.run_step(session, redis, run_id=run_id, step_key="photo", user_id=user.id, command_key="photo", request=body)
+        gen = await session.get(Generation, step.generation_id)
+        gen.status = "succeeded"
+        gen.result_url = "https://expired.invalid/photo.png"
+        ids = []
+        for ordinal in range(2):
+            path = tmp_path / f"photo-{ordinal}.png"
+            Image.new("RGB", (16, 16), (40 + ordinal * 20, 70, 90)).save(path)
+            asset = await MediaAssetService.persist_ready_local_file(session, gen, path=path, content_type="image/png", source_url=f"https://expired.invalid/photo-{ordinal}.png", ordinal=ordinal)
+            ids.append(asset.id)
+        await session.commit()
+        return ids, body, gen.id
+
+
+@pytest.mark.asyncio
+async def test_selected_second_photo_survives_video_start_and_owner_reload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "owned"))
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        assets, _body, _photo_gen = await _ready_photos(user, run_id, redis, tmp_path)
+        video = {"media_asset_id": str(assets[1]), "values": {}}
+        async with SessionFactory() as session:
+            quote = await TrendWorkflowService.quote_step(session, run_id=run_id, step_key="video", user_id=user.id, request=video)
+            video["quoted_cost_rox"] = quote["cost_rox"]
+            await TrendWorkflowService.run_step(session, redis, run_id=run_id, step_key="video", user_id=user.id, command_key="video", request=video)
+        async with SessionFactory() as session:
+            view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            assert view["steps"][0]["media_asset_id"] == str(assets[1])
+            assert view["steps"][0]["media"]["id"] == str(assets[1])
+    finally:
+        await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_photo_redo_retains_previous_owned_media_in_attempt_history(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "owned"))
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        assets, body, old_id = await _ready_photos(user, run_id, redis, tmp_path)
+        async with SessionFactory() as session:
+            await TrendWorkflowService.run_step(session, redis, run_id=run_id, step_key="photo", user_id=user.id, command_key="explicit-photo-redo", request={**body, "retry": True})
+        async with SessionFactory() as session:
+            view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            previous = view["steps"][0]["attempt_history"][0]
+            assert previous["generation_id"] == str(old_id)
+            assert previous["media"] is not None
+            assert previous["media"]["id"] == str(assets[0])
+    finally:
+        await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_admin_save_cannot_reset_usage_and_command_replay_ignores_live_counter() -> None:
+    _user, author, trend_id, _run_id = await _scenario()
+    async with SessionFactory() as session:
+        row = await session.get(AdminTrend, trend_id)
+        row.payload = {**row.payload, "usage_count": 8}
+        await session.commit()
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+
+    async def current_user():
+        return author
+
+    app.dependency_overrides[get_current_user] = current_user
+    body = {"title": "Edited title", "payload": {**_recipe(), "usage_count": 0}, "is_active": True}
+    headers = {"Idempotency-Key": f"controller-admin-metadata-save-{uuid.uuid4()}"}
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://workflow.test") as client:
+        response = await client.patch(f"/api/v1/trends/manage/{trend_id}", json=body, headers=headers)
+        assert response.status_code == 200, response.text
+        async with SessionFactory() as session:
+            row = await session.get(AdminTrend, trend_id)
+            assert row.payload["usage_count"] == 8
+            row.payload = {**row.payload, "usage_count": 9}
+            await session.commit()
+        response = await client.patch(f"/api/v1/trends/manage/{trend_id}", json=body, headers=headers)
+        assert response.status_code == 200, response.text
+        async with SessionFactory() as session:
+            assert (await session.get(AdminTrend, trend_id)).payload["usage_count"] == 9
+
+
+@pytest.mark.asyncio
+async def test_real_admin_model_catalog_exposes_form_schema_not_mock_only_fields() -> None:
+    _user, author, _trend_id, _run_id = await _scenario()
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+
+    async def current_user():
+        return author
+
+    app.dependency_overrides[get_current_user] = current_user
+    async with AsyncClient(transport=ASGITransport(app), base_url="http://workflow.test") as client:
+        response = await client.get("/api/v1/trends/manage")
+        assert response.status_code == 200, response.text
+        models = {model["id"]: model for model in response.json()["models"]}
+        video = models["seedance-2.5"]
+        assert video["ui_schema"]["defaults"]["duration"] > 0
+        assert any(field["name"] == "duration" for field in video["ui_schema"]["fields"])
+        assert models["nano-banana-pro"]["ui_schema"]["defaults"]["resolution"]
+    from app.api.v1.admin_trends import web_admin_trend_options
+    web_models = {model["id"]: model for model in (await web_admin_trend_options(None))["models"]}
+    assert web_models["seedance-2.5"]["ui_schema"] == video["ui_schema"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_available", [True, False])
+@pytest.mark.parametrize("legacy_selection", [True, False])
+async def test_video_retry_without_asset_uses_persisted_photo_or_fails_closed(
+    tmp_path, monkeypatch, source_available: bool, legacy_selection: bool,
+) -> None:
+    from sqlalchemy import func, select
+    from app.db.media_models import MediaAsset
+    from app.db.models import WalletTransaction
+    from app.db.trend_workflow_models import TrendWorkflowStep
+
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "owned"))
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        assets, _body, _photo_id = await _ready_photos(user, run_id, redis, tmp_path)
+        first_request = {"media_asset_id": str(assets[1]), "values": {}}
+        async with SessionFactory() as session:
+            quote = await TrendWorkflowService.quote_step(
+                session, run_id=run_id, step_key="video", user_id=user.id,
+                request=first_request,
+            )
+            first_request["quoted_cost_rox"] = quote["cost_rox"]
+            step = await TrendWorkflowService.run_step(
+                session, redis, run_id=run_id, step_key="video", user_id=user.id,
+                command_key="selected-source-first", request=first_request,
+            )
+            generation = await session.get(Generation, step.generation_id)
+            generation.status = "failed"
+            generation.error = "Synthetic failure after source selection"
+            if legacy_selection:
+                photo_step = await session.scalar(select(TrendWorkflowStep).where(
+                    TrendWorkflowStep.workflow_id == run_id, TrendWorkflowStep.ordinal == 0,
+                ))
+                photo_step.media_asset_id = None
+            balance_before = (await session.get(Wallet, user.id)).balance
+            if not source_available:
+                selected = await session.get(MediaAsset, assets[1])
+                selected.status = "failed"
+            await session.commit()
+
+        retry_request = {"values": {}, "retry": True}
+        async with SessionFactory() as session:
+            if not source_available:
+                with pytest.raises(ValueError, match="ready owned image"):
+                    await TrendWorkflowService.quote_step(
+                        session, run_id=run_id, step_key="video", user_id=user.id,
+                        request=retry_request,
+                    )
+                with pytest.raises(ValueError, match="ready owned image"):
+                    await TrendWorkflowService.run_step(
+                        session, redis, run_id=run_id, step_key="video", user_id=user.id,
+                        command_key="unavailable-source-retry",
+                        request={**retry_request, "quoted_cost_rox": first_request["quoted_cost_rox"]},
+                    )
+                await session.rollback()
+                assert await session.scalar(select(func.count()).select_from(Generation).where(Generation.user_id == user.id)) == 2
+                assert await session.scalar(select(func.count()).select_from(WalletTransaction).where(WalletTransaction.user_id == user.id)) == 2
+                assert (await session.get(Wallet, user.id)).balance == balance_before
+                return
+            quote = await TrendWorkflowService.quote_step(
+                session, run_id=run_id, step_key="video", user_id=user.id,
+                request=retry_request,
+            )
+            retry_request["quoted_cost_rox"] = quote["cost_rox"]
+            step = await TrendWorkflowService.run_step(
+                session, redis, run_id=run_id, step_key="video", user_id=user.id,
+                command_key="selected-source-retry", request=retry_request,
+            )
+            generation = await session.get(Generation, step.generation_id)
+            assert generation.parameters["reference_image_urls"] == [f"ksu-media://{assets[1]}"]
+        async with SessionFactory() as session:
+            view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            assert view["steps"][0]["media_asset_id"] == str(assets[1])
+    finally:
+        await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_owner_receipts_correlate_current_and_prior_paid_intents(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "owned"))
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        _assets, body, _photo_id = await _ready_photos(user, run_id, redis, tmp_path)
+        async with SessionFactory() as session:
+            first = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            assert first["steps"][0]["command_id"] == "photo"
+            await TrendWorkflowService.run_step(
+                session, redis, run_id=run_id, step_key="photo", user_id=user.id,
+                command_key="photo-explicit-next-attempt", request={**body, "retry": True},
+            )
+        async with SessionFactory() as session:
+            view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            photo = view["steps"][0]
+            assert photo["command_id"] == "photo-explicit-next-attempt"
+            assert photo["attempt_history"][0]["command_id"] == "photo"
+            serialized = repr(view)
+            assert "payload_hash" not in serialized and "request_hash" not in serialized
+            assert "PRIVATE_STEP" not in serialized
+    finally:
+        await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_corrected_payload_and_delayed_original_share_one_paid_intent() -> None:
+    import asyncio
+    from sqlalchemy import func, select
+    from app.db.models import WalletTransaction
+    from app.services.trend_workflows import TrendWorkflowConflict
+
+    user, _author, _trend_id, run_id = await _scenario()
+    redis = Redis.from_url(settings.redis_url)
+    bodies = [
+        {"image_inputs": [{"slot_id": "person_photo", "url": f"https://example.invalid/{name}.jpg"}], "values": {}}
+        for name in ("original-input", "reentered-input")
+    ]
+    try:
+        for body in bodies:
+            async with SessionFactory() as session:
+                quote = await TrendWorkflowService.quote_step(
+                    session, run_id=run_id, step_key="photo", user_id=user.id, request=body,
+                )
+                body["quoted_cost_rox"] = quote["cost_rox"]
+
+        async def submit(body):
+            async with SessionFactory() as session:
+                return await TrendWorkflowService.run_step(
+                    session, redis, run_id=run_id, step_key="photo", user_id=user.id,
+                    command_key="same-unresolved-intent", request=body,
+                )
+
+        results = await asyncio.gather(*(submit(body) for body in bodies), return_exceptions=True)
+        assert sum(isinstance(result, TrendWorkflowConflict) for result in results) == 1
+        assert sum(not isinstance(result, BaseException) for result in results) == 1
+        async with SessionFactory() as session:
+            assert await session.scalar(select(func.count()).select_from(Generation).where(Generation.user_id == user.id)) == 1
+            assert await session.scalar(select(func.count()).select_from(WalletTransaction).where(WalletTransaction.user_id == user.id)) == 1
+            view = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+            assert view["steps"][0]["command_id"] == "same-unresolved-intent"
+    finally:
+        await redis.aclose()

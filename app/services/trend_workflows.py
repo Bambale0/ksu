@@ -159,10 +159,11 @@ class TrendWorkflowService:
             return dict(incoming)
         if "schema_version" in incoming and int(incoming.get("schema_version") or 0) != 2:
             raise TrendWorkflowError("v2 workflow recipes cannot be downconverted")
-        structural = {"schema_version", "workflow_type", "steps"}
-        if not structural.intersection(incoming):
-            return {**existing, **incoming, "schema_version": 2, "workflow_type": existing.get("workflow_type")}
-        return dict(incoming)
+        if "workflow_type" in incoming and incoming["workflow_type"] != existing.get("workflow_type"):
+            raise TrendWorkflowError("v2 workflow type cannot be changed by metadata editing")
+        # PATCH clients may echo their schema marker without resending hidden
+        # steps. Preserve every omitted field; explicit steps are still validated.
+        return {**existing, **incoming, "schema_version": 2}
 
     @classmethod
     def normalize_recipe(cls, title: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -506,13 +507,27 @@ class TrendWorkflowService:
             MediaAsset.object_key.is_not(None),
             MediaAsset.bucket.is_not(None),
         )
+        # An omitted source on retry must retain the photo the user reviewed.
+        # If that asset is unavailable, fail closed rather than animate another
+        # output with a different face, outfit or inscription.
+        if selected_asset_id is None:
+            selected_asset_id = first_step.media_asset_id
+        if selected_asset_id is None:
+            # Earlier workflow revisions recorded the reviewed source only on
+            # the video step. Preserve that choice when resuming such a run.
+            selected_asset_id = await session.scalar(
+                select(TrendWorkflowStep.media_asset_id).where(
+                    TrendWorkflowStep.workflow_id == run.id,
+                    TrendWorkflowStep.ordinal == 1,
+                )
+            )
         if selected_asset_id is not None:
             statement = statement.where(MediaAsset.id == selected_asset_id)
         asset = await session.scalar(statement.order_by(MediaAsset.ordinal.asc()))
         if asset is None or not str(asset.content_type or "").lower().startswith("image/"):
             raise TrendWorkflowError("Step 2 requires a ready owned image")
         try:
-            MediaAssetService.ensure_source_readable(asset)
+            await MediaAssetService.verify_source_readable(asset)
         except MediaIngestError as exc:
             raise TrendWorkflowError("The prepared image is unavailable; restore it before starting video") from exc
         return asset
@@ -673,7 +688,8 @@ class TrendWorkflowService:
         if value is None or str(value).strip() == "":
             raise TrendWorkflowError("quoted_cost_rox is required; request a fresh quote")
         try:
-            if Decimal(str(value)) < 0:
+            amount = Decimal(str(value))
+            if not amount.is_finite() or amount < 0:
                 raise ValueError
         except (ArithmeticError, ValueError) as exc:
             raise TrendWorkflowError("quoted_cost_rox must be a non-negative amount") from exc
@@ -737,6 +753,8 @@ class TrendWorkflowService:
             if existing_generation.status == "succeeded" and not request.get("retry"):
                 return step_row
             if existing_generation.status == "failed":
+                if request.get("retry") is not True:
+                    raise TrendWorkflowConflict("A failed attempt requires explicit retry=true and a fresh quote")
                 step_row.status = "failed"
                 step_row.last_error = existing_generation.error
                 await session.flush()
@@ -754,6 +772,16 @@ class TrendWorkflowService:
         asset = None
         if recipe_step["kind"] == "video":
             asset = await cls._ready_step1_asset(session, run=run, selected_asset_id=request.get("media_asset_id"))
+            # Persist the reviewed choice in the same transaction as the video
+            # debit so reload/retry cannot switch back to the first image.
+            photo_step = await session.scalar(
+                select(TrendWorkflowStep).where(
+                    TrendWorkflowStep.workflow_id == run.id, TrendWorkflowStep.ordinal == 0
+                ).with_for_update()
+            )
+            if photo_step is None:
+                raise TrendWorkflowConflict("Prepared photo step is unavailable")
+            photo_step.media_asset_id = asset.id
         prompt, parameters = cls._step_request(
             run.recipe_snapshot,
             recipe_step,
@@ -839,6 +867,19 @@ class TrendWorkflowService:
         await session.commit()
         await GenerationService.wake(redis, [generation.id])
         return step_row
+
+    @staticmethod
+    def _historical_media(
+        item: dict[str, Any], kind: str, ready_assets: dict[uuid.UUID, list[MediaAsset]]
+    ) -> dict[str, Any] | None:
+        assets = ready_assets.get(uuid.UUID(str(item["generation_id"])), [])
+        if not assets:
+            return None
+        selected = (
+            next((asset for asset in assets if str(asset.id) == str(item.get("media_asset_id"))), None)
+            if kind == "image" else None
+        ) or assets[0]
+        return MediaAssetService.public_view(selected, server_route=False)
 
     @staticmethod
     def _step_presentation(step: dict[str, Any]) -> dict[str, Any]:
@@ -933,6 +974,9 @@ class TrendWorkflowService:
                 **cls._step_presentation(recipe_step),
                 "status": status,
                 "generation_id": str(row.generation_id) if row.generation_id else None,
+                # Owner-only receipt: distinguish a delayed retry from the old
+                # failed generation without exposing its input or payload hash.
+                "command_id": row.command_key,
                 "media_asset_id": str(selected.id) if selected is not None else None,
                 "media": media,
                 "media_options": [MediaAssetService.public_view(asset, server_route=False) for asset in assets],
@@ -941,17 +985,15 @@ class TrendWorkflowService:
                 "attempt_history": [
                     {
                         "generation_id": str(item.get("generation_id")),
+                        "command_id": item.get("command_key"),
                         "status": str(item.get("status")),
                         "attempt": int(item.get("attempt") or 0),
                         "media_asset_id": str(item.get("media_asset_id")) if item.get("media_asset_id") else None,
-                        "media": next(
-                            (
-                                MediaAssetService.public_view(asset, server_route=False)
-                                for asset in ready_assets.get(uuid.UUID(str(item.get("generation_id"))), [])
-                                if item.get("media_asset_id") and str(asset.id) == str(item.get("media_asset_id"))
-                            ),
-                            None,
-                        ),
+                        "media": cls._historical_media(item, row.kind, ready_assets),
+                        "media_options": [
+                            MediaAssetService.public_view(asset, server_route=False)
+                            for asset in ready_assets.get(uuid.UUID(str(item["generation_id"])), [])
+                        ],
                     }
                     for item in (getattr(row, "attempt_history", None) or [])
                     if isinstance(item, dict)

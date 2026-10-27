@@ -202,7 +202,7 @@ export function CatalogTrendFolders() {
             <span className="home-trend-folder-item-copy">
               <strong>{trend.title}</strong>
               {trend.description ? <small>{trend.description}</small> : null}
-              <span className="home-trend-folder-item-meta"><span>{trendUsageLabel(trend.usage_count)}</span><span>{trend.media_type === "video" ? "Видео" : "Фото"}</span><span>{price(trend)}</span></span>
+              <span className="home-trend-folder-item-meta"><span>{trendUsageLabel(trend.usage_count)}</span><span>{trend.media_type === "video" ? "Видео" : "Фото"}</span>{trend.workflow_type === "sequential_photo_video" ? <span>2 шага: фото → видео</span> : null}<span>{price(trend)}</span></span>
             </span>
           </button>
         </article>)}</div> : <div className="home-trend-folders-empty">В этой вкладке пока нет шаблонов.</div>}
