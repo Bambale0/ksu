@@ -48,14 +48,25 @@ class ObjectStorage:
         return self._client, self._transfer
 
     @staticmethod
-    def _build_client() -> BaseClient:
+    def _build_client(*, metadata_probe: bool = False) -> BaseClient:
+        client_config: dict[str, Any] = {
+            "signature_version": "s3v4",
+            "s3": {"addressing_style": settings.s3_addressing_style},
+        }
+        if metadata_probe:
+            # HEAD is a short preflight, not a media download. Use the existing
+            # configured connection budget for both phases and fail closed on
+            # its first uncertain result; the user can explicitly retry.
+            timeout = settings.media_ingest_connect_timeout_seconds
+            client_config.update(
+                connect_timeout=timeout,
+                read_timeout=timeout,
+                retries={"total_max_attempts": 1},
+            )
         kwargs: dict[str, Any] = {
             "service_name": "s3",
             "region_name": settings.s3_region or None,
-            "config": Config(
-                signature_version="s3v4",
-                s3={"addressing_style": settings.s3_addressing_style},
-            ),
+            "config": Config(**client_config),
         }
         if settings.s3_endpoint_url:
             kwargs["endpoint_url"] = settings.s3_endpoint_url
@@ -66,6 +77,21 @@ class ObjectStorage:
         if settings.s3_session_token:
             kwargs["aws_session_token"] = settings.s3_session_token
         return boto3.client(**kwargs)
+
+    @classmethod
+    async def head_object(cls, *, key: str, bucket: str | None = None) -> dict[str, Any]:
+        """Read legacy object metadata off the event loop with finite timeouts."""
+        if not cls.configured():
+            raise ObjectStorageNotConfigured("S3_BUCKET is not configured")
+
+        def _head() -> dict[str, Any]:
+            client = cls._build_client(metadata_probe=True)
+            try:
+                return client.head_object(Bucket=bucket or settings.s3_bucket.strip(), Key=key)
+            finally:
+                client.close()
+
+        return await asyncio.to_thread(_head)
 
     async def upload_file(
         self,

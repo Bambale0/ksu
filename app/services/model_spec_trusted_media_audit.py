@@ -441,6 +441,9 @@ def install_model_spec_trusted_media_audit() -> None:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
         generation_id: uuid.UUID | None = None,
+        expected_cost_rox: Decimal | str | None = None,
+        commit: bool = True,
+        wake: bool = True,
     ):
         source_parameters = dict(parameters or {})
         if prompt and not source_parameters.get("prompt"):
@@ -465,6 +468,9 @@ def install_model_spec_trusted_media_audit() -> None:
             parent_generation_id=parent_generation_id,
             action_type=action_type,
             generation_id=generation_id,
+            expected_cost_rox=expected_cost_rox,
+            commit=commit,
+            wake=wake,
         )
 
     GenerationService.create = trusted_create

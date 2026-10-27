@@ -20,6 +20,8 @@ import type {
   ReferralReward,
   TrendItem,
   TrendShare,
+  TrendWorkflowQuote,
+  TrendWorkflowRun,
 } from "./types";
 
 declare global {
@@ -41,7 +43,11 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: numb
   }, timeoutMs);
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw userSafeHttpError(response.status, payload);
+  if (!response.ok) {
+    const error = userSafeHttpError(response.status, payload) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return payload as T;
 }
 
@@ -247,6 +253,29 @@ export const api = {
   })),
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
+  latestTrendWorkflow: async (id: string): Promise<TrendWorkflowRun | null> => {
+    try {
+      return await request<TrendWorkflowRun>(`/api/v1/trends/${encodeURIComponent(id)}/workflow`);
+    } catch (error) {
+      if ([404, 405].includes(Number((error as { status?: number }).status))) return null;
+      throw error;
+    }
+  },
+  trendWorkflow: (runId: string) => request<TrendWorkflowRun>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}`),
+  createTrendWorkflow: (id: string, commandKey: string) => request<TrendWorkflowRun>(`/api/v1/trends/${encodeURIComponent(id)}/workflow`, {
+    method: "POST",
+    headers: { "Idempotency-Key": commandKey },
+    body: JSON.stringify({}),
+  }),
+  quoteTrendWorkflowStep: (runId: string, stepId: string, body: Record<string, unknown>) => request<TrendWorkflowQuote>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/quote`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  runTrendWorkflowStep: (runId: string, stepId: string, commandKey: string, body: Record<string, unknown>) => request<TrendWorkflowRun>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/run`, {
+    method: "POST",
+    headers: { "Idempotency-Key": commandKey },
+    body: JSON.stringify(body),
+  }),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
   runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string; videoReferenceUrls?: string[] } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",

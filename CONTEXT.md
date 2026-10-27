@@ -1017,6 +1017,56 @@ Guidance applied: KSU AGENTS and local .agents/code-review-and-quality; current 
 - **Review closure 18:22 UTC:** preliminary full isolated backend suite passed 1596 tests plus one existing SQLAlchemy warning; migration + ORM parity passed. Independent review requested same-URL preview fallback coverage. An extensionless video original reused as preview reproduced RED (1 failed, explicit .mp4 passed); added a different-URL guard so an original is never reinterpreted as its own poster. Final full recheck pending.
 
 - **Final local verification 18:24 UTC:** 43 focused bot/publication-preview regressions passed; full backend suite on newly created tmpfs PostgreSQL 17 and Redis 7.4 passed **1598 tests** in 43.79s, with the pre-existing trend_collection_assignments SQLAlchemy row-count warning. Fresh alembic upgrade + alembic check passed. Full-repository Ruff, app/tests compileall and git diff --check passed. Both isolated test container pairs were stopped after verification. Read-only baseline GitHub check-runs were all successful; final patch exact-head CI and final independent review remain parent-controlled release gates. No frontend changes; no live Telegram/customer sends, paid provider calls, production data/checkout/runtime changes or cancelled reads.
+## Active Feature Execution — Trend photo → video workflow (KSU #561)
+
+- Feature/ticket: issue #561, approved specification in `/root/agent-work/ksu-561-control/SPEC.md`.
+- Audit baseline: `feat/trend-photo-video-561` at `e9037324a096ea3992cd5f63e8044811a4a5bf5a` (main baseline); production checkout and live environments are out of scope.
+- Current state (continuation, 2026-10-27): v2 server-owned two-step recipes, durable owner-scoped workflow/step rows, protected quote/run/status APIs, ready-private-image binding, atomic generation/debit/outbox linkage and customer/admin UI are implemented in draft PR #562. Existing v1 remains supported. Customer/admin UI and recovery corrections are integrated. Fresh backend2074 and final focused Chromium50 checks passed, with typecheck/static build and independent backend/UI review approval. Local WebKit is environment-blocked by missing system libraries; exact-head CI (including container WebKit) remains the completion gate recorded in PR #562. This is not a production release claim.
+- Reuse: `app/services/trends.py`, `app/api/v1/trends.py`, `app/services/generations.py`, model catalog/capability validation, pricing/quote, media asset readiness, existing refund/outbox/delivery, `frontend/mini-app` trend route/components, and `app/web/admin_app/trends.*`.
+- Transaction decision: workflow calls the existing `GenerationService.create(commit=False, wake=False)` so generation/debit/outbox/step linkage commit atomically; ordinary callers retain previous defaults. Legacy reservation reconciliation is retained. Step 2 requires a ready owned image and an accepted current quote. Remaining gates: UI recovery review, exact-final-head CI and independent final verification. No merge/deploy is authorized.
+- Active execution ledger: [docs/agents/EXECUTION/trend-photo-video-561.md](docs/agents/EXECUTION/trend-photo-video-561.md).
+
+### Backend implementation audit — KSU #561 (2026-10-27)
+
+- Baseline/branch verified: `e9037324a096ea3992cd5f63e8044811a4a5bf5a` / `feat/trend-photo-video-561`.
+- Existing seams audited: v1 trend recipe normalization and run API; `GenerationService.prepare_request/create` with catalog, quote, wallet, outbox and refund/recovery path; `MediaAsset` readiness/ownership; signed Telegram owner dependency; trend usage payload counter.
+- Partial/missing: no v2 recipe validator, workflow persistence, protected workflow API, step-2 ready-owned-asset gate, or v1 v2-bypass rejection. `GenerationService.create()` commits independently, so the implementation will use durable reservation plus deterministic generation IDs as the narrow recovery boundary and document that it is not one cross-service transaction.
+- Reuse/prefactor: add a focused `app/services/trend_workflows.py` and workflow ORM models/migration; keep v1 behavior unchanged and avoid modifying general billing/provider modules.
+- Acceptance/test seams: validation/mapping, v1 bypass, owner isolation, step-2 asset gate, quote-before-debit, changed-body replay, duplicate command, and once-only usage increment. Public response shaping excludes hidden recipe/provider fields and external URLs.
+- Required matrix status before code: unit/API/authorization/migration/idempotency planned; provider calls and production smoke prohibited; frontend/admin E2E N/A for this backend-only slice; exact-head CI/controller review pending.
+
+### Backend fix pass — KSU #561 controller blockers (2026-10-27)
+
+- Controller cases read: public quote placeholders, image-only input mapping, FK ordering, durable A/B attempt history, parallel serialization, quote drift at debit, fresh media transport, previous photo retention, late callback safety, action boundary, admin v2 preservation, and lifecycle observability.
+- Fixed in backend scope: public v2 quote placeholders; image inputs no longer require text values; generation FK links after `GenerationService.create`; durable reservation/history columns; explicit retry and safe old-key replay rejection; capability/slot/binding validation; required idempotency headers; fresh provider media resolution; safe owner media DTO; v2 admin metadata preservation; downgrade row guard; structured lifecycle log/metric.
+- Exact evidence: focused `tests/test_trend_workflows.py` RED **4 failures** on new regressions, then GREEN **21 passed**. Adjacent trend/media/provider/admin selection passed **99/100**, with one fixed-fixture `kie/media-task` collision in persistent isolated test DB. Isolated PostgreSQL/Redis smoke passed public v2 read, paid image generation, wallet/outbox path and same-key replay; no provider call.
+- Verification status: migration upgrade and `alembic check` passed; targeted Ruff and compileall passed. Full suite, true PostgreSQL concurrency/late-callback tests, media-ingest/provider submission integration, exact-head CI and independent review remain unverified/controller-owned.
+- Limitation: existing `GenerationService.create()` commits independently. The workflow reservation plus deterministic generation ID is a durable recovery boundary, not a single transaction spanning workflow step, generation, debit, outbox and media ingest.
+
+### Backend implementation handoff — KSU #561 (2026-10-27)
+
+- RED/GREEN evidence: focused workflow tests first failed on the missing v2 behavior, then `tests/test_trend_workflows.py` passed 8/8; adjacent `tests/test_trends_service.py` plus workflow tests passed 65/65. Targeted Ruff and compileall passed.
+- Files added/changed: `app/services/trend_workflows.py`, `app/db/trend_workflow_models.py`, `alembic/versions/0044_trend_workflows.py`, `app/services/trends.py`, `app/api/v1/trends.py`, `alembic/env.py`, `tests/test_trend_workflows.py`, and the two execution ledgers.
+- Backend behavior now handed to review: v2 recipe validation/mapping, durable run/step persistence, owner-scoped workflow/status/quote/run API, v1 bypass rejection, ready owned image gate, command key+payload hash replay protection, deterministic generation ID reservation, hidden public DTO shaping, and once-only workflow usage increment.
+- Verification still pending by controller: full isolated PostgreSQL/Redis backend suite, Alembic upgrade/check parity, DB/API concurrency/authorization tests, independent spec/quality/security review and exact-head CI. No frontend/admin files, paid provider calls, production DB/services, commits, pushes or deployments were touched.
+- Limitation for review: `GenerationService.create()` remains its own committing seam; workflow reservation plus deterministic generation UUID is the recovery boundary, not a new atomic transaction spanning billing/provider creation.
+
+### Critical backend fix handoff — KSU #561 (2026-10-27)
+
+- Priority blockers addressed: workflow generation creation now supports an explicit transaction owner. `TrendWorkflowService.run_step()` uses `GenerationService.create(..., commit=False, wake=False)`, links the step generation FK, and commits generation/debit/outbox/progress plus workflow state together. Existing callers retain `commit=True, wake=True`; both model-spec audit wrappers forward the options.
+- RED/GREEN evidence: the new transaction-boundary regression failed before implementation with missing `commit`; after implementation the focused workflow suite passed **32 tests**. Two new real PostgreSQL tests cover replay/public reconciliation of an already-paid reservation and no generation/debit on missing quote.
+- Exact checks: `source /root/agent-work/ksu-561-control/TEST_ENV.sh && python -m pytest -q tests/test_trend_workflows.py` → **32 passed in 4.25s**; targeted Ruff, compileall and `git diff --check` passed.
+- Quote boundary: workflow run requests require a non-negative `quoted_cost_rox` before generation work; `GenerationService` compares the effective current catalog/billing cost against that accepted quote before wallet debit. Ordinary non-workflow generation remains backward-compatible.
+- Remaining limits for controller: full suite/exact-head CI, adapter completion for all three provider submissions, real concurrency/late-callback tests, provider/media ingest integration, frontend/admin E2E, and release actions remain unverified and unperformed.
+
+
+### Continuation verification — KSU #561 (2026-10-27)
+
+- Resumed existing worktree/PR at `6e3eb9246fa756f34f7b0ad783e19004d28431c5`; retained all prior dirty UI/admin/backend work and tests. The older chronological handoff entries above describe intermediate states and are superseded by this status and the detailed ledger.
+- Fresh isolated PostgreSQL migration/parity, full Ruff and compileall passed. Full backend before the additional source-selection fix: **2061 passed**, one pre-existing category-delete SQLAlchemy warning.
+- Source-choice regression reproduced with two real PostgreSQL failures: an omitted video retry source silently selected the first output, and an unavailable selected output was substituted. The resolver now defaults to the persisted reviewed asset and fails closed; **63 workflow checks passed** after repair.
+- Native UI implementation child `01a17dbb-f6bf-7422-8c57-948ed2e1046c` uses the pinned `.agents` skills and is addressing the six recorded final UI review findings. Independent Spec/Quality reviews, final integrated tests and publication remain pending. No production or paid-provider operations.
+
 
 
 ## Active Feature Execution — Seedance video trends 2026-10-27
@@ -1034,3 +1084,10 @@ Cloud TDD reproduced non-ASCII receipt crash and attempt-dict mismatch; both fix
 Gateway dependency deployed and verified: ooo#125 -> e445aeac7ff9573d41ae93a7dbfc3549d52774f4.
 See receipt execution ledger for exact image/health/contract evidence and an explicit
 verification incident. KSU merge/deploy still pending exact-head CI.
+
+
+## KSU #561 — authorized production release continuation (2026-10-27)
+
+The user explicitly authorized verification and production delivery of PR#562, superseding earlier no-deploy boundaries for this feature. Final release remains gated on all six exact-head/main CI workflows, independent review, verified backup before additive migration0044, consistent immutable app/worker image IDs and live/public revision/health smoke. No paid generations or customer notifications are permitted by this verification.
+
+The sole fd694ca5 CI failure was an early synchronous quote-count observation in one WebKit regression (902Chromium/227WebKit other tests passed), not a demonstrated second charge. The regression now holds the retry quote response, verifies blocked payment/no consent/no extra POST while pending, waits for the actual fresh quote, then requires explicit consent and a new next-attempt key. Application code is unchanged in this release repair. Current main9f3294fc's CI-only bounded HTTPS tooling change is retained. Native reviewer01a17dc9-6355-7652-8ea1-ac7de9843d49 approved the bounded fix. Final run/deploy evidence is recorded in PR#562 without amending the tested tree merely to append statuses.

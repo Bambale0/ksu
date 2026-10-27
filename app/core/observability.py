@@ -53,6 +53,11 @@ GENERATION_EVENTS = Counter(
     "Generation lifecycle events",
     ("event", "provider"),
 )
+WORKFLOW_EVENTS = Counter(
+    "ksu_trend_workflow_events_total",
+    "Trend photo/video workflow lifecycle events",
+    ("event", "status", "failure_category"),
+)
 PAYMENT_EVENTS = Counter(
     "ksu_payment_events_total",
     "Payment lifecycle events",

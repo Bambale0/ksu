@@ -110,3 +110,5 @@ app/web/mini_app/roxy-creator-rewards-slide-source.png
 ```
 
 The originals are user-supplied artwork. Do not recreate, restyle, re-typeset, crop or replace them with generated approximations. Asset replacement must preserve the exact approved composition and copy.
+
+- [Required photo -> video workflows](TREND_PHOTO_VIDEO_WORKFLOWS.md) — v2 recipes, owner resume, per-step consent, durable media, idempotency and rollout.

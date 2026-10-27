@@ -240,6 +240,7 @@
   }
 
   function resetForm() {
+    dom.trendSubmit.disabled = false;
     state.editing = null;
     dom.trendForm.reset();
     dom.trendId.value = "";
@@ -260,6 +261,13 @@
 
   function fillForm(item, duplicate = false) {
     const payload = item.payload || {};
+    if (payload.schema_version === 2 || payload.workflow_type === "sequential_photo_video") {
+      resetForm();
+      dom.trendSubmit.disabled = true;
+      setMessage(dom.trendFormMessage, "Двухэтапный шаблон сохранён без изменений. Редактирование и копирование доступны в редакторе шаблонов Mini App.", true);
+      return;
+    }
+    dom.trendSubmit.disabled = false;
     state.editing = duplicate ? null : item;
     dom.trendId.value = duplicate ? "" : item.id;
     dom.trendTitle.value = duplicate ? `${item.title} — копия` : item.title;

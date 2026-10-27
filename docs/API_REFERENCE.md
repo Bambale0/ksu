@@ -378,3 +378,8 @@ See `ADMIN_SECURITY.md`.
 ```
 
 For 429/anti-abuse 503, read and honor `Retry-After`.
+
+
+## Curated photo -> video workflows
+
+V2 template state is owner-scoped under `/api/v1/trends/{id}/workflow` and `/api/v1/trends/workflows/{run_id}`. Each step has `/quote` and `/run`; run requires a stable `Idempotency-Key` and the accepted `quoted_cost_rox`. The second step accepts only a ready owned `media_asset_id` from that workflow's first step. Empty run creation does not charge. Existing v1 `/trends/{id}/run` rejects v2. See [complete request, response, retry and privacy contracts](TREND_PHOTO_VIDEO_WORKFLOWS.md#api).

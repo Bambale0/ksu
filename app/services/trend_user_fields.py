@@ -210,6 +210,13 @@ def _validated_field_value(spec: TrendUserFieldSpec, raw_value: str) -> str:
     return value
 
 
+def validate_trend_field_value(spec: TrendUserFieldSpec, raw_value: Any) -> str:
+    """Share the existing scalar/date/number contract with typed workflow slots."""
+    if isinstance(raw_value, (Mapping, list, tuple, set, bool)):
+        raise TrendUserFieldsError(f"Invalid value for field {spec.label}")
+    return _validated_field_value(spec, str(raw_value) if raw_value is not None else "")
+
+
 def render_trend_prompt(prompt: str, user_fields: list[dict[str, Any]], raw_values: Any) -> str:
     """Apply user values server-side without exposing or requiring prompt tokens."""
 
