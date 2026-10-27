@@ -59,4 +59,5 @@
 - The visual paths pass in Chromium (`4 passed`) and mobile WebKit (`4 passed`): locked/unlocked states, background unlock, equal 4:5 cards, centered chip, dimming and no overflow at 320/375/390/430/768 px. Modal focus entry/loop, Cancel, Escape, backdrop, focus restoration and Step 1 navigation are asserted.
 - Production static build succeeds for all 24 Mini App routes with TypeScript checking enabled.
 - `git diff --check` passes. No API, persistence, provider, pricing or runtime-setting files changed.
-- Independent Standards and Spec review found background-unlock/focus-restoration and missing Escape/backdrop/layout coverage. Both findings were fixed and the expanded Chromium/WebKit paths pass. Merge/deploy remain outside this follow-up's authorization.
+- Independent Standards and Spec review found background-unlock/focus-restoration and missing Escape/backdrop/layout coverage. Both findings were fixed and the expanded Chromium/WebKit paths pass.
+- The user explicitly authorized a full release on 2026-10-27. Release gates are exact-head PR CI, protected merge, successful production deployment, exact merge-SHA verification in Git and running images/containers, public release metadata, health/readiness/operational checks, and a non-charging live verification of the two-step trend route/assets.
