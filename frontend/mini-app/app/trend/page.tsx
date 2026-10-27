@@ -166,14 +166,10 @@ function userFieldValid(field: TrendUserField, value: string): boolean {
 }
 
 function previewIsVideo(trend: TrendItem): boolean {
-  if (trend.media_type === "video") return true;
-  return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(trend.preview_url || "");
-}
-
-function previewIsImage(trend: TrendItem): boolean {
-  const url = trend.preview_url || "";
-  if (/\.(png|jpe?g|webp|gif|avif|heic|heif)(?:[?#]|$)/i.test(url)) return true;
-  return !previewIsVideo(trend);
+  const previewUrl = trend.preview_url || "";
+  if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(previewUrl)) return true;
+  if (/\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)(?:[?#]|$)/i.test(previewUrl)) return false;
+  return trend.media_type === "video";
 }
 
 function defaultQualityValue(trend: TrendItem): string {
@@ -382,7 +378,7 @@ function TrendWorkflowRunner({
   const selectedMedia = mediaOptions.find((media) => media.id === selectedAssetId) || photoStep?.media;
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
   const workflowThumbnailUrl = trend?.preview_thumbnail_url || "";
-  const workflowCoverFallbackUrl = (trend && previewIsImage(trend) ? trend.preview_url : "") || selectedMediaUrl;
+  const workflowCoverFallbackUrl = (trend && !previewIsVideo(trend) ? trend.preview_url : "") || selectedMediaUrl;
   const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : (workflowThumbnailUrl || workflowCoverFallbackUrl);
   const videoOverviewUrl = workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
