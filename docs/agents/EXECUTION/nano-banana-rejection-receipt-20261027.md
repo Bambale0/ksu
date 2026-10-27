@@ -91,3 +91,10 @@ unconfirmed and its hold remains for reconciliation. No retry, manual refund,
 balance or routing change was performed. This was an operator verification error,
 not evidence of a safe non-charging provider call. Subsequent smoke uses only
 in-memory mocks or a JSON array proven to reject before reserve.
+
+
+CI infrastructure correction: canceled run 40519857281 logs show Azure HTTP
+Ubuntu downloads consuming ~20 minutes before any E2E test. The ROXY E2E runner
+now uses the canonical HTTPS Ubuntu archive for those mirror entries and a
+five-minute tooling-step budget plus bounded APT retries/timeouts. Package signature
+verification and all product/browser tests remain unchanged; production OS untouched.
