@@ -93,6 +93,14 @@ function WorkflowLockIcon() {
   return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>;
 }
 
+function WorkflowCameraIcon() {
+  return <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7.5h3l1.3-2h7.4l1.3 2h3a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" /><circle cx="12" cy="13.5" r="4" /></svg>;
+}
+
+function WorkflowVideoIcon() {
+  return <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="2.5" y="5.5" width="13.5" height="13" rx="2.5" /><path d="m16 10 5-3v10l-5-3" /></svg>;
+}
+
 
 function safeError(reason: unknown, fallback: string): string {
   return reason instanceof Error && reason.message ? reason.message : fallback;
@@ -248,6 +256,11 @@ function TrendWorkflowRunner({
   const [runningStep, setRunningStep] = useState("");
   const [error, setError] = useState("");
   const [reconciling, setReconciling] = useState(false);
+  const [lockedStepDialogOpen, setLockedStepDialogOpen] = useState(false);
+  const lockedStepTrigger = useRef<HTMLButtonElement | null>(null);
+  const lockedStepCancel = useRef<HTMLButtonElement | null>(null);
+  const lockedStepDialog = useRef<HTMLElement | null>(null);
+  const videoStageCard = useRef<HTMLButtonElement | null>(null);
   const inputVersions = useRef<Record<string, number>>({});
   const quoteVersions = useRef<Record<string, number>>({});
   const commandKeys = useRef<Record<string, string>>({});
@@ -316,6 +329,11 @@ function TrendWorkflowRunner({
   const mediaOptions = useMemo(() => (photoStep?.media_options || []).filter((media) => Boolean(media.id && workflowMediaUrl(media))), [photoStep?.media_options]);
   const selectedMedia = mediaOptions.find((media) => media.id === selectedAssetId) || photoStep?.media;
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
+  const workflowPreviewUrl = trend?.preview_thumbnail_url
+    || (trend && !previewIsVideo(trend) ? trend.preview_url : "")
+    || selectedMediaUrl;
+  const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : workflowPreviewUrl;
+  const videoOverviewUrl = workflowPreviewUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
   const photoReadOnly = Boolean(videoStep?.generation_id);
   const inputsLocked = Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(photoStatus);
@@ -575,8 +593,69 @@ function TrendWorkflowRunner({
     const target = document.querySelector<HTMLElement>('[data-step="prepare_photo"]');
     target?.focus({ preventScroll: false });
     target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-    setError("Сначала подготовьте фото — после этого откроется второй шаг.");
   };
+
+  const openLockedStepDialog = (trigger: HTMLButtonElement) => {
+    lockedStepTrigger.current = trigger;
+    setLockedStepDialogOpen(true);
+  };
+
+  const dismissLockedStepDialog = () => {
+    setLockedStepDialogOpen(false);
+    window.requestAnimationFrame(() => {
+      const trigger = lockedStepTrigger.current;
+      if (trigger && document.contains(trigger)) trigger.focus();
+      else videoStageCard.current?.focus();
+    });
+  };
+
+  const continueToPhotoStep = () => {
+    setLockedStepDialogOpen(false);
+    window.requestAnimationFrame(focusPhoto);
+  };
+
+  useEffect(() => {
+    if (!lockedStepDialogOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => lockedStepCancel.current?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setLockedStepDialogOpen(false);
+        window.requestAnimationFrame(() => {
+          const trigger = lockedStepTrigger.current;
+          if (trigger && document.contains(trigger)) trigger.focus();
+          else videoStageCard.current?.focus();
+        });
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(lockedStepDialog.current?.querySelectorAll<HTMLElement>("button:not([disabled])") || []);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [lockedStepDialogOpen]);
+
+  useEffect(() => {
+    if (!videoUnlocked || !lockedStepDialogOpen) return;
+    setLockedStepDialogOpen(false);
+    window.requestAnimationFrame(() => videoStageCard.current?.focus());
+  }, [lockedStepDialogOpen, videoUnlocked]);
 
   const renderQuote = (step: TrendWorkflowStep, action: string) => {
     const quote = quotes[step.id];
@@ -605,13 +684,38 @@ function TrendWorkflowRunner({
 
   return (
     <div className={styles.workflow}>
-      {trend?.description ? <aside className={styles.instructions} role="note" aria-label="Инструкция к тренду"><strong>Перед запуском</strong><p>{trend.description}</p></aside> : null}
-      {trend?.preview_url ? previewIsVideo(trend)
-        ? <video className="trend-preview" src={trend.preview_url} muted controls playsInline preload="metadata" />
-        : <img className="trend-preview" src={trend.preview_url} alt={trend.title} /> : null}
+      <button className={styles.workflowShare} type="button" disabled={sharing} onClick={onShare}>
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="m7 8 5-5 5 5" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+        {sharing ? "Открываю Telegram…" : "Поделиться"}
+      </button>
       <nav className={styles.workflowOverview} aria-label="Этапы сценария">
-        <button type="button" onClick={() => { const el = document.querySelector<HTMLElement>('[data-step="prepare_photo"]'); el?.scrollIntoView({ block: "start", behavior: "smooth" }); el?.focus(); }}><span aria-hidden="true">1 · Фото</span><strong>Подготовить фото</strong><small>{photoStatus === "ready" ? "Фото готово — проверьте результат" : "Сначала создайте нужный образ"}</small></button>
-        <button type="button" aria-disabled={!videoUnlocked} onClick={() => { if (!videoUnlocked) { focusPhoto(); return; } document.querySelector<HTMLElement>('[data-step="animate_photo"]')?.scrollIntoView({ block: "start", behavior: "smooth" }); }}><span aria-hidden="true">2 · Видео {!videoUnlocked ? <WorkflowLockIcon /> : null}</span><strong>Оживить фото</strong><small>{videoUnlocked ? "Отдельный запуск после проверки фото" : "Сначала завершите шаг 1"}</small></button>
+        <button className={styles.workflowStageCard} type="button" aria-label="Шаг 1. Подготовить фото" onClick={focusPhoto}>
+          {photoOverviewUrl ? <img src={photoOverviewUrl} alt="Шаг 1: Подготовить фото" /> : <span className={styles.workflowStageFallback} aria-hidden="true" />}
+          <span className={styles.workflowStageScrim} aria-hidden="true" />
+          <span className={styles.workflowStageIcon}><WorkflowCameraIcon /></span>
+          <strong className={styles.workflowStageLabel}>ШАГ 1</strong>
+        </button>
+        <button
+          ref={videoStageCard}
+          className={`${styles.workflowStageCard} ${!videoUnlocked ? styles.workflowStageCardLocked : ""}`}
+          type="button"
+          aria-label={`Шаг 2. Оживить фото${videoUnlocked ? "" : ". Сначала Шаг 1"}`}
+          aria-haspopup={!videoUnlocked ? "dialog" : undefined}
+          aria-expanded={!videoUnlocked ? lockedStepDialogOpen : undefined}
+          onClick={(event) => {
+            if (!videoUnlocked) {
+              openLockedStepDialog(event.currentTarget);
+              return;
+            }
+            document.querySelector<HTMLElement>('[data-step="animate_photo"]')?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          }}
+        >
+          {videoOverviewUrl ? <img src={videoOverviewUrl} alt="Шаг 2: Оживить фото" /> : <span className={styles.workflowStageFallback} aria-hidden="true" />}
+          <span className={styles.workflowStageScrim} aria-hidden="true" />
+          <span className={styles.workflowStageIcon}><WorkflowVideoIcon /></span>
+          {!videoUnlocked ? <span className={styles.workflowLockedChip}>Сначала Шаг 1</span> : null}
+          <strong className={styles.workflowStageLabel}>ШАГ 2</strong>
+        </button>
       </nav>
       <div className={styles.workflowGrid}>
         <section className={`${styles.workflowCard} ${styles.workflowCardActive}`} data-step="prepare_photo" tabIndex={-1} aria-labelledby="prepare-photo-title">
@@ -650,7 +754,7 @@ function TrendWorkflowRunner({
             {videoStatus === "ready" && workflowMediaUrl(videoStep.media) ? <video className={styles.workflowResult} src={workflowMediaUrl(videoStep.media)} controls playsInline preload="metadata" /> : null}
           </section>
         ) : (
-          <button className={`${styles.workflowCard} ${styles.workflowCardLocked}`} type="button" onClick={focusPhoto} aria-label="Оживить фото. Сначала создайте фото"><div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2>Оживить фото</h2><p>Сначала создайте фото</p></div><span className={styles.lockIcon} aria-hidden="true"><WorkflowLockIcon /></span></div><p className={styles.lockCopy}>После готового фото здесь появится выбор результата и отдельная стоимость видео.</p></button>
+          <button className={`${styles.workflowCard} ${styles.workflowCardLocked}`} type="button" onClick={(event) => openLockedStepDialog(event.currentTarget)} aria-label="Оживить фото. Сначала создайте фото"><div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2>Оживить фото</h2><p>Сначала создайте фото</p></div><span className={styles.lockIcon} aria-hidden="true"><WorkflowLockIcon /></span></div><p className={styles.lockCopy}>После готового фото здесь появится выбор результата и отдельная стоимость видео.</p></button>
         )}
       </div>
       <button className="secondary wide" type="button" disabled={reconciling || Boolean(runningStep)} onClick={() => void reconcileAfterAmbiguousRun(uncertainStep || videoStep.id)}>Проверить статус</button>
@@ -664,8 +768,19 @@ function TrendWorkflowRunner({
       {videoStatus === "ready" ? <button className="secondary wide" type="button" onClick={() => void startAnother()}>Создать ещё раз</button> : null}
       {reconciling ? <p className={styles.workflowNotice} aria-live="polite">Проверяю результат запуска…</p> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
-      <button className="secondary wide" type="button" disabled={sharing} onClick={onShare}>{sharing ? "Открываю Telegram…" : "Поделиться трендом"}</button>
       <button className="secondary wide" type="button" disabled={copying} onClick={onCopy}>{copying ? "Копирую…" : "Скопировать ссылку тренда"}</button>
+      {lockedStepDialogOpen ? (
+        <div className={styles.workflowLockOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) dismissLockedStepDialog(); }}>
+          <section ref={lockedStepDialog} className={styles.workflowLockDialog} role="dialog" aria-modal="true" aria-labelledby="workflow-lock-title" aria-describedby="workflow-lock-copy">
+            <h2 id="workflow-lock-title">Сначала Шаг 1</h2>
+            <p id="workflow-lock-copy">В этот шаблон загружается фото, которое вы создадите на Шаге 1. Если загрузить сюда обычное фото, видео получится не таким, как на обложке.</p>
+            <div className={styles.workflowLockActions}>
+              <button ref={lockedStepCancel} type="button" onClick={dismissLockedStepDialog}>Отмена</button>
+              <button type="button" onClick={continueToPhotoStep}>Перейти к Шагу 1</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
