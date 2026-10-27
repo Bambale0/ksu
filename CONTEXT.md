@@ -1019,6 +1019,12 @@ Guidance applied: KSU AGENTS and local .agents/code-review-and-quality; current 
 - **Final local verification 18:24 UTC:** 43 focused bot/publication-preview regressions passed; full backend suite on newly created tmpfs PostgreSQL 17 and Redis 7.4 passed **1598 tests** in 43.79s, with the pre-existing trend_collection_assignments SQLAlchemy row-count warning. Fresh alembic upgrade + alembic check passed. Full-repository Ruff, app/tests compileall and git diff --check passed. Both isolated test container pairs were stopped after verification. Read-only baseline GitHub check-runs were all successful; final patch exact-head CI and final independent review remain parent-controlled release gates. No frontend changes; no live Telegram/customer sends, paid provider calls, production data/checkout/runtime changes or cancelled reads.
 
 
+## Active Feature Execution — Seedance video trends 2026-10-27
+Baseline e9037324a096ea3992cd5f63e8044811a4a5bf5a.
+Audit and acceptance: docs/agents/EXECUTION/seedance-video-trends-20261027.md.
+Confirmed video-capable generation but image-only/rejecting curated trend path.
+Implement isolated typed video slots; preserve all runtime and billing controls.
+
 ## Active Feature Execution — receipt release continuation 2026-10-27
 Baseline e9037324a096ea3992cd5f63e8044811a4a5bf5a. See
 [execution ledger](docs/agents/EXECUTION/nano-banana-rejection-receipt-20261027.md).
