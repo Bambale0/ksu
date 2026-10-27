@@ -8,6 +8,7 @@ const PHOTO_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAIAAACHPC9vAAA
 const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg?X-Amz-Signature=signed-photo';
 const VIDEO_URL = 'https://media.example.invalid/video-owned.mp4';
 const PREVIEW_URL = `/api/v1/trends/${TREND_ID}/preview-thumbnail?v=fixture`;
+const EXTERNAL_IMAGE_PREVIEW_URL = 'https://media.example.invalid/workflow-cover.jpg?version=2';
 
 const workflowTrend = {
   id: TREND_ID,
@@ -80,7 +81,7 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null } = {}) {
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null, externalImagePreview = false } = {}) {
   const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
@@ -137,6 +138,12 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
     if (path === `/api/v1/trends/${TREND_ID}` && request.method() === 'GET') {
       if (hiddenTemplate) return json({}, 404);
       if (legacy) return json({ id: TREND_ID, title: 'Старый тренд', description: 'Старый сценарий', media_type: 'image', cost_rox: '25', reference_requirements: { min: 0, max: 0 } });
+      if (externalImagePreview) return json({
+        ...workflowTrend,
+        media_type: 'video',
+        preview_url: EXTERNAL_IMAGE_PREVIEW_URL,
+        preview_thumbnail_url: null,
+      });
       return json(workflowTrend);
     }
     if (path === `/api/v1/trends/${TREND_ID}/workflow` && request.method() === 'POST') { workflowCreated = true; state.workflowCreates += 1; if (creationLoss) { creationLoss = false; return route.abort('failed'); } return json(workflowView(), 201); }
@@ -309,6 +316,16 @@ test('lock modal honors Telegram content safe-area insets', async ({ page }) => 
     const style = getComputedStyle(node);
     return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft];
   })).toEqual(['44px', '26px', '34px', '28px']);
+});
+
+test('external image workflow covers remain visible when workflow media type is video', async ({ page }) => {
+  await setup(page, { externalImagePreview: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', EXTERNAL_IMAGE_PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {

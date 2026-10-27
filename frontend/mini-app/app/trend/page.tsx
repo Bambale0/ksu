@@ -166,8 +166,10 @@ function userFieldValid(field: TrendUserField, value: string): boolean {
 }
 
 function previewIsVideo(trend: TrendItem): boolean {
-  if (trend.media_type === "video") return true;
-  return /\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(trend.preview_url || "");
+  const previewUrl = trend.preview_url || "";
+  if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(previewUrl)) return true;
+  if (/\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)(?:[?#]|$)/i.test(previewUrl)) return false;
+  return trend.media_type === "video";
 }
 
 function defaultQualityValue(trend: TrendItem): string {
