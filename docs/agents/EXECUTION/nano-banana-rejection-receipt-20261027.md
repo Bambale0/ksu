@@ -104,3 +104,11 @@ error. Receipt parsing now preserves object pairs and accepts only the single ex
 detail pair. Updated recovery mock task identity to be unique per generation, so
 repeating the regression against an existing isolated DB remains deterministic.
 48 protocol/recovery tests pass, including this additional RED -> GREEN case.
+
+
+## Final main CI tooling correction
+Merged Seedance594f39e6 main CI40526905145 again stalled in the unchanged backend
+MP4 installer for over six minutes before tests. Reuse exactly the proven E2E
+canonical Ubuntu HTTPS mirror, bounded APT options and five-minute step budget
+in the backend CI workflow. No application/test/deploy-gate change. YAML parse
+and bash syntax validation pass. Focused CI-only PR carries this correction.
