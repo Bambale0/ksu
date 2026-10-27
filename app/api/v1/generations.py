@@ -182,6 +182,18 @@ def _generation_view(
         "created_at": generation.created_at.isoformat(),
         "updated_at": generation.updated_at.isoformat(),
     }
+    if trend_hidden and params.get("_trend_workflow_id") and params.get("_trend_id"):
+        try:
+            workflow_id = str(uuid.UUID(str(params["_trend_workflow_id"])))
+            trend_id = str(uuid.UUID(str(params["_trend_id"])))
+        except (ValueError, TypeError, AttributeError):
+            pass
+        else:
+            view["trend_workflow"] = {
+                "id": workflow_id,
+                "trend_id": trend_id,
+                "step_id": str(params.get("_trend_workflow_step") or ""),
+            }
     if model.get("media_type") == "audio":
         tracks = params.get("_music_tracks")
         view["music_tracks"] = tracks if isinstance(tracks, list) else []

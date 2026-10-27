@@ -309,6 +309,9 @@ class NeironychGenerationProviderService:
             # not guess a new body/key. Bound tasks remain pollable as before.
             raise ValueError("Original Neironych request body unavailable; reconciliation required")
         raw = GenerationProviderService._input_for(generation)
+        raw = await GenerationProviderService._resolve_workflow_media_input(
+            session, generation, raw
+        )
         endpoint = "/v1/videos/generations"
         if model_id in _VIDEO_MODELS:
             if model_id in _GROK_MODELS:

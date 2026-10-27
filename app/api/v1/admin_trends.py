@@ -14,6 +14,7 @@ from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy, AdminPolicyError
 from app.services.model_catalog import SPECS
 from app.services.trends import TrendService
+from app.services.trend_workflows import TrendWorkflowService
 
 router = APIRouter(prefix="/admin/trends", tags=["admin-trends"])
 
@@ -90,10 +91,14 @@ async def web_admin_trend_update(
             confirmed=_confirmed(confirmation),
         )
         title = payload.title.strip()
+        existing = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id))
+        if existing is None:
+            raise LookupError("Trend not found")
+        recipe_payload = TrendWorkflowService.merge_admin_payload(existing.payload or {}, payload.payload)
         recipe = await TrendService.validate_recipe(
             session,
             title=title,
-            payload=payload.payload,
+            payload=recipe_payload,
         )
 
         async def operation() -> dict[str, Any]:

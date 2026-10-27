@@ -59,6 +59,10 @@ class TrendService:
 
     @staticmethod
     def normalize_recipe(title: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if int(payload.get("schema_version", 1) or 1) == 2:
+            from app.services.trend_workflows import TrendWorkflowService
+
+            return TrendWorkflowService.normalize_recipe(title, payload)
         clean_title = str(title or "").strip()
         if not clean_title or len(clean_title) > 80:
             raise TrendRecipeError("Trend title must contain 1..80 characters")
@@ -178,6 +182,10 @@ class TrendService:
     @staticmethod
     async def validate_recipe(session: AsyncSession, *, title: str, payload: dict[str, Any]) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(title, payload)
+        if recipe.get("schema_version") == 2:
+            from app.services.trend_workflows import TrendWorkflowService
+
+            return await TrendWorkflowService.validate_recipe(session, recipe)
         from app.services.template_audio import TemplateAudioService
 
         if TemplateAudioService.audio_urls(recipe["parameters"]):
@@ -255,6 +263,10 @@ class TrendService:
     @staticmethod
     async def public_view(session: AsyncSession, item: AdminTrend) -> dict[str, Any]:
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
+        if recipe.get("schema_version") == 2:
+            from app.services.trend_workflows import TrendWorkflowService
+
+            return await TrendWorkflowService.public_trend_view(session, item, recipe)
         refs = TrendService._validation_reference_urls(recipe["min_references"])
         parameters = TrendService._parameters_with_references(recipe, refs)
         spec, _clean, cost, seconds, _unit = await GenerationService.prepare_request(
@@ -311,6 +323,10 @@ class TrendService:
         if item is None or not item.is_active:
             raise LookupError("Trend not found")
         recipe = TrendService.normalize_recipe(item.title, item.payload or {})
+        if recipe.get("schema_version") == 2:
+            raise TrendRecipeError(
+                "This trend requires the sequential workflow API; direct v1 runs are disabled"
+            )
         refs = [TrendService._safe_http_url(url, field="reference_url") for url in reference_urls]
         if len(refs) < recipe["min_references"] or len(refs) > recipe["max_references"]:
             raise TrendRecipeError(

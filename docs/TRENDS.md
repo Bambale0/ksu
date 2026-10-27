@@ -176,3 +176,8 @@ location. Shared-container MIME is normalized with the existing media-probe
 classifier before storage (for example audio-only MP4 becomes audio/mp4/M4A).
 Disposal audit is emitted only after the metadata commit and includes actor,
 asset and request IDs; a rolled-back deletion produces no success event.
+
+
+## Required photo -> video workflows
+
+Selected templates may use a validated v2 two-stage recipe. The legacy v1 run endpoint cannot bypass the required prepared photo. Owner runs, explicit per-step pricing/consent, private media and all API/rollout contracts are described in [TREND_PHOTO_VIDEO_WORKFLOWS.md](TREND_PHOTO_VIDEO_WORKFLOWS.md). Ordinary v1 templates keep the contract above.

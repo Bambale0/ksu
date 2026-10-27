@@ -23,6 +23,7 @@ from app.services.model_catalog import InvalidModelParametersError, SPECS, Unkno
 from app.services.reference_previews import ReferencePreviewService
 from app.services.reference_static import ReferenceStaticStorage
 from app.services.trend_collections import TrendCollectionService
+from app.services.trend_workflows import TrendWorkflowConflict, TrendWorkflowService
 from app.services.trends import TrendRecipeError, TrendService
 from app.services.wallet import InsufficientBalanceError
 
@@ -34,6 +35,31 @@ class RunTrendRequest(BaseModel):
     user_values: dict[str, str] = Field(default_factory=dict, max_length=6)
     resolution: str | None = Field(default=None, max_length=32)
     aspect_ratio: str | None = Field(default=None, max_length=16)
+
+
+class TrendWorkflowRequest(BaseModel):
+    reference_urls: list[str] = Field(default_factory=list, max_length=16)
+    image_inputs: list[dict[str, str]] | None = Field(default=None, max_length=16)
+    values: dict[str, Any] = Field(default_factory=dict, max_length=16)
+    resolution: str | None = Field(default=None, max_length=32)
+    aspect_ratio: str | None = Field(default=None, max_length=16)
+
+
+class TrendWorkflowStepRequest(TrendWorkflowRequest):
+    media_asset_id: uuid.UUID | None = None
+    quoted_cost_rox: Decimal | None = Field(
+        default=None,
+        ge=0,
+        decimal_places=2,
+        description="Server quote echoed from the quote endpoint; required before billing.",
+    )
+    retry: bool = Field(
+        default=False,
+        description=(
+            "Explicitly pay for a new photo attempt. Send with a new Idempotency-Key; "
+            "the previous generation and media remain in attempt history."
+        ),
+    )
 
 
 class InlineTrendWriteRequest(BaseModel):
@@ -51,6 +77,8 @@ def _domain_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, InsufficientBalanceError):
         return HTTPException(status_code=409, detail="Insufficient credits")
+    if isinstance(exc, TrendWorkflowConflict):
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, (TrendRecipeError, UnknownModelError, InvalidModelParametersError, ValueError)):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=500, detail="Trend operation failed")
@@ -60,8 +88,11 @@ def _amount(value: Decimal | str | int | float) -> str:
     return format(Decimal(str(value)), ".2f")
 
 
-def _command_key(value: str | None) -> str:
-    key = str(value or "").strip() or f"inline-trend:{uuid.uuid4()}"
+def _command_key(value: str | None, *, required: bool = False) -> str:
+    key = str(value or "").strip()
+    if required and not key:
+        raise HTTPException(status_code=400, detail="Valid Idempotency-Key is required")
+    key = key or f"inline-trend:{uuid.uuid4()}"
     if len(key) > 160:
         raise HTTPException(status_code=400, detail="Invalid Idempotency-Key")
     return key
@@ -262,7 +293,11 @@ async def inline_admin_trend_update(
     try:
         account = await _inline_admin(session, user_id=user.id)
         title = payload.title.strip()
-        recipe = await TrendService.validate_recipe(session, title=title, payload=payload.payload)
+        existing = await session.scalar(select(AdminTrend).where(AdminTrend.id == trend_id))
+        if existing is None:
+            raise LookupError("Trend not found")
+        recipe_payload = TrendWorkflowService.merge_admin_payload(existing.payload or {}, payload.payload)
+        recipe = await TrendService.validate_recipe(session, title=title, payload=recipe_payload)
 
         async def operation() -> dict[str, Any]:
             item = await session.scalar(
@@ -403,6 +438,110 @@ async def get_trend(
         item = await TrendService.get_public(session, trend_id=trend_id)
         return await _customer_price(session, user_id=user.id, item=item)
     except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.get("/{trend_id}/workflow")
+async def latest_trend_workflow(
+    trend_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, Any]:
+    try:
+        return await TrendWorkflowService.latest_owned_view(
+            session, trend_id=trend_id, user_id=user.id,
+        )
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.post("/{trend_id}/workflow", status_code=status.HTTP_201_CREATED)
+async def create_trend_workflow(
+    trend_id: uuid.UUID,
+    payload: TrendWorkflowRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    request: Request,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        run = await TrendWorkflowService.create_or_resume(
+            session,
+            user_id=user.id,
+            trend_id=trend_id,
+            command_key=_command_key(idempotency_key, required=True),
+            request=payload.model_dump(mode="json"),
+            request_id=_request_id(request),
+        )
+        return await TrendWorkflowService.public_view(session, run_id=run.id, user_id=user.id)
+    except Exception as exc:
+        await session.rollback()
+        raise _domain_error(exc) from exc
+
+
+@router.get("/workflows/{run_id}")
+async def get_trend_workflow(
+    run_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> dict[str, Any]:
+    try:
+        return await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.post("/workflows/{run_id}/steps/{step_key}/quote")
+async def quote_trend_workflow_step(
+    run_id: uuid.UUID,
+    step_key: str,
+    payload: TrendWorkflowStepRequest,
+    user: CurrentUserDep,
+    session: SessionDep,
+    request: Request,
+) -> dict[str, Any]:
+    try:
+        return await TrendWorkflowService.quote_step(
+            session,
+            run_id=run_id,
+            step_key=step_key,
+            user_id=user.id,
+            request=payload.model_dump(mode="json"),
+            request_id=_request_id(request),
+        )
+    except Exception as exc:
+        raise _domain_error(exc) from exc
+
+
+@router.post("/workflows/{run_id}/steps/{step_key}/run", status_code=status.HTTP_202_ACCEPTED)
+async def run_trend_workflow_step(
+    run_id: uuid.UUID,
+    step_key: str,
+    payload: TrendWorkflowStepRequest,
+    request: Request,
+    user: CurrentUserDep,
+    session: SessionDep,
+    redis: RedisDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    try:
+        if payload.quoted_cost_rox is None:
+            raise HTTPException(status_code=422, detail="quoted_cost_rox is required; request a fresh quote")
+        await TrendWorkflowService.run_step(
+            session,
+            redis,
+            run_id=run_id,
+            step_key=step_key,
+            user_id=user.id,
+            command_key=_command_key(idempotency_key, required=True),
+            request=payload.model_dump(mode="json"),
+            request_id=_request_id(request),
+        )
+        result = await TrendWorkflowService.public_view(session, run_id=run_id, user_id=user.id)
+        result["request_id"] = _request_id(request)
+        return result
+    except Exception as exc:
+        await session.rollback()
         raise _domain_error(exc) from exc
 
 

@@ -510,6 +510,9 @@ class NexusGenerationProviderService:
 
         try:
             input_data = GenerationProviderService._input_for(generation)
+            input_data = await GenerationProviderService._resolve_workflow_media_input(
+                session, generation, input_data
+            )
             billing_seconds = (generation.parameters or {}).get("_billing_seconds")
             if billing_seconds not in (None, ""):
                 input_data["_billing_seconds"] = billing_seconds
