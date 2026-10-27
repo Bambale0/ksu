@@ -5,9 +5,9 @@ const RUN_ID = '56156156-2222-4222-8222-561561562222';
 const PHOTO_GENERATION_ID = '56156156-3333-4333-8333-561561563333';
 const VIDEO_GENERATION_ID = '56156156-4444-4444-8444-561561564444';
 const PHOTO_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABgAAAAgCAIAAACHPC9vAAAAJ0lEQVR4nGMMiK9goAZgooopowaNGjRq0KhBowaNGjRq0KhBA24QAK8vAWeEfhD0AAAAAElFTkSuQmCC', 'base64');
-const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg';
+const PHOTO_URL = 'https://media.example.invalid/photo-owned.jpg?X-Amz-Signature=signed-photo';
 const VIDEO_URL = 'https://media.example.invalid/video-owned.mp4';
-const PREVIEW_URL = 'https://media.example.invalid/trend-preview.jpg';
+const PREVIEW_URL = `/api/v1/trends/${TREND_ID}/preview-thumbnail?v=fixture`;
 
 const workflowTrend = {
   id: TREND_ID,
@@ -80,8 +80,8 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null } = {}) {
-  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, errors: [] };
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null } = {}) {
+  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
   let quoteFailure = quoteFailsOnce;
@@ -104,21 +104,33 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
   };
 
   page.on('pageerror', (error) => state.errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.addInitScript((insets) => {
     window.Telegram = { WebApp: {
       initData: 'query_id=trend-workflow&hash=test',
       initDataUnsafe: { user: { id: 777, first_name: 'QA' } },
+      ...(insets ? { contentSafeAreaInset: insets } : {}),
       ready() {}, expand() {}, close() {}, onEvent() {}, offEvent() {},
       BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
       HapticFeedback: { impactOccurred() {}, notificationOccurred() {}, selectionChanged() {} },
     } };
+  }, safeAreaInsets);
+  await page.route('https://media.example.invalid/**', (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/photo-owned.jpg')) {
+      state.ownedPreviewUrls.push(route.request().url());
+      if (failOwnedPreview) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    }
+    return route.fulfill({ contentType: 'image/png', body: PHOTO_BYTES });
   });
-  await page.route('https://media.example.invalid/**', (route) => route.fulfill({ contentType: 'image/png', body: PHOTO_BYTES }));
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
+    if (path === `/api/v1/trends/${TREND_ID}/preview-thumbnail`) {
+      state.previewReads += 1;
+      if (coldPreview && state.previewReads <= 2) return route.fulfill({ status: 202, contentType: 'application/json', body: '{}' });
+      return route.fulfill({ status: 200, contentType: 'image/png', body: PHOTO_BYTES });
+    }
     if (path === '/api/v1/me') return json({ id: 'viewer', telegram_id: 777, first_name: 'QA', balance_rox: '1000' });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === `/api/v1/trends/${TREND_ID}/workflow` && request.method() === 'GET') return workflowCreated ? json(workflowView(photoReady ? 'step1_ready' : 'created', photoReady ? 'ready' : 'pending', videoReady ? 'ready' : 'pending')) : json({}, 404);
@@ -194,6 +206,9 @@ test('v2 matches the two-card locked-step reference and explains Step 1 in a mod
   await expect(locked.getByText('Сначала Шаг 1', { exact: true })).toBeVisible();
   await expect(locked).toHaveAttribute('aria-haspopup', 'dialog');
   await expect(locked).toBeVisible();
+  const detailedLocked = page.getByRole('button', { name: 'Оживить фото. Сначала создайте фото' });
+  await expect(detailedLocked).toHaveAttribute('aria-haspopup', 'dialog');
+  await expect(detailedLocked).toHaveAttribute('aria-controls', 'workflow-lock-dialog');
   await locked.click();
   const dialog = page.getByRole('dialog', { name: 'Сначала Шаг 1' });
   await expect(dialog).toBeVisible();
@@ -262,6 +277,38 @@ test('an open lock explanation closes when Step 1 becomes ready in the backgroun
   await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1' })).toHaveCount(0);
   await expect(videoCard).not.toHaveAttribute('aria-haspopup', 'dialog');
   await expect(videoCard).toBeFocused();
+});
+
+test('cold workflow thumbnails retry until both visual cards recover', async ({ page }) => {
+  const state = await setup(page, { coldPreview: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect.poll(() => state.previewReads).toBeGreaterThanOrEqual(3);
+  await expect(images).toHaveCount(2);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('owned signed photo URLs are never mutated by card recovery', async ({ page }) => {
+  const state = await setup(page, { failOwnedPreview: true });
+  await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  await page.getByRole('button', { name: /Создать фото/ }).click();
+  const photoCardImage = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('button', { name: 'Шаг 1. Подготовить фото', exact: true }).getByRole('img');
+  await expect(photoCardImage).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => state.ownedPreviewUrls.length).toBeGreaterThan(0);
+  expect(state.ownedPreviewUrls.every((url) => url === PHOTO_URL)).toBe(true);
+});
+
+test('lock modal honors Telegram content safe-area insets', async ({ page }) => {
+  await setup(page, { safeAreaInsets: { top: 44, bottom: 34, left: 28, right: 26 } });
+  await page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('button', { name: /Шаг 2.*Оживить фото/i }).click();
+  const dialog = page.getByRole('dialog', { name: 'Сначала Шаг 1' });
+  const overlay = dialog.locator('..');
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => overlay.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft];
+  })).toEqual(['44px', '26px', '34px', '28px']);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {

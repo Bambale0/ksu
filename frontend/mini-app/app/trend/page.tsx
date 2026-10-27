@@ -101,6 +101,52 @@ function WorkflowVideoIcon() {
   return <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="2.5" y="5.5" width="13.5" height="13" rx="2.5" /><path d="m16 10 5-3v10l-5-3" /></svg>;
 }
 
+function workflowPreviewRetryUrl(url: string, attempt: number): string {
+  return attempt ? `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}` : url;
+}
+
+function workflowPreviewCanCacheBust(url: string): boolean {
+  return /\/api\/v1\/trends\/[^/?]+\/preview-thumbnail(?:[?#]|$)/.test(url);
+}
+
+function WorkflowStageImage({ primaryUrl, fallbackUrl, alt }: { primaryUrl: string; fallbackUrl: string; alt: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const retryTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    setAttempt(0);
+    setUsingFallback(false);
+    setUnavailable(false);
+    return () => {
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    };
+  }, [fallbackUrl, primaryUrl]);
+
+  const source = usingFallback ? fallbackUrl : primaryUrl;
+  const canRetryPrimary = !usingFallback && workflowPreviewCanCacheBust(primaryUrl);
+  if (!source || unavailable) return <span className={styles.workflowStageFallback} aria-hidden="true" />;
+  return <img
+    src={canRetryPrimary ? workflowPreviewRetryUrl(source, attempt) : source}
+    alt={alt}
+    onError={() => {
+      if (retryTimer.current !== null) return;
+      if (canRetryPrimary && attempt < 3) {
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          setAttempt((current) => current + 1);
+        }, 600);
+      } else if (!usingFallback && fallbackUrl && fallbackUrl !== primaryUrl) {
+        setUsingFallback(true);
+      } else {
+        setUnavailable(true);
+      }
+    }}
+  />;
+}
+
 
 function safeError(reason: unknown, fallback: string): string {
   return reason instanceof Error && reason.message ? reason.message : fallback;
@@ -329,11 +375,10 @@ function TrendWorkflowRunner({
   const mediaOptions = useMemo(() => (photoStep?.media_options || []).filter((media) => Boolean(media.id && workflowMediaUrl(media))), [photoStep?.media_options]);
   const selectedMedia = mediaOptions.find((media) => media.id === selectedAssetId) || photoStep?.media;
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
-  const workflowPreviewUrl = trend?.preview_thumbnail_url
-    || (trend && !previewIsVideo(trend) ? trend.preview_url : "")
-    || selectedMediaUrl;
-  const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : workflowPreviewUrl;
-  const videoOverviewUrl = workflowPreviewUrl || photoOverviewUrl;
+  const workflowThumbnailUrl = trend?.preview_thumbnail_url || "";
+  const workflowCoverFallbackUrl = (trend && !previewIsVideo(trend) ? trend.preview_url : "") || selectedMediaUrl;
+  const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : (workflowThumbnailUrl || workflowCoverFallbackUrl);
+  const videoOverviewUrl = workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
   const photoReadOnly = Boolean(videoStep?.generation_id);
   const inputsLocked = Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(photoStatus);
@@ -690,7 +735,7 @@ function TrendWorkflowRunner({
       </button>
       <nav className={styles.workflowOverview} aria-label="Этапы сценария">
         <button className={styles.workflowStageCard} type="button" aria-label="Шаг 1. Подготовить фото" onClick={focusPhoto}>
-          {photoOverviewUrl ? <img src={photoOverviewUrl} alt="Шаг 1: Подготовить фото" /> : <span className={styles.workflowStageFallback} aria-hidden="true" />}
+          <WorkflowStageImage primaryUrl={photoOverviewUrl} fallbackUrl={workflowCoverFallbackUrl} alt="Шаг 1: Подготовить фото" />
           <span className={styles.workflowStageScrim} aria-hidden="true" />
           <span className={styles.workflowStageIcon}><WorkflowCameraIcon /></span>
           <strong className={styles.workflowStageLabel}>ШАГ 1</strong>
@@ -702,6 +747,7 @@ function TrendWorkflowRunner({
           aria-label={`Шаг 2. Оживить фото${videoUnlocked ? "" : ". Сначала Шаг 1"}`}
           aria-haspopup={!videoUnlocked ? "dialog" : undefined}
           aria-expanded={!videoUnlocked ? lockedStepDialogOpen : undefined}
+          aria-controls={!videoUnlocked ? "workflow-lock-dialog" : undefined}
           onClick={(event) => {
             if (!videoUnlocked) {
               openLockedStepDialog(event.currentTarget);
@@ -710,7 +756,7 @@ function TrendWorkflowRunner({
             document.querySelector<HTMLElement>('[data-step="animate_photo"]')?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           }}
         >
-          {videoOverviewUrl ? <img src={videoOverviewUrl} alt="Шаг 2: Оживить фото" /> : <span className={styles.workflowStageFallback} aria-hidden="true" />}
+          <WorkflowStageImage primaryUrl={videoOverviewUrl} fallbackUrl={workflowCoverFallbackUrl} alt="Шаг 2: Оживить фото" />
           <span className={styles.workflowStageScrim} aria-hidden="true" />
           <span className={styles.workflowStageIcon}><WorkflowVideoIcon /></span>
           {!videoUnlocked ? <span className={styles.workflowLockedChip}>Сначала Шаг 1</span> : null}
@@ -754,7 +800,7 @@ function TrendWorkflowRunner({
             {videoStatus === "ready" && workflowMediaUrl(videoStep.media) ? <video className={styles.workflowResult} src={workflowMediaUrl(videoStep.media)} controls playsInline preload="metadata" /> : null}
           </section>
         ) : (
-          <button className={`${styles.workflowCard} ${styles.workflowCardLocked}`} type="button" onClick={(event) => openLockedStepDialog(event.currentTarget)} aria-label="Оживить фото. Сначала создайте фото"><div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2>Оживить фото</h2><p>Сначала создайте фото</p></div><span className={styles.lockIcon} aria-hidden="true"><WorkflowLockIcon /></span></div><p className={styles.lockCopy}>После готового фото здесь появится выбор результата и отдельная стоимость видео.</p></button>
+          <button className={`${styles.workflowCard} ${styles.workflowCardLocked}`} type="button" aria-haspopup="dialog" aria-expanded={lockedStepDialogOpen} aria-controls="workflow-lock-dialog" onClick={(event) => openLockedStepDialog(event.currentTarget)} aria-label="Оживить фото. Сначала создайте фото"><div className={styles.workflowCardHead}><span className={styles.stepBadge}>2</span><div><h2>Оживить фото</h2><p>Сначала создайте фото</p></div><span className={styles.lockIcon} aria-hidden="true"><WorkflowLockIcon /></span></div><p className={styles.lockCopy}>После готового фото здесь появится выбор результата и отдельная стоимость видео.</p></button>
         )}
       </div>
       <button className="secondary wide" type="button" disabled={reconciling || Boolean(runningStep)} onClick={() => void reconcileAfterAmbiguousRun(uncertainStep || videoStep.id)}>Проверить статус</button>
@@ -771,7 +817,7 @@ function TrendWorkflowRunner({
       <button className="secondary wide" type="button" disabled={copying} onClick={onCopy}>{copying ? "Копирую…" : "Скопировать ссылку тренда"}</button>
       {lockedStepDialogOpen ? (
         <div className={styles.workflowLockOverlay} onMouseDown={(event) => { if (event.target === event.currentTarget) dismissLockedStepDialog(); }}>
-          <section ref={lockedStepDialog} className={styles.workflowLockDialog} role="dialog" aria-modal="true" aria-labelledby="workflow-lock-title" aria-describedby="workflow-lock-copy">
+          <section id="workflow-lock-dialog" ref={lockedStepDialog} className={styles.workflowLockDialog} role="dialog" aria-modal="true" aria-labelledby="workflow-lock-title" aria-describedby="workflow-lock-copy">
             <h2 id="workflow-lock-title">Сначала Шаг 1</h2>
             <p id="workflow-lock-copy">В этот шаблон загружается фото, которое вы создадите на Шаге 1. Если загрузить сюда обычное фото, видео получится не таким, как на обложке.</p>
             <div className={styles.workflowLockActions}>

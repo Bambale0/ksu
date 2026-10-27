@@ -55,9 +55,10 @@
 ## Verification result
 
 - RED: the new reference-path browser test failed against the text-only overview and missing modal.
-- GREEN: the complete workflow spec passes in Chromium (`27 passed`), including legacy one-step isolation, payment/idempotency, retry and owner-media paths.
+- GREEN: the complete workflow spec passes in Chromium (`30 passed`), including legacy one-step isolation, payment/idempotency, retry and owner-media paths.
 - The visual paths pass in Chromium (`4 passed`) and mobile WebKit (`4 passed`): locked/unlocked states, background unlock, equal 4:5 cards, centered chip, dimming and no overflow at 320/375/390/430/768 px. Modal focus entry/loop, Cancel, Escape, backdrop, focus restoration and Step 1 navigation are asserted.
 - Production static build succeeds for all 24 Mini App routes with TypeScript checking enabled.
 - `git diff --check` passes. No API, persistence, provider, pricing or runtime-setting files changed.
 - Independent Standards and Spec review found background-unlock/focus-restoration and missing Escape/backdrop/layout coverage. Both findings were fixed and the expanded Chromium/WebKit paths pass.
+- GitHub review found cold thumbnail `202` recovery, Telegram-provided content safe-area, duplicate-trigger dialog semantics, and signed owned-media URL safety. The cards cache-bust only the owned thumbnail endpoint before falling back, never mutate signed media query parameters, the modal consumes synchronized `--tg-safe-*` insets, both triggers expose the same dialog relationship, and focused Chromium/WebKit regressions pass.
 - The user explicitly authorized a full release on 2026-10-27. Release gates are exact-head PR CI, protected merge, successful production deployment, exact merge-SHA verification in Git and running images/containers, public release metadata, health/readiness/operational checks, and a non-charging live verification of the two-step trend route/assets.
