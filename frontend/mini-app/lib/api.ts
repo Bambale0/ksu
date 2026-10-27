@@ -248,10 +248,11 @@ export const api = {
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string; videoReferenceUrls?: string[] } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({
       reference_urls: referenceUrls,
+      ...(options.videoReferenceUrls?.length ? { video_reference_urls: options.videoReferenceUrls } : {}),
       ...(Object.keys(userValues).length ? { user_values: userValues } : {}),
       ...(options.resolution ? { resolution: options.resolution } : {}),
       ...(options.aspectRatio ? { aspect_ratio: options.aspectRatio } : {}),

@@ -52,6 +52,7 @@ export default function TrendPage() {
   const [sharing, setSharing] = useState(false);
   const [copying, setCopying] = useState(false);
   const [references, setReferences] = useState<Array<{ url: string; name: string }>>([]);
+  const [videoReferences, setVideoReferences] = useState<Array<{ url: string; name: string }>>([]);
   const [userValues, setUserValues] = useState<Record<string, string>>({});
   const [selectedQuality, setSelectedQuality] = useState("");
   const [selectedAspectRatio, setSelectedAspectRatio] = useState("");
@@ -75,8 +76,9 @@ export default function TrendPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const minimum = Number(trend?.reference_requirements?.min || 0);
-  const maximum = Math.max(minimum, Number(trend?.reference_requirements?.max || minimum || 0));
+  const minimum = Number(trend?.reference_requirements?.image?.min ?? trend?.reference_requirements?.min ?? 0);
+  const maximum = Math.max(minimum, Number(trend?.reference_requirements?.image?.max ?? trend?.reference_requirements?.max ?? minimum));
+  const videoCount = Number(trend?.reference_requirements?.video?.min || 0);
   const userFields = (trend?.user_fields || []).slice(0, 6);
   const qualityOptions = trend?.quality_options || [];
   const aspectRatioOptions = trend?.aspect_ratio_options || [];
@@ -86,13 +88,16 @@ export default function TrendPage() {
   const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
   const aspectRatioReady = !aspectRatioOptions.length || Boolean(selectedAspectRatio);
-  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && userFieldsReady && aspectRatioReady;
+  const ready = references.length >= minimum && (!maximum || references.length <= maximum) && videoReferences.length === videoCount && userFieldsReady && aspectRatioReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";
+    if (videoCount) return minimum
+      ? `Добавьте ${minimum} фото и ${videoCount} видео. Запуск — после нажатия кнопки.`
+      : `Добавьте ${videoCount} видео. Запуск — после нажатия кнопки.`;
     if (!minimum) return "Референсы не нужны — сценарий можно запустить сразу.";
     if (minimum === maximum) return `Добавьте ${minimum} ${minimum === 1 ? "изображение" : "изображения"}. Генерация начнётся только после нажатия кнопки.`;
     return `Добавьте от ${minimum} до ${maximum} изображений. Генерация начнётся только после нажатия кнопки.`;
-  }, [maximum, minimum, trend]);
+  }, [maximum, minimum, videoCount, trend]);
 
   const addFiles = async (files: File[]) => {
     if (!trend || !files.length) return;
@@ -112,6 +117,29 @@ export default function TrendPage() {
       setReferences((current) => [...current, ...next].slice(0, maximum));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить референс");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const addVideoFiles = async (files: File[]) => {
+    if (uploading || running) return;
+    const available = Math.max(0, videoCount - videoReferences.length);
+    if (!available) return;
+    setUploading(true);
+    setError("");
+    try {
+      const next: Array<{ url: string; name: string }> = [];
+      for (const file of files.filter((item) => item.type.startsWith("video/")).slice(0, available)) {
+        const uploaded = await api.upload(file);
+        if (uploaded.reference?.kind !== "video" || uploaded.probe_status !== "ready") {
+          throw new Error("Не удалось проверить видео. Загрузите MP4 или MOV.");
+        }
+        next.push({ url: uploaded.url, name: file.name });
+      }
+      setVideoReferences((current) => [...current, ...next].slice(0, videoCount));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось загрузить видео");
     } finally {
       setUploading(false);
     }
@@ -161,6 +189,7 @@ export default function TrendPage() {
         userValues,
         {
           ...(chosenQuality ? { resolution: chosenQuality.value } : {}),
+          videoReferenceUrls: videoReferences.map((item) => item.url),
           ...(selectedAspectRatio ? { aspectRatio: selectedAspectRatio } : {}),
         },
       );
@@ -282,6 +311,27 @@ export default function TrendPage() {
                 </div>
               </>
             ) : null}
+
+            {videoCount > 0 ? <div className="trend-video-references">
+              <label className="upload-control">
+                <span>{uploading ? "Загружаю…" : `Добавить видео · ${videoReferences.length}/${videoCount}`}</span>
+                <input type="file" accept="video/mp4,video/quicktime" multiple={videoCount > 1}
+                  aria-label="Видеореференсы тренда"
+                  disabled={uploading || running || videoReferences.length >= videoCount}
+                  onChange={(event) => {
+                    const files = Array.from(event.currentTarget.files || []);
+                    event.currentTarget.value = "";
+                    void addVideoFiles(files);
+                  }} />
+              </label>
+              <div className="tool-file-list">
+                {videoReferences.map((item, index) => <div className="tool-file-chip" key={item.url}>
+                  <span>{item.name}</span>
+                  <button type="button" aria-label={`Удалить видео ${index + 1}`} disabled={running || uploading}
+                    onClick={() => setVideoReferences((current) => current.filter((_, i) => i !== index))}>×</button>
+                </div>)}
+              </div>
+            </div> : null}
 
             {userFields.length ? (
               <div className="trend-user-fields">
