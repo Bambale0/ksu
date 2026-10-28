@@ -7,6 +7,13 @@
 - Release continuation: the user explicitly authorized full release on 2026-10-28. Publish through a PR, require all exact-head protected checks, merge only after the final reviewed head is green, then prove the merge SHA in the deploy run, production checkout/image/runtime release marker and read-only public health/Mini App assets. Do not invoke a paid provider generation for smoke.
 - Detailed audit, acceptance criteria, verification matrix and rollout plan: [docs/agents/EXECUTION/seedance-author-recipe-replay-20261028.md](docs/agents/EXECUTION/seedance-author-recipe-replay-20261028.md).
 
+## Active Fix Execution — local media feed publication (2026-10-28)
+
+- Baseline diagnosis at `530fbc4a70a2615cf9ffd2ba5ef7d547019c85b8`: successful Neironych generations stored in `__ksu_server_local__` cannot be published when no provider HTTPS URL remains, because the feed contract cannot copy the ready private server file into immutable feed-static storage. Production returned HTTP 409 while the media asset and physical JPEG were healthy.
+- Scope: add an atomic, validated local-file persistence source and route ready server-local assets through it. Preserve the source file, existing public feed URL contract, external/S3 flow, provider routing, prices, balances, permissions and schemas.
+- Audit, regression and verification evidence: [docs/agents/EXECUTION/local-media-feed-publication-20261028.md](docs/agents/EXECUTION/local-media-feed-publication-20261028.md). Branch `fix/local-media-feed-publication-20261028`.
+- Release continuation: the user explicitly authorized full release on 2026-10-28. Rebase on current `main`, require exact-head PR checks and review, merge only after green gates, then require all six exact-main workflows, the normal verified-backup deployment, immutable-image/runtime SHA checks and public health/release metadata. No paid generation smoke is required.
+
 ## Active Fix Execution — two-step trend visual parity (2026-10-27)
 
 - Baseline `main`/production `9143e6f8c2258030c1ae03e3a4b251cab32394c9`. The server-enforced `sequential_photo_video` workflow is already live and correctly locks video until an owned Step 1 photo is ready, but the customer overview is text-first and a locked Step 2 click only emits an inline alert. The requested reference shows two adjacent image cards and an explicit modal directing the customer back to Step 1.
