@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.api.v1.generations import CreateGenerationRequest, quote_generation
 from app.core.config import DEFAULT_GENERATION_PRICING_JSON, settings
 from app.db.models import AdminAccount, User
 from app.db.reference_models import UserReference
@@ -192,6 +193,28 @@ def test_seedance_prices_follow_selected_resolution(monkeypatch: pytest.MonkeyPa
     assert GenerationService._effective_unit_price(
         model_id="seedance-2.5", parameters={"resolution": "1080p"}
     ) == Decimal("130")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model_id", ["nano-banana-pro", "nano-banana-2"])
+async def test_nano_banana_quote_prices_4k_at_35_rox_and_lower_resolutions_at_25(
+    monkeypatch: pytest.MonkeyPatch,
+    model_id: str,
+) -> None:
+    monkeypatch.setattr(settings, "generation_pricing_json", DEFAULT_GENERATION_PRICING_JSON)
+
+    for resolution, expected in (("1K", "25.00"), ("2K", "25.00"), ("4K", "35.00")):
+        quote = await quote_generation(
+            CreateGenerationRequest(
+                model_id=model_id,
+                prompt="pricing contract",
+                parameters={"resolution": resolution},
+            ),
+            None,
+            None,
+        )
+        assert quote["unit_price_rox"] == expected
+        assert quote["cost_rox"] == expected
 
 
 def test_wan_27_pro_is_a_real_photo_generation_and_edit_model() -> None:
