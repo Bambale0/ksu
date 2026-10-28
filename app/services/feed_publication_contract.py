@@ -4,6 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -39,6 +40,7 @@ def install_feed_publication_contract() -> None:
         FeedPublicationError,
         FeedService,
     )
+    from app.services.local_media_storage import LocalMediaStorage, LocalMediaStorageError
     from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
     previous_provider_result_urls = FeedService._provider_result_urls
@@ -58,7 +60,10 @@ def install_feed_publication_contract() -> None:
             if item.startswith("https://") and not FeedStaticStorage.is_local_url(item)
         ]
 
-    async def owned_media_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
+    async def owned_media_sources(  # type: ignore[no-untyped-def]
+        session,
+        generation: Generation,
+    ) -> list[str | Path]:
         assets = list(
             (
                 await session.scalars(
@@ -75,21 +80,29 @@ def install_feed_publication_contract() -> None:
         )
         if not assets:
             return []
-        try:
-            storage = ObjectStorage()
-        except ObjectStorageNotConfigured:
-            return []
-        urls: list[str] = []
+        storage: ObjectStorage | None = None
+        sources: list[str | Path] = []
         for asset in assets:
             if not asset.object_key or not asset.bucket:
                 continue
+            if LocalMediaStorage.is_local_bucket(asset.bucket):
+                try:
+                    sources.append(LocalMediaStorage.path_for_key(asset.object_key))
+                except (LocalMediaStorageError, OSError):
+                    continue
+                continue
+            if storage is None:
+                try:
+                    storage = ObjectStorage()
+                except ObjectStorageNotConfigured:
+                    return []
             try:
                 url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
             except Exception:
                 continue
             if url.startswith("https://"):
-                urls.append(url)
-        return urls
+                sources.append(url)
+        return sources
 
     @staticmethod
     def static_ready_condition() -> Any:
@@ -256,11 +269,11 @@ def install_feed_publication_contract() -> None:
                 persisted = None
 
         if persisted is None:
-            owned_urls = await owned_media_urls(session, generation)
-            if owned_urls:
+            owned_sources = await owned_media_sources(session, generation)
+            if owned_sources:
                 try:
-                    persisted = await FeedStaticStorage.persist_urls(
-                        owned_urls,
+                    persisted = await FeedStaticStorage.persist_sources(
+                        owned_sources,
                         generation_id=generation.id,
                     )
                 except FeedStaticStorageError:

@@ -21,6 +21,7 @@ from app.services.feed import (
     FeedService,
 )
 from app.services.feed_static import FeedStaticStorage, FeedStaticStorageError
+from app.services.local_media_storage import LOCAL_MEDIA_BUCKET, LocalMediaStorage
 
 
 def _telegram_id() -> int:
@@ -181,6 +182,63 @@ async def test_publish_fails_closed_when_static_persistence_fails(monkeypatch) -
         assert generation.is_public_feed is False
         assert generation.is_profile_visible is False
         assert generation.feed_published_at is None
+
+
+@pytest.mark.asyncio
+async def test_publish_copies_ready_server_local_media_to_feed_static(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    media_root = tmp_path / "private-media"
+    feed_root = tmp_path / "feed-static"
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(media_root))
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(feed_root))
+
+    async with SessionFactory() as session:
+        author = await _user(session, "Local media")
+        generation = await _pending_generation(session, author)
+        key = f"generations/{author.id}/{generation.id}/000-owned.jpg"
+        source = tmp_path / "provider-result.jpg"
+        source.write_bytes(_fixture_media_bytes(".jpg"))
+        owned_path = LocalMediaStorage.persist_file(source, key=key)
+        asset = MediaAsset(
+            generation_id=generation.id,
+            user_id=author.id,
+            ordinal=0,
+            source_url="neironych://image/test-task",
+            status="ready",
+            bucket=LOCAL_MEDIA_BUCKET,
+            object_key=key,
+            content_type="image/jpeg",
+            size_bytes=owned_path.stat().st_size,
+        )
+        session.add(asset)
+        await session.flush()
+        private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        generation.result_url = private_url
+        generation.parameters = {
+            "_model_id": "nano-banana-pro",
+            "_result_urls": [private_url],
+        }
+        await session.commit()
+
+        await FeedService.share_to_feed(
+            session,
+            generation_id=generation.id,
+            owner_user_id=author.id,
+            publication_scope="feed",
+        )
+        await session.commit()
+        await session.refresh(generation)
+
+        assert generation.publication_scope == "feed"
+        assert generation.result_url is not None
+        assert FeedStaticStorage.is_local_url(generation.result_url)
+        published_path = FeedStaticStorage.path_for_url(generation.result_url)
+        assert published_path is not None
+        assert published_path.read_bytes() == source.read_bytes()
+        assert published_path.is_relative_to(feed_root.resolve())
+        assert owned_path.read_bytes() == source.read_bytes()
 
 
 @pytest.mark.asyncio
