@@ -63,6 +63,8 @@ def install_feed_publication_contract() -> None:
     async def owned_media_sources(  # type: ignore[no-untyped-def]
         session,
         generation: Generation,
+        *,
+        expected_count: int,
     ) -> list[str | Path]:
         assets = list(
             (
@@ -70,15 +72,19 @@ def install_feed_publication_contract() -> None:
                     select(MediaAsset)
                     .where(
                         MediaAsset.generation_id == generation.id,
-                        MediaAsset.status == "ready",
-                        MediaAsset.object_key.is_not(None),
-                        MediaAsset.bucket.is_not(None),
                     )
                     .order_by(MediaAsset.ordinal)
                 )
             ).all()
         )
         if not assets:
+            return []
+        if expected_count and len(assets) != expected_count:
+            return []
+        if any(
+            asset.status != "ready" or not asset.object_key or not asset.bucket
+            for asset in assets
+        ):
             return []
         storage: ObjectStorage | None = None
         sources: list[str | Path] = []
@@ -104,7 +110,7 @@ def install_feed_publication_contract() -> None:
                 continue
             if url.startswith("https://"):
                 sources.append(url)
-        return sources
+        return sources if len(sources) == len(assets) else []
 
     @staticmethod
     def static_ready_condition() -> Any:
@@ -258,12 +264,16 @@ def install_feed_publication_contract() -> None:
                     current_local,
                     generation_id=generation.id,
                 )
-            except FeedStaticStorageError:
+            except (FeedStaticStorageError, OSError):
                 persisted = None
 
         if persisted is None:
             try:
-                owned_sources = await owned_media_sources(session, generation)
+                owned_sources = await owned_media_sources(
+                    session,
+                    generation,
+                    expected_count=len(provider_urls),
+                )
             except FeedStaticStorageError as exc:
                 raise FeedMediaUnavailableError(
                     "Не удалось сохранить медиа публикации на сервере"
@@ -274,7 +284,7 @@ def install_feed_publication_contract() -> None:
                         owned_sources,
                         generation_id=generation.id,
                     )
-                except FeedStaticStorageError:
+                except (FeedStaticStorageError, OSError):
                     persisted = None
 
         if persisted is None and provider_urls:
@@ -283,7 +293,7 @@ def install_feed_publication_contract() -> None:
                     provider_urls,
                     generation_id=generation.id,
                 )
-            except FeedStaticStorageError:
+            except (FeedStaticStorageError, OSError):
                 persisted = None
 
         if not persisted:

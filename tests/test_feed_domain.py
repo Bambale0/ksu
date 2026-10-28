@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import random
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -312,6 +313,130 @@ async def test_publish_fails_closed_when_any_server_local_key_is_unsafe(
         await session.refresh(generation)
         assert generation.publication_scope == "private"
         assert not list(feed_root.glob(f"{generation.id}-*"))
+
+
+@pytest.mark.asyncio
+async def test_publish_waits_for_complete_owned_result_set_before_using_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    media_root = tmp_path / "private-media"
+    feed_root = tmp_path / "feed-static"
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(media_root))
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(feed_root))
+    provider_urls = [
+        "https://provider.example/one.jpg",
+        "https://provider.example/two.jpg",
+    ]
+    downloaded: list[str] = []
+
+    async def fake_download(_cls, url: str):  # type: ignore[no-untyped-def]
+        downloaded.append(url)
+        data = _fixture_media_bytes(".jpg") + url.encode("utf-8")
+        path = feed_root / f".provider-{len(downloaded)}.part"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return path, ".jpg", "image/jpeg", len(data), hashlib.sha256(data).hexdigest()
+
+    monkeypatch.setattr(FeedStaticStorage, "_download_external", classmethod(fake_download))
+
+    async with SessionFactory() as session:
+        author = await _user(session, "Partial owned media")
+        generation = await _pending_generation(session, author)
+        generation.result_url = provider_urls[0]
+        generation.parameters = {
+            "_model_id": "nano-banana-pro",
+            "_result_urls": provider_urls,
+        }
+        key = f"generations/{author.id}/{generation.id}/000-owned.jpg"
+        source = tmp_path / "owned-result.jpg"
+        source.write_bytes(_fixture_media_bytes(".jpg"))
+        owned_path = LocalMediaStorage.persist_file(source, key=key)
+        session.add_all(
+            [
+                MediaAsset(
+                    generation_id=generation.id,
+                    user_id=author.id,
+                    ordinal=0,
+                    source_url=provider_urls[0],
+                    status="ready",
+                    bucket=LOCAL_MEDIA_BUCKET,
+                    object_key=key,
+                    content_type="image/jpeg",
+                    size_bytes=owned_path.stat().st_size,
+                ),
+                MediaAsset(
+                    generation_id=generation.id,
+                    user_id=author.id,
+                    ordinal=1,
+                    source_url=provider_urls[1],
+                    status="pending",
+                ),
+            ]
+        )
+        await session.commit()
+
+        await FeedService.share_to_feed(
+            session,
+            generation_id=generation.id,
+            owner_user_id=author.id,
+            publication_scope="feed",
+        )
+        await session.commit()
+        await session.refresh(generation)
+
+        assert downloaded == provider_urls
+        assert len(generation.parameters["_result_urls"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_publish_translates_local_storage_oserror_to_media_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "private-media"))
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(tmp_path / "feed-static"))
+
+    async with SessionFactory() as session:
+        author = await _user(session, "Unavailable feed disk")
+        generation = await _pending_generation(session, author)
+        key = f"generations/{author.id}/{generation.id}/000-owned.jpg"
+        asset = MediaAsset(
+            generation_id=generation.id,
+            user_id=author.id,
+            ordinal=0,
+            source_url="neironych://image/disk-error",
+            status="ready",
+            bucket=LOCAL_MEDIA_BUCKET,
+            object_key=key,
+            content_type="image/jpeg",
+            size_bytes=123,
+        )
+        session.add(asset)
+        await session.flush()
+        private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        generation.result_url = private_url
+        generation.parameters = {
+            "_model_id": "nano-banana-pro",
+            "_result_urls": [private_url],
+        }
+        await session.commit()
+
+        async def fail_local_persistence(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise OSError("feed volume is unavailable")
+
+        monkeypatch.setattr(FeedStaticStorage, "persist_sources", fail_local_persistence)
+
+        with pytest.raises(FeedMediaUnavailableError):
+            await FeedService.share_to_feed(
+                session,
+                generation_id=generation.id,
+                owner_user_id=author.id,
+                publication_scope="feed",
+            )
+
+        await session.refresh(generation)
+        assert generation.publication_scope == "private"
 
 
 @pytest.mark.asyncio
