@@ -160,6 +160,36 @@ async def test_static_persist_is_all_or_nothing(tmp_path: Path, monkeypatch) -> 
     assert not list(root.glob(f"{generation_id}-*"))
 
 
+@pytest.mark.asyncio
+async def test_oversized_server_local_file_is_rejected_before_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "feed"
+    root.mkdir()
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(root))
+    monkeypatch.setenv("FEED_STATIC_MAX_BYTES", "8")
+    source = tmp_path / "oversized.png"
+    source.write_bytes(_png())
+    copy_attempted = False
+
+    def reject_unbounded_copy(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        nonlocal copy_attempted
+        copy_attempted = True
+        raise AssertionError("oversized local media must not use unbounded copy")
+
+    monkeypatch.setattr(shutil, "copyfile", reject_unbounded_copy)
+
+    with pytest.raises(FeedStaticStorageError, match="exceeds FEED_STATIC_MAX_BYTES"):
+        await FeedStaticStorage.persist_sources(
+            [source],
+            generation_id=uuid.uuid4(),
+        )
+
+    assert copy_attempted is False
+    assert list(root.iterdir()) == []
+
+
 def test_unknown_magic_bytes_are_rejected(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     root = tmp_path / "feed"
     root.mkdir()

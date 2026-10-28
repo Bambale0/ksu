@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import shutil
@@ -382,25 +383,122 @@ class FeedStaticStorage:
             temp_path.unlink(missing_ok=True)
 
     @classmethod
-    async def persist_urls(
+    def _copy_local_file_bounded(cls, source_path: Path, target_path: Path) -> None:
+        limit = cls.max_bytes()
+        try:
+            source_size = source_path.stat().st_size
+        except OSError as exc:
+            raise FeedStaticStorageError("Stored server media is unavailable") from exc
+        if source_size <= 0:
+            raise FeedStaticStorageError("Feed media file is empty")
+        if source_size > limit:
+            raise FeedStaticStorageError("Feed media exceeds FEED_STATIC_MAX_BYTES")
+
+        copied = 0
+        try:
+            with source_path.open("rb") as source, target_path.open("wb") as target:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    copied += len(chunk)
+                    if copied > limit:
+                        raise FeedStaticStorageError(
+                            "Feed media exceeds FEED_STATIC_MAX_BYTES"
+                        )
+                    target.write(chunk)
+        except FeedStaticStorageError:
+            raise
+        except OSError as exc:
+            raise FeedStaticStorageError("Stored server media is unavailable") from exc
+
+    @classmethod
+    def _persist_local_file(
         cls,
-        urls: list[str],
+        source_path: Path,
+        *,
+        generation_id: uuid.UUID,
+        ordinal: int,
+    ) -> tuple[PersistedFeedMedia, bool]:
+        root = cls.ensure_root()
+        with tempfile.NamedTemporaryFile(
+            prefix=".roxy-feed-local-",
+            suffix=".part",
+            dir=root,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+        try:
+            cls._copy_local_file_bounded(source_path, temp_path)
+            suffix, content_type, size, digest = cls._inspect_file(temp_path)
+            filename = f"{generation_id}-{ordinal + 1}-{digest[:16]}{suffix}"
+            target = root / filename
+            created = False
+            if target.exists():
+                existing_suffix, existing_type, existing_size, existing_digest = cls._inspect_file(
+                    target
+                )
+                if (
+                    existing_digest != digest
+                    or existing_size != size
+                    or existing_suffix != suffix
+                ):
+                    raise FeedStaticStorageError("Static feed media collision detected")
+                content_type = existing_type
+            else:
+                os.replace(temp_path, target)
+                created = True
+            return (
+                PersistedFeedMedia(
+                    public_url=cls.public_url_for(filename),
+                    path=target,
+                    content_type=content_type,
+                    size_bytes=size,
+                    sha256=digest,
+                    ordinal=ordinal,
+                ),
+                created,
+            )
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    @classmethod
+    async def persist_sources(
+        cls,
+        sources: list[str | Path],
         *,
         generation_id: uuid.UUID,
     ) -> list[PersistedFeedMedia]:
-        unique = list(dict.fromkeys(str(item).strip() for item in urls if str(item).strip()))
+        unique: list[str | Path] = []
+        seen: set[tuple[str, str]] = set()
+        for source in sources:
+            value = source if isinstance(source, Path) else str(source).strip()
+            if not value:
+                continue
+            key = ("path" if isinstance(value, Path) else "url", str(value))
+            if key not in seen:
+                seen.add(key)
+                unique.append(value)
         if not unique:
             raise FeedStaticStorageError("Generation has no media to publish")
 
         persisted: list[PersistedFeedMedia] = []
         created_paths: list[Path] = []
         try:
-            for ordinal, source_url in enumerate(unique):
-                item, created = await cls._persist_one(
-                    source_url,
-                    generation_id=generation_id,
-                    ordinal=ordinal,
-                )
+            for ordinal, source in enumerate(unique):
+                if isinstance(source, Path):
+                    item, created = await asyncio.to_thread(
+                        cls._persist_local_file,
+                        source,
+                        generation_id=generation_id,
+                        ordinal=ordinal,
+                    )
+                else:
+                    item, created = await cls._persist_one(
+                        source,
+                        generation_id=generation_id,
+                        ordinal=ordinal,
+                    )
                 persisted.append(item)
                 if created:
                     created_paths.append(item.path)
@@ -409,6 +507,15 @@ class FeedStaticStorage:
                 path.unlink(missing_ok=True)
             raise
         return persisted
+
+    @classmethod
+    async def persist_urls(
+        cls,
+        urls: list[str],
+        *,
+        generation_id: uuid.UUID,
+    ) -> list[PersistedFeedMedia]:
+        return await cls.persist_sources(urls, generation_id=generation_id)
 
     @classmethod
     def media_view(cls, url: str, *, ordinal: int) -> dict[str, object] | None:
