@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -87,6 +88,7 @@ _ALWAYS_DROP_FIELDS = {
     "fixed_lens",
 }
 _MAX_PROMPT_BYTES = 40_000
+_DRAFT_TASK_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,160}$")
 
 
 def _family(model: str) -> str:
@@ -194,15 +196,36 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
 
     for field in _ALWAYS_DROP_FIELDS:
         payload.pop(field, None)
-    if payload.get("generate_audio") is False:
-        raise NeironychVideoContractError(
-            "generate_audio=false не поддерживается Нейронычем для Seedance."
-        )
-    elif "generate_audio" in payload and not isinstance(payload["generate_audio"], bool):
+
+    draft_task = payload.get("draft_task")
+    if draft_task is not None:
+        if family != "seedance-2.5" or not isinstance(draft_task, dict):
+            raise NeironychVideoContractError("draft_task доступен только для Seedance 2.5.")
+        if set(draft_task) != {"id"}:
+            raise NeironychVideoContractError("draft_task должен содержать только id.")
+        task_id = draft_task.get("id")
+        if not isinstance(task_id, str) or not _DRAFT_TASK_ID.fullmatch(task_id):
+            raise NeironychVideoContractError("draft_task.id имеет недопустимый формат.")
+        # ArgoLink requires the full render to contain only model + draft_task.
+        # The trusted model is injected by the caller after this normalizer.
+        return {"draft_task": {"id": task_id}}
+
+    draft = payload.get("draft")
+    if draft is not None and draft is not True:
+        raise NeironychVideoContractError("draft должен быть true или отсутствовать.")
+    if draft is True:
+        if family != "seedance-2.5":
+            raise NeironychVideoContractError("draft доступен только для Seedance 2.5.")
+        payload["resolution"] = "480p"
+
+    if "generate_audio" in payload and not isinstance(payload["generate_audio"], bool):
         raise NeironychVideoContractError("generate_audio должен быть boolean.")
 
     task_type = str(payload.get("omni_reference_task_type") or "").strip()
     is_edit = family == "seedance-2.5" and task_type == "edit"
+    is_extend = family == "seedance-2.5" and task_type == "extend"
+    if draft is True and (is_edit or is_extend):
+        raise NeironychVideoContractError("draft нельзя совмещать с edit или extend.")
     if "seed" in payload:
         raise NeironychVideoContractError("seed is not supported by Seedance")
     if "watermark" in payload and payload["watermark"] is not False:
@@ -214,6 +237,9 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
 
     prompt = _validate_prompt(payload)
 
+    if is_edit:
+        # An edit keeps the source video's duration; legacy callers used -1.
+        payload.pop("duration", None)
     duration = payload.get("duration")
     if duration not in (None, ""):
         if isinstance(duration, (bool, float)):
@@ -222,7 +248,7 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
             normalized_duration = int(duration)
         except (TypeError, ValueError) as exc:
             raise NeironychVideoContractError("duration должен быть целым числом.") from exc
-        minimum, maximum = (-1, -1) if is_edit else _DURATION_RANGES[family]
+        minimum, maximum = _DURATION_RANGES[family]
         if not minimum <= normalized_duration <= maximum:
             raise NeironychVideoContractError(
                 f"duration для {family}: от {minimum} до {maximum} секунд."
@@ -283,19 +309,24 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
 
     has_frames = bool(start_image or end_image)
     has_refs = bool(image_refs or video_refs or audio_refs)
-    if is_edit and has_frames:
-        raise NeironychVideoContractError("Seedance 2.5 edit cannot use start_image/end_image")
+    if (is_edit or is_extend) and has_frames:
+        raise NeironychVideoContractError(
+            "Seedance 2.5 edit/extend cannot use start_image/end_image"
+        )
     if has_frames and has_refs:
         raise NeironychVideoContractError(
             "Frame mode нельзя смешивать с reference media."
         )
 
+    if is_edit or is_extend:
+        # Both operations inherit the source video's ratio.
+        payload.pop("aspect_ratio", None)
     aspect_ratio = str(payload.get("aspect_ratio") or "").strip()
     if aspect_ratio:
-        if (is_edit or (family == "seedance-2.5" and has_frames)) and aspect_ratio != "adaptive":
+        if family == "seedance-2.5" and has_frames and aspect_ratio != "adaptive":
             raise NeironychVideoContractError("Seedance 2.5 frame/edit requires adaptive or omitted aspect_ratio")
         if aspect_ratio == "adaptive":
-            if not (has_frames or is_edit):
+            if not has_frames:
                 raise NeironychVideoContractError(
                     "aspect_ratio=adaptive разрешён только со start_image/end_image."
                 )
@@ -311,13 +342,13 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
     if task_type:
         if family != "seedance-2.5":
             payload.pop("omni_reference_task_type", None)
-        elif task_type not in {"auto", "reference", "edit"}:
+        elif task_type not in {"auto", "reference", "edit", "extend"}:
             raise NeironychVideoContractError(
-                "omni_reference_task_type: auto, reference или edit."
+                "omni_reference_task_type: auto, reference, edit или extend."
             )
-        elif task_type == "edit" and not video_refs:
+        elif task_type in {"edit", "extend"} and not video_refs:
             raise NeironychVideoContractError(
-                "Seedance 2.5 edit требует видео-референс."
+                f"Seedance 2.5 {task_type} требует видео-референс."
             )
 
     required = seedance_reference_requirements(prompt)

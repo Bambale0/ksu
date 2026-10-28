@@ -6,7 +6,11 @@ import json
 import httpx
 import pytest
 
-from app.providers.neironych_errors import NeironychProviderError, error_disposition
+from app.providers.neironych_errors import (
+    NeironychProviderError,
+    error_disposition,
+    safe_user_error_message,
+)
 from app.providers.neironych_image import NeironychImageClient
 from app.providers.neironych_submission import freeze_submission, saved_body
 from app.providers.neironych_video import NeironychVideoClient
@@ -40,6 +44,33 @@ def test_policy_never_bypasses_provider():
         "moderation rejection", status_code=402, error_code="insufficient_balance"
     )
     assert error_disposition(exc) == "reject"
+
+
+@pytest.mark.parametrize(
+    "status,code,expected",
+    [
+        (400, "provider_rejected_request", "Провайдер отклонил параметры или медиа"),
+        (402, "insufficient_balance", "У провайдера временно недостаточно средств"),
+        (400, None, "Провайдер отклонил запрос"),
+        (402, None, "Провайдер временно не может принять генерацию"),
+    ],
+)
+def test_400_402_user_reason_is_specific_and_does_not_echo_provider_payload(
+    status, code, expected
+):
+    secret = "https://private.example/input.png?token=super-secret"
+    prompt = "private customer prompt"
+    exc = NeironychProviderError(
+        f"{code}: {secret} {prompt}",
+        status_code=status,
+        error_code=code,
+        payload={"error": {"message": f"{secret} {prompt}"}},
+    )
+    message = safe_user_error_message(exc)
+    assert expected in message
+    assert secret not in message
+    assert "super-secret" not in message
+    assert prompt not in message
 
 
 def test_snapshot_binds_wire_body_model_key_and_origin():

@@ -457,6 +457,10 @@ class GenerationWorkerService:
                         .where(
                             Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status.in_(("generating", "submitting")),
+                            Generation.external_id.is_not(None),
+                            Generation.parameters["_reconciliation_required"]
+                            .as_boolean()
+                            .is_not(True),
                             Generation.created_at < cutoff,
                         )
                         .order_by(Generation.created_at.asc())
@@ -472,15 +476,32 @@ class GenerationWorkerService:
                     generation is None
                     or generation.provider not in _PROVIDER_NAMES
                     or generation.status not in {"generating", "submitting"}
+                    or generation.external_id is None
                 ):
                     continue
                 if cls._provider_started_at(generation) >= cutoff:
                     continue
-                message = (
-                    f"{generation.provider} generation exceeded hard lifetime "
-                    f"of {settings.generation_hard_timeout_seconds} seconds"
+                params = dict(generation.parameters or {})
+                if params.get("_reconciliation_required"):
+                    continue
+                now = utcnow()
+                params["_reconciliation_required"] = True
+                params["_reconciliation_reason"] = "hard_timeout"
+                params["_reconciliation_started_at"] = now.isoformat()
+                generation.parameters = params
+                generation.status = "generating"
+                generation.error = (
+                    "Provider task exceeded the local hard lifetime; durable "
+                    "reconciliation continues without resubmission or refund."
                 )
-                await GenerationProviderService.fail_and_refund(session, generation.id, message)
+                generation.updated_at = now
+                await session.commit()
+                logger.warning(
+                    "generation_reconciliation_started generation=%s provider=%s "
+                    "reason=hard_timeout task_bound=true",
+                    generation.id,
+                    generation.provider,
+                )
 
     @classmethod
     async def _reconcile_stale_generating(cls) -> None:

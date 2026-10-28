@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import Generation
-from app.providers.neironych_errors import error_disposition, request_identifier
+from app.providers.neironych_errors import (
+    error_disposition,
+    request_identifier,
+    safe_user_error_message,
+)
 from app.providers.neironych_image import NeironychImageClient, prepare_image_payload
 from app.providers.neironych_submission import SNAPSHOT_KEY, freeze_submission, saved_body
 from app.providers.neironych_video import (
@@ -282,9 +286,7 @@ class NeironychGenerationProviderService:
         if locked.provider != "neironych" or locked.status in {"succeeded", "failed"} or locked.external_id:
             return locked
         disposition = error_disposition(exc)
-        message = str(exc) if exc.local_validation else (
-            f"Neironych API HTTP {exc.status_code}: {exc.error_code or 'unclassified_provider_error'}"
-        )
+        message = str(exc) if exc.local_validation else safe_user_error_message(exc)
         if disposition == "fallback":
             return await cls._fallback_or_fail(session, locked, reason=message)
         if disposition == "reject":
@@ -375,7 +377,7 @@ class NeironychGenerationProviderService:
         except NeironychVideoContractError as exc:
             # Only known Kie-compatible settings may cross providers. Malformed
             # input or media is a validation failure, never a policy bypass.
-            if "generate_audio=false" in str(exc) or "aspect_ratio=adaptive" in str(exc):
+            if "aspect_ratio=adaptive" in str(exc):
                 return await cls._fallback_or_fail(session, generation, reason=f"Neironych contract: {exc}")
             await GenerationProviderService.fail_and_refund(session, generation.id, str(exc))
             return generation

@@ -421,7 +421,7 @@ def test_submission_error_disposition_distinguishes_retryable_and_ambiguous_http
 
 
 @pytest.mark.asyncio
-async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submission(
+async def test_generation_hard_timeout_reconciles_accepted_task_without_refund(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "generation_hard_timeout_seconds", 60)
@@ -435,14 +435,16 @@ async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submissio
     async with SessionFactory() as session:
         expired = Generation(
             user_id=old_user.id,
-            kind="text_to_image",
+            kind="text_to_video",
             status="generating",
             prompt="expired",
             cost_rox=Decimal("3"),
-            provider="kie",
+            provider="neironych",
             external_id="task_hard_expired",
             parameters={
-                "_model_id": "nano-banana",
+                "_model_id": "seedance-2.5",
+                "_provider_route": ["neironych", "nexus"],
+                "_provider_route_index": 0,
                 "_provider_submitted_at": old_started.isoformat(),
             },
         )
@@ -476,16 +478,33 @@ async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submissio
         recent_wallet = await session.get(Wallet, recent_user.id)
 
         assert expired is not None
-        assert expired.status == "failed"
+        assert expired.status == "generating"
         assert expired.error is not None
-        assert "hard lifetime" in expired.error
+        assert "reconciliation" in expired.error.lower()
+        assert expired.parameters.get("_reconciliation_required") is True
+        assert expired.parameters.get("_reconciliation_reason") == "hard_timeout"
+        assert expired.parameters.get("_reconciliation_started_at")
+        assert expired.provider == "neironych"
+        assert expired.parameters.get("_provider_route_index") == 0
         assert expired_wallet is not None
-        assert expired_wallet.balance == Decimal("3")
+        assert expired_wallet.balance == Decimal("0")
 
         assert recent is not None
         assert recent.status == "generating"
         assert recent_wallet is not None
         assert recent_wallet.balance == Decimal("0")
+
+        reconciliation_started_at = expired.parameters["_reconciliation_started_at"]
+
+    await GenerationWorkerService._expire_stuck_generations()
+
+    async with SessionFactory() as session:
+        expired = await session.get(Generation, expired_id)
+        expired_wallet = await session.get(Wallet, old_user.id)
+        assert expired is not None
+        assert expired.parameters["_reconciliation_started_at"] == reconciliation_started_at
+        assert expired_wallet is not None
+        assert expired_wallet.balance == Decimal("0")
 
 
 def test_retry_backoff_is_capped() -> None:
