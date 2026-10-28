@@ -111,7 +111,7 @@ test('referral startapp opens the exact feed work and sends Repeat to the compos
   await expect(page).toHaveURL(new RegExp(`/mini-app/remix/\\?source=${generationId}&surface=feed`));
   await expect.poll(() => audit.prepareCalls).toBe(1);
   expect(audit.remixCalls).toBe(0);
-  await expect(page.getByText(/Референсы исходной публикации не копируются/)).toBeVisible();
+  await expect(page.getByText(/Авторские референсы для обычных моделей не копируются/)).toBeVisible();
 });
 
 test('feed author profile action overrides sticky Telegram feed start_param', async ({ page }) => {

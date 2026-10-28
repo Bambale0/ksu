@@ -246,7 +246,7 @@ test('remix startapp opens work in remix mode and then opens the reference compo
   await expect(page).toHaveURL(new RegExp(`/mini-app/remix/\\?source=${generationId}&surface=feed`));
   await expect.poll(() => audit.prepareCalls.length).toBe(1);
   expect(audit.remixCalls()).toBe(0);
-  await expect(page.getByText(/Референсы исходной публикации не копируются/)).toBeVisible();
+  await expect(page.getByText(/Авторские референсы для обычных моделей не копируются/)).toBeVisible();
 });
 
 test('profile startapp opens an author profile directly', async ({ page }) => {

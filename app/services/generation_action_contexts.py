@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.action_context_models import GenerationActionContext
 from app.db.models import Generation
 from app.services import action_telemetry
+from app.services.feed_seedance_replay import is_private_seedance_author_replay
 from app.services.generation_actions import resolver_for
 from app.services.generation_actions.base import ActionResolveError
 from app.services.generation_actions.core import GenerationActionService
@@ -66,7 +67,9 @@ def context_generation(generation: Generation) -> dict[str, object]:
     params = generation.parameters or {}
     model_id = GenerationActionService.model_id(generation)
     model_title = str(params.get("_model_title") or model_id or "ROXY")
-    prompt_hidden = generation.action_type == "trend"
+    prompt_hidden = generation.action_type == "trend" or is_private_seedance_author_replay(
+        generation
+    )
     return {
         "id": str(generation.id),
         "status": generation.status,
@@ -114,7 +117,11 @@ def action_defaults(
 
     canonical = GenerationActionService.canonical_action(action)
     params = dict(generation.parameters or {})
-    prompt = "" if generation.action_type == "trend" else generation.prompt
+    prompt = (
+        ""
+        if generation.action_type == "trend" or is_private_seedance_author_replay(generation)
+        else generation.prompt
+    )
     reusable = GenerationActionService.reusable_parameters(generation, default_model_id)
     model_defaults = _model_ui_defaults(generation, action, default_model_id)
     input_url: str | None = generation.input_url

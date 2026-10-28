@@ -121,6 +121,7 @@ export type FeedRemixDraft = {
     audio_count: number;
     required: boolean;
   };
+  source_has_video_reference?: boolean | null;
   preview_url?: string | null;
   media?: Array<Record<string, unknown>>;
 };

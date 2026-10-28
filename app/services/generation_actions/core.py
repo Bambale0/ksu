@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.db.models import Generation
+from app.services.feed_seedance_replay import is_private_seedance_author_replay
 from app.services.model_capability import (
     MODE_IMAGE_TO_IMAGE,
     MODE_IMAGE_TO_VIDEO,
@@ -107,6 +108,8 @@ class GenerationActionService:
                 )
             else:
                 source = tuple(item for item in source if item.id == "publish")
+        elif is_private_seedance_author_replay(generation):
+            source = tuple(item for item in source if item.id == "publish")
 
         # Capability checks remain server-side. If the current catalog has no
         # executable model for a derivative action, do not render a dead button.
@@ -207,10 +210,10 @@ class GenerationActionService:
 
     @staticmethod
     def parent_references(generation: Generation) -> tuple[list[str], list[str]]:
-        # Trend/template recipes are intentionally not disclosed through the
-        # derivative context. Remix/edit/animate use the rendered result URL as
-        # their explicit source, so hiding these recipe references loses no UX.
-        if generation.action_type == "trend":
+        # Trend/template recipes and author-owned Seedance replay inputs are not
+        # disclosed through derivative contexts. The rendered result remains
+        # publishable without exposing either private recipe.
+        if generation.action_type == "trend" or is_private_seedance_author_replay(generation):
             return [], []
         params = dict(generation.parameters or {})
         return image_references(params, generation.input_url), video_references(params)
