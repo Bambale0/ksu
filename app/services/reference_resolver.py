@@ -29,9 +29,23 @@ EXPLICIT_MEDIA_INPUT_FIELDS = (
     "video_urls",
     "reference_video",
     "reference_video_urls",
+    "audio_url",
+    "audio_urls",
+    "reference_audio",
+    "reference_audios",
+    "reference_audio_url",
+    "reference_audio_urls",
 )
 PUBLIC_IMAGE_REFERENCE_FIELDS = tuple(dict.fromkeys((*IMAGE_REFERENCE_FIELDS, "last_frame")))
 PUBLIC_VIDEO_REFERENCE_FIELDS = tuple(dict.fromkeys((*VIDEO_REFERENCE_FIELDS, "input_video_url")))
+PUBLIC_AUDIO_REFERENCE_FIELDS = (
+    "audio_url",
+    "audio_urls",
+    "reference_audio",
+    "reference_audios",
+    "reference_audio_url",
+    "reference_audio_urls",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +57,7 @@ class GenerationContext:
     provider_input: dict[str, Any]
     reference_images: list[str]
     reference_videos: list[str]
+    reference_audios: list[str]
 
 
 class ReferenceResolver:
@@ -113,6 +128,18 @@ class ReferenceResolver:
             if cls._public_reference_url(value)
         ]
 
+    @classmethod
+    def public_audio_references(cls, parameters: dict[str, Any] | None) -> list[str]:
+        values: list[str] = []
+        data = dict(parameters or {})
+        for field in PUBLIC_AUDIO_REFERENCE_FIELDS:
+            raw = data.get(field)
+            if isinstance(raw, (list, tuple)):
+                values.extend(str(item) for item in raw if item)
+            elif raw:
+                values.append(str(raw))
+        return list(dict.fromkeys(value for value in values if cls._public_reference_url(value)))
+
     @staticmethod
     def provider_input(
         *,
@@ -149,4 +176,5 @@ class ReferenceResolver:
             ),
             reference_images=cls.public_image_references(parameters, input_url),
             reference_videos=cls.public_video_references(parameters),
+            reference_audios=cls.public_audio_references(parameters),
         )

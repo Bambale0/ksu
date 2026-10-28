@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -11,12 +12,17 @@ from app.db.media_models import MediaAsset
 from app.db.models import Generation, User
 from app.db.session import SessionFactory
 from app.services.feed_remix import FeedRemixReferenceError, FeedRemixService
+from app.services.feed_seedance_replay import PRIVATE_AUTHOR_REPLAY_MARKER
 from app.services.feed_static import FeedStaticStorage
 from app.services.references import ReferenceService
 
 
 def _telegram_id() -> int:
     return random.randint(9_900_000_000_000, 9_999_999_999_999)
+
+
+async def _noop_wake(_cls, _redis, _generation_ids) -> None:  # type: ignore[no-untyped-def]
+    return None
 
 
 async def _public_source(session, *, author: User) -> Generation:  # type: ignore[no-untyped-def]
@@ -72,6 +78,73 @@ async def _public_source(session, *, author: User) -> Generation:  # type: ignor
     )
     await session.commit()
     return source
+
+
+async def _public_seedance_source(
+    session,
+    *,
+    author: User,
+    author_video: str | None,
+    author_audio: str | None = None,
+) -> tuple[Generation, Path]:  # type: ignore[no-untyped-def]
+    provider_url = "https://example.invalid/author-rendered-result.mp4"
+    author_photo = "https://example.invalid/author-identity.jpg"
+    parameters: dict[str, object] = {
+        "_model_id": "seedance-2.5",
+        "_requested_model_id": "seedance-2.5",
+        "_billing_seconds": 10,
+        "reference_image_urls": [author_photo],
+        "duration": 10,
+        "resolution": "720p",
+        "aspect_ratio": "9:16",
+    }
+    if author_video:
+        parameters["reference_video_urls"] = [author_video]
+    if author_audio:
+        parameters["reference_audio_urls"] = [author_audio]
+    source = Generation(
+        user_id=author.id,
+        kind="reference_to_video",
+        status="succeeded",
+        prompt="author seedance prompt",
+        result_url=provider_url,
+        cost_rox=Decimal("70.00"),
+        provider="neironych",
+        parameters=parameters,
+        publication_scope="feed",
+        is_public_feed=True,
+        is_profile_visible=True,
+        feed_prompt_visible=False,
+        feed_references_visible=False,
+    )
+    session.add(source)
+    await session.flush()
+
+    filename = f"test-seedance-author-recipe-{source.id}.mp4"
+    target = FeedStaticStorage.ensure_root() / filename
+    target.write_bytes(b"\x00\x00\x00\x18ftypisomsynthetic-seedance-feed-video")
+    local_url = f"{FeedStaticStorage.public_prefix()}/{filename}"
+    source.result_url = local_url
+    source.parameters = {
+        **parameters,
+        "_provider_result_urls": [provider_url],
+        "_result_urls": [local_url],
+        "_feed_static": True,
+    }
+    session.add(
+        MediaAsset(
+            generation_id=source.id,
+            user_id=author.id,
+            ordinal=0,
+            source_url=provider_url,
+            status="ready",
+            bucket="test-feed",
+            object_key=f"feed/{source.id}.mp4",
+            content_type="video/mp4",
+        )
+    )
+    await session.commit()
+    return source, target
 
 
 @pytest.mark.asyncio
@@ -170,6 +243,8 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
             source_feed_gen_id,
             parent_generation_id,
             action_type,
+            commit,
+            wake,
         ):
             captured.update(
                 {
@@ -182,6 +257,8 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
                     "source_feed_gen_id": source_feed_gen_id,
                     "parent_generation_id": parent_generation_id,
                     "action_type": action_type,
+                    "commit": commit,
+                    "wake": wake,
                 }
             )
             generation = Generation(
@@ -207,6 +284,7 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
             return generation
 
         monkeypatch.setattr("app.services.feed_remix.GenerationService.create", classmethod(fake_create))
+        monkeypatch.setattr("app.services.feed_remix.GenerationService.wake", classmethod(_noop_wake))
         generation = await FeedRemixService.launch(
             session,
             object(),  # type: ignore[arg-type]
@@ -227,7 +305,10 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
         assert captured["source_feed_gen_id"] == source.id
         assert captured["parent_generation_id"] == source.id
         assert captured["action_type"] == "remix"
+        assert captured["commit"] is False
+        assert captured["wake"] is False
         assert generation.source_feed_gen_id == source.id
+        assert not (generation.parameters or {}).get(PRIVATE_AUTHOR_REPLAY_MARKER)
 
         event = await session.scalar(
             select(FeedRemixEvent).where(FeedRemixEvent.remix_generation_id == generation.id)
@@ -240,3 +321,243 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
         filename = FeedStaticStorage.path_for_url(str(source.result_url))
         if filename is not None:
             filename.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_seedance_prepare_restores_author_video_privately_and_requests_identity_photo() -> None:
+    async with SessionFactory() as session:
+        author = User(telegram_id=_telegram_id(), first_name="Author")
+        remixer = User(telegram_id=_telegram_id(), first_name="Remixer")
+        session.add_all([author, remixer])
+        await session.flush()
+        author_video = "https://example.invalid/author-motion.mp4"
+        author_audio = "https://example.invalid/author-audio.mp3"
+        source, target = await _public_seedance_source(
+            session,
+            author=author,
+            author_video=author_video,
+            author_audio=author_audio,
+        )
+        source.feed_prompt_visible = True
+        source.prompt = "Keep the movement from legacy @Image2"
+        await session.commit()
+
+        try:
+            prepared = await FeedRemixService.prepare(
+                session,
+                source_generation_id=source.id,
+                viewer_user_id=remixer.id,
+                surface="feed",
+            )
+
+            assert prepared["source_has_video_reference"] is True
+            assert prepared["reference_requirements"] == {
+                "image_count": 1,
+                "video_count": 0,
+                "audio_count": 0,
+                "required": True,
+            }
+            assert prepared["prompt"] == "Keep the movement from legacy @Video1"
+            assert author_video not in str(prepared)
+            assert author_audio not in str(prepared)
+            assert "author-identity.jpg" not in str(prepared)
+        finally:
+            target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_seedance_launch_uses_viewer_identity_photo_and_author_motion_video(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async with SessionFactory() as session:
+        author = User(telegram_id=_telegram_id(), first_name="Author")
+        remixer = User(telegram_id=_telegram_id(), first_name="Remixer")
+        session.add_all([author, remixer])
+        await session.flush()
+        author_video = "https://example.invalid/author-motion.mp4"
+        author_audio = "https://example.invalid/author-audio.mp3"
+        source, target = await _public_seedance_source(
+            session,
+            author=author,
+            author_video=author_video,
+            author_audio=author_audio,
+        )
+        source.feed_prompt_visible = True
+        source.prompt = "Keep the movement from legacy @Image2"
+        await session.commit()
+        viewer_photo, _ = await ReferenceService.register(
+            session,
+            user_id=remixer.id,
+            source_url="https://example.invalid/viewer-identity.jpg",
+            kind="image",
+            source="test",
+        )
+        captured: dict[str, object] = {}
+
+        async def fake_create(
+            _cls,
+            target_session,
+            _redis,
+            **kwargs,
+        ):
+            captured.update(kwargs)
+            generation = Generation(
+                user_id=kwargs["user_id"],
+                kind="reference_to_video",
+                status="queued",
+                prompt=kwargs["prompt"],
+                input_url=kwargs["input_url"],
+                cost_rox=Decimal("70.00"),
+                provider="neironych",
+                parameters={"_model_id": kwargs["model_id"], **kwargs["parameters"]},
+                source_feed_gen_id=kwargs["source_feed_gen_id"],
+                parent_generation_id=kwargs["parent_generation_id"],
+                action_type=kwargs["action_type"],
+                publication_scope="private",
+                is_public_feed=False,
+                is_profile_visible=False,
+                feed_prompt_visible=False,
+                feed_references_visible=False,
+            )
+            target_session.add(generation)
+            await target_session.flush()
+            return generation
+
+        monkeypatch.setattr("app.services.feed_remix.GenerationService.create", classmethod(fake_create))
+        monkeypatch.setattr("app.services.feed_remix.GenerationService.wake", classmethod(_noop_wake))
+        try:
+            generation = await FeedRemixService.launch(
+                session,
+                object(),  # type: ignore[arg-type]
+                source_generation_id=source.id,
+                remix_author_id=remixer.id,
+                surface="feed",
+                prompt_override="Keep the movement from legacy @Image2",
+                reference_ids=[viewer_photo.id],
+                confirm_own_references=True,
+            )
+
+            prompt = str(captured["prompt"])
+            parameters = captured["parameters"]
+            assert "@Video1" in prompt
+            assert "authoritative source" in prompt
+            assert "@Image1" in prompt
+            assert "identity" in prompt
+            assert "movement from legacy @Video1" in prompt
+            assert "movement from legacy @Image2" not in prompt
+            assert parameters["reference_images"] == [
+                "https://example.invalid/viewer-identity.jpg"
+            ]
+            assert parameters["reference_videos"] == [author_video]
+            assert parameters["reference_audio_urls"] == [author_audio]
+            assert "omni_reference_task_type" not in parameters
+            assert "author-identity.jpg" not in str(parameters)
+            assert (generation.parameters or {})[PRIVATE_AUTHOR_REPLAY_MARKER] is True
+        finally:
+            target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_seedance_photo_fallback_never_submits_rendered_video(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    async with SessionFactory() as session:
+        author = User(telegram_id=_telegram_id(), first_name="Author")
+        remixer = User(telegram_id=_telegram_id(), first_name="Remixer")
+        session.add_all([author, remixer])
+        await session.flush()
+        source, target = await _public_seedance_source(
+            session,
+            author=author,
+            author_video=None,
+        )
+        viewer_photo, _ = await ReferenceService.register(
+            session,
+            user_id=remixer.id,
+            source_url="https://example.invalid/viewer-fallback.jpg",
+            kind="image",
+            source="test",
+        )
+        captured: dict[str, object] = {}
+
+        async def fake_create(_cls, target_session, _redis, **kwargs):  # type: ignore[no-untyped-def]
+            captured.update(kwargs)
+            generation = Generation(
+                user_id=kwargs["user_id"], kind="reference_to_video", status="queued",
+                prompt=kwargs["prompt"], input_url=None, cost_rox=Decimal("70.00"),
+                provider="neironych", parameters={"_model_id": kwargs["model_id"], **kwargs["parameters"]},
+                source_feed_gen_id=kwargs["source_feed_gen_id"],
+                parent_generation_id=kwargs["parent_generation_id"], action_type="remix",
+                publication_scope="private", is_public_feed=False, is_profile_visible=False,
+                feed_prompt_visible=False, feed_references_visible=False,
+            )
+            target_session.add(generation)
+            await target_session.flush()
+            return generation
+
+        monkeypatch.setattr("app.services.feed_remix.GenerationService.create", classmethod(fake_create))
+        monkeypatch.setattr("app.services.feed_remix.GenerationService.wake", classmethod(_noop_wake))
+        try:
+            prepared = await FeedRemixService.prepare(
+                session,
+                source_generation_id=source.id,
+                viewer_user_id=remixer.id,
+                surface="feed",
+            )
+            assert prepared["source_has_video_reference"] is False
+            generation = await FeedRemixService.launch(
+                session,
+                object(),  # type: ignore[arg-type]
+                source_generation_id=source.id,
+                remix_author_id=remixer.id,
+                surface="feed",
+                prompt_override=None,
+                reference_ids=[viewer_photo.id],
+                confirm_own_references=True,
+            )
+            assert captured["prompt"] == "author seedance prompt"
+            assert captured["parameters"]["reference_images"] == [
+                "https://example.invalid/viewer-fallback.jpg"
+            ]
+            assert not captured["parameters"].get("reference_videos")
+            assert str(source.result_url) not in str(captured)
+            assert (generation.parameters or {})[PRIVATE_AUTHOR_REPLAY_MARKER] is True
+        finally:
+            target.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_seedance_author_recipe_rejects_viewer_video_reference() -> None:
+    async with SessionFactory() as session:
+        author = User(telegram_id=_telegram_id(), first_name="Author")
+        remixer = User(telegram_id=_telegram_id(), first_name="Remixer")
+        session.add_all([author, remixer])
+        await session.flush()
+        source, target = await _public_seedance_source(
+            session,
+            author=author,
+            author_video="https://example.invalid/author-motion.mp4",
+        )
+        viewer_photo, _ = await ReferenceService.register(
+            session,
+            user_id=remixer.id,
+            source_url="https://example.invalid/viewer-identity.jpg",
+            kind="image",
+            source="test",
+        )
+        viewer_video, _ = await ReferenceService.register(
+            session,
+            user_id=remixer.id,
+            source_url="https://example.invalid/viewer-motion.mp4",
+            kind="video",
+            source="test",
+        )
+        try:
+            with pytest.raises(FeedRemixReferenceError, match="photo"):
+                await FeedRemixService.quote(
+                    session,
+                    source_generation_id=source.id,
+                    remix_author_id=remixer.id,
+                    surface="feed",
+                    prompt_override=None,
+                    reference_ids=[viewer_photo.id, viewer_video.id],
+                    confirm_own_references=True,
+                )
+        finally:
+            target.unlink(missing_ok=True)
