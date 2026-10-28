@@ -13,6 +13,7 @@ from app.services.feed_remix import FeedRemixReferenceError, FeedRemixService
 from app.services.feed_seedance_replay import (
     PRIVATE_AUTHOR_REPLAY_MARKER,
     build_seedance_motion_identity_prompt,
+    canonicalize_seedance_author_prompt,
     is_private_seedance_author_replay,
     seedance_identity_requirements,
     seedance_motion_original_prompt_max_chars,
@@ -76,6 +77,7 @@ def test_seedance_author_replay_reaches_provider_as_mixed_reference_payload() ->
             "aspect_ratio": "9:16",
             "reference_images": ["https://example.invalid/viewer.jpg"],
             "reference_videos": ["https://example.invalid/author-motion.mp4"],
+            "reference_audio_urls": ["https://example.invalid/author-audio.mp3"],
         },
     )
     kie_validated = normalize_seedance25_input({**routed.parameters, "prompt": prompt})
@@ -90,6 +92,9 @@ def test_seedance_author_replay_reaches_provider_as_mixed_reference_payload() ->
     assert provider_payload["reference_videos"] == [
         {"url": "https://example.invalid/author-motion.mp4"}
     ]
+    assert provider_payload["reference_audios"] == [
+        {"url": "https://example.invalid/author-audio.mp3"}
+    ]
     assert "omni_reference_task_type" not in provider_payload
     assert "@Video1 is the authoritative source for motion" in provider_payload["prompt"]
 
@@ -97,6 +102,7 @@ def test_seedance_author_replay_reaches_provider_as_mixed_reference_payload() ->
 def test_seedance_replay_replaces_author_identity_but_restores_author_motion() -> None:
     author_photo = "https://example.invalid/author.jpg"
     author_video = "https://example.invalid/author-motion.mp4"
+    author_audio = "https://example.invalid/author-audio.mp3"
     source = Generation(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -110,6 +116,7 @@ def test_seedance_replay_replaces_author_identity_but_restores_author_motion() -
             "_model_id": "seedance-2.5",
             "reference_image_urls": [author_photo],
             "reference_video_urls": [author_video],
+            "reference_audio_urls": [author_audio],
             "omni_reference_task_type": "edit",
             "duration": 10,
         },
@@ -128,6 +135,7 @@ def test_seedance_replay_replaces_author_identity_but_restores_author_motion() -
 
     assert parameters["reference_images"] == ["https://example.invalid/viewer.jpg"]
     assert parameters["reference_videos"] == [author_video]
+    assert parameters["reference_audio_urls"] == [author_audio]
     assert "omni_reference_task_type" not in parameters
     assert author_photo not in str(parameters)
     assert str(source.result_url) not in str(parameters)
@@ -154,9 +162,24 @@ def test_seedance_replay_replaces_author_identity_but_restores_author_motion() -
         )
 
 
+def test_seedance_legacy_combined_tag_is_resolved_before_identity_photo_is_added() -> None:
+    prompt = canonicalize_seedance_author_prompt(
+        "Keep the movement from @Image1",
+        source_image_count=0,
+        source_video_count=1,
+        source_audio_count=0,
+    )
+
+    assert prompt == "Keep the movement from @Video1"
+    wrapped = build_seedance_motion_identity_prompt(prompt, identity_count=1)
+    assert "movement from @Video1" in wrapped
+    assert "@Image1 are the authoritative identity references" in wrapped
+
+
 def test_owned_history_redacts_private_seedance_author_recipe() -> None:
     now = datetime.now(UTC)
     author_video = "https://example.invalid/author-motion.mp4"
+    author_audio = "https://example.invalid/author-audio.mp3"
     generation = Generation(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -176,11 +199,13 @@ def test_owned_history_redacts_private_seedance_author_recipe() -> None:
             PRIVATE_AUTHOR_REPLAY_MARKER: True,
             "reference_image_urls": ["https://example.invalid/viewer.jpg"],
             "reference_video_urls": [author_video],
+            "reference_audio_urls": [author_audio],
             "duration": 10,
         },
         source_feed_gen_id=uuid.uuid4(),
         parent_generation_id=uuid.uuid4(),
         action_type="remix",
+        error=f"Provider rejected {author_video} and {author_audio}",
         created_at=now,
         updated_at=now,
     )
@@ -191,6 +216,8 @@ def test_owned_history_redacts_private_seedance_author_recipe() -> None:
     assert view["prompt_hidden"] is True
     assert view["prompt_actions_allowed"] is False
     assert author_video not in str(view)
+    assert author_audio not in str(view)
+    assert view["error"] == "Не удалось создать повтор. Попробуйте ещё раз."
     assert view["settings"]["reference_image_urls"] == [
         "https://example.invalid/viewer.jpg"
     ]
@@ -207,6 +234,7 @@ def test_owned_history_redacts_private_seedance_author_recipe() -> None:
     assert action_context["generation"]["prompt_hidden"] is True
     assert action_context["source_references"] == {"images": [], "videos": []}
     assert author_video not in str(action_context)
+    assert author_audio not in str(action_context)
 
     historical = Generation(
         id=uuid.uuid4(),

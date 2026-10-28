@@ -104,10 +104,14 @@ export default function FeedRemixPage() {
 
   const requirementsMet = useMemo(() => (
     Boolean(draft)
-      && counts.image >= Number(referenceRequirements.image_count || 0)
-      && counts.video >= Number(referenceRequirements.video_count || 0)
-      && counts.audio >= Number(referenceRequirements.audio_count || 0)
-  ), [counts, draft, referenceRequirements]);
+      && (isSeedanceAuthorReplay
+        ? counts.image === Number(referenceRequirements.image_count || 0)
+          && counts.video === 0
+          && counts.audio === 0
+        : counts.image >= Number(referenceRequirements.image_count || 0)
+          && counts.video >= Number(referenceRequirements.video_count || 0)
+          && counts.audio >= Number(referenceRequirements.audio_count || 0))
+  ), [counts, draft, isSeedanceAuthorReplay, referenceRequirements]);
 
   useEffect(() => {
     if (!draft || !sourceId || !requirementsMet || uploading || launching) {
@@ -137,13 +141,14 @@ export default function FeedRemixPage() {
     return () => window.clearTimeout(timer);
   }, [draft, launching, prompt, references, requirementsMet, sourceId, surface, uploading]);
 
-  const upload = async (files: File[], expectedKind?: OwnedReference["kind"]) => {
-    if (!files.length || uploading) return;
+  const upload = async (files: File[], expectedKind?: OwnedReference["kind"], maxFiles = 12) => {
+    const selectedFiles = files.slice(0, Math.max(0, Math.min(12, maxFiles)));
+    if (!selectedFiles.length || uploading) return;
     setUploading(true);
     setError("");
     try {
       const added: OwnedReference[] = [];
-      for (const file of files.slice(0, 12)) {
+      for (const file of selectedFiles) {
         const result = await api.upload(file);
         const reference = result.reference;
         if (!reference?.id || !reference.kind) throw new Error("ROXY не сохранила референс. Попробуйте ещё раз.");
@@ -282,7 +287,8 @@ export default function FeedRemixPage() {
                       <input type="file" multiple accept={accept} disabled={uploading} onChange={(event) => {
                         const files = Array.from(event.currentTarget.files || []);
                         event.currentTarget.value = "";
-                        void upload(files, kind);
+                        const remaining = Math.max(0, required - current);
+                        void upload(files, kind, isSeedanceAuthorReplay ? remaining : 12);
                       }} />
                     </label>}
                   </div>;

@@ -17,6 +17,7 @@ async function installTelegram(page) {
 }
 
 async function openSeedanceReplay(page, sourceHasVideoReference) {
+  let uploadCount = 0;
   await installTelegram(page);
   await page.route('https://cdn.roxy.local/**', (route) => route.fulfill({
     status: 200,
@@ -47,11 +48,35 @@ async function openSeedanceReplay(page, sourceHasVideoReference) {
         }),
       });
     }
+    if (url.pathname === '/api/v1/uploads/kie' && route.request().method() === 'POST') {
+      uploadCount += 1;
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          url: `https://cdn.roxy.local/viewer-${uploadCount}.jpg`,
+          name: `viewer-${uploadCount}.jpg`,
+          reference: {
+            id: `viewer-reference-${uploadCount}`,
+            kind: 'image',
+            url: `https://cdn.roxy.local/viewer-${uploadCount}.jpg`,
+          },
+        }),
+      });
+    }
+    if (url.pathname === `/api/v1/feed/${generationId}/remix/quote`) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ cost_rox: '70.00', enough_balance: true }),
+      });
+    }
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
   await page.goto(`/mini-app/remix/?source=${generationId}&surface=feed`);
   await expect(page.getByRole('heading', { name: 'Добавьте фото внешности' })).toBeVisible();
+  return { uploadCount: () => uploadCount };
 }
 
 test('Seedance repeat explains that author video drives motion and only accepts identity photos', async ({ page }) => {
@@ -71,4 +96,17 @@ test('Seedance photo fallback says the rendered result will not be reused as mot
   await expect(page.getByText(/не подставляя готовый ролик/)).toBeVisible();
   await expect(page.locator('.screen-head p')).toContainText('внешность переносим с ваших фото');
   await expect(page.locator('input[type="file"]')).toHaveAttribute('accept', 'image/*');
+});
+
+test('Seedance repeat caps a multi-file selection to the exact identity-photo count', async ({ page }) => {
+  const state = await openSeedanceReplay(page, true);
+
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: 'identity-one.png', mimeType: 'image/png', buffer: Buffer.from('one') },
+    { name: 'identity-two.png', mimeType: 'image/png', buffer: Buffer.from('two') },
+  ]);
+
+  await expect.poll(state.uploadCount).toBe(1);
+  await expect(page.getByText(/добавлено 1/)).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
 });

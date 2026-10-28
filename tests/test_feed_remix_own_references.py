@@ -85,6 +85,7 @@ async def _public_seedance_source(
     *,
     author: User,
     author_video: str | None,
+    author_audio: str | None = None,
 ) -> tuple[Generation, Path]:  # type: ignore[no-untyped-def]
     provider_url = "https://example.invalid/author-rendered-result.mp4"
     author_photo = "https://example.invalid/author-identity.jpg"
@@ -99,6 +100,8 @@ async def _public_seedance_source(
     }
     if author_video:
         parameters["reference_video_urls"] = [author_video]
+    if author_audio:
+        parameters["reference_audio_urls"] = [author_audio]
     source = Generation(
         user_id=author.id,
         kind="reference_to_video",
@@ -328,11 +331,16 @@ async def test_seedance_prepare_restores_author_video_privately_and_requests_ide
         session.add_all([author, remixer])
         await session.flush()
         author_video = "https://example.invalid/author-motion.mp4"
+        author_audio = "https://example.invalid/author-audio.mp3"
         source, target = await _public_seedance_source(
             session,
             author=author,
             author_video=author_video,
+            author_audio=author_audio,
         )
+        source.feed_prompt_visible = True
+        source.prompt = "Keep the movement from legacy @Image2"
+        await session.commit()
 
         try:
             prepared = await FeedRemixService.prepare(
@@ -349,7 +357,9 @@ async def test_seedance_prepare_restores_author_video_privately_and_requests_ide
                 "audio_count": 0,
                 "required": True,
             }
+            assert prepared["prompt"] == "Keep the movement from legacy @Video1"
             assert author_video not in str(prepared)
+            assert author_audio not in str(prepared)
             assert "author-identity.jpg" not in str(prepared)
         finally:
             target.unlink(missing_ok=True)
@@ -363,11 +373,16 @@ async def test_seedance_launch_uses_viewer_identity_photo_and_author_motion_vide
         session.add_all([author, remixer])
         await session.flush()
         author_video = "https://example.invalid/author-motion.mp4"
+        author_audio = "https://example.invalid/author-audio.mp3"
         source, target = await _public_seedance_source(
             session,
             author=author,
             author_video=author_video,
+            author_audio=author_audio,
         )
+        source.feed_prompt_visible = True
+        source.prompt = "Keep the movement from legacy @Image2"
+        await session.commit()
         viewer_photo, _ = await ReferenceService.register(
             session,
             user_id=remixer.id,
@@ -415,7 +430,7 @@ async def test_seedance_launch_uses_viewer_identity_photo_and_author_motion_vide
                 source_generation_id=source.id,
                 remix_author_id=remixer.id,
                 surface="feed",
-                prompt_override=None,
+                prompt_override="Keep the movement from legacy @Image2",
                 reference_ids=[viewer_photo.id],
                 confirm_own_references=True,
             )
@@ -426,10 +441,13 @@ async def test_seedance_launch_uses_viewer_identity_photo_and_author_motion_vide
             assert "authoritative source" in prompt
             assert "@Image1" in prompt
             assert "identity" in prompt
+            assert "movement from legacy @Video1" in prompt
+            assert "movement from legacy @Image2" not in prompt
             assert parameters["reference_images"] == [
                 "https://example.invalid/viewer-identity.jpg"
             ]
             assert parameters["reference_videos"] == [author_video]
+            assert parameters["reference_audio_urls"] == [author_audio]
             assert "omni_reference_task_type" not in parameters
             assert "author-identity.jpg" not in str(parameters)
             assert (generation.parameters or {})[PRIVATE_AUTHOR_REPLAY_MARKER] is True

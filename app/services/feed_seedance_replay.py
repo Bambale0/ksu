@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.models import Generation
+from app.services.seedance_reference_integrity import canonicalize_seedance_reference_tags
 
 
 SEEDANCE_AUTHOR_REPLAY_MODEL_ID = "seedance-2.5"
@@ -27,6 +28,23 @@ def seedance_identity_requirements(*, source_image_count: int) -> dict[str, int 
         "audio_count": 0,
         "required": True,
     }
+
+
+def canonicalize_seedance_author_prompt(
+    original_prompt: str,
+    *,
+    source_image_count: int,
+    source_video_count: int,
+    source_audio_count: int,
+) -> str:
+    """Resolve legacy combined ordinals before viewer identity photos are inserted."""
+
+    return canonicalize_seedance_reference_tags(
+        original_prompt,
+        image_count=source_image_count,
+        video_count=source_video_count,
+        audio_count=source_audio_count,
+    )
 
 
 def build_seedance_motion_identity_prompt(

@@ -16,6 +16,7 @@ from app.services.feed_seedance_replay import (
     PRIVATE_AUTHOR_REPLAY_MARKER,
     SEEDANCE_AUTHOR_REPLAY_MODEL_ID,
     build_seedance_motion_identity_prompt,
+    canonicalize_seedance_author_prompt,
     seedance_identity_requirements,
     seedance_motion_original_prompt_max_chars,
 )
@@ -31,6 +32,7 @@ AUDIO_REFERENCE_FIELDS = frozenset(
         "audio_url",
         "audio_urls",
         "reference_audio",
+        "reference_audios",
         "reference_audio_url",
         "reference_audio_urls",
     }
@@ -81,17 +83,6 @@ class FeedRemixService:
             and key not in REFERENCE_FIELDS
         }
 
-    @staticmethod
-    def _audio_references(parameters: dict[str, Any]) -> list[str]:
-        values: list[str] = []
-        for field in AUDIO_REFERENCE_FIELDS:
-            raw = parameters.get(field)
-            if isinstance(raw, (list, tuple)):
-                values.extend(str(item) for item in raw if item)
-            elif raw:
-                values.append(str(raw))
-        return list(dict.fromkeys(values))
-
     @classmethod
     def _reference_requirements(
         cls,
@@ -103,10 +94,9 @@ class FeedRemixService:
             return seedance_identity_requirements(
                 source_image_count=len(context.reference_images),
             )
-        audio_references = cls._audio_references(context.parameters)
         image_count = len(context.reference_images)
         video_count = len(context.reference_videos)
-        audio_count = len(audio_references)
+        audio_count = len(context.reference_audios)
         return {
             "image_count": image_count,
             "video_count": video_count,
@@ -147,11 +137,19 @@ class FeedRemixService:
         )
         prompt_hidden = bool(card.get("prompt_hidden"))
         source_context = ReferenceResolver.generation_context(source)
+        source_prompt = source.prompt
         source_has_video_reference = (
             bool(source_context.reference_videos)
             if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID
             else None
         )
+        if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
+            source_prompt = canonicalize_seedance_author_prompt(
+                source.prompt,
+                source_image_count=len(source_context.reference_images),
+                source_video_count=len(source_context.reference_videos),
+                source_audio_count=len(source_context.reference_audios),
+            )
         requirements = cls._reference_requirements(source, effective_model_id)
         prompt_limit = prompt_max_chars(effective_model_id)
         if source_has_video_reference:
@@ -163,7 +161,7 @@ class FeedRemixService:
                 # Hidden prompts cannot be shortened by the viewer, so fail
                 # during prepare rather than after upload/quote.
                 build_seedance_motion_identity_prompt(
-                    source.prompt,
+                    source_prompt,
                     identity_count=int(requirements["image_count"]),
                     max_chars=prompt_max_chars(effective_model_id),
                 )
@@ -175,7 +173,7 @@ class FeedRemixService:
             "effective_model_id": effective_model_id,
             "model_title": ModelCatalog.get(effective_model_id).title,
             "prompt_max_length": prompt_limit,
-            "prompt": "" if prompt_hidden else source.prompt,
+            "prompt": "" if prompt_hidden else source_prompt,
             "prompt_hidden": prompt_hidden,
             "prompt_editable": not prompt_hidden,
             "settings": cls._reusable_parameters(source, effective_model_id),
@@ -279,6 +277,8 @@ class FeedRemixService:
             parameters["reference_images"] = viewer_images
         if source_context.reference_videos:
             parameters["reference_videos"] = source_context.reference_videos
+        if source_context.reference_audios:
+            parameters["reference_audio_urls"] = source_context.reference_audios
         return parameters, source_context.reference_videos
 
     @classmethod
@@ -311,9 +311,17 @@ class FeedRemixService:
         )
         cls._assert_reference_requirements(requirements, references)
 
+        source_context = ReferenceResolver.generation_context(source)
         prompt = source.prompt
         if source.feed_prompt_visible and source.source_feed_gen_id is None and prompt_override is not None:
             prompt = prompt_override.strip()
+        if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
+            prompt = canonicalize_seedance_author_prompt(
+                prompt,
+                source_image_count=len(source_context.reference_images),
+                source_video_count=len(source_context.reference_videos),
+                source_audio_count=len(source_context.reference_audios),
+            )
         base = cls._reusable_parameters(source, effective_model_id)
         if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
             parameters, author_videos = cls._seedance_replay_parameters(

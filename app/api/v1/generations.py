@@ -124,9 +124,21 @@ def _public_settings(generation: Generation) -> dict[str, Any]:
         if key in allowed and not key.startswith("_") and key != "prompt"
     }
     if is_private_seedance_author_replay(generation):
-        # The source video belongs to the feed author. It is needed by the
-        # worker, but must never become a URL disclosed in the remixer's history.
-        public.pop("reference_video_urls", None)
+        # Author-owned motion/audio inputs are needed by the worker, but must
+        # never become URLs disclosed in the remixer's history.
+        for key in (
+            "audio_url",
+            "audio_urls",
+            "reference_audio",
+            "reference_audios",
+            "reference_audio_url",
+            "reference_audio_urls",
+            "reference_video",
+            "reference_video_url",
+            "reference_video_urls",
+            "reference_videos",
+        ):
+            public.pop(key, None)
     return public
 
 
@@ -157,6 +169,9 @@ def _generation_view(
     trend_hidden = generation.action_type == "trend"
     private_seedance_replay = is_private_seedance_author_replay(generation)
     prompt_hidden = trend_hidden or private_seedance_replay
+    public_error = generation.error
+    if private_seedance_replay and public_error:
+        public_error = "Не удалось создать повтор. Попробуйте ещё раз."
     model = _model_view(generation)
     view: dict[str, object] = {
         "id": str(generation.id),
@@ -185,7 +200,7 @@ def _generation_view(
             "state": media_state,
         },
         "result_storage": "owned" if owned_urls else "provider",
-        "error": generation.error,
+        "error": public_error,
         "hidden_from_history": hidden,
         "created_at": generation.created_at.isoformat(),
         "updated_at": generation.updated_at.isoformat(),
