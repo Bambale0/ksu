@@ -53,3 +53,10 @@ Plan: add RED provider-contract/error/reliability regressions; implement the nar
 - Static checks: focused Ruff passed; `python -m compileall -q app tests` passed; `git diff --check` passed.
 - DB-backed provider and worker regressions are present but cannot run on this Windows host: Docker/PostgreSQL are unavailable. An attempted focused DB run was stopped after repeated connection failures. Exact-head Linux CI with the repository PostgreSQL service remains a hard PR gate.
 - No route/config/price/migration/deploy change. The accepted task retains provider, external ID and route index; the hard-lifetime transition only adds reconciliation metadata and keeps the debit pending an authoritative terminal provider result.
+- PR review closure: two P2 findings were reproduced as regression seams. The
+  hard-timeout lane now locks and rechecks status, provider and task ID before
+  writing reconciliation metadata, so a concurrent terminal callback wins.
+  Extend now rejects provider `size` geometry before paid submission because
+  it must inherit the source ratio. Focused contract tests and Ruff are green;
+  the PostgreSQL race regression is delegated to exact-head CI because this
+  host has no Docker/PostgreSQL runtime.

@@ -232,8 +232,10 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
         raise NeironychVideoContractError("watermark=true is not supported by Seedance")
     if "n" in payload and (type(payload["n"]) is not int or payload["n"] != 1):
         raise NeironychVideoContractError("Seedance requires n=1")
-    if is_edit and payload.get("size") not in (None, ""):
-        raise NeironychVideoContractError("Seedance 2.5 edit follows source size")
+    if (is_edit or is_extend) and payload.get("size") not in (None, ""):
+        raise NeironychVideoContractError(
+            "Seedance 2.5 edit/extend follows source geometry"
+        )
 
     prompt = _validate_prompt(payload)
 

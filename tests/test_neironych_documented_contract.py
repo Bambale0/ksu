@@ -94,6 +94,21 @@ def test_documented_silent_extend_is_forwarded_without_aspect_ratio():
     }
 
 
+def test_extend_rejects_fixed_output_geometry() -> None:
+    with pytest.raises(NeironychVideoContractError, match="follows source geometry"):
+        normalize_neironych_video_input(
+            "seedance-2.5",
+            {
+                "prompt": "Extend it forward",
+                "reference_videos": [{"url": VIDEO}],
+                "omni_reference_task_type": "extend",
+                "duration": 10,
+                "resolution": "720p",
+                "size": "1280x720",
+            },
+        )
+
+
 def test_extend_requires_a_source_video():
     with pytest.raises(NeironychVideoContractError, match="видео"):
         normalize_neironych_video_input(

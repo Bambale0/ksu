@@ -450,10 +450,10 @@ class GenerationWorkerService:
 
         cutoff = utcnow() - timedelta(seconds=hard_timeout)
         async with SessionFactory() as session:
-            ids = list(
+            tasks = list(
                 (
-                    await session.scalars(
-                        select(Generation.id)
+                    await session.execute(
+                        select(Generation.id, Generation.external_id, Generation.provider)
                         .where(
                             Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status.in_(("generating", "submitting")),
@@ -469,14 +469,18 @@ class GenerationWorkerService:
                 ).all()
             )
 
-        for generation_id in ids:
+        for generation_id, external_id, provider in tasks:
             async with SessionFactory() as session:
-                generation = await session.get(Generation, generation_id)
+                generation = await session.scalar(
+                    select(Generation)
+                    .where(Generation.id == generation_id)
+                    .with_for_update()
+                )
                 if (
                     generation is None
-                    or generation.provider not in _PROVIDER_NAMES
+                    or generation.provider != provider
                     or generation.status not in {"generating", "submitting"}
-                    or generation.external_id is None
+                    or generation.external_id != external_id
                 ):
                     continue
                 if cls._provider_started_at(generation) >= cutoff:
