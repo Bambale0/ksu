@@ -88,8 +88,10 @@ def install_feed_publication_contract() -> None:
             if LocalMediaStorage.is_local_bucket(asset.bucket):
                 try:
                     sources.append(LocalMediaStorage.path_for_key(asset.object_key))
-                except (LocalMediaStorageError, OSError):
-                    continue
+                except (LocalMediaStorageError, OSError) as exc:
+                    raise FeedStaticStorageError(
+                        "Stored server media has an invalid object key"
+                    ) from exc
                 continue
             if storage is None:
                 try:
@@ -259,17 +261,13 @@ def install_feed_publication_contract() -> None:
             except FeedStaticStorageError:
                 persisted = None
 
-        if persisted is None and provider_urls:
-            try:
-                persisted = await FeedStaticStorage.persist_urls(
-                    provider_urls,
-                    generation_id=generation.id,
-                )
-            except FeedStaticStorageError:
-                persisted = None
-
         if persisted is None:
-            owned_sources = await owned_media_sources(session, generation)
+            try:
+                owned_sources = await owned_media_sources(session, generation)
+            except FeedStaticStorageError as exc:
+                raise FeedMediaUnavailableError(
+                    "Не удалось сохранить медиа публикации на сервере"
+                ) from exc
             if owned_sources:
                 try:
                     persisted = await FeedStaticStorage.persist_sources(
@@ -278,6 +276,15 @@ def install_feed_publication_contract() -> None:
                     )
                 except FeedStaticStorageError:
                     persisted = None
+
+        if persisted is None and provider_urls:
+            try:
+                persisted = await FeedStaticStorage.persist_urls(
+                    provider_urls,
+                    generation_id=generation.id,
+                )
+            except FeedStaticStorageError:
+                persisted = None
 
         if not persisted:
             raise FeedMediaUnavailableError(

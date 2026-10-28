@@ -383,6 +383,36 @@ class FeedStaticStorage:
             temp_path.unlink(missing_ok=True)
 
     @classmethod
+    def _copy_local_file_bounded(cls, source_path: Path, target_path: Path) -> None:
+        limit = cls.max_bytes()
+        try:
+            source_size = source_path.stat().st_size
+        except OSError as exc:
+            raise FeedStaticStorageError("Stored server media is unavailable") from exc
+        if source_size <= 0:
+            raise FeedStaticStorageError("Feed media file is empty")
+        if source_size > limit:
+            raise FeedStaticStorageError("Feed media exceeds FEED_STATIC_MAX_BYTES")
+
+        copied = 0
+        try:
+            with source_path.open("rb") as source, target_path.open("wb") as target:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    copied += len(chunk)
+                    if copied > limit:
+                        raise FeedStaticStorageError(
+                            "Feed media exceeds FEED_STATIC_MAX_BYTES"
+                        )
+                    target.write(chunk)
+        except FeedStaticStorageError:
+            raise
+        except OSError as exc:
+            raise FeedStaticStorageError("Stored server media is unavailable") from exc
+
+    @classmethod
     def _persist_local_file(
         cls,
         source_path: Path,
@@ -399,10 +429,7 @@ class FeedStaticStorage:
         ) as handle:
             temp_path = Path(handle.name)
         try:
-            try:
-                shutil.copyfile(source_path, temp_path)
-            except OSError as exc:
-                raise FeedStaticStorageError("Stored server media is unavailable") from exc
+            cls._copy_local_file_bounded(source_path, temp_path)
             suffix, content_type, size, digest = cls._inspect_file(temp_path)
             filename = f"{generation_id}-{ordinal + 1}-{digest[:16]}{suffix}"
             target = root / filename

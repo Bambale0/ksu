@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
+from app.core.config import settings
 from app.db.feed_models import FeedComment
 from app.db.history_models import GenerationHistoryState
 from app.db.media_models import MediaAsset
@@ -193,6 +194,12 @@ async def test_publish_copies_ready_server_local_media_to_feed_static(
     feed_root = tmp_path / "feed-static"
     monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(media_root))
     monkeypatch.setenv("FEED_STATIC_ROOT", str(feed_root))
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
+
+    async def reject_self_http(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("server-local publication must not use self-HTTP")
+
+    monkeypatch.setattr(FeedStaticStorage, "_download_external", reject_self_http)
 
     async with SessionFactory() as session:
         author = await _user(session, "Local media")
@@ -214,7 +221,8 @@ async def test_publish_copies_ready_server_local_media_to_feed_static(
         )
         session.add(asset)
         await session.flush()
-        private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        relative_private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        private_url = f"https://roxy.example{relative_private_url}"
         generation.result_url = private_url
         generation.parameters = {
             "_model_id": "nano-banana-pro",
@@ -239,6 +247,71 @@ async def test_publish_copies_ready_server_local_media_to_feed_static(
         assert published_path.read_bytes() == source.read_bytes()
         assert published_path.is_relative_to(feed_root.resolve())
         assert owned_path.read_bytes() == source.read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_publish_fails_closed_when_any_server_local_key_is_unsafe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    media_root = tmp_path / "private-media"
+    feed_root = tmp_path / "feed-static"
+    monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(media_root))
+    monkeypatch.setenv("FEED_STATIC_ROOT", str(feed_root))
+
+    async with SessionFactory() as session:
+        author = await _user(session, "Unsafe local media")
+        generation = await _pending_generation(session, author)
+        safe_key = f"generations/{author.id}/{generation.id}/000-owned.jpg"
+        source = tmp_path / "provider-result.jpg"
+        source.write_bytes(_fixture_media_bytes(".jpg"))
+        owned_path = LocalMediaStorage.persist_file(source, key=safe_key)
+        safe_asset = MediaAsset(
+            generation_id=generation.id,
+            user_id=author.id,
+            ordinal=0,
+            source_url="neironych://image/safe-result",
+            status="ready",
+            bucket=LOCAL_MEDIA_BUCKET,
+            object_key=safe_key,
+            content_type="image/jpeg",
+            size_bytes=owned_path.stat().st_size,
+        )
+        unsafe_asset = MediaAsset(
+            generation_id=generation.id,
+            user_id=author.id,
+            ordinal=1,
+            source_url="neironych://image/unsafe-result",
+            status="ready",
+            bucket=LOCAL_MEDIA_BUCKET,
+            object_key=f"../escape-{generation.id}.jpg",
+            content_type="image/jpeg",
+            size_bytes=owned_path.stat().st_size,
+        )
+        session.add_all([safe_asset, unsafe_asset])
+        await session.flush()
+        private_url = LocalMediaStorage.signed_view_url(
+            asset_id=safe_asset.id,
+            key=safe_key,
+        )
+        generation.result_url = private_url
+        generation.parameters = {
+            "_model_id": "nano-banana-pro",
+            "_result_urls": [private_url],
+        }
+        await session.commit()
+
+        with pytest.raises(FeedMediaUnavailableError):
+            await FeedService.share_to_feed(
+                session,
+                generation_id=generation.id,
+                owner_user_id=author.id,
+                publication_scope="feed",
+            )
+
+        await session.refresh(generation)
+        assert generation.publication_scope == "private"
+        assert not list(feed_root.glob(f"{generation.id}-*"))
 
 
 @pytest.mark.asyncio

@@ -35,3 +35,7 @@ Guidance: repository `AGENTS.md`; local `.clinerules` systematic debugging, TDD,
 - `tests/test_feed_static_storage.py` + `tests/test_local_media_storage.py`: **10 passed, 1 skipped** (the skip is the pre-existing ffmpeg-gated MP4 test).
 - Targeted Ruff and compileall checks passed. `git diff --check` passed.
 - Running all three files together additionally reached the non-skipped domain MP4 case, which failed only because ffmpeg is not installed on this Windows host. Linux CI remains the required MP4 verification environment.
+
+## Exact-head review hardening
+
+PR review at `a5a6abb3d7484e6595fb245838039a532c223e6b` identified three valid release blockers. A production-style absolute signed local URL could attempt self-HTTP before disk fallback; oversized local media was fully copied before the feed limit rejected it; and an unsafe key in a multi-result set could be skipped while publishing the remaining subset. Three RED regressions reproduced those paths. The corrected flow resolves owned local assets before HTTPS fallback, performs a stat precheck plus bounded streaming copy, and fails the entire publication on any unsafe local key. Local verification after the corrections: **10 domain tests passed** with the ffmpeg-only domain case deselected; static/local storage **11 passed, 1 ffmpeg-gated skip**; targeted Ruff, compileall and diff checks passed. A new exact-head Linux CI/review cycle is required before merge.
