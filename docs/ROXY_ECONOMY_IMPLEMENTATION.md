@@ -77,10 +77,12 @@ The server resolves model/parameter pricing and repeats that calculation on crea
 ### Approved generation baseline
 
 ```text
-Nano Banana PRO            25 ROX
+Nano Banana PRO 1K/2K      25 ROX
+Nano Banana PRO 4K         35 ROX
 WAN 2.7 photo              20 ROX
 GPT Image 2                20 ROX
-Nano Banana 2              25 ROX
+Nano Banana 2 1K/2K        25 ROX
+Nano Banana 2 4K           35 ROX
 Nano Banana 2 Lite         25 ROX
 Seedream 4.5               20 ROX
 Seedream 5 Pro             20 ROX
