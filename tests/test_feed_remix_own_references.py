@@ -128,19 +128,21 @@ async def _public_seedance_source(
         "_result_urls": [local_url],
         "_feed_static": True,
     }
-    session.add(
-        MediaAsset(
-            generation_id=source.id,
-            user_id=author.id,
-            ordinal=0,
-            source_url=provider_url,
-            status="ready",
-            bucket="test-feed",
-            object_key=f"feed/{source.id}.mp4",
-            content_type="video/mp4",
-        )
+    asset = MediaAsset(
+        generation_id=source.id,
+        user_id=author.id,
+        ordinal=0,
+        source_url=provider_url,
+        status="ready",
+        bucket="test-feed",
+        object_key=f"feed/{source.id}.mp4",
+        content_type="video/mp4",
     )
+    session.add(asset)
+    await session.flush()
     await session.commit()
+    await session.refresh(source)
+    assert await session.get(MediaAsset, asset.id) is not None
     return source, target
 
 
