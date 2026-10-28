@@ -240,6 +240,8 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
             source_feed_gen_id,
             parent_generation_id,
             action_type,
+            commit,
+            wake,
         ):
             captured.update(
                 {
@@ -252,6 +254,8 @@ async def test_feed_remix_requires_owned_references_and_launches_with_only_remix
                     "source_feed_gen_id": source_feed_gen_id,
                     "parent_generation_id": parent_generation_id,
                     "action_type": action_type,
+                    "commit": commit,
+                    "wake": wake,
                 }
             )
             generation = Generation(
