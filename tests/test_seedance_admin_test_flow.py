@@ -415,18 +415,26 @@ def test_neironych_normalizer_strips_known_illegal_legacy_fields() -> None:
     }
 
 
-def test_neironych_normalizer_rejects_generate_audio_false() -> None:
-    with pytest.raises(NeironychVideoContractError, match="generate_audio=false"):
-        normalize_neironych_video_input(
-            "seedance-2.5",
-            {
-                "prompt": "cinematic",
-                "duration": 5,
-                "resolution": "720p",
-                "aspect_ratio": "9:16",
-                "generate_audio": False,
-            },
-        )
+def test_neironych_normalizer_preserves_generate_audio_false() -> None:
+    source = {
+        "prompt": "cinematic",
+        "duration": 5,
+        "resolution": "720p",
+        "aspect_ratio": "9:16",
+        "generate_audio": False,
+    }
+
+    payload = normalize_neironych_video_input("seedance-2.5", source)
+
+    assert payload == {
+        "prompt": "cinematic",
+        "duration": 5,
+        "resolution": "720p",
+        "aspect_ratio": "9:16",
+        "generate_audio": False,
+    }
+    assert source == payload
+    assert source is not payload
 
 
 @pytest.mark.parametrize(

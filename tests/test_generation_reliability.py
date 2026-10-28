@@ -8,6 +8,7 @@ import pytest
 from redis.exceptions import RedisError
 from sqlalchemy import select
 
+from app.services import generation_worker as generation_worker_module
 from app.core.config import settings
 from app.db.models import AdminAccount, Generation, User, Wallet
 from app.db.reliability_models import GenerationOutbox
@@ -421,7 +422,7 @@ def test_submission_error_disposition_distinguishes_retryable_and_ambiguous_http
 
 
 @pytest.mark.asyncio
-async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submission(
+async def test_generation_hard_timeout_reconciles_accepted_task_without_refund(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "generation_hard_timeout_seconds", 60)
@@ -435,14 +436,16 @@ async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submissio
     async with SessionFactory() as session:
         expired = Generation(
             user_id=old_user.id,
-            kind="text_to_image",
+            kind="text_to_video",
             status="generating",
             prompt="expired",
             cost_rox=Decimal("3"),
-            provider="kie",
+            provider="neironych",
             external_id="task_hard_expired",
             parameters={
-                "_model_id": "nano-banana",
+                "_model_id": "seedance-2.5",
+                "_provider_route": ["neironych", "nexus"],
+                "_provider_route_index": 0,
                 "_provider_submitted_at": old_started.isoformat(),
             },
         )
@@ -476,16 +479,102 @@ async def test_generation_hard_timeout_refunds_old_task_but_not_recent_submissio
         recent_wallet = await session.get(Wallet, recent_user.id)
 
         assert expired is not None
-        assert expired.status == "failed"
+        assert expired.status == "generating"
         assert expired.error is not None
-        assert "hard lifetime" in expired.error
+        assert "reconciliation" in expired.error.lower()
+        assert expired.parameters.get("_reconciliation_required") is True
+        assert expired.parameters.get("_reconciliation_reason") == "hard_timeout"
+        assert expired.parameters.get("_reconciliation_started_at")
+        assert expired.provider == "neironych"
+        assert expired.parameters.get("_provider_route_index") == 0
         assert expired_wallet is not None
-        assert expired_wallet.balance == Decimal("3")
+        assert expired_wallet.balance == Decimal("0")
 
         assert recent is not None
         assert recent.status == "generating"
         assert recent_wallet is not None
         assert recent_wallet.balance == Decimal("0")
+
+        reconciliation_started_at = expired.parameters["_reconciliation_started_at"]
+
+    await GenerationWorkerService._expire_stuck_generations()
+
+    async with SessionFactory() as session:
+        expired = await session.get(Generation, expired_id)
+        expired_wallet = await session.get(Wallet, old_user.id)
+        assert expired is not None
+        assert expired.parameters["_reconciliation_started_at"] == reconciliation_started_at
+        assert expired_wallet is not None
+        assert expired_wallet.balance == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_generation_hard_timeout_does_not_overwrite_concurrent_terminal_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "generation_hard_timeout_seconds", 60)
+    user, _ = await _create_user_with_wallet("HardTimeoutConcurrent")
+    old_started = datetime.now(timezone.utc) - timedelta(minutes=5)
+    old_created = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    async with SessionFactory() as session:
+        generation = Generation(
+            user_id=user.id,
+            kind="text_to_video",
+            status="generating",
+            prompt="concurrently completed",
+            cost_rox=Decimal("3"),
+            provider="neironych",
+            external_id="task_hard_concurrent",
+            parameters={
+                "_model_id": "seedance-2.5",
+                "_provider_submitted_at": old_started.isoformat(),
+            },
+        )
+        session.add(generation)
+        await session.flush()
+        generation.created_at = old_created
+        await session.commit()
+        generation_id = generation.id
+
+    real_factory = SessionFactory
+    factory_calls = 0
+
+    class CompleteBeforeLock:
+        def __init__(self) -> None:
+            self.session_context = real_factory()
+
+        async def __aenter__(self):
+            async with real_factory() as completing_session:
+                current = await completing_session.get(Generation, generation_id)
+                assert current is not None
+                current.status = "succeeded"
+                current.error = None
+                current.result_url = "https://cdn.example/result.mp4"
+                await completing_session.commit()
+            return await self.session_context.__aenter__()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return await self.session_context.__aexit__(exc_type, exc, tb)
+
+    def racing_factory():
+        nonlocal factory_calls
+        factory_calls += 1
+        if factory_calls == 2:
+            return CompleteBeforeLock()
+        return real_factory()
+
+    monkeypatch.setattr(generation_worker_module, "SessionFactory", racing_factory)
+
+    await GenerationWorkerService._expire_stuck_generations()
+
+    async with real_factory() as session:
+        completed = await session.get(Generation, generation_id)
+        assert completed is not None
+        assert completed.status == "succeeded"
+        assert completed.error is None
+        assert completed.result_url == "https://cdn.example/result.mp4"
+        assert completed.parameters.get("_reconciliation_required") is not True
 
 
 def test_retry_backoff_is_capped() -> None:

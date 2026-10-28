@@ -143,9 +143,8 @@ def build_seedance_payload(data: Mapping[str, Any]) -> dict[str, Any]:
     elif mode == "edit":
         payload["omni_reference_task_type"] = "edit"
 
-    # Neironych currently accepts generate_audio=true, while false is rejected.
-    # Keep the field explicit for reference/edit wizard modes where audio output
-    # is part of the documented contract.
+    # Keep the default explicit. The provider contract also accepts false for a
+    # silent result when supplied through the expert/public request boundary.
     if mode in {"reference", "edit"}:
         payload["generate_audio"] = True
 

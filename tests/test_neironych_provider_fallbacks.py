@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import random
 from decimal import Decimal
 from pathlib import Path
@@ -41,6 +42,54 @@ class ConflictImageClient:
             "Neironych API HTTP 409: request_already_submitted",
             status_code=409,
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,code,expected",
+    [
+        (400, "provider_rejected_request", "Провайдер отклонил параметры или медиа"),
+        (402, "insufficient_balance", "У провайдера временно недостаточно средств"),
+    ],
+)
+async def test_terminal_400_402_persists_only_safe_user_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    code: str,
+    expected: str,
+) -> None:
+    class RejectingClient:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def aclose(self) -> None:
+            pass
+
+        async def create_video(self, **_kwargs: object) -> str:
+            raise NeironychProviderError(
+                "private prompt https://private.example/ref.png?token=secret-value",
+                status_code=status,
+                error_code=code,
+                payload={"error": {"message": "private prompt secret-value"}},
+            )
+
+    monkeypatch.setattr(
+        "app.services.neironych_generation_provider.NeironychVideoClient",
+        RejectingClient,
+    )
+    generation = await _generation(
+        model_id="seedance-2.5",
+        route=["neironych"],
+        parameters={"prompt": "scene", "duration": 5, "resolution": "720p"},
+    )
+
+    async with SessionFactory() as session:
+        result = await NeironychGenerationProviderService.submit(session, generation.id)
+        assert result.status == "failed"
+        assert expected in str(result.error)
+        assert "private prompt" not in str(result.error)
+        assert "secret-value" not in str(result.error)
+        assert "private.example" not in str(result.error)
 
 
 async def _generation(*, model_id: str, route: list[str], parameters: dict[str, object]) -> Generation:
@@ -98,7 +147,26 @@ async def test_nano_balance_rejection_falls_back_to_nexus(
 
 
 @pytest.mark.asyncio
-async def test_seedance_contract_incompatibility_falls_back_to_kie_before_submit() -> None:
+async def test_seedance_generate_audio_false_is_sent_to_neironych(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class VideoClient:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        async def aclose(self) -> None:
+            pass
+
+        async def create_video(self, **kwargs: object) -> str:
+            captured.update(kwargs)
+            return "neironych-silent-video-1"
+
+    monkeypatch.setattr(
+        "app.services.neironych_generation_provider.NeironychVideoClient",
+        VideoClient,
+    )
     generation = await _generation(
         model_id="seedance-2.5",
         route=["neironych", "kie"],
@@ -113,10 +181,12 @@ async def test_seedance_contract_incompatibility_falls_back_to_kie_before_submit
 
     async with SessionFactory() as session:
         result = await NeironychGenerationProviderService.submit(session, generation.id)
-        assert result.provider == "kie"
-        assert result.status == "retry"
-        assert result.external_id is None
-        assert result.parameters["_provider_route_index"] == 1
+        assert result.provider == "neironych"
+        assert result.status == "generating"
+        assert result.external_id == "neironych-silent-video-1"
+        assert result.parameters["_provider_route_index"] == 0
+
+    assert json.loads(str(captured["request_body"]))["generate_audio"] is False
 
 
 @pytest.mark.asyncio

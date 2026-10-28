@@ -45,12 +45,18 @@ def test_documented_edit_is_accepted(include_duration):
     if include_duration:
         payload["duration"] = -1
     before = copy.deepcopy(payload)
-    assert normalize_neironych_video_input("seedance-2.5", payload) == before
+    normalized = normalize_neironych_video_input("seedance-2.5", payload)
+    assert normalized == {
+        "prompt": "Replace sky in @Video 1",
+        "reference_videos": [{"url": VIDEO}],
+        "omni_reference_task_type": "edit",
+        "resolution": "720p",
+    }
     assert payload == before
 
 
 @pytest.mark.parametrize(
-    "changes", [{"duration": 5}, {"aspect_ratio": "9:16"}, {"size": "720x1280"}]
+    "changes", [{"size": "720x1280"}]
 )
 def test_edit_rejects_fixed_output_geometry(changes):
     payload = {
@@ -59,6 +65,88 @@ def test_edit_rejects_fixed_output_geometry(changes):
         "omni_reference_task_type": "edit",
         **changes,
     }
+    with pytest.raises(NeironychVideoContractError):
+        normalize_neironych_video_input("seedance-2.5", payload)
+
+
+def test_documented_silent_extend_is_forwarded_without_aspect_ratio():
+    normalized = normalize_neironych_video_input(
+        "seedance-2.5",
+        {
+            "prompt": "Extend it forward",
+            "reference_videos": [{"url": VIDEO}],
+            "reference_images": [{"url": PHOTO}],
+            "omni_reference_task_type": "extend",
+            "duration": 10,
+            "resolution": "720p",
+            "aspect_ratio": "16:9",
+            "generate_audio": False,
+        },
+    )
+    assert normalized == {
+        "prompt": "Extend it forward",
+        "reference_videos": [{"url": VIDEO}],
+        "reference_images": [{"url": PHOTO}],
+        "omni_reference_task_type": "extend",
+        "duration": 10,
+        "resolution": "720p",
+        "generate_audio": False,
+    }
+
+
+def test_extend_rejects_fixed_output_geometry() -> None:
+    with pytest.raises(NeironychVideoContractError, match="follows source geometry"):
+        normalize_neironych_video_input(
+            "seedance-2.5",
+            {
+                "prompt": "Extend it forward",
+                "reference_videos": [{"url": VIDEO}],
+                "omni_reference_task_type": "extend",
+                "duration": 10,
+                "resolution": "720p",
+                "size": "1280x720",
+            },
+        )
+
+
+def test_extend_requires_a_source_video():
+    with pytest.raises(NeironychVideoContractError, match="видео"):
+        normalize_neironych_video_input(
+            "seedance-2.5",
+            {
+                "prompt": "Extend it forward",
+                "omni_reference_task_type": "extend",
+                "duration": 5,
+            },
+        )
+
+
+def test_draft_preview_forces_480p_and_full_render_sends_only_draft_task():
+    preview = normalize_neironych_video_input(
+        "seedance-2.5",
+        {"prompt": "Preview", "duration": 5, "draft": True, "resolution": "1080p"},
+    )
+    assert preview == {"prompt": "Preview", "duration": 5, "draft": True, "resolution": "480p"}
+
+    assert normalize_neironych_video_input(
+        "seedance-2.5",
+        {
+            "draft_task": {"id": "9b2f6c1e-4d7a-4c3e-8f5b-2a1d0e9c7b64"},
+            "prompt": "must not leak into full render",
+            "duration": 30,
+            "resolution": "720p",
+        },
+    ) == {"draft_task": {"id": "9b2f6c1e-4d7a-4c3e-8f5b-2a1d0e9c7b64"}}
+
+
+@pytest.mark.parametrize(
+    "value",
+    [False, "true", {"id": ""}, {"id": "bad\nvalue"}, {"id": "valid", "extra": True}],
+)
+def test_invalid_draft_contract_is_rejected(value):
+    payload = {"prompt": "Preview", "duration": 5, "draft": value}
+    if isinstance(value, dict):
+        payload = {"draft_task": value}
     with pytest.raises(NeironychVideoContractError):
         normalize_neironych_video_input("seedance-2.5", payload)
 

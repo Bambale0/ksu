@@ -110,6 +110,44 @@ class NeironychProviderError(RuntimeError):
         self.submission_rejected = submission_rejected
 
 
+_SAFE_USER_REASONS = {
+    "insufficient_balance": (
+        "У провайдера временно недостаточно средств для запуска генерации. "
+        "Попробуйте позже."
+    ),
+    "provider_rejected_request": (
+        "Провайдер отклонил параметры или медиа. Проверьте формат, размер, "
+        "длительность и доступность референсов."
+    ),
+    "invalid_request_contract": (
+        "Провайдер отклонил параметры запроса. Проверьте настройки генерации "
+        "и прикреплённые референсы."
+    ),
+    "media_asset_not_ready": (
+        "Один из референсов ещё не готов или недоступен провайдеру. "
+        "Проверьте загрузку медиа и повторите позже."
+    ),
+}
+
+
+def safe_user_error_message(exc: NeironychProviderError) -> str:
+    """Return an allowlisted public reason without echoing provider input/body."""
+
+    if exc.error_code in _SAFE_USER_REASONS:
+        return _SAFE_USER_REASONS[exc.error_code]
+    if exc.status_code == 400:
+        return (
+            "Провайдер отклонил запрос. Проверьте параметры генерации и формат "
+            "прикреплённых медиа."
+        )
+    if exc.status_code == 402:
+        return (
+            "Провайдер временно не может принять генерацию из-за состояния "
+            "своего баланса. Попробуйте позже."
+        )
+    return f"Neironych API HTTP {exc.status_code}: {exc.error_code or 'provider_error'}"
+
+
 def verified_rejection_receipt(
     response: httpx.Response,
     *,
