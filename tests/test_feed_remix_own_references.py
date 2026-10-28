@@ -119,7 +119,7 @@ async def _public_seedance_source(
 
     filename = f"test-seedance-author-recipe-{source.id}.mp4"
     target = FeedStaticStorage.ensure_root() / filename
-    target.write_bytes(b"synthetic-seedance-feed-video")
+    target.write_bytes(b"\x00\x00\x00\x18ftypisomsynthetic-seedance-feed-video")
     local_url = f"{FeedStaticStorage.public_prefix()}/{filename}"
     source.result_url = local_url
     source.parameters = {
@@ -128,21 +128,19 @@ async def _public_seedance_source(
         "_result_urls": [local_url],
         "_feed_static": True,
     }
-    asset = MediaAsset(
-        generation_id=source.id,
-        user_id=author.id,
-        ordinal=0,
-        source_url=provider_url,
-        status="ready",
-        bucket="test-feed",
-        object_key=f"feed/{source.id}.mp4",
-        content_type="video/mp4",
+    session.add(
+        MediaAsset(
+            generation_id=source.id,
+            user_id=author.id,
+            ordinal=0,
+            source_url=provider_url,
+            status="ready",
+            bucket="test-feed",
+            object_key=f"feed/{source.id}.mp4",
+            content_type="video/mp4",
+        )
     )
-    session.add(asset)
-    await session.flush()
     await session.commit()
-    await session.refresh(source)
-    assert await session.get(MediaAsset, asset.id) is not None
     return source, target
 
 
