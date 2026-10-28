@@ -15,6 +15,7 @@ from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
+from app.services.feed_seedance_replay import is_private_seedance_author_replay
 from app.services.generations import MAX_GENERATION_QUANTITY, GenerationService
 from app.services.media_assets import MediaAssetService
 from app.services.model_family_catalog import build_model_families
@@ -117,11 +118,16 @@ def _public_settings(generation: Generation) -> dict[str, Any]:
     except UnknownModelError:
         return {}
     allowed = set(spec.known_fields)
-    return {
+    public = {
         key: value
         for key, value in params.items()
         if key in allowed and not key.startswith("_") and key != "prompt"
     }
+    if is_private_seedance_author_replay(generation):
+        # The source video belongs to the feed author. It is needed by the
+        # worker, but must never become a URL disclosed in the remixer's history.
+        public.pop("reference_video_urls", None)
+    return public
 
 
 def _generation_view(
@@ -149,15 +155,17 @@ def _generation_view(
         "pending"
     )
     trend_hidden = generation.action_type == "trend"
+    private_seedance_replay = is_private_seedance_author_replay(generation)
+    prompt_hidden = trend_hidden or private_seedance_replay
     model = _model_view(generation)
     view: dict[str, object] = {
         "id": str(generation.id),
         "status": generation.status,
-        "prompt": "" if trend_hidden else generation.prompt,
+        "prompt": "" if prompt_hidden else generation.prompt,
         "model": model,
         "settings": _public_settings(generation),
-        "prompt_hidden": trend_hidden,
-        "prompt_actions_allowed": not trend_hidden,
+        "prompt_hidden": prompt_hidden,
+        "prompt_actions_allowed": not prompt_hidden,
         "cost_credits": _amount(cost),
         "cost_rox": _amount(cost),
         "cost_rub": _amount(InternalCreditService.rubles_for(cost)),
@@ -277,6 +285,11 @@ def _recreate_payload_for_generation(generation: Generation) -> dict[str, object
 
     params = dict(generation.parameters or {})
     model_id = str(params.get("_model_id") or "")
+    if is_private_seedance_author_replay(generation):
+        raise HTTPException(
+            status_code=409,
+            detail="This repeat uses a private source recipe",
+        )
     if not model_id:
         raise HTTPException(status_code=409, detail="Generation has no reusable model")
     if MusicGenerationService.is_music_model(model_id):

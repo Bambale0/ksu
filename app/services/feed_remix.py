@@ -12,6 +12,13 @@ from app.db.models import Generation
 from app.services.billing_access import BillingAccessService
 from app.services.feed import FeedError, FeedService
 from app.services.generations import GenerationService
+from app.services.feed_seedance_replay import (
+    PRIVATE_AUTHOR_REPLAY_MARKER,
+    SEEDANCE_AUTHOR_REPLAY_MODEL_ID,
+    build_seedance_motion_identity_prompt,
+    seedance_identity_requirements,
+    seedance_motion_original_prompt_max_chars,
+)
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.seedance_prompt_limits import prompt_max_chars
 from app.services.model_routing import REFERENCE_PARAMETER_FIELDS
@@ -41,9 +48,10 @@ class FeedRemixService:
     """Server-owned feed repeat flow.
 
     Feed publications contribute the model, prompt and non-reference settings.
-    Reference media is never inherited from the author. A remix only starts after
-    the current user explicitly supplies references owned by their ROXY account.
-    Hidden prompts remain server-side throughout the flow.
+    Viewer-supplied media must belong to the current ROXY account. Seedance 2.5
+    additionally restores an author's original video reference server-side for
+    motion while replacing the person's identity with viewer-owned photos.
+    Hidden prompts and author reference URLs remain server-side throughout.
     """
 
     @staticmethod
@@ -85,8 +93,16 @@ class FeedRemixService:
         return list(dict.fromkeys(values))
 
     @classmethod
-    def _reference_requirements(cls, source: Generation) -> dict[str, int | bool]:
+    def _reference_requirements(
+        cls,
+        source: Generation,
+        effective_model_id: str,
+    ) -> dict[str, int | bool]:
         context = ReferenceResolver.generation_context(source)
+        if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
+            return seedance_identity_requirements(
+                source_image_count=len(context.reference_images),
+            )
         audio_references = cls._audio_references(context.parameters)
         image_count = len(context.reference_images)
         video_count = len(context.reference_videos)
@@ -102,6 +118,11 @@ class FeedRemixService:
     def _root_source_id(source: Generation) -> uuid.UUID:
         return source.source_feed_gen_id or source.id
 
+    @staticmethod
+    def _assert_root_source(source: Generation) -> None:
+        if source.source_feed_gen_id is not None:
+            raise FeedRemixReferenceError("A repeated work cannot be used as a new feed repeat")
+
     @classmethod
     async def prepare(
         cls,
@@ -116,6 +137,7 @@ class FeedRemixService:
             source_generation_id,
             surface=surface,
         )
+        cls._assert_root_source(source)
         requested_model_id, effective_model_id = cls._source_model_ids(source)
         card = await FeedService.to_card(
             session,
@@ -124,6 +146,27 @@ class FeedRemixService:
             surface=surface,
         )
         prompt_hidden = bool(card.get("prompt_hidden"))
+        source_context = ReferenceResolver.generation_context(source)
+        source_has_video_reference = (
+            bool(source_context.reference_videos)
+            if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID
+            else None
+        )
+        requirements = cls._reference_requirements(source, effective_model_id)
+        prompt_limit = prompt_max_chars(effective_model_id)
+        if source_has_video_reference:
+            prompt_limit = seedance_motion_original_prompt_max_chars(
+                identity_count=int(requirements["image_count"]),
+                max_chars=prompt_limit,
+            )
+            if prompt_hidden:
+                # Hidden prompts cannot be shortened by the viewer, so fail
+                # during prepare rather than after upload/quote.
+                build_seedance_motion_identity_prompt(
+                    source.prompt,
+                    identity_count=int(requirements["image_count"]),
+                    max_chars=prompt_max_chars(effective_model_id),
+                )
         return {
             "source_generation_id": str(source.id),
             "source_feed_gen_id": str(cls._root_source_id(source)),
@@ -131,13 +174,14 @@ class FeedRemixService:
             "model_id": requested_model_id,
             "effective_model_id": effective_model_id,
             "model_title": ModelCatalog.get(effective_model_id).title,
-            "prompt_max_length": prompt_max_chars(effective_model_id),
+            "prompt_max_length": prompt_limit,
             "prompt": "" if prompt_hidden else source.prompt,
             "prompt_hidden": prompt_hidden,
             "prompt_editable": not prompt_hidden,
             "settings": cls._reusable_parameters(source, effective_model_id),
             "billing_seconds": (source.parameters or {}).get("_billing_seconds"),
-            "reference_requirements": cls._reference_requirements(source),
+            "reference_requirements": requirements,
+            "source_has_video_reference": source_has_video_reference,
             "preview_url": card.get("preview_url") or card.get("result_url"),
             "media": card.get("media") or [],
         }
@@ -199,6 +243,44 @@ class FeedRemixService:
             parameters["reference_audio_urls"] = audios
         return parameters
 
+    @staticmethod
+    def _assert_seedance_identity_references(
+        references: dict[str, list[str]],
+        *,
+        expected_image_count: int,
+    ) -> None:
+        if references.get("video") or references.get("audio"):
+            raise FeedRemixReferenceError(
+                "For this Seedance repeat, add identity photo references only"
+            )
+        if len(references.get("image") or []) != expected_image_count:
+            raise FeedRemixReferenceError(
+                f"For this Seedance repeat, add exactly {expected_image_count} identity photo(s)"
+            )
+
+    @classmethod
+    def _seedance_replay_parameters(
+        cls,
+        base: dict[str, Any],
+        *,
+        source: Generation,
+        viewer_references: dict[str, list[str]],
+        expected_image_count: int,
+    ) -> tuple[dict[str, Any], list[str]]:
+        cls._assert_seedance_identity_references(
+            viewer_references,
+            expected_image_count=expected_image_count,
+        )
+        source_context = ReferenceResolver.generation_context(source)
+        parameters = dict(base)
+        parameters.pop("omni_reference_task_type", None)
+        viewer_images = viewer_references.get("image") or []
+        if viewer_images:
+            parameters["reference_images"] = viewer_images
+        if source_context.reference_videos:
+            parameters["reference_videos"] = source_context.reference_videos
+        return parameters, source_context.reference_videos
+
     @classmethod
     async def _composition(
         cls,
@@ -219,8 +301,9 @@ class FeedRemixService:
             source_generation_id,
             surface=surface,
         )
+        cls._assert_root_source(source)
         requested_model_id, effective_model_id = cls._source_model_ids(source)
-        requirements = cls._reference_requirements(source)
+        requirements = cls._reference_requirements(source, effective_model_id)
         references = await cls._owned_reference_urls(
             session,
             user_id=remix_author_id,
@@ -228,11 +311,25 @@ class FeedRemixService:
         )
         cls._assert_reference_requirements(requirements, references)
 
-        base = cls._reusable_parameters(source, effective_model_id)
-        parameters = cls._parameters_with_owned_references(base, references)
         prompt = source.prompt
         if source.feed_prompt_visible and source.source_feed_gen_id is None and prompt_override is not None:
             prompt = prompt_override.strip()
+        base = cls._reusable_parameters(source, effective_model_id)
+        if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
+            parameters, author_videos = cls._seedance_replay_parameters(
+                base,
+                source=source,
+                viewer_references=references,
+                expected_image_count=int(requirements["image_count"]),
+            )
+            if author_videos:
+                prompt = build_seedance_motion_identity_prompt(
+                    prompt,
+                    identity_count=len(references.get("image") or []),
+                    max_chars=prompt_max_chars(effective_model_id),
+                )
+        else:
+            parameters = cls._parameters_with_owned_references(base, references)
         billing_seconds = (source.parameters or {}).get("_billing_seconds")
         return source, requested_model_id, prompt, parameters, billing_seconds
 
@@ -314,7 +411,14 @@ class FeedRemixService:
             source_feed_gen_id=root_source_id,
             parent_generation_id=source.id,
             action_type="remix",
+            commit=False,
+            wake=False,
         )
+        if cls._source_model_ids(source)[1] == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
+            generation.parameters = {
+                **dict(generation.parameters or {}),
+                PRIVATE_AUTHOR_REPLAY_MARKER: True,
+            }
         session.add(
             FeedRemixEvent(
                 source_generation_id=source.id,
@@ -325,4 +429,5 @@ class FeedRemixService:
             )
         )
         await session.commit()
+        await GenerationService.wake(redis, [generation.id])
         return generation

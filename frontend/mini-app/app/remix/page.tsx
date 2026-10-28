@@ -99,6 +99,8 @@ export default function FeedRemixPage() {
   }), [references]);
 
   const referenceRequirements = draft?.reference_requirements ?? EMPTY_REFERENCE_REQUIREMENTS;
+  const isSeedanceAuthorReplay = typeof draft?.source_has_video_reference === "boolean";
+  const sourceHasVideoReference = draft?.source_has_video_reference === true;
 
   const requirementsMet = useMemo(() => (
     Boolean(draft)
@@ -235,7 +237,11 @@ export default function FeedRemixPage() {
     <StandaloneShell
       kicker="Повтор из ленты"
       title={draft?.model_title || "Своя версия работы"}
-      copy="Берём идею и настройки исходной работы, а референсы добавляете вы. Файлы автора в вашу генерацию не переносятся."
+      copy={isSeedanceAuthorReplay
+        ? sourceHasVideoReference
+          ? "Берём идею и настройки исходной работы. Видео автора задаст движение, а ваши фото — внешность."
+          : "Берём идею и настройки исходной работы, а внешность переносим с ваших фото."
+        : "Берём идею и настройки исходной работы, а референсы добавляете вы. Файлы автора в вашу генерацию не переносятся."}
     >
       {loading ? <div className="panel tool-panel"><p className="muted">Подготавливаю повтор…</p></div> : null}
       {error ? <div className="action-error" role="alert">{error}</div> : null}
@@ -253,36 +259,40 @@ export default function FeedRemixPage() {
             <div>
               <span className="kicker">1 · Идея</span>
               {draft.prompt_hidden
-                ? <><h2>Промпт автора скрыт</h2><p className="muted">ROXY использует исходный промпт на сервере, но не раскрывает его. Вам остаётся заменить референсы своими.</p></>
+                ? <><h2>Промпт автора скрыт</h2><p className="muted">{isSeedanceAuthorReplay ? "ROXY использует исходный промпт на сервере, но не раскрывает его. Добавьте свои фото для переноса внешности." : "ROXY использует исходный промпт на сервере, но не раскрывает его. Вам остаётся заменить референсы своими."}</p></>
                 : <label className="field"><span className="label">Описание</span><textarea className="control textarea" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={draft.prompt_max_length || 8000} /></label>}
             </div>
 
             <div>
               <span className="kicker">2 · Ваши референсы</span>
-              <h2>{requiredRows.length ? "Замените референсы автора" : "Добавьте свои референсы"}</h2>
-              <p className="muted">В повтор попадут только файлы из вашего аккаунта ROXY. Референсы исходной публикации не копируются.</p>
+              <h2>{isSeedanceAuthorReplay ? "Добавьте фото внешности" : requiredRows.length ? "Замените референсы автора" : "Добавьте свои референсы"}</h2>
+              <p className="muted">{isSeedanceAuthorReplay
+                ? sourceHasVideoReference
+                  ? "Исходный видео-референс автора задаст движение и сцену. Ваши фото зададут внешность; ссылка на видео автора останется скрыта."
+                  : "У автора нет видео-референса: ROXY повторит его промпт и настройки с вашими фото, не подставляя готовый ролик."
+                : "В повтор попадут только файлы из вашего аккаунта ROXY. Авторские референсы для обычных моделей не копируются."}</p>
 
               {requiredRows.length ? <div className="form-stack">
                 {requiredRows.map(([kind, required, accept]) => {
                   const current = counts[kind];
                   return <div className="field" key={kind}>
                     <span className="label">Нужно: {requirementLabel(kind, required)} · добавлено {current}</span>
-                    <label className="upload-control">
+                    {isSeedanceAuthorReplay && current >= required ? <p className="muted">Нужные фото добавлены. Чтобы заменить фото, удалите его ниже.</p> : <label className="upload-control">
                       <span>{uploading ? "Загружаю…" : current >= required ? "Добавить ещё" : "Выбрать файлы"}</span>
                       <input type="file" multiple accept={accept} disabled={uploading} onChange={(event) => {
                         const files = Array.from(event.currentTarget.files || []);
                         event.currentTarget.value = "";
                         void upload(files, kind);
                       }} />
-                    </label>
+                    </label>}
                   </div>;
                 })}
               </div> : <label className="upload-control">
-                <span>{uploading ? "Загружаю…" : "Добавить фото, видео или аудио"}</span>
-                <input type="file" multiple accept="image/*,video/*,audio/*" disabled={uploading} onChange={(event) => {
+                <span>{uploading ? "Загружаю…" : isSeedanceAuthorReplay ? "Добавить фото" : "Добавить фото, видео или аудио"}</span>
+                <input type="file" multiple accept={isSeedanceAuthorReplay ? "image/*" : "image/*,video/*,audio/*"} disabled={uploading} onChange={(event) => {
                   const files = Array.from(event.currentTarget.files || []);
                   event.currentTarget.value = "";
-                  void upload(files);
+                  void upload(files, isSeedanceAuthorReplay ? "image" : undefined);
                 }} />
               </label>}
 
@@ -297,7 +307,7 @@ export default function FeedRemixPage() {
           <aside className="panel tool-panel">
             <span className="kicker">3 · Запуск</span>
             <h2>{draft.model_title || "Повтор работы"}</h2>
-            <p className="muted">Настройки исходной работы сохранены. ROXY автоматически выберет text/reference режим модели по вашим файлам.</p>
+            <p className="muted">{isSeedanceAuthorReplay ? "ROXY восстановит авторский рецепт на сервере и передаст фото как референсы внешности." : "Настройки исходной работы сохранены. ROXY автоматически выберет text/reference режим модели по вашим файлам."}</p>
             <div className="quote-box">
               <span>Стоимость</span>
               <strong>{quote?.cost_rox ? `${quote.cost_rox} ROX` : "—"}</strong>
