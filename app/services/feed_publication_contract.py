@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -46,6 +47,10 @@ def install_feed_publication_contract() -> None:
     previous_provider_result_urls = FeedService._provider_result_urls
     previous_to_card = FeedService.to_card
 
+    def is_signed_server_media_url(value: str) -> bool:
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return len(parts) >= 5 and parts[:3] == ["api", "v1", "media"] and parts[4] == "signed"
+
     @staticmethod
     def provider_result_urls(generation: Generation) -> list[str]:
         params = dict(generation.parameters or {})
@@ -57,7 +62,9 @@ def install_feed_publication_contract() -> None:
         return [
             item
             for item in values
-            if item.startswith("https://") and not FeedStaticStorage.is_local_url(item)
+            if item.startswith("https://")
+            and not FeedStaticStorage.is_local_url(item)
+            and not is_signed_server_media_url(item)
         ]
 
     async def owned_media_sources(  # type: ignore[no-untyped-def]

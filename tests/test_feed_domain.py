@@ -396,6 +396,7 @@ async def test_publish_translates_local_storage_oserror_to_media_unavailable(
 ) -> None:
     monkeypatch.setenv("MEDIA_LOCAL_ROOT", str(tmp_path / "private-media"))
     monkeypatch.setenv("FEED_STATIC_ROOT", str(tmp_path / "feed-static"))
+    monkeypatch.setattr(settings, "public_base_url", "https://roxy.example")
 
     async with SessionFactory() as session:
         author = await _user(session, "Unavailable feed disk")
@@ -414,7 +415,8 @@ async def test_publish_translates_local_storage_oserror_to_media_unavailable(
         )
         session.add(asset)
         await session.flush()
-        private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        relative_private_url = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=key)
+        private_url = f"https://roxy.example{relative_private_url}"
         generation.result_url = private_url
         generation.parameters = {
             "_model_id": "nano-banana-pro",
@@ -422,7 +424,15 @@ async def test_publish_translates_local_storage_oserror_to_media_unavailable(
         }
         await session.commit()
 
-        async def fail_local_persistence(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        persistence_calls: list[list[str | Path]] = []
+
+        async def fail_local_persistence(  # type: ignore[no-untyped-def]
+            sources,
+            **_kwargs,
+        ):
+            persistence_calls.append(sources)
+            if not sources or not isinstance(sources[0], Path):
+                raise AssertionError("signed server media must not use self-HTTP fallback")
             raise OSError("feed volume is unavailable")
 
         monkeypatch.setattr(FeedStaticStorage, "persist_sources", fail_local_persistence)
@@ -437,6 +447,7 @@ async def test_publish_translates_local_storage_oserror_to_media_unavailable(
 
         await session.refresh(generation)
         assert generation.publication_scope == "private"
+        assert len(persistence_calls) == 1
 
 
 @pytest.mark.asyncio
