@@ -158,6 +158,43 @@ test('admin creates a v2 photo-to-video recipe from catalog-driven controls', as
   expect(state.errors).toEqual([]);
 });
 
+test('admin uploads separate images for workflow steps 1 and 2', async ({ page }) => {
+  const state = await setup(page);
+  let uploads = 0;
+  await page.route('**/api/v1/uploads/kie', route => {
+    uploads += 1;
+    return route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ url: `https://cdn.example.invalid/step-${uploads}.jpg` }),
+    });
+  });
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Тренд с обложками шагов');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByLabel('Промпт фото', { exact: true }).fill('Подготовь фото @Image1');
+  await form.getByLabel('Промпт видео', { exact: true }).fill('Оживи @Image1');
+
+  await form.getByLabel('Загрузить фото шага 1', { exact: true }).setInputFiles({
+    name: 'step-1.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-step-1'),
+  });
+  await form.getByLabel('Загрузить фото шага 2', { exact: true }).setInputFiles({
+    name: 'step-2.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-step-2'),
+  });
+  await expect(form.getByLabel('URL фото шага 1', { exact: true })).toHaveValue('https://cdn.example.invalid/step-1.jpg');
+  await expect(form.getByLabel('URL фото шага 2', { exact: true })).toHaveValue('https://cdn.example.invalid/step-2.jpg');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps.map(step => step.preview_url)).toEqual([
+    'https://cdn.example.invalid/step-1.jpg',
+    'https://cdn.example.invalid/step-2.jpg',
+  ]);
+  expect(uploads).toBe(2);
+  expect(state.errors).toEqual([]);
+});
+
 test('editing and duplicating a v2 recipe preserve both structural steps and metadata', async ({ page }) => {
   const original = { id: 'workflow-1', title: 'Исходный workflow', is_active: true, payload: v2Payload() };
   const state = await setup(page, { items: [original] });

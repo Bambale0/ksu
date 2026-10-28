@@ -228,6 +228,11 @@ class TrendWorkflowService:
                 "kind": kind,
                 "title": str(raw_step.get("title") or step_id).strip()[:120],
                 "instructions": str(raw_step.get("instructions") or "").strip()[:2000],
+                "preview_url": (
+                    _safe_url(raw_step["preview_url"], field="step preview_url")
+                    if raw_step.get("preview_url")
+                    else None
+                ),
                 "model_id": spec.id,
                 "model_title": spec.title,
                 "prompt": prompt,
@@ -892,7 +897,11 @@ class TrendWorkflowService:
             for key in ("duration", "resolution", "aspect_ratio")
             if key in settings and isinstance(settings[key], (str, int, float))
         }
-        return {"model": {"id": model_id, "title": title}, "settings_summary": summary}
+        return {
+            "model": {"id": model_id, "title": title},
+            "settings_summary": summary,
+            "preview_url": step.get("preview_url"),
+        }
 
     @classmethod
     async def latest_owned_view(

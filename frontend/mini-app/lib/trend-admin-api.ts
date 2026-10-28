@@ -82,6 +82,7 @@ type TrendAdminStepBase = {
   kind: "image" | "video";
   title: string;
   instructions: string;
+  preview_url?: string | null;
   model_id: string;
   model_title?: string;
   prompt: string;

@@ -383,8 +383,10 @@ function TrendWorkflowRunner({
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
   const workflowThumbnailUrl = trend?.preview_thumbnail_url || workflow.preview_thumbnail_url || "";
   const workflowCoverFallbackUrl = (trend?.preview_url && !previewUrlHasVideoExtension(trend.preview_url) ? trend.preview_url : "") || selectedMediaUrl;
-  const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : (workflowThumbnailUrl || workflowCoverFallbackUrl);
-  const videoOverviewUrl = workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
+  const photoOverviewUrl = photoReady && selectedMediaUrl
+    ? selectedMediaUrl
+    : (photoStep?.preview_url || workflowThumbnailUrl || workflowCoverFallbackUrl);
+  const videoOverviewUrl = videoStep?.preview_url || workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
   const photoReadOnly = Boolean(videoStep?.generation_id);
   const inputsLocked = Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(photoStatus);

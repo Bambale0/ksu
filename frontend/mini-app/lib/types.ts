@@ -255,6 +255,7 @@ export type TrendWorkflowStep = {
   kind: "image" | "video" | string;
   title: string;
   instructions?: string;
+  preview_url?: string | null;
   inputs: TrendWorkflowInput[];
   status: "pending" | "running" | "queued" | "ready" | "failed" | "awaiting_media" | "reconciling" | string;
   generation_id?: string | null;

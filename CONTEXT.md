@@ -1118,3 +1118,10 @@ The sole fd694ca5 CI failure was an early synchronous quote-count observation in
 
 - Baseline `main` `530fbc4a70a2615cf9ffd2ba5ef7d547019c85b8`. Scope: align the Neironych Seedance 2.5 boundary with ArgoLink's current `generate_audio=false`, edit, extend and draft contract; retain accepted jobs in durable reconciliation after KSU's hard lifetime; expose only allowlisted safe 400/402 reasons. Provider route revision/order, pricing, wallet entries and production are out of scope.
 - Audit, acceptance criteria, verification matrix, provider references and rollback: [docs/agents/EXECUTION/seedance25-contract-reconciliation-20261028.md](docs/agents/EXECUTION/seedance25-contract-reconciliation-20261028.md). Branch `fix/seedance25-contract-reconciliation-20261028`; no paid request, merge or deploy is authorized.
+
+## Active Feature Execution — separate trend step previews (2026-10-28)
+
+- Baseline `main` `b2f05a36fd2b2067c4312bd7f5d94b5e8bd93b03`; branch `feat/trend-step-previews-20261028`.
+- Add optional safe `preview_url` metadata to each step of a two-step photo-to-video recipe. Admin uploads Step 1 and Step 2 images separately; the customer overview prefers the corresponding image and retains the existing workflow-cover fallback for old content.
+- No schema migration, provider request, pricing, wallet, permission or step-execution change. No paid generation or production mutation.
+- Acceptance, TDD evidence and rollback: [docs/agents/EXECUTION/trend-step-previews-20261028.md](docs/agents/EXECUTION/trend-step-previews-20261028.md).

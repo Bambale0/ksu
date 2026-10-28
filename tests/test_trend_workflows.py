@@ -88,6 +88,27 @@ def test_v2_recipe_normalizes_two_ordered_steps_and_explicit_output_binding() ->
     ]
 
 
+def test_v2_recipe_preserves_separate_safe_step_preview_urls() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["preview_url"] = "https://cdn.example.invalid/step-1.jpg"
+    payload["steps"][1]["preview_url"] = "https://cdn.example.invalid/step-2.jpg"
+
+    recipe = TrendService.normalize_recipe("Photo then video", payload)
+
+    assert [step["preview_url"] for step in recipe["steps"]] == [
+        "https://cdn.example.invalid/step-1.jpg",
+        "https://cdn.example.invalid/step-2.jpg",
+    ]
+
+
+def test_v2_recipe_rejects_unsafe_step_preview_url() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["preview_url"] = "javascript:alert(1)"
+
+    with pytest.raises(TrendWorkflowError, match="preview_url"):
+        TrendService.normalize_recipe("Unsafe preview", payload)
+
+
 def test_v2_recipe_rejects_misordered_steps_before_persistence() -> None:
     payload = _v2_payload()
     payload["steps"] = list(reversed(payload["steps"]))
