@@ -83,7 +83,7 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false } = {}) {
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, failStepPreviews = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false } = {}) {
   const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
   let photoReady = false;
   let photoFailed = false;
@@ -126,11 +126,15 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
     } };
   }, safeAreaInsets);
   await page.route('https://media.example.invalid/**', (route) => {
-    if (new URL(route.request().url()).pathname.endsWith('/photo-owned.jpg')) {
+    const pathname = new URL(route.request().url()).pathname;
+    if (failStepPreviews && pathname.includes('/step-')) {
+      return route.fulfill({ status: 503, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: '{}' });
+    }
+    if (pathname.endsWith('/photo-owned.jpg')) {
       state.ownedPreviewUrls.push(route.request().url());
       if (failOwnedPreview) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
     }
-    return route.fulfill({ contentType: 'image/png', body: PHOTO_BYTES });
+    return route.fulfill({ contentType: 'image/png', headers: { 'cache-control': 'no-store' }, body: PHOTO_BYTES });
   });
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -365,6 +369,15 @@ test('workflow response thumbnail covers stale trend metadata after run creation
   await expect(images).toHaveCount(2);
   await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
   await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+});
+
+test('broken step previews fall back to the workflow thumbnail', async ({ page }) => {
+  await setup(page, { stepPreviews: true, failStepPreviews: true });
+  const images = page.getByRole('navigation', { name: 'Этапы сценария' }).getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {
