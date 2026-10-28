@@ -109,37 +109,40 @@ function workflowPreviewCanCacheBust(url: string): boolean {
   return /\/api\/v1\/trends\/[^/?]+\/preview-thumbnail(?:[?#]|$)/.test(url);
 }
 
-function WorkflowStageImage({ primaryUrl, fallbackUrl, alt }: { primaryUrl: string; fallbackUrl: string; alt: string }) {
+function WorkflowStageImage({ primaryUrl, fallbackUrl, finalFallbackUrl, alt }: { primaryUrl: string; fallbackUrl: string; finalFallbackUrl: string; alt: string }) {
   const [attempt, setAttempt] = useState(0);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [sourceIndex, setSourceIndex] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const retryTimer = useRef<number | null>(null);
+  const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
+  const sourceKey = sources.join("\u0000");
 
   useEffect(() => {
     setAttempt(0);
-    setUsingFallback(false);
+    setSourceIndex(0);
     setUnavailable(false);
     return () => {
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
     };
-  }, [fallbackUrl, primaryUrl]);
+  }, [sourceKey]);
 
-  const source = usingFallback ? fallbackUrl : primaryUrl;
-  const canRetryPrimary = !usingFallback && workflowPreviewCanCacheBust(primaryUrl);
+  const source = sources[sourceIndex] || "";
+  const canRetrySource = workflowPreviewCanCacheBust(source);
   if (!source || unavailable) return <span className={styles.workflowStageFallback} aria-hidden="true" />;
   return <img
-    src={canRetryPrimary ? workflowPreviewRetryUrl(source, attempt) : source}
+    src={canRetrySource ? workflowPreviewRetryUrl(source, attempt) : source}
     alt={alt}
     onError={() => {
       if (retryTimer.current !== null) return;
-      if (canRetryPrimary && attempt < 3) {
+      if (canRetrySource && attempt < 3) {
         retryTimer.current = window.setTimeout(() => {
           retryTimer.current = null;
           setAttempt((current) => current + 1);
         }, 600);
-      } else if (!usingFallback && fallbackUrl && fallbackUrl !== primaryUrl) {
-        setUsingFallback(true);
+      } else if (sourceIndex + 1 < sources.length) {
+        setAttempt(0);
+        setSourceIndex((current) => current + 1);
       } else {
         setUnavailable(true);
       }
@@ -383,8 +386,10 @@ function TrendWorkflowRunner({
   const selectedMediaUrl = workflowMediaUrl(selectedMedia);
   const workflowThumbnailUrl = trend?.preview_thumbnail_url || workflow.preview_thumbnail_url || "";
   const workflowCoverFallbackUrl = (trend?.preview_url && !previewUrlHasVideoExtension(trend.preview_url) ? trend.preview_url : "") || selectedMediaUrl;
-  const photoOverviewUrl = photoReady && selectedMediaUrl ? selectedMediaUrl : (workflowThumbnailUrl || workflowCoverFallbackUrl);
-  const videoOverviewUrl = workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
+  const photoOverviewUrl = photoReady && selectedMediaUrl
+    ? selectedMediaUrl
+    : (photoStep?.preview_url || workflowThumbnailUrl || workflowCoverFallbackUrl);
+  const videoOverviewUrl = videoStep?.preview_url || workflowThumbnailUrl || workflowCoverFallbackUrl || photoOverviewUrl;
   const selectionVersion = `${selectedAssetId}:${selectedMediaUrl}`;
   const photoReadOnly = Boolean(videoStep?.generation_id);
   const inputsLocked = Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(photoStatus);
@@ -741,7 +746,7 @@ function TrendWorkflowRunner({
       </button>
       <nav className={styles.workflowOverview} aria-label="Этапы сценария">
         <button className={styles.workflowStageCard} type="button" aria-label="Шаг 1. Подготовить фото" onClick={focusPhoto}>
-          <WorkflowStageImage primaryUrl={photoOverviewUrl} fallbackUrl={workflowCoverFallbackUrl} alt="Шаг 1: Подготовить фото" />
+          <WorkflowStageImage primaryUrl={photoOverviewUrl} fallbackUrl={workflowThumbnailUrl} finalFallbackUrl={workflowCoverFallbackUrl} alt="Шаг 1: Подготовить фото" />
           <span className={styles.workflowStageScrim} aria-hidden="true" />
           <span className={styles.workflowStageIcon}><WorkflowCameraIcon /></span>
           <strong className={styles.workflowStageLabel}>ШАГ 1</strong>
@@ -762,7 +767,7 @@ function TrendWorkflowRunner({
             document.querySelector<HTMLElement>('[data-step="animate_photo"]')?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           }}
         >
-          <WorkflowStageImage primaryUrl={videoOverviewUrl} fallbackUrl={workflowCoverFallbackUrl} alt="Шаг 2: Оживить фото" />
+          <WorkflowStageImage primaryUrl={videoOverviewUrl} fallbackUrl={workflowThumbnailUrl} finalFallbackUrl={workflowCoverFallbackUrl} alt="Шаг 2: Оживить фото" />
           <span className={styles.workflowStageScrim} aria-hidden="true" />
           <span className={styles.workflowStageIcon}><WorkflowVideoIcon /></span>
           {!videoUnlocked ? <span className={styles.workflowLockedChip}>Сначала Шаг 1</span> : null}

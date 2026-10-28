@@ -104,6 +104,7 @@ type LegacyDraft = DraftBase & {
 type WorkflowStepDraft = {
   title: string;
   instructions: string;
+  previewUrl: string;
   modelId: string;
   prompt: string;
   parameters: Record<string, unknown>;
@@ -214,6 +215,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
       photo: {
         title: photo.title,
         instructions: photo.instructions || "",
+        previewUrl: String(photo.preview_url || ""),
         modelId: photo.model_id,
         prompt: photo.prompt,
         parameters: cloneParameters(photo.parameters),
@@ -222,6 +224,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
       video: {
         title: video.title,
         instructions: video.instructions || "",
+        previewUrl: String(video.preview_url || ""),
         modelId: video.model_id,
         prompt: video.prompt,
         parameters: cloneParameters(video.parameters),
@@ -300,6 +303,7 @@ function emptyWorkflowDraft(models: TrendAdminModel[]): WorkflowDraft {
     photo: {
       title: "Подготовить фото",
       instructions: "",
+      previewUrl: "",
       modelId: photoModel?.id || "",
       prompt: "",
       parameters: workflowParameterDefaults(photoModel),
@@ -308,6 +312,7 @@ function emptyWorkflowDraft(models: TrendAdminModel[]): WorkflowDraft {
     video: {
       title: "Оживить фото",
       instructions: "",
+      previewUrl: "",
       modelId: videoModel?.id || "",
       prompt: "",
       parameters: workflowParameterDefaults(videoModel),
@@ -609,6 +614,30 @@ export function InlineTrendAdmin() {
     }
   };
 
+  const uploadWorkflowStepPreview = async (step: "photo" | "video", file?: File) => {
+    if (!file || uploading || draft.mode !== "workflow") return;
+    if (!file.type.startsWith("image/")) {
+      setError("Для шага выберите изображение");
+      return;
+    }
+    const version = draftVersion.current;
+    setUploading(true);
+    setError("");
+    try {
+      const uploaded = await api.upload(file);
+      if (draftVersion.current !== version) return;
+      setDraft((current) => current.mode === "workflow" ? {
+        ...current,
+        [step]: { ...current[step], previewUrl: uploaded.url },
+      } : current);
+    } catch (cause) {
+      if (draftVersion.current !== version) return;
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить фото шага");
+    } finally {
+      if (draftVersion.current === version) setUploading(false);
+    }
+  };
+
   const uploadAudio = async (file?: File) => {
     if (!file || uploading || !audioAllowed || draft.mode !== "legacy") return;
     const version = draftVersion.current;
@@ -701,6 +730,7 @@ export function InlineTrendAdmin() {
         kind: "image",
         title: draft.photo.title.trim(),
         instructions: draft.photo.instructions.trim(),
+        preview_url: draft.photo.previewUrl.trim() || undefined,
         model_id: photoModel.id,
         prompt: draft.photo.prompt.trim(),
         parameters: cloneParameters(draft.photo.parameters),
@@ -712,6 +742,7 @@ export function InlineTrendAdmin() {
         kind: "video",
         title: draft.video.title.trim(),
         instructions: draft.video.instructions.trim(),
+        preview_url: draft.video.previewUrl.trim() || undefined,
         model_id: videoModel.id,
         prompt: draft.video.prompt.trim(),
         parameters: cloneParameters(draft.video.parameters),
@@ -899,6 +930,9 @@ export function InlineTrendAdmin() {
         {draft.mode === "workflow" ? <>
           <section className="inline-trend-workflow-step" aria-labelledby="photo-step-heading">
             <div className="inline-trend-section-heading"><strong id="photo-step-heading">Шаг 1 · Фото</strong><small>Модель и поля берутся из серверного каталога.</small></div>
+            <label><span>Загрузить фото шага 1</span><input aria-label="Загрузить фото шага 1" type="file" accept="image/*" disabled={uploading || saving} onChange={(event) => { const input = event.currentTarget; const file = input.files?.[0]; input.value = ""; void uploadWorkflowStepPreview("photo", file); }} /><small>Изображение для карточки первого шага.</small></label>
+            {draft.photo.previewUrl ? <div className="inline-trend-form-preview"><img src={draft.photo.previewUrl} alt="Фото карточки шага 1" /></div> : null}
+            <label><span>URL фото шага 1</span><input aria-label="URL фото шага 1" type="url" value={draft.photo.previewUrl} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, previewUrl: event.target.value } } : current)} placeholder="https://…" /></label>
             <label><span>Название шага фото</span><input value={draft.photo.title} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, title: event.target.value } } : current)} required /></label>
             <label><span>Модель фото</span><select value={draft.photo.modelId} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, modelId: event.target.value, parameters: workflowParameterDefaults(models.find((model) => model.id === event.target.value)) } } : current)} required><option value="">Выберите фото-модель</option>{workflowPhotoModels.map((model) => <option value={model.id} key={model.id}>{model.title || model.id}{model.price_rox ? ` · ${model.price_rox} ROX` : ""}</option>)}</select><small>Цена только для просмотра; расчёт тарифа остаётся на сервере.</small></label>
             <label><span>Инструкции к фото</span><textarea rows={2} value={draft.photo.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, instructions: event.target.value } } : current)} /></label>
@@ -909,6 +943,9 @@ export function InlineTrendAdmin() {
 
           <section className="inline-trend-workflow-step" aria-labelledby="video-step-heading">
             <div className="inline-trend-section-heading"><strong id="video-step-heading">Шаг 2 · Видео</strong><small>Выберите реальную image-to-video модель и её объявленное поле первого кадра.</small></div>
+            <label><span>Загрузить фото шага 2</span><input aria-label="Загрузить фото шага 2" type="file" accept="image/*" disabled={uploading || saving} onChange={(event) => { const input = event.currentTarget; const file = input.files?.[0]; input.value = ""; void uploadWorkflowStepPreview("video", file); }} /><small>Изображение для карточки второго шага.</small></label>
+            {draft.video.previewUrl ? <div className="inline-trend-form-preview"><img src={draft.video.previewUrl} alt="Фото карточки шага 2" /></div> : null}
+            <label><span>URL фото шага 2</span><input aria-label="URL фото шага 2" type="url" value={draft.video.previewUrl} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, previewUrl: event.target.value } } : current)} placeholder="https://…" /></label>
             <label><span>Название шага видео</span><input value={draft.video.title} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, title: event.target.value } } : current)} required /></label>
             <label><span>Модель видео</span><select aria-label="Модель видео" aria-describedby="workflow-video-model-help" value={draft.video.modelId} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, modelId: event.target.value, parameters: workflowParameterDefaults(models.find((model) => model.id === event.target.value)), bindingTarget: workflowBindingTarget(models.find((model) => model.id === event.target.value)) } } : current)} required><option value="">Выберите I2V-модель</option>{workflowVideoModels.map((model) => <option value={model.id} key={model.id}>{model.title || model.id}{model.price_rox ? ` · ${model.price_rox} ROX` : ""}</option>)}</select><small id="workflow-video-model-help">В список попадают только модели с серверно подтверждённой I2V-возможностью.</small></label>
             <label><span>Инструкции к видео</span><textarea rows={2} value={draft.video.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, instructions: event.target.value } } : current)} /></label>
