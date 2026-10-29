@@ -1,3 +1,11 @@
+## Active Feature Execution — Neironych Qwen primary for photo/video prompts (2026-10-29)
+
+- User request: make Neironych primary for photo and video prompt analysis, using `qwen3.8-max`. Scope is `image_analysis` and `video_prompt`; text prompt building, Pinterest analysis and generation routing retain their contracts.
+- Fresh baseline `main`/deployed `e39b6485960d068365e4091fa30614201dbaa684`, tree `77fadc9657a7960d8dcd13eee295da70189b8bcf`. Existing overlapping draft [PR #542](https://github.com/Bambale0/ksu/pull/542), head `49a3af3d332f5a061e17f473ee407083b681c82c`, contains a Qwen adapter but still admits Nexus-primary tasks. Reuse this work and preserve the current main changes.
+- Existing task/outbox/wallet/notification contracts and admin runtime control plane can be reused without a schema migration. New tasks must freeze the configured provider/model/revision; historical Nexus/Kie tasks and idempotent replays must retain their recorded route. Admin changes require permission, fresh step-up, confirmation, optimistic revision and the command ledger.
+- Audit before production edits: [docs/agents/EXECUTION/qwen-photo-video-primary-20261029.md](docs/agents/EXECUTION/qwen-photo-video-primary-20261029.md). External provider contract, paid-call ambiguity, fenced submission, exact-head CI and actual media smoke are release gates; a model-catalog entry or mock alone is not proof of functioning vision.
+- Status: source/guidance audit complete; preparing behavior regressions and verifying Neironych chat semantics. Official QwenCloud confirms the exact model name. No production settings, customer charges or provider requests have been changed.
+
 ## Active Fix Execution — iPhone New Trend freeze with HTTP 502 (2026-10-29)
 
 - Baseline main `33e006149a05ae88d26b5b9c8ab2cf5f475cd5ff`, tree `3009c1f519a919d9b2c182fe71ba8341eb77e295`; branch `fix/iphone-new-trend-502-20261029`.
