@@ -91,3 +91,10 @@ Fresh audit before any corrective product edit:
 - **Reuse/scope:** retain the existing source ordering, bounded retry policy, signed-URL behavior, video component and functional test. If lifecycle evidence requires a fix, confine it to preview state ownership and its regressions; no provider, billing, API/schema, styling or new feature changes.
 - **Verification/acceptance:** failed step images recover to a decoded workflow thumbnail even when failure is immediate; a genuinely changed source set gets fresh state; obsolete timers/events cannot damage the replacement. Preserve valid video previews and user interactions. Then pass focused WebKit verification, independent review and all six exact final PR/main gates before normal deployment.
 - **Diagnostic isolation:** event instrumentation belongs only to the diagnostic branch and must not enter the product tree. No production test suite, customer task or provider inference is needed for this investigation.
+
+
+### Bounded original-test follow-up
+
+Instrumented diagnostic run 40909994845 at f6ea85be9e316b6c902f8c191a2855865d5dc898 passed all 12 WebKit repeats. All 24 image instances recorded reset before native error and React error, then fallback source index 1 and decoded 24x32 thumbnail. The suspected reset-after-error race was not reproduced; no preview production fix is justified by this evidence. Instrumentation and single-worker isolation can affect timing.
+
+The next diagnostic restores the exact product tree c11a15f9b96d456c139bd8c8a60fb4225c7292f0: original page blob f86156a5b538f0ec812676ba838a383f36b7a730 and test blob e52e2c65e6550ff7b10e99ec9f70a0fee0eb431d. Only this audit and the diagnostic workflow differ. The unchanged target runs 30 times in WebKit 1.56.1 with two workers and --retries=0. Any failure stops the release sequence for investigation. If all pass, allow one controlled full Mini App workflow rerun on unchanged PR head 4aea7046c6facd68dbcbac63f581832afcfc9c31, followed by all mandatory exact merged-main gates. This does not establish a root cause or claim the original failure is fixed.
