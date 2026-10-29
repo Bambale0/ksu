@@ -178,3 +178,8 @@ Ordinary (non-trend) generations keep full video-reference support, including th
 ### Telegram model price editor
 
 Open `🏷 Тарифы → 🎛 Цены моделей`, select a model, enter its positive base price (comma or dot decimal), and confirm publication. Per-second models show ROX/сек; other models show ROX. This editor preserves existing resolution/mode tiers, sibling models and packages. Use the full JSON editor for resolution/mode tier changes. Repeated publication of the same command is idempotent.
+
+
+## Two-stage curated templates
+
+Choose the photo -> video scenario in the Mini App template editor, configure its two models/prompts/inputs, and publish only after validation. Use concrete input names and help rather than relying on an instruction paragraph. The video source must be the selected output image, not a user-editable URL. Model prices remain managed in the existing tariff admin; there is no separate workflow price store. Metadata edits and duplication must retain both stages. Hiding a template stops new starts but does not revoke an owner's already pinned run. Follow [the workflow rollout/rollback instructions](TREND_PHOTO_VIDEO_WORKFLOWS.md#rollout-and-rollback); never remove active workflow rows/media or roll pending jobs onto older incompatible workers.

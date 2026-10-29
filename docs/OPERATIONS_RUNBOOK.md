@@ -489,13 +489,45 @@ not prove the upstream provider did not charge.
 Before rolling back the adapter, drain accepted Neironych tasks; changing routes
 for new requests must not move already accepted work to another provider.
 
-### Provider routes and Nano Banana Pro fallback
+### Provider routes and Neironych fallbacks
 
 New Nano Banana Pro requests remain Nexus-primary, with Neironych and Kie as
 configured fallbacks. Explicit fallback-safe Nexus failures may advance to
 Neironych. Once on Neironych, definite no-task rejections may advance to Kie;
 ambiguous synchronous image outcomes (transport/5xx/409) never create a second
 request on another provider.
+
+The same default Nexus -> Neironych -> Kie route covers Nano Banana 2,
+Nano Banana 2 Lite and both GPT Image 2 modes. Grok Imagine Video 1.5 keeps Kie
+primary and uses Neironych as fallback. Its provider ID is
+`grok-imagine-video-1.5`; both GPT modes use provider ID `gpt-image-2` and select
+images/generations or images/edits according to their references. Other models
+are unchanged. All Neironych synchronous images share the `neironych:image`
+circuit, isolated from accepted video jobs.
+
+When expanding the complete prior route registry, only the four historical
+Nexus -> Kie image defaults above gain Neironych. Existing nondefault routes,
+including Kie-primary Seedream and shorter Seedance routes, remain intact.
+After saving the expanded registry, Nexus -> Kie remains an explicit admin
+opt-out. Existing generations always retain their original route/body/key.
+
+Fallback preserves provider capabilities: Nano 2/Lite accept only five fixed
+ratios and at most three references; Lite only 1K. GPT maps fixed ratio plus
+1K/2K/4K to `size=WIDTHxHEIGHT`. Automatic GPT ratio combined with an explicit
+resolution cannot be represented without guessing and skips Neironych before
+POST; `auto` with no resolution uses provider `size=auto`. Grok supports 1–15
+seconds, fixed ratios and at most seven references; image references cannot
+use 1080p. Automatic ratio or a requested configurable content filter skips
+this provider. Unsupported combinations never silently clamp duration, remove
+references or replace automatic composition with square output.
+
+Image results may contain base64 or a temporary URL even when base64 was
+requested. URL downloads use the existing bounded public-HTTPS ingestion
+checks and a separate client with no provider credentials. Images are verified
+and encoded to the declared storage MIME. Invalid/unavailable results retain
+an uncertain outcome and never cause another paid request. All accepted videos,
+including Grok, reconcile an interrupted submission with the original saved
+wire body and idempotency key.
 Existing jobs retain their saved route. For a saved Nexus -> Neironych route,
 Explicit Nexus HTTP 401/402/404/429 before a task is accepted, an open circuit
 before submission, or a confirmed terminal technical failure can use the saved
@@ -514,9 +546,66 @@ step-up and confirmation. `GET /api/v1/admin/runtime` returns
 are rejected; reload before retrying. The existing admin command ledger records
 actor, request, target, revision and chosen routes. No secrets belong here.
 
+Seedream 5 Pro text/image modes also allow **Kie -> Nexus**. Select that route
+for both `seedream-5-pro-t2i` and `seedream-5-pro-i2i` to make Kie primary.
+The existing catalog defaults send `nsfw_checker=false` to Kie in both modes.
+An open provider circuit before submission or an explicit Kie HTTP/envelope
+401/402/404/429 rejection can advance to the saved Nexus fallback. Accepted tasks,
+timeouts, 5xx, malformed responses and content/validation rejections do not start
+another provider. A response carrying a task ID alongside an error code is
+uncertain and waits for reconciliation. Nexus still rejects controls it cannot
+represent (including Seedream Pro 21:9) without submitting a different request.
+Before rolling back to code without this route option, save Kie-only for new work;
+already saved job routes remain intact.
+
 Routes are stored in `AdminRuntimeSetting`; no migration is needed. Until the
 first admin save, the defaults above apply. Each new generation snapshots the
 route and revision. Changes are effective on the next admission without a
 restart and cannot move existing work, even if it has not submitted yet. For an
 operational rollback, select a single provider for new work and let already
 accepted jobs drain. Keep both provider credentials/adapters until they finish.
+
+### Neironych cash-balance alert
+
+The notification worker performs one partner-authenticated, read-only
+`GET /v1/balance` every `NEIRONYCH_BALANCE_ALERT_POLL_SECONDS` (300 seconds by
+default). It compares the provider's cash `balance_rub`, not ROX, customer
+wallets, the credit limit or available credit. One warning is queued when cash
+is at or below the threshold, one recovery is queued after it rises above, and
+the next drop re-arms the warning. Provider errors never fabricate a zero.
+
+In web admin **Настройки**, choose **Алерт Нейроныча** to enable/disable the
+monitor or change the exact RUB threshold. Saving requires `runtime.manage`, a
+fresh MFA step-up, confirmation and an idempotency key. The policy is audited in
+`AdminRuntimeSetting`; revision conflicts require a reload. Before its first
+save, `NEIRONYCH_BALANCE_ALERT_THRESHOLD_RUB=1000.00` is the bootstrap default.
+Do not disable the monitor by removing `NEIRONYCH_API_KEY`, because generation
+also uses that partner credential.
+
+Warnings go only to an active `owner` whose Telegram ID remains in
+`ADMIN_BOOTSTRAP_TELEGRAM_IDS`. The delivery path rechecks that authorization,
+uses the durable Telegram outbox and ignores optional customer marketing/mute
+preferences for these operational messages. Logs classify auth, missing route,
+rate-limit, upstream, transport, timeout and invalid-response failures without
+including credentials or response bodies.
+
+The complete balance poll has a 10-second deadline, including its PostgreSQL
+lock wait and transaction, so a stuck provider cannot indefinitely block customer
+delivery. Every poll gets a correlation ID and logs `duration_ms` on completion
+or failure. `category=deadline` identifies the whole-operation deadline. Delivery
+also streams the provider JSON through a 16 KiB cap, so a compromised upstream
+cannot exhaust worker memory with an oversized response. Compression is refused
+and raw bytes are bounded before JSON parsing. Exact provider balances are never
+written to shared logs; operators receive state, policy revision and notification ID.
+Delivery holds the balance-state lock through the Telegram send, suppresses stale
+retries, and re-arms a low notice after owner authorization is restored. Inbox and
+profile reads hold the same owner authorization rows through disclosure, so a
+concurrent demotion/deactivation cannot commit first. Delivery
+suppresses older low/recovery retries after a newer observation
+(`balance_episode_superseded`). Disabling the policy stops new alerts; already
+queued current notices remain durable. Revoked owners cannot read or receive
+balance notices, and those notices do not contribute to their profile unread badge.
+
+Activation prerequisite: provider PR `Bambale0/ooo#133` must be deployed and the
+authenticated `GET /v1/balance` must be verified available. A merged upstream PR
+alone does not clear that gate.

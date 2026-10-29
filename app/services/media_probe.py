@@ -21,6 +21,8 @@ class MediaProbe:
     video_codec: str | None = None
     audio_codec: str | None = None
     fps: float | None = None
+    has_video: bool | None = None
+    container_brand: str | None = None
 
     @property
     def duration_seconds(self) -> int | None:
@@ -54,7 +56,12 @@ def _parse_probe(payload: dict[str, Any]) -> MediaProbe:
     format_info = format_info if isinstance(format_info, dict) else {}
 
     video = next(
-        (item for item in streams if isinstance(item, dict) and item.get("codec_type") == "video"),
+        (
+            item for item in streams
+            if isinstance(item, dict)
+            and item.get("codec_type") == "video"
+            and (item.get("disposition") or {}).get("attached_pic") != 1
+        ),
         {},
     )
     audio = next(
@@ -72,6 +79,8 @@ def _parse_probe(payload: dict[str, Any]) -> MediaProbe:
     duration_ms = math.ceil(max(duration_values) * 1000) if duration_values else None
 
     container = str(format_info.get("format_name") or "").strip() or None
+    tags = format_info.get("tags")
+    brand = str(tags.get("major_brand") or "").strip() if isinstance(tags, dict) else ""
     video_codec = str(video.get("codec_name") or "").strip() or None
     audio_codec = str(audio.get("codec_name") or "").strip() or None
 
@@ -89,6 +98,8 @@ def _parse_probe(payload: dict[str, Any]) -> MediaProbe:
         container=container[:64] if container else None,
         video_codec=video_codec[:64] if video_codec else None,
         audio_codec=audio_codec[:64] if audio_codec else None,
+        has_video=bool(video),
+        container_brand=brand[:16] or None,
     )
 
 
@@ -118,7 +129,9 @@ def probe_media_stream(stream: BinaryIO, filename: str = "upload") -> MediaProbe
                 "-v",
                 "error",
                 "-show_entries",
-                "format=duration,format_name:stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate",
+                "format=duration,format_name:format_tags=major_brand:"
+                "stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate:"
+                "stream_disposition=attached_pic",
                 "-of",
                 "json",
                 temporary.name,

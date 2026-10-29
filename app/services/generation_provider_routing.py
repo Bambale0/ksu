@@ -14,10 +14,13 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "nano-banana": ("nexus", "kie"),
     "nano-banana-edit": ("nexus", "kie"),
     "nano-banana-pro": ("nexus", "neironych", "kie"),
-    "nano-banana-2": ("nexus", "kie"),
-    "nano-banana-2-lite": ("nexus", "kie"),
-    "gpt-image-2-t2i": ("nexus", "kie"),
-    "gpt-image-2-i2i": ("nexus", "kie"),
+    "nano-banana-2": ("nexus", "neironych", "kie"),
+    "nano-banana-2-lite": ("nexus", "neironych", "kie"),
+    "gpt-image-2-t2i": ("nexus", "neironych", "kie"),
+    "gpt-image-2-i2i": ("nexus", "neironych", "kie"),
+    "grok-video-1.5": ("kie", "neironych"),
+    "grok-video-t2v": ("neironych", "kie"),
+    "grok-video-i2v": ("neironych", "kie"),
     "seedream-5-lite-t2i": ("nexus", "kie"),
     "seedream-5-lite-i2i": ("nexus", "kie"),
     "seedream-5-pro-t2i": ("nexus", "kie"),
@@ -41,6 +44,10 @@ def route_options() -> dict[str, list[list[str]]]:
     options: dict[str, list[list[str]]] = {}
     for model, route in _PROVIDER_ROUTES.items():
         choices: list[list[str]] = [list(route)]
+        if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
+            choices.append(["kie", "nexus"])
+        if model in {"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"}:
+            choices.append(list(reversed(route)))
         for provider in route:
             choice = [provider]
             if choice not in choices:
@@ -54,6 +61,11 @@ def route_options() -> dict[str, list[list[str]]]:
                 choice = [route[0], fallback]
                 if choice not in choices:
                     choices.append(choice)
+        for choice in list(choices):
+            if "neironych" in choice:
+                primary = ["neironych", *(provider for provider in choice if provider != "neironych")]
+                if primary not in choices:
+                    choices.append(primary)
         options[model] = choices
     return options
 
@@ -71,24 +83,67 @@ def validate_routes(routes: dict[str, Any]) -> dict[str, list[str]]:
     return validated
 
 
+def validate_user_routes(value: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    if not isinstance(value, dict):
+        raise ValueError("User provider routes must be an object")
+    options = route_options()
+    validated: dict[str, dict[str, list[str]]] = {}
+    for user_id, routes in value.items():
+        try:
+            key = str(uuid.UUID(str(user_id)))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("User provider routes require internal user UUIDs") from exc
+        if key in validated:
+            raise ValueError("Duplicate user provider route scope")
+        if not isinstance(routes, dict):
+            raise ValueError("Each user provider route scope must be an object")
+        scoped: dict[str, list[str]] = {}
+        for model, route in routes.items():
+            if model not in options or route not in options[model]:
+                raise ValueError(f"Unsupported user provider route for {model}")
+            scoped[model] = list(route)
+        validated[key] = scoped
+    return validated
+
+
 async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     row = await session.get(AdminRuntimeSetting, ROUTES_SETTING_KEY, populate_existing=True)
     defaults = {k: list(v) for k, v in _PROVIDER_ROUTES.items()}
     if row is None:
-        return {"revision": 1, "routes": defaults}
+        return {"revision": 1, "routes": defaults, "user_routes": {}}
+    value = row.value if isinstance(row.value, dict) else {}
+    scopes = validate_user_routes(value.get("user_routes", {}))
     stored_routes = row.value.get("routes") if isinstance(row.value, dict) else None
-    # A route registry expansion is an explicit provider migration. Old rows
-    # must not pin the three legacy Neironych routes forever or make reads fail.
-    if not isinstance(stored_routes, dict) or set(stored_routes) != set(_PROVIDER_ROUTES):
-        return {"revision": int(row.value.get("revision", 1)), "routes": defaults}
-    return {"revision": int(row.value["revision"]), "routes": validate_routes(stored_routes)}
+    # Preserve the original three-model migration, but merge subsequent
+    # registry additions without resetting deliberate admin provider choices.
+    legacy = {"seedance-2.0", "seedance-2.5", "nano-banana-pro"}
+    if not isinstance(stored_routes, dict) or set(stored_routes) == legacy:
+        return {"revision": int(value.get("revision", 1)), "routes": defaults,
+                "user_routes": scopes}
+    if set(stored_routes) - set(_PROVIDER_ROUTES):
+        raise ValueError("Unknown managed generation model in stored routes")
+    merged = defaults | stored_routes
+    if set(stored_routes) == set(_PROVIDER_ROUTES) - {
+        "grok-video-1.5", "grok-video-t2v", "grok-video-i2v",
+    }:
+        # This feature explicitly expands these four historical defaults. Keep
+        # other admin choices (e.g. Kie-primary Seedream) and frozen jobs intact.
+        # After the expanded registry is saved, [nexus,kie] remains an opt-out.
+        for model in ("nano-banana-2", "nano-banana-2-lite", "gpt-image-2-t2i", "gpt-image-2-i2i"):
+            if stored_routes[model] == ["nexus", "kie"]:
+                merged[model] = defaults[model]
+    return {"revision": int(row.value["revision"]), "routes": validate_routes(merged),
+            "user_routes": scopes}
 
 
-async def configured_route(session: AsyncSession, model: str) -> tuple[tuple[str, ...] | None, int]:
+async def configured_route(
+    session: AsyncSession, model: str, *, user_id: uuid.UUID | None = None,
+) -> tuple[tuple[str, ...] | None, int]:
     if model not in _PROVIDER_ROUTES:
         return None, 0
     config = await configured_routes(session)
-    return tuple(config["routes"][model]), config["revision"]
+    scoped = config["user_routes"].get(str(user_id), {}) if user_id is not None else {}
+    return tuple(scoped.get(model, config["routes"][model])), config["revision"]
 
 
 def route_for_model(model_id: str) -> tuple[str, ...] | None:

@@ -1,7 +1,7 @@
 "use client";
 
 import { telegramHeaders } from "./telegram";
-import type { GenerationModel, TrendUserField } from "./types";
+import type { GenerationModel, TrendUserField, UiSchema } from "./types";
 
 const TREND_COLLECTION_TARGET_ATTRIBUTE = "data-roxy-trend-collection-target";
 const INLINE_HASHTAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
@@ -23,11 +23,35 @@ function targetCollection(): string {
   return String(document.documentElement.getAttribute(TREND_COLLECTION_TARGET_ATTRIBUTE) || "").trim();
 }
 
-export type TrendAdminPayload = {
-  schema_version?: number;
+export type TrendAdminModel = GenerationModel & {
+  known_fields?: string[];
+  required_fields?: string[];
+  reference_capacity?: number;
+  min_seconds?: number | null;
+  max_seconds?: number | null;
+  duration_field?: string | null;
+  notes?: string[];
+  capabilities?: string[] | Record<string, boolean>;
+  ui_schema?: UiSchema;
+};
+
+type TrendAdminPayloadBase = {
   description?: string;
-  media_type: "image" | "video" | string;
   preview_url: string;
+  // Kept optional on the shared view type because the collection metadata
+  // editor reads these fields before it can discriminate the recipe branch.
+  // V2 writes never add them to the root recipe.
+  media_type?: string;
+  prompt?: string;
+  user_fields?: TrendUserField[];
+  tags?: string[];
+  sort_order?: number;
+  usage_count?: number;
+};
+
+export type TrendAdminV1Payload = TrendAdminPayloadBase & {
+  schema_version?: 1;
+  media_type: "image" | "video" | string;
   model_id: string;
   prompt: string;
   user_fields?: TrendUserField[];
@@ -36,11 +60,62 @@ export type TrendAdminPayload = {
   input_mode?: "none" | "image" | string;
   min_references?: number;
   max_references?: number;
-  tags?: string[];
-  sort_order?: number;
-  usage_count?: number;
 };
 
+export type TrendAdminInput = {
+  id: string;
+  label: string;
+  help: string;
+  type: "image" | "text" | "number" | "date" | "select";
+  required: boolean;
+  order: number;
+  options?: string[];
+};
+
+export type TrendAdminBinding = {
+  from: string;
+  to: string;
+};
+
+type TrendAdminStepBase = {
+  id: string;
+  kind: "image" | "video";
+  title: string;
+  instructions: string;
+  preview_url?: string | null;
+  model_id: string;
+  model_title?: string;
+  prompt: string;
+  parameters: Record<string, unknown>;
+  inputs: TrendAdminInput[];
+  pricing_source?: string;
+  image_input_mode?: "ordered" | "semantic";
+};
+
+export type TrendAdminImageStep = TrendAdminStepBase & {
+  kind: "image";
+};
+
+export type TrendAdminVideoStep = TrendAdminStepBase & {
+  kind: "video";
+  inputs: TrendAdminInput[];
+  bindings: [TrendAdminBinding];
+};
+
+export type TrendAdminV2Payload = TrendAdminPayloadBase & {
+  schema_version: 2;
+  workflow_type: "sequential_photo_video";
+  pricing_source?: string;
+  steps: [TrendAdminImageStep, TrendAdminVideoStep];
+};
+
+export type TrendAdminPayload = TrendAdminV1Payload | TrendAdminV2Payload;
+
+/*
+ * The v1 shape is deliberately kept separate from the workflow recipe. This
+ * prevents an old template from being reconstructed as a one-step recipe
+ * merely because an editor opened it.
+ */
 export type TrendAdminItem = {
   id: string;
   title: string;
@@ -53,7 +128,7 @@ export type TrendAdminItem = {
 
 export type TrendAdminList = {
   items: TrendAdminItem[];
-  models?: GenerationModel[];
+  models?: TrendAdminModel[];
   limits?: { max_references?: number; max_tags?: number };
 };
 
@@ -131,7 +206,21 @@ function writeHeaders(prefix: string): Record<string, string> {
 }
 
 export const trendAdminApi = {
-  list: () => request<TrendAdminList>("/api/v1/trends/manage"),
+  list: async (): Promise<TrendAdminList> => {
+    const [managed, publicCatalog] = await Promise.all([
+      request<TrendAdminList>("/api/v1/trends/manage"),
+      request<{ models?: TrendAdminModel[] }>("/api/v1/generations/models"),
+    ]);
+    const publicModels = new Map((publicCatalog.models || []).map((model) => [model.id, model]));
+    return {
+      ...managed,
+      models: (managed.models || []).map((model) => ({
+        ...publicModels.get(model.id),
+        ...model,
+        ui_schema: model.ui_schema || publicModels.get(model.id)?.ui_schema,
+      })),
+    };
+  },
   create: async (body: TrendWriteBody) => {
     const collectionId = targetCollection();
     const path = collectionId

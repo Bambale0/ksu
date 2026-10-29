@@ -163,7 +163,9 @@ async def enqueue_generation(
 ) -> Generation:
     effective_cost = Decimal("0.00") if admin_free else Decimal(prepared.cost)
     provider_model = GenerationService._provider_model_snapshot(prepared.spec, prepared.clean)
-    provider_route, route_revision = await configured_route(session, prepared.spec.id)
+    provider_route, route_revision = await configured_route(
+        session, prepared.spec.id, user_id=user_id,
+    )
     generation_parameters = {
         **prepared.clean,
         "_model_id": prepared.spec.id,

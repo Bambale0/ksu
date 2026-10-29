@@ -4,6 +4,14 @@
 
 This is an operational route/auth map. `/docs` and `/redoc` are available only outside production.
 
+## Generation provider routes
+
+`GET /api/v1/admin/runtime` exposes `generation_provider_routes` with `revision`, common `routes`, sparse `user_routes` and allowed `options`. Reading requires the existing admin `runtime.manage` permission. Account scopes use canonical internal user UUIDs; usernames and generation-request parameters cannot choose a scope.
+
+`POST /api/v1/admin/runtime/provider-routes` accepts the complete common `routes`, `expected_revision` and optional `user_routes`. The optional object maps existing user UUID strings to sparse model-to-provider-route mappings. Only already supported model/provider orders are accepted. The existing admin permission, verified MFA/step-up, `Idempotency-Key` and `X-Admin-Confirm: confirmed` requirements apply to both layers. Unknown users, invalid UUIDs, unsupported models/orders and stale revisions reject the mutation atomically.
+
+Omitting `user_routes` (or sending null) preserves existing account exceptions, including saves from the browser's common-route editor. Sending `{}` explicitly clears all exceptions; sending a replacement object removes scopes absent from that object. Common and account routes share one revision, command ledger and concurrency fence. Read the current configuration before modifying either layer. Normal and batch admissions freeze the selected route/revision; existing jobs are not rerouted. Roll back by submitting the saved previous common/scoped configuration with the current revision and a new idempotency key.
+
 ## Authentication classes
 
 ### Public
@@ -158,6 +166,8 @@ In addition to MIME allowlist and `KIE_UPLOAD_MAX_BYTES`, the endpoint enforces:
 - uploaded bytes per user/day.
 
 If Starlette does not expose multipart size metadata, the server measures the already-spooled file so chunked clients do not bypass byte accounting. Production reverse proxy must still enforce its own request-body ceiling before application parsing.
+
+Verified audio-only uploads use their probed container to choose the saved audio kind, MIME and safe extension, even when the device declares it as video (for example, an audio-only MP4 with a recognized MP4/M4A brand and `video/mp4` becomes `audio/mp4` stored as `.m4a`). Attached cover art does not count as video. Actual video streams retain video classification. Ambiguous container subtypes (including QuickTime and WebM/Matroska), failed probes and unavailable probes retain the existing classification; downstream trusted-duration validation remains authoritative. This does not convert media or rewrite historical references. Re-upload an older misclassified supported audio file to obtain a correctly classified saved reference.
 
 ## Wallet and payments
 
@@ -368,3 +378,8 @@ See `ADMIN_SECURITY.md`.
 ```
 
 For 429/anti-abuse 503, read and honor `Retry-After`.
+
+
+## Curated photo -> video workflows
+
+V2 template state is owner-scoped under `/api/v1/trends/{id}/workflow` and `/api/v1/trends/workflows/{run_id}`. Each step has `/quote` and `/run`; run requires a stable `Idempotency-Key` and the accepted `quoted_cost_rox`. The second step accepts only a ready owned `media_asset_id` from that workflow's first step. Empty run creation does not charge. Existing v1 `/trends/{id}/run` rejects v2. See [complete request, response, retry and privacy contracts](TREND_PHOTO_VIDEO_WORKFLOWS.md#api).

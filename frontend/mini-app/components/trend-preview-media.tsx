@@ -7,13 +7,16 @@ type Props = {
   mediaType: string | null | undefined;
   url: string;
   thumbnailUrl?: string | null;
+  controls?: boolean;
+  label?: string;
+  onVideoError?: () => void;
 };
 
 function retryUrl(url: string, attempt: number): string {
   return attempt ? `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}` : url;
 }
 
-export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: Props) {
+export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl, controls = false, label, onVideoError }: Props) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const [imageRetry, setImageRetry] = useState(0);
   const [poster, setPoster] = useState<string | null>(null);
@@ -46,6 +49,19 @@ export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: P
   }, [mediaType]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (mediaType !== "video" || !visible || !video) return;
+    // Keep assignment and cleanup together so a previous effect cannot clear
+    // a replacement URL. Removing src alone does not release a loaded video.
+    video.src = url;
+    return () => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [mediaType, url, visible]);
+
+  useEffect(() => {
     if (mediaType !== "video" || !visible || !thumbnailUrl || poster) return;
     let cancelled = false;
     let timer: number | null = null;
@@ -68,13 +84,15 @@ export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: P
     return <video
       ref={videoRef}
       className={className}
-      src={visible ? url : undefined}
+      aria-label={label}
       poster={poster || undefined}
+      controls={controls}
       muted
       autoPlay
       loop
       playsInline
       preload="none"
+      onError={onVideoError}
     />;
   }
 

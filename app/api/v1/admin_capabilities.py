@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
@@ -201,9 +201,27 @@ class RuntimeSubscriptionRequest(BaseModel):
     enabled: bool
 
 
+class NeironychBalanceAlertRequest(BaseModel):
+    enabled: bool
+    threshold_rub: Decimal = Field(
+        ge=Decimal("0"),
+        le=Decimal("100000000"),
+        decimal_places=2,
+    )
+    expected_revision: int = Field(ge=1)
+
+
 class ProviderRoutesRequest(BaseModel):
     routes: dict[str, list[str]]
     expected_revision: int = Field(ge=1)
+    user_routes: dict[str, dict[str, list[str]]] | None = None
+
+
+class PromptToolRoutesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    routes: dict[str, list[dict[str, str]]]
+    expected_revision: int = Field(ge=1, strict=True)
 
 
 class WithdrawalStateRequest(BaseModel):
@@ -943,6 +961,32 @@ async def web_admin_runtime_reload(
     return {**result, "idempotency_replayed": replayed}
 
 
+@router.post("/runtime/neironych-balance-alert")
+async def web_admin_neironych_balance_alert(
+    payload: NeironychBalanceAlertRequest,
+    request: Request,
+    context: AdminRuntimeWriteDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminRuntimeService.set_neironych_balance_alert(
+            session,
+            admin=context.account,
+            enabled=payload.enabled,
+            threshold_rub=payload.threshold_rub,
+            expected_revision=payload.expected_revision,
+            idempotency_key=_require_idempotency(idempotency_key),
+            request_id=_request_id(request),
+            confirmed=_confirmed(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
+        ),
+    )
+    return {**result, "idempotency_replayed": replayed}
+
+
 @router.post("/runtime/provider-routes")
 async def web_admin_provider_routes(
     payload: ProviderRoutesRequest, request: Request,
@@ -952,10 +996,33 @@ async def web_admin_provider_routes(
 ) -> dict[str, Any]:
     result, replayed = await _commit(session, AdminRuntimeService.set_provider_routes(
         session, admin=context.account, routes=payload.routes,
+        user_routes=payload.user_routes,
         expected_revision=payload.expected_revision,
         idempotency_key=_require_idempotency(idempotency_key),
         request_id=_request_id(request), confirmed=_confirmed(confirmation),
     ))
+    return {**result, "idempotency_replayed": replayed}
+
+
+@router.post("/runtime/prompt-tool-routes")
+async def web_admin_prompt_tool_routes(
+    payload: PromptToolRoutesRequest,
+    request: Request,
+    context: AdminRuntimeWriteDep,
+    session: SessionDep,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _commit(
+        session,
+        AdminRuntimeService.set_prompt_tool_routes(
+            session, admin=context.account, routes=payload.routes,
+            expected_revision=payload.expected_revision,
+            idempotency_key=_require_idempotency(idempotency_key), request_id=_request_id(request),
+            confirmed=_confirmed(confirmation),
+            step_up_valid=AdminAuthService.step_up_valid(context.session),
+        ),
+    )
     return {**result, "idempotency_replayed": replayed}
 
 

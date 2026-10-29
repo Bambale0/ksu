@@ -35,6 +35,19 @@ class GenerationService:
     WAKE_KEY = "wake:generations"
 
     @classmethod
+    async def wake(cls, redis: Redis, generation_ids: list[uuid.UUID]) -> None:
+        """Wake workers only after the transaction owning these generations commits."""
+        if not generation_ids:
+            return
+        try:
+            await redis.rpush(cls.WAKE_KEY, *[str(generation_id) for generation_id in generation_ids])
+        except RedisError:
+            logger.warning(
+                "Redis wake-up failed for %s generation(s); outbox will recover them",
+                len(generation_ids),
+            )
+
+    @classmethod
     async def _resolve_billing_seconds(
         cls,
         session: AsyncSession,
@@ -138,7 +151,7 @@ class GenerationService:
         return spec.kie_model
 
     @classmethod
-    async def prepare_request(
+    async def _prepare_request_contract(
         cls,
         session: AsyncSession,
         *,
@@ -215,6 +228,29 @@ class GenerationService:
         return spec, clean, cost_rox, seconds, unit_price
 
     @classmethod
+    async def prepare_template_request(
+        cls, session: AsyncSession, *, model_id: str, prompt: str,
+        input_url: str | None = None, parameters: dict[str, Any] | None = None,
+        billing_seconds: int | None = None,
+    ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
+        """Structural preflight for future media slots; never a runtime admission."""
+        return await cls._prepare_request_contract(
+            session, model_id=model_id, prompt=prompt, input_url=input_url,
+            parameters=parameters, billing_seconds=billing_seconds,
+        )
+
+    @classmethod
+    async def prepare_request(
+        cls, session: AsyncSession, *, model_id: str, prompt: str,
+        input_url: str | None = None, parameters: dict[str, Any] | None = None,
+        billing_seconds: int | None = None,
+    ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
+        return await cls._prepare_request_contract(
+            session, model_id=model_id, prompt=prompt, input_url=input_url,
+            parameters=parameters, billing_seconds=billing_seconds,
+        )
+
+    @classmethod
     def _generation_parameters(
         cls,
         *,
@@ -280,6 +316,9 @@ class GenerationService:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
         generation_id: uuid.UUID | None = None,
+        expected_cost_rox: Decimal | str | None = None,
+        commit: bool = True,
+        wake: bool = True,
     ) -> list[Generation]:
         requested = int(quantity)
         if requested < 1 or requested > MAX_GENERATION_QUANTITY:
@@ -301,6 +340,10 @@ class GenerationService:
             retail_cost=retail_cost_rox,
         )
         charge_rox = billing.effective_cost
+        if expected_cost_rox is not None:
+            expected = Decimal(str(expected_cost_rox)).quantize(Decimal("0.01"))
+            if charge_rox.quantize(Decimal("0.01")) != expected:
+                raise ValueError("Quote is no longer valid; request a fresh quote")
         total_charge_rox = (charge_rox * Decimal(requested)).quantize(Decimal("0.01"))
 
         # Admins are free, not unbounded: request/provider resource safety remains
@@ -314,7 +357,7 @@ class GenerationService:
         )
 
         provider_model = cls._provider_model_snapshot(spec, clean)
-        provider_route, route_revision = await configured_route(session, spec.id)
+        provider_route, route_revision = await configured_route(session, spec.id, user_id=user_id)
         batch_id = uuid.uuid4() if requested > 1 else None
         generations: list[Generation] = []
         for index in range(1, requested + 1):
@@ -372,15 +415,11 @@ class GenerationService:
                     idempotency_key=f"generation:{generation.id}:charge",
                 )
             await enqueue_generation_progress(session, generation)
-        await session.commit()
+        if commit:
+            await session.commit()
 
-        try:
-            await redis.rpush(cls.WAKE_KEY, *[str(generation.id) for generation in generations])
-        except RedisError:
-            logger.warning(
-                "Redis wake-up failed for %s generation(s); outbox will recover them",
-                len(generations),
-            )
+        if commit and wake:
+            await cls.wake(redis, [generation.id for generation in generations])
         return generations
 
     @classmethod
@@ -399,6 +438,9 @@ class GenerationService:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
         generation_id: uuid.UUID | None = None,
+        expected_cost_rox: Decimal | str | None = None,
+        commit: bool = True,
+        wake: bool = True,
     ) -> Generation:
         generations = await cls.create_many(
             session,
@@ -414,5 +456,8 @@ class GenerationService:
             parent_generation_id=parent_generation_id,
             action_type=action_type,
             generation_id=generation_id,
+            expected_cost_rox=expected_cost_rox,
+            commit=commit,
+            wake=wake,
         )
         return generations[0]

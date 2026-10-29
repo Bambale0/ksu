@@ -33,7 +33,7 @@ def test_nano_default_routes_nexus_primary_with_safe_fallbacks():
 
 @pytest.mark.parametrize(
     "route",
-    [[], ["nexus", "nexus"], ["unknown"], ["neironych", "nexus"]],
+    [[], ["nexus", "nexus"], ["unknown"], ["kie", "nexus"]],
 )
 def test_unsupported_nano_routes_fail_closed(route):
     routes = {model: choices[0] for model, choices in route_options().items()}
@@ -52,7 +52,21 @@ class WakeRedis:
 
 
 @pytest.mark.asyncio
-async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(monkeypatch):
+@pytest.mark.parametrize("model,route,old_provider,new_provider", [
+    ("nano-banana-pro", ["kie"], "nexus", "kie"),
+    ("seedream-5-pro-t2i", ["kie", "nexus"], "nexus", "kie"),
+    ("grok-video-1.5", ["neironych", "kie"], "kie", "neironych"),
+    ("grok-video-t2v", ["kie"], "neironych", "kie"),
+    ("grok-video-i2v", ["kie"], "neironych", "kie"),
+])
+async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
+    monkeypatch, model, route, old_provider, new_provider,
+):
+    inputs = {"duration": 2} if model == "grok-video-1.5" else None
+    if model in {"grok-video-t2v", "grok-video-i2v"}:
+        inputs = {"duration": 6}
+        if model == "grok-video-i2v":
+            inputs["image_urls"] = ["https://example.test/first.png"]
     # A unique setting key leaves all other tests on the bootstrap routes.
     key = f"route-test-{uuid.uuid4()}"
     monkeypatch.setattr("app.services.generation_provider_routing.ROUTES_SETTING_KEY", key)
@@ -90,7 +104,7 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
         await session.commit()
         context = SimpleNamespace(account=admin, session=admin_session, user=user)
         before = await configured_routes(session)
-        routes = before["routes"] | {"nano-banana-pro": ["kie"]}
+        routes = before["routes"] | {model: route}
 
         async def authenticated_context():
             return context
@@ -120,10 +134,11 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     session,
                     WakeRedis(),
                     user_id=user.id,
-                    model_id="nano-banana-pro",
+                    model_id=model,
                     prompt="old snapshot",
+                    parameters=inputs,
                 )
-                assert old.provider == "nexus"
+                assert old.provider == old_provider
                 first = await client.post(path, json=payload, headers=headers)
                 assert first.status_code == 200, first.text
                 assert first.json()["revision"] == 2
@@ -140,13 +155,15 @@ async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(mon
                     session,
                     WakeRedis(),
                     user_id=user.id,
-                    model_id="nano-banana-pro",
+                    model_id=model,
                     prompt="new snapshot",
+                    parameters=inputs,
                 )
-                assert new.provider == "kie"
+                assert new.provider == new_provider
+                assert new.parameters["_provider_route"] == route
                 assert new.parameters["_provider_route_revision"] == 2
                 await session.refresh(old)
-                assert old.provider == "nexus" and old.parameters["_provider_route_revision"] == 1
+                assert old.provider == old_provider and old.parameters["_provider_route_revision"] == 1
                 command = await session.scalar(
                     select(AdminCommand).where(AdminCommand.idempotency_key == idem)
                 )

@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'frontend/mini-app/**'
+      - 'tests/fixtures/trend_user_fields_catalog_20261021.json'
       - 'docker-compose.yml'
       - '.github/workflows/deploy-production.yml'
       - '.github/workflows/miniapp-playwright.yml'
@@ -49,16 +50,27 @@ jobs:
           npx playwright test
           e2e/client-error-reporting.spec.mjs
           e2e/video-mode-selector-parity.spec.mjs
+          e2e/mobile-keyboard-seedance-reference.spec.mjs
           e2e/responsive-device-surfaces.spec.mjs
           e2e/responsive-deep-surfaces.spec.mjs
           e2e/frontend-production-readiness.spec.mjs
+          e2e/support-conversation-race.spec.mjs
           e2e/trend-category-admin.spec.mjs
           e2e/trend-back-navigation.spec.mjs
           e2e/home-is-catalog-current.spec.mjs
           e2e/referral-home-chat.spec.mjs
           e2e/referral-tanyapi-cold-start.spec.mjs
           e2e/admin-provider-routes.spec.mjs
+          e2e/trend-audio-reference.spec.mjs
+          e2e/trend-workflow.spec.mjs
+          e2e/trend-admin-v2.spec.mjs
+          e2e/trend-admin-mobile-interaction.spec.mjs
+          e2e/seedance-video-trend.spec.mjs
           --project=webkit-mobile
+      - name: Verify personalized trend keyboards in iPhone WebKit
+        if: ${{ !cancelled() }}
+        working-directory: frontend/mini-app
+        run: npx playwright test e2e/all-user-surfaces.spec.mjs --project=webkit-mobile --grep 'personalized trend|catalog personalization'
       - name: Verify upload deadlines in iPhone WebKit
         working-directory: frontend/mini-app
         run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --project=webkit-mobile --grep 'trend preview upload'

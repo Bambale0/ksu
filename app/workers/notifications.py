@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import html
+import httpx
 import logging
 import re
+import time
 import uuid
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -16,14 +18,16 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.generation_errors import prompt_length_failure_message
 from app.core.logging import configure_logging
-from app.core.observability import record_worker_heartbeat
+from app.core.observability import record_worker_heartbeat, request_id_var
 from app.db.models import Generation, Notification, User
 from app.db.notification_models import NotificationDelivery
 from app.db.profile_models import UserPreference
 from app.db.session import SessionFactory
 from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
+from app.services.neironych_balance_alerts import NeironychBalanceAlertService
 from app.services.notifications import NotificationDeliveryService
 from app.services.generation_progress import GENERATION_PROGRESS_KIND, deliver_generation_progress
 from app.services.telegram_generation_media import (
@@ -34,6 +38,9 @@ from app.services.telegram_generation_media import (
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "notification-worker"
+# Whole-poll budget includes advisory-lock wait, HTTP and transaction work.
+# Per-I/O HTTP timeouts alone do not bound lock contention or slow-drip bodies.
+_BALANCE_POLL_TIMEOUT_SECONDS = 10.0
 
 _GENERATION_NOTIFICATION_KINDS = {"generation_succeeded", "generation_failed"}
 _PROMPT_TOOL_NOTIFICATION_KINDS = {
@@ -42,6 +49,8 @@ _PROMPT_TOOL_NOTIFICATION_KINDS = {
 }
 _ADMIN_OPERATIONAL_NOTIFICATION_KINDS = {
     "creator_partnership_admin_application",
+    "neironych_balance_low",
+    "neironych_balance_recovered",
 }
 
 
@@ -297,6 +306,9 @@ def _is_unreachable_chat_error(exc: TelegramBadRequest) -> bool:
     return "chat not found" in str(exc).lower()
 
 def _friendly_generation_error(error: str | None) -> str:
+    prompt_length_message = prompt_length_failure_message(error)
+    if prompt_length_message:
+        return prompt_length_message
     value = (error or "").strip().lower()
     if not value:
         return "Сервис генерации завершил задачу с ошибкой."
@@ -476,6 +488,29 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             _sync_generation_delivery(generation, delivery)
             await session.commit()
             return
+        if notification.kind in {"neironych_balance_low", "neironych_balance_recovered"}:
+            await NeironychBalanceAlertService.acquire_lock(session)
+            if not await NeironychBalanceAlertService.authorized_owner(session, user.id, lock=True):
+                await NotificationDeliveryService.mark_terminal(
+                    session,
+                    delivery,
+                    status="suppressed",
+                    error="owner_authorization_revoked",
+                )
+                await session.commit()
+                return
+            # Hold the same transaction advisory lock used by polling through
+            # Telegram send + delivery commit. A newer balance transition cannot
+            # commit after this freshness check but before the older message sends.
+            if not await NeironychBalanceAlertService.is_current_notice(session, notification):
+                await NotificationDeliveryService.mark_terminal(
+                    session,
+                    delivery,
+                    status="suppressed",
+                    error="balance_episode_superseded",
+                )
+                await session.commit()
+                return
         preference = await session.get(UserPreference, user.id)
         if (
             preference is not None
@@ -618,9 +653,59 @@ async def run() -> None:
         raise RuntimeError("BOT_TOKEN is required for the notification worker")
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     bot = Bot(settings.bot_token)
+    next_balance_poll = 0.0
     try:
         while True:
             await _heartbeat(redis)
+            if time.monotonic() >= next_balance_poll:
+                next_balance_poll = time.monotonic() + settings.neironych_balance_alert_poll_seconds
+                poll_started = time.monotonic()
+                poll_token = request_id_var.set(f"neironych-balance:{uuid.uuid4()}")
+                try:
+                    async with asyncio.timeout(_BALANCE_POLL_TIMEOUT_SECONDS):
+                        queued = await NeironychBalanceAlertService.poll_once()
+                    logger.info(
+                        "neironych_balance_poll_completed queued=%s",
+                        queued,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "neironych_balance_poll_failed category=deadline",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except httpx.HTTPStatusError as exc:
+                    status_code = exc.response.status_code
+                    category = (
+                        "auth" if status_code in {401, 403}
+                        else "endpoint_missing" if status_code == 404
+                        else "rate_limited" if status_code == 429
+                        else "upstream_error" if status_code >= 500
+                        else "http_client_error"
+                    )
+                    logger.warning(
+                        "neironych_balance_poll_failed category=%s status_code=%s",
+                        category, status_code,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except httpx.TimeoutException:
+                    logger.warning(
+                        "neironych_balance_poll_failed category=timeout",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except httpx.TransportError:
+                    logger.warning(
+                        "neironych_balance_poll_failed category=transport",
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                except Exception as exc:  # noqa: BLE001 - monitoring cannot interrupt customer delivery
+                    logger.warning(
+                        "neironych_balance_poll_failed category=invalid_or_internal error_type=%s",
+                        type(exc).__name__,
+                        extra={"duration_ms": round((time.monotonic() - poll_started) * 1000, 3)},
+                    )
+                finally:
+                    request_id_var.reset(poll_token)
             async with SessionFactory() as session:
                 claimed = await NotificationDeliveryService.claim_batch(session)
                 delivery_ids = [row.id for row in claimed]

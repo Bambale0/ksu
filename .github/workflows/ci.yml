@@ -64,9 +64,25 @@ jobs:
           node-version: "22"
 
       - name: Install MP4 tooling
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          # The Azure HTTP mirror stalled for 20 minutes before any E2E test.
+          # Keep Ubuntu's signed packages and use its canonical HTTPS archive.
+          sudo python3 - <<'PY'
+          from pathlib import Path
+          for path in (Path("/etc/apt/apt-mirrors.txt"), Path("/etc/apt/sources.list"), Path("/etc/apt/sources.list.d/ubuntu.sources")):
+              if path.is_file():
+                  source = path.read_text()
+                  updated = source.replace("http://azure.archive.ubuntu.com/ubuntu", "https://archive.ubuntu.com/ubuntu")
+                  if updated != source:
+                      path.write_text(updated)
+          PY
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
 
       - name: Install backend dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e '.[dev]'

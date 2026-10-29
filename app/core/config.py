@@ -71,9 +71,6 @@ class Settings(BaseSettings):
     bot_username: str = ""
     nexus_api_key: str = ""
     nexus_api_base_url: str = "https://nexusapi.dev"
-    # Nexus GPT stays primary. Qwen 3.8 at Neironych may serve image/video
-    # prompt tools only when Nexus explicitly reports gateway unavailability.
-    prompt_tool_qwen_fallback_enabled: bool = False
     nexus_test_worker_poll_seconds: int = Field(default=3, ge=1, le=30)
     nexus_test_task_lease_seconds: int = Field(default=90, ge=30, le=600)
     nexus_test_retry_max_seconds: int = Field(default=30, ge=3, le=300)
@@ -82,6 +79,10 @@ class Settings(BaseSettings):
     neironych_poll_seconds: int = Field(default=10, ge=10, le=60)
     neironych_reference_validation_timeout_seconds: int = Field(default=60, ge=10, le=300)
     neironych_api_base_url: str = "https://api.xn--e1aikcel5c5a.online"
+    neironych_balance_alert_threshold_rub: Decimal = Field(
+        default=Decimal("1000.00"), ge=0, le=Decimal("100000000"), decimal_places=2
+    )
+    neironych_balance_alert_poll_seconds: int = Field(default=300, ge=60, le=3600)
     neironych_test_hard_timeout_seconds: int = Field(default=3600, ge=60, le=14400)
     neironych_test_max_video_bytes: int = Field(
         default=250 * 1024 * 1024,
@@ -130,12 +131,10 @@ class Settings(BaseSettings):
 
     generation_worker_poll_seconds: int = 5
     generation_outbox_lease_seconds: int = 90
-    # Video prompt may fetch 30 MB, extract frames and call a vision model.
-    # Prevent concurrent workers reclaiming the same paid prompt too early.
-    prompt_tool_video_outbox_lease_seconds: int = Field(default=600, ge=90, le=3600)
-    prompt_tool_image_outbox_lease_seconds: int = Field(default=600, ge=90, le=3600)
     generation_submission_max_attempts: int = 5
     generation_submission_unknown_timeout_seconds: int = 900
+    prompt_tool_media_timeout_seconds: int = Field(default=480, ge=60, le=900)
+    prompt_tool_media_outbox_lease_seconds: int = Field(default=600, ge=120, le=1800)
     generation_hard_timeout_seconds: int = 7200
     generation_reconcile_interval_seconds: int = 60
     generation_reconcile_stale_seconds: int = 60

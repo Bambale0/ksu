@@ -4,7 +4,9 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -39,10 +41,15 @@ def install_feed_publication_contract() -> None:
         FeedPublicationError,
         FeedService,
     )
+    from app.services.local_media_storage import LocalMediaStorage, LocalMediaStorageError
     from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
     previous_provider_result_urls = FeedService._provider_result_urls
     previous_to_card = FeedService.to_card
+
+    def is_signed_server_media_url(value: str) -> bool:
+        parts = [part for part in urlsplit(value).path.split("/") if part]
+        return len(parts) >= 5 and parts[:3] == ["api", "v1", "media"] and parts[4] == "signed"
 
     @staticmethod
     def provider_result_urls(generation: Generation) -> list[str]:
@@ -55,19 +62,23 @@ def install_feed_publication_contract() -> None:
         return [
             item
             for item in values
-            if item.startswith("https://") and not FeedStaticStorage.is_local_url(item)
+            if item.startswith("https://")
+            and not FeedStaticStorage.is_local_url(item)
+            and not is_signed_server_media_url(item)
         ]
 
-    async def owned_media_urls(session, generation: Generation) -> list[str]:  # type: ignore[no-untyped-def]
+    async def owned_media_sources(  # type: ignore[no-untyped-def]
+        session,
+        generation: Generation,
+        *,
+        expected_count: int,
+    ) -> list[str | Path]:
         assets = list(
             (
                 await session.scalars(
                     select(MediaAsset)
                     .where(
                         MediaAsset.generation_id == generation.id,
-                        MediaAsset.status == "ready",
-                        MediaAsset.object_key.is_not(None),
-                        MediaAsset.bucket.is_not(None),
                     )
                     .order_by(MediaAsset.ordinal)
                 )
@@ -75,21 +86,38 @@ def install_feed_publication_contract() -> None:
         )
         if not assets:
             return []
-        try:
-            storage = ObjectStorage()
-        except ObjectStorageNotConfigured:
+        if expected_count and len(assets) != expected_count:
             return []
-        urls: list[str] = []
+        if any(
+            asset.status != "ready" or not asset.object_key or not asset.bucket
+            for asset in assets
+        ):
+            return []
+        storage: ObjectStorage | None = None
+        sources: list[str | Path] = []
         for asset in assets:
             if not asset.object_key or not asset.bucket:
                 continue
+            if LocalMediaStorage.is_local_bucket(asset.bucket):
+                try:
+                    sources.append(LocalMediaStorage.path_for_key(asset.object_key))
+                except (LocalMediaStorageError, OSError) as exc:
+                    raise FeedStaticStorageError(
+                        "Stored server media has an invalid object key"
+                    ) from exc
+                continue
+            if storage is None:
+                try:
+                    storage = ObjectStorage()
+                except ObjectStorageNotConfigured:
+                    return []
             try:
                 url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
             except Exception:
                 continue
             if url.startswith("https://"):
-                urls.append(url)
-        return urls
+                sources.append(url)
+        return sources if len(sources) == len(assets) else []
 
     @staticmethod
     def static_ready_condition() -> Any:
@@ -243,8 +271,28 @@ def install_feed_publication_contract() -> None:
                     current_local,
                     generation_id=generation.id,
                 )
-            except FeedStaticStorageError:
+            except (FeedStaticStorageError, OSError):
                 persisted = None
+
+        if persisted is None:
+            try:
+                owned_sources = await owned_media_sources(
+                    session,
+                    generation,
+                    expected_count=len(provider_urls),
+                )
+            except FeedStaticStorageError as exc:
+                raise FeedMediaUnavailableError(
+                    "Не удалось сохранить медиа публикации на сервере"
+                ) from exc
+            if owned_sources:
+                try:
+                    persisted = await FeedStaticStorage.persist_sources(
+                        owned_sources,
+                        generation_id=generation.id,
+                    )
+                except (FeedStaticStorageError, OSError):
+                    persisted = None
 
         if persisted is None and provider_urls:
             try:
@@ -252,19 +300,8 @@ def install_feed_publication_contract() -> None:
                     provider_urls,
                     generation_id=generation.id,
                 )
-            except FeedStaticStorageError:
+            except (FeedStaticStorageError, OSError):
                 persisted = None
-
-        if persisted is None:
-            owned_urls = await owned_media_urls(session, generation)
-            if owned_urls:
-                try:
-                    persisted = await FeedStaticStorage.persist_urls(
-                        owned_urls,
-                        generation_id=generation.id,
-                    )
-                except FeedStaticStorageError:
-                    persisted = None
 
         if not persisted:
             raise FeedMediaUnavailableError(

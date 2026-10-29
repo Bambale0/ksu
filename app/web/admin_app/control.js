@@ -999,8 +999,40 @@
   async function renderRuntime() {
     const data = await api("/api/v1/admin/runtime");
     const subscription = Boolean(data.subscription_required?.enabled);
+    const balanceAlert = data.neironych_balance_alert || {
+      enabled: true, threshold_rub: "1000.00", revision: 1,
+    };
     const body = pre(data);
     const controls = actions(
+      button("Алерт Нейроныча", "table-action", () => {
+        openForm({
+          title: "Баланс Нейроныча",
+          submitLabel: "Сохранить алерт",
+          fields: [
+            {
+              name: "enabled", label: "Состояние", type: "select",
+              value: String(Boolean(balanceAlert.enabled)),
+              options: [["true", "Включён"], ["false", "Выключен"]],
+            },
+            {
+              name: "threshold_rub", label: "Порог, ₽", type: "number",
+              value: String(balanceAlert.threshold_rub || "1000.00"), step: "0.01",
+            },
+          ],
+          onSubmit: async (values) => {
+            await mutate("/api/v1/admin/runtime/neironych-balance-alert", {
+              body: {
+                enabled: values.enabled === "true",
+                threshold_rub: values.threshold_rub,
+                expected_revision: balanceAlert.revision,
+              },
+              label: "Изменить порог алерта баланса Нейроныча?",
+              sensitive: true,
+            });
+            await renderRuntime();
+          },
+        });
+      }),
       button("Провайдеры генерации", "table-action", () => {
         const config = data.generation_provider_routes;
         if (!config?.routes || !config?.options) return toast("Маршруты недоступны. Обновите страницу.", "error");
@@ -1019,6 +1051,40 @@
               },
               label: "Изменить провайдеров для новых генераций? Уже принятые задачи сохранят свой маршрут.",
             });
+            await renderRuntime();
+          },
+        });
+      }),
+      button("Анализ фото и видео", "table-action", () => {
+        const config = data.prompt_tool_provider_routes;
+        const tools = [["image_analysis", "Описание по фото"], ["video_prompt", "Промпт по видео"]];
+        if (!config?.routes || !config?.options || tools.some(([tool]) => !config.routes[tool] || !config.options[tool])) {
+          return toast("Маршруты анализа недоступны. Обновите страницу.", "error");
+        }
+        const targetLabels = {
+          "neironych/qwen3.8-max": "Нейроныч · Qwen 3.8 Max",
+          "nexus/gpt-6-sol": "Nexus · GPT-6 Sol",
+        };
+        openForm({
+          title: "Провайдеры анализа фото и видео",
+          submitLabel: "Сохранить маршруты анализа",
+          fields: tools.map(([tool, label]) => ({
+            name: tool, label, type: "select", value: JSON.stringify(config.routes[tool]),
+            options: config.options[tool].map((choice) => [
+              JSON.stringify(choice),
+              choice.map((target) => targetLabels[`${target.provider}/${target.model}`] || `${target.provider} · ${target.model}`).join(" → "),
+            ]),
+          })),
+          onSubmit: async (values) => {
+            const saved = await mutate("/api/v1/admin/runtime/prompt-tool-routes", {
+              body: {
+                routes: Object.fromEntries(tools.map(([tool]) => [tool, JSON.parse(values[tool])])),
+                expected_revision: config.revision,
+              },
+              label: "Изменить провайдеров для новых задач анализа фото и видео? Уже принятые задачи сохранят свой маршрут.",
+              sensitive: true,
+            });
+            if (!saved) return false;
             await renderRuntime();
           },
         });

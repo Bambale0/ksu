@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import httpx
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.core.config import settings
 from app.services.feed_static import FeedStaticStorage
@@ -32,6 +34,31 @@ def byte_limit(model: str, kind: str) -> int:
     return 100 * 1024 * 1024 if model == "seedance-2.5" else 50_000_000
 
 
+def _check_image_dimensions(model: str, width: int, height: int) -> None:
+    """Enforce model image limits before decoding an MPO or reading a JPEG."""
+    if model == "seedance-2.5" and not (
+        300 <= width <= 6000
+        and 300 <= height <= 6000
+        and 0.4 <= width / height <= 2.5
+    ):
+        raise ReferenceValidationError(
+            "Seedance 2.5 images require 300-6000 px per side and ratio 0.4-2.5"
+        )
+
+
+def _check_mpo_frame_dimensions(model: str, width: int, height: int) -> None:
+    """Reject oversized frames before Pillow allocates an RGB buffer.
+
+    Seedance 2.5 uses its exact provider contract. For Seedance 2.0, cap
+    conversion at that same bounded size: MPO was previously unsupported.
+    """
+    _check_image_dimensions(model, width, height)
+    if not (0 < width <= 6000 and 0 < height <= 6000):
+        raise ReferenceValidationError(
+            "Seedance MPO exceeds safe normalization dimensions (6000 px per side)"
+        )
+
+
 def inspect_file(model: str, kind: str, path: Path) -> float:
     """Inspect real bytes, not MIME/extension or the success of an HTTP GET.
 
@@ -48,13 +75,7 @@ def inspect_file(model: str, kind: str, path: Path) -> float:
             with Image.open(path) as image:
                 if image.format not in {"JPEG", "PNG"}:
                     raise ReferenceValidationError("Seedance image references must be JPEG or PNG")
-                width, height = image.size
-                if model == "seedance-2.5" and not (
-                    300 <= width <= 6000 and 300 <= height <= 6000 and 0.4 <= width / height <= 2.5
-                ):
-                    raise ReferenceValidationError(
-                        "Seedance 2.5 images require 300-6000 px per side and ratio 0.4-2.5"
-                    )
+                _check_image_dimensions(model, *image.size)
                 image.verify()
         except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
             raise ReferenceValidationError(
@@ -163,6 +184,97 @@ async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: st
                 temporary.flush()
                 return await asyncio.to_thread(inspect_file, model, kind, Path(temporary.name))
     raise ReferenceValidationError("Too many Seedance reference redirects")
+
+
+def _normalize_owned_mpo_image(model: str, url: str) -> str:
+    """Make an immutable first-frame JPEG transport copy of a stored MPO.
+
+    The user's original reference URL/bytes stay untouched for trends, repeats
+    and any other provider. Only the frozen Neironych request uses the copy.
+    """
+    path = owned_path(url)
+    if path is None:
+        return url
+    size = path.stat().st_size
+    if not 0 < size <= byte_limit(model, "image"):
+        raise ReferenceValidationError(
+            "Seedance image reference exceeds file size limit or is empty"
+        )
+    try:
+        # Pillow detects MPO via MPF metadata, not extension/MIME. This first
+        # open is lazy and avoids decoding a large frame on every repeat.
+        with Image.open(path) as source:
+            if source.format != "MPO":
+                return url
+            _check_mpo_frame_dimensions(model, *source.size)
+
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        directory = ReferenceStaticStorage.ensure_root() / "normalized"
+        directory.mkdir(parents=True, exist_ok=True)
+        filename = f"{digest.hexdigest()}-mpo.jpg"
+        target = directory / filename
+        normalized_url = ReferenceStaticStorage.public_url(f"normalized/{filename}")
+        if target.is_file():
+            inspect_file(model, "image", target)
+            return normalized_url
+
+        # Only cache misses decode/transcode the frame. Never change source.
+        with Image.open(path) as source:
+            if source.format != "MPO":
+                raise ReferenceValidationError("Seedance reference changed during normalization")
+            _check_mpo_frame_dimensions(model, *source.size)
+            source.seek(0)
+            first_frame = ImageOps.exif_transpose(source).convert("RGB")
+        try:
+            # Atomic replacement avoids partial reads by the provider/static app.
+            with tempfile.NamedTemporaryFile(
+                prefix=".roxy-mpo-", suffix=".jpg", dir=directory, delete=False
+            ) as temporary:
+                temp_path = Path(temporary.name)
+                try:
+                    first_frame.save(temporary, format="JPEG", quality=92, optimize=True)
+                    temporary.flush()
+                    os.fsync(temporary.fileno())
+                    inspect_file(model, "image", temp_path)
+                    os.replace(temp_path, target)
+                    os.chmod(target, 0o644)
+                finally:
+                    temp_path.unlink(missing_ok=True)
+        finally:
+            first_frame.close()
+        return normalized_url
+    except ReferenceValidationError:
+        raise
+    except (UnidentifiedImageError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ReferenceValidationError(
+            "Seedance image reference is not a valid JPEG/PNG"
+        ) from exc
+    except OSError as exc:
+        raise ReferenceValidationUnavailable(
+            "Seedance stored image normalization is unavailable"
+        ) from exc
+
+async def normalize_seedance_mpo_references(model: str, payload: dict[str, Any]) -> None:
+    """Normalize legacy product-owned MPOs before validation and snapshot freeze."""
+    images = list(payload.get("reference_images", []))
+    images.extend(
+        payload[key] for key in ("start_image", "end_image") if payload.get(key)
+    )
+    if not images:
+        return
+    try:
+        async with asyncio.timeout(settings.neironych_reference_validation_timeout_seconds):
+            for image in images:
+                image["url"] = await asyncio.to_thread(
+                    _normalize_owned_mpo_image, model, image["url"]
+                )
+    except TimeoutError as exc:
+        raise ReferenceValidationUnavailable(
+            "Seedance stored image normalization timed out"
+        ) from exc
 
 
 async def validate_reference_payload(model: str, payload: dict[str, Any]) -> None:

@@ -65,7 +65,7 @@ async def test_batch_generation_uses_same_nexus_route_snapshot_as_regular_genera
     )
 
     assert generation.provider == "nexus"
-    assert generation.parameters["_provider_route"] == ["nexus", "kie"]
+    assert generation.parameters["_provider_route"] == ["nexus", "neironych", "kie"]
     assert generation.parameters["_provider_route_index"] == 0
     assert generation.parameters["_provider_route_revision"] == 1
     debit.assert_awaited_once()

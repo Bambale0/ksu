@@ -1005,3 +1005,110 @@ async def test_generation_media_pending_defers_without_burning_delivery_attempt(
         assert delivery.last_error.startswith("generation_media_pending:")
         assert generation.telegram_notification_status == "retry"
         assert bot.media_calls == []
+
+
+@pytest.mark.asyncio
+async def test_nexus_prompt_limit_refunds_once_and_delivers_actionable_inbox_and_telegram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+
+    from app.db.models import Wallet, WalletTransaction
+    from app.providers.nexus import NexusClient
+    from app.services.nexus_generation_provider import NexusGenerationProviderService
+    from app.services.wallet import WalletService
+
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        assert request.headers["Idempotency-Key"].startswith("generation:")
+        return httpx.Response(422, json={"detail": [{
+            "type": "string_too_long",
+            "loc": ["body", "params", "seedream-5.0-pro", "prompt"],
+            "msg": "String should have at most 4000 characters",
+            "ctx": {"max_length": 4000},
+            "input": "private prompt",
+        }]})
+
+    message = (
+        "Промпт слишком длинный. Максимум — 4000 символов. "
+        "Сократите текст и повторите генерацию."
+    )
+    bot = FakeBot()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://nexus.example",
+    ) as http_client:
+        monkeypatch.setattr(
+            "app.services.nexus_generation_provider.NexusClient",
+            lambda *_args: NexusClient("synthetic-key", client=http_client),
+        )
+        async with SessionFactory() as session:
+            user = User(
+                telegram_id=970001000000000 + uuid.uuid4().int % 1_000_000,
+                first_name="Prompt limit",
+            )
+            session.add(user)
+            await session.flush()
+            await WalletService.ensure_wallet(session, user.id)
+            await WalletService.credit(
+                session, user_id=user.id, amount=Decimal("20"), kind="test_credit",
+                idempotency_key=f"prompt-limit-credit:{user.id}",
+            )
+            generation = Generation(
+                user_id=user.id, kind="image", provider="nexus", status="queued",
+                prompt="private prompt " * 400, cost_rox=Decimal("20"),
+                parameters={"_model_id": "seedream-5-pro-t2i"},
+            )
+            session.add(generation)
+            await session.flush()
+            await WalletService.debit(
+                session, user_id=user.id, amount=Decimal("20"), kind="generation",
+                reference_type="generation", reference_id=str(generation.id),
+                idempotency_key=f"generation:{generation.id}:debit",
+            )
+            await session.commit()
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await NexusGenerationProviderService.submit(session, generation.id)
+            # A repeated worker delivery must not submit or refund the failed task again.
+            result = await NexusGenerationProviderService.submit(session, generation.id)
+            assert result.status == "failed"
+            assert result.external_id is None
+            assert result.provider == "nexus"
+            assert result.error == "prompt_too_long:max_length=4000"
+            wallet = await session.get(Wallet, user.id)
+            assert wallet is not None and wallet.balance == Decimal("20")
+            refund_count = await session.scalar(
+                select(func.count()).select_from(WalletTransaction).where(
+                    WalletTransaction.user_id == user.id,
+                    WalletTransaction.kind == "generation_refund",
+                )
+            )
+            assert refund_count == 1
+            notifications = list((await session.scalars(
+                select(Notification).where(Notification.generation_id == generation.id)
+            )).all())
+            assert len(notifications) == 1
+            notification = notifications[0]
+            assert notification.kind == "generation_failed"
+            assert notification.body == message
+            delivery = await session.scalar(
+                select(NotificationDelivery).where(
+                    NotificationDelivery.notification_id == notification.id
+                )
+            )
+            assert delivery is not None
+            delivery.status = "sending"
+            delivery.attempts = 1
+            await session.commit()
+            delivery_id = delivery.id
+
+    await _process_delivery(bot, delivery_id)
+    await _process_delivery(bot, delivery_id)
+    assert calls == 1
+    assert len(bot.calls) == 1
+    assert message in bot.calls[0][1]
+    assert "20 ROX возвращены на баланс" in bot.calls[0][1]
+    assert "private prompt" not in bot.calls[0][1]

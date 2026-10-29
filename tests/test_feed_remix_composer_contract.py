@@ -16,9 +16,13 @@ def test_feed_repeat_routes_through_reference_composer_before_launch() -> None:
     assert "window.location.assign(target)" in api
     assert "/remix/prepare" in api
     assert "launchRemix" in api
+    assert "source_has_video_reference?: boolean | null" in api
 
     assert "api.prepareRemix(query.source, query.surface)" in composer
-    assert "Референсы исходной публикации не копируются" in composer
+    assert "Исходный видео-референс автора задаст движение и сцену" in composer
+    assert "Видео автора задаст движение, а ваши фото — внешность" in composer
+    assert "не подставляя готовый ролик" in composer
+    assert 'isSeedanceAuthorReplay ? "image/*"' in composer
     assert "reference_ids: references.map" in composer
     assert "confirm_own_references: true" in composer
     assert "api.upload(file)" in composer

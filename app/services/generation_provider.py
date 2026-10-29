@@ -12,13 +12,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.providers.kie import KieClient, KieProviderError, KieTask, kie_generation_binding
 from app.providers.kie_veo import KieVeoClient
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_provider_routing import switch_to_fallback
 from app.services.kie_image_contracts import KieImageContractError
 from app.services.kie_video_contracts import KieVideoContractError
-from app.services.media_assets import MediaAssetService
+from app.services.media_assets import MediaAssetService, MediaIngestError
 from app.services.model_catalog import ModelCatalog
 from app.services.music_media import MusicMediaAssetService
 from app.services.provider_media_transport import (
@@ -35,6 +37,46 @@ _UNCERTAIN_CLIENT_STATUSES = {408, 425}
 
 
 class GenerationProviderService:
+    @staticmethod
+    async def _resolve_workflow_media_input(
+        session: AsyncSession,
+        generation: Generation,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resolve durable workflow asset references immediately before submit."""
+        marker_prefix = "ksu-media://"
+
+        async def resolve(value: Any) -> Any:
+            if isinstance(value, str) and value.startswith(marker_prefix):
+                try:
+                    asset_id = uuid.UUID(value[len(marker_prefix):])
+                except ValueError as exc:
+                    raise ProviderMediaTransportPermanentError("Invalid workflow media reference") from exc
+                asset = await session.scalar(
+                    select(MediaAsset).where(
+                        MediaAsset.id == asset_id,
+                        MediaAsset.user_id == generation.user_id,
+                    )
+                )
+                if asset is None:
+                    raise ProviderMediaTransportPermanentError("Workflow media asset is not owned")
+                try:
+                    await MediaAssetService.verify_source_readable(asset)
+                    return MediaAssetService.provider_source_url(asset)
+                except MediaIngestError as exc:
+                    # This failed before any external paid submission, so it is
+                    # a known input failure, not an uncertain provider acceptance.
+                    raise ProviderMediaTransportPermanentError("Prepared media is unavailable") from exc
+            if isinstance(value, list):
+                return [await resolve(item) for item in value]
+            if isinstance(value, dict):
+                return {key: await resolve(item) for key, item in value.items()}
+            return value
+
+        resolved = await resolve(payload)
+        if not isinstance(resolved, dict):
+            raise ProviderMediaTransportPermanentError("Provider input must remain an object")
+        return resolved
     @staticmethod
     def _provider_api(generation: Generation) -> str:
         return str((generation.parameters or {}).get("_provider_api") or "jobs")
@@ -253,6 +295,7 @@ class GenerationProviderService:
         input_data = cls._input_for(generation)
 
         try:
+            input_data = await cls._resolve_workflow_media_input(session, generation, input_data)
             input_data = await ProviderMediaTransport.prepare(input_data)
             if provider_api == "suno_music":
                 client = KieClient(settings.kie_api_key, settings.kie_base_url)
@@ -281,6 +324,34 @@ class GenerationProviderService:
                 finally:
                     await client.aclose()
         except Exception as exc:
+            # A callback or recovery worker may have bound/completed this job
+            # while createTask was in flight. Never overwrite that newer state.
+            current = await session.scalar(
+                select(Generation).where(Generation.id == generation_id).with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None:
+                raise LookupError("Generation disappeared after provider submission") from exc
+            if (
+                current.status in _TERMINAL_STATUSES
+                or current.provider != "kie"
+                or current.external_id
+                or (current.parameters or {}).get("_submission_uncertain")
+            ):
+                return current
+            code = (
+                exc.response.status_code if isinstance(exc, httpx.HTTPStatusError)
+                else exc.code if isinstance(exc, KieProviderError) else None
+            )
+            # Only definite no-task availability rejections may cross providers.
+            # Transport/5xx, validation and policy failures keep existing handling.
+            if code in {401, 402, 404, 429}:
+                fallback = await switch_to_fallback(
+                    session, generation_id, expected_provider="kie",
+                    reason=f"Kie unavailable HTTP/code {code}",
+                )
+                if fallback is not None:
+                    return fallback
             await cls._record_submission_error(session, generation.id, exc)
             raise
 

@@ -55,11 +55,23 @@ The browser cannot choose or override the model, hidden prompt, provider route/s
 
 The public trend DTO exposes only presentation data, safe model identity, authoritative current price, reference requirements, user-field schema, `aspect_ratio_options`, optional quality options, usage counter and the flags `prompt_hidden=true` / `prompt_actions_allowed=false`. It never serializes the curated prompt or provider parameters.
 
+Personalization types are inferred from the primary label on both save and read, using whole words rather than substrings. Parenthesized explanations and examples after a colon or “пример”/“например”/“example” do not determine the type. Literal text labels such as “Надпись” or “Цвет” remain text; otherwise explicit date words take priority over numeric words. The phrase “время года” describes a season rather than a numeric year, while mixed labels such as “Возраст в это время года” retain numeric validation. “Погода”, season choices and captions with a Birthday example use text inputs. Unknown labels conservatively remain text. Both admin editors share one frontend classifier; a reviewed catalog corpus verifies parity with the server.
+
+Normalization repairs old inferred types on read without editing recipes or migrating data. Numeric inputs retain their existing decimal validation. Date inputs must be real calendar dates in canonical `YYYY-MM-DD` form; invalid dates return the existing safe HTTP 422 field error before generation or billing. User text is inserted literally in one pass: backslashes are preserved, and a user-supplied `{{…}}` string is not expanded as another field.
+
+The [catalog-wide input audit](agents/EXECUTION/trend-input-audit-20261021.md) records the read-only snapshot, all reviewed labels, affected counts and verification scope.
+
 ## One-tap generation
 
 `TrendService.run()` merges only the validated user image reference URLs into the curated recipe and calls the normal `GenerationService.create()` path. Video previews are presentation-only: they are never sent as generation inputs and do not add a video-reference surcharge, regardless of whether their duration metadata is verified.
 
-Video references are not supported in trends. Recipes containing video-input parameters (including legacy aliases) or Seedance `@VideoN` tags are rejected before generation or billing. For Seedance templates, the highest `@ImageN` automatically defines the minimum number of user image uploads, and validation uses distinct placeholder URLs for every required image. Existing reference-integrity checks still reject missing or out-of-range references. Ordinary generation outside Trends retains video-reference support.
+Seedance 2.5 trends support customer-uploaded video slots inferred from `@VideoN` tags. The public contract exposes typed image/video requirements and the Mini App collects the corresponding uploads before launch. Static video-input parameters (including legacy aliases) remain rejected in shared recipes; previews are presentation-only. For Seedance templates, the highest `@ImageN` automatically defines the minimum number of user image uploads, and validation uses distinct placeholder URLs for every required image. Existing reference-integrity checks still reject missing or out-of-range references. Ordinary generation outside Trends retains video-reference support.
+
+For models advertising `reference_audio_urls`, the Mini App template editor has an **Аудиореференсы для модели** section. An administrator can upload an audio file, listen to it, and remove it without editing JSON. Use `@Audio1`, `@Audio2`, etc. in the hidden Seedance prompt to explain how the model should use each reference; check the numbering after removing an entry. The audio is fixed in the server-owned recipe and reused on customer runs alongside their image references. It is not a user-editable input or a soundtrack applied after generation.
+
+Audio uploads use the dedicated authenticated admin endpoint `/api/v1/uploads/template-audio`. The editor attaches a returned URL only when the server reports audio with a ready probe and a positive measured duration. Model-specific size/count/duration limits remain enforced by the normal server validation before saving or billing. Failed or unverified uploads leave the recipe unchanged and can be retried. Saving, model changes and JSON editing are disabled while an upload is pending; a late response cannot overwrite a newly opened draft. Editing and duplication retain existing audio settings.
+
+Previously saved external or unregistered audio URLs are not repaired automatically. Remove the old entry and upload the file in this section to register its measured duration. The legacy web admin JSON editor remains compatible with `parameters.reference_audio_urls` containing already registered ROXY audio URLs. Migration 0043 separates template audio metadata from personal reference memory (see lifecycle section below).
 
 Therefore trend jobs reuse KSU's existing:
 
@@ -116,3 +128,56 @@ The legacy setting is retained as a pre-migration fallback, while runtime reads 
 use the relational tables only. If migration 0036 is downgraded, the current relational
 category state is serialized back into that legacy setting before the tables are removed.
 Category mutation remains admin-only.
+
+### Template audio lifetime (PR #549 repair)
+
+`POST /api/v1/uploads/template-audio` requires the existing inline-admin
+`social.moderate` permission. It preserves size/rate limits, filename-based MIME
+classification and media probing, and rejects files without an audio stream or
+with a video stream. Blank, `application/octet-stream` and `binary/octet-stream`
+MIME values are classified by the server. The client attaches only verified audio.
+
+Audio metadata lives in `template_audio_references`, outside personal reference
+limits and deletion. `uploaded_by` is nullable attribution, with `ON DELETE SET
+NULL`. New uploads use an independent storage namespace. Migration 0043 copies
+verified metadata for existing templates, including hidden templates and audio
+previously marked deleted by personal pruning. Missing/unverified media is not
+fabricated. Saving a legacy verified URL promotes it transactionally. Editing,
+duplicating, hiding and republishing preserve the shared asset by URL.
+
+Removing audio in the editor only changes the draft; saving removes that recipe
+reference. To dispose of an unused upload, an authorized administrator can call
+`DELETE /api/v1/trends/audio/{reference_id}` using the ID returned by upload.
+Disposal refuses audio referenced by **any** template (including hidden copies),
+generation history, preset or active personal reference. Saves and disposal serialize with a transaction
+lock; metadata reads lock the asset until their transaction completes. Disposal
+is repeatable: it tombstones metadata first, then removes local bytes only when
+no personal reference shares the URL. A failed unlink can be retried with the
+same endpoint; retained tombstones prevent accidental resurrection. Historical
+personal files are retained, not deleted by this endpoint. Abandoned drafts are
+not automatically purged; explicit disposal is conservative and has no TTL.
+
+Rollout: apply additive migration before starting the new backend/frontend.
+Code rollback must retain the new table and files; old code cannot validate new
+independent audio. Disable new audio uploads before rolling back, and restore
+metadata compatibility before serving templates with the old version. Do not
+run the schema downgrade against templates using independent audio.
+
+Cleanup reachability is recursive across stored JSON, including `audio_url`,
+`driving_audio_url` and nested model audio fields. Preset saves and generation
+preparation lock referenced template assets and reject tombstones, so they cannot
+race disposal. Public catalog reads do not acquire the global save/disposal lock.
+The existing model-schema size limits also apply to independent audio metadata,
+including template validation without a personal owner; personal-library size
+lookups remain scoped to the authenticated owner.
+
+Backfill includes the supported legacy `generation_settings.reference_audio_urls`
+location. Shared-container MIME is normalized with the existing media-probe
+classifier before storage (for example audio-only MP4 becomes audio/mp4/M4A).
+Disposal audit is emitted only after the metadata commit and includes actor,
+asset and request IDs; a rolled-back deletion produces no success event.
+
+
+## Required photo -> video workflows
+
+Selected templates may use a validated v2 two-stage recipe. The legacy v1 run endpoint cannot bypass the required prepared photo. Owner runs, explicit per-step pricing/consent, private media and all API/rollout contracts are described in [TREND_PHOTO_VIDEO_WORKFLOWS.md](TREND_PHOTO_VIDEO_WORKFLOWS.md). Ordinary v1 templates keep the contract above.

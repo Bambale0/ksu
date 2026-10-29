@@ -31,7 +31,7 @@ class GenerationWorkerService:
     def _protection_provider(generation: Generation, provider: str) -> str:
         # Protect slow synchronous images independently from accepted video jobs.
         # This is only a circuit namespace; never persist it as the real provider.
-        if provider == "neironych" and (generation.parameters or {}).get("_model_id") == "nano-banana-pro":
+        if provider == "neironych" and (generation.parameters or {}).get("_model_id") in NeironychGenerationProviderService.IMAGE_MODEL_IDS:
             return AbuseProtectionService.NEIRONYCH_IMAGE_CIRCUIT
         return provider
 
@@ -210,9 +210,7 @@ class GenerationWorkerService:
                 return True
 
             if generation.status == "submitting" and generation.external_id is None:
-                if provider == "neironych" and (generation.parameters or {}).get("_model_id") in {
-                    "seedance-2.0", "seedance-2.5",
-                }:
+                if provider == "neironych" and (generation.parameters or {}).get("_model_id") in NeironychGenerationProviderService.VIDEO_MODEL_IDS:
                     # Video POST is replayable with the original idempotency key.
                     # A worker interruption may have lost an accepted request ID.
                     params = dict(generation.parameters or {})
@@ -253,7 +251,7 @@ class GenerationWorkerService:
             try:
                 await AbuseProtectionService.provider_submission_gate(redis, protection_provider)
             except ProviderCircuitOpen as exc:
-                if provider in {"neironych", "nexus"}:
+                if provider in {"neironych", "nexus", "kie"}:
                     fallback = await switch_to_fallback(
                         session,
                         generation.id,
@@ -452,13 +450,17 @@ class GenerationWorkerService:
 
         cutoff = utcnow() - timedelta(seconds=hard_timeout)
         async with SessionFactory() as session:
-            ids = list(
+            tasks = list(
                 (
-                    await session.scalars(
-                        select(Generation.id)
+                    await session.execute(
+                        select(Generation.id, Generation.external_id, Generation.provider)
                         .where(
                             Generation.provider.in_(_PROVIDER_NAMES),
                             Generation.status.in_(("generating", "submitting")),
+                            Generation.external_id.is_not(None),
+                            Generation.parameters["_reconciliation_required"]
+                            .as_boolean()
+                            .is_not(True),
                             Generation.created_at < cutoff,
                         )
                         .order_by(Generation.created_at.asc())
@@ -467,22 +469,43 @@ class GenerationWorkerService:
                 ).all()
             )
 
-        for generation_id in ids:
+        for generation_id, external_id, provider in tasks:
             async with SessionFactory() as session:
-                generation = await session.get(Generation, generation_id)
+                generation = await session.scalar(
+                    select(Generation)
+                    .where(Generation.id == generation_id)
+                    .with_for_update()
+                )
                 if (
                     generation is None
-                    or generation.provider not in _PROVIDER_NAMES
+                    or generation.provider != provider
                     or generation.status not in {"generating", "submitting"}
+                    or generation.external_id != external_id
                 ):
                     continue
                 if cls._provider_started_at(generation) >= cutoff:
                     continue
-                message = (
-                    f"{generation.provider} generation exceeded hard lifetime "
-                    f"of {settings.generation_hard_timeout_seconds} seconds"
+                params = dict(generation.parameters or {})
+                if params.get("_reconciliation_required"):
+                    continue
+                now = utcnow()
+                params["_reconciliation_required"] = True
+                params["_reconciliation_reason"] = "hard_timeout"
+                params["_reconciliation_started_at"] = now.isoformat()
+                generation.parameters = params
+                generation.status = "generating"
+                generation.error = (
+                    "Provider task exceeded the local hard lifetime; durable "
+                    "reconciliation continues without resubmission or refund."
                 )
-                await GenerationProviderService.fail_and_refund(session, generation.id, message)
+                generation.updated_at = now
+                await session.commit()
+                logger.warning(
+                    "generation_reconciliation_started generation=%s provider=%s "
+                    "reason=hard_timeout task_bound=true",
+                    generation.id,
+                    generation.provider,
+                )
 
     @classmethod
     async def _reconcile_stale_generating(cls) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 _INSTALLED = False
@@ -36,6 +37,9 @@ def install_model_spec_reference_size_audit() -> None:
         parent_generation_id: uuid.UUID | None = None,
         action_type: str | None = None,
         generation_id: uuid.UUID | None = None,
+        expected_cost_rox: Decimal | str | None = None,
+        commit: bool = True,
+        wake: bool = True,
     ):
         routed = resolve_model_request(model_id, parameters or {}, input_url=input_url)
         await validate_owned_reference_sizes(
@@ -57,6 +61,9 @@ def install_model_spec_reference_size_audit() -> None:
             parent_generation_id=parent_generation_id,
             action_type=action_type,
             generation_id=generation_id,
+            expected_cost_rox=expected_cost_rox,
+            commit=commit,
+            wake=wake,
         )
 
     GenerationService.create = audited_create

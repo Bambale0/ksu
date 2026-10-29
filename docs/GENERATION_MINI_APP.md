@@ -47,9 +47,23 @@ POST /api/v1/uploads/kie
 
 Authenticated create/upload calls use raw signed `Telegram.WebApp.initData` in `X-Telegram-Init-Data`. `initDataUnsafe` is never an authentication source.
 
+## Prompt length failures
+
+When Nexus explicitly rejects the prompt with HTTP 422 `string_too_long`, ROXY
+shows the provider's reported character limit and asks the customer to shorten
+the text and retry. The explanation appears in Telegram, the notification inbox,
+Mini App live feedback, history and the private work preview. The limit is read
+from the validation response, rather than hardcoded per model. The prompt is
+never silently truncated. Unrelated validation failures retain generic safe copy.
+The normal failed-generation refund and notification idempotency remain in effect.
+
 ## Product grouping
 
 ROXY groups compatible backend variants into user-facing products where useful. Examples include Nano Banana, Seedream, GPT Image, WAN and Grok groups. Grouping is presentation only: the concrete backend `model_id` still controls validation, provider payload and billing.
+
+Ordinary Grok video variants (`grok-video-t2v` and `grok-video-i2v`) default to Neironych → Kie through the existing admin-managed provider routes. Neironych uses `grok-imagine-video-1.5`; I2V passes the uploaded image as its first frame. Public model IDs, input validation and ROX prices remain unchanged. Normal mode with supported settings uses Neironych; controls it cannot represent (including fun/spicy, Kie task references or durations above 15 seconds) fall back before a paid Neironych request, preserving the original Kie input. Ambiguous submissions remain on their original provider. Existing jobs retain their saved provider/route. Admins can select Kie-only for future jobs to roll back routing.
+
+Provider routes can also have sparse account-specific exceptions. Normal and batch admission resolve these from the authenticated server-side user ID and freeze the effective route and configuration revision in each generation. A username change does not transfer an exception. Models without an account exception inherit the common route. Existing accepted jobs continue on their saved provider after a policy change. Supported choices, including Neironych-first orders retaining Nexus/Kie fallbacks, are exposed through the admin runtime API; a preference never adds provider support for an incompatible model or input.
 
 WAN 2.7 is exposed in both media families:
 
@@ -247,3 +261,25 @@ The Mini App HTML remains `no-store`. Successful content-hashed `/_next/static/`
 CI syntax-checks every Mini App JavaScript file and executes focused generation/ROXY contracts before the full Python regression suite. Pricing tests must verify both default prices and server-side overrides, including parameter tiers where applicable. Generation recovery tests must also preserve terminal-state monotonicity, ambiguous-submission handling, stale callback rejection and refund exactly-once behavior.
 
 The faststart backfill covers both feed and profile publications, never private works. Multi-result videos are prepared together; their complete old/new URL arrays are recorded before the database commit. Restore checks the entire current media list before changing anything and accepts earlier single-URL backup records. `--limit` must be positive and counts only rows needing work (or failing validation), so successive limited runs advance past already-prepared videos. Use a new backup file per apply run. The command does not delete source files or republish hidden works. A publication conversion failure is returned through the existing media-unavailable domain error and logged as `feed_faststart_failed` with the generation UUID, without private prompts or media URLs.
+
+
+### Seedance 2.5: video-reference trend slots (2026-10-27)
+Administrators can publish a scenario with @Video1 (then @Video2, etc.) in its
+hidden prompt. Each index is a required video uploaded by the customer on the
+trend screen; image slots and persistent template audio retain their previous
+behavior. The trend preview is always presentation-only and never becomes a
+provider input automatically. Static personal video URLs remain rejected in
+shared recipes because their lifetime is controlled by personal reference cleanup.
+
+The run contract adds optional video_reference_urls (maximum from the current
+Seedance 2.5 contract). Public reference_requirements includes image/video min/max.
+The Mini App offers a separate MP4/MOV uploader and blocks launch until all required
+media is present. Run validates owner, ready probe, trusted size and duration before
+billing, then uses the existing configured provider route and frozen submission.
+The existing video-reference price multiplier is applied to both public/quality
+prices and the actual generation. Prices, route config, permissions and moderation
+are unchanged. A generated result can be used as the uploaded trend preview;
+customers supply the input video specified by the scenario.
+
+Structural template preflight permits only synthetic future video slots.
+Runtime GenerationService.create/prepare_request retains full media validation.

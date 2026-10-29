@@ -17,7 +17,9 @@ from app.services.seedance_reference_modes import enforce_seedance_reference_mod
 
 
 class KieProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(slots=True)
@@ -55,7 +57,13 @@ class KieClient:
             raise KieProviderError(f"Kie {operation} returned invalid code: {payload!r}") from exc
         if code != 200:
             message = payload.get("msg") or payload.get("message") or payload
-            raise KieProviderError(f"Kie {operation} rejected: {message!r}")
+            data = payload.get("data")
+            # A contradictory response carrying a task ID is not proof that
+            # submission was rejected before acceptance.
+            if isinstance(data, dict) and data.get("taskId"):
+                raise KieProviderError(f"Kie {operation} returned task ID with error code {code}")
+            rejection_code = code if data is None or isinstance(data, dict) else None
+            raise KieProviderError(f"Kie {operation} rejected: {message!r}", code=rejection_code)
 
     async def create_task(
         self,
@@ -72,6 +80,18 @@ class KieClient:
             body["callBackUrl"] = callback_url
 
         response = await self._client.post("/api/v1/jobs/createTask", json=body)
+        if response.status_code in {401, 402, 404, 429}:
+            try:
+                rejection = response.json()
+            except ValueError as exc:
+                raise KieProviderError("Kie createTask returned an unreadable availability response") from exc
+            data = rejection.get("data") if isinstance(rejection, dict) else None
+            if (
+                not isinstance(rejection, dict)
+                or (data is not None and not isinstance(data, dict))
+                or (isinstance(data, dict) and data.get("taskId"))
+            ):
+                raise KieProviderError("Kie createTask returned an ambiguous availability response")
         response.raise_for_status()
         payload = response.json()
         self._require_success_payload(payload, operation="createTask")

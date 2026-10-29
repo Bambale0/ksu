@@ -20,6 +20,8 @@ import type {
   ReferralReward,
   TrendItem,
   TrendShare,
+  TrendWorkflowQuote,
+  TrendWorkflowRun,
 } from "./types";
 
 declare global {
@@ -41,7 +43,11 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs?: numb
   }, timeoutMs);
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => null);
-  if (!response.ok) throw userSafeHttpError(response.status, payload);
+  if (!response.ok) {
+    const error = userSafeHttpError(response.status, payload) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
   return payload as T;
 }
 
@@ -115,6 +121,7 @@ export type FeedRemixDraft = {
     audio_count: number;
     required: boolean;
   };
+  source_has_video_reference?: boolean | null;
   preview_url?: string | null;
   media?: Array<Record<string, unknown>>;
 };
@@ -186,7 +193,7 @@ export const api = {
   recreateGeneration: (id: string) => request<RecreateGenerationPayload>(`/api/v1/generations/${encodeURIComponent(id)}/recreate`),
   quote: async (body: Record<string, unknown>) => normalizeCustomerQuote(await request<Quote>("/api/v1/generations/quote", { method: "POST", body: JSON.stringify(body) })),
   create: (body: Record<string, unknown>) => trackGenerationStart(request<{ id: string; ids?: string[]; quantity?: number; status?: string; cost_rox?: string }>("/api/v1/generations", { method: "POST", body: JSON.stringify(body) })),
-  upload: (file: File) => {
+  upload: (file: File, purpose?: "template-audio") => {
     const form = new FormData();
     form.append("file", file, file.name);
     return request<{
@@ -194,8 +201,10 @@ export const api = {
       name?: string;
       mime_type?: string;
       size?: number;
+      probe_status?: string | null;
+      duration_ms?: number | null;
       reference?: { id: string; kind: "image" | "video" | "audio"; url?: string; source_url?: string; filename?: string | null };
-    }>("/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
+    }>(purpose === "template-audio" ? "/api/v1/uploads/template-audio" : "/api/v1/uploads/kie", { method: "POST", body: form }, uploadTimeoutForFile(file));
   },
   feed: (sort = "recent", offset = 0) => request<{ items: FeedCard[]; has_more?: boolean }>(`/api/v1/feed?sort=${encodeURIComponent(sort)}&limit=24&offset=${offset}`),
   feedItem: (id: string, surface: FeedSurface = "feed") => request<FeedCard>(`/api/v1/feed/${encodeURIComponent(id)}?surface=${encodeURIComponent(surface)}`),
@@ -245,11 +254,35 @@ export const api = {
   })),
   trends: (mediaType?: "image" | "video") => request<{ items: TrendItem[] }>(`/api/v1/trends?limit=60${mediaType ? `&media_type=${mediaType}` : ""}`),
   trend: (id: string) => request<TrendItem>(`/api/v1/trends/${encodeURIComponent(id)}`),
+  latestTrendWorkflow: async (id: string): Promise<TrendWorkflowRun | null> => {
+    try {
+      return await request<TrendWorkflowRun>(`/api/v1/trends/${encodeURIComponent(id)}/workflow`);
+    } catch (error) {
+      if ([404, 405].includes(Number((error as { status?: number }).status))) return null;
+      throw error;
+    }
+  },
+  trendWorkflow: (runId: string) => request<TrendWorkflowRun>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}`),
+  createTrendWorkflow: (id: string, commandKey: string) => request<TrendWorkflowRun>(`/api/v1/trends/${encodeURIComponent(id)}/workflow`, {
+    method: "POST",
+    headers: { "Idempotency-Key": commandKey },
+    body: JSON.stringify({}),
+  }),
+  quoteTrendWorkflowStep: (runId: string, stepId: string, body: Record<string, unknown>) => request<TrendWorkflowQuote>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/quote`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
+  runTrendWorkflowStep: (runId: string, stepId: string, commandKey: string, body: Record<string, unknown>) => request<TrendWorkflowRun>(`/api/v1/trends/workflows/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/run`, {
+    method: "POST",
+    headers: { "Idempotency-Key": commandKey },
+    body: JSON.stringify(body),
+  }),
   shareTrend: (id: string) => request<TrendShare>(`/api/v1/trends/${encodeURIComponent(id)}/share`, { method: "POST" }),
-  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
+  runTrend: (id: string, referenceUrls: string[] = [], userValues: Record<string, string> = {}, options: { resolution?: string; aspectRatio?: string; videoReferenceUrls?: string[] } = {}) => trackGenerationStart(request<{ id: string; task_id?: string; status: string; cost_rox?: string; result_url?: string | null }>(`/api/v1/trends/${encodeURIComponent(id)}/run`, {
     method: "POST",
     body: JSON.stringify({
       reference_urls: referenceUrls,
+      ...(options.videoReferenceUrls?.length ? { video_reference_urls: options.videoReferenceUrls } : {}),
       ...(Object.keys(userValues).length ? { user_values: userValues } : {}),
       ...(options.resolution ? { resolution: options.resolution } : {}),
       ...(options.aspectRatio ? { aspect_ratio: options.aspectRatio } : {}),

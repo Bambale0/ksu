@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from botocore.exceptions import BotoCoreError, ClientError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +64,60 @@ class MediaIngestError(RuntimeError):
 
 
 class MediaAssetService:
+    @staticmethod
+    def ensure_source_readable(asset: MediaAsset) -> None:
+        """Check stored readiness/local bytes; remote objects also need async verification."""
+        if asset.status != "ready" or not asset.object_key or not asset.bucket:
+            raise MediaIngestError("Prepared image is not ready")
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            try:
+                path = LocalMediaStorage.path_for_key(asset.object_key)
+                if not path.is_file() or path.stat().st_size <= 0:
+                    raise MediaIngestError("Prepared image is unavailable")
+            except OSError as exc:
+                raise MediaIngestError("Prepared image is unavailable") from exc
+        elif not ObjectStorage.configured():
+            raise MediaIngestError("Legacy media storage is unavailable")
+
+    @classmethod
+    async def verify_source_readable(cls, asset: MediaAsset) -> None:
+        """Verify a selected private source without publishing or downloading it."""
+        cls.ensure_source_readable(asset)
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            return
+        try:
+            metadata = await ObjectStorage.head_object(key=asset.object_key, bucket=asset.bucket)
+        except (BotoCoreError, ClientError, ObjectStorageNotConfigured, OSError, ValueError) as exc:
+            raise MediaIngestError("Prepared image is unavailable") from exc
+        size = metadata.get("ContentLength") if isinstance(metadata, dict) else None
+        if type(size) is not int or size <= 0 or metadata.get("DeleteMarker"):
+            raise MediaIngestError("Prepared image is unavailable")
+
+    @classmethod
+    def provider_source_url(
+        cls,
+        asset: MediaAsset,
+        storage: ObjectStorage | None = None,
+    ) -> str:
+        """Return a fresh product-owned URL for one provider submission.
+
+        ``source_url`` is provider history and may be expired. Never use it as
+        the provider input for a new generation.
+        """
+        cls.ensure_source_readable(asset)
+        if LocalMediaStorage.is_local_bucket(asset.bucket):
+            signed = LocalMediaStorage.signed_view_url(asset_id=asset.id, key=asset.object_key)
+            base = str(settings.public_base_url or "").strip().rstrip("/")
+            if not base.startswith("https://"):
+                raise MediaIngestError("PUBLIC_BASE_URL must be HTTPS for provider media transport")
+            return urljoin(base + "/", signed.lstrip("/"))
+        if not ObjectStorage.configured():
+            raise MediaIngestError("Legacy media storage is unavailable")
+        storage = storage or ObjectStorage()
+        try:
+            return storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+        except ObjectStorageNotConfigured as exc:
+            raise MediaIngestError("Legacy media storage is unavailable") from exc
     @classmethod
     async def persist_ready_local_file(
         cls,

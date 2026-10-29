@@ -152,6 +152,7 @@ export type Generation = {
   publication_scope?: PublicationScope;
   is_profile_visible?: boolean;
   is_public_feed?: boolean;
+  trend_workflow?: { id: string; trend_id: string; step_id: string };
 };
 
 export type RecreateGenerationPayload = {
@@ -214,10 +215,80 @@ export type TrendUserField = {
   type: "text" | "number" | "date";
   required?: boolean;
   placeholder?: string;
+  help?: string;
+  options?: string[];
   min?: number;
   max?: number;
   max_length?: number;
   suffix?: string;
+};
+
+export type TrendWorkflowInput = {
+  id: string;
+  label: string;
+  help: string;
+  type: "image" | "text" | "number" | "date" | "select";
+  required: boolean;
+  order: number;
+  options?: string[];
+};
+
+export type TrendWorkflowMedia = {
+  id?: string;
+  url?: string;
+  kind?: "image" | "video" | string;
+  content_type?: string | null;
+  ordinal?: number;
+};
+
+export type TrendWorkflowAttempt = {
+  generation_id: string;
+  status: string;
+  attempt: number;
+  media_asset_id?: string | null;
+  media?: TrendWorkflowMedia | null;
+  command_id?: string | null;
+};
+
+export type TrendWorkflowStep = {
+  id: string;
+  kind: "image" | "video" | string;
+  title: string;
+  instructions?: string;
+  preview_url?: string | null;
+  inputs: TrendWorkflowInput[];
+  status: "pending" | "running" | "queued" | "ready" | "failed" | "awaiting_media" | "reconciling" | string;
+  generation_id?: string | null;
+  media_asset_id?: string | null;
+  media?: TrendWorkflowMedia | null;
+  media_options?: TrendWorkflowMedia[];
+  attempts?: number;
+  reconcile_required?: boolean;
+  attempt_history?: TrendWorkflowAttempt[];
+  model?: { id: string; title?: string };
+  settings_summary?: Record<string, string | number | null>;
+  command_id?: string | null;
+};
+
+export type TrendWorkflowRun = {
+  id: string;
+  trend_id: string;
+  status: string;
+  recipe_version: number;
+  workflow_type: "sequential_photo_video" | string;
+  steps: TrendWorkflowStep[];
+  title?: string;
+  description?: string;
+  preview_url?: string | null;
+  preview_thumbnail_url?: string | null;
+  settings_summary?: Record<string, string | number | null>;
+};
+
+export type TrendWorkflowQuote = {
+  cost_rox: string;
+  retail_cost_rox: string;
+  admin_free: boolean;
+  billing_seconds?: number | null;
 };
 
 export type TrendQualityOption = {
@@ -235,16 +306,19 @@ export type TrendItem = {
   id: string;
   title: string;
   description?: string;
+  schema_version?: number;
+  workflow_type?: "sequential_photo_video" | string;
   media_type: "image" | "video" | string;
   preview_url?: string | null;
   preview_thumbnail_url?: string | null;
+  steps?: TrendWorkflowStep[];
   model?: { id: string; title?: string; family?: string };
   cost_rox?: string;
   retail_cost_rox?: string;
   cost_rub?: string;
   admin_free?: boolean;
   billing_seconds?: number | null;
-  reference_requirements?: { kind?: string; min?: number; max?: number };
+  reference_requirements?: { kind?: string; min?: number; max?: number; image?: { min: number; max: number }; video?: { min: number; max: number } };
   user_fields?: TrendUserField[];
   aspect_ratio_options?: string[];
   quality_options?: TrendQualityOption[];

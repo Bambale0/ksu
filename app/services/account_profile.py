@@ -12,6 +12,10 @@ from app.db.models import Generation, Notification, PartnerWithdrawal, Payment, 
 from app.db.onboarding_models import UserOnboarding
 from app.db.social_models import UserSubscription
 from app.services.credits import InternalCreditService
+from app.services.neironych_balance_alerts import (
+    BALANCE_NOTIFICATION_KINDS,
+    NeironychBalanceAlertService,
+)
 from app.services.onboarding import OnboardingService
 from app.services.profile_preferences import ProfilePreferenceService
 from app.services.referrals import ReferralService
@@ -95,12 +99,16 @@ class AccountProfileService:
             )
             or 0
         )
+        can_read_balance = await NeironychBalanceAlertService.authorized_owner(
+            session, user.id, lock=True
+        )
         unread = int(
             (
                 await session.scalar(
                     select(func.count()).select_from(Notification).where(
                         Notification.user_id == user.id,
                         Notification.is_read.is_(False),
+                        *([] if can_read_balance else [Notification.kind.not_in(BALANCE_NOTIFICATION_KINDS)]),
                     )
                 )
             )

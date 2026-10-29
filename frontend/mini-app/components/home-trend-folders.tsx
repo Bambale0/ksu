@@ -61,6 +61,7 @@ function TrendCards({ trends }: { trends: TrendItem[] }) {
           <span className="home-trend-folder-item-meta">
             <span>{trendUsageLabel(trend.usage_count)}</span>
             <span>{trend.media_type === "video" ? "Видео" : "Фото"}</span>
+            {trend.workflow_type === "sequential_photo_video" ? <span>2 шага: фото → видео</span> : null}
             <span>{price(trend)}</span>
           </span>
         </span>

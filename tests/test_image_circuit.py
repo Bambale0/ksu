@@ -215,8 +215,9 @@ async def test_scoped_policy_uses_real_redis_atomic_counter(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("uncertain", [False, True])
+@pytest.mark.parametrize("provider", ["neironych", "kie"])
 async def test_worker_open_image_circuit_only_falls_back_before_submit(
-    monkeypatch: pytest.MonkeyPatch, uncertain: bool,
+    monkeypatch: pytest.MonkeyPatch, uncertain: bool, provider: str,
 ) -> None:
     import uuid
     from decimal import Decimal
@@ -226,24 +227,27 @@ async def test_worker_open_image_circuit_only_falls_back_before_submit(
     from app.db.session import SessionFactory
     from app.services.generation_reliability import GenerationOutboxService
     from app.services.generation_worker import GenerationWorkerService
+    from app.services.generation_provider import GenerationProviderService
     from app.services.neironych_generation_provider import NeironychGenerationProviderService
     from app.services.nexus_generation_provider import NexusGenerationProviderService
 
     monkeypatch.setattr(settings, "abuse_protection_enabled", True)
     monkeypatch.setattr(settings, "neironych_image_circuit_failure_threshold", 2)
+    monkeypatch.setattr(settings, "kie_circuit_failure_threshold", 2)
     async with SessionFactory() as session:
         user = User(telegram_id=32_000_000_000_000 + uuid.uuid4().int % 1_000_000_000, first_name="Circuit regression")
         session.add(user)
         await session.flush()
         parameters = {
-            "_model_id": "nano-banana-pro", "_provider_route": ["neironych", "nexus"],
+            "_model_id": "seedream-5-pro-t2i" if provider == "kie" else "nano-banana-pro",
+            "_provider_route": [provider, "nexus"],
             "_provider_route_index": 0,
         }
         if uncertain:
             parameters["_submission_uncertain"] = True
         generation = Generation(
             user_id=user.id, kind="text_to_image", status="submitting" if uncertain else "queued",
-            provider="neironych", prompt="test", cost_rox=Decimal("0"), parameters=parameters,
+            provider=provider, prompt="test", cost_rox=Decimal("0"), parameters=parameters,
         )
         session.add(generation)
         await session.commit()
@@ -254,17 +258,18 @@ async def test_worker_open_image_circuit_only_falls_back_before_submit(
     monkeypatch.setattr(GenerationOutboxService, "release", release)
     forbidden_submit = AsyncMock(side_effect=AssertionError("No paid POST is permitted in this scenario"))
     monkeypatch.setattr(NeironychGenerationProviderService, "submit", forbidden_submit)
+    monkeypatch.setattr(GenerationProviderService, "submit_kie", forbidden_submit)
     monkeypatch.setattr(NexusGenerationProviderService, "submit", forbidden_submit)
     redis = ClockRedis()
     for _ in range(2):
-        await AbuseProtectionService.record_provider_failure(redis, "neironych:image")
+        await AbuseProtectionService.record_provider_failure(redis, "neironych:image" if provider == "neironych" else "kie")
     assert await GenerationWorkerService.process_one(redis)
     forbidden_submit.assert_not_awaited()
     release.assert_awaited_once()
     async with SessionFactory() as session:
         generation = await session.get(Generation, generation_id)
         assert generation is not None
-        assert generation.provider == ("neironych" if uncertain else "nexus")
+        assert generation.provider == (provider if uncertain else "nexus")
         assert generation.status == ("submitting" if uncertain else "retry")
         assert generation.parameters["_provider_route_index"] == (0 if uncertain else 1)
         assert bool(generation.parameters.get("_submission_uncertain")) is uncertain
