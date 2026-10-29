@@ -287,7 +287,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.workflowStageCard > img,
+.workflowStageMedia,
 .workflowStageFallback,
 .workflowStageScrim {
   position: absolute;
@@ -296,7 +296,7 @@
   height: 100%;
 }
 
-.workflowStageCard > img {
+.workflowStageMedia {
   z-index: 0;
   object-fit: cover;
   transition: transform 180ms ease, filter 180ms ease;
@@ -363,7 +363,7 @@
   backdrop-filter: blur(12px);
 }
 
-.workflowStageCardLocked > img {
+.workflowStageCardLocked > .workflowStageMedia {
   filter: brightness(.42) saturate(.7);
 }
 
@@ -371,7 +371,7 @@
   background: rgba(4, 4, 7, .43);
 }
 
-.workflowStageCard:hover > img {
+.workflowStageCard:hover > .workflowStageMedia {
   transform: scale(1.018);
 }
 
@@ -465,7 +465,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workflowStageCard > img,
+  .workflowStageMedia,
   .workflowLockOverlay,
   .workflowLockDialog { transition: none; animation: none; }
 }

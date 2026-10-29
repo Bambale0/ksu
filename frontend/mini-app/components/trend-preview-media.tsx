@@ -7,13 +7,16 @@ type Props = {
   mediaType: string | null | undefined;
   url: string;
   thumbnailUrl?: string | null;
+  controls?: boolean;
+  label?: string;
+  onVideoError?: () => void;
 };
 
 function retryUrl(url: string, attempt: number): string {
   return attempt ? `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}` : url;
 }
 
-export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: Props) {
+export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl, controls = false, label, onVideoError }: Props) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const [imageRetry, setImageRetry] = useState(0);
   const [poster, setPoster] = useState<string | null>(null);
@@ -81,12 +84,15 @@ export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: P
     return <video
       ref={videoRef}
       className={className}
+      aria-label={label}
       poster={poster || undefined}
+      controls={controls}
       muted
       autoPlay
       loop
       playsInline
       preload="none"
+      onError={onVideoError}
     />;
   }
 

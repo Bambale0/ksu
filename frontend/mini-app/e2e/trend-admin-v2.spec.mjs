@@ -209,12 +209,12 @@ test('admin uploads separate images for workflow steps 1 and 2', async ({ page }
   });
   // Both upload inputs stay disabled until the current upload completes.
   await expect(form.getByLabel('URL фото шага 1', { exact: true })).toHaveValue('https://cdn.example.invalid/step-1.jpg');
-  await expect(form.getByLabel('Загрузить фото шага 2', { exact: true })).toBeEnabled();
-  await form.getByLabel('Загрузить фото шага 2', { exact: true }).setInputFiles({
+  await expect(form.getByLabel('Загрузить превью шага 2', { exact: true })).toBeEnabled();
+  await form.getByLabel('Загрузить превью шага 2', { exact: true }).setInputFiles({
     name: 'step-2.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-step-2'),
   });
   await expect(form.getByLabel('URL фото шага 1', { exact: true })).toHaveValue('https://cdn.example.invalid/step-1.jpg');
-  await expect(form.getByLabel('URL фото шага 2', { exact: true })).toHaveValue('https://cdn.example.invalid/step-2.jpg');
+  await expect(form.getByLabel('URL превью шага 2', { exact: true })).toHaveValue('https://cdn.example.invalid/step-2.jpg');
   await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
 
   await expect.poll(() => state.writes.length).toBe(1);
