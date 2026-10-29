@@ -142,7 +142,7 @@ test('Batch requires an explicit ratio before uploads and pricing', async ({ pag
   await expect(ratio).toHaveValue('');
   await expect(ratio.locator('option')).toHaveText(['Выберите', '4:3', '9:16']);
   await page.getByRole('button', { name: 'Рассчитать стоимость' }).click();
-  await expect(page.getByRole('alert')).toHaveText('Выберите соотношение сторон');
+  await expect(page.locator('.tool-panel').first().getByRole('alert')).toHaveText('Выберите соотношение сторон');
   expect(uploads).toBe(0);
   expect(quotes).toEqual([]);
   await ratio.selectOption('4:3');
@@ -196,7 +196,7 @@ test('Legacy batch retry preserves the selected ratio and an uncertain attempt a
   await ratio.selectOption('9:16');
   await retry.click();
   await expect(ratio).toBeDisabled();
-  await expect(page.getByRole('alert')).toHaveText('Ответ на повтор потерян');
+  await expect(page.locator('.tool-panel').first().getByRole('alert')).toHaveText('Ответ на повтор потерян');
   expect(quoteRatios).toEqual(['9:16']);
   expect(attempts).toHaveLength(1);
   expect(attempts[0].body).toEqual({ aspect_ratio: '9:16' });

@@ -261,7 +261,9 @@ test('Unsupported derivative deep link degrades to a safe action error screen', 
 test('Repeat clears a legacy automatic ratio instead of inheriting a square model default', async ({ page }) => {
   await mockActionApp(page, { legacyAspectRatio: true });
   await openAction(page, 'repeat');
-  const ratio = page.getByLabel('Формат', { exact: true });
+  const ratio = page.locator('label.field').filter({
+    has: page.locator('.label').filter({ hasText: /^Формат(?:\s*\*)?$/ }),
+  }).getByRole('combobox');
   await expect(ratio).toHaveValue('');
   await expect(ratio.locator('option')).toHaveText(['Выберите', '1:1', '9:16']);
   await expect(page.getByText('Выберите соотношение сторон')).toBeVisible();
