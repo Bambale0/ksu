@@ -58,6 +58,8 @@ step-up, explicit confirmation, `Idempotency-Key` and `expected_revision`. The c
 ledger records the actor and operation; stale saves cannot overwrite a newer policy.
 Changing this setting affects future admission only. The customer catalog resolves the
 same policy as admission, and a replayed customer request keeps its existing task.
+Operational rollback should use this runtime control while retaining workers that
+understand accepted Qwen tasks; an older worker image must not resume those tasks.
 
 The system prompts deliberately do not copy the old uncensored legacy image-analyzer instruction. The tools describe observable visual properties, do not attempt real-person identification from images and do not infer sensitive personal attributes.
 
