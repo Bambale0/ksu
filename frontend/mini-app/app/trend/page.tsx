@@ -111,22 +111,20 @@ function workflowPreviewCanCacheBust(url: string): boolean {
 }
 
 function WorkflowStagePreview({ primaryUrl, fallbackUrl, finalFallbackUrl, alt, allowVideo = false }: { primaryUrl: string; fallbackUrl: string; finalFallbackUrl: string; alt: string; allowVideo?: boolean }) {
+  const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
+  return <WorkflowStagePreviewState key={sources.join("\u0000")} sources={sources} alt={alt} allowVideo={allowVideo} />;
+}
+
+function WorkflowStagePreviewState({ sources, alt, allowVideo }: { sources: string[]; alt: string; allowVideo: boolean }) {
   const [attempt, setAttempt] = useState(0);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const retryTimer = useRef<number | null>(null);
-  const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
-  const sourceKey = sources.join("\u0000");
 
-  useEffect(() => {
-    setAttempt(0);
-    setSourceIndex(0);
-    setUnavailable(false);
-    return () => {
-      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-      retryTimer.current = null;
-    };
-  }, [sourceKey]);
+  useEffect(() => () => {
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  }, []);
 
   const source = sources[sourceIndex] || "";
   const canRetrySource = workflowPreviewCanCacheBust(source);
