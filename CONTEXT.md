@@ -1,3 +1,10 @@
+## Active Fix Execution — iPhone Add Trend interaction (2026-10-29)
+
+- Baseline main `0889745f77f5a09099006cbd5880500059e52745`; isolated branch `fix/iphone-add-trend-20261029`.
+- User report: Add Trend does not respond on iPhone; related complaint describes blocked web-content taps/scrolling. The manager eagerly activates every video preview and keeps them running beneath the editor; this is confirmed in code, while causality for the physical-device freeze is not yet proven.
+- Scope: reproduce the large-catalog resource invariant and actual touch/edit/upload/close/reopen journey, then reuse the existing visibility-aware media component and suspend covered previews. Preserve server contracts, permissions, recipes, business settings and financial behavior.
+- Audit, competing hypotheses, guidance, acceptance criteria and verification matrix: [docs/agents/EXECUTION/iphone-add-trend-20261029.md](docs/agents/EXECUTION/iphone-add-trend-20261029.md). Exact-head CI and separate review are required; no deployment or paid generation is claimed.
+
 ## Active Feature Execution — Seedance author-recipe replay parity (2026-10-28)
 
 - Baseline `main` `530fbc4a70a2615cf9ffd2ba5ef7d547019c85b8`; isolated worktree branch `fix/seedance-author-reference-priority-20261028`.
