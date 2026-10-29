@@ -170,7 +170,7 @@ async def test_admin_quote_shows_retail_cost_but_keeps_effective_cost_zero(
             CreateGenerationRequest(
                 model_id="gpt-image-2-t2i",
                 prompt="city at night",
-                parameters={},
+                parameters={"aspect_ratio": "9:16"},
             ),
             _AdminUser(),
             session,

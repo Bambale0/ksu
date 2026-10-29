@@ -267,6 +267,9 @@ export type TrendWorkflowStep = {
   attempt_history?: TrendWorkflowAttempt[];
   model?: { id: string; title?: string };
   settings_summary?: Record<string, string | number | null>;
+  aspect_ratio_options?: string[];
+  aspect_ratio_required?: boolean;
+  default_aspect_ratio?: string | null;
   command_id?: string | null;
 };
 

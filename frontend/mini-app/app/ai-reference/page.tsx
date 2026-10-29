@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { AspectRatioSelect } from "@/components/aspect-ratio-select";
+import { isAspectRatioReady, selectedAspectRatio, type AspectRatioOptions } from "@/lib/aspect-ratio";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { aiReferenceApi, type AiReferenceQuote, type AiReferenceScenario, type AiReferenceSubject } from "@/lib/ai-reference-api";
 import { api } from "@/lib/api";
@@ -76,14 +78,35 @@ export default function AiReferencePage() {
   const [uploading, setUploading] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [quote, setQuote] = useState<AiReferenceQuote | null>(null);
+  const [quotedRequestKey, setQuotedRequestKey] = useState("");
+  const [ratioConfig, setRatioConfig] = useState<{ key: string; options: AspectRatioOptions } | null>(null);
+  const [aspectRatio, setAspectRatio] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => setScenario(scenarioFromUrl()), []);
 
+  const optionsKey = `${scenario}:${subject}`;
+  const ratioOptions = ratioConfig?.key === optionsKey ? ratioConfig.options : null;
+  useEffect(() => {
+    if (!scenario) return;
+    let active = true;
+    setAspectRatio("");
+    setQuote(null);
+    void aiReferenceApi.options(scenario, subject).then((options) => {
+      if (!active) return;
+      setRatioConfig({ key: optionsKey, options });
+      setAspectRatio(selectedAspectRatio(options));
+    }).catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Не удалось загрузить форматы изображения");
+    });
+    return () => { active = false; };
+  }, [optionsKey, scenario, subject]);
+
   const maxReferences = scenario === "create" ? 4 : 1;
   const ready = Boolean(
     scenario
+    && ratioOptions && isAspectRatioReady(ratioOptions, aspectRatio)
     && references.length >= 1
     && references.length <= maxReferences
     && (scenario !== "edit" || instruction.trim()),
@@ -93,13 +116,18 @@ export default function AiReferencePage() {
     if (!scenario) return null;
     return {
       scenario,
+      ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
       subject: scenario === "create" ? subject : undefined,
       reference_urls: references.map((item) => item.url),
       instruction: scenario === "edit" ? instruction.trim() : undefined,
     };
-  }, [instruction, references, scenario, subject]);
+  }, [aspectRatio, instruction, references, scenario, subject]);
+  const requestKey = requestBody ? JSON.stringify(requestBody) : "";
+  const quoteIsCurrent = Boolean(quote && quotedRequestKey === requestKey);
 
   useEffect(() => {
+    setQuote(null);
+    setQuotedRequestKey("");
     if (!ready || !requestBody) {
       setQuote(null);
       setQuoting(false);
@@ -112,6 +140,7 @@ export default function AiReferencePage() {
         .then((result) => {
           if (!active) return;
           setQuote(result);
+          setQuotedRequestKey(requestKey);
           setError("");
         })
         .catch((cause) => {
@@ -127,7 +156,7 @@ export default function AiReferencePage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [ready, requestBody, scenario]);
+  }, [ready, requestBody, requestKey, scenario]);
 
   const chooseScenario = (next: AiReferenceScenario) => {
     haptic("light");
@@ -166,7 +195,7 @@ export default function AiReferencePage() {
   };
 
   const run = async () => {
-    if (!ready || !requestBody || running) return;
+    if (!ready || !requestBody || !quoteIsCurrent || running) return;
     setRunning(true);
     setError("");
     haptic("medium");
@@ -250,12 +279,13 @@ export default function AiReferencePage() {
             ) : null}
 
             <section className="ai-ref-panel">
+              {ratioOptions ? <AspectRatioSelect options={ratioOptions} value={aspectRatio} onChange={setAspectRatio} disabled={running} /> : <p className="ai-ref-note">Загружаю форматы изображения…</p>}
               <div className="ai-ref-summary">
                 <span>{quoting ? "Считаю стоимость…" : quote?.admin_free ? "Для администратора" : "Стоимость"}</span>
                 <strong>{quoting ? "…" : quote ? quote.admin_free ? "Бесплатно" : `${money(quote.effective_cost_rox)} ROX` : "—"}</strong>
               </div>
               {error ? <div className="ai-ref-error" role="alert">{error}</div> : null}
-              <button className="ai-ref-run" type="button" disabled={!ready || uploading || quoting || running || !quote} onClick={() => void run()}>
+              <button className="ai-ref-run" type="button" disabled={!ready || uploading || quoting || running || !quoteIsCurrent} onClick={() => void run()}>
                 {running ? "Запускаю…" : runLabel(scenario)}
               </button>
               <p className="ai-ref-note">Генерация запускается только после нажатия кнопки. Готовый результат появится в истории.</p>

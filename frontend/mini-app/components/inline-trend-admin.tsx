@@ -1,5 +1,7 @@
 "use client";
 
+import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -160,7 +162,7 @@ function isWorkflowPayload(payload: TrendAdminPayload): payload is TrendAdminV2P
 }
 
 function cloneParameters(value: Record<string, unknown> | undefined): Record<string, unknown> {
-  return value ? structuredClone(value) : {};
+  return normalizeAspectRatioValues(value ? structuredClone(value) : {});
 }
 
 function workflowInput(input: TrendAdminInput, order: number): TrendAdminInput {
@@ -249,7 +251,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
     billingSeconds: payload.billing_seconds ? String(payload.billing_seconds) : "",
     sortOrder: Number(payload.sort_order || 0),
     tags: Array.isArray(payload.tags) ? payload.tags.join(", ") : "trend",
-    parameters: JSON.stringify(payload.parameters || {}, null, 2),
+    parameters: JSON.stringify(normalizeAspectRatioValues(payload.parameters), null, 2),
     isActive: duplicate ? true : item.is_active !== false,
   };
 }
@@ -324,7 +326,7 @@ function emptyWorkflowDraft(models: TrendAdminModel[]): WorkflowDraft {
 }
 
 function modelParameterFields(model: TrendAdminModel | undefined): UiField[] {
-  return (model?.ui_schema?.fields || []).filter((field) => (
+  return normalizeAspectRatioFields(model?.ui_schema).filter((field) => (
     field.name !== "prompt"
     && !REFERENCE_FIELDS.has(field.name)
     && !field.name.endsWith("_urls")
@@ -354,7 +356,7 @@ function ModelParameterControls({
       }
       if (field.suggestions?.length) {
         return <label key={field.name}><span>{label}</span><select value={value == null ? "" : String(value)} onChange={(event) => onChange(field.name, event.target.value)}>
-          {!field.required ? <option value="">Авто</option> : null}
+          {field.name === "aspect_ratio" ? <option value="">Выберите</option> : !field.required ? <option value="">Авто</option> : null}
           {field.suggestions.map((option) => <option value={String(option)} key={String(option)}>{String(option)}</option>)}
         </select></label>;
       }
@@ -694,6 +696,14 @@ export function InlineTrendAdmin() {
       if (!videoModel || !workflowModelSupportsI2V(videoModel)) {
         setError("Выберите видео-модель с подтверждённой поддержкой I2V и входного изображения");
         return;
+      }
+      for (const [model, parameters] of [[photoModel, draft.photo.parameters], [videoModel, draft.video.parameters]] as const) {
+        const ratioField = modelParameterFields(model).find((field) => field.name === "aspect_ratio");
+        const ratioError = ratioField ? aspectRatioError(ratioField, parameters.aspect_ratio) : "";
+        if (ratioError) {
+          setError(ratioError);
+          return;
+        }
       }
       const knownVideoFields = new Set(videoModel.known_fields || []);
       const validBindingTargets = [...knownVideoFields].filter((field) => BINDABLE_IMAGE_FIELDS.has(field));

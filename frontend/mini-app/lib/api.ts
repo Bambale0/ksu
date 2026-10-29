@@ -114,6 +114,9 @@ export type FeedRemixDraft = {
   prompt_hidden: boolean;
   prompt_editable: boolean;
   settings: Record<string, unknown>;
+  aspect_ratio_options?: string[];
+  aspect_ratio_required?: boolean;
+  default_aspect_ratio?: string | null;
   billing_seconds?: number | null;
   reference_requirements: {
     image_count: number;
@@ -131,6 +134,7 @@ export type FeedRemixComposition = {
   prompt?: string | null;
   reference_ids: string[];
   confirm_own_references: boolean;
+  aspect_ratio?: string | null;
 };
 
 export type FeedRemixQuote = {

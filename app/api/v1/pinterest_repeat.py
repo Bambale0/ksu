@@ -64,6 +64,7 @@ class PinterestRepeatRequest(BaseModel):
     weight_kg: int = Field(ge=30, le=250)
     expression: str | None = Field(default=None, max_length=240)
     scene_analysis: PinterestSceneAnalysis | None = None
+    aspect_ratio: str | None = Field(default=None, max_length=32)
 
 
 class PinterestRepeatRunRequest(PinterestRepeatRequest):
@@ -106,6 +107,7 @@ def _build(
             weight_kg=payload.weight_kg,
             confirmed=confirmed,
             expression=payload.expression,
+            aspect_ratio=payload.aspect_ratio,
         )
     except PinterestRepeatError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -169,6 +171,11 @@ async def _replayed_generation(
             detail="Idempotency-Key уже использован с другими параметрами",
         )
     return generation
+
+
+@router.get("/options")
+async def pinterest_repeat_options(user: CurrentUserDep) -> dict[str, Any]:
+    return PinterestRepeatService.options()
 
 
 @router.post("/resolve")

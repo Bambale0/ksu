@@ -253,7 +253,8 @@ def test_p0_contract_regressions_are_locked() -> None:
     assert "billing_seconds" not in grok_extend
 
     veo = build_public_model_ui_schema(models["veo-3.1"])
-    assert _field(veo, "aspect_ratio")["suggestions"] == ["16:9", "9:16", "auto"]
+    assert _field(veo, "aspect_ratio")["suggestions"] == ["16:9", "9:16"]
+    # Frozen provider payloads retain their historical contract; new UI choices do not.
     assert normalize_kie_veo_input({"prompt": "x", "aspect_ratio": "auto"})[
         "aspect_ratio"
     ] == "auto"

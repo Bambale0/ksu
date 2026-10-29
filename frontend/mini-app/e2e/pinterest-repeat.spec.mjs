@@ -31,6 +31,7 @@ async function mockApi(page) {
   await installTelegram(page);
   let uploadIndex = 0;
   const runBodies = [];
+  const quoteBodies = [];
 
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request();
@@ -51,6 +52,7 @@ async function mockApi(page) {
         : `https://media.example.test/me-${uploadIndex - 1}.jpg`;
       return json({ url, name: uploadIndex === 1 ? 'scene.jpg' : 'me.jpg', mime_type: 'image/jpeg' }, 201);
     }
+    if (path === '/api/v1/pinterest-repeat/options') return json({ model_id: 'nano-banana-pro', aspect_ratio_options: ['1:1', '9:16'], aspect_ratio_required: true, default_aspect_ratio: null });
     if (path === '/api/v1/pinterest-repeat/analyze') {
       expect(request.postDataJSON()).toEqual({ scene_reference_url: 'https://media.example.test/scene.jpg' });
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -58,7 +60,8 @@ async function mockApi(page) {
     }
     if (path === '/api/v1/pinterest-repeat/quote') {
       const body = request.postDataJSON();
-      const changed = body.height_cm === 180;
+      quoteBodies.push(body);
+      const changed = body.height_cm === 180 || body.aspect_ratio === '1:1';
       if (changed) await new Promise((resolve) => setTimeout(resolve, 700));
       const cost = changed ? '18.00' : '12.00';
       return json({
@@ -95,7 +98,7 @@ async function mockApi(page) {
     return json({ items: [] });
   });
 
-  return { runBodies };
+  return { runBodies, quoteBodies };
 }
 
 const sceneFile = {
@@ -112,7 +115,7 @@ const identityFile = {
 
 test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  const { runBodies } = await mockApi(page);
+  const { runBodies, quoteBodies } = await mockApi(page);
   await page.goto('/mini-app/pinterest-repeat/');
 
   await expect(page.getByRole('heading', { name: 'Повтори фото с Pinterest' })).toBeVisible();
@@ -141,11 +144,18 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
 
   const create = page.getByRole('button', { name: 'Создать →' });
   const price = page.locator('.pin-summary strong');
+  await expect(price).toHaveText('—');
+  await expect(create).toBeDisabled();
+  expect(quoteBodies).toEqual([]);
+  await page.getByLabel('Соотношение сторон').selectOption('9:16');
   await expect(price).toHaveText('12 ROX');
   await expect(create).toBeDisabled();
   await page.getByLabel('Подтверждаю права на фото').check();
   await expect(create).toBeEnabled();
 
+  await page.getByLabel('Соотношение сторон').selectOption('1:1');
+  await expect(create).toBeDisabled();
+  await expect(price).toHaveText('Считаем…');
   await page.getByLabel('Рост').fill('180');
   await expect(price).toHaveText('Считаем…');
   await expect(create).toBeDisabled();
@@ -171,6 +181,7 @@ test('Pinterest repeat analyzes the scene and blocks stale-quote submit', async 
     scene_reference_url: 'https://media.example.test/scene.jpg',
     identity_reference_urls: ['https://media.example.test/me-1.jpg'],
     height_cm: 180,
+    aspect_ratio: '1:1',
     weight_kg: 55,
     scene_analysis: sceneAnalysis,
     confirmed: true,
@@ -183,6 +194,7 @@ test('changing identity photos revokes the previous rights confirmation', async 
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApi(page);
   await page.goto('/mini-app/pinterest-repeat/');
+  await page.getByLabel('Соотношение сторон').selectOption('9:16');
 
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
@@ -222,6 +234,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
         reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
       });
     }
+    if (path === '/api/v1/pinterest-repeat/options') return json({ model_id: 'nano-banana-pro', aspect_ratio_options: ['1:1', '9:16'], aspect_ratio_required: true, default_aspect_ratio: null });
     if (path === '/api/v1/pinterest-repeat/analyze') {
       expect(request.postDataJSON()).toEqual({
         scene_reference_url: 'https://media.example.test/references/pinterest-scene.jpg',
@@ -232,6 +245,7 @@ test('Pinterest URL resolver is wired as an alternative scene source', async ({ 
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
+  await page.getByLabel('Соотношение сторон').selectOption('9:16');
   const pinterestSource = page.getByLabel('Ссылка или текст из Pinterest');
   await expect(pinterestSource).toBeVisible();
   await pinterestSource.fill('Посмотри в Pinterest https://pin.it/example — хочу повторить');
@@ -270,6 +284,7 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
         mime_type: 'image/jpeg',
       }, 201);
     }
+    if (path === '/api/v1/pinterest-repeat/options') return json({ model_id: 'nano-banana-pro', aspect_ratio_options: ['1:1', '9:16'], aspect_ratio_required: true, default_aspect_ratio: null });
     if (path === '/api/v1/pinterest-repeat/analyze') {
       return json({ analysis: sceneAnalysis, model: 'gemini-2.5-pro', cached: false });
     }
@@ -304,6 +319,7 @@ test('retry after a lost run response reuses the same Idempotency-Key', async ({
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
+  await page.getByLabel('Соотношение сторон').selectOption('9:16');
   await page.locator('input[type="file"]').first().setInputFiles(sceneFile);
   await expect(page.getByAltText('Референс сцены')).toBeVisible();
   await page.getByRole('region', { name: 'Ваши ракурсы' }).locator('input[type="file"]').setInputFiles(identityFile);

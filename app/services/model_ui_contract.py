@@ -5,6 +5,7 @@ from copy import deepcopy
 from app.services.seedance_prompt_limits import prompt_max_chars
 from typing import Any
 
+from app.services.aspect_ratio_policy import sanitize_aspect_ratio_schema
 from app.services.model_routing import PUBLIC_REFERENCE_OPTIONAL_MODEL_IDS
 from app.services.model_ui import build_model_ui_schema
 
@@ -288,4 +289,4 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
         _patch_field(schema, "video_list", label="Видео-референс", control="json", group="references", placeholder='[{"url":"https://...","start":0,"ends":10}]')
         _patch_field(schema, "character_ids", label="Character IDs", control="json", group="references", placeholder='["character_id"]')
 
-    return schema
+    return sanitize_aspect_ratio_schema(model_id, schema)

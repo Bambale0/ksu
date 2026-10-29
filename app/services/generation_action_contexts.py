@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -11,6 +13,11 @@ from app.core.config import settings
 from app.db.action_context_models import GenerationActionContext
 from app.db.models import Generation
 from app.services import action_telemetry
+from app.services.aspect_ratio_policy import (
+    is_auto_aspect_ratio,
+    sanitize_aspect_ratio_parameters,
+    sanitize_aspect_ratio_schema,
+)
 from app.services.feed_seedance_replay import is_private_seedance_author_replay
 from app.services.generation_actions import resolver_for
 from app.services.generation_actions.base import ActionResolveError
@@ -146,6 +153,52 @@ def edit_presets() -> list[dict[str, str]]:
     return [dict(item) for item in _EDIT_PRESETS]
 
 
+def sanitize_action_context_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Apply current form policy to a copy, including durable legacy contexts."""
+    result = deepcopy(payload)
+    defaults = result.get("defaults")
+    require_choice = False
+    selected_model = ""
+    if isinstance(defaults, dict):
+        parameters = defaults.get("parameters")
+        if isinstance(parameters, dict):
+            require_choice = is_auto_aspect_ratio(parameters.get("aspect_ratio"))
+            defaults["parameters"] = sanitize_aspect_ratio_parameters(parameters)
+        selected_model = str(defaults.get("model_id") or "")
+    action = result.get("action")
+    action_id = str(action.get("id") or "") if isinstance(action, dict) else ""
+    references = result.get("source_references")
+    source_images = references.get("images") if isinstance(references, dict) else None
+    default_parameters = defaults.get("parameters") if isinstance(defaults, dict) else None
+    source_frame = bool(
+        action_id == "animate" or source_images
+        or (isinstance(defaults, dict) and defaults.get("input_url"))
+        or (isinstance(default_parameters, dict) and default_parameters.get("image_urls"))
+    )
+    for candidate in result.get("candidate_models", []):
+        if not isinstance(candidate, dict) or not isinstance(candidate.get("ui_schema"), dict):
+            continue
+        model_id = str(candidate.get("id") or "")
+        schema = sanitize_aspect_ratio_schema(
+            model_id, candidate["ui_schema"],
+            require_choice=require_choice and model_id == selected_model,
+        )
+        if model_id == "kling-3.0" and source_frame:
+            # Frame-driven Kling has no ratio control. Its source dimensions
+            # must remain inherited, including when opening an old context.
+            schema["fields"] = [field for field in schema.get("fields", []) if field.get("name") != "aspect_ratio"]
+            schema["defaults"].pop("aspect_ratio", None)
+            if model_id == selected_model and isinstance(default_parameters, dict):
+                default_parameters.pop("aspect_ratio", None)
+        candidate["ui_schema"] = schema
+    scenario = result.get("scenario")
+    if isinstance(scenario, dict) and isinstance(scenario.get("settings"), dict):
+        scenario["settings"] = sanitize_aspect_ratio_parameters(scenario["settings"])
+        if selected_model == "kling-3.0" and source_frame:
+            scenario["settings"].pop("aspect_ratio", None)
+    return result
+
+
 def build_action_context_payload(generation: Generation, action: str) -> dict[str, object]:
     """Build the exact restore payload served by the action-context endpoints.
 
@@ -189,7 +242,7 @@ def build_action_context_payload(generation: Generation, action: str) -> dict[st
             payload["scenario"] = resolver.resolve(generation)
         except ActionResolveError:
             payload["scenario"] = None
-    return payload
+    return sanitize_action_context_payload(payload)
 
 
 async def create_action_context(

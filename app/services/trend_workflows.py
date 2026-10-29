@@ -18,6 +18,12 @@ from app.db.admin_models import AdminTrend
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.db.trend_workflow_models import TrendWorkflowRun, TrendWorkflowStep
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    is_auto_aspect_ratio,
+    requires_explicit_aspect_ratio,
+    validate_generation_aspect_ratio,
+)
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generations import GenerationService
@@ -295,7 +301,7 @@ class TrendWorkflowService:
                 target = recipe["steps"][1]["bindings"][0]["to"]
                 parameters[target] = ["https://example.invalid/workflow-step-1.jpg"] if target.endswith("urls") or target in {"image_input", "image_urls", "input_urls"} else "https://example.invalid/workflow-step-1.jpg"
             try:
-                await GenerationService.prepare_request(
+                await GenerationService.prepare_template_request(
                     session,
                     model_id=spec.id,
                     prompt=step["prompt"],
@@ -349,6 +355,7 @@ class TrendWorkflowService:
                 user_id=None,
                 request=quote_request,
                 check_ready=False,
+                structural_preflight=True,
             )
             steps.append({
                 "id": step["id"],
@@ -545,6 +552,7 @@ class TrendWorkflowService:
         request: dict[str, Any],
         *,
         input_url: str | None = None,
+        structural_preflight: bool = False,
     ) -> tuple[str, dict[str, Any]]:
         values = request.get("values") or {}
         if not isinstance(values, dict):
@@ -553,6 +561,17 @@ class TrendWorkflowService:
         if set(values) - allowed:
             raise TrendWorkflowError("Unknown workflow input slot")
         parameters = dict(step["parameters"])
+        selected_ratio = request.get("aspect_ratio")
+        if selected_ratio not in (None, ""):
+            options = cls._step_aspect_ratio_options(step)
+            if selected_ratio not in options:
+                raise TrendWorkflowError("Unsupported aspect ratio")
+            parameters["aspect_ratio"] = selected_ratio
+        if not structural_preflight:
+            try:
+                validate_generation_aspect_ratio(step["model_id"], parameters)
+            except ValueError as exc:
+                raise TrendWorkflowError(str(exc)) from exc
         raw_image_inputs = request.get("image_inputs")
         if step["kind"] == "video" and (raw_image_inputs is not None or request.get("reference_urls")):
             raise TrendWorkflowError("Step 2 accepts only the selected ready workflow image")
@@ -641,6 +660,7 @@ class TrendWorkflowService:
         request: dict[str, Any],
         check_ready: bool,
         run: TrendWorkflowRun | None = None,
+        structural_preflight: bool = False,
     ) -> dict[str, Any]:
         input_url = None
         if step["kind"] == "video":
@@ -649,8 +669,15 @@ class TrendWorkflowService:
                 input_url = _workflow_media_ref(asset.id)
             else:
                 input_url = "https://example.invalid/workflow-step-1.jpg"
-        prompt, parameters = cls._step_request(recipe, step, request, input_url=input_url)
-        _spec, _clean, retail, seconds, _unit = await GenerationService.prepare_request(
+        prompt, parameters = cls._step_request(
+            recipe, step, request, input_url=input_url,
+            structural_preflight=structural_preflight,
+        )
+        prepare = (
+            GenerationService.prepare_template_request
+            if structural_preflight else GenerationService.prepare_request
+        )
+        _spec, _clean, retail, seconds, _unit = await prepare(
             session,
             model_id=step["model_id"],
             prompt=prompt,
@@ -887,20 +914,46 @@ class TrendWorkflowService:
         return MediaAssetService.public_view(selected, server_route=False)
 
     @staticmethod
-    def _step_presentation(step: dict[str, Any]) -> dict[str, Any]:
+    def _step_aspect_ratio_options(step: dict[str, Any]) -> list[str]:
+        model_id = str(step.get("model_id") or "")
+        # Kling's I2V contract derives dimensions from its input frame and
+        # rejects any aspect_ratio. All workflow video steps bind a frame.
+        if model_id == "kling-3.0" and step.get("kind") == "video":
+            return []
+        return explicit_aspect_ratio_options(model_id)
+
+    @staticmethod
+    def _step_presentation(
+        step: dict[str, Any], *, generation: Generation | None = None,
+    ) -> dict[str, Any]:
         """Only customer-safe snapshot metadata, never provider settings/prompts."""
         model_id = str(step.get("model_id") or "")
         title = str(step.get("model_title") or model_id)
-        settings = step.get("parameters") or {}
+        settings = dict(step.get("parameters") or {})
+        if generation is not None:
+            actual_parameters = generation.parameters or {}
+            if "aspect_ratio" in actual_parameters:
+                settings["aspect_ratio"] = actual_parameters["aspect_ratio"]
+            else:
+                settings.pop("aspect_ratio", None)
         summary = {
             key: settings[key]
             for key in ("duration", "resolution", "aspect_ratio")
             if key in settings and isinstance(settings[key], (str, int, float))
+            and not (key == "aspect_ratio" and is_auto_aspect_ratio(settings[key]))
         }
+        options = TrendWorkflowService._step_aspect_ratio_options(step)
+        current_ratio = settings.get("aspect_ratio")
+        required = bool(options) and (
+            requires_explicit_aspect_ratio(model_id) or is_auto_aspect_ratio(current_ratio)
+        )
         return {
             "model": {"id": model_id, "title": title},
             "settings_summary": summary,
             "preview_url": step.get("preview_url"),
+            "aspect_ratio_options": options,
+            "aspect_ratio_required": required,
+            "default_aspect_ratio": current_ratio if current_ratio in options else None,
         }
 
     @classmethod
@@ -980,7 +1033,7 @@ class TrendWorkflowService:
                 "title": recipe_step["title"],
                 "instructions": recipe_step["instructions"],
                 "inputs": recipe_step["inputs"],
-                **cls._step_presentation(recipe_step),
+                **cls._step_presentation(recipe_step, generation=generation),
                 "status": status,
                 "generation_id": str(row.generation_id) if row.generation_id else None,
                 # Owner-only receipt: distinguish a delayed retry from the old
