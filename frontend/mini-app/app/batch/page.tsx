@@ -1,9 +1,10 @@
 "use client";
 
-import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+import { aspectRatioError, isAspectRatioReady, normalizeAspectRatioFields, normalizeAspectRatioValues, selectedAspectRatio, type AspectRatioOptions } from "@/lib/aspect-ratio";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AspectRatioSelect } from "@/components/aspect-ratio-select";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import { isTerminalGeneration, rememberGenerationIds, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
@@ -22,7 +23,8 @@ type BatchQuote = {
   admin_free?: boolean;
 };
 type BatchItem = { ordinal: number; generation: { id: string; status: string; result_url?: string | null; error?: string | null; cost_credits?: string } };
-type BatchJob = {
+type BatchRetryAttempt = { aspectRatio: string; key: string };
+type BatchJob = AspectRatioOptions & {
   id: string;
   status: string;
   model_id: string;
@@ -37,6 +39,16 @@ type BatchJob = {
   items?: BatchItem[];
 };
 
+const RETRY_STORAGE_PREFIX = "roxy:batch-retry:";
+
+function storedRetry(batchId: string): BatchRetryAttempt | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(`${RETRY_STORAGE_PREFIX}${batchId}`) || "null");
+    if (typeof value?.key !== "string" || !value.key || value.key.length > 128 || typeof value.aspectRatio !== "string") return null;
+    return { key: value.key, aspectRatio: value.aspectRatio };
+  } catch { return null; }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -50,7 +62,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload?.detail ?? payload?.message ?? `HTTP ${response.status}`;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    const error = new Error(typeof detail === "string" ? detail : JSON.stringify(detail)) as Error & { status: number };
+    error.status = response.status;
+    throw error;
   }
   return payload as T;
 }
@@ -103,11 +117,14 @@ export default function BatchPage() {
   const [urls, setUrls] = useState<string[]>([]);
   const [quote, setQuote] = useState<BatchQuote | null>(null);
   const [jobs, setJobs] = useState<BatchJob[]>([]);
+  const [retryRatios, setRetryRatios] = useState<Record<string, string>>({});
+  const [pendingRetries, setPendingRetries] = useState<Record<string, BatchRetryAttempt>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const delivered = useRef(new Map<string, Generation>());
   const refreshTimer = useRef<number | null>(null);
   const requestVersion = useRef(0);
+  const retryBusy = useRef(false);
 
   const mergeDelivery = useCallback((job: BatchJob): BatchJob => ({
     ...job,
@@ -143,6 +160,14 @@ export default function BatchPage() {
       const payload = await request<{ items: BatchJob[] }>("/api/v1/batch-generations?limit=10");
       if (version !== requestVersion.current) return;
       const next = payload.items || [];
+      setPendingRetries((current) => {
+        const restored = { ...current };
+        for (const job of next) {
+          const pending = storedRetry(job.id);
+          if (pending) restored[job.id] = pending;
+        }
+        return restored;
+      });
       rememberGenerationIds(next.flatMap((job) =>
         (job.items || []).filter((item) =>
           !isTerminalGeneration(item.generation.status) ||
@@ -287,21 +312,54 @@ export default function BatchPage() {
     } finally { setBusy(false); }
   };
 
+  const forgetRetry = (batchId: string) => {
+    try { sessionStorage.removeItem(`${RETRY_STORAGE_PREFIX}${batchId}`); } catch { /* A retained receipt remains safe to replay. */ }
+    setPendingRetries((current) => {
+      const next = { ...current };
+      delete next[batchId];
+      return next;
+    });
+  };
+
   const retry = async (job: BatchJob) => {
+    if (retryBusy.current || busy) return;
+    let attempt = pendingRetries[job.id];
+    const replaying = Boolean(attempt);
+    const ratio = attempt?.aspectRatio ?? retryRatios[job.id] ?? selectedAspectRatio(job);
+    if (!attempt && !isAspectRatioReady(job, ratio)) {
+      setError("Выберите соотношение сторон");
+      return;
+    }
+    retryBusy.current = true;
     setBusy(true);
     setError("");
     try {
-      const retryQuote = await request<{ failed_count: number; total_cost_credits: string; admin_free?: boolean }>(`/api/v1/batch-generations/${encodeURIComponent(job.id)}/retry-quote`);
-      if (!retryQuote.failed_count) return;
+      if (!attempt) {
+        const query = ratio ? `?aspect_ratio=${encodeURIComponent(ratio)}` : "";
+        const retryQuote = await request<{ failed_count: number; total_cost_credits: string; admin_free?: boolean }>(`/api/v1/batch-generations/${encodeURIComponent(job.id)}/retry-quote${query}`);
+        if (!retryQuote.failed_count) { await loadJobs(); return; }
+        attempt = { aspectRatio: ratio, key: idem("batch-retry") };
+        try { sessionStorage.setItem(`${RETRY_STORAGE_PREFIX}${job.id}`, JSON.stringify(attempt)); }
+        catch { throw new Error("Не удалось сохранить состояние повтора. Освободите хранилище приложения и попробуйте снова."); }
+        const frozenAttempt = attempt;
+        setPendingRetries((current) => ({ ...current, [job.id]: frozenAttempt }));
+      }
+      // A lost POST response replays this exact body and key. Re-quoting could
+      // accidentally turn an already accepted attempt into a new paid retry.
       const result = await request<BatchJob & { retried_count?: number }>(`/api/v1/batch-generations/${encodeURIComponent(job.id)}/retry`, {
         method: "POST",
-        headers: { "Idempotency-Key": idem("batch-retry") },
+        headers: { "Idempotency-Key": attempt.key },
+        ...(attempt.aspectRatio ? { body: JSON.stringify({ aspect_ratio: attempt.aspectRatio }) } : {}),
       });
+      forgetRetry(job.id);
       rememberGenerationIds((result.items || []).map((item) => item.generation.id));
       setJobs((current) => current.map((item) => item.id === result.id ? mergeDelivery(result) : item));
     } catch (reason) {
+      // A new validation failure precedes admission. A replay error cannot
+      // disprove acceptance of the earlier request, so retain its identity.
+      if (!replaying && [400, 422].includes(Number((reason as { status?: number })?.status))) forgetRetry(job.id);
       setError(reason instanceof Error ? reason.message : "Не удалось повторить ошибки");
-    } finally { setBusy(false); }
+    } finally { retryBusy.current = false; setBusy(false); }
   };
 
   return (
@@ -324,13 +382,20 @@ export default function BatchPage() {
 
       <div className="panel tool-panel">
         <div className="section-title"><div><span className="kicker">История</span><h2>Последние пакеты</h2></div><button type="button" onClick={() => void loadJobs()}>Обновить</button></div>
-        <div className="tool-grid">{jobs.length ? jobs.map((job) => <article className="tool-result-card" key={job.id}>
+        <div className="tool-grid">{jobs.length ? jobs.map((job) => {
+          const pending = pendingRetries[job.id];
+          const ratio = pending?.aspectRatio ?? retryRatios[job.id] ?? selectedAspectRatio(job);
+          return <article className="tool-result-card" key={job.id}>
           <div className="section-title"><div><span className="kicker">{job.model_id}</span><h2>{job.succeeded_count}/{job.input_count} готово</h2></div><span className={`status ${job.status}`}>{statusLabel(job.status)}</span></div>
           <div className="tool-progress"><i style={{ width: `${Math.max(0, Math.min(100, Number(job.progress_percent) || 0))}%` }}/></div>
           <div className="profile-stats"><div><strong>{job.succeeded_count}</strong><span>успешно</span></div><div><strong>{job.failed_count}</strong><span>ошибок</span></div><div><strong>{job.admin_free ? "0" : money(job.total_charged_credits)}</strong><span>ROX</span></div></div>
           {job.items?.length ? <div className="media-grid">{job.items.map((item) => <div className="media-tile" key={item.ordinal}>{item.generation.result_url ? <img src={item.generation.result_url} alt={`Результат ${item.ordinal + 1}`}/> : <span className="media-placeholder"><small>{item.generation.error ? "Не получилось" : item.generation.status === "succeeded" ? "Сохраняем файл" : statusLabel(item.generation.status)}</small></span>}</div>)}</div> : null}
-          {job.failed_count > 0 && !["running", "queued"].includes(job.status) ? <button className="secondary wide" type="button" disabled={busy} onClick={() => void retry(job)}>Повторить ошибки</button> : null}
-        </article>) : <p className="muted">Пакетов пока нет.</p>}</div>
+          {job.failed_count > 0 && !["running", "queued"].includes(job.status) ? <div className="form-stack">
+            <AspectRatioSelect options={job} value={ratio} disabled={busy || Boolean(pending)} onChange={(value) => setRetryRatios((current) => ({ ...current, [job.id]: value }))} />
+            {pending ? <small className="muted">Ответ на повтор не подтверждён. Следующая попытка отправит тот же запрос.</small> : null}
+            <button className="secondary wide" type="button" disabled={busy || (!pending && !isAspectRatioReady(job, ratio))} onClick={() => void retry(job)}>{pending ? "Повторить тот же запрос" : "Повторить ошибки"}</button>
+          </div> : null}
+        </article>; }) : <p className="muted">Пакетов пока нет.</p>}</div>
       </div>
     </StandaloneShell>
   );

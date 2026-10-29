@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.batch_models import BatchGenerationJob
 from app.services.abuse_protection import ResourcePolicyError
+from app.services.aspect_ratio_policy import sanitize_aspect_ratio_parameters
 from app.services.batch_generation_core import BatchGenerationError, BatchIdempotencyConflict, amount
 from app.services.batch_recovery import BatchRecoveryService
 from app.services.batch_repository import BatchRepository
@@ -27,6 +28,10 @@ class BatchWrite(BaseModel):
     billing_seconds: int | None = Field(default=None, ge=1, le=600)
     input_urls: list[str] = Field(default_factory=list, max_length=20)
     reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+
+
+class BatchRetryRequest(BaseModel):
+    aspect_ratio: str | None = Field(default=None, max_length=32)
 
 
 def _domain_error(exc: Exception) -> HTTPException:
@@ -51,7 +56,8 @@ async def _view(session: SessionDep, job: BatchGenerationJob, *, replayed: bool 
     retail_total = Decimal(str(metadata.get("_retail_total_cost_rox") or job.initial_cost_rox))
     payload: dict[str, Any] = {
         "id": str(job.id), "status": batch_status, "model_id": job.model_id, "prompt": job.prompt,
-        "parameters": {key: value for key, value in metadata.items() if not str(key).startswith("_")},
+        "parameters": sanitize_aspect_ratio_parameters({key: value for key, value in metadata.items() if not str(key).startswith("_")}),
+        **BatchRecoveryService.retry_options(job),
         "billing_seconds": job.billing_seconds, "input_count": job.input_count,
         "succeeded_count": succeeded, "failed_count": failed, "active_count": active,
         "progress_percent": int(((succeeded + failed) / max(1, job.input_count)) * 100),
@@ -102,20 +108,31 @@ async def get_batch(batch_id: uuid.UUID, user: CurrentUserDep, session: SessionD
 
 
 @router.get("/{batch_id}/retry-quote")
-async def retry_quote(batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep) -> dict[str, object]:
+async def retry_quote(
+    batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep,
+    aspect_ratio: Annotated[str | None, Query(max_length=32)] = None,
+) -> dict[str, object]:
     try:
-        return await BatchRecoveryService.quote(session, user_id=user.id, batch_id=batch_id)
+        return await BatchRecoveryService.quote(session, user_id=user.id, batch_id=batch_id, aspect_ratio=aspect_ratio)
     except Exception as exc:
         raise _domain_error(exc) from exc
 
 
 @router.post("/{batch_id}/retry", status_code=status.HTTP_202_ACCEPTED)
-async def retry_batch(batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep, redis: RedisDep, idempotency_key: str = Header(alias="Idempotency-Key")) -> dict[str, Any]:
+async def retry_batch(
+    batch_id: uuid.UUID, user: CurrentUserDep, session: SessionDep, redis: RedisDep,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    payload: BatchRetryRequest | None = None,
+) -> dict[str, Any]:
     try:
-        job, replayed, retried_count = await BatchRecoveryService.execute(session, redis, user_id=user.id, batch_id=batch_id, idempotency_key=idempotency_key)
-        payload = await _view(session, job, replayed=replayed)
-        payload["retried_count"] = retried_count
-        return payload
+        job, replayed, retried_count = await BatchRecoveryService.execute(
+            session, redis, user_id=user.id, batch_id=batch_id,
+            idempotency_key=idempotency_key,
+            aspect_ratio=payload.aspect_ratio if payload is not None else None,
+        )
+        view = await _view(session, job, replayed=replayed)
+        view["retried_count"] = retried_count
+        return view
     except Exception as exc:
         await session.rollback()
         raise _domain_error(exc) from exc

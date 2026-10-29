@@ -151,6 +151,71 @@ test('Batch requires an explicit ratio before uploads and pricing', async ({ pag
   expect(quotes[0].parameters.aspect_ratio).toBe('4:3');
 });
 
+test('Legacy batch retry preserves the selected ratio and an uncertain attempt across refresh and reload', async ({ page }) => {
+  await installTelegram(page);
+  const quoteRatios: Array<string | null> = [];
+  const attempts: Array<{ key?: string; body: unknown }> = [];
+  let reads = 0;
+  const job = {
+    id: 'legacy-batch', model_id: 'server-image-model', prompt: 'Saved recipe', status: 'partial',
+    input_count: 2, succeeded_count: 1, failed_count: 1, active_count: 0, progress_percent: 100, total_charged_credits: '12', items: [],
+    aspect_ratio_options: ['auto', '4:3', '9:16'], aspect_ratio_required: true, default_aspect_ratio: null,
+  };
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.pathname === '/api/v1/generations/models') return json({ models: [], families: [] });
+    if (url.pathname === '/api/v1/batch-generations') {
+      reads += 1;
+      return json({ items: [job] });
+    }
+    if (url.pathname === '/api/v1/batch-generations/legacy-batch/retry-quote') {
+      quoteRatios.push(url.searchParams.get('aspect_ratio'));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return json({ failed_count: 1, total_cost_credits: '12' });
+    }
+    if (url.pathname === '/api/v1/batch-generations/legacy-batch/retry') {
+      attempts.push({ key: request.headers()['idempotency-key'], body: request.postDataJSON() });
+      if (attempts.length === 1) return json({ detail: 'Ответ на повтор потерян' }, 503);
+      return json({ ...job, status: 'running', failed_count: 0, active_count: 1, retried_count: 1 });
+    }
+    if (url.pathname === '/api/v1/me') return json({ id: 'user-1', telegram_id: 777, first_name: 'QA', balance_rox: '100' });
+    if (url.pathname === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    return json({ items: [] });
+  });
+  await page.goto('/mini-app/batch/');
+  const card = page.locator('.tool-result-card');
+  const ratio = card.getByLabel('Соотношение сторон');
+  const retry = card.getByRole('button', { name: 'Повторить ошибки', exact: true });
+  await expect(ratio).toHaveValue('');
+  await expect(ratio.locator('option')).toHaveText(['Выберите', '4:3', '9:16']);
+  await expect(retry).toBeDisabled();
+  expect(quoteRatios).toEqual([]);
+  await ratio.selectOption('4:3');
+  await ratio.selectOption('9:16');
+  await retry.click();
+  await expect(ratio).toBeDisabled();
+  await expect(page.getByRole('alert')).toHaveText('Ответ на повтор потерян');
+  expect(quoteRatios).toEqual(['9:16']);
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0].body).toEqual({ aspect_ratio: '9:16' });
+  expect(attempts[0].key).toBeTruthy();
+
+  await page.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await expect.poll(() => reads).toBe(2);
+  await expect(ratio).toBeDisabled();
+  await expect(ratio).toHaveValue('9:16');
+  await page.reload();
+  await expect.poll(() => reads).toBe(3);
+  await expect(ratio).toBeDisabled();
+  await expect(ratio).toHaveValue('9:16');
+  await card.getByRole('button', { name: 'Повторить тот же запрос', exact: true }).click();
+  await expect.poll(() => attempts.length).toBe(2);
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect(quoteRatios).toEqual(['9:16']);
+});
+
 for (const scenario of ['hd', 'edit']) {
   test(`AI Reference ${scenario} quotes and runs the same explicit ratio`, async ({ page }) => {
     await installTelegram(page);

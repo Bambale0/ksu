@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.batch_models import BatchGenerationCommand
+from app.db.batch_models import BatchGenerationCommand, BatchGenerationJob
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    is_auto_aspect_ratio,
+    requires_explicit_aspect_ratio,
+    validate_generation_aspect_ratio,
+)
 from app.services.batch_generation_core import (
     ACTIVE_STATUSES,
     BatchGenerationError,
@@ -22,11 +29,45 @@ from app.services.batch_generation_core import (
 from app.services.batch_repository import BatchRepository
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
+from app.services.model_catalog import ModelCatalog
 
 
 class BatchRecoveryService:
     @staticmethod
-    async def quote(session: AsyncSession, *, user_id: uuid.UUID, batch_id: uuid.UUID) -> dict[str, object]:
+    def retry_options(job: BatchGenerationJob) -> dict[str, object]:
+        options = explicit_aspect_ratio_options(job.model_id)
+        current = (job.parameters or {}).get("aspect_ratio")
+        return {
+            "aspect_ratio_options": options,
+            "aspect_ratio_required": bool(options) and (
+                requires_explicit_aspect_ratio(job.model_id) or is_auto_aspect_ratio(current)
+            ),
+            "default_aspect_ratio": current if current in options else None,
+        }
+
+    @staticmethod
+    def _retry_parameters(job: BatchGenerationJob, aspect_ratio: str | None) -> dict[str, Any]:
+        parameters = dict(job.parameters or {})
+        if aspect_ratio is not None:
+            if aspect_ratio not in explicit_aspect_ratio_options(job.model_id):
+                raise BatchGenerationError("Выберите доступное соотношение сторон для повтора.")
+            parameters["aspect_ratio"] = aspect_ratio
+        elif (
+            is_auto_aspect_ratio(parameters.get("aspect_ratio"))
+            and "aspect_ratio" not in ModelCatalog.get(job.model_id).known_fields
+        ):
+            # Batch jobs retain raw form values, including fields that were
+            # never part of this model's provider request. Remove only that
+            # obsolete inherited value, without changing the saved recipe.
+            parameters.pop("aspect_ratio")
+        validate_generation_aspect_ratio(job.model_id, parameters)
+        return parameters
+
+    @staticmethod
+    async def quote(
+        session: AsyncSession, *, user_id: uuid.UUID, batch_id: uuid.UUID,
+        aspect_ratio: str | None = None,
+    ) -> dict[str, object]:
         job = await BatchRepository.load(session, user_id=user_id, batch_id=batch_id)
         rows = await BatchRepository.rows(session, batch_id)
         if any(generation.status in ACTIVE_STATUSES for _item, generation in rows):
@@ -44,7 +85,7 @@ class BatchRecoveryService:
             session,
             model_id=job.model_id,
             prompt=job.prompt,
-            parameters=job.parameters,
+            parameters=BatchRecoveryService._retry_parameters(job, aspect_ratio),
             billing_seconds=job.billing_seconds,
             input_urls=urls,
         )
@@ -70,11 +111,16 @@ class BatchRecoveryService:
         user_id: uuid.UUID,
         batch_id: uuid.UUID,
         idempotency_key: str,
+        aspect_ratio: str | None = None,
     ) -> tuple[BatchGenerationCommand | None, str, str]:
         key = idempotency_key.strip()
         if not key or len(key) > 128:
             raise BatchGenerationError("Idempotency-Key must contain 1..128 characters")
-        fingerprint = request_hash({"batch_id": str(batch_id), "kind": "retry_failed"})
+        request: dict[str, Any] = {"batch_id": str(batch_id), "kind": "retry_failed"}
+        if aspect_ratio is not None:
+            request["aspect_ratio"] = aspect_ratio
+        # Preserve the historical no-body fingerprint for command replay.
+        fingerprint = request_hash(request)
         existing = await session.scalar(
             select(BatchGenerationCommand).where(
                 BatchGenerationCommand.user_id == user_id,
@@ -96,12 +142,14 @@ class BatchRecoveryService:
         user_id: uuid.UUID,
         batch_id: uuid.UUID,
         idempotency_key: str,
+        aspect_ratio: str | None = None,
     ) -> tuple[object, bool, int]:
         existing, key, fingerprint = await cls.replay_check(
             session,
             user_id=user_id,
             batch_id=batch_id,
             idempotency_key=idempotency_key,
+            aspect_ratio=aspect_ratio,
         )
         job = await BatchRepository.load(
             session,
@@ -109,6 +157,16 @@ class BatchRecoveryService:
             batch_id=batch_id,
             lock=existing is None,
         )
+        if existing is None:
+            # The first lookup can precede another retry's commit. Recheck
+            # under the job lock before interpreting its newly active rows.
+            existing, key, fingerprint = await cls.replay_check(
+                session,
+                user_id=user_id,
+                batch_id=batch_id,
+                idempotency_key=key,
+                aspect_ratio=aspect_ratio,
+            )
         if existing is not None:
             return job, True, len(existing.result_generation_ids)
 
@@ -138,7 +196,7 @@ class BatchRecoveryService:
             session,
             model_id=job.model_id,
             prompt=job.prompt,
-            parameters=job.parameters,
+            parameters=cls._retry_parameters(job, aspect_ratio),
             billing_seconds=job.billing_seconds,
             input_urls=[item.input_url for item, _generation in selected],
         )
