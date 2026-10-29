@@ -1,4 +1,29 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const stepPreviewPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
+const stepVideoFixtures = {
+  chromium: { extension: 'webm', contentType: 'video/webm', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.webm', import.meta.url)) },
+  webkit: { extension: 'mp4', contentType: 'video/mp4', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.mp4', import.meta.url)) },
+};
+
+function fulfillStepVideo(route, { body, contentType }) {
+  const headers = { 'accept-ranges': 'bytes' };
+  const range = route.request().headers().range;
+  if (!range) return route.fulfill({ status: 200, contentType, headers, body });
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  const from = match?.[1] ? Number(match[1]) : Math.max(0, body.length - Number(match?.[2]));
+  const to = match?.[1] && match[2] ? Math.min(Number(match[2]), body.length - 1) : body.length - 1;
+  if (!match || (!match[1] && !match[2]) || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)
+    || from >= body.length || to < from) {
+    return route.fulfill({ status: 416, headers: { ...headers, 'content-range': 'bytes */' + body.length }, body: '' });
+  }
+  return route.fulfill({
+    status: 206, contentType,
+    headers: { ...headers, 'content-range': 'bytes ' + from + '-' + to + '/' + body.length },
+    body: body.subarray(from, to + 1),
+  });
+}
 
 const photoModel = {
   id: 'photo-catalog-model',
@@ -82,8 +107,8 @@ function v2Payload(videoModelId = videoModel.id) {
   };
 }
 
-async function setup(page, { items = [], models = [photoModel, videoModel] } = {}) {
-  const state = { items, models, writes: [], errors: [] };
+async function setup(page, { items = [], models = [photoModel, videoModel], touch = false } = {}) {
+  const state = { items, models, writes: [], errors: [], unexpectedWrites: [] };
   page.on('pageerror', (error) => state.errors.push(error.message));
   await page.addInitScript(() => {
     window.Telegram = { WebApp: {
@@ -117,10 +142,13 @@ async function setup(page, { items = [], models = [photoModel, videoModel] } = {
       return json(updated);
     }
     if (path === '/api/v1/generations/models') return json({ models: [], families: [] });
+    if (request.method() !== 'GET') state.unexpectedWrites.push(request.method() + ' ' + path);
     return json({ items: [] });
   });
   await page.goto('/mini-app/?route=home');
-  await page.getByRole('button', { name: 'Управлять трендами' }).click();
+  const manageButton = page.getByRole('button', { name: 'Управлять трендами' });
+  if (touch) await manageButton.tap();
+  else await manageButton.click();
   return state;
 }
 
@@ -264,4 +292,98 @@ test('failed preview upload can retry the same file', async ({ page }) => {
   await input.setInputFiles(file);
   await expect(form.getByLabel('URL превью', { exact: true })).toHaveValue('https://cdn.example.invalid/retried.jpg');
   expect(uploads).toBe(2);
+});
+
+test.describe('workflow step video preview', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test('step 2 video preview uploads by touch, decodes, saves and survives editing', async ({ page, browserName }) => {
+    const fixture = stepVideoFixtures[browserName];
+    if (!fixture) throw new Error('No step video fixture for ' + browserName);
+    const photoUrl = 'https://step-preview.example.invalid/photo.png';
+    const videoUrl = 'https://step-preview.example.invalid/video.' + fixture.extension;
+    const videoFile = { name: 'step-2.' + fixture.extension, mimeType: fixture.contentType, buffer: fixture.body };
+    await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+    await page.route('https://step-preview.example.invalid/**', route => (
+      new URL(route.request().url()).pathname === '/photo.png'
+        ? route.fulfill({ status: 200, contentType: 'image/png', body: stepPreviewPng })
+        : fulfillStepVideo(route, fixture)
+    ));
+    const state = await setup(page, { touch: true });
+    const uploads = [];
+    await page.route('**/api/v1/uploads/kie', route => {
+      const request = route.request();
+      expect(request.method()).toBe('POST');
+      const body = request.postDataBuffer();
+      const photo = body.includes(Buffer.from('filename="step-1.png"'));
+      expect(body.includes(photo ? stepPreviewPng : fixture.body)).toBe(true);
+      expect(body.includes(Buffer.from(photo ? 'image/png' : fixture.contentType))).toBe(true);
+      if (!photo) expect(body.includes(Buffer.from('filename="' + videoFile.name + '"'))).toBe(true);
+      uploads.push(photo ? 'image' : 'video');
+      return route.fulfill({
+        status: 201, contentType: 'application/json',
+        body: JSON.stringify({ url: photo ? photoUrl : videoUrl, mime_type: photo ? 'image/png' : fixture.contentType }),
+      });
+    });
+    const manager = page.getByRole('dialog', { name: 'Управление трендами', exact: true });
+    await manager.getByRole('button', { name: '＋ Новый тренд', exact: true }).tap();
+    const form = page.getByRole('dialog', { name: 'Добавить тренд', exact: true });
+    await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+    await form.getByLabel('Название', { exact: true }).fill('Тренд с видео второго шага');
+    await form.getByLabel('URL превью', { exact: true }).fill(photoUrl);
+    await form.getByLabel('Промпт фото', { exact: true }).fill('Подготовь фото @Image1');
+    await form.getByLabel('Промпт видео', { exact: true }).fill('Оживи @Image1');
+    const photoStep = form.locator('.inline-trend-workflow-step').nth(0);
+    const videoStep = form.locator('.inline-trend-workflow-step').nth(1);
+    const photoInput = photoStep.locator('input[type=file]');
+    const videoInput = videoStep.locator('input[type=file]');
+    await expect(photoInput).toHaveAttribute('accept', 'image/*');
+
+    // The native filter and application validation must both keep Step 1 photo-only.
+    let chooser = page.waitForEvent('filechooser');
+    await photoInput.tap();
+    await (await chooser).setFiles(videoFile);
+    await expect(form.getByRole('alert')).toContainText('изображение');
+    expect(uploads).toEqual([]);
+    chooser = page.waitForEvent('filechooser');
+    await photoInput.tap();
+    await (await chooser).setFiles({ name: 'step-1.png', mimeType: 'image/png', buffer: stepPreviewPng });
+    await expect(photoStep.locator('input[type=url]')).toHaveValue(photoUrl);
+    await expect.poll(() => photoStep.locator('img').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    await expect(videoInput).toBeEnabled();
+    await expect(videoInput).toHaveAttribute('accept', /video\/\*/);
+
+    chooser = page.waitForEvent('filechooser');
+    await videoInput.tap();
+    await (await chooser).setFiles(videoFile);
+    await expect(videoStep.locator('input[type=url]')).toHaveValue(videoUrl);
+    const preview = videoStep.locator('video');
+    await preview.scrollIntoViewIfNeeded();
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveAttribute('src', videoUrl);
+    await expect.poll(() => preview.evaluate(node => ({
+      loaded: node.readyState >= 1, width: node.videoWidth, height: node.videoHeight, error: node.error?.code || null,
+    }))).toEqual({ loaded: true, width: 32, height: 96, error: null });
+    await expect(form.getByRole('alert')).toHaveCount(0);
+    await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).tap();
+    await expect.poll(() => state.writes.length).toBe(1);
+    expect(state.writes[0].payload.steps.map(step => step.preview_url)).toEqual([photoUrl, videoUrl]);
+    expect(state.writes[0].payload.steps[1].bindings).toEqual([{ from: 'prepare_photo.output_image', to: 'first_frame_url' }]);
+    await expect(form).toHaveCount(0);
+
+    await manager.getByRole('button', { name: 'Редактировать', exact: true }).tap();
+    const editor = page.getByRole('dialog', { name: 'Редактировать тренд', exact: true });
+    const savedStep = editor.locator('.inline-trend-workflow-step').nth(1);
+    await expect(savedStep.locator('input[type=url]')).toHaveValue(videoUrl);
+    await savedStep.locator('video').scrollIntoViewIfNeeded();
+    await expect(savedStep.locator('video')).toHaveAttribute('src', videoUrl);
+    await expect.poll(() => savedStep.locator('video').evaluate(node => node.readyState >= 1 && node.videoWidth > 0 && !node.error)).toBe(true);
+    await editor.getByLabel('Название', { exact: true }).fill('Тренд с видео после редактирования');
+    await editor.getByRole('button', { name: 'Сохранить', exact: true }).tap();
+    await expect.poll(() => state.writes.length).toBe(2);
+    expect(state.writes[1].payload.steps).toEqual(state.writes[0].payload.steps);
+    expect(uploads).toEqual(['image', 'video']);
+    expect(state.unexpectedWrites).toEqual([]);
+    expect(state.errors).toEqual([]);
+  });
 });

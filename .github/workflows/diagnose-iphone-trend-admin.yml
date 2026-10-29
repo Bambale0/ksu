@@ -1,0 +1,58 @@
+name: Diagnostic iPhone New Trend and Step 2 video
+
+on:
+  push:
+    branches:
+      - diagnostic/iphone-new-trend-502-20261029
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnostic-iphone-trend-admin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --init --ipc=host
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/mini-app/package-lock.json
+      - name: Install Mini App dependencies
+        working-directory: frontend/mini-app
+        run: npm ci
+      - name: Install Playwright test runtime
+        working-directory: frontend/mini-app
+        run: npm install --no-save @playwright/test@1.56.1
+      - name: Run trend admin interaction in Chromium and WebKit
+        working-directory: frontend/mini-app
+        run: >-
+          npx playwright test
+          e2e/trend-admin-mobile-interaction.spec.mjs
+          e2e/trend-admin-v2.spec.mjs
+          e2e/trend-workflow.spec.mjs
+          --grep 'cold |workflow step video preview'
+          --project=chromium
+          --project=webkit-mobile
+          --max-failures=0
+      - name: Upload diagnostic report and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-new-trend-502-${{ github.sha }}
+          path: |
+            frontend/mini-app/playwright-report
+            frontend/mini-app/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+

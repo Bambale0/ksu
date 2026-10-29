@@ -1,3 +1,11 @@
+## Active Fix Execution — iPhone New Trend freeze with HTTP 502 (2026-10-29)
+
+- Baseline main `33e006149a05ae88d26b5b9c8ab2cf5f475cd5ff`, tree `3009c1f519a919d9b2c182fe71ba8341eb77e295`; branch `fix/iphone-new-trend-502-20261029`.
+- The previous media fix is deployed and its host-local release proof is recorded in [PR #572](https://github.com/Bambale0/ksu/pull/572) / [PR #573](https://github.com/Bambale0/ksu/pull/573). The user still reports a frozen New Trend button; the new screenshot shows `HTTP 502` with an empty manager. Physical-device causality remains unresolved.
+- Fresh source audit: the create handler opens a local form without awaiting a request, while list/model loading uses `Promise.all`; either endpoint failure discards combined data. Existing tests do not tap New during an initial HTML 502. First characterize that exact state and inspect current runtime evidence; do not infer a click fix from an adjacent loading defect.
+- Detailed hypotheses, acceptance criteria, verification matrix, refreshed guidance and progress: [docs/agents/EXECUTION/iphone-new-trend-502-20261029.md](docs/agents/EXECUTION/iphone-new-trend-502-20261029.md). No new production-code change or new release is yet claimed.
+- New user screenshots clarify that Step 2 video cannot be selected/displayed. Confirmed barriers are the image-only picker/type guard and image-only editor/customer-card renderers; existing upload/recipe APIs already accept safe video preview URLs. The new requirement extends Step 2 previews to image or video while preserving Step 1 images and display-only semantics. RED browser cases precede the minimal fix; the initial HTTP 502 remains separately under investigation.
+
 ## Active Fix Execution — iPhone Add Trend interaction (2026-10-29)
 
 - Baseline main `0889745f77f5a09099006cbd5880500059e52745`; isolated branch `fix/iphone-add-trend-20261029`.

@@ -1,4 +1,28 @@
 import { expect, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const stepVideoFixtures = {
+  chromium: { extension: 'webm', contentType: 'video/webm', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.webm', import.meta.url)) },
+  webkit: { extension: 'mp4', contentType: 'video/mp4', body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.mp4', import.meta.url)) },
+};
+
+function fulfillStepVideo(route, { body, contentType }) {
+  const headers = { 'accept-ranges': 'bytes' };
+  const range = route.request().headers().range;
+  if (!range) return route.fulfill({ status: 200, contentType, headers, body });
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  const from = match?.[1] ? Number(match[1]) : Math.max(0, body.length - Number(match?.[2]));
+  const to = match?.[1] && match[2] ? Math.min(Number(match[2]), body.length - 1) : body.length - 1;
+  if (!match || (!match[1] && !match[2]) || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)
+    || from >= body.length || to < from) {
+    return route.fulfill({ status: 416, headers: { ...headers, 'content-range': 'bytes */' + body.length }, body: '' });
+  }
+  return route.fulfill({
+    status: 206, contentType,
+    headers: { ...headers, 'content-range': 'bytes ' + from + '-' + to + '/' + body.length },
+    body: body.subarray(from, to + 1),
+  });
+}
 
 const TREND_ID = '56156156-1111-4111-8111-561561561111';
 const RUN_ID = '56156156-2222-4222-8222-561561562222';
@@ -83,8 +107,8 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, failStepPreviews = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false } = {}) {
-  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], errors: [] };
+async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, failStepPreviews = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false, stepVideoPreview = null, failStepVideoPreview = false } = {}) {
+  const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], stepVideoReads: 0, errors: [] };
   let photoReady = false;
   let photoFailed = false;
   let quoteFailure = quoteFailsOnce;
@@ -107,9 +131,9 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
       view.preview_url = VIDEO_URL;
       view.preview_thumbnail_url = PREVIEW_URL;
     }
-    if (stepPreviews) {
+    if (stepPreviews || stepVideoPreview) {
       view.steps[0].preview_url = STEP_1_PREVIEW_URL;
-      view.steps[1].preview_url = STEP_2_PREVIEW_URL;
+      view.steps[1].preview_url = stepVideoPreview?.url || STEP_2_PREVIEW_URL;
     }
     return view;
   };
@@ -127,6 +151,11 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
   }, safeAreaInsets);
   await page.route('https://media.example.invalid/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
+    if (stepVideoPreview && pathname === new URL(stepVideoPreview.url).pathname) {
+      state.stepVideoReads += 1;
+      if (failStepVideoPreview) return route.fulfill({ status: 503, contentType: 'text/plain', body: 'Preview unavailable' });
+      return fulfillStepVideo(route, stepVideoPreview);
+    }
     if (failStepPreviews && pathname.includes('/step-')) {
       return route.fulfill({ status: 503, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: '{}' });
     }
@@ -164,11 +193,11 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
         preview_url: VIDEO_URL,
         preview_thumbnail_url: null,
       });
-      if (stepPreviews) return json({
+      if (stepPreviews || stepVideoPreview) return json({
         ...workflowTrend,
         steps: workflowTrend.steps.map((step, index) => ({
           ...step,
-          preview_url: index === 0 ? STEP_1_PREVIEW_URL : STEP_2_PREVIEW_URL,
+          preview_url: index === 0 ? STEP_1_PREVIEW_URL : stepVideoPreview?.url || STEP_2_PREVIEW_URL,
         })),
       });
       return json(workflowTrend);
@@ -234,6 +263,64 @@ test('workflow cards use the separate admin images for steps 1 and 2', async ({ 
 
   await expect(stages.getByRole('button', { name: /Шаг 1.*Подготовить фото/i }).locator('img')).toHaveAttribute('src', STEP_1_PREVIEW_URL);
   await expect(stages.getByRole('button', { name: /Шаг 2.*Оживить фото.*Сначала Шаг 1/i }).locator('img')).toHaveAttribute('src', STEP_2_PREVIEW_URL);
+});
+
+test.describe('workflow step video preview', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test('step 2 video preview decodes in its card while step 1 and the lock stay intact', async ({ page, browserName }) => {
+    const fixture = stepVideoFixtures[browserName];
+    if (!fixture) throw new Error('No step video fixture for ' + browserName);
+    const videoUrl = 'https://media.example.invalid/step-2-video.' + fixture.extension;
+    await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+    const state = await setup(page, { stepVideoPreview: { ...fixture, url: videoUrl } });
+    const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+    const photoCard = stages.getByRole('button', { name: 'Шаг 1. Подготовить фото', exact: true });
+    const videoCard = stages.getByRole('button', { name: /Шаг 2.*Оживить фото.*Сначала Шаг 1/i });
+    await expect(photoCard.locator('img')).toHaveAttribute('src', STEP_1_PREVIEW_URL);
+    await expect.poll(() => photoCard.locator('img').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    await expect(photoCard.locator('video')).toHaveCount(0);
+    await videoCard.scrollIntoViewIfNeeded();
+    const video = videoCard.locator('video');
+    await expect(video).toBeVisible();
+    await expect(video).toHaveAttribute('src', videoUrl);
+    await expect(video).toHaveJSProperty('playsInline', true);
+    await expect(video).toHaveJSProperty('muted', true);
+    await expect.poll(() => video.evaluate(node => ({
+      loaded: node.readyState >= 1, width: node.videoWidth, height: node.videoHeight, error: node.error?.code || null,
+    }))).toEqual({ loaded: true, width: 32, height: 96, error: null });
+    await expect.poll(() => video.evaluate(node => {
+      const media = node.getBoundingClientRect();
+      const card = node.closest('button').getBoundingClientRect();
+      return media.width > 0 && media.height > 0
+        && Math.abs(media.width - card.width) <= 2 && Math.abs(media.height - card.height) <= 2;
+    })).toBe(true);
+    await videoCard.tap();
+    await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1', exact: true })).toBeVisible();
+    expect(state.photoRuns).toBe(0);
+    expect(state.videoRuns).toBe(0);
+    expect(state.runBodies).toEqual([]);
+    expect(state.errors).toEqual([]);
+  });
+
+  test('unavailable step 2 video preview falls back to the workflow thumbnail', async ({ page, browserName }) => {
+    const fixture = stepVideoFixtures[browserName];
+    if (!fixture) throw new Error('No step video fixture for ' + browserName);
+    const videoUrl = 'https://media.example.invalid/step-2-unavailable.' + fixture.extension;
+    await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+    const state = await setup(page, { stepVideoPreview: { ...fixture, url: videoUrl }, failStepVideoPreview: true });
+    const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+    const videoCard = stages.getByRole('button', { name: /Шаг 2.*Оживить фото.*Сначала Шаг 1/i });
+    await expect.poll(() => state.stepVideoReads).toBeGreaterThan(0);
+    await expect(videoCard.locator('img')).toHaveAttribute('src', PREVIEW_URL);
+    await expect.poll(() => videoCard.locator('img').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    await expect(videoCard.locator('video')).toHaveCount(0);
+    await expect(stages.getByRole('button', { name: 'Шаг 1. Подготовить фото', exact: true }).locator('img')).toHaveAttribute('src', STEP_1_PREVIEW_URL);
+    await videoCard.tap();
+    await expect(page.getByRole('dialog', { name: 'Сначала Шаг 1', exact: true })).toBeVisible();
+    expect(state.runBodies).toEqual([]);
+    expect(state.errors).toEqual([]);
+  });
 });
 
 test('v2 matches the two-card locked-step reference and explains Step 1 in a modal', async ({ page }) => {
