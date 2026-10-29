@@ -43,6 +43,18 @@ The customer product is served from `/mini-app/` and provides:
 
 Telegram acts as a native product channel and entry point while the generation/business logic remains in the backend rather than being tied to chat handlers.
 
+### Photo and video prompt analysis
+
+New photo/video prompt tasks default to **Neironych `qwen3.8-max`**, with Nexus GPT Vision
+available only as a safely selected reserve. Photo analysis sends the uploaded reference;
+video analysis uses up to four chronological JPEG frames and does not analyze audio.
+Neironych's Qwen route does not accept native video input.
+
+The runtime admin's **«Анализ фото и видео»** control changes the provider/model route for
+future tasks. New managed tasks retain their frozen route and model; historical
+Nexus/Kie jobs keep their existing dispatch. Text prompt building, Pinterest, generation routes and customer tariffs
+are independent. See [Prompt Tools](docs/PROMPT_TOOLS.md) for recovery and configuration.
+
 ### Admin console
 
 A separate privileged interface covers user, generation, payment, withdrawal, referral, promo, pricing and security operations. High-impact actions are protected by explicit permissions and MFA policies.

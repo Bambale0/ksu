@@ -467,6 +467,37 @@ test('broken step previews fall back to the workflow thumbnail', async ({ page }
   await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
 });
 
+test('a changed step preview starts at its new primary without replacing cards or form values', async ({ page }) => {
+  await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+  const state = await setup(page, { stepPreviews: true, failStepPreviews: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+
+  const originalCards = await stages.getByRole('button').elementHandles();
+  await page.getByLabel('Личная надпись').fill('Сохранить мою подпись');
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  const replacementUrl = 'https://media.example.invalid/refreshed-photo-preview.jpg';
+  const refreshed = workflow();
+  refreshed.steps[0].preview_url = replacementUrl;
+  refreshed.steps[1].preview_url = STEP_2_PREVIEW_URL;
+  await page.route(`**/api/v1/trends/workflows/${RUN_ID}`, route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify(refreshed),
+  }));
+
+  await page.getByRole('button', { name: 'Проверить статус', exact: true }).click();
+  await expect(images.nth(0)).toHaveAttribute('src', replacementUrl);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+  expect(await Promise.all(originalCards.map((card) => card.evaluate((node) => node.isConnected)))).toEqual([true, true]);
+  await expect(page.getByLabel('Личная надпись')).toHaveValue('Сохранить мою подпись');
+  await expect(page.getByLabel('Случай')).toHaveValue('Прогулка');
+  expect(state.errors).toEqual([]);
+});
+
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {
   const state = await setup(page);
   await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
