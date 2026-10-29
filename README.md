@@ -51,8 +51,8 @@ video analysis uses up to four chronological JPEG frames and does not analyze au
 Neironych's Qwen route does not accept native video input.
 
 The runtime admin's **«Анализ фото и видео»** control changes the provider/model route for
-future tasks. Existing tasks retain their recorded route and model, including historical
-Nexus/Kie jobs. Text prompt building, Pinterest, generation routes and customer tariffs
+future tasks. New managed tasks retain their frozen route and model; historical
+Nexus/Kie jobs keep their existing dispatch. Text prompt building, Pinterest, generation routes and customer tariffs
 are independent. See [Prompt Tools](docs/PROMPT_TOOLS.md) for recovery and configuration.
 
 ### Admin console
