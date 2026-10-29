@@ -1,3 +1,12 @@
+## Active Fix Execution — iPhone Add Trend interaction (2026-10-29)
+
+- Baseline main `0889745f77f5a09099006cbd5880500059e52745`; isolated branch `fix/iphone-add-trend-20261029`.
+- User report: Add Trend does not respond on iPhone; related complaint describes blocked web-content taps/scrolling. The manager eagerly attaches every video source and retains the media beneath the editor; both resource-lifecycle defects are reproduced in Chromium and mobile WebKit at regression head `28290ab8fc4d8492cb8072db4f7aa2edbd4007a8`. Causality for the physical-device freeze is not yet proven.
+- Scope: reproduce the large-catalog resource invariant and actual touch/edit/upload/close/reopen journey, then reuse the existing visibility-aware media component and suspend covered previews. Preserve server contracts, permissions, recipes, business settings and financial behavior.
+- Implemented: visibility-gated admin previews, explicit shared-video resource cleanup with safe URL replacement, removal of covered manager media, and stable preview geometry. Local typecheck and independent Standards/Spec reviews passed. Final exact-head workflow results and delivery status are recorded in [PR #572](https://github.com/Bambale0/ksu/pull/572); production rollout and the original physical-device cause remain unverified.
+- Focused browser verification: all ten touch/media cases passed (five Chromium, five mobile WebKit) in [run 40838160519](https://github.com/Bambale0/ksu/actions/runs/40838160519). Tests use supported real portrait codecs and require full playback/network/buffer/metadata reset; an old `currentSrc` string alone is not treated as a live resource. The diagnostic-only workflow is excluded from the PR; all six required checks still gate the final delivery SHA.
+- Audit, competing hypotheses, guidance, acceptance criteria and verification matrix: [docs/agents/EXECUTION/iphone-add-trend-20261029.md](docs/agents/EXECUTION/iphone-add-trend-20261029.md). Exact-head CI and separate review are required; no deployment or paid generation is claimed.
+
 ## Active Feature Execution — Seedance author-recipe replay parity (2026-10-28)
 
 - Baseline `main` `530fbc4a70a2615cf9ffd2ba5ef7d547019c85b8`; isolated worktree branch `fix/seedance-author-reference-priority-20261028`.

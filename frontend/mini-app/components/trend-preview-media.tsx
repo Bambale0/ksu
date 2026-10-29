@@ -46,6 +46,19 @@ export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: P
   }, [mediaType]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (mediaType !== "video" || !visible || !video) return;
+    // Keep assignment and cleanup together so a previous effect cannot clear
+    // a replacement URL. Removing src alone does not release a loaded video.
+    video.src = url;
+    return () => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [mediaType, url, visible]);
+
+  useEffect(() => {
     if (mediaType !== "video" || !visible || !thumbnailUrl || poster) return;
     let cancelled = false;
     let timer: number | null = null;
@@ -68,7 +81,6 @@ export function TrendPreviewMedia({ className, mediaType, url, thumbnailUrl }: P
     return <video
       ref={videoRef}
       className={className}
-      src={visible ? url : undefined}
       poster={poster || undefined}
       muted
       autoPlay

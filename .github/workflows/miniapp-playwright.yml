@@ -64,6 +64,7 @@ jobs:
           e2e/trend-audio-reference.spec.mjs
           e2e/trend-workflow.spec.mjs
           e2e/trend-admin-v2.spec.mjs
+          e2e/trend-admin-mobile-interaction.spec.mjs
           e2e/seedance-video-trend.spec.mjs
           --project=webkit-mobile
       - name: Verify personalized trend keyboards in iPhone WebKit

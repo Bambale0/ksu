@@ -179,6 +179,9 @@ test('admin uploads separate images for workflow steps 1 and 2', async ({ page }
   await form.getByLabel('Загрузить фото шага 1', { exact: true }).setInputFiles({
     name: 'step-1.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-step-1'),
   });
+  // Both upload inputs stay disabled until the current upload completes.
+  await expect(form.getByLabel('URL фото шага 1', { exact: true })).toHaveValue('https://cdn.example.invalid/step-1.jpg');
+  await expect(form.getByLabel('Загрузить фото шага 2', { exact: true })).toBeEnabled();
   await form.getByLabel('Загрузить фото шага 2', { exact: true }).setInputFiles({
     name: 'step-2.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-step-2'),
   });
