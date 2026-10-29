@@ -28,14 +28,17 @@ jobs:
       - name: Install matching Playwright runtime
         working-directory: frontend/mini-app
         run: npm install --no-save @playwright/test@1.56.1 --no-audit --no-fund
-      - name: Capture original preview error ordering in WebKit
+      - name: Verify repaired original preview fallback in WebKit
         working-directory: frontend/mini-app
         run: npx playwright test e2e/trend-workflow.spec.mjs --project=webkit-mobile --grep "broken step previews fall back" --repeat-each=60 --workers=2 --retries=0
+      - name: Verify workflow lifecycle and media guards
+        working-directory: frontend/mini-app
+        run: npx playwright test e2e/trend-workflow.spec.mjs --project=webkit-mobile --workers=2 --retries=0
       - name: Preserve preview diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: webkit-preview-event-ordering
+          name: webkit-preview-recovery-green
           path: |
             frontend/mini-app/playwright-report
             frontend/mini-app/test-results

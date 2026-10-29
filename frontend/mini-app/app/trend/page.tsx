@@ -110,56 +110,26 @@ function workflowPreviewCanCacheBust(url: string): boolean {
   return /\/api\/v1\/trends\/[^/?]+\/preview-thumbnail(?:[?#]|$)/.test(url);
 }
 
-function workflowPreviewDiagnosticNodeId(node: HTMLImageElement | null) {
-  if (!node || typeof window === "undefined") return null;
-  return (window as Window & { __ksuPreviewNodeId?: (image: HTMLImageElement) => number }).__ksuPreviewNodeId?.(node) ?? null;
-}
-
-function recordWorkflowPreviewDiagnostic(entry: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  const target = window as Window & { __ksuPreviewReactDiagnostic?: Record<string, unknown>[] };
-  const events = target.__ksuPreviewReactDiagnostic ||= [];
-  if (events.length < 120) events.push(entry);
-}
-
 function WorkflowStagePreview({ primaryUrl, fallbackUrl, finalFallbackUrl, alt, allowVideo = false }: { primaryUrl: string; fallbackUrl: string; finalFallbackUrl: string; alt: string; allowVideo?: boolean }) {
-  const diagnosticInstance = useRef(crypto.randomUUID()).current;
-  const diagnosticImage = useRef<HTMLImageElement | null>(null);
+  const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
+  return <WorkflowStagePreviewState key={sources.join("\u0000")} sources={sources} alt={alt} allowVideo={allowVideo} />;
+}
+
+function WorkflowStagePreviewState({ sources, alt, allowVideo }: { sources: string[]; alt: string; allowVideo: boolean }) {
   const [attempt, setAttempt] = useState(0);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const retryTimer = useRef<number | null>(null);
-  const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
-  const sourceKey = sources.join("\u0000");
-  recordWorkflowPreviewDiagnostic({
-    phase: "render", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
-    index: sourceIndex, attempt, unavailable, source: sources[sourceIndex] || "",
-  });
 
-  useEffect(() => {
-    recordWorkflowPreviewDiagnostic({
-      phase: "effect-reset", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
-      index: sourceIndex, attempt,
-    });
-    setAttempt(0);
-    setSourceIndex(0);
-    setUnavailable(false);
-    return () => {
-      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-      retryTimer.current = null;
-    };
-  }, [sourceKey]);
+  useEffect(() => () => {
+    if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  }, []);
 
   const source = sources[sourceIndex] || "";
   const canRetrySource = workflowPreviewCanCacheBust(source);
   if (!source || unavailable) return <span className={styles.workflowStageFallback} aria-hidden="true" />;
   const onError = () => {
-    recordWorkflowPreviewDiagnostic({
-      phase: "react-error", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
-      index: sourceIndex, attempt, source, canRetrySource,
-      timerPending: retryTimer.current !== null,
-      nodeId: workflowPreviewDiagnosticNodeId(diagnosticImage.current),
-    });
     if (retryTimer.current !== null) return;
     if (canRetrySource && attempt < 3) {
       retryTimer.current = window.setTimeout(() => {
@@ -181,16 +151,6 @@ function WorkflowStagePreview({ primaryUrl, fallbackUrl, finalFallbackUrl, alt, 
     onVideoError={onError}
   />;
   return <img
-    ref={(node) => {
-      diagnosticImage.current = node;
-      if (node) recordWorkflowPreviewDiagnostic({
-        phase: "ref", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
-        index: sourceIndex, attempt, source, nodeId: workflowPreviewDiagnosticNodeId(node),
-        actualSource: node.getAttribute("src"), currentSrc: node.currentSrc,
-        complete: node.complete, naturalWidth: node.naturalWidth, naturalHeight: node.naturalHeight,
-        isConnected: node.isConnected, readyState: document.readyState,
-      });
-    }}
     className={styles.workflowStageMedia}
     src={canRetrySource ? workflowPreviewRetryUrl(source, attempt) : source}
     alt={alt}

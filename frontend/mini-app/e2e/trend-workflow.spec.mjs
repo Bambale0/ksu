@@ -36,114 +36,6 @@ const EXTERNAL_IMAGE_PREVIEW_URL = 'https://media.example.invalid/asset?id=workf
 const STEP_1_PREVIEW_URL = 'https://media.example.invalid/step-1-preview.jpg';
 const STEP_2_PREVIEW_URL = 'https://media.example.invalid/step-2-preview.jpg';
 
-
-// Diagnostic-only: preserve the original failing test and its assertions.
-const previewDiagnosticRuns = new WeakMap();
-const previewDiagnosticTitle = 'broken step previews fall back to the workflow thumbnail';
-
-test.beforeEach(async ({ page }, testInfo) => {
-  if (testInfo.title !== previewDiagnosticTitle) return;
-  const diagnostic = { network: [], console: [] };
-  previewDiagnosticRuns.set(page, diagnostic);
-  const relevant = (url) => url.includes('/step-1-preview.jpg') || url.includes('/step-2-preview.jpg') || url.includes('/preview-thumbnail');
-  const network = (entry) => {
-    if (diagnostic.network.length < 60) diagnostic.network.push({ at: Date.now(), ...entry });
-  };
-  page.on('request', (request) => {
-    if (relevant(request.url())) network({ event: 'request', url: request.url().slice(0, 300), resourceType: request.resourceType() });
-  });
-  page.on('response', (response) => {
-    if (relevant(response.url())) network({ event: 'response', url: response.url().slice(0, 300), status: response.status() });
-  });
-  page.on('requestfailed', (request) => {
-    if (relevant(request.url())) network({ event: 'requestfailed', url: request.url().slice(0, 300), error: request.failure()?.errorText || '' });
-  });
-  page.on('console', (message) => {
-    if (message.text().startsWith('KSU_PREVIEW_TRACE') && diagnostic.console.length < 80) {
-      diagnostic.console.push({ at: Date.now(), text: message.text().slice(0, 1200) });
-    }
-  });
-  await page.addInitScript(() => {
-    const events = [];
-    window.__ksuPreviewDiagnostic = events;
-    const nodeIds = new WeakMap();
-    let nextNodeId = 0;
-    window.__ksuPreviewNodeId = (node) => {
-      if (!nodeIds.has(node)) nodeIds.set(node, ++nextNodeId);
-      return nodeIds.get(node);
-    };
-    const relevant = (node) => node instanceof HTMLImageElement && /^Шаг [12]:/.test(node.alt);
-    const capture = (event, node, oldSrc = null) => {
-      if (!relevant(node) || events.length >= 120) return;
-      events.push({
-        event, at: performance.now(), nodeId: window.__ksuPreviewNodeId(node), readyState: document.readyState,
-        alt: node.alt, src: node.getAttribute('src')?.slice(0, 300) || null,
-        currentSrc: node.currentSrc.slice(0, 300), oldSrc: oldSrc?.slice(0, 300) || null,
-        complete: node.complete, naturalWidth: node.naturalWidth, naturalHeight: node.naturalHeight,
-        loading: node.loading, isConnected: node.isConnected,
-      });
-    };
-    const addListener = EventTarget.prototype.addEventListener;
-    const observed = new WeakSet();
-    // Observe native events even before React commits the image into document.
-    // Preserve the original listener, event, src, network and scheduling behavior.
-    HTMLImageElement.prototype.addEventListener = function (type, listener, options) {
-      if ((type === 'error' || type === 'load') && !observed.has(this)) {
-        observed.add(this);
-        addListener.call(this, 'error', (event) => capture('node-error', event.currentTarget), true);
-        addListener.call(this, 'load', (event) => capture('node-load', event.currentTarget), true);
-      }
-      return addListener.call(this, type, listener, options);
-    };
-    document.addEventListener('error', (event) => capture('native-error', event.target), true);
-    document.addEventListener('load', (event) => capture('native-load', event.target), true);
-    const observeImages = (node, event) => {
-      if (!(node instanceof Element)) return;
-      capture(event, node);
-      for (const image of node.querySelectorAll('img')) capture(event, image);
-    };
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        if (record.type === 'attributes') capture('src-mutation', record.target, record.oldValue);
-        else {
-          for (const node of record.addedNodes) observeImages(node, 'added');
-          for (const node of record.removedNodes) observeImages(node, 'removed');
-        }
-      }
-    });
-    observer.observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'], attributeOldValue: true });
-  });
-});
-
-test.afterEach(async ({ page }, testInfo) => {
-  const diagnostic = previewDiagnosticRuns.get(page);
-  if (!diagnostic) return;
-  const browser = await page.evaluate(() => ({
-    at: performance.now(), timeOrigin: performance.timeOrigin,
-    readyState: document.readyState, viewport: { width: innerWidth, height: innerHeight, scrollY },
-    events: window.__ksuPreviewDiagnostic || [],
-    react: window.__ksuPreviewReactDiagnostic || [],
-    images: [...document.querySelectorAll('nav[aria-label="Этапы сценария"] img')].map((node) => {
-      const rect = node.getBoundingClientRect();
-      return {
-        nodeId: window.__ksuPreviewNodeId?.(node), alt: node.alt, src: node.getAttribute('src'), currentSrc: node.currentSrc,
-        complete: node.complete, naturalWidth: node.naturalWidth, naturalHeight: node.naturalHeight,
-        loading: node.loading, isConnected: node.isConnected,
-        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      };
-    }),
-  })).catch((error) => ({ diagnosticError: String(error) }));
-  const payload = {
-    schema: 'ksu.workflow-preview-diagnostic.v2',
-    project: testInfo.project.name, repeat: testInfo.repeatEachIndex,
-    status: testInfo.status, expectedStatus: testInfo.expectedStatus,
-    network: diagnostic.network, console: diagnostic.console, browser,
-  };
-  const serialized = JSON.stringify(payload);
-  console.info('KSU_PREVIEW_DIAGNOSTIC ' + serialized);
-  await testInfo.attach('workflow-preview-diagnostic.json', { body: Buffer.from(serialized), contentType: 'application/json' });
-});
-
 const workflowTrend = {
   id: TREND_ID,
   title: 'Фото в видео',
@@ -573,6 +465,37 @@ test('broken step previews fall back to the workflow thumbnail', async ({ page }
   await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
   await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
   await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+});
+
+test('a changed step preview starts at its new primary without replacing cards or form values', async ({ page }) => {
+  await page.route('https://telegram.org/js/telegram-web-app.js*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+  const state = await setup(page, { stepPreviews: true, failStepPreviews: true });
+  const stages = page.getByRole('navigation', { name: 'Этапы сценария' });
+  const images = stages.getByRole('img');
+  await expect(images).toHaveCount(2);
+  await expect(images.nth(0)).toHaveAttribute('src', PREVIEW_URL);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+
+  const originalCards = await stages.getByRole('button').elementHandles();
+  await page.getByLabel('Личная надпись').fill('Сохранить мою подпись');
+  await page.getByLabel('Случай').selectOption({ label: 'Прогулка' });
+  const replacementUrl = 'https://media.example.invalid/refreshed-photo-preview.jpg';
+  const refreshed = workflow();
+  refreshed.steps[0].preview_url = replacementUrl;
+  refreshed.steps[1].preview_url = STEP_2_PREVIEW_URL;
+  await page.route(`**/api/v1/trends/workflows/${RUN_ID}`, route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify(refreshed),
+  }));
+
+  await page.getByRole('button', { name: 'Проверить статус', exact: true }).click();
+  await expect(images.nth(0)).toHaveAttribute('src', replacementUrl);
+  await expect(images.nth(1)).toHaveAttribute('src', PREVIEW_URL);
+  await expect.poll(() => images.evaluateAll((nodes) => nodes.every((node) => node.complete && node.naturalWidth > 0))).toBe(true);
+  expect(await Promise.all(originalCards.map((card) => card.evaluate((node) => node.isConnected)))).toEqual([true, true]);
+  await expect(page.getByLabel('Личная надпись')).toHaveValue('Сохранить мою подпись');
+  await expect(page.getByLabel('Случай')).toHaveValue('Прогулка');
+  expect(state.errors).toEqual([]);
 });
 
 test('v2 requires explicit stage-two consent and de-duplicates a double click', async ({ page }) => {
