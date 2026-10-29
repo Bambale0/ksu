@@ -2,7 +2,7 @@
 
 ## Request, baseline and scope
 
-The user asks KSU/ROXY to use Neironych as primary for photo and video prompt analysis with `qwen3.8-max`. The clarified scope is the two customer tools `image_analysis` and `video_prompt`. The source video continues to be analyzed through chronological frames unless Neironych's own native-video contract is positively verified. Text `prompt_builder`, its legacy image-reference API, Pinterest, generation models, prices and already accepted jobs keep their existing contracts.
+The user asks KSU/ROXY to use Neironych as primary for photo and video prompt analysis with `qwen3.8-max`. The clarified scope is the two customer tools `image_analysis` and `video_prompt`. The source video is analyzed through chronological frames without audio: the deployed Neironych contract explicitly rejects native-video blocks. Text `prompt_builder`, its legacy image-reference API, Pinterest, generation models, prices and already accepted jobs keep their existing contracts.
 
 Remote main and deployed baseline: `e39b6485960d068365e4091fa30614201dbaa684`, tree `77fadc9657a7960d8dcd13eee295da70189b8bcf`. AGENTS blob `35fa07c0ed7812285fef0ad55328399b8f4a0f5d`. The local checkout contains the completed #574 work and must not be reset or cleaned. The new product tree is based on current remote main. There are no repository-local `.agents` instructions/index files.
 
@@ -25,8 +25,9 @@ Overlapping work: [PR #542](https://github.com/Bambale0/ksu/pull/542), branch `f
 ## External contract evidence and limitations
 
 - QwenCloud's [model update notice](https://docs.qwencloud.com/changelog/model-updates/qwen3.8-max-upgrade) confirms `qwen3.8-max` and its September snapshot mapping. This is upstream model evidence, not evidence of Neironych's deployed transport or billing behavior.
-- Existing KSU PR #542 records `POST /v1/chat/completions`, HTTPS image blocks and four chronological JPEG data-URI frames, plus a historical public catalog check. Current direct guide/catalog requests from this executor were unavailable; do not treat historical observations as a fresh live test.
-- The provider implementation is available separately in `Bambale0/ooo`; inspect its current chat route/registry/ledger to distinguish definite non-acceptance from uncertain completion. A transmitted `Idempotency-Key` alone does not establish supplier replay safety.
+- Existing KSU PR #542 supplies reusable prompt/parser and frame-mode concepts. Independently read provider source at `Bambale0/ooo@f87409831f5e006b66096ba3df29836f6bf10507`: chat admission, registry, partner-scoped unique idempotency reservation, body fingerprint, response replay and receipt validation. Its contract rejects native-video blocks before reservation. Completed exact-body/key requests replay the stored response; expired replay results fail terminally without a new provider operation.
+- Provider [deployment 40767557213](https://github.com/Bambale0/ooo/actions/runs/40767557213), job `123095679419`, completed its actual deploy step and logged `DEPLOY_VERIFIED f87409831f5e006b66096ba3df29836f6bf10507` at `2026-10-28T20:57:23.5040559Z`. This source/deployment evidence supports replay handling, but does not replace a current multimodal inference check.
+- Fresh free GET preflight from the existing KSU application container completed at `2026-10-29T15:36:57Z`: `/v1/models`, `/api/v1/catalog/pricing` and authenticated `/v1/balance` all returned 200; `qwen3.8-max` is available and the configured partner account has funds. No secret, customer media, paid inference or customer-wallet mutation was involved. Direct requests from the local executor remained unavailable; the authorized existing server integration supplied this evidence.
 - Generic gateway 502/503/504, malformed output and transport timeouts do not independently prove that a paid request was not accepted. They must not cause a new alternate-provider POST. If replay cannot be proven safe, persist the submission boundary and fail/reconcile without a second paid submission.
 - Local backend dependencies are unavailable and package installation failed at the configured network boundary. Use the existing isolated GitHub CI PostgreSQL/Redis runtime; do not run tests against production.
 
@@ -62,14 +63,14 @@ Overlapping work: [PR #542](https://github.com/Bambale0/ksu/pull/542), branch `f
 ## Implementation plan and progress
 
 1. Record fresh audit and complete independent contract/guidance review. **Recorded before production edits.**
-2. Add behavior-first regressions demonstrating that unchanged main/PR #542 do not admit Qwen-primary media tasks.
-3. Reuse the Qwen adapter and implement typed runtime policy, actual snapshot dispatch and narrowly proven safe failure handling.
-4. Add runtime admin control and authorization/revision tests; preserve existing UI and task contracts.
-5. Run focused RED/GREEN verification in isolated CI, resolve independent Standards/Spec findings, then all exact-head checks.
+2. **RED verified:** isolated [run 40902036431](https://github.com/Bambale0/ksu/actions/runs/40902036431), exact diagnostic head `eca734ff0d21edbae844c3be3368bb25f07ee190`, used unchanged main product code. Three media admission/catalog regressions failed on Nexus/GPT selection; two text-builder guards passed. Dependency setup, migrations and test collection succeeded.
+3. **Implemented:** typed runtime policy, frozen task routes/model/revision, private exact Qwen request snapshots before POST, same-key/body recovery and strictly limited fallback. Managed Nexus submissions have one-attempt durable markers; legacy jobs retain their existing dispatch.
+4. **Implemented:** existing runtime admin permission/confirmation/step-up/idempotency/revision contracts; focused DB/API and browser tests. Video UI explains key-frame analysis without audio. The adapter clears unsupported audio observations even if the supplier invents them.
+5. **Source review complete; runtime GREEN pending:** independent Standards/Spec review of policy/admin and adapter/executor has no open P0–P2. Four findings were fixed and reread: local protection failures retry on the same route, completion retains a current fence through commit, production logging keeps safe outcome fields, and HTTP410 is terminal before body processing. Local syntax/whitespace and Mini App typecheck pass; backend dependencies are unavailable locally, so backend runtime tests must execute in isolated CI.
 6. Complete provider smoke within authorized access, publish through normal merge/deploy gates and record exact release evidence or the remaining blocker.
 
 ## Guidance
 
 Remote task-specific guidance refreshed from `Bambale0/skills` (implement/TDD/code review), `Bambale0/claw` (backend/release review), `wondelai/skills` (Release It integration stability), `Bambale0/dev-agents-pack` (backend/API/release review), `agentskills/agentskills` (catalog/progressive disclosure; no KSU-specific provider implementation), `anthropics/skills` (webapp testing). `Bambale0/.agents` provides applicable API integration, observability and tests guidance. Embedded Start baseline is unchanged and unambiguous. No skill scripts were executed.
 
-Initial independent source audit and architecture review passed with the explicit provider-contract gate. Exact implementation review, CI and production verification are still pending.
+The diagnostic workflow exists only on the diagnostic branch and must not enter the product PR. Focused GREEN, all exact PR/main gates, bounded real media inference and KSU deployment verification are still pending; no production-primary switch is claimed yet.

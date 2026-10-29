@@ -22,6 +22,12 @@ from app.services.neironych_balance_alerts import (
     NeironychBalanceAlertService,
     balance_alert_policy,
 )
+from app.services.prompt_tool_routing import (
+    PROMPT_TOOL_ROUTES_SETTING_KEY,
+    configured_prompt_tool_routes,
+    prompt_tool_route_options,
+    validate_prompt_tool_routes,
+)
 
 
 class AdminRuntimeService:
@@ -38,10 +44,12 @@ class AdminRuntimeService:
         rows = list((await session.scalars(select(AdminRuntimeSetting))).all())
         config = await configured_routes(session)
         balance_alert = await NeironychBalanceAlertService.policy(session)
+        prompt_tool_routes = await configured_prompt_tool_routes(session)
         return {
             **{item.key: item.value for item in rows},
             BALANCE_ALERT_SETTING_KEY: balance_alert.payload(),
             ROUTES_SETTING_KEY: {**config, "options": route_options()},
+            PROMPT_TOOL_ROUTES_SETTING_KEY: {**prompt_tool_routes, "options": prompt_tool_route_options()},
         }
 
     @staticmethod
@@ -154,6 +162,50 @@ class AdminRuntimeService:
             request_id=request_id, action="runtime.reload", target_id=ROUTES_SETTING_KEY,
             request_payload={"routes": validated, "expected_revision": expected_revision,
                              **({"user_routes": scoped} if scoped is not None else {})},
+            operation=operation,
+        )
+
+    @staticmethod
+    async def set_prompt_tool_routes(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        routes: dict[str, list[dict[str, str]]],
+        expected_revision: int,
+        idempotency_key: str,
+        request_id: str,
+        confirmed: bool,
+        step_up_valid: bool,
+    ) -> tuple[dict[str, Any], bool]:
+        AdminPolicy.authorize_action(
+            admin, "runtime.prompt_tool_routes", confirmed=confirmed, step_up_valid=step_up_valid,
+        )
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise ValueError("Expected prompt tool route revision must be a positive integer")
+        validated = validate_prompt_tool_routes(routes)
+
+        async def operation() -> dict[str, Any]:
+            initial = await configured_prompt_tool_routes(session)
+            await session.execute(insert(AdminRuntimeSetting).values(
+                key=PROMPT_TOOL_ROUTES_SETTING_KEY, value=initial, updated_by_admin_id=admin.id,
+            ).on_conflict_do_nothing(index_elements=[AdminRuntimeSetting.key]))
+            row = await session.scalar(select(AdminRuntimeSetting).where(
+                AdminRuntimeSetting.key == PROMPT_TOOL_ROUTES_SETTING_KEY,
+            ).with_for_update().execution_options(populate_existing=True))
+            if row is None:
+                raise RuntimeError("Prompt tool route policy could not be initialized")
+            current = await configured_prompt_tool_routes(session)
+            if current["revision"] != expected_revision:
+                raise ValueError("Prompt tool routes changed; reload settings before saving")
+            row.value = {"revision": expected_revision + 1, "routes": validated}
+            row.updated_by_admin_id = admin.id
+            await session.flush()
+            return dict(row.value)
+
+        return await AdminCommandLedger.execute(
+            session, idempotency_key=idempotency_key, admin_user_id=admin.id,
+            request_id=request_id, action="runtime.prompt_tool_routes", target_id=PROMPT_TOOL_ROUTES_SETTING_KEY,
+            request_payload={"routes": validated, "expected_revision": expected_revision},
             operation=operation,
         )
 

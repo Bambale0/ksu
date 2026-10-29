@@ -358,6 +358,7 @@ export default function PromptToolsPage() {
             <input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file, "video"); }} />
           </label>
         ) : null}
+        {mode === "video" ? <p className="muted">Анализ по ключевым кадрам видео, без звука.</p> : null}
 
         {mode === "seedance" ? (
           <div className="field">

@@ -46,9 +46,38 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Verify video tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
       - name: Install backend dependencies
         run: python -m pip install -e '.[dev]'
+      - name: Ruff changed implementation and tests
+        run: ruff check app tests --output-format=github
+      - name: Compile backend
+        run: python -m compileall -q app tests
       - name: Apply isolated test migrations
         run: alembic upgrade head
-      - name: Qwen primary admission regression
-        run: pytest -q tests/test_prompt_tool_qwen_primary.py
+      - name: Verify ORM migration parity
+        run: alembic check
+      - name: Qwen primary focused regression
+        run: >-
+          pytest -q --tb=short
+          tests/test_neironych_qwen_prompt_tools.py
+          tests/test_prompt_tool_qwen_primary.py
+          tests/test_prompt_tool_routing.py
+          tests/test_prompt_tools.py
+          tests/test_nexus_prompt_media.py
+          tests/test_nexus_prompt_tools_gpt55.py
+          tests/test_kie_prompt_tools_gpt55.py
+          tests/test_prompt_tool_worker_contract.py
+          tests/test_prompt_tools_video_transport_regression.py
+          tests/test_tanyapi_photo_prompt_parity.py
+          tests/test_tanyapi_video_prompt_parity.py
+          tests/test_prompt_tool_pricing_contract.py
+          tests/test_prompt_tools_copy_contract.py
+          tests/test_neironych_submission_protocol.py
