@@ -15,6 +15,10 @@ jobs:
   upload-deadline-green:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit-mobile]
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     steps:
@@ -28,14 +32,14 @@ jobs:
       - name: Install matching Playwright runtime
         working-directory: frontend/mini-app
         run: npm install --no-save @playwright/test@1.56.1 --no-audit --no-fund
-      - name: Verify controlled upload deadlines in both browser engines
+      - name: Verify controlled upload deadlines in ${{ matrix.browser }}
         working-directory: frontend/mini-app
-        run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --grep "trend preview upload" --repeat-each=30 --workers=2 --retries=0
+        run: npx playwright test e2e/roxy-system-risk-scenarios.spec.mjs --project=${{ matrix.browser }} --grep "trend preview upload" --repeat-each=30 --workers=2 --retries=0 --max-failures=1
       - name: Preserve upload deadline diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: upload-deadline-controlled-clock-green
+          name: upload-deadline-controlled-clock-green-${{ matrix.browser }}
           path: |
             frontend/mini-app/playwright-report
             frontend/mini-app/test-results
