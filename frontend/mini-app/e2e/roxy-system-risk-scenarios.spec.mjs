@@ -401,9 +401,8 @@ const cases = [
 ];
 
 async function installUploadDeadlineClock(page) {
-  // Install before app timers and let runFor control elapsed upload time.
+  // Install before app timers; pause only after the upload form is ready.
   await page.clock.install({ time: new Date('2026-10-29T08:00:00Z') });
-  await page.clock.pauseAt(new Date('2026-10-29T09:00:00Z'));
 }
 
 test('trend preview upload survives a transfer longer than the JSON deadline', async ({ page }) => {
@@ -413,8 +412,12 @@ test('trend preview upload survives a transfer longer than the JSON deadline', a
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await expect(form).toBeVisible();
   let uploadRoute;
   await page.route('**/api/v1/uploads/kie', (route) => { uploadRoute = route; });
+  await expect(form.locator('input[type="file"]')).toBeVisible();
+  await expect(form.locator('input[type="file"]')).toBeEnabled();
+  await page.clock.pauseAt(new Date('2026-10-29T09:00:00Z'));
   await form.locator('input[type="file"]').setInputFiles({ name: 'preview.png', mimeType: 'image/png', buffer: Buffer.from('preview') });
   await expect.poll(() => Boolean(uploadRoute)).toBe(true);
   await page.clock.runFor(25_000);
@@ -442,8 +445,12 @@ test('large trend preview upload scales the deadline to the file size', async ({
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await expect(form).toBeVisible();
   let uploadRoute;
   await page.route('**/api/v1/uploads/kie', (route) => { uploadRoute = route; });
+  await expect(form.locator('input[type="file"]')).toBeVisible();
+  await expect(form.locator('input[type="file"]')).toBeEnabled();
+  await page.clock.pauseAt(new Date('2026-10-29T09:00:00Z'));
   await form.locator('input[type="file"]').setInputFiles({ name: 'slow-reference.mp4', mimeType: 'video/mp4', buffer: Buffer.from('preview') });
   await expect.poll(() => Boolean(uploadRoute)).toBe(true);
   await page.clock.runFor(120_001);
@@ -459,9 +466,13 @@ test('trend preview upload remains bounded and allows recovery after timeout', a
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
+  await expect(form).toBeVisible();
   let requested = false;
   await page.route('**/api/v1/uploads/kie', () => { requested = true; });
   const file = form.locator('input[type="file"]');
+  await expect(file).toBeVisible();
+  await expect(file).toBeEnabled();
+  await page.clock.pauseAt(new Date('2026-10-29T09:00:00Z'));
   await file.setInputFiles({ name: 'preview.png', mimeType: 'image/png', buffer: Buffer.from('preview') });
   await expect.poll(() => requested).toBe(true);
   await page.clock.runFor(120_001);
