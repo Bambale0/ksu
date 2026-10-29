@@ -111,14 +111,23 @@ function workflowPreviewCanCacheBust(url: string): boolean {
 }
 
 function WorkflowStagePreview({ primaryUrl, fallbackUrl, finalFallbackUrl, alt, allowVideo = false }: { primaryUrl: string; fallbackUrl: string; finalFallbackUrl: string; alt: string; allowVideo?: boolean }) {
+  const diagnosticInstance = useRef(crypto.randomUUID()).current;
   const [attempt, setAttempt] = useState(0);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const retryTimer = useRef<number | null>(null);
   const sources = [primaryUrl, fallbackUrl, finalFallbackUrl].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
   const sourceKey = sources.join("\u0000");
+  console.info("KSU_PREVIEW_TRACE", JSON.stringify({
+    phase: "render", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
+    index: sourceIndex, attempt, unavailable, source: sources[sourceIndex] || "",
+  }));
 
   useEffect(() => {
+    console.info("KSU_PREVIEW_TRACE", JSON.stringify({
+      phase: "effect-reset", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
+      index: sourceIndex, attempt,
+    }));
     setAttempt(0);
     setSourceIndex(0);
     setUnavailable(false);
@@ -132,6 +141,11 @@ function WorkflowStagePreview({ primaryUrl, fallbackUrl, finalFallbackUrl, alt, 
   const canRetrySource = workflowPreviewCanCacheBust(source);
   if (!source || unavailable) return <span className={styles.workflowStageFallback} aria-hidden="true" />;
   const onError = () => {
+    console.info("KSU_PREVIEW_TRACE", JSON.stringify({
+      phase: "react-error", at: performance.now(), instance: diagnosticInstance, alt, sourceKey,
+      index: sourceIndex, attempt, source, canRetrySource,
+      timerPending: retryTimer.current !== null,
+    }));
     if (retryTimer.current !== null) return;
     if (canRetrySource && attempt < 3) {
       retryTimer.current = window.setTimeout(() => {

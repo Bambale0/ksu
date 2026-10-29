@@ -12,83 +12,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  admin-browser:
+  webkit-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/mini-app/package-lock.json
-      - name: Install Mini App test dependencies
+      - name: Install Mini App dependencies
         working-directory: frontend/mini-app
-        run: |
-          npm ci --no-audit --no-fund
-          npm install --no-save @playwright/test@1.56.1 --no-audit --no-fund
-      - name: Install Chromium
+        run: npm ci --no-audit --no-fund
+      - name: Install matching Playwright runtime
         working-directory: frontend/mini-app
-        run: npx playwright install --with-deps chromium
-      - name: Run isolated real admin controls
+        run: npm install --no-save @playwright/test@1.56.1 --no-audit --no-fund
+      - name: Trace immediate preview failures in WebKit
         working-directory: frontend/mini-app
-        run: |
-          cat > playwright.qwen-diagnostic.config.mjs <<'CONFIG'
-          import base from './playwright.config.mjs';
-          export default {
-            ...base,
-            webServer: undefined,
-            testMatch: 'admin-prompt-tool-routes.spec.mjs',
-            workers: 1,
-            reporter: [['list'], ['html', { outputFolder: 'qwen-admin-report', open: 'never' }]],
-            projects: base.projects.filter(project => project.name === 'chromium'),
-          };
-          CONFIG
-          set +e
-          PLAYWRIGHT_JSON_OUTPUT_FILE=qwen-admin-red.json npx playwright test --config=playwright.qwen-diagnostic.config.mjs --reporter=list,json > qwen-admin-red.log 2>&1
-          result=$?
-          set -e
-          cat qwen-admin-red.log
-          test "$result" -eq 1
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          report=json.loads(Path("qwen-admin-red.json").read_text())
-          def specs(suite):
-              found=list(suite.get("specs", []))
-              for child in suite.get("suites", []):
-                  found.extend(specs(child))
-              return found
-          cases=[case for suite in report["suites"] for case in specs(suite)]
-          assert len(cases)==2, "Expected exactly the two original admin cases"
-          for case in cases:
-              result=case["tests"][0]["results"][-1]
-              errors="\n".join(error.get("message", "") for error in result.get("errors", []))
-              assert result["status"] in {"failed", "timedOut"}, result
-              assert "getByLabel" in errors and "Описание по фото" in errors, errors
-          print("RED_CONFIRMED: both original exact-label selectors fail at the photo control")
-          PY
-      - name: Apply reviewed selector-only fixture fix
-        working-directory: frontend/mini-app
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib
-          from pathlib import Path
-          content=base64.b64decode("aW1wb3J0IHsgcmVhZEZpbGVTeW5jIH0gZnJvbSAnbm9kZTpmcyc7CmltcG9ydCB7IGV4cGVjdCwgdGVzdCB9IGZyb20gJ0BwbGF5d3JpZ2h0L3Rlc3QnOwoKY29uc3QgcXdlbiA9IHsgcHJvdmlkZXI6ICduZWlyb255Y2gnLCBtb2RlbDogJ3F3ZW4zLjgtbWF4JyB9Owpjb25zdCBncHQgPSB7IHByb3ZpZGVyOiAnbmV4dXMnLCBtb2RlbDogJ2dwdC02LXNvbCcgfTsKY29uc3QgY2hvaWNlcyA9IFtbcXdlbiwgZ3B0XSwgW2dwdCwgcXdlbl0sIFtxd2VuXSwgW2dwdF1dOwpjb25zdCBvcmlnaW4gPSAnaHR0cDovLzEyNy4wLjAuMTozMDE3JzsKCmFzeW5jIGZ1bmN0aW9uIG9wZW5SdW50aW1lKHBhZ2UsIHsgZXhwaXJlRmlyc3RXcml0ZSA9IHRydWUgfSA9IHt9KSB7CiAgY29uc3QgYWRtaW5Sb290ID0gbmV3IFVSTCgnLi4vLi4vLi4vYXBwL3dlYi9hZG1pbl9hcHAvJywgaW1wb3J0Lm1ldGEudXJsKTsKICBjb25zdCBzdGF0ZSA9IHsKICAgIHJldmlzaW9uOiA0LCByb3V0ZXM6IHsgaW1hZ2VfYW5hbHlzaXM6IFtxd2VuLCBncHRdLCB2aWRlb19wcm9tcHQ6IFtxd2VuLCBncHRdIH0sCiAgICB3cml0ZXM6IFtdLCBzdGVwVXBzOiBbXSwgZXJyb3JzOiBbXSwgdW5leHBlY3RlZFJlcXVlc3RzOiBbXSwgcmVqZWN0U3RhbGU6IGZhbHNlLAogIH07CiAgcGFnZS5vbigncGFnZWVycm9yJywgKGVycm9yKSA9PiBzdGF0ZS5lcnJvcnMucHVzaChlcnJvci5tZXNzYWdlKSk7CiAgcGFnZS5vbignZGlhbG9nJywgKGRpYWxvZykgPT4gZGlhbG9nLmFjY2VwdCgpKTsKICBhd2FpdCBwYWdlLmFkZEluaXRTY3JpcHQoKCkgPT4geyB3aW5kb3cuVGVsZWdyYW0gPSB7IFdlYkFwcDogeyBpbml0RGF0YTogJ3N5bnRoZXRpYy1wcm9tcHQtcm91dGUtYWRtaW4nIH0gfTsgfSk7CiAgYXdhaXQgcGFnZS5yb3V0ZSgnKiovKicsIGFzeW5jIChyb3V0ZSkgPT4gewogICAgY29uc3QgcmVxdWVzdCA9IHJvdXRlLnJlcXVlc3QoKTsKICAgIGNvbnN0IHVybCA9IG5ldyBVUkwocmVxdWVzdC51cmwoKSk7CiAgICBjb25zdCBwYXRoID0gdXJsLnBhdGhuYW1lOwogICAgY29uc3QganNvbiA9IChib2R5LCBzdGF0dXMgPSAyMDApID0+IHJvdXRlLmZ1bGZpbGwoeyBzdGF0dXMsIGNvbnRlbnRUeXBlOiAnYXBwbGljYXRpb24vanNvbicsIGJvZHk6IEpTT04uc3RyaW5naWZ5KGJvZHkpIH0pOwogICAgaWYgKHVybC5ob3N0bmFtZSA9PT0gJ3RlbGVncmFtLm9yZycpIHJldHVybiByb3V0ZS5mdWxmaWxsKHsgY29udGVudFR5cGU6ICdhcHBsaWNhdGlvbi9qYXZhc2NyaXB0JywgYm9keTogJycgfSk7CiAgICBpZiAodXJsLm9yaWdpbiAhPT0gb3JpZ2luKSByZXR1cm4gcm91dGUuYWJvcnQoKTsKICAgIGlmIChwYXRoID09PSAnL2FkbWluLWFwcC9jb250cm9sLmh0bWwnKSByZXR1cm4gcm91dGUuZnVsZmlsbCh7IGNvbnRlbnRUeXBlOiAndGV4dC9odG1sJywgYm9keTogcmVhZEZpbGVTeW5jKG5ldyBVUkwoJ2NvbnRyb2wuaHRtbCcsIGFkbWluUm9vdCksICd1dGY4JykgfSk7CiAgICBpZiAocGF0aCA9PT0gJy9hZG1pbi1hcHAvY29udHJvbC5qcycpIHJldHVybiByb3V0ZS5mdWxmaWxsKHsgY29udGVudFR5cGU6ICdhcHBsaWNhdGlvbi9qYXZhc2NyaXB0JywgYm9keTogcmVhZEZpbGVTeW5jKG5ldyBVUkwoJ2NvbnRyb2wuanMnLCBhZG1pblJvb3QpLCAndXRmOCcpIH0pOwogICAgaWYgKHBhdGguZW5kc1dpdGgoJy5jc3MnKSkgcmV0dXJuIHJvdXRlLmZ1bGZpbGwoeyBjb250ZW50VHlwZTogJ3RleHQvY3NzJywgYm9keTogcmVhZEZpbGVTeW5jKG5ldyBVUkwocGF0aC5zcGxpdCgnLycpLnBvcCgpLCBhZG1pblJvb3QpLCAndXRmOCcpIH0pOwogICAgaWYgKHBhdGggPT09ICcvYXBpL3YxL2FkbWluL2F1dGgvbG9naW4nKSByZXR1cm4ganNvbih7IHRva2VuOiAnc3ludGhldGljLWFkbWluLXRva2VuJywgbWZhX3ZlcmlmaWVkOiB0cnVlIH0pOwogICAgaWYgKHBhdGggPT09ICcvYXBpL3YxL2FkbWluL2F1dGgvbWUnKSByZXR1cm4ganNvbih7IHJvbGU6ICdvd25lcicsIGlzX2FjdGl2ZTogdHJ1ZSwgdGVsZWdyYW1faWQ6IDEyMyB9KTsKICAgIGlmIChwYXRoID09PSAnL2FwaS92MS9hZG1pbi9kYXNoYm9hcmQnKSByZXR1cm4ganNvbih7fSk7CiAgICBpZiAocGF0aCA9PT0gJy9hcGkvdjEvYWRtaW4vcnVudGltZScpIHJldHVybiBqc29uKHsKICAgICAgcHJvbXB0X3Rvb2xfcHJvdmlkZXJfcm91dGVzOiB7CiAgICAgICAgcmV2aXNpb246IHN0YXRlLnJldmlzaW9uLCByb3V0ZXM6IHN0YXRlLnJvdXRlcywKICAgICAgICBvcHRpb25zOiB7IGltYWdlX2FuYWx5c2lzOiBjaG9pY2VzLCB2aWRlb19wcm9tcHQ6IGNob2ljZXMgfSwKICAgICAgfSwKICAgIH0pOwogICAgaWYgKHBhdGggPT09ICcvYXBpL3YxL2FkbWluL2F1dGgvc3RlcC11cCcpIHsKICAgICAgc3RhdGUuc3RlcFVwcy5wdXNoKHJlcXVlc3QucG9zdERhdGFKU09OKCkpOwogICAgICByZXR1cm4ganNvbih7IHN0ZXBfdXBfdW50aWw6ICcyMDk5LTAxLTAxVDAwOjAwOjAwWicgfSk7CiAgICB9CiAgICBpZiAocGF0aCA9PT0gJy9hcGkvdjEvYWRtaW4vcnVudGltZS9wcm9tcHQtdG9vbC1yb3V0ZXMnKSB7CiAgICAgIHN0YXRlLndyaXRlcy5wdXNoKHsgYm9keTogcmVxdWVzdC5wb3N0RGF0YUpTT04oKSwgaGVhZGVyczogcmVxdWVzdC5oZWFkZXJzKCkgfSk7CiAgICAgIGlmIChleHBpcmVGaXJzdFdyaXRlICYmIHN0YXRlLndyaXRlcy5sZW5ndGggPT09IDEpIHJldHVybiBqc29uKHsgZGV0YWlsOiAnRnJlc2ggTUZBIHN0ZXAtdXAgcmVxdWlyZWQnIH0sIDQwMyk7CiAgICAgIGlmIChzdGF0ZS5yZWplY3RTdGFsZSkgcmV0dXJuIGpzb24oeyBkZXRhaWw6ICdQcm9tcHQgdG9vbCByb3V0ZXMgY2hhbmdlZDsgcmVsb2FkIHNldHRpbmdzIGJlZm9yZSBzYXZpbmcnIH0sIDQyMik7CiAgICAgIHN0YXRlLnJvdXRlcyA9IHJlcXVlc3QucG9zdERhdGFKU09OKCkucm91dGVzOwogICAgICBzdGF0ZS5yZXZpc2lvbiArPSAxOwogICAgICByZXR1cm4ganNvbih7IHJldmlzaW9uOiBzdGF0ZS5yZXZpc2lvbiwgcm91dGVzOiBzdGF0ZS5yb3V0ZXMsIGlkZW1wb3RlbmN5X3JlcGxheWVkOiBmYWxzZSB9KTsKICAgIH0KICAgIGlmIChwYXRoLnN0YXJ0c1dpdGgoJy9hcGkvJykpIHN0YXRlLnVuZXhwZWN0ZWRSZXF1ZXN0cy5wdXNoKGAke3JlcXVlc3QubWV0aG9kKCl9ICR7cGF0aH1gKTsKICAgIHJldHVybiBqc29uKHsgZGV0YWlsOiBgVW5leHBlY3RlZCByZXF1ZXN0OiAke3BhdGh9YCB9LCA0MDQpOwogIH0pOwogIGF3YWl0IHBhZ2UuZ290byhgJHtvcmlnaW59L2FkbWluLWFwcC9jb250cm9sLmh0bWxgKTsKICBhd2FpdCBwYWdlLmdldEJ5Um9sZSgnYnV0dG9uJywgeyBuYW1lOiAn0JLQvtC50YLQuCcsIGV4YWN0OiB0cnVlIH0pLmNsaWNrKCk7CiAgYXdhaXQgcGFnZS5nZXRCeVJvbGUoJ2J1dHRvbicsIHsgbmFtZTogJ9Cd0LDRgdGC0YDQvtC50LrQuCcsIGV4YWN0OiB0cnVlIH0pLmNsaWNrKCk7CiAgYXdhaXQgcGFnZS5nZXRCeVJvbGUoJ2J1dHRvbicsIHsgbmFtZTogJ9CQ0L3QsNC70LjQtyDRhNC+0YLQviDQuCDQstC40LTQtdC+JywgZXhhY3Q6IHRydWUgfSkuY2xpY2soKTsKICBhd2FpdCBleHBlY3QocGFnZS5sb2NhdG9yKCcjY29udHJvbEZvcm1GaWVsZHMnKS5nZXRCeVRleHQoJ9Ce0L/QuNGB0LDQvdC40LUg0L/QviDRhNC+0YLQvicsIHsgZXhhY3Q6IHRydWUgfSkpLnRvQmVWaXNpYmxlKCk7CiAgYXdhaXQgZXhwZWN0KHBhZ2UubG9jYXRvcignI2NvbnRyb2xGb3JtRmllbGRzJykuZ2V0QnlUZXh0KCfQn9GA0L7QvNC/0YIg0L/QviDQstC40LTQtdC+JywgeyBleGFjdDogdHJ1ZSB9KSkudG9CZVZpc2libGUoKTsKICByZXR1cm4gc3RhdGU7Cn0KCmFzeW5jIGZ1bmN0aW9uIHZlcmlmeVN0ZXBVcChwYWdlLCBvdHAgPSAnMTIzNDU2JykgewogIGF3YWl0IGV4cGVjdChwYWdlLmxvY2F0b3IoJyNjb250cm9sU3RlcERpYWxvZycpKS50b0JlVmlzaWJsZSgpOwogIGF3YWl0IHBhZ2UubG9jYXRvcignI2NvbnRyb2xTdGVwT3RwJykuZmlsbChvdHApOwogIGF3YWl0IHBhZ2UubG9jYXRvcignI2NvbnRyb2xTdGVwVmVyaWZ5JykuY2xpY2soKTsKfQoKdGVzdCgncGhvdG8gYW5kIHZpZGVvIHByb3ZpZGVyIGNob2ljZXMga2VlcCB0aGVpciByZXZpc2lvbiBhbmQgY29tbWFuZCBpZGVudGl0eSB0aHJvdWdoIE1GQSByZXRyeScsIGFzeW5jICh7IHBhZ2UgfSkgPT4gewogIGNvbnN0IHN0YXRlID0gYXdhaXQgb3BlblJ1bnRpbWUocGFnZSk7CiAgLy8gV3JhcHBlZCBzZWxlY3QgbGFiZWxzIGluY2x1ZGUgb3B0aW9uIHRleHQgaW4gZ2V0QnlMYWJlbDsgdXNlIHRoZSBwdWJsaWMKICAvLyBmaWVsZCBuYW1lcyB3aGlsZSBjaGVja2luZyB0aGUgdmlzaWJsZSBodW1hbiBsYWJlbHMgaW4gb3BlblJ1bnRpbWUuCiAgY29uc3QgcGhvdG8gPSBwYWdlLmxvY2F0b3IoJ3NlbGVjdFtuYW1lPSJpbWFnZV9hbmFseXNpcyJdJyk7CiAgY29uc3QgdmlkZW8gPSBwYWdlLmxvY2F0b3IoJ3NlbGVjdFtuYW1lPSJ2aWRlb19wcm9tcHQiXScpOwogIGF3YWl0IGV4cGVjdChwaG90bykudG9IYXZlVmFsdWUoSlNPTi5zdHJpbmdpZnkoW3F3ZW4sIGdwdF0pKTsKICBhd2FpdCBleHBlY3QodmlkZW8pLnRvSGF2ZVZhbHVlKEpTT04uc3RyaW5naWZ5KFtxd2VuLCBncHRdKSk7CiAgYXdhaXQgZXhwZWN0KHBob3RvLmxvY2F0b3IoJ29wdGlvbicpKS50b0hhdmVUZXh0KFsKICAgICfQndC10LnRgNC+0L3Ri9GHIMK3IFF3ZW4gMy44IE1heCDihpIgTmV4dXMgwrcgR1BULTYgU29sJywKICAgICdOZXh1cyDCtyBHUFQtNiBTb2wg4oaSINCd0LXQudGA0L7QvdGL0YcgwrcgUXdlbiAzLjggTWF4JywKICAgICfQndC10LnRgNC+0L3Ri9GHIMK3IFF3ZW4gMy44IE1heCcsCiAgICAnTmV4dXMgwrcgR1BULTYgU29sJywKICBdKTsKICBhd2FpdCBleHBlY3QocGFnZS5sb2NhdG9yKCcjY29udHJvbEZvcm1GaWVsZHMgc2VsZWN0JykpLnRvSGF2ZUNvdW50KDIpOwogIGF3YWl0IHBob3RvLnNlbGVjdE9wdGlvbihKU09OLnN0cmluZ2lmeShbZ3B0XSkpOwogIGF3YWl0IHZpZGVvLnNlbGVjdE9wdGlvbihKU09OLnN0cmluZ2lmeShbZ3B0LCBxd2VuXSkpOwogIGF3YWl0IHBhZ2UuZ2V0QnlSb2xlKCdidXR0b24nLCB7IG5hbWU6ICfQodC+0YXRgNCw0L3QuNGC0Ywg0LzQsNGA0YjRgNGD0YLRiyDQsNC90LDQu9C40LfQsCcsIGV4YWN0OiB0cnVlIH0pLmNsaWNrKCk7CiAgYXdhaXQgZXhwZWN0KHBhZ2UubG9jYXRvcignI2NvbnRyb2xTdGVwRGVzY3JpcHRpb24nKSkudG9Db250YWluVGV4dCgn0L3QvtCy0YvRhSDQt9Cw0LTQsNGHJyk7CiAgZXhwZWN0KHN0YXRlLndyaXRlcykudG9IYXZlTGVuZ3RoKDApOwogIGF3YWl0IHZlcmlmeVN0ZXBVcChwYWdlKTsKICBhd2FpdCBleHBlY3QucG9sbCgoKSA9PiBzdGF0ZS53cml0ZXMubGVuZ3RoKS50b0JlKDEpOwogIGF3YWl0IHZlcmlmeVN0ZXBVcChwYWdlLCAnNjU0MzIxJyk7CiAgYXdhaXQgZXhwZWN0KHBhZ2UubG9jYXRvcignI2NvbnRyb2xGb3JtRGlhbG9nJykpLm5vdC50b0JlVmlzaWJsZSgpOwogIGV4cGVjdChzdGF0ZS5zdGVwVXBzKS50b0VxdWFsKFt7IG90cDogJzEyMzQ1NicgfSwgeyBvdHA6ICc2NTQzMjEnIH1dKTsKICBleHBlY3Qoc3RhdGUud3JpdGVzKS50b0hhdmVMZW5ndGgoMik7CiAgY29uc3QgcGF5bG9hZCA9IHsKICAgIHJvdXRlczogeyBpbWFnZV9hbmFseXNpczogW2dwdF0sIHZpZGVvX3Byb21wdDogW2dwdCwgcXdlbl0gfSwgZXhwZWN0ZWRfcmV2aXNpb246IDQsCiAgfTsKICBleHBlY3Qoc3RhdGUud3JpdGVzWzBdLmJvZHkpLnRvRXF1YWwocGF5bG9hZCk7CiAgZXhwZWN0KHN0YXRlLndyaXRlc1sxXS5ib2R5KS50b0VxdWFsKHBheWxvYWQpOwogIGV4cGVjdChzdGF0ZS53cml0ZXNbMF0uaGVhZGVyc1snaWRlbXBvdGVuY3kta2V5J10pLnRvQmVUcnV0aHkoKTsKICBleHBlY3Qoc3RhdGUud3JpdGVzWzFdLmhlYWRlcnNbJ2lkZW1wb3RlbmN5LWtleSddKS50b0JlKHN0YXRlLndyaXRlc1swXS5oZWFkZXJzWydpZGVtcG90ZW5jeS1rZXknXSk7CiAgZXhwZWN0KHN0YXRlLndyaXRlc1sxXS5oZWFkZXJzWyd4LWFkbWluLWNvbmZpcm0nXSkudG9CZSgnY29uZmlybWVkJyk7CiAgZXhwZWN0KHN0YXRlLndyaXRlc1sxXS5oZWFkZXJzLmF1dGhvcml6YXRpb24pLnRvQmUoJ0JlYXJlciBzeW50aGV0aWMtYWRtaW4tdG9rZW4nKTsKCiAgYXdhaXQgcGFnZS5nZXRCeVJvbGUoJ2J1dHRvbicsIHsgbmFtZTogJ9CQ0L3QsNC70LjQtyDRhNC+0YLQviDQuCDQstC40LTQtdC+JywgZXhhY3Q6IHRydWUgfSkuY2xpY2soKTsKICBhd2FpdCBleHBlY3QocGhvdG8pLnRvSGF2ZVZhbHVlKEpTT04uc3RyaW5naWZ5KFtncHRdKSk7CiAgYXdhaXQgZXhwZWN0KHZpZGVvKS50b0hhdmVWYWx1ZShKU09OLnN0cmluZ2lmeShbZ3B0LCBxd2VuXSkpOwogIGF3YWl0IHBob3RvLnNlbGVjdE9wdGlvbihKU09OLnN0cmluZ2lmeShbcXdlbl0pKTsKICBzdGF0ZS5yZWplY3RTdGFsZSA9IHRydWU7CiAgYXdhaXQgcGFnZS5nZXRCeVJvbGUoJ2J1dHRvbicsIHsgbmFtZTogJ9Ch0L7RhdGA0LDQvdC40YLRjCDQvNCw0YDRiNGA0YPRgtGLINCw0L3QsNC70LjQt9CwJywgZXhhY3Q6IHRydWUgfSkuY2xpY2soKTsKICBhd2FpdCB2ZXJpZnlTdGVwVXAocGFnZSk7CiAgYXdhaXQgZXhwZWN0KHBhZ2UubG9jYXRvcignI2NvbnRyb2xGb3JtTWVzc2FnZScpKS50b0NvbnRhaW5UZXh0KCdyZWxvYWQgc2V0dGluZ3MnKTsKICBhd2FpdCBleHBlY3QocGFnZS5sb2NhdG9yKCcjY29udHJvbEZvcm1EaWFsb2cnKSkudG9CZVZpc2libGUoKTsKICBhd2FpdCBleHBlY3QocGhvdG8pLnRvSGF2ZVZhbHVlKEpTT04uc3RyaW5naWZ5KFtxd2VuXSkpOwogIGV4cGVjdChzdGF0ZS53cml0ZXNbMl0uYm9keS5leHBlY3RlZF9yZXZpc2lvbikudG9CZSg1KTsKICBleHBlY3Qoc3RhdGUud3JpdGVzWzJdLmhlYWRlcnNbJ2lkZW1wb3RlbmN5LWtleSddKS5ub3QudG9CZShzdGF0ZS53cml0ZXNbMV0uaGVhZGVyc1snaWRlbXBvdGVuY3kta2V5J10pOwogIGV4cGVjdChzdGF0ZS5lcnJvcnMpLnRvRXF1YWwoW10pOwogIGV4cGVjdChzdGF0ZS51bmV4cGVjdGVkUmVxdWVzdHMpLnRvRXF1YWwoW10pOwp9KTsKCnRlc3QoJ2NhbmNlbGluZyBNRkEga2VlcHMgdGhlIHBob3RvIGFuZCB2aWRlbyByb3V0ZSBmb3JtIHVzYWJsZSB3aXRob3V0IGEgd3JpdGUnLCBhc3luYyAoeyBwYWdlIH0pID0+IHsKICBjb25zdCBzdGF0ZSA9IGF3YWl0IG9wZW5SdW50aW1lKHBhZ2UsIHsgZXhwaXJlRmlyc3RXcml0ZTogZmFsc2UgfSk7CiAgY29uc3QgcGhvdG8gPSBwYWdlLmxvY2F0b3IoJ3NlbGVjdFtuYW1lPSJpbWFnZV9hbmFseXNpcyJdJyk7CiAgYXdhaXQgcGhvdG8uc2VsZWN0T3B0aW9uKEpTT04uc3RyaW5naWZ5KFtncHRdKSk7CiAgYXdhaXQgcGFnZS5nZXRCeVJvbGUoJ2J1dHRvbicsIHsgbmFtZTogJ9Ch0L7RhdGA0LDQvdC40YLRjCDQvNCw0YDRiNGA0YPRgtGLINCw0L3QsNC70LjQt9CwJywgZXhhY3Q6IHRydWUgfSkuY2xpY2soKTsKICBhd2FpdCBleHBlY3QocGFnZS5sb2NhdG9yKCcjY29udHJvbFN0ZXBEaWFsb2cnKSkudG9CZVZpc2libGUoKTsKICBhd2FpdCBwYWdlLmxvY2F0b3IoJyNjb250cm9sU3RlcENhbmNlbCcpLmNsaWNrKCk7CiAgYXdhaXQgZXhwZWN0KHBhZ2UubG9jYXRvcignI2NvbnRyb2xGb3JtTWVzc2FnZScpKS50b0hhdmVUZXh0KCfQn9C+0LTRgtCy0LXRgNC20LTQtdC90LjQtSDQvtGC0LzQtdC90LXQvdC+Jyk7CiAgYXdhaXQgZXhwZWN0KHBob3RvKS50b0hhdmVWYWx1ZShKU09OLnN0cmluZ2lmeShbZ3B0XSkpOwogIGV4cGVjdChzdGF0ZS53cml0ZXMpLnRvRXF1YWwoW10pOwogIGF3YWl0IHBhZ2UuZ2V0QnlSb2xlKCdidXR0b24nLCB7IG5hbWU6ICfQodC+0YXRgNCw0L3QuNGC0Ywg0LzQsNGA0YjRgNGD0YLRiyDQsNC90LDQu9C40LfQsCcsIGV4YWN0OiB0cnVlIH0pLmNsaWNrKCk7CiAgYXdhaXQgdmVyaWZ5U3RlcFVwKHBhZ2UpOwogIGF3YWl0IGV4cGVjdChwYWdlLmxvY2F0b3IoJyNjb250cm9sRm9ybURpYWxvZycpKS5ub3QudG9CZVZpc2libGUoKTsKICBleHBlY3Qoc3RhdGUud3JpdGVzKS50b0hhdmVMZW5ndGgoMSk7CiAgZXhwZWN0KHN0YXRlLmVycm9ycykudG9FcXVhbChbXSk7CiAgZXhwZWN0KHN0YXRlLnVuZXhwZWN0ZWRSZXF1ZXN0cykudG9FcXVhbChbXSk7Cn0pOwo=")
-          assert hashlib.sha1(b"blob "+str(len(content)).encode()+b"\0"+content).hexdigest()=="af70ef3cc88c1ee426ba44c50294ec6405afe0cc"
-          Path("e2e/admin-prompt-tool-routes.spec.mjs").write_bytes(content)
-          PY
-      - name: Verify fixed admin controls GREEN
-        working-directory: frontend/mini-app
-        run: npx playwright test --config=playwright.qwen-diagnostic.config.mjs
-      - name: Preserve exact failures
+        run: npx playwright test e2e/trend-workflow.spec.mjs --project=webkit-mobile --grep "broken step previews fall back" --repeat-each=12 --workers=1
+      - name: Preserve preview diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qwen-admin-focused
+          name: webkit-preview-diagnostic
           path: |
-            frontend/mini-app/qwen-admin-report
+            frontend/mini-app/playwright-report
             frontend/mini-app/test-results
-            frontend/mini-app/qwen-admin-red.json
-            frontend/mini-app/qwen-admin-red.log
           retention-days: 7

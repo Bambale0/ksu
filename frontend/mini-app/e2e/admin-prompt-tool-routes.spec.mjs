@@ -53,6 +53,8 @@ async function openRuntime(page, { expireFirstWrite = true } = {}) {
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Анализ фото и видео', exact: true }).click();
+  await expect(page.locator('#controlFormFields').getByText('Описание по фото', { exact: true })).toBeVisible();
+  await expect(page.locator('#controlFormFields').getByText('Промпт по видео', { exact: true })).toBeVisible();
   return state;
 }
 
@@ -64,8 +66,10 @@ async function verifyStepUp(page, otp = '123456') {
 
 test('photo and video provider choices keep their revision and command identity through MFA retry', async ({ page }) => {
   const state = await openRuntime(page);
-  const photo = page.getByLabel('Описание по фото', { exact: true });
-  const video = page.getByLabel('Промпт по видео', { exact: true });
+  // Wrapped select labels include option text in getByLabel; use the public
+  // field names while checking the visible human labels in openRuntime.
+  const photo = page.locator('select[name="image_analysis"]');
+  const video = page.locator('select[name="video_prompt"]');
   await expect(photo).toHaveValue(JSON.stringify([qwen, gpt]));
   await expect(video).toHaveValue(JSON.stringify([qwen, gpt]));
   await expect(photo.locator('option')).toHaveText([
@@ -114,7 +118,7 @@ test('photo and video provider choices keep their revision and command identity 
 
 test('canceling MFA keeps the photo and video route form usable without a write', async ({ page }) => {
   const state = await openRuntime(page, { expireFirstWrite: false });
-  const photo = page.getByLabel('Описание по фото', { exact: true });
+  const photo = page.locator('select[name="image_analysis"]');
   await photo.selectOption(JSON.stringify([gpt]));
   await page.getByRole('button', { name: 'Сохранить маршруты анализа', exact: true }).click();
   await expect(page.locator('#controlStepDialog')).toBeVisible();
