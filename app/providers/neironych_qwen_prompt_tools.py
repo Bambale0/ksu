@@ -239,7 +239,7 @@ class NeironychQwenPromptToolsClient:
             parsed = urlsplit(origin)
             if (
                 parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-                or parsed.path or parsed.query or parsed.fragment or not parsed.port in (None, 443)
+                or parsed.path or parsed.query or parsed.fragment or parsed.port not in (None, 443)
                 or any(char.isspace() for char in origin)
             ):
                 raise ValueError("invalid provider origin")
