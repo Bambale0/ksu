@@ -58,12 +58,20 @@ function videoTrends(count, previewUrl) {
   }));
 }
 
+function fulfillBadGateway(route) {
+  return route.fulfill({
+    status: 502, contentType: 'text/html',
+    body: '<!doctype html><title>502 Bad Gateway</title><h1>Bad Gateway</h1>',
+  });
+}
+
 async function setup(page, browserName, { count = 3, listMode = 'success' } = {}) {
   const videoFixture = videoFixtures[browserName];
   if (!videoFixture) throw new Error(`No portrait media fixture for ${browserName}`);
   const previewUrl = (index) => `${mediaOrigin}/admin-preview-${index}.${videoFixture.extension}`;
   const state = {
     items: videoTrends(count, previewUrl), previewUrl, listMode, listRequests: 0, pendingLists: [],
+    catalogMode: 'success',
     mediaRequests: new Set(), uploads: 0, uploadStatus: 201,
     unexpectedWrites: [], errors: [],
   };
@@ -106,7 +114,10 @@ async function setup(page, browserName, { count = 3, listMode = 'success' } = {}
         is_admin: true, balance_rox: '1000.00',
       });
       if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
-      if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+      if (path === '/api/v1/generations/models') {
+        if (state.catalogMode === 'bad-gateway') return fulfillBadGateway(route);
+        return json({ models: [model], families: [] });
+      }
       if (path === '/api/v1/trends/manage' && request.method() === 'GET') {
         state.listRequests += 1;
         if (state.listMode === 'pending') {
@@ -114,6 +125,7 @@ async function setup(page, browserName, { count = 3, listMode = 'success' } = {}
           return;
         }
         if (state.listMode === 'failure') return json({ detail: 'Не удалось получить список трендов' }, 503);
+        if (state.listMode === 'bad-gateway') return fulfillBadGateway(route);
         return json({ items: state.items, models: [model] });
       }
       if (path === '/api/v1/uploads/kie') {
@@ -160,6 +172,55 @@ async function choosePreview(page, form) {
 function expectClean(state) {
   expect(state.errors).toEqual([]);
   expect(state.unexpectedWrites).toEqual([]);
+}
+
+async function reportCreateState(page, phase) {
+  const state = await page.evaluate(() => {
+    const describe = (node) => node instanceof Element ? {
+      tag: node.tagName, className: node.className, label: node.getAttribute('aria-label'),
+    } : null;
+    const button = document.querySelector('.inline-trend-admin-toolbar .inline-trend-primary');
+    const rect = button?.getBoundingClientRect();
+    const center = rect ? { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 } : null;
+    return {
+      button: button ? { ...describe(button), disabled: button.disabled, rect: rect.toJSON() } : null,
+      hitTarget: center ? describe(document.elementFromPoint(center.x, center.y)) : null,
+      activeElement: describe(document.activeElement),
+      dialogs: Array.from(document.querySelectorAll('[role="dialog"]'), (dialog) => ({
+        ...describe(dialog), display: getComputedStyle(dialog).display,
+        rect: dialog.getBoundingClientRect().toJSON(),
+      })),
+      alerts: Array.from(document.querySelectorAll('.inline-trend-error'), (node) => node.textContent?.slice(0, 180)),
+      viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height },
+    };
+  }).catch((error) => ({ diagnosticError: String(error) }));
+  console.error(`[trend-admin-cold-load:${phase}] ${JSON.stringify(state)}`);
+}
+
+async function editCloseAndReopenAfterFailure(page, manager, form, title) {
+  const input = form.getByLabel('Название', { exact: true });
+  await expect(input).toBeVisible();
+  await expect(input).toBeEditable();
+  await input.fill(title);
+  await expect(input).toHaveValue(title);
+  await form.getByRole('button', { name: 'Закрыть', exact: true }).tap();
+  await expect(form).toHaveCount(0);
+  await manager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
+  await expect(manager).toHaveCount(0);
+
+  const reopenedManager = await openManager(page);
+  await expect(reopenedManager.getByRole('alert')).toHaveText('HTTP 502');
+  const reopenedForm = await openCreate(page, reopenedManager);
+  const freshInput = reopenedForm.getByLabel('Название', { exact: true });
+  await expect(freshInput).toBeVisible();
+  await expect(freshInput).toBeEditable();
+  await expect(freshInput).toHaveValue('');
+  await freshInput.fill(`${title} повторно`);
+  await expect(freshInput).toHaveValue(`${title} повторно`);
+  await reopenedForm.getByRole('button', { name: 'Закрыть', exact: true }).tap();
+  await expect(reopenedForm).toHaveCount(0);
+  await reopenedManager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
+  await expect(reopenedManager).toHaveCount(0);
 }
 
 async function reportMediaState(video, phase) {
@@ -385,4 +446,78 @@ test('failed preview upload keeps the form interactive and accepts the same file
   await openManager(page);
   expect(state.uploads).toBe(2);
   expectClean(state);
+});
+
+test('cold HTML 502 from managed trends still permits New Trend touch and reopen', async ({ page, browserName }) => {
+  const state = await setup(page, browserName, { count: 0, listMode: 'bad-gateway' });
+  try {
+    const manager = await openManager(page);
+    await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
+    const form = await openCreate(page, manager);
+    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без списка');
+    expect(state.listRequests).toBe(2);
+    expect(state.uploads).toBe(0);
+    expectClean(state);
+  } catch (error) {
+    await reportCreateState(page, 'manage-502');
+    throw error;
+  }
+});
+
+test('cold HTML 502 from public catalog still permits New Trend touch and reopen', async ({ page, browserName }) => {
+  const bootCatalog = page.waitForResponse((response) => (
+    new URL(response.url()).pathname === '/api/v1/generations/models' && response.status() === 200
+  ));
+  const state = await setup(page, browserName);
+  await (await bootCatalog).finished();
+  state.catalogMode = 'bad-gateway';
+  try {
+    const managed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/trends/manage');
+    const failedCatalog = page.waitForResponse((response) => (
+      new URL(response.url()).pathname === '/api/v1/generations/models' && response.status() === 502
+    ));
+    const manager = await openManager(page);
+    const managedResponse = await managed;
+    expect(managedResponse.status()).toBe(200);
+    await managedResponse.finished();
+    await (await failedCatalog).finished();
+    await expect(manager.getByRole('alert')).toHaveText('HTTP 502');
+    const form = await openCreate(page, manager);
+    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик без публичного каталога');
+    expect(state.listRequests).toBe(2);
+    expect(state.uploads).toBe(0);
+    expectClean(state);
+  } catch (error) {
+    await reportCreateState(page, 'catalog-502');
+    throw error;
+  }
+});
+
+test('cold pending managed request may settle as HTML 502 while New Trend stays editable', async ({ page, browserName }) => {
+  const state = await setup(page, browserName, { count: 0, listMode: 'pending' });
+  try {
+    const manager = await openManager(page);
+    await expect.poll(() => state.pendingLists.length).toBe(1);
+    await expect(manager.getByText('Загружаю тренды…', { exact: true })).toBeVisible();
+    const form = await openCreate(page, manager);
+    const input = form.getByLabel('Название', { exact: true });
+    await expect(input).toBeEditable();
+    await input.fill('Черновик во время загрузки');
+
+    const settled = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/trends/manage');
+    state.listMode = 'bad-gateway';
+    await fulfillBadGateway(state.pendingLists.shift());
+    await (await settled).finished();
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('alert')).toHaveText('HTTP 502');
+    await expect(input).toHaveValue('Черновик во время загрузки');
+    await editCloseAndReopenAfterFailure(page, manager, form, 'Черновик после ответа 502');
+    expect(state.pendingLists).toHaveLength(0);
+    expect(state.listRequests).toBe(2);
+    expect(state.uploads).toBe(0);
+    expectClean(state);
+  } catch (error) {
+    await reportCreateState(page, 'pending-to-502');
+    throw error;
+  }
 });

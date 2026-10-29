@@ -3,18 +3,18 @@
 ## Baseline and scope
 
 - Baseline: `origin/main` at `b2f05a36fd2b2067c4312bd7f5d94b5e8bd93b03`.
-- User outcome: an administrator can upload one image for the Step 1 card and another image for the Step 2 card of a `sequential_photo_video` trend.
+- User outcome: an administrator can upload an image for the Step 1 card and an image or video for the Step 2 card of a `sequential_photo_video` trend. The Step 2 video requirement was clarified by the user on 2026-10-29; its implementation and release evidence are tracked in the [follow-up audit](iphone-new-trend-502-20261029.md).
 - Reuse: the existing permanent upload endpoint, v2 recipe snapshot, public step presentation and two-card workflow overview.
 - Excluded: provider payloads, prompts, pricing, billing, step execution, generated media, permissions and legacy v1 trends.
 
 ## Contract
 
 1. Each v2 workflow step may carry an optional HTTP(S) `preview_url`.
-2. The admin editor accepts images only and persists each uploaded URL on its matching step.
+2. The admin editor accepts images for Step 1 and images or videos for Step 2, and persists each uploaded URL on its matching step. Step 2 videos render as inline video in the editor and the customer overview; existing image previews remain supported.
 3. The public trend and owner workflow DTO expose the safe step preview without exposing prompts or provider parameters.
 4. Before Step 1 completes, each overview card prefers its own step preview. A ready owned Step 1 result still replaces the Step 1 preview.
 5. Existing workflows without step previews keep the workflow-level thumbnail/preview fallback.
-6. Unsafe URL schemes are rejected at server normalization; the admin file control accepts images only.
+6. Unsafe URL schemes are rejected at server normalization. Step previews are display-only and never enter provider parameters or replace the Step 1 result binding. Unavailable Step 2 video preserves the existing image/thumbnail fallback and step-lock behavior.
 
 ## Verification matrix
 
@@ -30,7 +30,7 @@
 | Provider/billing | N/A; execution parameters and pricing are unchanged. |
 | Rollback | Revert the step field/UI changes; old workflow-level preview fallback remains compatible. |
 
-## Current verification
+## Initial verification (2026-10-28)
 
 - Backend focused: `3 passed`; adjacent workflow/personalization suite: `42 passed`, plus the temp-path case `1 passed`.
 - Chromium: full `trend-admin-v2` + `trend-workflow` suites, `39 passed`.

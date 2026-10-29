@@ -197,6 +197,39 @@ async def test_public_v2_view_quotes_required_image_with_safe_placeholder(monkey
     assert "person_photo" not in seen[0]["parameters"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("video_url", [
+    "https://cdn.example.invalid/step-2.mp4?version=1",
+    "https://cdn.example.invalid/step-2.MOV",
+])
+async def test_v2_video_step_preview_is_preserved_as_display_only_media(
+    monkeypatch: pytest.MonkeyPatch, video_url: str,
+) -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["preview_url"] = "https://cdn.example.invalid/step-1.jpg"
+    payload["steps"][1]["preview_url"] = video_url
+    item = SimpleNamespace(id=uuid4(), title="Video step preview", created_at=SimpleNamespace(isoformat=lambda: "now"))
+    recipe = TrendService.normalize_recipe(item.title, payload)
+    prepared: list[dict[str, object]] = []
+
+    async def prepare(_session, **kwargs):
+        prepared.append(kwargs)
+        return (None, {}, 1, None, 1)
+
+    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    view = await TrendWorkflowService.public_trend_view(AsyncMock(), item, recipe)
+
+    assert recipe["steps"][1]["preview_url"] == video_url
+    assert recipe["steps"][1]["parameters"] == payload["steps"][1]["parameters"]
+    assert recipe["steps"][1]["bindings"] == payload["steps"][1]["bindings"]
+    assert [step["preview_url"] for step in view["steps"]] == [
+        "https://cdn.example.invalid/step-1.jpg", video_url,
+    ]
+    assert all("prompt" not in step and "parameters" not in step for step in view["steps"])
+    assert prepared
+    assert all("preview_url" not in request["parameters"] for request in prepared)
+
+
 def test_workflow_command_key_is_required_for_paid_start_and_run() -> None:
     with pytest.raises(HTTPException) as exc_info:
         _command_key(None, required=True)
