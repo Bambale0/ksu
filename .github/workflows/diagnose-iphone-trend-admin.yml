@@ -34,6 +34,26 @@ jobs:
       - name: Install Playwright test runtime
         working-directory: frontend/mini-app
         run: npm install --no-save @playwright/test@1.56.1
+      - name: Report browser codec capabilities
+        working-directory: frontend/mini-app
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium, webkit } from '@playwright/test';
+          for (const browserType of [chromium, webkit]) {
+            const browser = await browserType.launch({ headless: true });
+            try {
+              const page = await browser.newPage();
+              const codecs = await page.evaluate(() => {
+                const video = document.createElement('video');
+                const types = ['video/mp4', 'video/mp4; codecs="avc1.42C00A"', 'video/webm; codecs="vp8"'];
+                return Object.fromEntries(types.map(type => [type, video.canPlayType(type)]));
+              });
+              console.log(JSON.stringify({ browser: browserType.name(), codecs }));
+            } finally {
+              await browser.close();
+            }
+          }
+          NODE
       - name: Run trend admin interaction in Chromium and WebKit
         working-directory: frontend/mini-app
         run: >-
