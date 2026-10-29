@@ -1,137 +1,5 @@
 import { expect, test } from '@playwright/test';
 
-const deadlineDiagnosticTitle = 'large trend preview upload scales the deadline to the file size';
-
-test.beforeEach(async ({ page }, testInfo) => {
-  if (testInfo.title !== deadlineDiagnosticTitle) return;
-  await page.addInitScript(() => {
-    // Capture the native clock before page.clock.install replaces Date/performance.
-    const nativeNow = Date.now.bind(Date);
-    const nativeOrigin = nativeNow();
-    const events = [];
-    const trackedTimers = new Map();
-    const fetches = [];
-    const clockSnapshot = () => {
-      const controller = window.__pwClock?.controller;
-      if (!controller) return null;
-      // Pinned Playwright 1.56.1 internals: read fields without _syncRealTime.
-      const timers = [...controller._timers.values()]
-        .filter((timer) => timer.delay === 430_000)
-        .map(({ id, type, delay, callAt, createdAt }) => ({ id, type, delay, callAt, createdAt }));
-      return {
-        ticks: controller._now.ticks, time: controller._now.time,
-        origin: controller._now.origin, isFixedTime: controller._now.isFixedTime,
-        realTime: controller._realTime ? {
-          startTicks: controller._realTime.startTicks,
-          lastSyncTicks: controller._realTime.lastSyncTicks,
-        } : null,
-        realTimeTimerCallAt: controller._currentRealTimeTimer?.callAt ?? null,
-        timers,
-      };
-    };
-    const uiSnapshot = () => {
-      const form = document.querySelector('[role="dialog"][aria-label="Добавить тренд"]');
-      return {
-        dialogPresent: Boolean(form),
-        alerts: [...(form?.querySelectorAll('[role="alert"]') || [])].map((node) => node.textContent),
-        fileDisabled: form?.querySelector('input[type="file"]')?.disabled ?? null,
-        publishDisabled: form?.querySelector('button[type="submit"]')?.disabled ?? null,
-        uploadingText: form?.textContent?.includes('Сохраняю файл в ROXY') ?? false,
-      };
-    };
-    const record = (event, details = {}) => {
-      if (events.length >= 80) return;
-      events.push({ sequence: events.length, event, nativeElapsedMs: nativeNow() - nativeOrigin, clock: clockSnapshot(), ...details });
-    };
-
-    const originalFetch = window.fetch;
-    window.fetch = function (...args) {
-      const input = args[0];
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes('/api/v1/uploads/kie')) return Reflect.apply(originalFetch, this, args);
-      const init = args[1] || {};
-      const signal = init.signal || (input instanceof Request ? input.signal : null);
-      const file = init.body instanceof FormData ? init.body.get('file') : null;
-      const state = { id: fetches.length + 1, state: 'pending', signal, fileSize: file instanceof File ? file.size : null };
-      fetches.push(state);
-      record('fetch-start', { fetchId: state.id, fileSize: state.fileSize, signalAborted: signal?.aborted ?? null });
-      signal?.addEventListener('abort', () => {
-        record('signal-abort', { fetchId: state.id, signalAborted: signal.aborted, reasonName: signal.reason?.name ?? null });
-      }, { once: true });
-      const promise = Reflect.apply(originalFetch, this, args);
-      // Side observers only: return the exact promise produced by native fetch.
-      promise.then((response) => {
-        state.state = 'fulfilled';
-        state.status = response.status;
-        record('fetch-fulfilled', { fetchId: state.id, status: response.status });
-      }, (reason) => {
-        state.state = 'rejected';
-        state.errorName = reason?.name || null;
-        state.errorMessage = String(reason?.message || reason).slice(0, 200);
-        record('fetch-rejected', { fetchId: state.id, errorName: state.errorName, errorMessage: state.errorMessage });
-      });
-      return promise;
-    };
-
-    let timerProbeInstalled = false;
-    window.__ksuInstallUploadDeadlineTimerProbe = () => {
-      if (timerProbeInstalled) return;
-      timerProbeInstalled = true;
-      const originalSetTimeout = window.setTimeout;
-      const originalClearTimeout = window.clearTimeout;
-      window.setTimeout = function (callback, delay, ...args) {
-        if (Number(delay) !== 430_000 || typeof callback !== 'function') {
-          return Reflect.apply(originalSetTimeout, this, arguments);
-        }
-        let handle;
-        const observedCallback = function (...callbackArgs) {
-          const tracked = trackedTimers.get(handle);
-          if (tracked) tracked.fired = true;
-          record('timer-fired', { timerId: handle });
-          return Reflect.apply(callback, this, callbackArgs);
-        };
-        handle = Reflect.apply(originalSetTimeout, this, [observedCallback, delay, ...args]);
-        trackedTimers.set(handle, { id: handle, delay: Number(delay), fired: false, cleared: false });
-        record('timer-registered', { timerId: handle, delay: Number(delay) });
-        return handle;
-      };
-      window.clearTimeout = function (handle) {
-        const tracked = trackedTimers.get(handle);
-        if (tracked) {
-          tracked.cleared = true;
-          record('timer-cleared', { timerId: handle });
-        }
-        return Reflect.apply(originalClearTimeout, this, arguments);
-      };
-      record('timer-probe-installed');
-    };
-    window.__ksuUploadDeadlineMark = (event) => record(event, { ui: uiSnapshot() });
-    window.__ksuUploadDeadlineResult = () => ({
-      events,
-      clock: clockSnapshot(),
-      timers: [...trackedTimers.values()],
-      fetches: fetches.map(({ signal, ...state }) => ({ ...state, signalAborted: signal?.aborted ?? null })),
-      ui: uiSnapshot(),
-    });
-  });
-});
-
-test.afterEach(async ({ page }, testInfo) => {
-  if (testInfo.title !== deadlineDiagnosticTitle) return;
-  const browser = await page.evaluate(() => window.__ksuUploadDeadlineResult?.())
-    .catch((error) => ({ diagnosticError: String(error) }));
-  const payload = {
-    schema: 'ksu.upload-deadline-diagnostic.v1',
-    project: testInfo.project.name, repeat: testInfo.repeatEachIndex,
-    status: testInfo.status, expectedStatus: testInfo.expectedStatus,
-    browser,
-  };
-  const serialized = JSON.stringify(payload);
-  console.info('KSU_UPLOAD_DEADLINE_DIAGNOSTIC ' + serialized);
-  await testInfo.attach('upload-deadline-diagnostic.json', { body: Buffer.from(serialized), contentType: 'application/json' });
-});
-
-
 const resultImage = 'https://cdn.roxy.local/result.png';
 const savedImage = 'https://cdn.roxy.local/saved.png';
 
@@ -532,13 +400,19 @@ const cases = [
   } },
 ];
 
+async function installUploadDeadlineClock(page) {
+  // Install before app timers and let runFor control elapsed upload time.
+  await page.clock.install({ time: new Date('2026-10-29T08:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-29T09:00:00Z'));
+}
+
 test('trend preview upload survives a transfer longer than the JSON deadline', async ({ page }) => {
+  await installUploadDeadlineClock(page);
   await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
   const dialog = await openTrendAdmin(page);
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
-  await page.clock.install();
   let uploadRoute;
   await page.route('**/api/v1/uploads/kie', (route) => { uploadRoute = route; });
   await form.locator('input[type="file"]').setInputFiles({ name: 'preview.png', mimeType: 'image/png', buffer: Buffer.from('preview') });
@@ -562,34 +436,29 @@ test('large trend preview upload scales the deadline to the file size', async ({
       },
     });
   });
+  await installUploadDeadlineClock(page);
   await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
   const dialog = await openTrendAdmin(page);
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
-  await page.clock.install();
-  await page.evaluate(() => window.__ksuInstallUploadDeadlineTimerProbe());
   let uploadRoute;
   await page.route('**/api/v1/uploads/kie', (route) => { uploadRoute = route; });
   await form.locator('input[type="file"]').setInputFiles({ name: 'slow-reference.mp4', mimeType: 'video/mp4', buffer: Buffer.from('preview') });
   await expect.poll(() => Boolean(uploadRoute)).toBe(true);
-  await page.evaluate(() => window.__ksuUploadDeadlineMark('before-120_001'));
   await page.clock.runFor(120_001);
-  await page.evaluate(() => window.__ksuUploadDeadlineMark('after-120_001'));
   await expect(form.getByRole('alert')).toHaveCount(0);
-  await page.evaluate(() => window.__ksuUploadDeadlineMark('before-310_000'));
   await page.clock.runFor(310_000);
-  await page.evaluate(() => window.__ksuUploadDeadlineMark('after-310_000'));
   await expect(form.getByRole('alert')).toHaveText('Сервер отвечает слишком долго. Попробуйте ещё раз.');
 });
 
 test('trend preview upload remains bounded and allows recovery after timeout', async ({ page }) => {
+  await installUploadDeadlineClock(page);
   await boot(page, { route: 'catalog', admin: true }, { width: 390, height: 844 });
   const dialog = await openTrendAdmin(page);
   await expect(dialog.getByText('Неоновый портрет')).toBeVisible();
   await dialog.getByRole('button', { name: /Новый тренд/ }).click();
   const form = page.getByRole('dialog', { name: 'Добавить тренд' });
-  await page.clock.install();
   let requested = false;
   await page.route('**/api/v1/uploads/kie', () => { requested = true; });
   const file = form.locator('input[type="file"]');
