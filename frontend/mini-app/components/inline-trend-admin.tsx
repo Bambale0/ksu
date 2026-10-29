@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
 import type { TrendUserField, UiField } from "@/lib/types";
 import { inferTemplateFieldType } from "@/lib/trend-user-fields";
@@ -883,10 +884,11 @@ export function InlineTrendAdmin() {
             const model = models.find((entry) => entry.id === modelId);
             return <article className={`inline-trend-admin-card${item.is_active ? "" : " is-hidden"}`} key={item.id}>
               <div className="inline-trend-admin-preview">
-                {payload.preview_url ? video
-                  ? <video src={payload.preview_url} muted playsInline loop autoPlay preload="metadata" />
-                  : <img src={payload.preview_url} alt="" loading="lazy" />
-                  : <span>Нет превью</span>}
+                {payload.preview_url ? !formOpen && <TrendPreviewMedia
+                  className="inline-trend-admin-preview-media"
+                  mediaType={video ? "video" : "image"}
+                  url={payload.preview_url}
+                /> : <span>Нет превью</span>}
               </div>
               <div className="inline-trend-admin-card-body">
                 <div className="inline-trend-admin-card-title"><strong>{item.title}</strong><span className={item.is_active ? "is-active" : ""}>{item.is_active ? "Активен" : "Скрыт"}</span></div>
@@ -1046,8 +1048,8 @@ export function InlineTrendAdmin() {
       .inline-trend-admin-list { display:grid; gap:12px; }
       .inline-trend-admin-card { display:grid; grid-template-columns:104px minmax(0,1fr); overflow:hidden; border:1px solid rgba(255,255,255,.09); border-radius:18px; background:#110e16; }
       .inline-trend-admin-card.is-hidden { opacity:.62; }
-      .inline-trend-admin-preview { min-height:120px; background:#050407; display:grid; place-items:center; color:#766e80; }
-      .inline-trend-admin-preview img,.inline-trend-admin-preview video { width:100%; height:100%; min-height:120px; object-fit:cover; }
+      .inline-trend-admin-preview { position:relative; overflow:hidden; min-height:120px; background:#050407; display:grid; place-items:center; color:#766e80; }
+      .inline-trend-admin-preview img,.inline-trend-admin-preview video { position:absolute; inset:0; width:100%; height:100%; min-height:120px; object-fit:cover; }
       .inline-trend-admin-card-body { min-width:0; padding:12px; }
       .inline-trend-admin-card-title { display:flex; gap:8px; justify-content:space-between; align-items:flex-start; }
       .inline-trend-admin-card-title strong { font-size:14px; }
