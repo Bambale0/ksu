@@ -68,7 +68,7 @@ test('public profile can leave a sticky Telegram start_param for ROXY and Feed',
   await openProfile(page);
   await page.getByRole('button', { name: 'Открыть ленту' }).click();
   await expect(page).toHaveURL(/\/mini-app\/?\?route=feed/);
-  await expect(page.getByText('Работы сообщества')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Работы сообщества', exact: true })).toBeVisible();
   await page.waitForTimeout(300);
-  await expect(page.getByText('Работы сообщества')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Работы сообщества', exact: true })).toBeVisible();
 });
