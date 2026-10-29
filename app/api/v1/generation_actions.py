@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.db.models import Generation
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    is_auto_aspect_ratio,
+    validate_generation_aspect_ratio,
+)
 from app.services.generation_action_contexts import (
     ActionContextError,
     build_action_context_payload,
@@ -161,8 +166,26 @@ async def derive_generation(
         except UnknownModelError as exc:
             raise HTTPException(status_code=422, detail="Unknown generation model") from exc
         base = GenerationActionService.reusable_parameters(parent, target.id)
+        inherited_auto_ratio = is_auto_aspect_ratio(base.get("aspect_ratio"))
         base.update(parameters)
         parameters, input_url = GenerationActionService.adapt_references(parent, target, base)
+        if inherited_auto_ratio and explicit_aspect_ratio_options(target.id):
+            frame_dimensions = target.id == "kling-3.0" and bool(parameters.get("image_urls") or input_url)
+            if frame_dimensions:
+                # This mode derives its dimensions from the source frame. An
+                # omitted choice clears only the obsolete inherited auto value;
+                # an explicitly submitted value still faces normal admission.
+                choice = payload.parameters.get("aspect_ratio")
+                if choice is None or (isinstance(choice, str) and not choice.strip()):
+                    parameters.pop("aspect_ratio", None)
+            else:
+                try:
+                    choice = parameters.get("aspect_ratio")
+                    if not isinstance(choice, str) or not choice.strip():
+                        raise InvalidModelParametersError("Выберите соотношение сторон для повтора.")
+                    validate_generation_aspect_ratio(target.id, parameters)
+                except InvalidModelParametersError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         generation = await GenerationService.create(

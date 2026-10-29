@@ -9,6 +9,8 @@
 - Implementation / verification / rollback ledger: [explicit-aspect-ratios-20261029](docs/agents/EXECUTION/explicit-aspect-ratios-20261029.md). Initial audit committed before production-code changes. Local execution uses a separately reconstructed snapshot whose Git tree exactly matches the remote baseline, preserving the unrelated dirty checkout.
 - Guidance refreshed: project AGENTS/local .agents API integration and verification guidance; Bambale0/skills implement/TDD/code-review; Bambale0/claw backend-integration/release-hardening/frontend-qa; wondelai/skills release-it; dev-agents-pack API integrator/release manager; anthropics/skills webapp-testing. agentskills/agentskills has no applicable runtime workflow. All required sources accessible; Start baseline unchanged/unambiguous. No external skill clones.
 
+- Implementation is in verification: shared literal-Auto admission/schema policy, preserved structural template reads, explicit workflow/special-flow overrides and schema-driven frontend choices. Initial RED reproduced 53 failures; the first full isolated regression passed 2,195 tests and identified seven superseded fixtures plus one adaptive compatibility defect. Independent review follow-ups and exact-head CI/deployment remain tracked in the execution ledger; no production code release is claimed yet.
+
 ## Active Fix Execution — iPhone New Trend freeze with HTTP 502 (2026-10-29)
 
 - Baseline main `33e006149a05ae88d26b5b9c8ab2cf5f475cd5ff`, tree `3009c1f519a919d9b2c182fe71ba8341eb77e295`; branch `fix/iphone-new-trend-502-20261029`.

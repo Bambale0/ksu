@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AspectRatioSelect } from "@/components/aspect-ratio-select";
+import { isAspectRatioReady, selectedAspectRatio, type AspectRatioOptions } from "@/lib/aspect-ratio";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api } from "@/lib/api";
 import {
@@ -32,6 +34,8 @@ function createIdempotencyKey(): string {
 
 export default function PinterestRepeatPage() {
   const [reference, setReference] = useState<UploadedPhoto | null>(null);
+  const [ratioOptions, setRatioOptions] = useState<AspectRatioOptions | null>(null);
+  const [aspectRatio, setAspectRatio] = useState("");
   const [pinterestUrl, setPinterestUrl] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [identityPhotos, setIdentityPhotos] = useState<UploadedPhoto[]>([]);
@@ -51,10 +55,23 @@ export default function PinterestRepeatPage() {
   const [error, setError] = useState("");
   const submissionRef = useRef<SubmissionIdentity | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    void pinterestRepeatApi.options().then((options) => {
+      if (!active) return;
+      setRatioOptions(options);
+      setAspectRatio(selectedAspectRatio(options));
+    }).catch((cause) => {
+      if (active) setError(cause instanceof Error ? cause.message : "Не удалось загрузить форматы изображения");
+    });
+    return () => { active = false; };
+  }, []);
+
   const parsedHeight = Number(heightCm);
   const parsedWeight = Number(weightKg);
   const ready = Boolean(
     reference
+    && ratioOptions && isAspectRatioReady(ratioOptions, aspectRatio)
     && identityPhotos.length >= 1
     && identityPhotos.length <= 5
     && Number.isInteger(parsedHeight)
@@ -69,12 +86,13 @@ export default function PinterestRepeatPage() {
     if (!reference || !ready) return null;
     return {
       scene_reference_url: reference.url,
+      ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
       identity_reference_urls: identityPhotos.map((item) => item.url),
       height_cm: parsedHeight,
       weight_kg: parsedWeight,
       ...(analysis ? { scene_analysis: analysis } : {}),
     };
-  }, [analysis, identityPhotos, parsedHeight, parsedWeight, ready, reference]);
+  }, [analysis, aspectRatio, identityPhotos, parsedHeight, parsedWeight, ready, reference]);
   const requestKey = useMemo(() => requestBody ? JSON.stringify(requestBody) : "", [requestBody]);
   const quoteIsCurrent = Boolean(quote && requestKey && quotedRequestKey === requestKey);
 
@@ -355,6 +373,8 @@ export default function PinterestRepeatPage() {
         </div>
         <p className="pin-proportion-help">Рост и вес нужны, чтобы руки, шея и пропорции тела совпали с тобой. Основную форму тела модель берёт с твоих фото.</p>
 
+        {ratioOptions ? <AspectRatioSelect options={ratioOptions} value={aspectRatio} onChange={setAspectRatio} disabled={running} /> : <p className="pin-helper">Загружаю форматы изображения…</p>}
+
         <label className="pin-consent">
           <input
             type="checkbox"
@@ -368,7 +388,7 @@ export default function PinterestRepeatPage() {
         {error ? <div className="pin-error" role="alert">{error}</div> : null}
 
         <div className="pin-summary">
-          <span>Стоимость · формат наследуется с референса</span>
+          <span>Стоимость</span>
           <strong>{quoting || (requestBody && !quoteIsCurrent) ? "Считаем…" : quoteIsCurrent && quote ? (quote.admin_free ? "Бесплатно" : `${money(quote.effective_cost_rox)} ROX`) : "—"}</strong>
         </div>
         <button className="pin-run" type="button" disabled={!requestBody || !quoteIsCurrent || !confirmed || quoting || running || analyzing || uploadingReference || uploadingIdentity || resolving} onClick={() => void run()}>{running ? "Создаём…" : analyzing ? "Разбираем референс…" : "Создать →"}</button>

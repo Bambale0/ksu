@@ -1,4 +1,5 @@
 import { telegramHeaders } from "./telegram";
+import type { AspectRatioOptions } from "./aspect-ratio";
 
 export type AiReferenceScenario = "create" | "hd" | "edit";
 export type AiReferenceSubject = "adult" | "child" | "pet";
@@ -8,6 +9,7 @@ export type AiReferenceRequest = {
   subject?: AiReferenceSubject;
   reference_urls: string[];
   instruction?: string;
+  aspect_ratio?: string | null;
 };
 
 export type AiReferenceQuote = {
@@ -22,13 +24,13 @@ export type AiReferenceQuote = {
   admin_free: boolean;
 };
 
-async function request<T>(path: string, body: AiReferenceRequest): Promise<T> {
+async function request<T>(path: string, body?: AiReferenceRequest): Promise<T> {
   const response = await fetch(path, {
-    method: "POST",
+    method: body ? "POST" : "GET",
     credentials: "same-origin",
     cache: "no-store",
     headers: {
-      ...telegramHeaders(true),
+      ...telegramHeaders(Boolean(body)),
     },
     body: JSON.stringify(body),
   });
@@ -41,6 +43,7 @@ async function request<T>(path: string, body: AiReferenceRequest): Promise<T> {
 }
 
 export const aiReferenceApi = {
+  options: (scenario: AiReferenceScenario, subject: AiReferenceSubject) => request<AspectRatioOptions & { model_id: string }>(`/api/v1/ai-reference/options?scenario=${scenario}&subject=${subject}`),
   quote: (body: AiReferenceRequest) => request<AiReferenceQuote>("/api/v1/ai-reference/quote", body),
   run: (body: AiReferenceRequest) => request<{ id: string; status: string; scenario: AiReferenceScenario; cost_rox: string; admin_free: boolean }>("/api/v1/ai-reference/run", body),
 };

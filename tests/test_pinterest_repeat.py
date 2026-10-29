@@ -25,6 +25,7 @@ def test_build_request_keeps_scene_and_identity_roles_separate() -> None:
         weight_kg=55,
         confirmed=True,
         expression="спокойная уверенность",
+        aspect_ratio="9:16",
     )
 
     assert request.model_id == "nano-banana-pro"
@@ -34,7 +35,7 @@ def test_build_request_keeps_scene_and_identity_roles_separate() -> None:
             "https://cdn.example.com/me-front.jpg",
             "https://cdn.example.com/me-side.jpg",
         ],
-        "aspect_ratio": "auto",
+        "aspect_ratio": "9:16",
         "resolution": "2K",
         "output_format": "png",
     }
@@ -54,6 +55,7 @@ def test_build_request_accepts_scene_plus_five_identity_photos() -> None:
         height_cm=170,
         weight_kg=70,
         confirmed=True,
+        aspect_ratio="9:16",
     )
 
     assert request.parameters["image_input"] == [
@@ -104,6 +106,7 @@ def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
         height_cm=170,
         weight_kg=70,
         confirmed=True,
+        aspect_ratio="9:16",
     )
     stored = SimpleNamespace(
         prompt=recipe.prompt,
@@ -117,6 +120,7 @@ def test_idempotency_replay_requires_the_same_generation_recipe() -> None:
         height_cm=170,
         weight_kg=71,
         confirmed=True,
+        aspect_ratio="9:16",
     )
     assert not _generation_matches_recipe(stored, changed)
 

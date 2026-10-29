@@ -1,5 +1,7 @@
 "use client";
 
+import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { StandaloneShell } from "@/components/standalone-shell";
@@ -78,7 +80,7 @@ function statusLabel(value?: string | null): string {
 
 function batchFields(model: CatalogModel | null): UiField[] {
   if (!model) return [];
-  return (model.ui_schema?.fields || []).filter((field) => (
+  return normalizeAspectRatioFields(model.ui_schema).filter((field) => (
     field.name !== "prompt" && !INPUT_FIELDS.has(field.name) && !BATCH_UNSUPPORTED_FIELDS.has(field.name)
   ));
 }
@@ -179,7 +181,7 @@ export default function BatchPage() {
         const first = compatible[0];
         if (first) {
           setModelId(first.id);
-          setParameters({ ...(first.ui_schema?.defaults || {}) });
+          setParameters(normalizeAspectRatioValues(first.ui_schema?.defaults));
         }
       }),
       loadJobs(),
@@ -190,7 +192,7 @@ export default function BatchPage() {
     const model = models.find((item) => item.id === id);
     if (!model) return;
     setModelId(id);
-    setParameters({ ...(model.ui_schema?.defaults || {}) });
+    setParameters(normalizeAspectRatioValues(model.ui_schema?.defaults));
     setBillingSeconds(null);
     setQuote(null);
     setError("");
@@ -219,6 +221,8 @@ export default function BatchPage() {
     for (const field of fields) {
       const value = parameters[field.name];
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
+      const ratioError = aspectRatioError(field, value);
+      if (ratioError) return ratioError;
       if (field.required && empty) return `Заполните «${field.label}»`;
     }
     const billing = selected.ui_schema?.billing_seconds;

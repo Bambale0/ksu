@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AspectRatioSelect } from "@/components/aspect-ratio-select";
+import { explicitAspectRatioOptions, isAspectRatioReady, isAutomaticAspectRatio, selectedAspectRatio as defaultAspectRatio } from "@/lib/aspect-ratio";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -229,7 +231,7 @@ function workflowSettingsLabel(settings?: Record<string, string | number | null>
   if (!settings) return "";
   const labels: Record<string, string> = { duration: "Длительность", resolution: "Разрешение", aspect_ratio: "Соотношение сторон" };
   return Object.entries(settings)
-    .filter(([, value]) => value !== null && value !== undefined && String(value).trim())
+    .filter(([key, value]) => value !== null && value !== undefined && String(value).trim() && !(key === "aspect_ratio" && isAutomaticAspectRatio(value)))
     .map(([key, value]) => `${labels[key] || key}: ${value}`)
     .join(" · ");
 }
@@ -308,6 +310,7 @@ function TrendWorkflowRunner({
   const [workflow, setWorkflow] = useState(initialWorkflow);
   const [values, setValues] = useState<Record<string, string>>({});
   const [videoValues, setVideoValues] = useState<Record<string, string>>({});
+  const [aspectRatios, setAspectRatios] = useState<Record<string, string>>({});
   const [previewReady, setPreviewReady] = useState("");
   const [quoteRevision, setQuoteRevision] = useState(0);
   const [images, setImages] = useState<Record<string, WorkflowImageValue>>({});
@@ -383,6 +386,8 @@ function TrendWorkflowRunner({
   };
   const photoStep = workflow.steps.find((step) => step.kind === "image") || workflow.steps[0];
   const videoStep = workflow.steps.find((step) => step.kind === "video") || workflow.steps[1];
+  const photoAspectRatio = aspectRatios[photoStep.id] ?? defaultAspectRatio(photoStep);
+  const videoAspectRatio = aspectRatios[videoStep.id] ?? defaultAspectRatio(videoStep);
   const photoInputs = useMemo(() => (photoStep?.inputs || []).slice().sort((a, b) => a.order - b.order), [photoStep?.inputs]);
   const photoImageInputs = useMemo(() => photoInputs.filter((input) => input.type === "image"), [photoInputs]);
   const photoValueInputs = useMemo(() => photoInputs.filter((input) => input.type !== "image"), [photoInputs]);
@@ -422,16 +427,18 @@ function TrendWorkflowRunner({
     .map((input) => [input.id, input.type === "number" ? Number(values[input.id].replace(",", ".")) : values[input.id]])), [photoValueInputs, values]);
 
   const photoValid = photoImageInputs.every((input) => Boolean(images[input.id]) || !input.required)
-    && photoValueInputs.every((input) => workflowInputValueIsValid(input, values[input.id] || ""));
+    && photoValueInputs.every((input) => workflowInputValueIsValid(input, values[input.id] || ""))
+    && isAspectRatioReady(photoStep, photoAspectRatio);
   const videoValid = videoUnlocked && Boolean(selectedAssetId) && previewReady === selectionVersion
-    && videoValueInputs.every((input) => workflowInputValueIsValid(input, videoValues[input.id] || ""));
+    && videoValueInputs.every((input) => workflowInputValueIsValid(input, videoValues[input.id] || ""))
+    && isAspectRatioReady(videoStep, videoAspectRatio);
   const videoValuesPayload = useMemo(() => Object.fromEntries(videoValueInputs
     .filter((input) => videoValues[input.id] !== undefined && videoValues[input.id] !== "")
     .map((input) => [input.id, videoValues[input.id]])), [videoValueInputs, videoValues]);
   const quoteBodies = useMemo(() => ({
-    [photoStep.id]: { image_inputs: imageInputPayload, values: valuesPayload },
-    [videoStep.id]: { media_asset_id: selectedAssetId, values: videoValuesPayload },
-  }), [imageInputPayload, photoStep.id, selectedAssetId, valuesPayload, videoStep.id, videoValuesPayload]);
+    [photoStep.id]: { image_inputs: imageInputPayload, values: valuesPayload, ...(photoAspectRatio ? { aspect_ratio: photoAspectRatio } : {}) },
+    [videoStep.id]: { media_asset_id: selectedAssetId, values: videoValuesPayload, ...(videoAspectRatio ? { aspect_ratio: videoAspectRatio } : {}) },
+  }), [imageInputPayload, photoAspectRatio, photoStep.id, selectedAssetId, valuesPayload, videoAspectRatio, videoStep.id, videoValuesPayload]);
   // A polling response may replace step objects, but identical user input must
   // not re-trigger pricing merely because quote state or object identity changed.
   const photoQuoteKey = JSON.stringify(quoteBodies[photoStep.id]);
@@ -799,6 +806,7 @@ function TrendWorkflowRunner({
               </div>
             ) : <WorkflowInputSlot key={input.id} input={input} value={values[input.id] || ""} disabled={inputsLocked || photoReadOnly} onChange={(value) => { invalidateQuote(photoStep.id); setValues((current) => ({ ...current, [input.id]: value })); }} />)}
           </div>
+          <AspectRatioSelect options={photoStep} value={photoAspectRatio} disabled={inputsLocked || photoReadOnly} onChange={(value) => { invalidateQuote(photoStep.id); setAspectRatios((current) => ({ ...current, [photoStep.id]: value })); }} />
           {photoStep.attempt_history?.length ? <div className={styles.workflowHistory}><span>Предыдущих попыток: {photoStep.attempt_history.length}</span><div className={styles.workflowHistoryMedia}>{photoStep.attempt_history.map((attempt, index) => workflowMediaUrl(attempt.media) ? <img key={`${attempt.generation_id}-${attempt.attempt}`} src={workflowMediaUrl(attempt.media)} alt={`Предыдущий вариант фото ${index + 1}`} /> : null)}</div></div> : null}
           {photoStatus === "failed" ? <div className="action-error" role="alert">Фото не готово. Проверьте входные данные и запустите повторно.</div> : null}
           {quoteErrors[photoStep.id] ? <><div className="action-error" role="alert">{quoteErrors[photoStep.id]}</div><button className="secondary wide" type="button" disabled={quoteLoading[photoStep.id]} onClick={() => refreshQuote(photoStep.id)}>Обновить стоимость</button></> : null}
@@ -814,6 +822,7 @@ function TrendWorkflowRunner({
             <div className={styles.selectedMedia}><img key={selectionVersion} src={selectedMediaUrl} alt="Готовое фото для оживления" onLoad={() => setPreviewReady(selectionVersion)} onError={() => { setPreviewReady(""); setError("Фото пока не удалось открыть. Проверьте статус перед оплатой видео."); }} /><strong>{previewReady === selectionVersion ? "Выбранное фото для видео" : "Загружаю выбранное фото…"}</strong></div>
             {mediaOptions.length > 1 ? <div className={styles.mediaChoices} role="radiogroup" aria-label="Выберите готовое фото">{mediaOptions.map((media, index) => <button key={media.id} type="button" role="radio" aria-checked={selectedAssetId === media.id} className={selectedAssetId === media.id ? styles.mediaChoiceActive : ""} disabled={Boolean(runningStep || uncertainStep) || WORKFLOW_ACTIVE_STATUSES.has(videoStatus) || videoStatus === "ready"} onClick={() => { if (selectedAssetId !== media.id) { invalidateQuote(videoStep.id); setSelectedAssetId(media.id || ""); } }}><img src={workflowMediaUrl(media)} alt={`Вариант фото ${index + 1}`} /><span>{selectedAssetId === media.id ? "Выбрано" : `Вариант ${index + 1}`}</span></button>)}</div> : null}
             {videoValueInputs.map((input) => <WorkflowInputSlot key={input.id} input={input} value={videoValues[input.id] || ""} disabled={Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(videoStatus)} onChange={(value) => { invalidateQuote(videoStep.id); setVideoValues((current) => ({ ...current, [input.id]: value })); }} />)}
+            <AspectRatioSelect options={videoStep} value={videoAspectRatio} disabled={Boolean(runningStep || (uncertainStep && pendingCommands.current[uncertainStep])) || WORKFLOW_ACTIVE_STATUSES.has(videoStatus) || videoStatus === "ready"} onChange={(value) => { invalidateQuote(videoStep.id); setAspectRatios((current) => ({ ...current, [videoStep.id]: value })); }} />
             {videoStatus === "failed" ? <div className="action-error" role="alert">Видео не получилось. Фото сохранено — можно повторить.</div> : null}
             {quoteErrors[videoStep.id] ? <><div className="action-error" role="alert">{quoteErrors[videoStep.id]}</div><button className="secondary wide" type="button" disabled={quoteLoading[videoStep.id]} onClick={() => refreshQuote(videoStep.id)}>Обновить стоимость</button></> : null}
             {workflowNeedsRetryConsent(videoStatus) && quotes[videoStep.id] ? <label className={styles.retryConsent}><input type="checkbox" checked={Boolean(retryConsent[videoStep.id])} onChange={(event) => setRetryConsent((current) => ({ ...current, [videoStep.id]: event.target.checked }))} />{retryConsentCopy(videoStep)}{retryPreviousPrices[videoStep.id] && retryPreviousPrices[videoStep.id] !== quotes[videoStep.id]?.cost_rox ? <small>Цена изменилась: было {money(retryPreviousPrices[videoStep.id])} ROX, сейчас {money(quotes[videoStep.id]?.cost_rox)} ROX.</small> : null}</label> : null}
@@ -971,13 +980,13 @@ export default function TrendPage() {
   const videoCount = Number(trend?.reference_requirements?.video?.min || 0);
   const userFields = (trend?.user_fields || []).slice(0, 6);
   const qualityOptions = trend?.quality_options || [];
-  const aspectRatioOptions = trend?.aspect_ratio_options || [];
+  const aspectRatioOptions = explicitAspectRatioOptions(trend?.aspect_ratio_options);
   const chosenQuality = qualityOptions.find((option) => option.value === selectedQuality) || qualityOptions.find((option) => option.default) || qualityOptions[0] || null;
   const displayedCost = chosenQuality?.cost_rox || trend?.cost_rox;
   const displayedRetailCost = chosenQuality?.retail_cost_rox || trend?.retail_cost_rox;
   const adminFree = Boolean(chosenQuality?.admin_free ?? trend?.admin_free);
   const userFieldsReady = userFields.every((field) => userFieldValid(field, userValues[field.key] || ""));
-  const aspectRatioReady = !aspectRatioOptions.length || Boolean(selectedAspectRatio);
+  const aspectRatioReady = !aspectRatioOptions.length || aspectRatioOptions.includes(selectedAspectRatio);
   const ready = references.length >= minimum && (!maximum || references.length <= maximum) && videoReferences.length === videoCount && userFieldsReady && aspectRatioReady;
   const referenceCopy = useMemo(() => {
     if (!trend) return "";

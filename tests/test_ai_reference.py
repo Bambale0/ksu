@@ -10,6 +10,7 @@ from app.services.ai_reference import AiReferenceError, AiReferenceService
 
 def test_ai_reference_routes_are_registered() -> None:
     routes = {(route.path, frozenset(route.methods or set())) for route in router.routes}
+    assert ("/ai-reference/options", frozenset({"GET"})) in routes
     assert ("/ai-reference/quote", frozenset({"POST"})) in routes
     assert ("/ai-reference/run", frozenset({"POST"})) in routes
 
@@ -78,12 +79,13 @@ def test_hd_reference_uses_single_image_4k_and_preserves_identity() -> None:
     recipe = AiReferenceService.build_request(
         scenario="hd",
         reference_urls=["https://cdn.test/reference.jpg"],
+        aspect_ratio="9:16",
     )
 
     assert recipe.model_id == "nano-banana-pro"
     assert recipe.parameters == {
         "image_input": ["https://cdn.test/reference.jpg"],
-        "aspect_ratio": "auto",
+        "aspect_ratio": "9:16",
         "resolution": "4K",
         "output_format": "png",
     }
@@ -104,12 +106,13 @@ def test_reference_editor_applies_user_change_but_preserves_identity() -> None:
         scenario="edit",
         reference_urls=["https://cdn.test/reference.jpg"],
         instruction="Добавь лёгкий макияж и сделай волосы холодным блондом",
+        aspect_ratio="9:16",
     )
 
     assert recipe.model_id == "nano-banana-pro"
     assert recipe.parameters == {
         "image_input": ["https://cdn.test/reference.jpg"],
-        "aspect_ratio": "auto",
+        "aspect_ratio": "9:16",
         "resolution": "2K",
         "output_format": "png",
     }

@@ -28,6 +28,7 @@ class AiReferenceRequest(BaseModel):
     subject: AiReferenceSubject | None = None
     reference_urls: list[str] = Field(min_length=1, max_length=4)
     instruction: str | None = Field(default=None, max_length=1200)
+    aspect_ratio: str | None = Field(default=None, max_length=32)
 
 
 def _amount(value: Decimal | str | int | float) -> str:
@@ -41,9 +42,19 @@ def _build(payload: AiReferenceRequest) -> AiReferenceGenerationRequest:
             subject=payload.subject,
             reference_urls=payload.reference_urls,
             instruction=payload.instruction,
+            aspect_ratio=payload.aspect_ratio,
         )
     except AiReferenceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/options")
+async def ai_reference_options(
+    user: CurrentUserDep,
+    scenario: AiReferenceScenario = "create",
+    subject: AiReferenceSubject | None = None,
+) -> dict[str, Any]:
+    return AiReferenceService.options(scenario=scenario, subject=subject)
 
 
 @router.post("/quote")

@@ -115,7 +115,7 @@ function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function mockActionApp(page, { rejectContext = false } = {}) {
+async function mockActionApp(page, { rejectContext = false, legacyAspectRatio = false } = {}) {
   await page.addInitScript(() => {
     window.Telegram = {
       WebApp: {
@@ -147,7 +147,9 @@ async function mockActionApp(page, { rejectContext = false } = {}) {
     }
     if (path.endsWith('/action-context')) {
       if (rejectContext) return json(route, { detail: 'Action is not available for this generation' }, 409);
-      return json(route, contextFor(url.searchParams.get('action')));
+      const context = contextFor(url.searchParams.get('action'));
+      if (legacyAspectRatio) context.defaults.parameters.aspect_ratio = 'AUTO';
+      return json(route, context);
     }
     if (/\/api\/v1\/generations\/gen_source\/actions\//.test(path) && method === 'POST') {
       return json(route, { id: 'gen_child', status: 'queued', parent_generation_id: 'gen_source', action_type: 'repeat', cost_rox: '25.00' }, 202);
@@ -253,4 +255,21 @@ test('Unsupported derivative deep link degrades to a safe action error screen', 
   await page.goto('/mini-app/?route=generation-action&generation=gen_source&action=remix');
   await expect(page.getByRole('heading', { name: 'Действие недоступно' })).toBeVisible();
   await expect(page.getByText('Action is not available for this generation')).toBeVisible();
+});
+
+
+test('Repeat clears a legacy automatic ratio instead of inheriting a square model default', async ({ page }) => {
+  await mockActionApp(page, { legacyAspectRatio: true });
+  await openAction(page, 'repeat');
+  const ratio = page.getByLabel('Формат', { exact: true });
+  await expect(ratio).toHaveValue('');
+  await expect(ratio.locator('option')).toHaveText(['Выберите', '1:1', '9:16']);
+  await expect(page.getByText('Выберите соотношение сторон')).toBeVisible();
+  const run = page.getByRole('button', { name: /Ещё вариант/ }).last();
+  await expect(run).toBeDisabled();
+  await ratio.selectOption('9:16');
+  await expect(run).toBeEnabled();
+  const submitted = page.waitForRequest((request) => request.url().includes('/generations/gen_source/actions/repeat') && request.method() === 'POST');
+  await run.click();
+  expect((await submitted).postDataJSON().parameters.aspect_ratio).toBe('9:16');
 });

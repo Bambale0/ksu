@@ -190,11 +190,11 @@ def test_public_nexus_contract_rejects_bad_inputs_before_generation_is_charged()
 
 @pytest.mark.parametrize(
     ("model_id", "expected_default_ratio"),
-    [("nano-banana-pro", "1:1"), ("nano-banana-2", "auto")],
+    [("nano-banana-pro", "1:1"), ("nano-banana-2", None)],
 )
 def test_public_nexus_ui_matches_provider_capabilities(
     model_id: str,
-    expected_default_ratio: str,
+    expected_default_ratio: str | None,
 ) -> None:
     install_model_spec_image_audit()
     schema = build_public_model_ui_schema(ModelCatalog.get(model_id).public_dict())
@@ -202,12 +202,13 @@ def test_public_nexus_ui_matches_provider_capabilities(
 
     assert fields["image_input"]["max_items"] == 4
     assert "output_format" not in fields
-    expected_ratios = [ratio for ratio in DOCUMENTED_NEXUS_NANO_RATIOS
-                       if model_id != "nano-banana-pro" or ratio != "auto"]
+    expected_ratios = [ratio for ratio in DOCUMENTED_NEXUS_NANO_RATIOS if ratio != "auto"]
     assert fields["aspect_ratio"]["suggestions"] == expected_ratios
     assert fields["resolution"]["suggestions"] == ["1K", "2K", "4K"]
     assert "output_format" not in schema["defaults"]
-    assert schema["defaults"]["aspect_ratio"] == expected_default_ratio
+    assert schema["defaults"].get("aspect_ratio") == expected_default_ratio
+    if expected_default_ratio is None:
+        assert fields["aspect_ratio"]["required"] is True
 
 
 @pytest.mark.asyncio

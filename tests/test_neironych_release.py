@@ -62,7 +62,7 @@ class WakeRedis:
 async def test_runtime_route_api_permissions_revision_replay_and_frozen_jobs(
     monkeypatch, model, route, old_provider, new_provider,
 ):
-    inputs = {"duration": 2} if model == "grok-video-1.5" else None
+    inputs = {"duration": 2, "aspect_ratio": "9:16"} if model == "grok-video-1.5" else None
     if model in {"grok-video-t2v", "grok-video-i2v"}:
         inputs = {"duration": 6}
         if model == "grok-video-i2v":

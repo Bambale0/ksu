@@ -196,11 +196,11 @@ async def test_image_fallback_requires_exact_not_accepted_receipt(change, expect
     assert error_disposition(caught.value) == expected
 
 
-def test_nano_pro_schema_omits_auto_without_changing_nano2():
-    for model, has_auto in [("nano-banana-pro", False), ("nano-banana-2", True)]:
+def test_nano_public_schemas_omit_auto_without_changing_provider_contracts():
+    for model in ("nano-banana-pro", "nano-banana-2"):
         ui = build_public_model_ui_schema(ModelCatalog.get(model).public_dict())
         field = next(item for item in ui["fields"] if item["name"] == "aspect_ratio")
-        assert ("auto" in field["suggestions"]) is has_auto
+        assert "auto" not in field["suggestions"]
 
 
 @pytest.mark.parametrize(

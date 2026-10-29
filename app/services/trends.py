@@ -212,18 +212,10 @@ class TrendService:
 
     @staticmethod
     async def _prepare_recipe(session: AsyncSession, recipe: dict[str, Any], **kwargs: Any):
-        if not recipe["video_reference_count"]:
-            return await GenerationService.prepare_request(session, **kwargs)
-        # Only future video slots skip media probes. Fixed template audio keeps
-        # its existing trusted metadata checks and durable pinning.
-        from app.services.model_spec_trusted_media_audit import (
-            validate_reference_duration_contracts,
-        )
-
-        from app.services.reference_size_contract import validate_reference_sizes
-        real_parameters = {key: value for key, value in kwargs["parameters"].items() if key != "reference_video_urls"}
-        await validate_reference_sizes(session, spec=ModelCatalog.get(recipe["model_id"]), parameters=real_parameters)
-        await validate_reference_duration_contracts(session, model_id=recipe["model_id"], parameters=real_parameters)
+        # Catalog/template inspection never admits a new generation. Legacy
+        # aspect ratios stay readable until the user chooses a format for run.
+        if recipe["video_reference_count"]:
+            kwargs["future_reference_fields"] = ("reference_video_urls",)
         return await GenerationService.prepare_template_request(session, **kwargs)
 
     @staticmethod

@@ -53,7 +53,7 @@ Existing logs, request IDs, route revisions, provider attempts, audit records an
 | Provider contract | Current documented ratios/refs and existing adapter tests; no paid calls |
 | Idempotency/reconciliation | Existing frozen jobs and fallback contracts retained; config CAS/ledger readback |
 | API | Schema, quote/run error and selected ratio propagation |
-| Frontend/bot E2E | Create/reuse/special workflows/bot choice with existing project seams; Chromium/mobile CI |
+| Frontend/bot E2E | Create/reuse/special workflows with existing project seams; Chromium/mobile CI. Dormant text-generation handler is not registered and is N/A. |
 | Smoke/deployability | Existing six CI gates, exact-main deployment and live readiness/operational health |
 | Audit/observability | Runtime revision, actor/request/audit completion and saved route evidence |
 | No-hardcode/admin | Routes remain validated runtime settings; controls reuse current model schema |
@@ -67,4 +67,14 @@ Mandatory guidance refs were refreshed and unchanged: Bambale0/skills eca5310, c
 ## Progress
 - Audit recorded before production-code edits.
 - Isolated source snapshot verified to match the exact remote baseline tree.
-- Implementation and verification pending; no completed-code/deployment claim.
+- Implemented public schema filtering and new-admission validation, copied legacy-context sanitization, structural template preflight, workflow ratio overrides, and authenticated options/explicit overrides for AI Reference, Pinterest and feed repeats.
+- Frontend uses shared literal-Auto filtering and empty restored-choice markers, schema-driven selectors and quote invalidation in Create, batch, action contexts, trend workflows and special flows. The existing server catalog remains the source of choices.
+- Isolated remote runner uses a separate checkout, temporary PostgreSQL17/Redis7.4 containers and an explicit test-only environment. No production `.env`, database, provider keys or paid calls enter test execution.
+- Behavioral RED on unchanged application code: 53 failed / 7 passed. Initial focused implementation: 214 passed / 1 failed; the failure revealed an existing technical Seedance adaptive mode missing from the narrower UI enum and was fixed without adding Auto back.
+- First full backend regression: 2,195 passed / 8 failed in 81.54 seconds. Seven failures were old UI expectations or success fixtures requiring an explicit ratio under the new contract; their original billing, routing, field-filtering and reference-preservation assertions remain. The eighth was the already identified adaptive regression.
+- Independent backend and frontend reviews found source-driven Kling frame selectors, a no-ratio feed override, inherited-ratio initialization, stale Create quotes and an old-Auto derivative API null/empty bypass. All are addressed with narrow fixes and regressions before merge. Feed review regressions reproduced 2 failures / 1 pass before the follow-up implementation.
+- Additional behavioral RED: the derivative boundary failed five rejected-input cases while its two valid cases passed; fresh/stored Kling contexts and actual workflow-ratio reload produced three expected failures. After fixes, the two new contract modules passed all 95 tests in 3.98 seconds.
+- A repeated full run exposed fixed test IDs left in the temporary database and two inactive model IDs in a new test. The runner database was recreated and migrated; the compatibility test now exercises active Seedance 2.0/2.5 admission. No application behavior or database constraint was relaxed.
+- Independent review of the seven updated legacy test files confirmed that all original billing, permission, provider-route, frozen-job, complete-reference and declared-field assertions remain intact.
+- Ruff passed on the initial integrated backend. Frontend TypeScript and three pure contract tests passed locally; Next compilation succeeded, but local Node child-process stdout capture prevented its TypeScript configuration phase. Hosted exact-head build and browser CI remain required.
+- No database migration or new dependency. Exact-head CI, final independent review, merge/deployment and the remaining runtime route activation are pending; no completed release is claimed.

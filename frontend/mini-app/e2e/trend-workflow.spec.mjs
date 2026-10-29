@@ -107,7 +107,7 @@ function workflow(status = 'created', photoStatus = 'pending', videoStatus = 'pe
   };
 }
 
-async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, failStepPreviews = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false, stepVideoPreview = null, failStepVideoPreview = false } = {}) {
+async function setup(page, { explicitRatios = false, legacy = false, ambiguousPhotoRun = false, delayedMedia = false, hiddenTemplate = false, quoteFailsOnce = false, failPhoto = false, retryQuoteCost = null, failVideo = false, retryVideoQuoteCost = null, ambiguousVideoRun = false, lostCreate = false, photoReadyGate = null, coldPreview = false, failOwnedPreview = false, failStepPreviews = false, safeAreaInsets = null, externalImagePreview = false, workflowOnlyThumbnail = false, stepPreviews = false, stepVideoPreview = null, failStepVideoPreview = false } = {}) {
   const state = { quoteBodies: [], runBodies: [], photoRuns: 0, videoRuns: 0, photoQuotes: 0, videoQuotes: 0, workflowReads: 0, workflowCreates: 0, previewReads: 0, ownedPreviewUrls: [], stepVideoReads: 0, errors: [] };
   let photoReady = false;
   let photoFailed = false;
@@ -123,6 +123,13 @@ async function setup(page, { legacy = false, ambiguousPhotoRun = false, delayedM
   let videoCommandId = null;
   const workflowView = (...args) => {
     const view = workflow(...args);
+    if (explicitRatios) {
+      for (const step of view.steps) {
+        step.aspect_ratio_options = step.kind === 'image' ? ['auto', '3:4', '1:1'] : ['auto', '9:16', '16:9'];
+        step.aspect_ratio_required = true;
+        step.default_aspect_ratio = null;
+      }
+    }
     view.steps[0].command_id = photoCommandId;
     view.steps[1].command_id = videoCommandId;
     if (photoCommandId && view.steps[0].status !== 'pending') view.steps[0].generation_id = PHOTO_GENERATION_ID;
@@ -918,4 +925,37 @@ test('personalized video can reenter private fields after an unaccepted request 
   expect(requests[1].body.values.motion).toBe('Другое приватное движение');
   const stored = await page.evaluate(() => JSON.stringify(sessionStorage));
   expect(stored).not.toContain('приватн');
+});
+
+
+test('workflow photo and video each require their own explicit ratio in quote and run', async ({ page }) => {
+  const state = await setup(page, { explicitRatios: true });
+  await page.locator('[data-slot-id="person_photo"] input[type=file]').setInputFiles(imageFile);
+  await page.getByLabel('Случай').selectOption('Прогулка');
+  const photoCard = page.locator('[data-step="prepare_photo"]');
+  const photoRatio = photoCard.getByLabel('Соотношение сторон');
+  await expect(photoRatio).toHaveValue('');
+  await expect(photoRatio.locator('option')).toHaveText(['Выберите', '3:4', '1:1']);
+  await expect(photoCard.getByRole('button', { name: /Создать фото/ })).toBeDisabled();
+  expect(state.photoQuotes).toBe(0);
+  await photoRatio.selectOption('3:4');
+  await expect(photoCard.getByRole('button', { name: /Создать фото/ })).toBeEnabled();
+  expect(state.quoteBodies.at(-1).aspect_ratio).toBe('3:4');
+  await photoCard.getByRole('button', { name: /Создать фото/ }).click();
+  await expect.poll(() => state.photoRuns).toBe(1);
+  expect(state.runBodies[0].body.aspect_ratio).toBe('3:4');
+
+  const videoCard = page.locator('[data-step="animate_photo"]');
+  await expect(videoCard).toBeVisible();
+  const videoRatio = videoCard.getByLabel('Соотношение сторон');
+  await expect(videoRatio).toHaveValue('');
+  await expect(videoRatio.locator('option')).toHaveText(['Выберите', '9:16', '16:9']);
+  await expect(videoCard.getByRole('button', { name: /Оживить это фото/ })).toBeDisabled();
+  expect(state.videoQuotes).toBe(0);
+  await videoRatio.selectOption('9:16');
+  await expect(videoCard.getByRole('button', { name: /Оживить это фото/ })).toBeEnabled();
+  expect(state.quoteBodies.at(-1).aspect_ratio).toBe('9:16');
+  await videoCard.getByRole('button', { name: /Оживить это фото/ }).click();
+  await expect.poll(() => state.videoRuns).toBe(1);
+  expect(state.runBodies.at(-1).body.aspect_ratio).toBe('9:16');
 });

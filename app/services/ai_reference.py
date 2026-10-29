@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    validate_generation_aspect_ratio,
+)
+
 AiReferenceScenario = Literal["create", "hd", "edit"]
 AiReferenceSubject = Literal["adult", "child", "pet"]
 
@@ -64,6 +69,39 @@ class AiReferenceService:
         return result
 
     @classmethod
+    def options(
+        cls,
+        *,
+        scenario: AiReferenceScenario = "create",
+        subject: AiReferenceSubject | None = None,
+    ) -> dict[str, Any]:
+        default = ("1:1" if subject == "pet" else "3:4") if scenario == "create" else None
+        return {
+            "model_id": cls.MODEL_ID,
+            "aspect_ratio_options": explicit_aspect_ratio_options(cls.MODEL_ID),
+            "aspect_ratio_required": default is None,
+            "default_aspect_ratio": default,
+        }
+
+    @classmethod
+    def _selected_aspect_ratio(
+        cls,
+        value: str | None,
+        *,
+        scenario: AiReferenceScenario,
+        subject: AiReferenceSubject | None = None,
+    ) -> str:
+        default = cls.options(scenario=scenario, subject=subject)["default_aspect_ratio"]
+        ratio = value if value is not None else default
+        if not isinstance(ratio, str) or not ratio.strip():
+            raise AiReferenceError("Выберите формат изображения")
+        try:
+            validate_generation_aspect_ratio(cls.MODEL_ID, {"aspect_ratio": ratio})
+        except ValueError as exc:
+            raise AiReferenceError(str(exc)) from exc
+        return ratio
+
+    @classmethod
     def build_request(
         cls,
         *,
@@ -71,6 +109,7 @@ class AiReferenceService:
         reference_urls: list[str],
         subject: AiReferenceSubject | None = None,
         instruction: str | None = None,
+        aspect_ratio: str | None = None,
     ) -> AiReferenceGenerationRequest:
         refs = cls._references(reference_urls)
         if scenario == "create":
@@ -84,7 +123,9 @@ class AiReferenceService:
                 prompt=create_prompt,
                 parameters={
                     "image_input": refs,
-                    "aspect_ratio": "1:1" if subject == "pet" else "3:4",
+                    "aspect_ratio": cls._selected_aspect_ratio(
+                        aspect_ratio, scenario=scenario, subject=subject,
+                    ),
                     "resolution": "2K",
                     "output_format": "png",
                 },
@@ -99,7 +140,7 @@ class AiReferenceService:
                 prompt=cls._HD_PROMPT,
                 parameters={
                     "image_input": refs,
-                    "aspect_ratio": "auto",
+                    "aspect_ratio": cls._selected_aspect_ratio(aspect_ratio, scenario=scenario),
                     "resolution": "4K",
                     "output_format": "png",
                 },
@@ -122,7 +163,7 @@ class AiReferenceService:
                 prompt=prompt,
                 parameters={
                     "image_input": refs,
-                    "aspect_ratio": "auto",
+                    "aspect_ratio": cls._selected_aspect_ratio(aspect_ratio, scenario=scenario),
                     "resolution": "2K",
                     "output_format": "png",
                 },
