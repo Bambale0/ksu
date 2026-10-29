@@ -4,27 +4,36 @@ import { readFileSync } from 'node:fs';
 test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 
 const mediaOrigin = 'https://trend-preview.example.invalid';
-const previewUrl = (index) => `${mediaOrigin}/admin-preview-${index}.mp4`;
 const uploadedUrl = `${mediaOrigin}/uploaded-preview.png`;
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 const previewFile = { name: 'trend-preview.png', mimeType: 'image/png', buffer: png };
-const mp4 = readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.mp4', import.meta.url));
+// Bundled Chromium uses VP8; WebKit exercises the same portrait clip as H.264.
+const videoFixtures = {
+  chromium: {
+    extension: 'webm', contentType: 'video/webm',
+    body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.webm', import.meta.url)),
+  },
+  webkit: {
+    extension: 'mp4', contentType: 'video/mp4',
+    body: readFileSync(new URL('../../../tests/fixtures/trend-preview-portrait.mp4', import.meta.url)),
+  },
+};
 
-function fulfillVideo(route) {
+function fulfillVideo(route, { body, contentType }) {
   const headers = { 'accept-ranges': 'bytes' };
   const range = route.request().headers().range;
-  if (!range) return route.fulfill({ status: 200, contentType: 'video/mp4', headers, body: mp4 });
+  if (!range) return route.fulfill({ status: 200, contentType, headers, body });
   const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  const from = match?.[1] ? Number(match[1]) : Math.max(0, mp4.length - Number(match?.[2]));
-  const to = match?.[1] && match[2] ? Math.min(Number(match[2]), mp4.length - 1) : mp4.length - 1;
+  const from = match?.[1] ? Number(match[1]) : Math.max(0, body.length - Number(match?.[2]));
+  const to = match?.[1] && match[2] ? Math.min(Number(match[2]), body.length - 1) : body.length - 1;
   if (!match || (!match[1] && !match[2]) || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)
-    || from >= mp4.length || to < from) {
-    return route.fulfill({ status: 416, headers: { ...headers, 'content-range': `bytes */${mp4.length}` }, body: '' });
+    || from >= body.length || to < from) {
+    return route.fulfill({ status: 416, headers: { ...headers, 'content-range': `bytes */${body.length}` }, body: '' });
   }
   return route.fulfill({
-    status: 206, contentType: 'video/mp4',
-    headers: { ...headers, 'content-range': `bytes ${from}-${to}/${mp4.length}` },
-    body: mp4.subarray(from, to + 1),
+    status: 206, contentType,
+    headers: { ...headers, 'content-range': `bytes ${from}-${to}/${body.length}` },
+    body: body.subarray(from, to + 1),
   });
 }
 
@@ -35,7 +44,7 @@ const model = {
   ui_schema: { groups: [], fields: [], defaults: { duration: 5 } },
 };
 
-function videoTrends(count) {
+function videoTrends(count, previewUrl) {
   return Array.from({ length: count }, (_, index) => ({
     id: `mobile-trend-${index}`,
     title: `Мобильный тренд ${index + 1}`,
@@ -49,9 +58,12 @@ function videoTrends(count) {
   }));
 }
 
-async function setup(page, { count = 3, listMode = 'success' } = {}) {
+async function setup(page, browserName, { count = 3, listMode = 'success' } = {}) {
+  const videoFixture = videoFixtures[browserName];
+  if (!videoFixture) throw new Error(`No portrait media fixture for ${browserName}`);
+  const previewUrl = (index) => `${mediaOrigin}/admin-preview-${index}.${videoFixture.extension}`;
   const state = {
-    items: videoTrends(count), listMode, listRequests: 0, pendingLists: [],
+    items: videoTrends(count, previewUrl), previewUrl, listMode, listRequests: 0, pendingLists: [],
     mediaRequests: new Set(), uploads: 0, uploadStatus: 201,
     unexpectedWrites: [], errors: [],
   };
@@ -79,12 +91,12 @@ async function setup(page, { count = 3, listMode = 'success' } = {}) {
       return route.fulfill({ contentType: 'application/javascript', body: '' });
     }
     if (url.origin === mediaOrigin) {
-      const video = /^\/admin-preview-(\d+)\.mp4$/.exec(path);
+      const video = /^\/admin-preview-(\d+)\.(mp4|webm)$/.exec(path);
       if (video) {
         state.mediaRequests.add(Number(video[1]));
-        // A real tiny MP4 exercises metadata/layout and Safari byte ranges.
+        // A real tiny video exercises metadata/layout and Safari byte ranges.
         // Resource activation is the oracle, not a simulated iPhone crash.
-        return fulfillVideo(route);
+        return fulfillVideo(route, videoFixture);
       }
       return route.fulfill({ status: 200, contentType: 'image/png', body: png });
     }
@@ -150,18 +162,58 @@ function expectClean(state) {
   expect(state.unexpectedWrites).toEqual([]);
 }
 
-async function expectVideoMetadata(video) {
-  await expect.poll(() => video.evaluate((element) => element.videoWidth)).toBeGreaterThan(0);
-  const metadata = await video.evaluate((element) => ({
-    width: element.videoWidth, height: element.videoHeight, error: element.error?.code ?? null,
-  }));
-  // Portrait dimensions expose layout shifts concealed by a square fixture.
-  expect(metadata.height).toBeGreaterThan(metadata.width);
-  expect(metadata.error).toBeNull();
+async function reportMediaState(video, phase) {
+  const state = await video.evaluate((element) => ({
+    src: element.getAttribute('src'), currentSrc: element.currentSrc, paused: element.paused,
+    readyState: element.readyState, networkState: element.networkState,
+    bufferedLength: element.buffered.length, videoWidth: element.videoWidth, videoHeight: element.videoHeight,
+    isConnected: element.isConnected,
+    error: element.error ? { code: element.error.code, message: element.error.message } : null,
+    canPlayType: {
+      h264: element.canPlayType('video/mp4; codecs="avc1.42E01E"'),
+      vp8: element.canPlayType('video/webm; codecs="vp8"'),
+    },
+  })).catch((error) => ({ diagnosticError: String(error) }));
+  console.error(`[trend-admin-media:${phase}] ${JSON.stringify(state)}`);
 }
 
-test('a large video list stays usable by touch without activating far-offscreen media', async ({ page }) => {
-  const state = await setup(page, { count: 300 });
+async function expectVideoMetadata(video) {
+  try {
+    await expect.poll(() => video.evaluate((element) => element.videoWidth)).toBeGreaterThan(0);
+    const metadata = await video.evaluate((element) => ({
+      width: element.videoWidth, height: element.videoHeight, error: element.error?.code ?? null,
+    }));
+    // Portrait dimensions expose layout shifts concealed by a square fixture.
+    expect(metadata.height).toBeGreaterThan(metadata.width);
+    expect(metadata.error).toBeNull();
+  } catch (error) {
+    await reportMediaState(video, 'metadata');
+    throw error;
+  }
+}
+
+async function expectVideoReset(video, isConnected, phase) {
+  // A no-source reset can retain currentSrc. Require the actual playback,
+  // network, buffer and metadata reset; keep currentSrc in failure diagnostics.
+  try {
+    await expect.poll(() => video.evaluate((element) => ({
+      src: element.getAttribute('src'), paused: element.paused,
+      readyState: element.readyState, networkState: element.networkState,
+      bufferedLength: element.buffered.length, videoWidth: element.videoWidth, videoHeight: element.videoHeight,
+      isConnected: element.isConnected,
+      error: element.error ? { code: element.error.code, message: element.error.message } : null,
+    }))).toEqual({
+      src: null, paused: true, readyState: 0, networkState: 0,
+      bufferedLength: 0, videoWidth: 0, videoHeight: 0, isConnected, error: null,
+    });
+  } catch (error) {
+    await reportMediaState(video, phase);
+    throw error;
+  }
+}
+
+test('a large video list stays usable by touch without activating far-offscreen media', async ({ page, browserName }) => {
+  const state = await setup(page, browserName, { count: 300 });
   state.items = state.items.map((item) => ({ ...item, payload: { ...item.payload, description: '' } }));
   const manager = await openManager(page);
   const cards = manager.locator('.inline-trend-admin-card');
@@ -185,13 +237,11 @@ test('a large video list stays usable by touch without activating far-offscreen 
   const lastCard = cards.last();
   await lastCard.getByRole('button', { name: 'Редактировать', exact: true }).scrollIntoViewIfNeeded();
   const lastVideo = lastCard.locator('video');
-  await expect(lastVideo).toHaveAttribute('src', previewUrl(299));
+  await expect(lastVideo).toHaveAttribute('src', state.previewUrl(299));
   await expect.poll(() => state.mediaRequests.has(299)).toBe(true);
   await expectVideoMetadata(lastVideo);
   // Removing the attribute alone does not unload an already selected resource.
-  await expect.poll(() => firstVideo.evaluate((element) => ({
-    currentSrc: element.currentSrc, paused: element.paused,
-  }))).toEqual({ currentSrc: '', paused: true });
+  await expectVideoReset(firstVideo, true, 'offscreen-cleanup');
   await expect.poll(async () => Math.abs((await firstCard.evaluate((element) => element.getBoundingClientRect().height)) - firstCardHeight)).toBeLessThan(1);
   await expect.poll(() => panel.evaluate((element) => element.scrollHeight)).toBe(scrollHeight);
   const preview = lastCard.locator('.inline-trend-admin-preview');
@@ -212,7 +262,7 @@ test('a large video list stays usable by touch without activating far-offscreen 
   await form.getByLabel('Название', { exact: true }).fill('Проверка последней карточки');
   await form.getByRole('button', { name: 'Закрыть', exact: true }).tap();
   await expect(form).toHaveCount(0);
-  await expect(lastVideo).toHaveAttribute('src', previewUrl(299));
+  await expect(lastVideo).toHaveAttribute('src', state.previewUrl(299));
   await expectVideoMetadata(lastVideo);
   await expect.poll(async () => Math.abs((await preview.evaluate((element) => element.getBoundingClientRect().height)) - previewHeight)).toBeLessThan(1);
   await expect.poll(() => panel.evaluate((element) => element.scrollHeight)).toBe(scrollHeight);
@@ -223,13 +273,13 @@ test('a large video list stays usable by touch without activating far-offscreen 
   expectClean(state);
 });
 
-test('refreshing one card loads the changed video and closing releases its media', async ({ page }) => {
-  const state = await setup(page);
+test('refreshing one card loads the changed video and closing releases its media', async ({ page, browserName }) => {
+  const state = await setup(page, browserName);
   const manager = await openManager(page);
   const video = manager.locator('.inline-trend-admin-card').first().locator('video');
-  await expect(video).toHaveAttribute('src', previewUrl(0));
+  await expect(video).toHaveAttribute('src', state.previewUrl(0));
   await expectVideoMetadata(video);
-  const replacementUrl = previewUrl(300);
+  const replacementUrl = state.previewUrl(300);
   state.items = state.items.map((item, index) => index === 0
     ? { ...item, payload: { ...item.payload, preview_url: replacementUrl } }
     : item);
@@ -249,9 +299,7 @@ test('refreshing one card loads the changed video and closing releases its media
   try {
     await manager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
     await expect(manager).toHaveCount(0);
-    await expect.poll(() => retiredVideo.evaluate((element) => ({
-      connected: element.isConnected, currentSrc: element.currentSrc, paused: element.paused,
-    }))).toEqual({ connected: false, currentSrc: '', paused: true });
+    await expectVideoReset(retiredVideo, false, 'unmount-cleanup');
   } finally {
     await retiredVideo.dispose();
   }
@@ -259,8 +307,8 @@ test('refreshing one card loads the changed video and closing releases its media
   expectClean(state);
 });
 
-test('touch opens a usable create form and releases management media until it closes', async ({ page }) => {
-  const state = await setup(page);
+test('touch opens a usable create form and releases management media until it closes', async ({ page, browserName }) => {
+  const state = await setup(page, browserName);
   const manager = await openManager(page);
   await expect.poll(() => state.mediaRequests.has(0)).toBe(true);
   const form = await openCreate(page, manager);
@@ -268,10 +316,12 @@ test('touch opens a usable create form and releases management media until it cl
   await form.getByLabel('Название', { exact: true }).fill('Новый тренд с телефона');
   await choosePreview(page, form);
   await expect(form.getByLabel('URL превью', { exact: true })).toHaveValue(uploadedUrl);
-  await expect(form.getByAltText('Превью тренда', { exact: true })).toBeVisible();
+  const uploadedPreview = form.getByAltText('Превью тренда', { exact: true });
+  await expect(uploadedPreview).toBeVisible();
+  await expect.poll(() => uploadedPreview.evaluate((element) => element.naturalWidth)).toBeGreaterThan(0);
   await form.getByRole('button', { name: 'Закрыть', exact: true }).tap();
   await expect(form).toHaveCount(0);
-  await expect(manager.locator('.inline-trend-admin-card').first().locator('video')).toHaveAttribute('src', previewUrl(0));
+  await expect(manager.locator('.inline-trend-admin-card').first().locator('video')).toHaveAttribute('src', state.previewUrl(0));
   await manager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
   await expect(manager).toHaveCount(0);
   const reopened = await openManager(page);
@@ -282,8 +332,8 @@ test('touch opens a usable create form and releases management media until it cl
   expectClean(state);
 });
 
-test('pending and failed list requests leave touch close and reopen available', async ({ page }) => {
-  const state = await setup(page, { listMode: 'pending' });
+test('pending and failed list requests leave touch close and reopen available', async ({ page, browserName }) => {
+  const state = await setup(page, browserName, { listMode: 'pending' });
   let manager = await openManager(page);
   await expect.poll(() => state.pendingLists.length).toBe(1);
   await expect(manager.getByText('Загружаю тренды…', { exact: true })).toBeVisible();
@@ -314,8 +364,8 @@ test('pending and failed list requests leave touch close and reopen available', 
   expectClean(state);
 });
 
-test('failed preview upload keeps the form interactive and accepts the same file on retry', async ({ page }) => {
-  const state = await setup(page);
+test('failed preview upload keeps the form interactive and accepts the same file on retry', async ({ page, browserName }) => {
+  const state = await setup(page, browserName);
   state.uploadStatus = 503;
   const manager = await openManager(page);
   const form = await openCreate(page, manager);
