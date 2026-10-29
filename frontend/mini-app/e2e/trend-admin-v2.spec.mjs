@@ -310,13 +310,48 @@ test.describe('workflow step video preview', () => {
         : fulfillStepVideo(route, fixture)
     ));
     const state = await setup(page, { touch: true });
+    // WebKit's inspector flattens multipart data without the File segments.
+    // Observe the actual File bytes at fetch entry, then forward the original
+    // arguments and promise unchanged; this does not replace upload behavior.
+    await page.evaluate(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.__stepPreviewFileReads = [];
+      window.fetch = (...args) => {
+        const [input, init] = args;
+        let path;
+        try {
+          path = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
+        } catch {
+          return originalFetch(...args);
+        }
+        if (path === '/api/v1/uploads/kie') {
+          const snapshot = init?.body instanceof FormData
+            ? Promise.all(Array.from(init.body.entries(), async ([field, value]) => (
+              value instanceof File ? {
+                field, name: value.name, type: value.type, size: value.size,
+                bytes: Array.from(new Uint8Array(await value.arrayBuffer())),
+              } : { field, value }
+            )))
+            : Promise.resolve({ error: 'Upload body is not FormData' });
+          window.__stepPreviewFileReads.push(snapshot.catch(error => ({ error: String(error) })));
+        }
+        return originalFetch(...args);
+      };
+    });
+    const expectedPhotoFile = {
+      field: 'file', name: 'step-1.png', type: 'image/png', size: stepPreviewPng.length,
+      bytes: Array.from(stepPreviewPng),
+    };
+    const expectedVideoFile = {
+      field: 'file', name: videoFile.name, type: fixture.contentType, size: fixture.body.length,
+      bytes: Array.from(fixture.body),
+    };
     const uploads = [];
     await page.route('**/api/v1/uploads/kie', route => {
       const request = route.request();
       expect(request.method()).toBe('POST');
       const body = request.postDataBuffer();
       const photo = body.includes(Buffer.from('filename="step-1.png"'));
-      expect(body.includes(photo ? stepPreviewPng : fixture.body)).toBe(true);
       expect(body.includes(Buffer.from(photo ? 'image/png' : fixture.contentType))).toBe(true);
       if (!photo) expect(body.includes(Buffer.from('filename="' + videoFile.name + '"'))).toBe(true);
       uploads.push(photo ? 'image' : 'video');
@@ -345,11 +380,13 @@ test.describe('workflow step video preview', () => {
     await (await chooser).setFiles(videoFile);
     await expect(form.getByRole('alert')).toContainText('изображение');
     expect(uploads).toEqual([]);
+    expect(await page.evaluate(() => window.__stepPreviewFileReads.length)).toBe(0);
     chooser = page.waitForEvent('filechooser');
     await photoInput.tap();
     await (await chooser).setFiles({ name: 'step-1.png', mimeType: 'image/png', buffer: stepPreviewPng });
     await expect(photoStep.locator('input[type=url]')).toHaveValue(photoUrl);
     await expect.poll(() => photoStep.locator('img').evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    expect(await page.evaluate(() => Promise.all(window.__stepPreviewFileReads))).toEqual([[expectedPhotoFile]]);
     await expect(videoInput).toBeEnabled();
     await expect(videoInput).toHaveAttribute('accept', /video\/\*/);
 
@@ -364,6 +401,7 @@ test.describe('workflow step video preview', () => {
     await expect.poll(() => preview.evaluate(node => ({
       loaded: node.readyState >= 1, width: node.videoWidth, height: node.videoHeight, error: node.error?.code || null,
     }))).toEqual({ loaded: true, width: 32, height: 96, error: null });
+    expect(await page.evaluate(() => Promise.all(window.__stepPreviewFileReads))).toEqual([[expectedPhotoFile], [expectedVideoFile]]);
     await expect(form.getByRole('alert')).toHaveCount(0);
     await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).tap();
     await expect.poll(() => state.writes.length).toBe(1);
