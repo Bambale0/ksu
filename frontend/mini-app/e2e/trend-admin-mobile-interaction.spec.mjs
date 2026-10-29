@@ -192,6 +192,26 @@ async function expectVideoMetadata(video) {
   }
 }
 
+async function expectVideoReset(video, isConnected, phase) {
+  // A no-source reset can retain currentSrc. Require the actual playback,
+  // network, buffer and metadata reset; keep currentSrc in failure diagnostics.
+  try {
+    await expect.poll(() => video.evaluate((element) => ({
+      src: element.getAttribute('src'), paused: element.paused,
+      readyState: element.readyState, networkState: element.networkState,
+      bufferedLength: element.buffered.length, videoWidth: element.videoWidth, videoHeight: element.videoHeight,
+      isConnected: element.isConnected,
+      error: element.error ? { code: element.error.code, message: element.error.message } : null,
+    }))).toEqual({
+      src: null, paused: true, readyState: 0, networkState: 0,
+      bufferedLength: 0, videoWidth: 0, videoHeight: 0, isConnected, error: null,
+    });
+  } catch (error) {
+    await reportMediaState(video, phase);
+    throw error;
+  }
+}
+
 test('a large video list stays usable by touch without activating far-offscreen media', async ({ page, browserName }) => {
   const state = await setup(page, browserName, { count: 300 });
   state.items = state.items.map((item) => ({ ...item, payload: { ...item.payload, description: '' } }));
@@ -221,14 +241,7 @@ test('a large video list stays usable by touch without activating far-offscreen 
   await expect.poll(() => state.mediaRequests.has(299)).toBe(true);
   await expectVideoMetadata(lastVideo);
   // Removing the attribute alone does not unload an already selected resource.
-  try {
-    await expect.poll(() => firstVideo.evaluate((element) => ({
-      currentSrc: element.currentSrc, paused: element.paused,
-    }))).toEqual({ currentSrc: '', paused: true });
-  } catch (error) {
-    await reportMediaState(firstVideo, 'offscreen-cleanup');
-    throw error;
-  }
+  await expectVideoReset(firstVideo, true, 'offscreen-cleanup');
   await expect.poll(async () => Math.abs((await firstCard.evaluate((element) => element.getBoundingClientRect().height)) - firstCardHeight)).toBeLessThan(1);
   await expect.poll(() => panel.evaluate((element) => element.scrollHeight)).toBe(scrollHeight);
   const preview = lastCard.locator('.inline-trend-admin-preview');
@@ -286,14 +299,7 @@ test('refreshing one card loads the changed video and closing releases its media
   try {
     await manager.getByRole('button', { name: 'Закрыть', exact: true }).tap();
     await expect(manager).toHaveCount(0);
-    try {
-      await expect.poll(() => retiredVideo.evaluate((element) => ({
-        connected: element.isConnected, currentSrc: element.currentSrc, paused: element.paused,
-      }))).toEqual({ connected: false, currentSrc: '', paused: true });
-    } catch (error) {
-      await reportMediaState(retiredVideo, 'unmount-cleanup');
-      throw error;
-    }
+    await expectVideoReset(retiredVideo, false, 'unmount-cleanup');
   } finally {
     await retiredVideo.dispose();
   }
