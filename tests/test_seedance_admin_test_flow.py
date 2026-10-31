@@ -259,6 +259,63 @@ async def test_neironych_media_upload_uses_ticket_then_direct_storage_put() -> N
 
 
 @pytest.mark.asyncio
+async def test_seedance_admin_upload_detects_webp_bytes_despite_wrong_jpeg_mime() -> None:
+    """Admin uploads share byte-based Seedance normalization before ticket creation."""
+    import io
+
+    from PIL import Image
+
+    source = io.BytesIO()
+    Image.new("RGB", (600, 800), (12, 34, 56)).save(source, format="WEBP")
+    original = source.getvalue()
+    uploaded: dict[str, bytes | str | int] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            ticket = json.loads(request.content)
+            uploaded.update(ticket)
+            assert ticket["model"] == "seedance-2.5"
+            assert ticket["type"] == "image"
+            assert ticket["content_type"] == "image/jpeg"
+            assert ticket["size_bytes"] != len(original)
+            return httpx.Response(
+                200,
+                json={
+                    "upload_url": "https://storage.example/presigned/normalized",
+                    "media_url": "https://cdn.example/reference/normalized.jpg",
+                },
+            )
+        uploaded["body"] = request.content
+        uploaded["put_content_type"] = request.headers["Content-Type"]
+        return httpx.Response(200)
+
+    transport = httpx.MockTransport(handler)
+    async with (
+        httpx.AsyncClient(transport=transport, base_url="https://provider.example") as client,
+        httpx.AsyncClient(transport=transport) as storage,
+    ):
+        media_url = await NeironychVideoClient(
+            "secret",
+            "https://provider.example",
+            client=client,
+            storage_client=storage,
+        ).upload_media(
+            model="seedance-2.5",
+            media_type="image",
+            content=original,
+            mime_type="image/jpeg",
+        )
+
+    assert media_url == "https://cdn.example/reference/normalized.jpg"
+    assert uploaded["put_content_type"] == "image/jpeg"
+    normalized = io.BytesIO(uploaded["body"])
+    with Image.open(normalized) as image:
+        assert image.format == "JPEG"
+        assert image.size == (600, 800)
+        image.verify()
+
+
+@pytest.mark.asyncio
 async def test_seedance_client_rejects_unsupported_model_and_short_idempotency_key() -> None:
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(500)),

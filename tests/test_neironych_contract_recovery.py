@@ -17,6 +17,7 @@ from app.providers.neironych_submission import SNAPSHOT_KEY
 from app.services.generation_provider import GenerationProviderService
 from app.services.generation_worker import GenerationWorkerService
 from app.services.neironych_generation_provider import NeironychGenerationProviderService as Service
+from app.services.neironych_reference_validation import ReferenceValidationUnavailable
 from app.services.seedance_admin_tasks import SeedanceAdminTaskService
 from app.services.wallet import WalletService
 
@@ -122,6 +123,55 @@ async def test_paid_video_snapshot_is_committed_before_post_and_survives_normali
         ).all()
         assert [t.kind for t in transactions] == ["generation"]
     assert seen[0] == seen[1]
+
+
+@pytest.mark.asyncio
+async def test_transient_reference_normalization_retry_never_debits_twice(monkeypatch):
+    """A pre-submit download/storage retry reuses the already charged generation."""
+    from unittest.mock import AsyncMock
+
+    gid = await generation()
+    normalize = AsyncMock(
+        side_effect=[ReferenceValidationUnavailable("temporary reference timeout"), None]
+    )
+    monkeypatch.setattr(
+        "app.services.neironych_generation_provider.normalize_seedance_image_references",
+        normalize,
+    )
+
+    class Client:
+        def __init__(self, *args):
+            pass
+
+        async def aclose(self):
+            pass
+
+        async def create_video(self, **_kwargs):
+            return "normalization-retry-task"
+
+    monkeypatch.setattr("app.services.neironych_generation_provider.NeironychVideoClient", Client)
+    async with SessionFactory() as session:
+        with pytest.raises(ReferenceValidationUnavailable, match="temporary"):
+            await Service.submit(session, gid)
+    async with SessionFactory() as session:
+        row = await session.get(Generation, gid)
+        assert row.status == "queued" and row.external_id is None
+        transactions = (
+            await session.scalars(
+                select(WalletTransaction).where(WalletTransaction.reference_id == str(gid))
+            )
+        ).all()
+        assert len(transactions) == 1 and transactions[0].amount == Decimal("-10")
+
+    async with SessionFactory() as session:
+        row = await Service.submit(session, gid)
+        assert row.status == "generating" and row.external_id == "normalization-retry-task"
+        transactions = (
+            await session.scalars(
+                select(WalletTransaction).where(WalletTransaction.reference_id == str(gid))
+            )
+        ).all()
+        assert len(transactions) == 1 and transactions[0].amount == Decimal("-10")
 
 
 @pytest.mark.asyncio

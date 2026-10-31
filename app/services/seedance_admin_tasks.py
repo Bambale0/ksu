@@ -18,7 +18,10 @@ from app.core.config import settings
 from app.providers.neironych_errors import error_disposition
 from app.providers.neironych_submission import SNAPSHOT_KEY, freeze_submission, saved_body
 from app.services.neironych_video_contracts import normalize_neironych_video_input
-from app.services.neironych_reference_validation import validate_reference_payload
+from app.services.neironych_reference_validation import (
+    normalize_seedance_image_references,
+    validate_reference_payload,
+)
 from app.db.seedance_test_models import SeedanceAdminTask
 from app.db.session import SessionFactory
 from app.providers.neironych_video import (
@@ -161,7 +164,14 @@ class SeedanceAdminTaskService:
                             status_code=404, error_code="model_not_available")
                     raw = {k: v for k, v in payload.items() if not k.startswith("_")}
                     normalized = normalize_neironych_video_input(provider_model, raw)
-                    await validate_reference_payload(model_name, normalized)
+                    validated_images = await normalize_seedance_image_references(
+                        model_name, normalized
+                    )
+                    await validate_reference_payload(
+                        model_name,
+                        normalized,
+                        validated_image_urls=validated_images,
+                    )
                     snapshot = freeze_submission(model=provider_model, payload=normalized,
                         key=key, base_url=settings.neironych_api_base_url)
                     task.request_payload = {**payload, SNAPSHOT_KEY: snapshot}
