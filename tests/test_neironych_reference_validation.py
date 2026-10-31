@@ -605,6 +605,28 @@ async def test_atomic_storage_failure_is_retryable_and_leaves_no_partial_file(
     assert list(normalized.iterdir()) == []
 
 
+@pytest.mark.asyncio
+async def test_transcode_write_failure_is_retryable_not_invalid_input(tmp_path, monkeypatch):
+    from app.services.reference_static import ReferenceStaticStorage
+
+    root = tmp_path / "refs"
+    root.mkdir()
+    monkeypatch.setenv("REFERENCE_STATIC_ROOT", str(root))
+    monkeypatch.setattr(settings, "public_base_url", "https://ksu.example")
+    path = root / "write-failure.webp"
+    Image.new("RGB", (600, 800), (1, 4, 7)).save(path, format="WEBP")
+    payload = {"reference_images": [{"url": ReferenceStaticStorage.public_url(path.name)}]}
+
+    def fail_save(*_args, **_kwargs):
+        raise OSError("synthetic full temporary filesystem")
+
+    monkeypatch.setattr("app.services.neironych_reference_validation.Image.Image.save", fail_save)
+    with pytest.raises(ReferenceValidationUnavailable, match="unavailable"):
+        await normalize_seedance_image_references("seedance-2.5", payload)
+
+    assert list((root / "normalized").iterdir()) == []
+
+
 @pytest.mark.parametrize("action_type", ["generate", "trend", "repeat"])
 @pytest.mark.asyncio
 async def test_customer_generation_trend_and_repeat_share_snapshot_normalization(

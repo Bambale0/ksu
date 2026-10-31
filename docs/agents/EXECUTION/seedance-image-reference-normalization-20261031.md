@@ -126,3 +126,6 @@
 - Local focused verification: 60 tests passed; Ruff, compileall, dependency constraint install and
   `pip check` passed. The PostgreSQL debit/idempotency regression is collected locally and awaits
   the repository CI PostgreSQL service; the local machine has no Docker/PostgreSQL test service.
+- PR review found that an output `save()` OSError was initially grouped with source decode errors.
+  A RED regression now proves full/read-only temporary storage remains retryable rather than
+  terminal invalid input; decode errors remain validation failures. Focused count is now 61.

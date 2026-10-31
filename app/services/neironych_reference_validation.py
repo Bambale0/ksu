@@ -185,19 +185,24 @@ def _transcode_image(source_path: Path, target: Any, *, output_format: str) -> N
                 if output_format == "PNG"
                 else normalized.convert("RGB")
             )
-        try:
-            save_options = (
-                {"format": "PNG", "optimize": True}
-                if output_format == "PNG"
-                else {"format": "JPEG", "quality": 92, "optimize": True}
-            )
-            converted.save(target, **save_options)
-        finally:
-            converted.close()
     except ReferenceValidationError:
         raise
     except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
         raise ReferenceValidationError("Seedance image reference is not a valid image") from exc
+    try:
+        save_options = (
+            {"format": "PNG", "optimize": True}
+            if output_format == "PNG"
+            else {"format": "JPEG", "quality": 92, "optimize": True}
+        )
+        try:
+            converted.save(target, **save_options)
+        except OSError as exc:
+            raise ReferenceValidationUnavailable(
+                "Seedance image normalization output is unavailable"
+            ) from exc
+    finally:
+        converted.close()
 
 
 def normalize_seedance_image_upload(model: str, content: bytes) -> tuple[bytes, str]:
