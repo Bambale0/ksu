@@ -1157,3 +1157,16 @@ The sole fd694ca5 CI failure was an early synchronous quote-count observation in
 - Add optional safe `preview_url` metadata to each step of a two-step photo-to-video recipe. Admin uploads Step 1 and Step 2 images separately; the customer overview prefers the corresponding image and retains the existing workflow-cover fallback for old content.
 - No schema migration, provider request, pricing, wallet, permission or step-execution change. No paid generation or production mutation.
 - Acceptance, TDD evidence and rollback: [docs/agents/EXECUTION/trend-step-previews-20261028.md](docs/agents/EXECUTION/trend-step-previews-20261028.md).
+## Active Fix Execution — Seedance image-reference normalization (2026-10-31)
+
+- Baseline and production are `e52109718e2ae9624fbf7de951e621f7b128cafa`. Two failed
+  Seedance 2.5 jobs were reproduced from read-only evidence: `523f…` contains valid WebP;
+  `86ea…` contains HEIC plus valid JPEG. Both failed locally before provider POST and already
+  have one debit plus one automatic refund.
+- Implement one byte-verified, bounded, EXIF-aware JPEG/PNG transport normalizer shared by the
+  ordinary/trend/repeat Neironych snapshot boundary and the admin Seedance upload boundary.
+  Preserve original URLs/bytes, order, routes, prices, permissions, wallet history and immutable
+  retry semantics. No schema or provider endpoint change.
+- Detailed audit, TDD plan, verification matrix, rollout/rollback and production replay boundary:
+  [docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md](docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md).
+
