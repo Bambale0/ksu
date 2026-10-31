@@ -10,12 +10,16 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 
 from app.core.config import settings
 from app.services.feed_static import FeedStaticStorage
 from app.services.media_assets import MediaIngestService
 from app.services.media_probe import probe_media_stream
 from app.services.reference_static import ReferenceStaticStorage
+
+
+register_heif_opener(thumbnails=False)
 
 
 class ReferenceValidationError(ValueError):
@@ -46,16 +50,16 @@ def _check_image_dimensions(model: str, width: int, height: int) -> None:
         )
 
 
-def _check_mpo_frame_dimensions(model: str, width: int, height: int) -> None:
-    """Reject oversized frames before Pillow allocates an RGB buffer.
+def _check_normalization_dimensions(model: str, width: int, height: int) -> None:
+    """Reject oversized images before Pillow allocates a decoded buffer.
 
     Seedance 2.5 uses its exact provider contract. For Seedance 2.0, cap
-    conversion at that same bounded size: MPO was previously unsupported.
+    conversion at that same bounded size: these formats were previously unsupported.
     """
     _check_image_dimensions(model, width, height)
     if not (0 < width <= 6000 and 0 < height <= 6000):
         raise ReferenceValidationError(
-            "Seedance MPO exceeds safe normalization dimensions (6000 px per side)"
+            "Seedance image exceeds safe normalization dimensions (6000 px per side)"
         )
 
 
@@ -130,10 +134,108 @@ def inspect_upload(model: str, kind: str, content: bytes, mime: str) -> None:
     }.get(mime)
     if suffix is None:
         raise ReferenceValidationError("Unsupported Seedance reference MIME type")
-    with tempfile.NamedTemporaryFile(suffix=suffix) as temporary:
+    temporary = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    path = Path(temporary.name)
+    try:
         temporary.write(content)
         temporary.flush()
-        inspect_file(model, kind, Path(temporary.name))
+        temporary.close()
+        inspect_file(model, kind, path)
+    finally:
+        temporary.close()
+        path.unlink(missing_ok=True)
+
+
+def _image_conversion_format(model: str, path: Path) -> str | None:
+    """Return the needed wire format, or None for valid JPEG/PNG bytes."""
+    size = path.stat().st_size
+    if not 0 < size <= byte_limit(model, "image"):
+        raise ReferenceValidationError(
+            "Seedance image reference exceeds file size limit or is empty"
+        )
+    try:
+        with Image.open(path) as source:
+            source_format = source.format
+            if source_format in {"JPEG", "PNG"}:
+                _check_image_dimensions(model, *source.size)
+                source.verify()
+                return None
+            _check_normalization_dimensions(model, *source.size)
+            return (
+                "PNG"
+                if source.mode in {"RGBA", "LA"}
+                or (source.mode == "P" and "transparency" in source.info)
+                else "JPEG"
+            )
+    except ReferenceValidationError:
+        raise
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ReferenceValidationError("Seedance image reference is not a valid image") from exc
+
+
+def _transcode_image(source_path: Path, target: Any, *, output_format: str) -> None:
+    """Decode one image, apply its orientation, and emit one supported wire image."""
+    try:
+        with Image.open(source_path) as source:
+            if source.format == "MPO":
+                source.seek(0)
+            normalized = ImageOps.exif_transpose(source)
+            converted = (
+                normalized.convert("RGBA")
+                if output_format == "PNG"
+                else normalized.convert("RGB")
+            )
+        try:
+            save_options = (
+                {"format": "PNG", "optimize": True}
+                if output_format == "PNG"
+                else {"format": "JPEG", "quality": 92, "optimize": True}
+            )
+            converted.save(target, **save_options)
+        finally:
+            converted.close()
+    except ReferenceValidationError:
+        raise
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ReferenceValidationError("Seedance image reference is not a valid image") from exc
+
+
+def normalize_seedance_image_upload(model: str, content: bytes) -> tuple[bytes, str]:
+    """Normalize admin-upload bytes and return their actual supported MIME."""
+    if not 0 < len(content) <= byte_limit(model, "image"):
+        raise ReferenceValidationError(
+            "Seedance image reference exceeds file size limit or is empty"
+        )
+    source = tempfile.NamedTemporaryFile(prefix=".roxy-upload-source-", delete=False)
+    source_path = Path(source.name)
+    target_path: Path | None = None
+    try:
+        source.write(content)
+        source.flush()
+        source.close()
+        output_format = _image_conversion_format(model, source_path)
+        if output_format is None:
+            with Image.open(source_path) as image:
+                mime = "image/png" if image.format == "PNG" else "image/jpeg"
+            return content, mime
+        suffix = ".png" if output_format == "PNG" else ".jpg"
+        target = tempfile.NamedTemporaryFile(
+            prefix=".roxy-upload-normalized-", suffix=suffix, delete=False
+        )
+        target_path = Path(target.name)
+        try:
+            _transcode_image(source_path, target, output_format=output_format)
+            target.flush()
+            os.fsync(target.fileno())
+        finally:
+            target.close()
+        inspect_file(model, "image", target_path)
+        return target_path.read_bytes(), f"image/{output_format.lower()}"
+    finally:
+        source.close()
+        source_path.unlink(missing_ok=True)
+        if target_path is not None:
+            target_path.unlink(missing_ok=True)
 
 
 def owned_path(url: str) -> Path | None:
@@ -152,10 +254,14 @@ def owned_path(url: str) -> Path | None:
     return None
 
 
-async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: str) -> float:
-    path = owned_path(url)
-    if path is not None:
-        return await asyncio.to_thread(inspect_file, model, kind, path)
+async def _download_url_to_path(
+    client: httpx.AsyncClient,
+    model: str,
+    kind: str,
+    url: str,
+    path: Path,
+) -> None:
+    """Stream one untrusted public reference into a bounded temporary file."""
     current = url
     # No provider/Telegram key is sent to reference hosts. Reuse the existing
     # public HTTPS/SSRF guard at every redirect; preserve signed query bytes.
@@ -173,8 +279,7 @@ async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: st
             limit = byte_limit(model, kind)
             if raw_size.isdecimal() and int(raw_size) > limit:
                 raise ReferenceValidationError("Seedance reference is too large")
-            suffix = {"image": ".jpg", "video": ".mp4", "audio": ".mp3"}[kind]
-            with tempfile.NamedTemporaryFile(suffix=suffix) as temporary:
+            with path.open("wb") as temporary:
                 size = 0
                 async for chunk in response.aiter_bytes(64 * 1024):
                     size += len(chunk)
@@ -182,31 +287,42 @@ async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: st
                         raise ReferenceValidationError("Seedance reference is too large")
                     temporary.write(chunk)
                 temporary.flush()
-                return await asyncio.to_thread(inspect_file, model, kind, Path(temporary.name))
+                os.fsync(temporary.fileno())
+            return
     raise ReferenceValidationError("Too many Seedance reference redirects")
 
 
-def _normalize_owned_mpo_image(model: str, url: str) -> str:
-    """Make an immutable first-frame JPEG transport copy of a stored MPO.
+async def _inspect_url(client: httpx.AsyncClient, model: str, kind: str, url: str) -> float:
+    path = owned_path(url)
+    if path is not None:
+        return await asyncio.to_thread(inspect_file, model, kind, path)
+    suffix = {"image": ".image", "video": ".video", "audio": ".audio"}[kind]
+    temporary = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    temp_path = Path(temporary.name)
+    temporary.close()
+    try:
+        await _download_url_to_path(client, model, kind, url, temp_path)
+        return await asyncio.to_thread(inspect_file, model, kind, temp_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _normalize_image_path(model: str, path: Path, original_url: str) -> str:
+    """Make an immutable JPEG/PNG transport copy of an image when needed.
 
     The user's original reference URL/bytes stay untouched for trends, repeats
     and any other provider. Only the frozen Neironych request uses the copy.
     """
-    path = owned_path(url)
-    if path is None:
-        return url
     size = path.stat().st_size
     if not 0 < size <= byte_limit(model, "image"):
         raise ReferenceValidationError(
             "Seedance image reference exceeds file size limit or is empty"
         )
     try:
-        # Pillow detects MPO via MPF metadata, not extension/MIME. This first
-        # open is lazy and avoids decoding a large frame on every repeat.
-        with Image.open(path) as source:
-            if source.format != "MPO":
-                return url
-            _check_mpo_frame_dimensions(model, *source.size)
+        # Pillow detects the real container from bytes, not extension/MIME.
+        output_format = _image_conversion_format(model, path)
+        if output_format is None:
+            return original_url
 
         digest = hashlib.sha256()
         with path.open("rb") as stream:
@@ -214,37 +330,31 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
                 digest.update(chunk)
         directory = ReferenceStaticStorage.ensure_root() / "normalized"
         directory.mkdir(parents=True, exist_ok=True)
-        filename = f"{digest.hexdigest()}-mpo.jpg"
+        suffix = ".png" if output_format == "PNG" else ".jpg"
+        filename = f"{digest.hexdigest()}-seedance-v1{suffix}"
         target = directory / filename
         normalized_url = ReferenceStaticStorage.public_url(f"normalized/{filename}")
         if target.is_file():
             inspect_file(model, "image", target)
             return normalized_url
 
-        # Only cache misses decode/transcode the frame. Never change source.
-        with Image.open(path) as source:
-            if source.format != "MPO":
-                raise ReferenceValidationError("Seedance reference changed during normalization")
-            _check_mpo_frame_dimensions(model, *source.size)
-            source.seek(0)
-            first_frame = ImageOps.exif_transpose(source).convert("RGB")
+        # Only cache misses decode/transcode the image. Never change source.
+        # Atomic replacement avoids partial reads by the provider/static app.
+        temporary = tempfile.NamedTemporaryFile(
+            prefix=".roxy-image-", suffix=suffix, dir=directory, delete=False
+        )
+        temp_path = Path(temporary.name)
         try:
-            # Atomic replacement avoids partial reads by the provider/static app.
-            with tempfile.NamedTemporaryFile(
-                prefix=".roxy-mpo-", suffix=".jpg", dir=directory, delete=False
-            ) as temporary:
-                temp_path = Path(temporary.name)
-                try:
-                    first_frame.save(temporary, format="JPEG", quality=92, optimize=True)
-                    temporary.flush()
-                    os.fsync(temporary.fileno())
-                    inspect_file(model, "image", temp_path)
-                    os.replace(temp_path, target)
-                    os.chmod(target, 0o644)
-                finally:
-                    temp_path.unlink(missing_ok=True)
+            _transcode_image(path, temporary, output_format=output_format)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary.close()
+            inspect_file(model, "image", temp_path)
+            os.replace(temp_path, target)
+            os.chmod(target, 0o644)
         finally:
-            first_frame.close()
+            temporary.close()
+            temp_path.unlink(missing_ok=True)
         return normalized_url
     except ReferenceValidationError:
         raise
@@ -254,30 +364,61 @@ def _normalize_owned_mpo_image(model: str, url: str) -> str:
         ) from exc
     except OSError as exc:
         raise ReferenceValidationUnavailable(
-            "Seedance stored image normalization is unavailable"
+            "Seedance image normalization is unavailable"
         ) from exc
 
-async def normalize_seedance_mpo_references(model: str, payload: dict[str, Any]) -> None:
-    """Normalize legacy product-owned MPOs before validation and snapshot freeze."""
+
+async def _normalize_image_url(
+    client: httpx.AsyncClient, model: str, url: str
+) -> str:
+    path = owned_path(url)
+    if path is not None:
+        return await asyncio.to_thread(_normalize_image_path, model, path, url)
+    temporary = tempfile.NamedTemporaryFile(suffix=".image", delete=False)
+    temp_path = Path(temporary.name)
+    temporary.close()
+    try:
+        await _download_url_to_path(client, model, "image", url, temp_path)
+        return await asyncio.to_thread(_normalize_image_path, model, temp_path, url)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+async def normalize_seedance_image_references(model: str, payload: dict[str, Any]) -> set[str]:
+    """Normalize unsupported images before validation and snapshot freeze."""
     images = list(payload.get("reference_images", []))
     images.extend(
         payload[key] for key in ("start_image", "end_image") if payload.get(key)
     )
     if not images:
-        return
+        return set()
+    validated: set[str] = set()
     try:
         async with asyncio.timeout(settings.neironych_reference_validation_timeout_seconds):
-            for image in images:
-                image["url"] = await asyncio.to_thread(
-                    _normalize_owned_mpo_image, model, image["url"]
-                )
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(20, connect=10),
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                for image in images:
+                    image["url"] = await _normalize_image_url(client, model, image["url"])
+                    validated.add(image["url"])
     except TimeoutError as exc:
         raise ReferenceValidationUnavailable(
-            "Seedance stored image normalization timed out"
+            "Seedance image normalization timed out"
         ) from exc
+    except (httpx.HTTPError, OSError) as exc:
+        raise ReferenceValidationUnavailable(
+            f"Seedance image normalization unavailable ({type(exc).__name__})"
+        ) from None
+    return validated
 
 
-async def validate_reference_payload(model: str, payload: dict[str, Any]) -> None:
+async def validate_reference_payload(
+    model: str,
+    payload: dict[str, Any],
+    *,
+    validated_image_urls: set[str] | None = None,
+) -> None:
     entries: list[tuple[str, str]] = []
     for kind in ("image", "video", "audio"):
         entries.extend((kind, item["url"]) for item in payload.get(f"reference_{kind}s", []))
@@ -289,6 +430,7 @@ async def validate_reference_payload(model: str, payload: dict[str, Any]) -> Non
     if not entries:
         return
     total = {"video": 0.0, "audio": 0.0}
+    validated_images = validated_image_urls or set()
     try:
         async with asyncio.timeout(settings.neironych_reference_validation_timeout_seconds):
             async with httpx.AsyncClient(
@@ -296,6 +438,8 @@ async def validate_reference_payload(model: str, payload: dict[str, Any]) -> Non
             ) as client:
                 first_video = True
                 for kind, url in entries:
+                    if kind == "image" and url in validated_images:
+                        continue
                     duration = await _inspect_url(client, model, kind, url)
                     if kind in total:
                         total[kind] += duration

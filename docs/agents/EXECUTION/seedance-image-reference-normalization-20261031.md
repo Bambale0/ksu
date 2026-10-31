@@ -112,5 +112,17 @@
 
 ## Progress
 
-- Audit and production reproduction complete. No project code, provider request, wallet write or
-  customer notification has occurred yet.
+- Audit and production reproduction complete. No provider request, wallet write or customer
+  notification has occurred yet.
+- RED evidence captured independently for the production WebP class, production HEIC+JPEG class,
+  wrongly declared admin-upload MIME and transient external download failure.
+- GREEN implementation now uses one byte-detected normalizer for owned and external references,
+  bounded SSRF-checked streaming, content-addressed atomic transport storage, HEIF decoding,
+  EXIF transpose, alpha-safe PNG output and JPEG output otherwise. Already validated image URLs
+  are not downloaded a second time during aggregate validation.
+- Ordinary generation, trend, repeat, direct admin upload and durable admin submit seams are
+  covered. Corrupt JPEG, valid mislabeled JPEG/PNG, dimension/byte contracts, timeout, storage
+  cleanup and original-parameter preservation are covered.
+- Local focused verification: 60 tests passed; Ruff, compileall, dependency constraint install and
+  `pip check` passed. The PostgreSQL debit/idempotency regression is collected locally and awaits
+  the repository CI PostgreSQL service; the local machine has no Docker/PostgreSQL test service.

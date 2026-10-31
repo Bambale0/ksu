@@ -42,7 +42,7 @@ from app.services.neironych_video_contracts import (
 from app.services.reference_static import ReferenceStaticStorage
 from app.services.neironych_reference_validation import (
     ReferenceValidationError,
-    normalize_seedance_mpo_references,
+    normalize_seedance_image_references,
     validate_reference_payload,
 )
 
@@ -334,8 +334,10 @@ class NeironychGenerationProviderService:
                     raw["image"] = {"url": images[0]}
             payload = normalize_neironych_video_input(model, raw)
             if model_id in _SEEDANCE_MODELS:
-                await normalize_seedance_mpo_references(model, payload)
-                await validate_reference_payload(model, payload)
+                validated_images = await normalize_seedance_image_references(model, payload)
+                await validate_reference_payload(
+                    model, payload, validated_image_urls=validated_images
+                )
         else:
             refs_raw = raw.get("image_input") or raw.get("image_urls") or raw.get("input_urls") or []
             refs_raw = refs_raw if isinstance(refs_raw, (list, tuple)) else [refs_raw]
