@@ -51,6 +51,7 @@ opentelemetry-semantic-conventions==0.65b0
 opentelemetry-util-http==0.65b0
 packaging==26.3
 pillow==12.3.0
+pillow-heif==1.8.1
 prometheus-client==0.26.0
 propcache==0.5.2
 protobuf==7.36.0

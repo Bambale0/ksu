@@ -9,6 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.feed_models import FeedRemixEvent
 from app.db.models import Generation
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    is_auto_aspect_ratio,
+    requires_explicit_aspect_ratio,
+    sanitize_aspect_ratio_parameters,
+    validate_generation_aspect_ratio,
+)
 from app.services.billing_access import BillingAccessService
 from app.services.feed import FeedError, FeedService
 from app.services.generations import GenerationService
@@ -74,14 +81,31 @@ class FeedRemixService:
     def _reusable_parameters(source: Generation, effective_model_id: str) -> dict[str, Any]:
         spec = ModelCatalog.get(effective_model_id)
         allowed = set(spec.known_fields)
-        return {
+        return sanitize_aspect_ratio_parameters({
             key: value
             for key, value in dict(source.parameters or {}).items()
             if not key.startswith("_")
             and key != "prompt"
             and key in allowed
             and key not in REFERENCE_FIELDS
-        }
+        })
+
+    @staticmethod
+    def _aspect_ratio_options(model_id: str, *, has_image_references: bool) -> list[str]:
+        # Kling frame mode derives the output frame from the image and requires
+        # aspect_ratio to be omitted. Text-to-video keeps its explicit choices.
+        if model_id == "kling-3.0" and has_image_references:
+            return []
+        return explicit_aspect_ratio_options(model_id)
+
+    @staticmethod
+    def _requires_aspect_ratio(
+        source: Generation, model_id: str, *, options: list[str],
+    ) -> bool:
+        return bool(options) and (
+            requires_explicit_aspect_ratio(model_id)
+            or is_auto_aspect_ratio((source.parameters or {}).get("aspect_ratio"))
+        )
 
     @classmethod
     def _reference_requirements(
@@ -165,6 +189,10 @@ class FeedRemixService:
                     identity_count=int(requirements["image_count"]),
                     max_chars=prompt_max_chars(effective_model_id),
                 )
+        settings = cls._reusable_parameters(source, effective_model_id)
+        ratio_options = cls._aspect_ratio_options(
+            effective_model_id, has_image_references=bool(source_context.reference_images),
+        )
         return {
             "source_generation_id": str(source.id),
             "source_feed_gen_id": str(cls._root_source_id(source)),
@@ -176,7 +204,14 @@ class FeedRemixService:
             "prompt": "" if prompt_hidden else source_prompt,
             "prompt_hidden": prompt_hidden,
             "prompt_editable": not prompt_hidden,
-            "settings": cls._reusable_parameters(source, effective_model_id),
+            "settings": settings,
+            "aspect_ratio_options": ratio_options,
+            "aspect_ratio_required": cls._requires_aspect_ratio(
+                source, effective_model_id, options=ratio_options,
+            ),
+            "default_aspect_ratio": (
+                settings.get("aspect_ratio") if settings.get("aspect_ratio") in ratio_options else None
+            ),
             "billing_seconds": (source.parameters or {}).get("_billing_seconds"),
             "reference_requirements": requirements,
             "source_has_video_reference": source_has_video_reference,
@@ -292,6 +327,7 @@ class FeedRemixService:
         prompt_override: str | None,
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
+        aspect_ratio: str | None = None,
     ) -> tuple[Generation, str, str, dict[str, Any], int | None]:
         if not confirm_own_references:
             raise FeedRemixReferenceError("Confirm your own references before repeating")
@@ -323,6 +359,19 @@ class FeedRemixService:
                 source_audio_count=len(source_context.reference_audios),
             )
         base = cls._reusable_parameters(source, effective_model_id)
+        ratio_options = cls._aspect_ratio_options(
+            effective_model_id, has_image_references=bool(references.get("image")),
+        )
+        if aspect_ratio is not None:
+            if aspect_ratio not in ratio_options:
+                raise FeedRemixReferenceError("Выберите доступный формат для этого режима повтора")
+            base["aspect_ratio"] = aspect_ratio
+        selected_ratio = base.get("aspect_ratio")
+        if cls._requires_aspect_ratio(source, effective_model_id, options=ratio_options) and (
+            not isinstance(selected_ratio, str) or not selected_ratio.strip()
+        ):
+            raise FeedRemixReferenceError("Выберите формат изображения или видео для повтора")
+        validate_generation_aspect_ratio(effective_model_id, base)
         if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
             parameters, author_videos = cls._seedance_replay_parameters(
                 base,
@@ -352,6 +401,7 @@ class FeedRemixService:
         prompt_override: str | None,
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
+        aspect_ratio: str | None = None,
     ) -> dict[str, Any]:
         _source, model_id, prompt, parameters, billing_seconds = await cls._composition(
             session,
@@ -361,6 +411,7 @@ class FeedRemixService:
             prompt_override=prompt_override,
             reference_ids=reference_ids,
             confirm_own_references=confirm_own_references,
+            aspect_ratio=aspect_ratio,
         )
         spec, _clean, retail_cost, seconds, unit_price = await GenerationService.prepare_request(
             session,
@@ -396,6 +447,7 @@ class FeedRemixService:
         prompt_override: str | None,
         reference_ids: list[uuid.UUID],
         confirm_own_references: bool,
+        aspect_ratio: str | None = None,
     ) -> Generation:
         source, model_id, prompt, parameters, billing_seconds = await cls._composition(
             session,
@@ -405,6 +457,7 @@ class FeedRemixService:
             prompt_override=prompt_override,
             reference_ids=reference_ids,
             confirm_own_references=confirm_own_references,
+            aspect_ratio=aspect_ratio,
         )
         root_source_id = cls._root_source_id(source)
         generation = await GenerationService.create(

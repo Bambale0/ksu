@@ -142,7 +142,8 @@ def test_generation_ui_is_backend_schema_driven() -> None:
     assert '"/api/v1/generations/quote"' in api
     assert '"/api/v1/generations"' in api
     assert '"/api/v1/uploads/kie"' in api
-    assert "model.ui_schema?.fields" in app
+    assert "normalizeAspectRatioFields(model.ui_schema)" in app
+    assert "schema?.fields || []" in _read(FRONTEND / "lib" / "aspect-ratio.ts")
     assert "visibleFields(selected, draft)" in app
     assert "ui_schema?: UiSchema" in types
     assert "localStorage.setItem(MODEL_KEY" in app

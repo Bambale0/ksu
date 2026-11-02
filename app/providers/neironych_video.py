@@ -166,14 +166,23 @@ class NeironychVideoClient:
             "video": "video/",
             "audio": "audio/",
         }[kind]
-        if not content_type.startswith(expected_prefix):
+        if kind != "image" and not content_type.startswith(expected_prefix):
             raise NeironychProviderError(
                 f"Media content type {content_type!r} does not match type {kind!r}"
             )
 
-        from app.services.neironych_reference_validation import inspect_upload, ReferenceValidationError
+        from app.services.neironych_reference_validation import (
+            ReferenceValidationError,
+            inspect_upload,
+            normalize_seedance_image_upload,
+        )
         try:
-            await asyncio.to_thread(inspect_upload, model, kind, content, content_type)
+            if kind == "image":
+                content, content_type = await asyncio.to_thread(
+                    normalize_seedance_image_upload, model, content
+                )
+            else:
+                await asyncio.to_thread(inspect_upload, model, kind, content, content_type)
         except ReferenceValidationError as exc:
             raise NeironychProviderError(str(exc), status_code=422, local_validation=True) from exc
 

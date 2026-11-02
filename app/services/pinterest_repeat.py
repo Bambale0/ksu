@@ -10,6 +10,11 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from app.services.aspect_ratio_policy import (
+    explicit_aspect_ratio_options,
+    validate_generation_aspect_ratio,
+)
+
 
 class PinterestRepeatError(ValueError):
     pass
@@ -65,6 +70,15 @@ class PinterestRepeatService:
         "image/gif",
         "image/avif",
     }
+
+    @classmethod
+    def options(cls) -> dict[str, Any]:
+        return {
+            "model_id": cls.MODEL_ID,
+            "aspect_ratio_options": explicit_aspect_ratio_options(cls.MODEL_ID),
+            "aspect_ratio_required": True,
+            "default_aspect_ratio": None,
+        }
 
     @staticmethod
     def _clean_url(value: str, *, label: str) -> str:
@@ -365,6 +379,7 @@ class PinterestRepeatService:
         weight_kg: int,
         confirmed: bool,
         expression: str | None = None,
+        aspect_ratio: str | None = None,
     ) -> PinterestRepeatGenerationRequest:
         scene = cls._clean_url(scene_reference_url, label="Референс")
         identities = [
@@ -392,6 +407,12 @@ class PinterestRepeatService:
             raise PinterestRepeatError(
                 f"Описание выражения лица — до {cls.MAX_EXPRESSION_LENGTH} символов"
             )
+        if not isinstance(aspect_ratio, str) or not aspect_ratio.strip():
+            raise PinterestRepeatError("Выберите формат изображения")
+        try:
+            validate_generation_aspect_ratio(cls.MODEL_ID, {"aspect_ratio": aspect_ratio})
+        except ValueError as exc:
+            raise PinterestRepeatError(str(exc)) from exc
         expression_instruction = (
             f"Expression override: {expression_text}. Use this expression instead of the scene "
             "reference expression."
@@ -411,7 +432,7 @@ IDENTITY LOCK:
 The final person must clearly be the same person shown in PERSON_IDENTITY and must not become a blend with the person from SCENE_REFERENCE. Do not beautify into a different face. Keep age and recognisable facial traits stable.
 
 SCENE LOCK:
-Match IMAGE 1 closely: reproduce the same pose, limb placement, head direction, body rotation, subject scale, subject position, camera height, crop, background geometry, lighting and visual mood. Preserve the original aspect ratio/framing rather than inventing a new composition.
+Match IMAGE 1 closely: reproduce the same pose, limb placement, head direction, body rotation, subject scale, subject position, camera height, crop, background geometry, lighting and visual mood. Preserve the scene framing and composition within the explicitly selected output aspect ratio {aspect_ratio}.
 
 BODY PROPORTIONS:
 The user is approximately {height_cm} cm tall and {weight_kg} kg. Treat these numbers as soft proportion constraints and prioritise the natural build visible in PERSON_IDENTITY. Do not make the body unnaturally slimmer, larger, taller or shorter.
@@ -426,7 +447,7 @@ Photorealistic, anatomically correct hands and limbs, coherent clothing, no dupl
             prompt=prompt,
             parameters={
                 "image_input": [scene, *identities],
-                "aspect_ratio": "auto",
+                "aspect_ratio": aspect_ratio,
                 "resolution": "2K",
                 "output_format": "png",
             },

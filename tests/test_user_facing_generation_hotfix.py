@@ -91,7 +91,7 @@ async def test_nano_banana_2_keeps_all_selected_references_in_provider_payload()
             prompt="Use both references",
             parameters={
                 "image_input": references,
-                "aspect_ratio": "auto",
+                "aspect_ratio": "9:16",
                 "resolution": "1K",
                 "output_format": "png",
             },
@@ -107,6 +107,7 @@ async def test_nano_banana_2_keeps_all_selected_references_in_provider_payload()
             )
         )
         assert provider_input["image_input"] == references
+        assert provider_input["aspect_ratio"] == "9:16"
 
 
 def test_generation_price_and_publication_frontend_contracts() -> None:

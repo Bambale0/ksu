@@ -184,6 +184,28 @@ async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
     await expect(prompt_input).to_be_visible(timeout=7000)
     await prompt_input.fill(prompt)
 
+    selected_ratio: str | None = None
+    ratio_fields = page.locator("#dynamicForm .field, .create-screen .field").filter(
+        has_text=re.compile(r"Соотношение сторон")
+    )
+    for index in range(await ratio_fields.count()):
+        field = ratio_fields.nth(index)
+        selector = field.locator("select")
+        if await selector.count() == 0 or not await selector.is_visible():
+            continue
+        options = await selector.locator("option").evaluate_all(
+            "items => items.filter(item => item.value && !item.disabled).map(item => item.value)"
+        )
+        assert all(value.strip().casefold() != "auto" for value in options), options
+        label = field.locator(".field-label, .label").first
+        is_required = bool(await field.locator(".field-label.required").count()) or (
+            await label.inner_text()
+        ).rstrip().endswith("*")
+        if not await selector.input_value() and is_required:
+            assert options, "Required aspect ratio has no explicit choices"
+            await selector.select_option(options[0])
+        selected_ratio = await selector.input_value() or None
+
     required = page.locator("#dynamicForm .field")
     for index in range(await required.count()):
         field = required.nth(index)
@@ -213,6 +235,8 @@ async def fill_builder_and_generate(page: Page, prompt: str) -> dict:
         await create.click()
     response = await response_info.value
     assert response.ok, f"generation create failed: {response.status} {await response.text()}"
+    if selected_ratio is not None:
+        assert response.request.post_data_json["parameters"]["aspect_ratio"] == selected_ratio
     created = await response.json()
     generation = await wait_generation(page, created["id"])
     assert generation["status"] == "succeeded", generation

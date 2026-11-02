@@ -189,7 +189,7 @@ async def test_public_v2_view_quotes_required_image_with_safe_placeholder(monkey
         seen.append(kwargs)
         return (None, {}, 1, None, 1)
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
     view = await TrendWorkflowService.public_trend_view(AsyncMock(), item, recipe)
 
     assert len(view["steps"]) == 2
@@ -216,7 +216,7 @@ async def test_v2_video_step_preview_is_preserved_as_display_only_media(
         prepared.append(kwargs)
         return (None, {}, 1, None, 1)
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
     view = await TrendWorkflowService.public_trend_view(AsyncMock(), item, recipe)
 
     assert recipe["steps"][1]["preview_url"] == video_url

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AspectRatioSelect } from "@/components/aspect-ratio-select";
+import { isAspectRatioReady, selectedAspectRatio } from "@/lib/aspect-ratio";
 import { StandaloneShell } from "@/components/standalone-shell";
 import { api, type FeedRemixDraft, type FeedRemixQuote } from "@/lib/api";
 import { copyToClipboard, haptic, notify, telegramHeaders } from "@/lib/telegram";
@@ -55,6 +57,7 @@ export default function FeedRemixPage() {
   const [sourceId, setSourceId] = useState("");
   const [surface, setSurface] = useState<FeedSurface>("feed");
   const [prompt, setPrompt] = useState("");
+  const [aspectRatio, setAspectRatio] = useState("");
   const [references, setReferences] = useState<OwnedReference[]>([]);
   const [quote, setQuote] = useState<FeedRemixQuote | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +82,7 @@ export default function FeedRemixPage() {
         const prepared = await api.prepareRemix(query.source, query.surface);
         if (!active) return;
         setDraft(prepared);
+        setAspectRatio(selectedAspectRatio(prepared));
         setSurface(prepared.surface || query.surface);
         setPrompt(prepared.prompt || "");
         setError("");
@@ -113,12 +117,15 @@ export default function FeedRemixPage() {
           && counts.audio >= Number(referenceRequirements.audio_count || 0))
   ), [counts, draft, isSeedanceAuthorReplay, referenceRequirements]);
 
+  const ratioReady = Boolean(draft && isAspectRatioReady(draft, aspectRatio));
+
   useEffect(() => {
-    if (!draft || !sourceId || !requirementsMet || uploading || launching) {
+    const seq = ++quoteSeq.current;
+    setQuote(null);
+    if (!draft || !sourceId || !requirementsMet || !ratioReady || uploading || launching) {
       setQuote(null);
       return;
     }
-    const seq = ++quoteSeq.current;
     const timer = window.setTimeout(async () => {
       try {
         const next = await api.quoteRemix(sourceId, {
@@ -126,6 +133,7 @@ export default function FeedRemixPage() {
           prompt: draft.prompt_editable ? prompt : null,
           reference_ids: references.map((item) => item.id),
           confirm_own_references: true,
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
         });
         if (quoteSeq.current === seq) {
           setQuote(next);
@@ -138,8 +146,8 @@ export default function FeedRemixPage() {
         }
       }
     }, 260);
-    return () => window.clearTimeout(timer);
-  }, [draft, launching, prompt, references, requirementsMet, sourceId, surface, uploading]);
+    return () => { window.clearTimeout(timer); quoteSeq.current += 1; };
+  }, [aspectRatio, draft, launching, prompt, ratioReady, references, requirementsMet, sourceId, surface, uploading]);
 
   const upload = async (files: File[], expectedKind?: OwnedReference["kind"], maxFiles = 12) => {
     const selectedFiles = files.slice(0, Math.max(0, Math.min(12, maxFiles)));
@@ -209,7 +217,7 @@ export default function FeedRemixPage() {
   };
 
   const launch = async () => {
-    if (!draft || !sourceId || !requirementsMet || !quote || launching) return;
+    if (!draft || !sourceId || !requirementsMet || !ratioReady || !quote || launching) return;
     setLaunching(true);
     setError("");
     try {
@@ -218,6 +226,7 @@ export default function FeedRemixPage() {
         prompt: draft.prompt_editable ? prompt : null,
         reference_ids: references.map((item) => item.id),
         confirm_own_references: true,
+        ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
       });
       notify("success");
       haptic("medium");
@@ -314,12 +323,13 @@ export default function FeedRemixPage() {
             <span className="kicker">3 · Запуск</span>
             <h2>{draft.model_title || "Повтор работы"}</h2>
             <p className="muted">{isSeedanceAuthorReplay ? "ROXY восстановит авторский рецепт на сервере и передаст фото как референсы внешности." : "Настройки исходной работы сохранены. ROXY автоматически выберет text/reference режим модели по вашим файлам."}</p>
+            <AspectRatioSelect options={draft} value={aspectRatio} disabled={launching} onChange={(value) => { setAspectRatio(value); setQuote(null); }} />
             <div className="quote-box">
               <span>Стоимость</span>
               <strong>{quote?.cost_rox ? `${quote.cost_rox} ROX` : "—"}</strong>
-              <small>{quote ? (quote.admin_free ? "Для администратора бесплатно" : "Расчёт готов") : requirementsMet ? "Считаю…" : "Добавьте референсы"}</small>
+              <small>{quote ? (quote.admin_free ? "Для администратора бесплатно" : "Расчёт готов") : !ratioReady ? "Выберите соотношение сторон" : requirementsMet ? "Считаю…" : "Добавьте референсы"}</small>
             </div>
-            <button className="primary wide" type="button" disabled={!quote?.cost_rox || !requirementsMet || uploading || launching} onClick={() => void launch()}>{launching ? "Запускаю…" : quote?.cost_rox ? `Повторить · ${quote.cost_rox} ROX` : "Повторить"}</button>
+            <button className="primary wide" type="button" disabled={!quote?.cost_rox || !requirementsMet || !ratioReady || uploading || launching} onClick={() => void launch()}>{launching ? "Запускаю…" : quote?.cost_rox ? `Повторить · ${quote.cost_rox} ROX` : "Повторить"}</button>
             <button className="secondary wide" type="button" disabled={copyingLink || launching} onClick={() => void copyRepeatLink()}>{copyingLink ? "Копирую…" : "Скопировать ссылку повтора"}</button>
             <button className="secondary wide" type="button" disabled={launching} onClick={returnToFeed}>Вернуться в ленту</button>
           </aside>

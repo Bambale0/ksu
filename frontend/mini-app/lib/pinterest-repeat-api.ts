@@ -1,4 +1,5 @@
 import { telegramHeaders } from "./telegram";
+import type { AspectRatioOptions } from "./aspect-ratio";
 
 export type PinterestSceneAnalysis = {
   scene: string;
@@ -20,6 +21,7 @@ export type PinterestRepeatRequest = {
   weight_kg: number;
   expression?: string;
   scene_analysis?: PinterestSceneAnalysis;
+  aspect_ratio?: string | null;
 };
 
 export type PinterestRepeatRunRequest = PinterestRepeatRequest & {
@@ -58,16 +60,16 @@ export type PinterestAnalysisResponse = {
   cached: boolean;
 };
 
-async function post<T>(
+async function request<T>(
   path: string,
-  body: unknown,
+  body?: unknown,
   extraHeaders: Record<string, string> = {},
 ): Promise<T> {
   const response = await fetch(path, {
-    method: "POST",
+    method: body === undefined ? "GET" : "POST",
     credentials: "same-origin",
     cache: "no-store",
-    headers: { ...telegramHeaders(true), ...extraHeaders },
+    headers: { ...telegramHeaders(body !== undefined), ...extraHeaders },
     body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => null) as { detail?: string } | null;
@@ -78,13 +80,14 @@ async function post<T>(
 }
 
 export const pinterestRepeatApi = {
-  resolve: (url: string) => post<PinterestResolvedReference>("/api/v1/pinterest-repeat/resolve", { url }),
-  analyze: (sceneReferenceUrl: string) => post<PinterestAnalysisResponse>(
+  options: () => request<AspectRatioOptions & { model_id: string }>("/api/v1/pinterest-repeat/options"),
+  resolve: (url: string) => request<PinterestResolvedReference>("/api/v1/pinterest-repeat/resolve", { url }),
+  analyze: (sceneReferenceUrl: string) => request<PinterestAnalysisResponse>(
     "/api/v1/pinterest-repeat/analyze",
     { scene_reference_url: sceneReferenceUrl },
   ),
-  quote: (body: PinterestRepeatRequest) => post<PinterestRepeatQuote>("/api/v1/pinterest-repeat/quote", body),
-  run: (body: PinterestRepeatRunRequest, idempotencyKey: string) => post<PinterestRepeatRun>(
+  quote: (body: PinterestRepeatRequest) => request<PinterestRepeatQuote>("/api/v1/pinterest-repeat/quote", body),
+  run: (body: PinterestRepeatRunRequest, idempotencyKey: string) => request<PinterestRepeatRun>(
     "/api/v1/pinterest-repeat/run",
     body,
     { "Idempotency-Key": idempotencyKey },

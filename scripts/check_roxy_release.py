@@ -26,6 +26,7 @@ REQUIRED_SOURCE = (
     "components/roxy-app.tsx",
     "components/icons.tsx",
     "lib/api.ts",
+    "lib/aspect-ratio.ts",
     "lib/telegram.ts",
     "lib/types.ts",
 )
@@ -120,10 +121,12 @@ def validate() -> list[str]:
         "Публикации",
         "if (booting) return <Splash />",
         "visibleFields(selected, draft)",
-        "model.ui_schema?.fields",
+        "normalizeAspectRatioFields(model.ui_schema)",
     ):
         if token not in app:
             errors.append(f"react-app:{token}")
+    if "schema?.fields || []" not in read("lib/aspect-ratio.ts"):
+        errors.append("react-app:backend-schema-fields")
     if "Лента" in app:
         errors.append("legacy-primary-nav-label")
 

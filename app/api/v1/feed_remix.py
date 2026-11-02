@@ -20,6 +20,7 @@ class RemixCompositionRequest(BaseModel):
     prompt: str | None = Field(default=None, max_length=30000)
     reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=36)
     confirm_own_references: bool = False
+    aspect_ratio: str | None = Field(default=None, max_length=32)
 
 
 def _remix_error(exc: Exception) -> HTTPException:
@@ -69,6 +70,7 @@ async def quote_feed_remix(
             prompt_override=payload.prompt,
             reference_ids=payload.reference_ids,
             confirm_own_references=payload.confirm_own_references,
+            aspect_ratio=payload.aspect_ratio,
         )
     except Exception as exc:
         raise _remix_error(exc) from exc
@@ -92,6 +94,7 @@ async def launch_feed_remix(
             prompt_override=payload.prompt,
             reference_ids=payload.reference_ids,
             confirm_own_references=payload.confirm_own_references,
+            aspect_ratio=payload.aspect_ratio,
         )
     except Exception as exc:
         raise _remix_error(exc) from exc

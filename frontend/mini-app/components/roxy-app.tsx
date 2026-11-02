@@ -1,5 +1,7 @@
 "use client";
 
+import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage } from "@/lib/generation-delivery";
@@ -153,7 +155,7 @@ function initialRoute(): Route {
 
 function createDefaultDraft(model: GenerationModel): Draft {
   return {
-    values: { ...(model.ui_schema?.defaults || {}) },
+    values: normalizeAspectRatioValues(model.ui_schema?.defaults),
     scenario: model.ui_schema?.scenario?.default || model.ui_schema?.scenario?.items?.[0]?.id || null,
     billing_seconds: null,
     quantity: 1,
@@ -169,7 +171,7 @@ function userFieldLabel(field: UiField): string {
 }
 
 function visibleFields(model: GenerationModel, draft: Draft): UiField[] {
-  const fields = model.ui_schema?.fields || [];
+  const fields = normalizeAspectRatioFields(model.ui_schema);
   const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario);
   if (!scenario) return fields;
   const controlled = new Set<string>();
@@ -205,7 +207,9 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
   for (const field of visibleFields(model, draft)) {
     const value = draft.values[field.name];
     const label = userFieldLabel(field);
-    if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
+    const ratioError = aspectRatioError(field, value);
+    if (ratioError) errors.push(ratioError);
+    else if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
     if (field.control === "json" && !isEmpty(value)) {
       try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
@@ -479,7 +483,14 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const visibleFamilies = useMemo(() => media === "all" ? families : families.filter((family) => family.media_types?.includes(media)), [families, media]);
 
   useEffect(() => {
-    try { setDrafts(JSON.parse(localStorage.getItem(DRAFTS_KEY) || "{}")); } catch { setDrafts({}); }
+    try {
+      const stored = localStorage.getItem(DRAFTS_KEY) || "{}";
+      const parsed = JSON.parse(stored) as Record<string, Draft>;
+      const restored = Object.fromEntries(Object.entries(parsed).map(([id, value]) => [id, { ...value, values: normalizeAspectRatioValues(value.values) }]));
+      setDrafts(restored);
+      const serialized = JSON.stringify(restored);
+      if (serialized !== stored) localStorage.setItem(DRAFTS_KEY, serialized);
+    } catch { setDrafts({}); }
   }, []);
 
   useEffect(() => {
@@ -497,10 +508,12 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const draft = useMemo(() => {
     if (!selected) return null;
     const existing = drafts[selected.id];
-    return existing ? { ...createDefaultDraft(selected), ...existing, values: { ...createDefaultDraft(selected).values, ...(existing.values || {}) } } : createDefaultDraft(selected);
+    return existing ? { ...createDefaultDraft(selected), ...existing, values: normalizeAspectRatioValues({ ...createDefaultDraft(selected).values, ...(existing.values || {}) }) } : createDefaultDraft(selected);
   }, [drafts, selected]);
 
   const persist = useCallback((modelId: string, next: Draft) => {
+    quoteSeq.current += 1;
+    setQuote(null);
     setDrafts((current) => {
       const all = { ...current, [modelId]: next };
       localStorage.setItem(DRAFTS_KEY, JSON.stringify(all));
@@ -516,8 +529,9 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const errors = selected && draft ? validateDraft(selected, draft) : ["Выберите модель"];
 
   useEffect(() => {
-    if (!selected || !draft || errors.length || uploading) { setQuote(null); return; }
     const seq = ++quoteSeq.current;
+    setQuote(null);
+    if (!selected || !draft || errors.length || uploading) return;
     const timer = window.setTimeout(async () => {
       try {
         const next = await api.quote(buildPayload(selected, draft));
@@ -526,7 +540,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
         if (quoteSeq.current === seq) { setQuote(null); setQuoteError(error instanceof Error ? error.message : "Не удалось рассчитать цену"); }
       }
     }, 320);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); quoteSeq.current += 1; };
   }, [draft, selected, uploading, errors.join("|")]);
 
   const chooseModel = (id: string) => {

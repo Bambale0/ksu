@@ -15,6 +15,7 @@ from app.services.generation_action_contexts import (
     ActionContextNotFoundError,
     create_action_context,
     get_action_context,
+    sanitize_action_context_payload,
 )
 from app.core.config import settings
 
@@ -51,7 +52,7 @@ def _mini_app_url(context_id: uuid.UUID) -> str:
 
 
 def _context_meta(context) -> dict[str, object]:
-    payload = dict(context.payload_json or {})
+    payload = sanitize_action_context_payload(context.payload_json or {})
     payload.update(
         {
             "action_context_id": str(context.id),

@@ -22,7 +22,7 @@ def test_active_mini_app_keeps_saved_library_separate_from_fresh_generation() ->
 
     assert "ReferenceMemoryProvider" in page
     assert "SavedReferencePicker" in social
-    assert 'values: { ...(model.ui_schema?.defaults || {}) }' in social
+    assert 'values: normalizeAspectRatioValues(model.ui_schema?.defaults)' in social
     assert 'kind: "new"' in social
     assert "Добавляются только по нажатию" in memory
     assert "onChange(reference.url)" in memory

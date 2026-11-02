@@ -19,7 +19,7 @@ def test_personalized_trend_fields_follow_tanyapi_auto_field_architecture() -> N
     assert 'render_trend_prompt(recipe["prompt"], recipe["user_fields"], user_values)' in service
     assert 'user_values=payload.user_values' in api
     assert 'api.runTrend(' in page
-    assert 'const aspectRatioReady = !aspectRatioOptions.length || Boolean(selectedAspectRatio);' in page
+    assert 'const aspectRatioReady = !aspectRatioOptions.length || aspectRatioOptions.includes(selectedAspectRatio);' in page
     assert '...(selectedAspectRatio ? { aspectRatio: selectedAspectRatio } : {})' in page
     assert 'user_values: userValues' in client
     assert 'resolution: options.resolution' in client

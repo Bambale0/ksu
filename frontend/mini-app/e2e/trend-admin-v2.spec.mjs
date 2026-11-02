@@ -425,3 +425,27 @@ test.describe('workflow step video preview', () => {
     expect(state.errors).toEqual([]);
   });
 });
+
+
+test('workflow admin clears the old automatic format and requires an explicit selection', async ({ page }) => {
+  const legacyPhotoModel = structuredClone(photoModel);
+  legacyPhotoModel.ui_schema.defaults.aspect_ratio = 'AUTO';
+  legacyPhotoModel.ui_schema.fields.find((field) => field.name === 'aspect_ratio').suggestions.unshift('auto');
+  const state = await setup(page, { models: [legacyPhotoModel, videoModel] });
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Явный формат');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByLabel('Промпт фото', { exact: true }).fill('Подготовь фото @Image1');
+  await form.getByLabel('Промпт видео', { exact: true }).fill('Оживи @Image1');
+  const ratio = form.getByLabel('Соотношение сторон');
+  await expect(ratio).toHaveValue('');
+  await expect(ratio.locator('option')).toHaveText(['Выберите', '1:1', '9:16']);
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('Выберите соотношение сторон');
+  expect(state.writes).toEqual([]);
+  await ratio.selectOption('9:16');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].parameters.aspect_ratio).toBe('9:16');
+});

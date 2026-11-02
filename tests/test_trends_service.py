@@ -147,7 +147,7 @@ async def test_video_public_view_exposes_quality_options_from_resolution_pricing
         spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
         return spec, parameters, prices[parameters["resolution"]], billing_seconds, Decimal("50.00")
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
 
     view = await TrendService.public_view(AsyncMock(), item)
 
@@ -191,7 +191,7 @@ async def test_public_view_exposes_only_fixed_aspect_ratio_choices(monkeypatch) 
         spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
         return spec, parameters, Decimal("500.00"), billing_seconds, Decimal("50.00")
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
 
     view = await TrendService.public_view(AsyncMock(), item)
 
@@ -210,7 +210,7 @@ async def test_video_public_view_preserves_recipe_resolution_absent_from_suggest
         spec = SimpleNamespace(id=model_id, title="Seedance 2.0", family="seedance")
         return spec, parameters, prices[parameters["resolution"]], billing_seconds, Decimal("90.00")
 
-    monkeypatch.setattr(GenerationService, "prepare_request", prepare)
+    monkeypatch.setattr(GenerationService, "prepare_template_request", prepare)
 
     view = await TrendService.public_view(AsyncMock(), item)
 

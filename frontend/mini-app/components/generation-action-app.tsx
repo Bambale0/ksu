@@ -1,5 +1,7 @@
 "use client";
 
+import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+
 import { useEffect, useMemo, useState } from "react";
 import { SavedReferencePicker } from "@/lib/reference-memory";
 import { rememberGenerationIds } from "@/lib/generation-delivery";
@@ -127,7 +129,7 @@ function sourceScenario(schema: UiSchema | undefined, action: string, values: Re
 }
 
 function visibleFields(model: ActionModel | null, action: string, values: Record<string, unknown>): UiField[] {
-  const fields = model?.ui_schema?.fields || [];
+  const fields = normalizeAspectRatioFields(model?.ui_schema);
   const items = model?.ui_schema?.scenario?.items || [];
   const scenarioId = sourceScenario(model?.ui_schema, action, values);
   const scenario = items.find((item) => item.id === scenarioId);
@@ -236,7 +238,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
         setActionId(next.action.id);
         setModelId(String(next.defaults.model_id || next.candidate_models[0]?.id || ""));
         setPrompt(String(next.defaults.prompt || ""));
-        setParameters({ ...(next.defaults.parameters || {}) });
+        setParameters(normalizeAspectRatioValues(next.defaults.parameters));
         setBillingSeconds(next.defaults.billing_seconds ?? null);
         if (next.edit_presets?.length) setEditKind(next.edit_presets[0].id);
         setError("");
@@ -257,6 +259,8 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
     for (const field of fields) {
       const value = parameters[field.name];
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
+      const ratioError = aspectRatioError(field, value);
+      if (ratioError) return ratioError;
       if (field.required && empty) return `Заполните «${field.label}»`;
     }
     return "";
@@ -267,6 +271,8 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
       setQuote(null);
       return;
     }
+    let active = true;
+    setQuote(null);
     const timer = window.setTimeout(() => {
       let serialized: Record<string, unknown>;
       try { serialized = serializeParameters(fields, parameters); }
@@ -274,10 +280,10 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
       void request<Quote>("/api/v1/generations/quote", {
         method: "POST",
         body: JSON.stringify(buildQuoteBody(context, actionId, model, prompt, serialized, billingSeconds)),
-      }).then((next) => { setQuote(next); setQuoteError(""); })
-        .catch((reason) => { setQuote(null); setQuoteError(reason instanceof Error ? reason.message : "Не удалось рассчитать цену"); });
+      }).then((next) => { if (active) { setQuote(next); setQuoteError(""); } })
+        .catch((reason) => { if (active) { setQuote(null); setQuoteError(reason instanceof Error ? reason.message : "Не удалось рассчитать цену"); } });
     }, 280);
-    return () => window.clearTimeout(timer);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [actionId, billingSeconds, context, fields, formError, model, parameters, prompt, uploading]);
 
   const chooseModel = (nextId: string) => {
@@ -286,14 +292,14 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
     if (!next) return;
     const allowed = new Set((next.ui_schema?.fields || []).map((field) => field.name));
     const retained = Object.fromEntries(Object.entries(parameters).filter(([key]) => allowed.has(key)));
-    setParameters({ ...(next.ui_schema?.defaults || {}), ...retained });
+    setParameters(normalizeAspectRatioValues({ ...(next.ui_schema?.defaults || {}), ...retained }));
     setModelId(nextId);
     setBillingSeconds(null);
     setQuote(null);
     haptic("light");
   };
 
-  const changeParameter = (name: string, value: unknown) => setParameters((current) => ({ ...current, [name]: value }));
+  const changeParameter = (name: string, value: unknown) => { setQuote(null); setParameters((current) => ({ ...current, [name]: value })); };
 
   const uploadFiles = async (field: UiField, files: File[]) => {
     setUploading(true);

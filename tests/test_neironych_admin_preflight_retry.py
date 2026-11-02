@@ -64,9 +64,15 @@ async def test_only_new_queued_preflight_can_retry_without_wire_snapshot(monkeyp
 
     monkeypatch.setattr("app.services.seedance_admin_tasks.SessionFactory", Session)
     monkeypatch.setattr("app.services.seedance_admin_tasks.NeironychVideoClient", Client)
+    normalize_images = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.seedance_admin_tasks.normalize_seedance_image_references",
+        normalize_images,
+    )
     monkeypatch.setattr("app.services.seedance_admin_tasks.validate_reference_payload", AsyncMock())
     if new_protocol:
         await SeedanceAdminTaskService._submit(task.id)
+        normalize_images.assert_awaited_once()
         assert len(posted) == 1
         assert task.status == "generating" and task.external_id == "preflight-recovered-id"
         assert posted[0]["idempotency_key"] == "admin-preflight-stable-key"
@@ -74,6 +80,7 @@ async def test_only_new_queued_preflight_can_retry_without_wire_snapshot(monkeyp
     else:
         with pytest.raises(NeironychProviderError, match="Original admin request body unavailable"):
             await SeedanceAdminTaskService._submit(task.id)
+        normalize_images.assert_not_awaited()
         assert not posted
 
 

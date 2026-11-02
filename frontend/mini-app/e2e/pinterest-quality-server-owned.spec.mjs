@@ -55,6 +55,7 @@ test('Pinterest quality retry is server-owned and the client submits one paid ge
         mime_type: 'image/jpeg',
       }, 201);
     }
+    if (path === '/api/v1/pinterest-repeat/options') return json({ model_id: 'nano-banana-pro', aspect_ratio_options: ['1:1', '9:16'], aspect_ratio_required: true, default_aspect_ratio: null });
     if (path === '/api/v1/pinterest-repeat/analyze') {
       return json({ analysis: sceneAnalysis, model: 'gemini-2.5-pro', cached: false });
     }
@@ -94,6 +95,7 @@ test('Pinterest quality retry is server-owned and the client submits one paid ge
   });
 
   await page.goto('/mini-app/pinterest-repeat/');
+  await page.getByLabel('Соотношение сторон').selectOption('9:16');
   await page.locator('input[type="file"]').first().setInputFiles({
     name: 'scene.jpg',
     mimeType: 'image/jpeg',

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.abuse_protection import AbuseProtectionService, GenerationAdmissionService
+from app.services.aspect_ratio_policy import validate_generation_aspect_ratio
 from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
@@ -232,12 +233,42 @@ class GenerationService:
         cls, session: AsyncSession, *, model_id: str, prompt: str,
         input_url: str | None = None, parameters: dict[str, Any] | None = None,
         billing_seconds: int | None = None,
+        future_reference_fields: tuple[str, ...] = (),
     ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
-        """Structural preflight for future media slots; never a runtime admission."""
-        return await cls._prepare_request_contract(
-            session, model_id=model_id, prompt=prompt, input_url=input_url,
-            parameters=parameters, billing_seconds=billing_seconds,
+        """Read/validate templates without applying new-generation ratio policy.
+
+        Only explicitly identified future media slots skip metadata probes. Fixed
+        template media retain trusted billing, size and duration validation.
+        """
+        from app.services.model_spec_trusted_media_audit import (
+            resolve_trusted_billing_seconds,
+            validate_reference_duration_contracts,
         )
+        from app.services.reference_size_contract import validate_reference_sizes
+
+        source = dict(parameters or {})
+        if prompt and not source.get("prompt"):
+            source["prompt"] = prompt
+        routed = resolve_model_request(model_id, source, input_url=input_url)
+        trusted_seconds = await resolve_trusted_billing_seconds(
+            session, model_id=routed.model_id,
+            parameters={key: value for key, value in routed.parameters.items() if key not in future_reference_fields},
+            client_billing_seconds=billing_seconds,
+        )
+        spec, clean, cost, seconds, unit_price = await cls._prepare_request_contract(
+            session, model_id=model_id, prompt=prompt, input_url=input_url,
+            parameters=parameters, billing_seconds=trusted_seconds,
+        )
+        clean = {key: value for key, value in clean.items() if key in spec.known_fields}
+        real_parameters = {key: value for key, value in clean.items() if key not in future_reference_fields}
+        await validate_reference_sizes(session, spec=spec, parameters=real_parameters)
+        await validate_reference_duration_contracts(session, model_id=spec.id, parameters=real_parameters)
+        if spec.id == "gemini-omni-video" and clean.get("video_list"):
+            if trusted_seconds is None:
+                raise RuntimeError("Gemini trusted duration resolution unexpectedly failed")
+            seconds = trusted_seconds
+            cost = (unit_price * Decimal(seconds)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return spec, clean, cost, seconds, unit_price
 
     @classmethod
     async def prepare_request(
@@ -245,10 +276,15 @@ class GenerationService:
         input_url: str | None = None, parameters: dict[str, Any] | None = None,
         billing_seconds: int | None = None,
     ) -> tuple[ModelSpec, dict[str, Any], Decimal, int | None, Decimal]:
-        return await cls._prepare_request_contract(
+        # Check the submitted value before routing/normalization can discard it,
+        # then check the resolved model before billing or enqueueing new work.
+        validate_generation_aspect_ratio(model_id, parameters)
+        prepared = await cls._prepare_request_contract(
             session, model_id=model_id, prompt=prompt, input_url=input_url,
             parameters=parameters, billing_seconds=billing_seconds,
         )
+        validate_generation_aspect_ratio(prepared[0].id, prepared[1])
+        return prepared
 
     @classmethod
     def _generation_parameters(

@@ -1,5 +1,7 @@
 "use client";
 
+import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { generationFailureMessage, isGenerationMediaReady, isTerminalGeneration, subscribeToGenerationUpdates } from "@/lib/generation-delivery";
@@ -247,7 +249,7 @@ function fallbackFamilies(models: GenerationModel[]): GenerationModelFamily[] {
 
 function createDefaultDraft(model: GenerationModel): Draft {
   return {
-    values: { ...(model.ui_schema?.defaults || {}) },
+    values: normalizeAspectRatioValues(model.ui_schema?.defaults),
     scenario: model.ui_schema?.scenario?.default || model.ui_schema?.scenario?.items?.[0]?.id || null,
     billing_seconds: null,
     input_url: null,
@@ -289,11 +291,11 @@ function inferReuseScenario(model: GenerationModel, values: Record<string, unkno
 
 function hydrateReuseDraft(model: GenerationModel, payload: RecreateGenerationPayload): Draft {
   const base = createDefaultDraft(model);
-  const values = {
+  const values = normalizeAspectRatioValues({
     ...base.values,
     ...(payload.parameters || {}),
     prompt: payload.prompt || "",
-  };
+  });
   return {
     values,
     // Feed repeats do not carry the parent's references: the user uploads
@@ -305,7 +307,7 @@ function hydrateReuseDraft(model: GenerationModel, payload: RecreateGenerationPa
 }
 
 function visibleFields(model: GenerationModel, draft: Draft): UiField[] {
-  const fields = model.ui_schema?.fields || [];
+  const fields = normalizeAspectRatioFields(model.ui_schema);
   const scenario = model.ui_schema?.scenario?.items?.find((item) => item.id === draft.scenario);
   if (!scenario) return fields;
   const controlled = new Set<string>();
@@ -340,7 +342,9 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
   for (const field of visibleFields(model, draft)) {
     const value = draft.values[field.name];
     const label = userFieldLabel(field);
-    if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
+    const ratioError = aspectRatioError(field, value);
+    if (ratioError) errors.push(ratioError);
+    else if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
     if (field.control === "json" && !isEmpty(value)) {
       try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
@@ -815,6 +819,8 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   }, [drafts, selected]);
 
   const persist = useCallback((modelId: string, next: Draft) => {
+    quoteSeq.current += 1;
+    setQuote(null);
     setDrafts((current) => ({ ...current, [modelId]: next }));
   }, []);
 
@@ -822,13 +828,14 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   const errors = selected && draft ? validateDraft(selected, draft) : ["Выберите модель"];
 
   useEffect(() => {
-    if (!selected || !draft || errors.length || uploading) { setQuote(null); return; }
     const seq = ++quoteSeq.current;
+    setQuote(null);
+    if (!selected || !draft || errors.length || uploading) return;
     const timer = window.setTimeout(async () => {
       try { const next = await api.quote(buildPayload(selected, draft)); if (quoteSeq.current === seq) { setQuote(next); setQuoteError(""); } }
       catch (error) { if (quoteSeq.current === seq) { setQuote(null); setQuoteError(error instanceof Error ? error.message : "Не удалось рассчитать цену"); } }
     }, 300);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); quoteSeq.current += 1; };
   }, [draft, selected, uploading, errors.join("|")]);
 
   const chooseModel = (id: string) => {

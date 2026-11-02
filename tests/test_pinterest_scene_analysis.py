@@ -47,6 +47,7 @@ def test_scene_analysis_is_embedded_into_generation_recipe() -> None:
         identity_reference_urls=["https://cdn.example.com/me.jpg"],
         height_cm=165,
         weight_kg=55,
+        aspect_ratio="9:16",
         scene_analysis=sample_analysis(),
     )
 

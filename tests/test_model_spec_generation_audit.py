@@ -38,10 +38,11 @@ async def test_direct_generation_also_freezes_only_declared_fields() -> None:
         object(),
         model_id="gpt-image-2-t2i",
         prompt="studio portrait",
-        parameters={"resolution": "2K", "obsolete_option": True},
+        parameters={"resolution": "2K", "aspect_ratio": "9:16", "obsolete_option": True},
     )
 
     assert spec.id == "gpt-image-2-t2i"
     assert clean["resolution"] == "2K"
+    assert clean["aspect_ratio"] == "9:16"
     assert "obsolete_option" not in clean
     assert set(clean) <= set(spec.known_fields)

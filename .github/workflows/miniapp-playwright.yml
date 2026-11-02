@@ -49,6 +49,10 @@ jobs:
         run: >-
           npx playwright test
           e2e/client-error-reporting.spec.mjs
+          e2e/aspect-ratio-contract.spec.cts
+          e2e/generation-actions.spec.mjs
+          e2e/pinterest-repeat.spec.mjs
+          e2e/pinterest-quality-server-owned.spec.mjs
           e2e/video-mode-selector-parity.spec.mjs
           e2e/mobile-keyboard-seedance-reference.spec.mjs
           e2e/responsive-device-surfaces.spec.mjs
