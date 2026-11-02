@@ -45,7 +45,11 @@ def route_options() -> dict[str, list[list[str]]]:
     for model, route in _PROVIDER_ROUTES.items():
         choices: list[list[str]] = [list(route)]
         if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
-            choices.append(["kie", "nexus"])
+            choices.extend([
+                ["kie", "nexus"], ["neironych", "kie", "nexus"],
+                ["neironych", "nexus", "kie"], ["neironych", "kie"],
+                ["neironych", "nexus"], ["neironych"],
+            ])
         if model in {"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"}:
             choices.append(list(reversed(route)))
         for provider in route:
