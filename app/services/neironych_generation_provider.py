@@ -51,10 +51,12 @@ logger = logging.getLogger(__name__)
 _SEEDANCE_MODELS = frozenset({"seedance-2.0", "seedance-2.5"})
 _GROK_MODELS = frozenset({"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"})
 _VIDEO_MODELS = _SEEDANCE_MODELS | _GROK_MODELS
-_IMAGE_MODELS = frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite",
+_SEEDREAM_MODELS = frozenset({"seedream-5-pro-t2i", "seedream-5-pro-i2i"})
+_IMAGE_MODELS = _SEEDREAM_MODELS | frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite",
                           "gpt-image-2-t2i", "gpt-image-2-i2i"})
 _HANDLED_MODELS = _VIDEO_MODELS | _IMAGE_MODELS
 _PROVIDER_MODEL_MAP = {"gpt-image-2-t2i": "gpt-image-2", "gpt-image-2-i2i": "gpt-image-2",
+                       **{model: "seedream-5.0-pro" for model in _SEEDREAM_MODELS},
                        **{model: "grok-imagine-video-1.5" for model in _GROK_MODELS}}
 _POLICY_MARKERS = (
     "copyright",
@@ -343,6 +345,14 @@ class NeironychGenerationProviderService:
             refs_raw = refs_raw if isinstance(refs_raw, (list, tuple)) else [refs_raw]
             refs = [cls._public_reference_url(str(item.get("url") if isinstance(item, dict) else item))
                     for item in refs_raw]
+            if model_id in _SEEDREAM_MODELS:
+                quality = str(raw.get("quality") or "basic").lower()
+                if quality not in {"basic", "high"} or raw.get("nsfw_checker") is True:
+                    raise NeironychProviderError(
+                        "Seedream settings cannot be represented by Neironych",
+                        status_code=409, error_code="capability_mismatch", local_validation=True,
+                    )
+                raw["resolution"] = "1K" if quality == "basic" else "2K"
             endpoint, payload = prepare_image_payload(
                 model=model,
                 prompt=str(raw.get("prompt") or generation.prompt or ""),
