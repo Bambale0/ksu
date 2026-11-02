@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.admin_models import TariffVersion
@@ -80,6 +81,19 @@ async def _fixture_user_and_tariff(session) -> tuple[User, AdminAccount]:  # typ
     )
     await session.commit()
     return user, admin
+
+
+async def _freeze_legacy_nexus_media_task(
+    session: AsyncSession, task: PromptToolTask,
+) -> None:
+    """Represent a Nexus media task accepted before managed route snapshots."""
+    task.provider = "nexus"
+    task.model = "gpt-6-sol"
+    task.input_payload = {
+        key: value for key, value in task.input_payload.items()
+        if key not in {"_prompt_tool_route", "_prompt_tool_route_revision", "_prompt_tool_route_index"}
+    }
+    await session.commit()
 
 
 @pytest.mark.asyncio
@@ -194,7 +208,7 @@ async def test_prompt_tool_worker_persists_structured_success(
 
 
 @pytest.mark.asyncio
-async def test_image_prompt_success_queues_full_prompt_for_telegram(
+async def test_legacy_nexus_image_prompt_success_queues_full_prompt_for_telegram(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
@@ -227,6 +241,7 @@ async def test_image_prompt_success_queues_full_prompt_for_telegram(
             payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
             idempotency_key=f"photo-chat-{uuid.uuid4()}",
         )
+        await _freeze_legacy_nexus_media_task(session, task)
         assert task.provider == "nexus"
         assert task.model == "gpt-6-sol"
         claimed = await PromptToolOutboxService.claim(session)
@@ -343,7 +358,7 @@ async def test_prompt_tool_reclaimed_lease_fences_stale_worker_and_notifies_once
 
 
 @pytest.mark.asyncio
-async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
+async def test_legacy_nexus_video_prompt_worker_persists_camera_motion_and_negative_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
@@ -385,6 +400,7 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
             },
             idempotency_key=f"video-prompt-{uuid.uuid4()}",
         )
+        await _freeze_legacy_nexus_media_task(session, task)
         task_id = task.id
         assert task.provider == "nexus"
         assert task.model == "gpt-6-sol"
@@ -421,7 +437,7 @@ async def test_video_prompt_worker_persists_camera_motion_and_negative_prompt(
 
 
 @pytest.mark.asyncio
-async def test_terminal_provider_failure_refunds_user(
+async def test_legacy_nexus_terminal_provider_failure_refunds_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "abuse_protection_enabled", False)
@@ -449,6 +465,7 @@ async def test_terminal_provider_failure_refunds_user(
             payload={"image_url": "https://cdn.example.invalid/photo.jpg", "instruction": ""},
             idempotency_key=f"prompt-failure-{uuid.uuid4()}",
         )
+        await _freeze_legacy_nexus_media_task(session, task)
         task_id = task.id
         assert Decimal(task.cost_credits) == Decimal("1.00")
         assert task.input_payload["_retail_cost_credits"] == "1.00"

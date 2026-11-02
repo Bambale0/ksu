@@ -247,6 +247,7 @@ class NexusPromptToolsClient:
         base_url: str = "https://nexusapi.dev",
         *,
         client: httpx.AsyncClient | None = None,
+        media_max_attempts: int = GPT_MAX_ATTEMPTS,
     ) -> None:
         clean_key = str(api_key or "").strip()
         if not clean_key:
@@ -258,6 +259,7 @@ class NexusPromptToolsClient:
             headers={"Authorization": f"Bearer {clean_key}"},
         )
         self._authorization = f"Bearer {clean_key}"
+        self._media_max_attempts = max(1, min(GPT_MAX_ATTEMPTS, int(media_max_attempts)))
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -366,7 +368,7 @@ class NexusPromptToolsClient:
         }
 
         last_error: Exception | None = None
-        for attempt in range(GPT_MAX_ATTEMPTS):
+        for attempt in range(self._media_max_attempts):
             try:
                 data = await self._post_chat(body)
                 return _photo_result(
@@ -375,7 +377,7 @@ class NexusPromptToolsClient:
                 )
             except (httpx.HTTPError, ValueError, PromptToolProviderError) as exc:
                 last_error = exc
-                if attempt >= GPT_MAX_ATTEMPTS - 1:
+                if attempt >= self._media_max_attempts - 1:
                     break
                 content = list(body["messages"][1]["content"])
                 content[0] = {
@@ -450,7 +452,7 @@ class NexusPromptToolsClient:
             }
 
             last_error: Exception | None = None
-            for attempt in range(GPT_MAX_ATTEMPTS):
+            for attempt in range(self._media_max_attempts):
                 try:
                     response = await self._post_chat(body)
                     return _video_result(
@@ -459,7 +461,7 @@ class NexusPromptToolsClient:
                     )
                 except (httpx.HTTPError, ValueError, PromptToolProviderError) as exc:
                     last_error = exc
-                    if attempt >= GPT_MAX_ATTEMPTS - 1:
+                    if attempt >= self._media_max_attempts - 1:
                         break
                     retry_content = list(content)
                     retry_content[0] = {
