@@ -263,9 +263,12 @@ class TrendWorkflowService:
                 normalized["bindings"] = [{"from": source, "to": target}]
             image_tags = [int(value) for value in _IMAGE_TAG.findall(prompt)]
             if image_tags:
-                expected_tags = list(range(1, (1 if index == 1 else len(image_slots)) + 1))
-                if sorted(set(image_tags)) != expected_tags:
-                    raise TrendWorkflowError("@ImageN must match the ordered image input slots")
+                available_images = 1 if index == 1 else len(image_slots)
+                if max(image_tags) > available_images:
+                    raise TrendWorkflowError(
+                        "Проверьте поля фото первого шага и номера @Image в промпте. "
+                        "В шаге видео можно использовать только @Image1 — готовое фото первого шага."
+                    )
                 if any(not slot["required"] for slot in image_slots):
                     first_optional = next(index for index, slot in enumerate(image_slots) if not slot["required"])
                     if any(slot["required"] for slot in image_slots[first_optional + 1:]):
@@ -627,12 +630,35 @@ class TrendWorkflowService:
             if value and slot["type"] == "select" and value not in slot["options"]:
                 raise TrendWorkflowError(f"Workflow input option is invalid: {slot['id']}")
             validated[slot["id"]] = value
+        # Semantic input IDs retain roles even when optional images are absent.
+        # Rewrite template tags once, before inserting any literal user values.
+        template_prompt = step["prompt"]
+        if raw_image_inputs is not None and step["kind"] == "image":
+            positions = {
+                slot["id"]: position
+                for position, slot in enumerate(
+                    [slot for slot in image_slots if slot["id"] in provided], start=1,
+                )
+            }
+
+            def image_tag(match: re.Match[str]) -> str:
+                original = int(match.group(1)) - 1
+                if original < 0 or original >= len(image_slots):
+                    raise TrendWorkflowError("Prompt references an undefined photo input")
+                slot = image_slots[original]
+                position = positions.get(slot["id"])
+                return (
+                    f"@Image{position}" if position is not None
+                    else f"[референс «{slot['label']}» не предоставлен]"
+                )
+
+            template_prompt = _IMAGE_TAG.sub(image_tag, template_prompt)
         # Callable substitution never treats user backslashes as replacement
         # syntax and never expands a second placeholder inside the user's text.
         prompt = re.sub(
             r"\{\{([^{}]+)\}\}",
             lambda match: validated.get(match.group(1).strip(), match.group(0)),
-            step["prompt"],
+            template_prompt,
         )
         extra_values = [
             f"{slot['label']}: {validated[slot['id']]}"

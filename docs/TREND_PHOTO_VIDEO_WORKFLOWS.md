@@ -20,6 +20,15 @@ Prices are NOT stored as a second workflow tariff. Each step uses the existing m
 
 Both saved steps are validated on publication. Metadata-only changes must retain the v2 structure; duplicating a template must copy both steps instead of reconstructing a v1 form. An editor that cannot represent v2 must refuse a destructive down-conversion. No automatic v1-to-v2 migration or mass rewrite of templates is performed.
 
+
+### Admin prompt fields
+
+The Mini App editor derives missing photo inputs from consecutive `@Image1`, `@Image2`, etc. while the administrator edits the photo prompt. The first generated photo input is required; subsequent generated inputs are optional. All generated fields remain visible and editable before publication. Existing labels, keys, requiredness, selection options and field order are preserved; no existing input is removed when the prompt changes. Invalid numbering, reference capacity, step-2 extra photos and the 16-input recipe limit are checked before publication; the backend still rejects undefined references.
+
+Scalar placeholders such as `{{height}}`, `{{weight}}`, `{{zodiac}}` and `{{season}}` create generic text fields. The administrator supplies customer-facing labels/help and selects Number or configured Select options as appropriate. Business meanings, zodiac options, defaults and requiredness remain recipe-owned. Fixed prompt values such as `[175]` are literal text and do not create personalization fields.
+
+For optional semantic photos, provider input URLs are ordered by recipe slot, independent of request order. Template photo references are remapped once to the actual compacted URL positions before literal scalar substitution. A missing photo reference becomes an explicit absence marker rather than pointing at another photo. Required identity input validation remains enforced before quote/admission. This does not rewrite stored templates or run snapshots.
+
 ## Durable execution and ownership
 
 Migration `0044_trend_workflows` adds owner-scoped runs and step rows. A run pins the normalized recipe including display metadata. A step records generation identity, selected asset, command identity/hash, reserved legacy identity and attempt history. The existing `Generation`, wallet ledger, outbox, provider routing, reconciliation, refund, media ingest and notification systems remain authoritative for their own concerns.

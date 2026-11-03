@@ -5,6 +5,8 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowPromptError } from "@/lib/trend-workflow-inputs";
+
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
 import type { TrendUserField, UiField } from "@/lib/types";
@@ -394,12 +396,13 @@ function WorkflowInputEditor({
     onChange(inputs.map((input, current) => current === index ? { ...input, ...patch } : input));
   };
   return <div className="inline-trend-workflow-inputs" role="group" aria-label="Входные слоты фото">
-    <div className="inline-trend-section-heading"><strong>Входные слоты</strong><small>Слоты становятся полями формы пользователя. Порядок сохраняется на сервере.</small></div>
-    {inputs.map((input, index) => <div className="inline-trend-workflow-input" key={`${input.id}-${index}`}>
+    <div className="inline-trend-section-heading"><strong>Фото и параметры пользователя</strong><small>Эти поля пользователь заполнит перед созданием фото. Для роста и веса выберите «Число», для знака зодиака и времени года — «Выбор из списка».</small></div>
+    {inputs.map((input, index) => <div className="inline-trend-workflow-input" key={index}>
       <div className="inline-trend-two-cols">
-        <label><span>ID слота</span><input value={input.id} pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" onChange={(event) => update(index, { id: event.target.value })} /></label>
-        <label><span>Порядок</span><input value={index} readOnly aria-label={`Порядок слота ${index + 1}`} /></label>
+        <label><span>Ключ поля в промпте</span><input value={input.id} pattern="[a-zA-Z][a-zA-Z0-9_-]{0,63}" onChange={(event) => update(index, { id: event.target.value })} /></label>
+        <label><span>Порядок</span><input value={index + 1} readOnly aria-label={`Порядок слота ${index + 1}`} /></label>
       </div>
+      <small>{input.type === "image" ? `Фото @Image${inputs.slice(0, index + 1).filter((field) => field.type === "image").length}` : `В промпте: {{${input.id}}}`}</small>
       <label><span>Метка</span><input value={input.label} maxLength={120} onChange={(event) => update(index, { label: event.target.value })} /></label>
       <label><span>Подсказка</span><textarea rows={2} maxLength={500} value={input.help} onChange={(event) => update(index, { help: event.target.value })} /></label>
       <div className="inline-trend-two-cols">
@@ -409,9 +412,13 @@ function WorkflowInputEditor({
         <label className="inline-trend-checkbox"><input type="checkbox" checked={input.required} onChange={(event) => update(index, { required: event.target.checked })} /><span>Обязательное</span></label>
       </div>
       {input.type === "select" ? <label><span>Варианты через запятую</span><input value={(input.options || []).join(", ")} onChange={(event) => update(index, { options: event.target.value.split(",").map((option) => option.trim()).filter(Boolean) })} /></label> : null}
-      <button className="inline-trend-secondary" type="button" onClick={() => onChange(inputs.filter((_, current) => current !== index))}>Удалить слот</button>
+      <button className="inline-trend-secondary" type="button" onClick={() => onChange(inputs.filter((_, current) => current !== index))}>Удалить поле</button>
     </div>)}
-    <button className="inline-trend-secondary" type="button" onClick={() => onChange([...inputs, { id: `input_${inputs.length + 1}`, label: "Новый вход", help: "Опишите входные данные.", type: "text", required: false, order: inputs.length }])}>＋ Добавить слот</button>
+    <button className="inline-trend-secondary" type="button" disabled={inputs.length >= 16} onClick={() => {
+      let id = `input_${inputs.length + 1}`;
+      while (inputs.some((input) => input.id === id)) id += "_";
+      onChange([...inputs, { id, label: "Новое поле", help: "Укажите значение.", type: "text", required: false, order: inputs.length }]);
+    }}>＋ Добавить поле</button>
   </div>;
 }
 
@@ -720,17 +727,25 @@ export function InlineTrendAdmin() {
         setError("Заполните названия и скрытые промпты обоих шагов");
         return;
       }
-      const inputs = draft.photo.inputs.map((input, order) => ({ ...input, order }));
+      const photoCapacity = referenceCapacity(photoModel);
+      const inputs = syncWorkflowPromptInputs(draft.photo.prompt, draft.photo.inputs, photoCapacity);
+      const promptError = workflowPromptError(draft.photo.prompt, photoCapacity, "image")
+        || workflowPromptError(draft.video.prompt, 1, "video")
+        || workflowInputError(inputs, draft.photo.prompt, photoCapacity);
+      if (promptError) {
+        setError(promptError);
+        return;
+      }
       if (inputs.some((input) => !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(input.id) || !input.label.trim() || !input.help.trim())) {
-        setError("Проверьте ID, метки и подсказки входных слотов фото");
+        setError("Заполните ключи, названия и подсказки полей пользователя");
         return;
       }
       if (new Set(inputs.map((input) => input.id)).size !== inputs.length) {
-        setError("ID входных слотов фото не должны повторяться");
+        setError("Ключи полей пользователя не должны повторяться");
         return;
       }
       if (inputs.some((input) => input.type === "select" && (!input.options?.length || input.options.some((option) => !option)))) {
-        setError("Для слота выбора добавьте хотя бы один непустой вариант");
+        setError("Для поля выбора добавьте хотя бы один непустой вариант");
         return;
       }
       const existingPhoto = draft.sourcePayload.steps[0];
@@ -839,7 +854,7 @@ export function InlineTrendAdmin() {
       setEditingId(null);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Не удалось сохранить тренд");
+      setError(trendSaveError(cause));
     } finally {
       setSaving(false);
     }
@@ -928,7 +943,7 @@ export function InlineTrendAdmin() {
         <label><span>Тип шаблона</span><select value={draft.mode === "workflow" ? WORKFLOW_TYPE : "legacy"} onChange={(event) => chooseDraftMode(event.target.value === WORKFLOW_TYPE ? "workflow" : "legacy")} aria-label="Тип шаблона">
           <option value="legacy">Обычный шаблон</option>
           <option value={WORKFLOW_TYPE}>Фото → Видео</option>
-        </select><small>Обычный шаблон сохраняет прежний v1-рецепт; workflow использует два серверно-каталогизированных шага.</small></label>
+        </select><small>«Фото → Видео»: пользователь сначала создаёт фото, затем оживляет его отдельным запуском.</small></label>
 
         <div className="inline-trend-two-cols">
           {draft.mode === "legacy" ? <label><span>Модель</span><select value={draft.modelId} onChange={(event) => chooseModel(event.target.value)} disabled={uploading} required><option value="">Выберите модель</option>{["image", "video"].map((kind) => <optgroup label={kind === "image" ? "Фото" : "Видео"} key={kind}>{models.filter((model) => model.media_type === kind).map((model) => <option value={model.id} key={model.id}>{model.title || model.id}</option>)}</optgroup>)}</select></label> : <div />}
@@ -948,7 +963,7 @@ export function InlineTrendAdmin() {
             <label><span>Название шага фото</span><input value={draft.photo.title} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, title: event.target.value } } : current)} required /></label>
             <label><span>Модель фото</span><select value={draft.photo.modelId} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, modelId: event.target.value, parameters: workflowParameterDefaults(models.find((model) => model.id === event.target.value)) } } : current)} required><option value="">Выберите фото-модель</option>{workflowPhotoModels.map((model) => <option value={model.id} key={model.id}>{model.title || model.id}{model.price_rox ? ` · ${model.price_rox} ROX` : ""}</option>)}</select><small>Цена только для просмотра; расчёт тарифа остаётся на сервере.</small></label>
             <label><span>Инструкции к фото</span><textarea rows={2} value={draft.photo.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, instructions: event.target.value } } : current)} /></label>
-            <label><span>Промпт фото</span><textarea rows={4} maxLength={8000} value={draft.photo.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, prompt: event.target.value } } : current)} placeholder="Скрытая инструкция для модели" required /></label>
+            <label><span>Промпт фото</span><textarea rows={4} maxLength={8000} value={draft.photo.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, prompt: event.target.value, inputs: syncWorkflowPromptInputs(event.target.value, current.photo.inputs, referenceCapacity(models.find((model) => model.id === current.photo.modelId))) } } : current)} placeholder="Скрытая инструкция для модели" required /></label><small>Поля фото добавляются по @Image1, @Image2 и далее. Для параметров пользователя укажите ключ в двойных скобках, например {"{{height}}"}. Названия и типы полей настройте ниже.</small>
             <ModelParameterControls model={models.find((model) => model.id === draft.photo.modelId)} parameters={draft.photo.parameters} onChange={(name, value) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, parameters: { ...current.photo.parameters, [name]: value } } } : current)} />
             <WorkflowInputEditor inputs={draft.photo.inputs} onChange={(inputs) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, inputs } } : current)} />
           </section>
