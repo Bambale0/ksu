@@ -121,6 +121,7 @@ async def new_generation(model, **inputs):
 @pytest.mark.parametrize("model,refs", [
     ("nano-banana-2", []), ("nano-banana-2-lite", []),
     ("gpt-image-2-t2i", []), ("gpt-image-2-i2i", ["https://example.test/ref.png"]),
+    ("seedream-5-pro-t2i", []), ("seedream-5-pro-i2i", ["https://example.test/ref.png"]),
 ])
 @pytest.mark.parametrize("source_format", ["PNG", "JPEG"])
 async def test_new_image_service_freezes_correct_wire_model_and_stores_real_jpeg(monkeypatch, model, refs, source_format):
@@ -138,7 +139,10 @@ async def test_new_image_service_freezes_correct_wire_model_and_stores_real_jpeg
             assert row.parameters[SNAPSHOT_KEY]["body_json"].encode() == request.content
         body = json.loads(request.content)
         calls.append(body)
-        assert body["model"] == ("gpt-image-2" if model.startswith("gpt") else model)
+        assert body["model"] == (
+            "gpt-image-2" if model.startswith("gpt") else
+            "seedream-5.0-pro" if model.startswith("seedream") else model
+        )
         assert request.url.path == ("/v1/images/edits" if refs else "/v1/images/generations")
         return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(png.getvalue()).decode()}]})
 

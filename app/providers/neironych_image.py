@@ -18,7 +18,8 @@ from app.providers.neironych_errors import (
 from app.providers.neironych_submission import encode_body
 
 NANO_PRO_ASPECT_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9")
-IMAGE_MODELS = frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite", "gpt-image-2"})
+IMAGE_MODELS = frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite", "gpt-image-2", "seedream-5.0-pro"})
+SEEDREAM_PRO_ASPECT_RATIOS = frozenset({"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "2:1", "1:2", "9:21"})
 _NANO_ASPECT_RATIOS = frozenset({"1:1", "16:9", "9:16", "4:3", "3:4"})
 
 
@@ -171,8 +172,8 @@ def prepare_image_payload(*, prompt: str, aspect_ratio: str, resolution: str,
         raise NeironychProviderError("Invalid Idempotency-Key", status_code=422, local_validation=True)
     ratio = str(aspect_ratio).strip()
     resolution = str(resolution).lower()
-    maximum = 16 if model == "gpt-image-2" else 14 if model == "nano-banana-pro" else 3
-    ratios = NANO_PRO_ASPECT_RATIOS if model == "nano-banana-pro" else _NANO_ASPECT_RATIOS
+    maximum = 8 if model == "seedream-5.0-pro" else 16 if model == "gpt-image-2" else 14 if model == "nano-banana-pro" else 3
+    ratios = SEEDREAM_PRO_ASPECT_RATIOS if model == "seedream-5.0-pro" else NANO_PRO_ASPECT_RATIOS if model == "nano-banana-pro" else _NANO_ASPECT_RATIOS
     if len(refs) > maximum:
         raise _unsupported(f"{model} accepts at most {maximum} references")
     # Validate every reference, including GPT references 15 and 16.
@@ -187,7 +188,7 @@ def prepare_image_payload(*, prompt: str, aspect_ratio: str, resolution: str,
     else:
         if ratio not in ratios:
             raise _unsupported(f"{model} does not support the requested aspect ratio")
-        if resolution not in ({"1k"} if model == "nano-banana-2-lite" else {"1k", "2k", "4k"}):
+        if resolution not in ({"1k", "2k"} if model == "seedream-5.0-pro" else {"1k"} if model == "nano-banana-2-lite" else {"1k", "2k", "4k"}):
             raise _unsupported(f"{model} does not support the requested resolution")
         payload.update(resolution=resolution, aspect_ratio=ratio)
     if refs:

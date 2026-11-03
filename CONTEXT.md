@@ -1,3 +1,14 @@
+## Active Integration — Seedream 5 Pro on Neironych (2026-11-02)
+
+- Baseline: ced952b07de3471a0035c6085449cabd8a137de6. User authorizes Neironych primary for Seedream 5 Pro.
+- Existing immutable image submission, verified pre-acceptance fallback and audited CAS routing are reused. Add only Seedream text/edit aliases and provider capabilities. No schema, UI, price or historical-job changes.
+- Live official guide confirms seedream-5.0-pro, generations/edits JSON, 1k/2k, n=1, eight refs, explicit ratios. Preserve basic/high as 1k/2k. Unsupported controls/extra references must use existing fallback without paid POST or truncation.
+- Plan: HTTP contract RED → adapter → service quality/snapshot and routing RED/GREEN → exact-head CI/review → deploy support → audited runtime activation preserving existing reserves. Rollback through runtime CAS.
+- Verification: 21 focused tests passed, including documented HTTP body, mode/quality aliasing, snapshot, eight/nine refs, unsupported safety/quality and route compatibility; Ruff passed. Full service-submit PostgreSQL tests included for both modes; exact-head CI pending. No paid synthetic call authorized.
+- Guidance: local .agents api-integration inspected; Bambale0/skills TDD, claw backend-integration, dev-agents-pack technical-audit, wondelai release-it stability. agentskills has no applicable runtime guidance; anthropics webapp-testing inspected, UI unchanged. No external clones.
+- Matrix: contract/domain/routing covered; database/worker lifecycle in CI; auth/idempotency/recovery reuse existing service tests; no migration/UI/performance changes; smoke/runtime activation and rollback verification pending.
+- Release authorized 2026-11-03, including paid smoke and activation. Upstream draft and inactive capabilities confirmed; official adapter smoke is running across text/edit and 1K/2K. Support CI was green at the original head; this merge preserves current-main Qwen changes and requires fresh exact-head CI. Production has not been switched yet.
+
 ## Active Feature Execution — Neironych Qwen primary for photo/video prompts (2026-10-29)
 
 - User request: make Neironych primary for photo and video prompt analysis, using `qwen3.8-max`. Scope is `image_analysis` and `video_prompt`; text prompt building, Pinterest analysis and generation routing retain their contracts.
