@@ -5,7 +5,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowPromptError } from "@/lib/trend-workflow-inputs";
+import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -387,9 +387,11 @@ function ModelParameterControls({
 
 function WorkflowInputEditor({
   inputs,
+  prompt,
   onChange,
 }: {
   inputs: TrendAdminInput[];
+  prompt: string;
   onChange: (inputs: TrendAdminInput[]) => void;
 }) {
   const update = (index: number, patch: Partial<TrendAdminInput>) => {
@@ -412,7 +414,7 @@ function WorkflowInputEditor({
         <label className="inline-trend-checkbox"><input type="checkbox" checked={input.required} onChange={(event) => update(index, { required: event.target.checked })} /><span>Обязательное</span></label>
       </div>
       {input.type === "select" ? <label><span>Варианты через запятую</span><input value={(input.options || []).join(", ")} onChange={(event) => update(index, { options: event.target.value.split(",").map((option) => option.trim()).filter(Boolean) })} /></label> : null}
-      <button className="inline-trend-secondary" type="button" onClick={() => onChange(inputs.filter((_, current) => current !== index))}>Удалить поле</button>
+      <button className="inline-trend-secondary" type="button" disabled={workflowInputReferenced(prompt, inputs, index)} title={workflowInputReferenced(prompt, inputs, index) ? "Сначала уберите ссылку на это поле из промпта." : undefined} onClick={() => onChange(inputs.filter((_, current) => current !== index))}>Удалить поле</button>
     </div>)}
     <button className="inline-trend-secondary" type="button" disabled={inputs.length >= 16} onClick={() => {
       let id = `input_${inputs.length + 1}`;
@@ -728,7 +730,7 @@ export function InlineTrendAdmin() {
         return;
       }
       const photoCapacity = referenceCapacity(photoModel);
-      const inputs = syncWorkflowPromptInputs(draft.photo.prompt, draft.photo.inputs, photoCapacity);
+      const inputs = draft.photo.inputs.map((input, order) => ({ ...input, order }));
       const promptError = workflowPromptError(draft.photo.prompt, photoCapacity, "image")
         || workflowPromptError(draft.video.prompt, 1, "video")
         || workflowInputError(inputs, draft.photo.prompt, photoCapacity);
@@ -965,7 +967,7 @@ export function InlineTrendAdmin() {
             <label><span>Инструкции к фото</span><textarea rows={2} value={draft.photo.instructions} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, instructions: event.target.value } } : current)} /></label>
             <label><span>Промпт фото</span><textarea rows={4} maxLength={8000} value={draft.photo.prompt} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, prompt: event.target.value, inputs: syncWorkflowPromptInputs(event.target.value, current.photo.inputs, referenceCapacity(models.find((model) => model.id === current.photo.modelId))) } } : current)} placeholder="Скрытая инструкция для модели" required /></label><small>Поля фото добавляются по @Image1, @Image2 и далее. Для параметров пользователя укажите ключ в двойных скобках, например {"{{height}}"}. Названия и типы полей настройте ниже.</small>
             <ModelParameterControls model={models.find((model) => model.id === draft.photo.modelId)} parameters={draft.photo.parameters} onChange={(name, value) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, parameters: { ...current.photo.parameters, [name]: value } } } : current)} />
-            <WorkflowInputEditor inputs={draft.photo.inputs} onChange={(inputs) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, inputs } } : current)} />
+            <WorkflowInputEditor prompt={draft.photo.prompt} inputs={draft.photo.inputs} onChange={(inputs) => setDraft((current) => current.mode === "workflow" ? { ...current, photo: { ...current.photo, inputs } } : current)} />
           </section>
 
           <section className="inline-trend-workflow-step" aria-labelledby="video-step-heading">

@@ -1,3 +1,11 @@
+## Review correction — admin prompt fields (2026-11-03)
+
+- Original PR #578 head b3d20e22229994b7b7cf491f0846a9f21c0f20f4 passed all six gates, including 2387 backend tests, 945 Chromium cases, 280 WebKit cases and keyboard/deadline audits. Local focused both-engine workflow tests passed 98/98.
+- Review identified three P2 edge cases; reproduced with one failing service regression and two failing browser regressions before repair.
+- Correction: every required tagged photo must retain a prompt role; only optional trailing fields may remain unmentioned. Publication uses only the visible draft and never appends hidden inputs. A field still referenced by the prompt cannot be deleted until its reference is removed. Scalar derivation trims whitespace exactly as server substitution does.
+- Verification: 44 focused service tests and Ruff pass; expanded both-engine browser regression running. Fresh exact-head six gates and production release remain required.
+- Execution details: docs/agents/EXECUTION/trend-admin-prompt-inputs-20261103.md.
+
 ## Active Fix Execution — admin prompt references (2026-11-03)
 
 - Baseline: main / production 28dafb3c5748ca5851f9339ae0de1c8e4d89e8da.

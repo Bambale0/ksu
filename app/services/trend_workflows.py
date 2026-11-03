@@ -269,6 +269,13 @@ class TrendWorkflowService:
                         "Проверьте поля фото первого шага и номера @Image в промпте. "
                         "В шаге видео можно использовать только @Image1 — готовое фото первого шага."
                     )
+                if index == 0 and any(
+                    slot["required"] and position not in image_tags
+                    for position, slot in enumerate(image_slots, start=1)
+                ):
+                    raise TrendWorkflowError(
+                        "Укажите в промпте ссылку для каждого обязательного фото."
+                    )
                 if any(not slot["required"] for slot in image_slots):
                     first_optional = next(index for index, slot in enumerate(image_slots) if not slot["required"])
                     if any(slot["required"] for slot in image_slots[first_optional + 1:]):

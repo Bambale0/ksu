@@ -993,3 +993,14 @@ def test_required_identity_photo_stays_required_when_optional_photo_is_present()
         TrendWorkflowService._step_request(recipe, recipe["steps"][0], {
             "image_inputs": [{"slot_id": "car", "url": "https://owned.invalid/car.jpg"}], "values": {},
         })
+
+
+def test_prompt_must_assign_every_required_photo_a_role() -> None:
+    payload = _v2_payload()
+    photo = payload["steps"][0]
+    photo["prompt"] = "Person @Image1."
+    photo["inputs"].append(
+        {"id": "outfit", "label": "Одежда", "help": "Обязательное фото", "type": "image", "required": True, "order": 1},
+    )
+    with pytest.raises(TrendWorkflowError, match="обязательного фото"):
+        TrendWorkflowService.normalize_recipe("Required photo role", payload)

@@ -7,6 +7,17 @@ function photoNumbers(prompt: string): number[] {
   return [...new Set(Array.from(prompt.matchAll(/@Image(\d+)/gi), (match) => Number(match[1])))].sort((a, b) => a - b);
 }
 
+function scalarKeys(prompt: string): string[] {
+  return [...new Set(Array.from(prompt.matchAll(/\{\{([^{}]+)\}\}/g), (match) => match[1].trim()))];
+}
+
+export function workflowInputReferenced(prompt: string, inputs: TrendAdminInput[], index: number): boolean {
+  const input = inputs[index];
+  return input.type === "image"
+    ? photoNumbers(prompt).includes(inputs.slice(0, index + 1).filter((field) => field.type === "image").length)
+    : scalarKeys(prompt).includes(input.id);
+}
+
 export function workflowPromptError(prompt: string, capacity: number, kind: "image" | "video"): string {
   const numbers = photoNumbers(prompt);
   if (!numbers.length) return "";
@@ -39,8 +50,8 @@ export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInpu
       });
     }
   }
-  for (const match of prompt.matchAll(/\{\{([a-zA-Z][a-zA-Z0-9_-]{0,63})\}\}/g)) {
-    const id = match[1];
+  for (const id of scalarKeys(prompt)) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(id)) continue;
     if (inputs.length >= MAX_INPUTS || inputs.some((input) => input.id === id)) continue;
     inputs.push({ id, label: id, help: `Укажите значение поля «${id}».`, type: "text", required: true, order: inputs.length });
   }
@@ -49,13 +60,19 @@ export function syncWorkflowPromptInputs(prompt: string, current: TrendAdminInpu
 
 export function workflowInputError(inputs: TrendAdminInput[], prompt: string, capacity: number): string {
   const images = inputs.filter((input) => input.type === "image");
+  if (scalarKeys(prompt).some((id) => !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(id))) {
+    return "Для ключа поля используйте латинские буквы, цифры и подчёркивание; начните с буквы.";
+  }
   if (images.length > capacity) return `Выбранная модель поддерживает не более ${capacity} фото. Удалите лишние поля фото или выберите другую модель.`;
   if (photoNumbers(prompt).some((number) => number > images.length)
-    || Array.from(prompt.matchAll(/\{\{([a-zA-Z][a-zA-Z0-9_-]{0,63})\}\}/g), (match) => match[1])
-      .some((id) => !inputs.some((input) => input.type !== "image" && input.id === id))) {
+    || scalarKeys(prompt).some((id) => !inputs.some((input) => input.type !== "image" && input.id === id))) {
     return "Для всех ссылок в промпте нужны поля пользователя. В одном шаге можно добавить не более 16 полей.";
   }
   if (photoNumbers(prompt).length) {
+    const numbers = photoNumbers(prompt);
+    if (images.some((image, index) => image.required && !numbers.includes(index + 1))) {
+      return "Укажите в промпте ссылку для каждого обязательного фото.";
+    }
     let optionalSeen = false;
     for (const image of images) {
       if (!image.required) optionalSeen = true;
