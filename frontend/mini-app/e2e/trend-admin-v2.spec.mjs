@@ -449,3 +449,102 @@ test('workflow admin clears the old automatic format and requires an explicit se
   await expect.poll(() => state.writes.length).toBe(1);
   expect(state.writes[0].payload.steps[0].parameters.aspect_ratio).toBe('9:16');
 });
+
+test('pasted prompt exposes photo references and personalization before saving', async ({ page }) => {
+  const state = await setup(page, { models: [{ ...photoModel, known_fields: [...photoModel.known_fields, 'image_input'], reference_capacity: 8 }, videoModel] });
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Стрелец для мужчин');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Рост {{height}}, вес {{weight}}, знак {{zodiac}}, сезон {{season}}. Лицо @Image1. Автомобиль @Image2 необязателен. Одежда @Image3 необязательна.');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  const fields = form.locator('.inline-trend-workflow-input');
+  await expect(fields).toHaveCount(7);
+  const photos = fields.filter({ has: page.locator('select option[value="image"]:checked') });
+  await expect(photos).toHaveCount(3);
+  await expect(photos.nth(0).getByRole('checkbox')).toBeChecked();
+  await expect(photos.nth(1).getByRole('checkbox')).not.toBeChecked();
+  await expect(photos.nth(2).getByRole('checkbox')).not.toBeChecked();
+  const height = fields.filter({ has: page.locator('input[value="height"]') });
+  await height.getByLabel('Метка', { exact: true }).fill('Рост, см');
+  await height.getByRole('combobox', { name: 'Содержимое поля', exact: true }).selectOption('number');
+  const zodiac = fields.filter({ has: page.locator('input[value="zodiac"]') });
+  await zodiac.getByLabel('Метка', { exact: true }).fill('Знак зодиака');
+  await zodiac.getByRole('combobox', { name: 'Содержимое поля', exact: true }).selectOption('select');
+  await zodiac.getByLabel('Варианты через запятую', { exact: true }).fill('Стрелец, Овен');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  const inputs = state.writes[0].payload.steps[0].inputs;
+  expect(inputs.filter(input => input.type === 'image')).toHaveLength(3);
+  expect(inputs.find(input => input.id === 'height')).toMatchObject({ label: 'Рост, см', type: 'number' });
+  expect(inputs.find(input => input.id === 'zodiac')).toMatchObject({ label: 'Знак зодиака', type: 'select', options: ['Стрелец', 'Овен'] });
+  expect(inputs.map(input => input.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(state.errors).toEqual([]);
+});
+
+test('invalid photo numbering and excess video references receive Russian guidance without a write', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Проверка фото');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1, одежда @Image3');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('по порядку');
+  expect(state.writes).toEqual([]);
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1 и @Image2');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('только готовое фото');
+  expect(state.writes).toEqual([]);
+});
+
+test('photo capacity is checked before adding fields or sending the recipe', async ({ page }) => {
+  const state = await setup(page, { models: [{ ...photoModel, reference_capacity: 1 }, videoModel] });
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Проверка лимита');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1, автомобиль @Image2');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  await expect(form.locator('.inline-trend-workflow-input')).toHaveCount(1);
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('не более 1 фото');
+  expect(state.writes).toEqual([]);
+});
+
+test('referenced fields cannot be deleted and spaced scalar keys stay editable', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Устойчивые поля');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1, машина @Image2, одежда @Image3. Рост {{ height }}.');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  const fields = form.locator('.inline-trend-workflow-input');
+  await expect(fields).toHaveCount(4);
+  const middle = fields.nth(1);
+  await middle.getByLabel('Метка', { exact: true }).fill('Автомобиль');
+  await expect(middle.getByRole('button', { name: 'Удалить поле', exact: true })).toBeDisabled();
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(1);
+  expect(state.writes[0].payload.steps[0].inputs.map(input => input.id)).toEqual(['person_photo', 'photo_2', 'photo_3', 'height']);
+  expect(state.writes[0].payload.steps[0].inputs[1].label).toBe('Автомобиль');
+});
+
+test('required photo without a prompt role blocks publication', async ({ page }) => {
+  const state = await setup(page);
+  const form = await openCreate(page);
+  await form.getByRole('combobox', { name: 'Тип шаблона', exact: true }).selectOption('sequential_photo_video');
+  await form.getByLabel('Название', { exact: true }).fill('Роли обязательных фото');
+  await form.getByLabel('URL превью', { exact: true }).fill('https://cdn.example.invalid/workflow.jpg');
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1, одежда @Image2.');
+  await form.getByRole('textbox', { name: 'Промпт видео', exact: true }).fill('Оживи @Image1');
+  const second = form.locator('.inline-trend-workflow-input').nth(1);
+  await second.getByRole('checkbox').check();
+  await form.getByRole('textbox', { name: 'Промпт фото', exact: true }).fill('Лицо @Image1.');
+  await form.getByRole('button', { name: 'Опубликовать тренд', exact: true }).click();
+  await expect(form.getByRole('alert')).toContainText('обязательного фото');
+  expect(state.writes).toEqual([]);
+});

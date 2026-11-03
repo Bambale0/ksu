@@ -917,3 +917,90 @@ async def test_postgres_missing_workflow_quote_does_not_create_or_debit(
     assert wallet.balance == Decimal("1000.00")
     assert generation_count == 0
     assert transaction_count == 0
+
+
+@pytest.mark.parametrize("selected", [(1,), (1, 2), (1, 3), (1, 2, 3)])
+def test_optional_photo_tags_keep_their_roles_after_compaction(selected) -> None:
+    payload = _v2_payload()
+    photo = payload["steps"][0]
+    photo["prompt"] = "Person @Image1. Car @Image2. Clothes @Image3."
+    photo["inputs"] += [
+        {"id": "car", "label": "Автомобиль", "help": "Фото автомобиля", "type": "image", "required": False, "order": 1},
+        {"id": "clothes", "label": "Одежда", "help": "Фото одежды", "type": "image", "required": False, "order": 2},
+    ]
+    recipe = TrendWorkflowService.normalize_recipe("Optional references", payload)
+    step = recipe["steps"][0]
+    original_prompt = step["prompt"]
+    prompt, parameters = TrendWorkflowService._step_request(recipe, step, {
+        "image_inputs": [
+            {"slot_id": photo["inputs"][i - 1]["id"], "url": f"https://owned.invalid/{i}.jpg"}
+            for i in reversed(selected)
+        ],
+        "values": {},
+    })
+    assert parameters["image_input"] == [f"https://owned.invalid/{i}.jpg" for i in selected]
+    for original, label in [(1, "Person"), (2, "Car"), (3, "Clothes")]:
+        if original in selected:
+            assert f"{label} @Image{selected.index(original) + 1}." in prompt
+        else:
+            assert f"{label} @Image" not in prompt
+    assert step["prompt"] == original_prompt
+
+
+def test_semantic_remapping_does_not_rewrite_literal_personalization() -> None:
+    payload = _v2_payload()
+    photo = payload["steps"][0]
+    photo["prompt"] = "Person @Image1. Car @Image2. Clothes @Image3. Note: {{note}}"
+    photo["inputs"] += [
+        {"id": "car", "label": "Автомобиль", "help": "Фото автомобиля", "type": "image", "required": False, "order": 1},
+        {"id": "clothes", "label": "Одежда", "help": "Фото одежды", "type": "image", "required": False, "order": 2},
+        {"id": "note", "label": "Примечание", "help": "Любой текст", "type": "text", "required": False, "order": 3},
+    ]
+    recipe = TrendWorkflowService.normalize_recipe("Literal personalization", payload)
+    prompt, _ = TrendWorkflowService._step_request(recipe, recipe["steps"][0], {
+        "image_inputs": [{"slot_id": "person_photo", "url": "https://owned.invalid/1.jpg"},
+                         {"slot_id": "clothes", "url": "https://owned.invalid/3.jpg"}],
+        "values": {"note": "Literal @Image3 {{note}}"},
+    })
+    assert "Clothes @Image2." in prompt
+    assert "Note: Literal @Image3 {{note}}" in prompt
+
+
+def test_extra_optional_photo_field_need_not_be_mentioned_in_prompt() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["prompt"] = "Person @Image1."
+    payload["steps"][0]["inputs"].append(
+        {"id": "car", "label": "Автомобиль", "help": "Необязательное фото", "type": "image", "required": False, "order": 1},
+    )
+    recipe = TrendWorkflowService.normalize_recipe("Extra optional photo", payload)
+    assert len(recipe["steps"][0]["inputs"]) == 2
+
+
+def test_dangling_photo_reference_stays_rejected_with_actionable_message() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["prompt"] = "Person @Image1, car @Image2."
+    with pytest.raises(TrendWorkflowError, match="Проверьте поля фото"):
+        TrendWorkflowService.normalize_recipe("Missing photo input", payload)
+
+
+def test_required_identity_photo_stays_required_when_optional_photo_is_present() -> None:
+    payload = _v2_payload()
+    payload["steps"][0]["inputs"].append(
+        {"id": "car", "label": "Автомобиль", "help": "Необязательное фото", "type": "image", "required": False, "order": 1},
+    )
+    recipe = TrendWorkflowService.normalize_recipe("Required identity", payload)
+    with pytest.raises(TrendWorkflowError, match="Required workflow image"):
+        TrendWorkflowService._step_request(recipe, recipe["steps"][0], {
+            "image_inputs": [{"slot_id": "car", "url": "https://owned.invalid/car.jpg"}], "values": {},
+        })
+
+
+def test_prompt_must_assign_every_required_photo_a_role() -> None:
+    payload = _v2_payload()
+    photo = payload["steps"][0]
+    photo["prompt"] = "Person @Image1."
+    photo["inputs"].append(
+        {"id": "outfit", "label": "Одежда", "help": "Обязательное фото", "type": "image", "required": True, "order": 1},
+    )
+    with pytest.raises(TrendWorkflowError, match="обязательного фото"):
+        TrendWorkflowService.normalize_recipe("Required photo role", payload)
