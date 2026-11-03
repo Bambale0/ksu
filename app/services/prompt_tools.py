@@ -22,6 +22,7 @@ from app.providers.nexus_prompt_tools import NEXUS_VISION_MODEL, NexusPromptTool
 from app.services.abuse_protection import AbuseProtectionService
 from app.services.billing_access import BillingAccessService
 from app.services.notifications import NotificationService
+from app.services.prompt_tool_routing import configured_prompt_tool_routes
 from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
@@ -146,6 +147,7 @@ class PromptToolPricingService:
             and await BillingAccessService.is_active_admin(session, user_id)
         )
         items: list[dict[str, Any]] = []
+        media_policy = await configured_prompt_tool_routes(session)
         for tool in _TOOL_MODEL:
             retail = prices.get(tool)
             enabled = retail is not None
@@ -154,7 +156,10 @@ class PromptToolPricingService:
                 {
                     "id": tool,
                     "title": _TOOL_TITLE[tool],
-                    "model": _TOOL_MODEL[tool],
+                    "model": (
+                        media_policy["routes"][tool][0]["model"]
+                        if tool in media_policy["routes"] else _TOOL_MODEL[tool]
+                    ),
                     "enabled": enabled,
                     "admin_free": admin_free and enabled,
                     "retail_cost_credits": format(retail, ".2f") if retail is not None else None,
@@ -269,15 +274,28 @@ class PromptToolService:
             retail_cost=retail_price,
         )
         charge = billing.effective_cost
+        route_metadata: dict[str, Any] = {}
+        provider = _provider_for_prompt_tool(tool, clean)
+        model = _model_for_prompt_tool(tool, clean)
+        if tool in {"image_analysis", "video_prompt"}:
+            policy = await configured_prompt_tool_routes(session)
+            route = policy["routes"][tool]
+            provider, model = route[0]["provider"], route[0]["model"]
+            route_metadata = {
+                "_prompt_tool_route": route,
+                "_prompt_tool_route_revision": policy["revision"],
+                "_prompt_tool_route_index": 0,
+            }
         task = PromptToolTask(
             id=task_id,
             user_id=user_id,
             tool=tool,
             status="queued",
-            provider=_provider_for_prompt_tool(tool, clean),
-            model=_model_for_prompt_tool(tool, clean),
+            provider=provider,
+            model=model,
             input_payload={
                 **clean,
+                **route_metadata,
                 "_request_hash": request_hash,
                 "_retail_cost_credits": str(billing.retail_cost),
                 "_admin_free": billing.admin_free,
@@ -375,6 +393,14 @@ class PromptToolOutboxService:
         row.lease_until = now + timedelta(seconds=settings.generation_outbox_lease_seconds)
         row.last_error = None
         task = await session.get(PromptToolTask, row.task_id)
+        if task is not None and (task.input_payload or {}).get("_prompt_tool_route"):
+            # A complete media attempt (download, extraction and provider I/O)
+            # must end before another worker may reclaim its lease.
+            row.lease_until = now + timedelta(seconds=max(
+                settings.generation_outbox_lease_seconds,
+                settings.prompt_tool_media_outbox_lease_seconds,
+                settings.prompt_tool_media_timeout_seconds + 60,
+            ))
         if task is not None and task.status in {"queued", "processing"}:
             task.status = "processing"
         await session.commit()
@@ -409,7 +435,10 @@ class PromptToolOutboxService:
         return task, row
 
     @staticmethod
-    async def release(session: AsyncSession, claimed: ClaimedPromptTool, error: str) -> None:
+    async def release(
+        session: AsyncSession, claimed: ClaimedPromptTool, error: str,
+        *, retry_after_seconds: int | None = None,
+    ) -> None:
         locked = await PromptToolOutboxService._lock_current_claim(session, claimed)
         if locked is None:
             await session.rollback()
@@ -417,7 +446,10 @@ class PromptToolOutboxService:
         task, row = locked
         row.status = "pending"
         row.lease_until = None
-        row.available_at = _utcnow() + timedelta(seconds=_retry_delay(claimed.attempts))
+        delay = _retry_delay(claimed.attempts)
+        if retry_after_seconds is not None:
+            delay = max(delay, min(180, max(0, retry_after_seconds)))
+        row.available_at = _utcnow() + timedelta(seconds=delay)
         row.last_error = error[:4000]
         if task.status in {"queued", "processing"}:
             task.status = "queued"
@@ -504,6 +536,11 @@ class PromptToolProcessor:
     ) -> None:
         task = await session.get(PromptToolTask, claimed.task_id)
         if task is None:
+            return
+        if "_prompt_tool_route" in (task.input_payload or {}):
+            from app.services.prompt_tool_execution import process_media_prompt
+
+            await process_media_prompt(session, redis, claimed)
             return
         provider = str(getattr(task, "provider", None) or "kie").strip().lower()
         protection_provider = f"{provider}-prompt-tools"

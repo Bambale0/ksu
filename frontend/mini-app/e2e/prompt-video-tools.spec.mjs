@@ -79,6 +79,7 @@ test('video prompt uses gallery video and renders tanyapi cinematic analysis', a
   await page.goto('/mini-app/prompt-tools/?mode=video');
   await expect(page.getByRole('heading', { name: 'Промпт по фото / видео' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Видео', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText('Анализ по ключевым кадрам видео, без звука.', { exact: true })).toBeVisible();
   await expect(page.getByText('Длительность целевой сцены')).toHaveCount(0);
 
   await page.locator('textarea').fill('Вытащи динамику, камеру и финальный кадр');

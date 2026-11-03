@@ -133,6 +133,8 @@ class Settings(BaseSettings):
     generation_outbox_lease_seconds: int = 90
     generation_submission_max_attempts: int = 5
     generation_submission_unknown_timeout_seconds: int = 900
+    prompt_tool_media_timeout_seconds: int = Field(default=480, ge=60, le=900)
+    prompt_tool_media_outbox_lease_seconds: int = Field(default=600, ge=120, le=1800)
     generation_hard_timeout_seconds: int = 7200
     generation_reconcile_interval_seconds: int = 60
     generation_reconcile_stale_seconds: int = 60
