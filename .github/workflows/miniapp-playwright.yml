@@ -43,6 +43,15 @@ jobs:
       - name: Run comprehensive Mini App audit
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium
+      - name: Preserve Chromium failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniapp-chromium-failure-evidence
+          path: |
+            frontend/mini-app/playwright-report
+            frontend/mini-app/test-results
+          if-no-files-found: ignore
       - name: Run iPhone/iPad WebKit responsive and crash audit
         if: always()
         working-directory: frontend/mini-app
@@ -73,6 +82,15 @@ jobs:
           e2e/trend-admin-mobile-interaction.spec.mjs
           e2e/seedance-video-trend.spec.mjs
           --project=webkit-mobile
+      - name: Preserve WebKit failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniapp-webkit-failure-evidence
+          path: |
+            frontend/mini-app/playwright-report
+            frontend/mini-app/test-results
+          if-no-files-found: ignore
       - name: Verify personalized trend keyboards in iPhone WebKit
         if: ${{ !cancelled() }}
         working-directory: frontend/mini-app

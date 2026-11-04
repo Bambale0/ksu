@@ -98,10 +98,27 @@ test('catalog tool cards use the desktop width instead of one long column', asyn
   await openDesign(page, 'home');
   const cards = page.locator('#roxy-catalog-feature-hub .catalog-feature-grid').first().locator('.catalog-feature-card');
   await expect(cards).toHaveCount(3);
-  const first = await cards.nth(0).boundingBox();
-  const second = await cards.nth(1).boundingBox();
-  expect(Math.abs(first.y - second.y)).toBeLessThanOrEqual(1);
-  expect(second.x).toBeGreaterThan(first.x + first.width);
+  // Lazy sections above the grid can move every card between protocol calls.
+  // Read relative geometry in one browser task so all three boxes share a frame.
+  const geometry = await cards.evaluateAll((nodes) => ({
+    viewportWidth: window.innerWidth,
+    desktop: window.matchMedia('(min-width: 1024px)').matches,
+    columns: getComputedStyle(nodes[0].parentElement).gridTemplateColumns.split(/\s+/),
+    boxes: nodes.map((node) => {
+      const box = node.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }),
+  }));
+  expect(geometry.viewportWidth).toBe(1280);
+  expect(geometry.desktop).toBe(true);
+  expect(geometry.columns).toHaveLength(3);
+  expect(geometry.boxes).toHaveLength(3);
+  for (const [index, box] of geometry.boxes.entries()) {
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+    expect(Math.abs(box.y - geometry.boxes[0].y)).toBeLessThanOrEqual(1);
+    if (index > 0) expect(box.x).toBeGreaterThan(geometry.boxes[index - 1].x + geometry.boxes[index - 1].width);
+  }
 });
 
 test('history uses public action names and no internal implementation copy', async ({ page }) => {
