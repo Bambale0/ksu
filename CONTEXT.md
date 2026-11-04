@@ -1,3 +1,11 @@
+## Active Fix Execution — Mini App audit recovery and UI (2026-11-04)
+
+- Baseline: `81ac57608e1807b0c7f81a681032b790c1ceb077`; branch `fix/miniapp-audit-20261104`. The user authorized implementation of the preceding UI/logic/design audit and team development. Production rollout is not part of this implementation request.
+- Fresh audit reproduced model-loading failure without recovery, history HTTP failure shown as empty with an uncaught rejection, missing quote retry, missing model-dialog focus/Escape handling, tiny/clipped labels, CSS-hidden contextual instructions and technical customer copy. Catalog composition repeats discovery/service sections. Existing quote freshness, submit idempotency and platform guards must remain intact.
+- Reuse: current API/client error mapping, route state, model catalog, quote effect/sequence, history service, existing Playwright fixtures, CSS tokens and feature-hub routes. No database/schema, provider, price, wallet, permission or runtime configuration changes.
+- Acceptance/verification matrix, ownership, risks, rollout/rollback and progress: [Mini App audit execution ledger](docs/agents/EXECUTION/miniapp-audit-20261104.md). Public browser regression seams precede changes; independent Standards and Spec review plus exact-head CI are required. No live paid request or production mutation.
+- Status: recovery/dialog and responsive/catalog fixes implemented after failing browser regressions. Static build/typecheck, 33 source contracts and all 16 new regressions in Chromium/WebKit passed. A landscape navigation regression found by adjacent coverage was fixed and passed both engines. Independent Standards/Spec review has no open findings. Exact-head CI and PR delivery evidence remain the completion gate; production unchanged.
+
 ## Active Fix — explicit Neironych image policy refusals (2026-11-04)
 
 - Baseline: 8cfc19d9. Source admin Seedream request 9a6e48ab-020d-4732-a278-4e9e09fba3ad and retry 6ffb01b3-7a3b-556f-8578-39b97af39487 received HTTP 503 provider_response_invalid from the gateway.

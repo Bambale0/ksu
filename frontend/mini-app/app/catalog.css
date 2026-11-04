@@ -1,5 +1,22 @@
 /* Catalog remains a full discovery surface: feature hub, trends, filters and model families. */
 
+.catalog-service-groups { display: grid; gap: 10px; margin-top: 12px; }
+.catalog-disclosure { min-width: 0; border: 1px solid var(--border); border-radius: 16px; background: rgba(255,255,255,.025); }
+.catalog-disclosure > summary { min-height: 52px; padding: 15px; cursor: pointer; font-weight: 800; font-size: 14px; line-height: 1.4; }
+.catalog-disclosure > summary:focus-visible { outline: 2px solid var(--violet-soft); outline-offset: 3px; border-radius: 16px; }
+.catalog-disclosure > .tool-grid,
+.catalog-disclosure > .catalog-feature-grid { padding: 0 12px 12px; margin: 0; }
+.catalog-disclosure[open] > summary { color: var(--violet-soft); }
+.catalog-disclosure .roxy-service-card { min-width: 0; }
+.catalog-services-overview { display: grid; }
+[data-partner-rox-transfer] { display: grid; gap: 12px; }
+[data-partner-rox-transfer] > h3,
+[data-partner-rox-transfer] > p { margin: 0; }
+
+@media (min-width: 768px) {
+  .catalog-disclosure > .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Keep ROXY catalog service cards inside the product palette instead of the
    browser/Telegram default link blue. The dedicated class and explicit WebKit
    fill color make the neon-lilac accent deterministic inside Telegram webviews. */

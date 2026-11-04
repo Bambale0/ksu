@@ -83,8 +83,8 @@ export function CustomerParityHub() {
     ]} /> : host.kind === "partners" ? <QuickPanel title="Управление доходом" copy="Доступный партнёрский баланс можно вывести или перевести в ROX. Creator-программа живёт отдельно от реферальных начислений." actions={[
       ["Выплаты и ROX", "/mini-app/partner-wallet/", partnerAvailable ? `${compactNumber(partnerAvailable)} ₽` : ""],
       ["Creator-партнёрство", "/mini-app/creator-partnership/", "Заявка"],
-    ]} /> : <QuickPanel title="Управление работами" copy="Backend умеет больше обычного просмотра истории: действия с результатом, скачивание, скрытие и восстановление." actions={[
-      ["Действия с работами", "/mini-app/actions/", "Edit · Animate · Repeat"],
+    ]} /> : <QuickPanel title="Управление работами" copy="Повторяйте и редактируйте работы, скачивайте оригиналы или восстанавливайте скрытые результаты." actions={[
+      ["Действия с работами", "/mini-app/actions/", "Повтор и редактирование"],
       ["Скачать файлы", "/mini-app/downloads/", "Оригиналы"],
       ["Скрытые работы", "/mini-app/history-manager/", "Архив"],
     ]} />,

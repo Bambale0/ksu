@@ -279,7 +279,7 @@ async function chooseFamily(page, name) {
 
 async function runHome(page, check) {
   if (check === 'shell') {
-    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Создавайте с ROXY', exact: true })).toBeVisible();
     await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
   } else if (check === 'create-image') {
     await page.locator('[data-catalog-feature="create-image"]').click();
@@ -294,9 +294,11 @@ async function runHome(page, check) {
   } else if (check === 'catalog') {
     await expect(page.getByText('Готовые сценарии')).toBeVisible();
   } else if (check === 'history') {
+    await page.locator('.catalog-disclosure > summary').filter({ hasText: 'Работы, сообщество и профиль' }).click();
     await page.locator('[data-catalog-feature="history"]').click();
     await expect(page.getByText('Все работы')).toBeVisible();
   } else if (check === 'partners') {
+    await page.locator('.catalog-disclosure > summary').filter({ hasText: 'Работы, сообщество и профиль' }).click();
     await page.locator('[data-catalog-feature="partners"]').click();
     await expect(page.getByText('Кабинет автора')).toBeVisible();
   } else if (check === 'wallet') {
@@ -364,7 +366,7 @@ async function runFeed(page, check) {
 
 async function runCatalog(page, check) {
   if (check === 'shell') {
-    await expect(page.getByText('Все фичи ROXY')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Создавайте с ROXY', exact: true })).toBeVisible();
     await expect(page.locator('[data-catalog-feature]')).toHaveCount(12);
     await expect(page.getByText('Описание по фото')).toBeVisible();
     await expect(page.getByText('Описание по видео').first()).toBeVisible();
@@ -429,7 +431,7 @@ async function runCreate(page, check) {
     await chooseFamily(page, 'Музыка');
     await expect(page.getByText('ROXY Music').first()).toBeVisible();
   } else if (check === 'validation') {
-    await expect(page.getByRole('button', { name: /^Создать/ }).last()).toBeDisabled();
+    await expect(page.locator('.create-summary button.primary')).toBeDisabled();
     await expect(page.getByText(/Заполните «Описание»/)).toBeVisible();
   } else if (check === 'submit') {
     await prompt.fill('Портрет для обложки');

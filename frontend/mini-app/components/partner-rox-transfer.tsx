@@ -125,8 +125,9 @@ export function PartnerRoxTransfer() {
       <p className="muted">Введите ID пользователя ROXY. Его можно посмотреть в профиле рядом с именем.</p>
       <p className="muted">Доступно: <strong>{compactNumber(balance, 0)} ROX</strong></p>
       <label className="field">
-        <span>ID пользователя</span>
+        <span className="label">ID пользователя</span>
         <input
+          className="control"
           inputMode="numeric"
           type="text"
           autoComplete="off"
@@ -142,8 +143,9 @@ export function PartnerRoxTransfer() {
         ? <small>Нельзя переводить ROX самому себе.</small>
         : null}
       <label className="field">
-        <span>Сколько ROX</span>
+        <span className="label">Сколько ROX</span>
         <input
+          className="control"
           inputMode="numeric"
           type="number"
           min={1}
