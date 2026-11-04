@@ -43,6 +43,7 @@ type PreviewSurface = "private" | FeedSurface;
 type MediaFilter = "all" | "image" | "video" | "audio";
 type CreationMedia = Exclude<MediaFilter, "all">;
 type ProfilePublication = FeedCard | Generation;
+type LoadStatus = "loading" | "loaded" | "error";
 type CreateLaunch =
   | { nonce: number; kind: "new"; modelId?: string; media?: CreationMedia }
   | { nonce: number; kind: "reuse"; payload: RecreateGenerationPayload };
@@ -388,6 +389,7 @@ export function RoxySocialApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [models, setModels] = useState<GenerationModel[]>([]);
   const [families, setFamilies] = useState<GenerationModelFamily[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<LoadStatus>("loading");
   const [feed, setFeed] = useState<FeedCard[]>([]);
   const [feedSort, setFeedSort] = useState<"recent" | "top_day" | "top">("recent");
   const [trends, setTrends] = useState<TrendItem[]>([]);
@@ -396,6 +398,8 @@ export function RoxySocialApp() {
   const [history, setHistory] = useState<Generation[]>([]);
   const [historyBefore, setHistoryBefore] = useState<string | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyStatus, setHistoryStatus] = useState<LoadStatus>("loading");
+  const [historyRetryBefore, setHistoryRetryBefore] = useState<string | null>(null);
   const [profileWorks, setProfileWorks] = useState<Generation[]>([]);
   const [profilePublications, setProfilePublications] = useState<ProfilePublication[]>([]);
   const [profileTab, setProfileTab] = useState<"works" | "publications">("works");
@@ -412,6 +416,8 @@ export function RoxySocialApp() {
   const deepLinkedGeneration = useRef<string | null>(null);
   const latestDelivery = useRef(new Map<string, Generation>());
   const toastTimer = useRef<number | null>(null);
+  const modelsRequest = useRef(0);
+  const historyRequest = useRef(0);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -423,6 +429,21 @@ export function RoxySocialApp() {
     const next = await api.me();
     setMe(next);
     return next;
+  }, []);
+
+  const loadModels = useCallback(async () => {
+    const request = ++modelsRequest.current;
+    setModelsStatus("loading");
+    try {
+      const payload = await api.models();
+      if (request !== modelsRequest.current) return;
+      const nextModels = payload.models || [];
+      setModels(nextModels);
+      setFamilies(payload.families?.length ? payload.families : fallbackFamilies(nextModels));
+      setModelsStatus("loaded");
+    } catch {
+      if (request === modelsRequest.current) setModelsStatus("error");
+    }
   }, []);
 
   const loadFeed = useCallback(async (sort = feedSort) => {
@@ -453,19 +474,32 @@ export function RoxySocialApp() {
   }, []);
 
   const loadHistory = useCallback(async (append = false, before?: string | null) => {
+    const request = ++historyRequest.current;
+    setHistoryStatus("loading");
     const query = `limit=24${before ? `&before=${encodeURIComponent(before)}` : ""}`;
-    const payload = await api.generations(query);
-    const fresh = (payload.items || [])
-      .map((item) => freshestGeneration(item, latestDelivery.current.get(item.id)))
-      .filter((item) => !item.hidden_from_history);
-    setHistory((current) => {
-      if (!append) return fresh;
-      const ids = new Set(fresh.map((item) => item.id));
-      return [...current.filter((item) => !ids.has(item.id)), ...fresh];
-    });
-    setHistoryBefore(payload.next_before || null);
-    setHistoryHasMore(Boolean(payload.has_more));
-    return payload.items;
+    try {
+      const payload = await api.generations(query);
+      if (request !== historyRequest.current) return [];
+      const fresh = (payload.items || [])
+        .map((item) => freshestGeneration(item, latestDelivery.current.get(item.id)))
+        .filter((item) => !item.hidden_from_history);
+      setHistory((current) => {
+        if (!append) return fresh;
+        const ids = new Set(fresh.map((item) => item.id));
+        return [...current.filter((item) => !ids.has(item.id)), ...fresh];
+      });
+      setHistoryBefore(payload.next_before || null);
+      setHistoryHasMore(Boolean(payload.has_more));
+      setHistoryRetryBefore(null);
+      setHistoryStatus("loaded");
+      return payload.items;
+    } catch {
+      if (request === historyRequest.current) {
+        setHistoryRetryBefore(append ? before || null : null);
+        setHistoryStatus("error");
+      }
+      return [];
+    }
   }, []);
 
   const loadProfile = useCallback(async () => {
@@ -546,20 +580,16 @@ export function RoxySocialApp() {
     tg?.onEvent?.("viewportChanged", safe);
     const initial = initialRoute();
     setRoute(initial);
+    void loadModels();
 
     (async () => {
       try {
-        const [modelResult, meResult] = await Promise.allSettled([
-          api.models(),
-          tg?.initData ? api.me() : Promise.resolve(null),
-        ]);
+        const meResult = await (tg?.initData ? api.me() : Promise.resolve(null));
         if (!active) return;
-        if (modelResult.status === "fulfilled") {
-          const nextModels = modelResult.value.models || [];
-          setModels(nextModels);
-          setFamilies(modelResult.value.families?.length ? modelResult.value.families : fallbackFamilies(nextModels));
-        }
-        if (meResult.status === "fulfilled" && meResult.value) setMe(meResult.value);
+        if (meResult) setMe(meResult);
+      } catch {
+        // The auth boundary owns sign-in recovery; model availability must not
+        // prevent the rest of the application from becoming navigable.
       } finally {
         if (active) setBooting(false);
       }
@@ -570,12 +600,14 @@ export function RoxySocialApp() {
     window.addEventListener("popstate", onPop);
     return () => {
       active = false;
+      modelsRequest.current += 1;
+      historyRequest.current += 1;
       window.removeEventListener("popstate", onPop);
       tg?.offEvent?.("safeAreaChanged", safe);
       tg?.offEvent?.("contentSafeAreaChanged", safe);
       tg?.offEvent?.("viewportChanged", safe);
     };
-  }, []);
+  }, [loadModels]);
 
   useEffect(() => {
     if (route === "profile") void loadProfile();
@@ -693,6 +725,7 @@ export function RoxySocialApp() {
       </header>
 
       <main className="main-shell">
+        {(route === "home" || route === "catalog") && (modelsStatus === "error" || (modelsStatus === "loaded" && !models.length)) && <section className="screen"><ModelAvailability status={modelsStatus} onRetry={() => void loadModels()} /></section>}
         {route === "home" && me && <TelegramChatConnection key={me.telegram_id} me={me} />}
         {route === "home" && <CatalogScreen canonicalHome models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={(trend) => {
           window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
@@ -701,8 +734,8 @@ export function RoxySocialApp() {
         {route === "catalog" && <CatalogScreen models={models} families={families} trends={trends} onCreate={(model) => startNewGeneration(creationMedia(model), model.id)} onOpenPartners={() => navigate("partners")} onRunTrend={(trend) => {
           window.location.assign(`/mini-app/trend/?id=${encodeURIComponent(trend.id)}`);
         }} />}
-        {route === "create" && <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} showToast={showToast} />}
-        {route === "history" && <HistoryScreen items={history} hasMore={historyHasMore} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} />}
+        {route === "create" && (models.length ? <CreateScreen key={createLaunch.nonce} launch={createLaunch} models={models} families={families} me={me} onBalance={refreshMe} onCreated={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} showToast={showToast} /> : <section className="screen"><ScreenHead kicker="Создание" title="Новая работа" /><ModelAvailability status={modelsStatus} onRetry={() => void loadModels()} /></section>)}
+        {route === "history" && <HistoryScreen items={history} status={historyStatus} hasMore={historyHasMore} onRetry={() => void loadHistory(Boolean(historyRetryBefore), historyRetryBefore)} onMore={() => historyBefore && void loadHistory(true, historyBefore)} onPreview={(item) => { setPreviewSurface("private"); setPreview(freshestPrivateGeneration(item, latestDelivery.current.get(item.id))); }} />}
         {route === "profile" && <ProfileScreen me={me} avatar={avatar} stats={partnerStats} activePromo={activePromo} tab={profileTab} setTab={setProfileTab} works={profileWorks} publications={profilePublications} onPreview={(item, surface) => { setPreviewSurface(surface); setPreview(item); }} onWallet={openPayments} onCopy={async (value) => { if (await copyText(value)) showToast("Ссылка скопирована"); }} />}
         {route === "partners" && <PartnerScreen me={me} stats={partnerStats} rewards={partnerRewards} invitations={partnerInvites} onRefresh={() => void loadPartners()} showToast={showToast} />}
       </main>
@@ -714,6 +747,15 @@ export function RoxySocialApp() {
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
+}
+
+function ModelAvailability({ status, onRetry }: { status: LoadStatus; onRetry: () => void }) {
+  if (status === "loading") return <div className="panel" role="status">Загружаю модели…</div>;
+  return <div className="panel" role={status === "error" ? "alert" : "status"}>
+    <h2>{status === "error" ? "Не удалось загрузить модели" : "Модели пока недоступны"}</h2>
+    <p className="muted">{status === "error" ? "Проверьте соединение и повторите загрузку. Другие разделы остаются доступны." : "Попробуйте обновить каталог чуть позже."}</p>
+    <button className="secondary wide" type="button" onClick={onRetry}>Повторить загрузку моделей</button>
+  </div>;
 }
 
 function Splash() {
@@ -782,6 +824,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState("");
+  const [quoteRetry, setQuoteRetry] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
@@ -821,6 +864,7 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   const persist = useCallback((modelId: string, next: Draft) => {
     quoteSeq.current += 1;
     setQuote(null);
+    setQuoteError("");
     setDrafts((current) => ({ ...current, [modelId]: next }));
   }, []);
 
@@ -830,13 +874,14 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
   useEffect(() => {
     const seq = ++quoteSeq.current;
     setQuote(null);
+    setQuoteError("");
     if (!selected || !draft || errors.length || uploading) return;
     const timer = window.setTimeout(async () => {
       try { const next = await api.quote(buildPayload(selected, draft)); if (quoteSeq.current === seq) { setQuote(next); setQuoteError(""); } }
       catch (error) { if (quoteSeq.current === seq) { setQuote(null); setQuoteError(error instanceof Error ? error.message : "Не удалось рассчитать цену"); } }
     }, 300);
     return () => { window.clearTimeout(timer); quoteSeq.current += 1; };
-  }, [draft, selected, uploading, errors.join("|")]);
+  }, [draft, selected, uploading, errors.join("|"), quoteRetry]);
 
   const chooseModel = (id: string) => {
     const target = byId.get(id);
@@ -896,13 +941,60 @@ function CreateScreen({ launch, models, families, me, onBalance, onCreated, show
       {selected.ui_schema?.scenario?.items?.length ? <div className="panel"><label className="label">Режим</label><div className="segmented scrollable">{selected.ui_schema.scenario.items.map((item) => <button key={item.id} type="button" className={draft.scenario === item.id ? "active" : ""} onClick={() => setScenario(item.id)}>{item.title}</button>)}</div></div> : null}
       {groups.map((group) => { const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group)); if (!grouped.length) return null; return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => { setUploading(true); try { const max = field.control === "file" ? 1 : field.max_items || 20; const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : []; for (const file of files.slice(0, Math.max(0, max - urls.length))) { if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; } const uploaded = await api.upload(file); if (field.control === "file") { updateValue(field.name, uploaded.url); break; } urls.push(uploaded.url); } if (field.control === "files") updateValue(field.name, urls); notify("success"); } catch (error) { notify("error"); showToast(error instanceof Error ? error.message : "Ошибка загрузки"); } finally { setUploading(false); } }} />)}</div></div>; })}
       {selected.ui_schema?.billing_seconds && <div className="panel"><label className="label">{selected.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={selected.ui_schema.billing_seconds.min || 1} max={selected.ui_schema.billing_seconds.max || 600} value={draft.billing_seconds ?? ""} onChange={(e) => persist(selected.id, { ...draft, billing_seconds: e.target.value ? Number(e.target.value) : null })}/></div>}
-    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small>{quoteError || errors[0] || (quote ? adminRetailNote || "Списание только в ROX" : "Считаю…")}</small></div><button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Запускаю…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
+    </div><aside className="create-summary panel"><span className="kicker">Итог</span><h2>{selected.title}</h2><p className="muted">{me ? `Баланс: ${compact(me.balance_rox)} ROX` : "Откройте через Telegram для запуска"}</p><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${compact(quote.cost_rox)} ROX` : "—"}</strong><small role={quoteError ? "alert" : undefined}>{quoteError || errors[0] || (quote ? adminRetailNote || "Списание только в ROX" : "Считаю…")}</small></div>{quoteError && <button className="secondary wide" type="button" onClick={() => setQuoteRetry((current) => current + 1)}>Повторить расчёт цены</button>}<button className="primary wide" disabled={!quote || errors.length > 0 || uploading || submitting} type="button" onClick={() => void submit()}><Icon name="spark"/>{submitting ? "Запускаю…" : quote ? `Создать · ${compact(quote.cost_rox)} ROX` : "Создать"}</button></aside></div>
     {familySheet && <FamilyVariantSheet family={familySheet} models={byId} selectedId={selected.id} onClose={() => setFamilySheet(null)} onChoose={(id) => { chooseModel(id); setFamilySheet(null); }} />}
   </section>;
 }
 
 function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: { family: GenerationModelFamily; models: Map<string, GenerationModel>; selectedId: string; onClose: () => void; onChoose: (id: string) => void }) {
-  return <div className="sheet-backdrop" role="presentation" onClick={onClose}><section className="bottom-sheet" role="dialog" aria-modal="true" aria-label={family.title} onClick={(event) => event.stopPropagation()}><div className="sheet-head"><div><span className="kicker">Модель</span><h2>{family.title}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button></div><div className="variant-list">{family.variants.map((variant) => { const model = models.get(variant.id); const active = variant.id === selectedId; return <button key={variant.id} className={`variant-row${active ? " active" : ""}`} type="button" onClick={() => model && onChoose(model.id)} disabled={!model}><span className="variant-badge">{variant.badge || (variant.recommended ? "TOP" : variant.version || "AI")}</span><span><strong>{variant.version || variant.title}</strong><small>{variant.description || variant.title}</small></span><span className="price-pill">{priceLabel(variant.price_rox)}</span></button>; })}</div></section></div>;
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((node) => node.tabIndex >= 0 && node.getClientRects().length > 0 && getComputedStyle(node).visibility !== "hidden");
+    const focusFirst = () => (focusable()[0] || dialog).focus({ preventScroll: true });
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+      } else if (event.key === "Tab") {
+        const nodes = focusable();
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        if (!first || !dialog.contains(document.activeElement)) {
+          event.preventDefault();
+          (event.shiftKey ? last || dialog : first || dialog).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    const containFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) focusFirst();
+    };
+    focusFirst();
+    document.addEventListener("keydown", keydown, true);
+    document.addEventListener("focusin", containFocus, true);
+    return () => {
+      document.removeEventListener("keydown", keydown, true);
+      document.removeEventListener("focusin", containFocus, true);
+      document.body.style.overflow = previousOverflow;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  return <div className="sheet-backdrop" role="presentation" onClick={onClose}><section ref={dialogRef} tabIndex={-1} className="bottom-sheet" role="dialog" aria-modal="true" aria-label={family.title} onClick={(event) => event.stopPropagation()}><div className="sheet-head"><div><span className="kicker">Модель</span><h2>{family.title}</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Закрыть"><Icon name="close"/></button></div><div className="variant-list">{family.variants.map((variant) => { const model = models.get(variant.id); const active = variant.id === selectedId; return <button key={variant.id} className={`variant-row${active ? " active" : ""}`} type="button" onClick={() => model && onChoose(model.id)} disabled={!model}><span className="variant-badge">{variant.badge || (variant.recommended ? "TOP" : variant.version || "AI")}</span><span><strong>{variant.version || variant.title}</strong><small>{variant.description || variant.title}</small></span><span className="price-pill">{priceLabel(variant.price_rox)}</span></button>; })}</div></section></div>;
 }
 
 function DynamicField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
@@ -921,8 +1013,13 @@ function safeFileName(url: string): string {
   try { return new URL(url, window.location.href).pathname.split("/").pop() || ""; } catch { return ""; }
 }
 
-function HistoryScreen({ items, hasMore, onMore, onPreview }: { items: Generation[]; hasMore: boolean; onMore: () => void; onPreview: (item: Generation) => void }) {
-  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/><div className="history-list">{items.length ? items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {deliveryStatusLabel(item)}</small>{item.error && <p>{generationFailureMessage(item.error)}</p>}</div><span className={`status ${item.status}`}>{deliveryStatusLabel(item)}</span></button>) : <Empty text="История пока пуста."/>}</div>{hasMore && <button className="secondary wide" type="button" onClick={onMore}>Показать ещё</button>}</section>;
+function HistoryScreen({ items, status, hasMore, onRetry, onMore, onPreview }: { items: Generation[]; status: LoadStatus; hasMore: boolean; onRetry: () => void; onMore: () => void; onPreview: (item: Generation) => void }) {
+  return <section className="screen"><ScreenHead kicker="История" title="Все работы" copy="Здесь собраны готовые работы и то, что ещё создаётся."/>
+    {status === "loading" && <p className="muted" role="status">Загружаю историю…</p>}
+    {status === "error" && <div className="panel" role="alert"><h2>Не удалось загрузить историю</h2><p className="muted">Проверьте соединение и попробуйте ещё раз. Уже загруженные работы сохранены на экране.</p><button className="secondary wide" type="button" onClick={onRetry}>Повторить загрузку истории</button></div>}
+    <div className="history-list">{items.map((item) => <button className="history-card" type="button" key={item.id} onClick={() => onPreview(item)}><MediaThumb item={item}/><div><strong>{modelOf(item)?.title || "Работа ROXY"}</strong><small>{dateLabel(item.created_at)} · {deliveryStatusLabel(item)}</small>{item.error && <p>{generationFailureMessage(item.error)}</p>}</div><span className={`status ${item.status}`}>{deliveryStatusLabel(item)}</span></button>)}{status === "loaded" && !items.length && <Empty text="История пока пуста."/>}</div>
+    {hasMore && status !== "error" && <button className="secondary wide" type="button" disabled={status === "loading"} onClick={onMore}>Показать ещё</button>}
+  </section>;
 }
 
 function ProfileScreen({ me, avatar, stats, activePromo, tab, setTab, works, publications, onPreview, onWallet, onCopy }: { me: Me | null; avatar: string; stats: PartnerStats | null; activePromo: ActivePromo | null; tab: "works" | "publications"; setTab: (tab: "works" | "publications") => void; works: Generation[]; publications: ProfilePublication[]; onPreview: (item: Generation | FeedCard, surface: PreviewSurface) => void; onWallet: () => void; onCopy: (value: string | null | undefined) => Promise<void> }) {
@@ -950,7 +1047,7 @@ function PartnerScreen({ me, stats, rewards, invitations, onRefresh, showToast }
 
 function MediaGrid<T extends Generation | FeedCard>({ items, empty, onClick, reactions = false }: { items: T[]; empty: string; onClick: (item: T) => void; reactions?: boolean }) {
   if (!items.length) return <Empty text={empty}/>;
-  return <div className="media-grid">{items.map((item) => <button className="media-tile" type="button" key={item.id} onClick={() => onClick(item)}><MediaThumb item={item}/>{reactions && <span className="tile-reactions"><Icon name="heart" size={13}/>{compact((item as FeedCard).likes_count)}</span>}</button>)}</div>;
+  return <div className="media-grid">{items.map((item) => <button className="media-tile" type="button" key={item.id} aria-label={`Открыть работу · ${modelOf(item)?.title || (typeof item.model === "string" ? item.model : "ROXY")} · ${dateLabel(item.created_at)}`} onClick={() => onClick(item)}><MediaThumb item={item}/>{reactions && <span className="tile-reactions"><Icon name="heart" size={13}/>{compact((item as FeedCard).likes_count)}</span>}</button>)}</div>;
 }
 
 function MediaThumb({ item }: { item: Generation | FeedCard }) {

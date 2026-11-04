@@ -221,34 +221,34 @@ export function CatalogFeatureHub() {
   if (!host) return null;
 
   return createPortal(
-    <section className="catalog-feature-hub" aria-label="Фичи ROXY">
+    <section className="catalog-feature-hub" aria-label="Создание и инструменты ROXY">
       <style>{`
         .catalog-feature-hub {
           display: grid;
-          gap: 18px;
-          margin: 18px 0 26px;
+          gap: 16px;
+          margin: 18px 0 22px;
           max-width: 100%;
           min-width: 0;
         }
         .catalog-feature-hero {
           min-width: 0;
-          padding: 22px;
-          border-radius: 28px;
+          padding: 16px;
+          border-radius: 20px;
           border: 1px solid rgba(177, 92, 255, 0.28);
           background: radial-gradient(circle at 0% 0%, rgba(188, 99, 255, 0.18), transparent 34%), rgba(15, 12, 22, 0.82);
           box-shadow: 0 18px 46px rgba(0, 0, 0, 0.26);
         }
-        .catalog-feature-hero h1 {
+        .catalog-feature-hero h2 {
           margin: 7px 0 8px;
-          font-size: clamp(32px, 8vw, 52px);
-          line-height: 0.92;
-          letter-spacing: -0.06em;
+          font-size: clamp(24px, 6vw, 32px);
+          line-height: 1.1;
+          letter-spacing: -0.035em;
         }
         .catalog-feature-hero p {
           margin: 0;
           max-width: 520px;
           color: var(--muted);
-          font-size: 15px;
+          font-size: 14px;
           line-height: 1.45;
         }
         .catalog-feature-section {
@@ -264,8 +264,8 @@ export function CatalogFeatureHub() {
         }
         .catalog-feature-section-title h2 {
           margin: 4px 0 0;
-          font-size: 25px;
-          line-height: 1;
+          font-size: 21px;
+          line-height: 1.15;
           letter-spacing: -0.04em;
         }
         .catalog-feature-grid {
@@ -280,10 +280,10 @@ export function CatalogFeatureHub() {
           display: grid;
           grid-template-columns: auto minmax(0, 1fr) auto;
           align-items: center;
-          gap: 14px;
-          padding: 18px;
-          min-height: 92px;
-          border-radius: 24px;
+          gap: 10px;
+          padding: 12px;
+          min-height: 80px;
+          border-radius: 18px;
           border: 1px solid rgba(177, 92, 255, 0.28);
           background: rgba(14, 12, 20, 0.92);
           color: inherit;
@@ -297,21 +297,21 @@ export function CatalogFeatureHub() {
         .catalog-feature-card strong {
           display: block;
           overflow-wrap: anywhere;
-          font-size: 19px;
-          line-height: 1.05;
+          font-size: 16px;
+          line-height: 1.2;
         }
         .catalog-feature-card small {
           display: block;
           overflow-wrap: anywhere;
-          margin-top: 7px;
+          margin-top: 4px;
           color: var(--muted);
           font-size: 13px;
           line-height: 1.35;
         }
         .catalog-feature-icon {
-          width: 58px;
-          height: 58px;
-          border-radius: 18px;
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
           display: grid;
           place-items: center;
           color: white;
@@ -321,12 +321,12 @@ export function CatalogFeatureHub() {
         }
         .catalog-feature-pill {
           align-self: center;
-          padding: 7px 11px;
+          padding: 6px 8px;
           border-radius: 999px;
           color: #f3d9ff;
           background: rgba(149, 75, 232, 0.20);
           font-weight: 800;
-          font-size: 12px;
+          font-size: 11px;
           white-space: nowrap;
         }
         @media (max-width: 360px) {
@@ -351,20 +351,34 @@ export function CatalogFeatureHub() {
             white-space: normal;
           }
         }
+        @media (min-width: 768px) {
+          .catalog-feature-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .catalog-feature-card {
+            grid-template-columns: 42px minmax(0, 1fr);
+          }
+          .catalog-feature-pill {
+            grid-column: 2;
+            justify-self: start;
+          }
+        }
+        @media (min-width: 1024px) {
+          .catalog-feature-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        }
       `}</style>
 
       <div className="catalog-feature-hero">
-        <span className="kicker">Каталог</span>
-        <h1>Все фичи ROXY</h1>
-        <p>Каталог — это навигация по возможностям бота. Выбор конкретной модели остаётся в разделе «Создать».</p>
+        <span className="kicker">Быстрый старт</span>
+        <h2>Создавайте с ROXY</h2>
+        <p>Выберите фото, видео или музыку. Модель и параметры можно настроить перед запуском.</p>
       </div>
 
       <div className="catalog-feature-section">
-        <div className="catalog-feature-section-title">
-          <div><span className="kicker">Быстрый старт</span><h2>Создание</h2></div>
-        </div>
         <div className="catalog-feature-grid">
-          {features.slice(0, 3).map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
+          {features.filter((feature) => feature.route === "create").map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
         </div>
       </div>
 
@@ -373,9 +387,16 @@ export function CatalogFeatureHub() {
           <div><span className="kicker">Инструменты</span><h2>Помощники и режимы</h2></div>
         </div>
         <div className="catalog-feature-grid">
-          {features.slice(3).map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
+          {features.filter((feature) => feature.href).map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
         </div>
       </div>
+
+      <details className="catalog-disclosure">
+        <summary>Работы, сообщество и профиль</summary>
+        <div className="catalog-feature-grid">
+          {features.filter((feature) => feature.route && feature.route !== "create").map((feature) => <FeatureCard key={feature.id} feature={feature} />)}
+        </div>
+      </details>
     </section>,
     host,
   );

@@ -4,19 +4,31 @@ import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
 const FEATURES = [
-  ["Аккаунт и сервисы", "Баланс, уведомления, настройки и полный обзор", "/mini-app/account/"],
-  ["Пополнения ROX", "Пакеты с бонусами и проверка статуса оплаты", "/mini-app/payments/"],
-  ["Действия с работами", "Повтор, новый prompt, параметры, edit и animate", "/mini-app/actions/"],
-  ["Мои пресеты", "Сохраняйте модель, параметры и референсы", "/mini-app/presets/"],
-  ["Подписки", "Авторы и отдельная лента их публикаций", "/mini-app/subscriptions/"],
-  ["Поддержка", "Обращения, ответы, закрытие и переоткрытие", "/mini-app/support/"],
-  ["Уведомления", "Важные события аккаунта в одном месте", "/mini-app/notifications/"],
-  ["Скачать результаты", "Оригинальные файлы из хранилища ROXY", "/mini-app/downloads/"],
-  ["Управление историей", "Скрытые работы и восстановление", "/mini-app/history-manager/"],
-  ["Партнёрские выплаты", "Вывод дохода и перевод RUB в ROX", "/mini-app/partner-wallet/"],
-  ["Creator-партнёрство", "Заявка для авторов и каналов", "/mini-app/creator-partnership/"],
-  ["Промокод", "Активировать код и получить ROX", "/mini-app/promocodes/"],
+  ["Аккаунт и сервисы", "Баланс, уведомления, настройки и полный обзор", "/mini-app/account/", "overview"],
+  ["Пополнения ROX", "Пакеты с бонусами и проверка статуса оплаты", "/mini-app/payments/", "account"],
+  ["Действия с работами", "Повтор, редактирование и оживление работ", "/mini-app/actions/", "works"],
+  ["Мои пресеты", "Сохраняйте модель, параметры и референсы", "/mini-app/presets/", "works"],
+  ["Подписки", "Авторы и отдельная лента их публикаций", "/mini-app/subscriptions/", "works"],
+  ["Поддержка", "Обращения, ответы, закрытие и переоткрытие", "/mini-app/support/", "account"],
+  ["Уведомления", "Важные события аккаунта в одном месте", "/mini-app/notifications/", "account"],
+  ["Скачать результаты", "Оригинальные файлы из хранилища ROXY", "/mini-app/downloads/", "works"],
+  ["Управление историей", "Скрытые работы и восстановление", "/mini-app/history-manager/", "works"],
+  ["Партнёрские выплаты", "Вывод дохода и перевод рублей в ROX", "/mini-app/partner-wallet/", "partners"],
+  ["Creator-партнёрство", "Заявка для авторов и каналов", "/mini-app/creator-partnership/", "partners"],
+  ["Промокод", "Активировать код и получить ROX", "/mini-app/promocodes/", "account"],
 ] as const;
+
+const GROUPS = [
+  ["account", "Аккаунт и помощь"],
+  ["works", "Работы и публикации"],
+  ["partners", "Партнёрство и доход"],
+] as const;
+
+function ServiceCard({ feature: [title, copy, href] }: { feature: typeof FEATURES[number] }) {
+  return <button className="tool-result-card roxy-service-card" type="button" onClick={() => window.location.assign(href)} style={{ width: "100%", textAlign: "left" }}>
+    <strong>{title}</strong><small>{copy}</small>
+  </button>;
+}
 
 function catalogScreen(): HTMLElement | null {
   const home = document.querySelector<HTMLElement>(".main-shell > .home-screen");
@@ -59,13 +71,18 @@ export function CatalogParityFeatures() {
   if (!host) return null;
   return createPortal(
     <section className="panel" style={{ marginTop: 20 }} aria-label="Сервисы аккаунта ROXY">
-      <span className="kicker">Ещё возможности</span>
+      <span className="kicker">Аккаунт</span>
       <h2>Сервисы ROXY</h2>
-      <p className="muted">Функции аккаунта, сообщества, платежей и готовых работ, которые уже поддерживаются backend.</p>
-      <div className="tool-grid">
-        {FEATURES.map(([title, copy, href]) => <button className="tool-result-card roxy-service-card" type="button" key={href} onClick={() => window.location.assign(href)} style={{ width: "100%", textAlign: "left" }}>
-          <strong>{title}</strong><small>{copy}</small>
-        </button>)}
+      <div className="catalog-services-overview">
+        {FEATURES.filter((feature) => feature[3] === "overview").map((feature) => <ServiceCard key={feature[2]} feature={feature} />)}
+      </div>
+      <div className="catalog-service-groups">
+        {GROUPS.map(([id, title]) => <details className="catalog-disclosure" key={id}>
+          <summary>{title}</summary>
+          <div className="tool-grid">
+            {FEATURES.filter((feature) => feature[3] === id).map((feature) => <ServiceCard key={feature[2]} feature={feature} />)}
+          </div>
+        </details>)}
       </div>
     </section>,
     host,

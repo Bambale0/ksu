@@ -1,19 +1,5 @@
 /* Product UX overrides: friendly public copy, sane bottom navigation, no provider-facing text. */
 
-.screen-head p {
-  display: none;
-}
-
-.screen-head::after {
-  content: "Выберите действие и продолжайте работу в ROXY.";
-  display: block;
-  max-width: 640px;
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
 .format-grid {
   display: flex;
   grid-template-columns: none;
@@ -48,18 +34,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.05;
+  line-height: 1.2;
+  letter-spacing: -.02em;
 }
 
 .bottom-nav button.central {
-  min-height: 62px;
-  transform: translateY(-16px);
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  transform: none;
 }
 
 .bottom-nav button.central > span {
-  width: 64px;
-  height: 64px;
-  border-radius: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 15px;
   color: #fff;
   background: var(--gradient);
   box-shadow: 0 16px 38px rgba(189, 93, 255, .36), 0 0 42px rgba(255, 95, 183, .22);
@@ -104,12 +93,12 @@
   }
 
   .bottom-nav button small {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .bottom-nav button.central > span {
-    width: 58px;
-    height: 58px;
-    border-radius: 21px;
+    width: 42px;
+    height: 42px;
+    border-radius: 15px;
   }
 }

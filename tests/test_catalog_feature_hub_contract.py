@@ -55,9 +55,9 @@ def test_backend_router_does_not_expose_pinterest_services_namespace() -> None:
 def test_catalog_lists_bot_features_not_model_choice_or_legacy_service_promo() -> None:
     hub = _read(FRONTEND / "components" / "catalog-feature-hub.tsx")
 
-    assert "Все фичи ROXY" in hub
-    assert "Каталог — это навигация по возможностям бота" in hub
-    assert "Выбор конкретной модели остаётся в разделе «Создать»" in hub
+    assert "Создавайте с ROXY" in hub
+    assert "Выберите фото, видео или музыку" in hub
+    assert "Модель и параметры можно настроить перед запуском" in hub
     assert "create-image" in hub
     assert "create-video" in hub
     assert "create-audio" in hub

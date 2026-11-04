@@ -48,6 +48,8 @@ jobs:
         working-directory: frontend/mini-app
         run: >-
           npx playwright test
+          e2e/audit-recovery.spec.mjs
+          e2e/audit-design.spec.mjs
           e2e/client-error-reporting.spec.mjs
           e2e/aspect-ratio-contract.spec.cts
           e2e/generation-actions.spec.mjs
