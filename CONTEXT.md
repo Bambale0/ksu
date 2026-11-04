@@ -1,3 +1,10 @@
+## Active Fix — explicit Neironych image policy refusals (2026-11-04)
+
+- Baseline: 8cfc19d9. Source admin Seedream request 9a6e48ab-020d-4732-a278-4e9e09fba3ad and retry 6ffb01b3-7a3b-556f-8578-39b97af39487 received HTTP 503 provider_response_invalid from the gateway.
+- Confirmed root cause: a direct scoped-provider probe of the identical frozen image request returned HTTP 200 with error.code=content_policy_violation and no image. Gateway incorrectly treated this as invalid_image_count; upstream ooo fix returns terminal HTTP 422 while preserving unknown procurement cost. No safety bypass or automatic retry/fallback on policy rejection.
+- KSU reuses existing reject classification and fail/refund flow. Only add an allowlisted public Russian reason, never provider message, prompt, credentials or technical code. No schema, pricing, routes, historical state or billing changes.
+- RED: public image client correctly rejected the response but showed technical HTTP text. Minimal mapping fix and targeted regression; existing fallback/recovery coverage applies. CI, deployment and same-input verification required. Rollback is the ordinary source release rollback. Guidance: systematic-debugging, project TDD/idempotency/error-boundary guidance.
+
 ## Review correction — admin prompt fields (2026-11-03)
 
 - Original PR #578 head b3d20e22229994b7b7cf491f0846a9f21c0f20f4 passed all six gates, including 2387 backend tests, 945 Chromium cases, 280 WebKit cases and keyboard/deadline audits. Local focused both-engine workflow tests passed 98/98.

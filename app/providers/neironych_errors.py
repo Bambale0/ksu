@@ -38,6 +38,7 @@ KNOWN_CODES = frozenset(
         "upload_unavailable",
         "submission_outcome_unknown",
         "provider_response_invalid",
+        "content_policy_violation",
         "unexpected_provider_stream",
         "media_upload_requires_json",
         "multipart_not_supported_for_protocol",
@@ -111,6 +112,9 @@ class NeironychProviderError(RuntimeError):
 
 
 _SAFE_USER_REASONS = {
+    "content_policy_violation": (
+        "Запрос не прошёл проверку содержимого. Измените описание или выберите другое фото."
+    ),
     "insufficient_balance": (
         "У провайдера временно недостаточно средств для запуска генерации. "
         "Попробуйте позже."
