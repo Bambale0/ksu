@@ -230,4 +230,3 @@ test('profile image tiles have a useful accessible name', async ({ page }) => {
   await page.goto('/mini-app/?route=profile');
   await expect(page.locator('.media-grid').getByRole('button', { name: /Открыть работу.*Audit Recovery Model/ })).toBeVisible();
 });
-
