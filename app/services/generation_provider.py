@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -29,7 +30,10 @@ from app.services.provider_media_transport import (
     ProviderMediaTransportPermanentError,
 )
 from app.services.reference_resolver import ReferenceResolver
+from app.services.generation_refunds import existing_generation_refund
 from app.services.wallet import WalletService
+
+logger = logging.getLogger(__name__)
 
 SubmissionDisposition = Literal["permanent", "retryable", "uncertain"]
 _TERMINAL_STATUSES = {"succeeded", "failed"}
@@ -560,15 +564,27 @@ class GenerationProviderService:
         generation.error = error[:4000]
         generation.updated_at = datetime.now(timezone.utc)
         if Decimal(generation.cost_rox) > 0:
-            await WalletService.credit(
-                session,
-                user_id=generation.user_id,
-                amount=generation.cost_rox,
-                kind="generation_refund",
-                reference_type="generation",
-                reference_id=str(generation.id),
-                idempotency_key=f"generation:{generation.id}:refund",
+            existing_refund = await existing_generation_refund(
+                session, generation_id=generation.id, user_id=generation.user_id
             )
+            if existing_refund is None:
+                await WalletService.credit(
+                    session,
+                    user_id=generation.user_id,
+                    amount=generation.cost_rox,
+                    kind="generation_refund",
+                    reference_type="generation",
+                    reference_id=str(generation.id),
+                    idempotency_key=f"generation:{generation.id}:refund",
+                )
+            else:
+                logger.info(
+                    "generation_refund_already_recorded",
+                    extra={
+                        "generation_id": str(generation.id),
+                        "refund_transaction_id": str(existing_refund.id),
+                    },
+                )
         await session.commit()
         await GenerationOutboxService.mark_generation_terminal(
             session,

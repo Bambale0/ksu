@@ -95,6 +95,45 @@ Scenario-driven models clear incompatible state when switching modes. Current ex
 
 Uploads go through `/api/v1/uploads/kie`; the provider API key remains server-side. Generated result URLs are temporary provider ingest sources until product-owned media ingestion completes.
 
+### Owned result downloads
+
+The Downloads screen receives an owner-scoped `download_url` and
+`download_filename` alongside each ready media asset. Ordinary link navigation
+cannot attach `X-Telegram-Init-Data`, so the download URL must be usable without
+that header:
+
+- Local media uses the existing expiring signed view URL with `?download=1`.
+  Signature verification still binds the asset ID, stored object key and expiry.
+  The query option changes only the response disposition to a safe attachment
+  filename; it grants no additional access.
+- Configured legacy S3 media uses the existing presigned GET with
+  `ResponseContentDisposition`. Missing legacy storage configuration remains an
+  operational storage limitation.
+- The original `/api/v1/media/{asset_id}/download` endpoint still requires the
+  authenticated owner. Public feed descriptors continue to use the publication
+  checked public route and do not acquire a private signed capability.
+
+Supported Telegram clients use
+[`WebApp.downloadFile`](https://core.telegram.org/bots/webapps#downloadfileparams)
+(Bot API 8.0+) directly from the click, with an HTTPS capability URL and the
+server-provided filename. Older clients and synchronous native API failures use
+the attachment link. Native cancellation does not force a browser download, and
+request acceptance is not presented as proof that the device saved the file.
+Local attachment responses include the Telegram Web origin header recommended
+by that contract and continue to support byte ranges.
+
+Downloads stream from storage; the Mini App does not buffer full MP4 files into
+a JavaScript blob. Signed URLs expire using the existing configured media TTL.
+After a long-open page expires, the existing **Обновить** action fetches fresh
+owner-scoped descriptors.
+
+Regression coverage follows both owner metadata and generation detail through
+an ordinary unauthenticated download request, checks ownership/signature/expiry,
+and verifies actual MP4 bytes and range responses. Browser coverage clicks the
+real Downloads UI and verifies the downloaded attachment's name and bytes;
+separate cases verify native invocation, synchronous failure fallback and
+cancellation.
+
 ### Reference integrity
 
 Reference media is normalized at the backend routing boundary and again before provider submission for queued/legacy rows. A client alias must never silently reduce the number of uploaded references.

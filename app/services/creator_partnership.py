@@ -333,7 +333,10 @@ class CreatorPartnershipService:
         bounded_offset = max(0, min(offset, 100_000))
         rows = (
             await session.execute(
-                stmt.order_by(CreatorPartnershipApplication.created_at.desc())
+                stmt.order_by(
+                    CreatorPartnershipApplication.created_at.desc(),
+                    CreatorPartnershipApplication.id.desc(),
+                )
                 .offset(bounded_offset)
                 .limit(bounded_limit)
             )

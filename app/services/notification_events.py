@@ -21,6 +21,7 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.db.notification_models import NotificationDelivery
+from app.db.admin_models import SupportOutbox
 from app.services.referral_notification_copy import (
     referral_joined_copy,
     referral_topup_copy,
@@ -42,6 +43,7 @@ def _add_notification(
     title: str,
     body: str,
     generation_id: uuid.UUID | None = None,
+    telegram_delivery: bool = True,
 ) -> None:
     # Notification rows always own their UUID. Domain linkage lives in an explicit
     # nullable FK so a generation can emit more than one terminal notification over
@@ -58,16 +60,17 @@ def _add_notification(
             is_read=False,
         )
     )
-    session.add(
-        NotificationDelivery(
-            id=uuid.uuid4(),
-            notification_id=notification_id,
-            channel="telegram",
-            purpose="transactional",
-            status="pending",
-            attempts=0,
+    if telegram_delivery:
+        session.add(
+            NotificationDelivery(
+                id=uuid.uuid4(),
+                notification_id=notification_id,
+                channel="telegram",
+                purpose="transactional",
+                status="pending",
+                attempts=0,
+            )
         )
-    )
 
 
 def _status_changed(obj: object) -> bool:
@@ -222,6 +225,9 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
                     body=f"Заявка на {_money(obj.amount)} ₽: {obj.status}.",
                 )
 
+    support_outbox_message_ids = {
+        row.message_id for row in session.new if isinstance(row, SupportOutbox)
+    }
     for obj in list(session.new):
         if isinstance(obj, ReferralRelation):
             _add_referral_joined_notification(session, obj)
@@ -236,6 +242,9 @@ def _before_flush(session: Session, _flush_context: object, _instances: object) 
                     kind="support_reply",
                     title="Ответ поддержки",
                     body="В вашем обращении появился новый ответ.",
+                    # The explicit support outbox delivers the full reply; keep
+                    # an inbox entry without sending a second generic Telegram.
+                    telegram_delivery=obj.id not in support_outbox_message_ids,
                 )
 
 

@@ -24,7 +24,7 @@ def test_admin_console_is_separate_static_app_and_bot_launcher_is_not_auth() -> 
 
 
 def test_admin_console_never_persists_privileged_credentials_or_uses_html_injection() -> None:
-    js = _read(ADMIN / "admin.js")
+    js = _read(ADMIN / "admin.js") + _read(ADMIN / "support-inbox.js")
     assert "state.token" in js
     assert 'headers.Authorization = `Bearer ${state.token}`' in js
     assert '"X-Telegram-Init-Data"' in js
@@ -50,7 +50,7 @@ def test_admin_console_covers_existing_operational_domains() -> None:
         "/api/v1/admin/users?",
         "/api/v1/admin/generations?",
         "/api/v1/admin/payments?",
-        "/api/v1/admin/support/tickets?",
+        "/api/v1/admin/support/tickets",
         "/api/v1/admin/withdrawals?",
         "/api/v1/admin/promocodes",
         "/api/v1/admin/promocodes/program",
@@ -94,12 +94,15 @@ def test_admin_self_sessions_match_backend_sessions_shape() -> None:
     assert 'return {"sessions": [_session_view(row, context.session.id) for row in rows]}' in auth
 
 
-def test_session_revocation_uses_sessions_manage_not_security_read() -> None:
-    source = _read(ROOT / "app" / "api" / "v1" / "admin_accounts.py")
-    assert 'SessionsManageDep = Annotated[AdminContext, Depends(require_permission("sessions.manage"))]' in source
-    signature = source.split('async def revoke_any_session(', 1)[1].split(') -> dict[str, bool]:', 1)[0]
+def test_session_revocation_uses_sessions_manage_with_fresh_mfa() -> None:
+    source = _read(ROOT / "app" / "api" / "v1" / "admin_audit.py")
+    assert 'Depends(require_permission("sessions.manage", step_up=True))' in source
+    signature = source.split('async def revoke_admin_session(', 1)[1].split(') -> dict[str, object]:', 1)[0]
     assert "context: SessionsManageDep" in signature
-    assert "context: AdminSecurityReadDep" not in signature
+    assert "payload: SessionRevokeRequest" in signature
+    # Composed-router HTTP regression also checks actual MFA, reason and audit behavior.
+    accounts = _read(ROOT / "app" / "api" / "v1" / "admin_accounts.py")
+    assert '@router.delete("/security/sessions/{session_id}")' not in accounts
 
 
 def test_admin_login_fits_short_telegram_webview_and_explains_launch_contract() -> None:
@@ -133,4 +136,6 @@ def test_admin_console_files_are_present_and_node_checked() -> None:
     assert (ADMIN / "index.html").is_file()
     assert (ADMIN / "admin.css").is_file()
     assert (ADMIN / "admin.js").is_file()
+    assert (ADMIN / "support-inbox.js").is_file()
     assert "node --check app/web/admin_app/admin.js" in workflow
+    assert "node --check app/web/admin_app/support-inbox.js" in workflow

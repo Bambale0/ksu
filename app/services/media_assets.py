@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ipaddress
 import mimetypes
+import re
 import socket
 import tempfile
 import uuid
@@ -299,6 +300,12 @@ class MediaAssetService:
         return grouped
 
     @staticmethod
+    def download_filename(asset: MediaAsset) -> str:
+        match = re.search(r"(\.[A-Za-z0-9]{1,8})$", asset.object_key or "")
+        suffix = match.group(1).lower() if match else ""
+        return f"generation-{asset.generation_id}-{asset.ordinal + 1}{suffix}"
+
+    @staticmethod
     def public_view(
         asset: MediaAsset,
         storage: ObjectStorage | None = None,
@@ -309,6 +316,7 @@ class MediaAssetService:
             raise MediaIngestError("Media asset is not ready")
         route_url = f"/api/v1/media/{asset.id}/public"
         download_url = f"/api/v1/media/{asset.id}/download"
+        download_filename = MediaAssetService.download_filename(asset)
         if LocalMediaStorage.is_local_bucket(asset.bucket):
             url = (
                 route_url
@@ -318,12 +326,22 @@ class MediaAssetService:
                     key=asset.object_key,
                 )
             )
+            # Navigation and Telegram's native download cannot send initData
+            # headers. Reuse the owner-issued, expiring view capability and
+            # request attachment disposition without exposing authentication.
+            download_url = route_url if server_route else f"{url}?download=1"
         elif server_route:
             url = route_url
+            download_url = route_url
         elif ObjectStorage.configured():
             storage = storage or ObjectStorage()
             try:
                 url = storage.presign_get(key=asset.object_key, bucket=asset.bucket)
+                download_url = storage.presign_get(
+                    key=asset.object_key,
+                    bucket=asset.bucket,
+                    download_filename=download_filename,
+                )
             except ObjectStorageNotConfigured:
                 url = asset.source_url
         else:
@@ -335,6 +353,7 @@ class MediaAssetService:
             "id": str(asset.id),
             "url": url,
             "download_url": download_url,
+            "download_filename": download_filename,
             "public_url": route_url,
             "content_type": asset.content_type,
             "size_bytes": asset.size_bytes,

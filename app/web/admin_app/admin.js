@@ -2,6 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
+  const pagination = window.createAdminPagination();
   const state = {
     token: null,
     me: null,
@@ -333,6 +334,7 @@
     if (field.max != null) control.max = field.max;
     if (field.step != null) control.step = field.step;
     if (field.maxLength != null) control.maxLength = field.maxLength;
+    if (field.minLength != null) control.minLength = field.minLength;
     if (field.type === "select" && field.value != null) control.value = field.value;
     label.appendChild(control);
     if (field.help) label.appendChild(el("small", "", field.help));
@@ -524,13 +526,15 @@
     dom.adminView.appendChild(panel("Быстрые действия", links));
   }
 
-  async function renderUsers(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderUsers(filters) {
+    const page = pagination.page("Пользователи", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.q) params.set("q", filters.q);
     if (filters.is_active !== undefined && filters.is_active !== "") params.set("is_active", filters.is_active);
     const data = await api(`/api/v1/admin/users?${params}`);
     const filter = makeFilter([
-      { name: "q", placeholder: "username / имя / Telegram ID", grow: true, value: filters.q || "" },
+      { name: "q", placeholder: hasPermission("users.pii") ? "username / имя / Telegram ID" : "Внутренний ID пользователя", grow: true, value: filters.q || "" },
       { name: "is_active", value: filters.is_active || "", options: [["", "Все"], ["true", "Активные"], ["false", "Отключённые"]] },
     ], renderUsers);
     const cols = [
@@ -540,7 +544,7 @@
       ["Создан", (row) => formatDate(row.created_at)],
       ["", (row) => actionsCell(button("Открыть", "table-action", () => { state.currentUserId = row.id; void renderUserDetail(row.id); }))],
     ];
-    dom.adminView.replaceChildren(panel(`Пользователи · ${formatNumber(data.total, 0)}`, table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel(`Пользователи · ${formatNumber(data.total, 0)}`, table(cols, data.items || []), filter), page.controls(data, renderUsers));
   }
 
   async function renderUserDetail(userId) {
@@ -611,8 +615,10 @@
     dom.adminView.replaceChildren(controls, panel("Карточка пользователя", info), panel("История действий", eventList));
   }
 
-  async function renderGenerations(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderGenerations(filters) {
+    const page = pagination.page("Генерации", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     if (filters.user_id) params.set("user_id", filters.user_id);
     const data = await api(`/api/v1/admin/generations?${params}`);
@@ -628,11 +634,13 @@
       ["Создан", (row) => formatDate(row.created_at)],
       ["", (row) => hasPermission("generations.manage") && row.provider === "kie" && row.external_id ? actionsCell(button("Сверить", "table-action", async () => { try { await api(`/api/v1/admin/generations/${row.id}/reconcile`, { method: "POST" }); toast("Работа сверена"); await renderGenerations(filters); } catch (error) { toast(error.message); } })) : ""],
     ];
-    dom.adminView.replaceChildren(panel("Генерации", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Генерации", table(cols, data.items || []), filter), page.controls(data, renderGenerations));
   }
 
-  async function renderPayments(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderPayments(filters) {
+    const page = pagination.page("Платежи", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     if (filters.provider) params.set("provider", filters.provider);
     if (filters.user_id) params.set("user_id", filters.user_id);
@@ -667,52 +675,34 @@
         return cell;
       }],
     ];
-    dom.adminView.replaceChildren(panel("Платежи", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Платежи", table(cols, data.items || []), filter), page.controls(data, renderPayments));
   }
 
-  async function renderSupport(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
-    if (filters.status) params.set("status", filters.status);
-    const data = await api(`/api/v1/admin/support/tickets?${params}`);
-    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]] }], renderSupport);
-    const cols = [
-      ["Тикет", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.topic), el("small", "mono", row.id), el("small", "", `user ${row.user_id}`)); return c; }],
-      ["Статус", (row) => statusBadge(row.status)],
-      ["Обновлён", (row) => formatDate(row.updated_at)],
-      ["", (row) => actionsCell(button("Открыть", "table-action", () => { state.currentTicketId = row.id; void renderSupportDetail(row.id); }))],
-    ];
-    dom.adminView.replaceChildren(panel("Очередь поддержки", table(cols, data.items || []), filter));
+  let supportInbox = null;
+  function getSupportInbox() {
+    if (!supportInbox) supportInbox = window.createSupportInbox({
+      container: dom.adminView, api, base: "/api/v1/admin/support/tickets",
+      statusSuffix: "/status", statusMethod: "PATCH", replySuffix: "/messages",
+      isActive: () => Boolean(state.token) && state.view === "support",
+      canManage: () => hasPermission("support.manage"),
+      canViewPii: () => hasPermission("users.pii"),
+      onSelect: (id) => { state.currentTicketId = id; },
+    });
+    return supportInbox;
+  }
+
+  async function renderSupport() {
+    return getSupportInbox().list();
   }
 
   async function renderSupportDetail(ticketId) {
-    loading();
-    const ticket = await api(`/api/v1/admin/support/tickets/${ticketId}`);
-    state.currentTicketId = ticketId;
-    const controls = actionsCell(button("← К очереди", "ghost", () => { state.currentTicketId = null; void renderSupport(); }));
-    if (hasPermission("support.manage") && ticket.status !== "closed") {
-      controls.appendChild(button("Ответить", "table-action", () => openForm({
-        title: "Ответ пользователю", fields: [{ name: "body", label: "Сообщение", type: "textarea", maxLength: 4000 }],
-        onSubmit: async ({ body }) => { await api(`/api/v1/admin/support/tickets/${ticketId}/messages`, { method: "POST", body: JSON.stringify({ body }) }); await renderSupportDetail(ticketId); },
-      })));
-      controls.appendChild(button("Изменить статус", "table-action", () => openForm({
-        title: "Статус обращения",
-        fields: [{ name: "status", label: "Статус", type: "select", options: [["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]], value: ticket.status }],
-        onSubmit: async ({ status }) => { await api(`/api/v1/admin/support/tickets/${ticketId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); await renderSupportDetail(ticketId); },
-      })));
-    }
-    const thread = el("div", "thread panel-body");
-    for (const message of ticket.messages || []) {
-      const card = el("div", `message${message.is_admin ? " admin" : ""}`);
-      const head = el("div", "message-head");
-      head.append(el("strong", "", message.is_admin ? "Администратор" : "Пользователь"), el("small", "muted", formatDate(message.created_at)));
-      card.append(head, el("p", "", message.body));
-      thread.appendChild(card);
-    }
-    dom.adminView.replaceChildren(controls, panel(`${ticket.topic} · ${statusLabel(ticket.status)}`, thread));
+    return getSupportInbox().open(ticketId);
   }
 
-  async function renderWithdrawals(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderWithdrawals(filters) {
+    const page = pagination.page("Партнёрские выводы", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/withdrawals?${params}`);
     const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["pending", "Ожидает"], ["processing", "В обработке"], ["paid", "Выплачено"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] }], renderWithdrawals);
@@ -740,16 +730,17 @@
         })));
       }],
     ];
-    dom.adminView.replaceChildren(panel("Партнёрские выводы", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Партнёрские выводы", table(cols, data.items || []), filter), page.controls(data, renderWithdrawals));
   }
 
-  async function renderPromos() {
+  async function renderPromos(filters) {
+    const page = pagination.page("Партнёрские промокоды", filters, 100);
     const promoHeaders = () => ({
       "Idempotency-Key": crypto.randomUUID(),
       "X-Admin-Confirm": "confirmed",
     });
     const [data, program] = await Promise.all([
-      api("/api/v1/admin/promocodes"),
+      api(`/api/v1/admin/promocodes?${page.params}`),
       api("/api/v1/admin/promocodes/program"),
     ]);
 
@@ -874,11 +865,14 @@
     dom.adminView.replaceChildren(
       panel("Экономика партнёрской программы", summary, actions),
       panel("Партнёрские промокоды", table(cols, data.items || [])),
+      page.controls(data, renderPromos),
     );
   }
 
-  async function renderReferrals(filters = {}) {
-    const params = new URLSearchParams({ limit: "100" });
+  async function renderReferrals(filters) {
+    const page = pagination.page("Реферальные начисления", filters, 100);
+    filters = page.filters;
+    const params = page.params;
     if (filters.partner_user_id) params.set("partner_user_id", filters.partner_user_id);
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/referrals/rewards?${params}`);
@@ -896,14 +890,17 @@
       ["Статус", (row) => statusBadge(row.status)],
       ["Создано", (row) => formatDate(row.created_at)],
     ];
-    dom.adminView.replaceChildren(panel("Реферальные начисления", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Реферальные начисления", table(cols, data.items || []), filter), page.controls(data, renderReferrals));
   }
 
-  async function renderSecurity() {
+  async function renderSecurity(filters, kind = "audit") {
+    const page = pagination.page("Журнал действий", kind === "audit" ? filters : undefined, 100);
+    const sessionsPage = pagination.page("Активные сессии", kind === "sessions" ? filters : undefined, 100);
+    sessionsPage.params.set("active_only", "true");
     const requests = [];
     if (hasPermission("security.read")) requests.push(api("/api/v1/admin/security/overview")); else requests.push(Promise.resolve(null));
-    if (hasPermission("audit.read")) requests.push(api("/api/v1/admin/audit?limit=100")); else requests.push(Promise.resolve(null));
-    if (hasPermission("security.read")) requests.push(api("/api/v1/admin/security/sessions?active_only=true&limit=100")); else requests.push(Promise.resolve(null));
+    if (hasPermission("audit.read")) requests.push(api(`/api/v1/admin/audit?${page.params}`)); else requests.push(Promise.resolve(null));
+    if (hasPermission("security.read")) requests.push(api(`/api/v1/admin/security/sessions?${sessionsPage.params}`)); else requests.push(Promise.resolve(null));
     const [overview, audit, sessions] = await Promise.all(requests);
     dom.adminView.replaceChildren();
     if (overview) {
@@ -921,9 +918,21 @@
         ["Сессия", (row) => el("span", "mono", row.id)], ["Админ", (row) => el("span", "mono", row.admin_id)],
         ["Последняя активность", (row) => formatDate(row.last_seen_at)], ["Защита", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
         ["Подтверждение до", (row) => formatDate(row.step_up_until)],
-        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Отозвать", "table-action dangerous", async () => { try { await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE" }); await renderSecurity(); } catch (error) { toast(error.message); } })) : ""],
+        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Отозвать", "table-action dangerous", () => openForm({
+          title: "Отзыв сессии администратора",
+          submitLabel: "Отозвать сессию",
+          fields: [{ name: "reason", label: "Причина отзыва", type: "textarea", minLength: 3, maxLength: 500 }],
+          onSubmit: async ({ reason }) => {
+            const value = reason.trim();
+            if (value.length < 3) throw new Error("Укажите причину: не менее 3 символов.");
+            await executeOrStepUp("Отозвать выбранную сессию администратора", async () => {
+              await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE", body: JSON.stringify({ reason: value }) });
+              await renderSecurity();
+            });
+          },
+        }))) : ""],
       ];
-      dom.adminView.appendChild(panel("Активные сессии", table(cols, sessions.items || [])));
+      dom.adminView.append(panel("Активные сессии", table(cols, sessions.items || [])), sessionsPage.controls(sessions, (next) => renderSecurity(next, "sessions")));
     }
     if (audit) {
       const cols = [
@@ -932,49 +941,72 @@
         ["Админ", (row) => el("span", "mono", row.admin_id || "Система")], ["Проверка", (row) => statusBadge(row.integrity_valid ? "success" : "failed")],
         ["Время", (row) => formatDate(row.created_at)], ["Детали", (row) => el("pre", "audit-meta", jsonText(row.metadata))],
       ];
-      dom.adminView.appendChild(panel("Журнал действий", table(cols, audit.items || [])));
+      dom.adminView.append(panel("Журнал действий", table(cols, audit.items || [])), page.controls(audit, (next) => renderSecurity(next, "audit")));
     }
   }
 
   async function renderAdmins() {
     const [admins, roles] = await Promise.all([api("/api/v1/admin/admins"), api("/api/v1/admin/roles")]);
-    const actions = hasPermission("admins.manage") && state.me?.role === "owner" ? button("Добавить администратора", "primary", () => openForm({
+    const accounts = admins.items || [];
+    const isOwner = state.me?.role === "owner";
+    const canManage = isOwner && hasPermission("admins.manage");
+    const actions = canManage ? button("Добавить администратора", "primary", () => openForm({
       title: "Новый администратор",
       fields: [
         { name: "telegram_id", label: "Telegram ID", type: "number" },
         { name: "role", label: "Роль", type: "select", options: Object.keys(roles.roles || {}).map((role) => [role, role]) },
+        { name: "support_notifications", label: "Уведомления о новых обращениях", type: "checkbox", value: false },
       ],
       submitLabel: "К подтверждению",
-      onSubmit: async ({ telegram_id, role }) => {
+      onSubmit: async ({ telegram_id, role, support_notifications }) => {
         dom.formDialog.close();
-        openStepUp(`Создать администратора ${telegram_id} с ролью ${role}`, async () => {
-          await api("/api/v1/admin/admins", { method: "POST", body: JSON.stringify({ telegram_id: Number(telegram_id), role, permission_overrides: {} }) });
+        openStepUp("Создать администратора " + telegram_id + " с ролью " + role + ", уведомления о новых обращениях " + (support_notifications ? "включены" : "выключены"), async () => {
+          await api("/api/v1/admin/admins", { method: "POST", body: JSON.stringify({ telegram_id: Number(telegram_id), role, permission_overrides: {}, support_notifications }) });
         });
         return false;
       },
     })) : null;
     const cols = [
-      ["Администратор", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.username ? `@${row.username}` : String(row.telegram_id)), el("small", "mono", row.id)); return c; }],
+      ["Администратор", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.username ? "@" + row.username : String(row.telegram_id)), el("small", "mono", row.id)); return c; }],
       ["Роль", (row) => statusBadge(row.role)], ["Защита", (row) => statusBadge(row.mfa_enabled ? "active" : "inactive")],
-      ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")], ["Последний вход", (row) => formatDate(row.last_login_at)],
-      ["", (row) => hasPermission("admins.manage") && state.me?.role === "owner" ? actionsCell(button("Изменить", "table-action", () => openForm({
+      ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")],
+      ["Уведомления поддержки", (row) => {
+        const cell = el("div", "cell-main");
+        cell.append(
+          el("strong", "", row.support_notifications ? "Включены" : "Выключены"),
+          el("small", "", row.support_notifications_effective ? "Получатель активен" : row.support_notifications ? "Получатель недоступен" : "Не получает уведомления"),
+        );
+        return cell;
+      }],
+      ["Последний вход", (row) => formatDate(row.last_login_at)],
+      ["", (row) => canManage ? actionsCell(button("Изменить", "table-action", () => openForm({
         title: "Изменить администратора",
         fields: [
           { name: "role", label: "Роль", type: "select", options: Object.keys(roles.roles || {}).map((role) => [role, role]), value: row.role },
           { name: "is_active", label: "Активен", type: "checkbox", value: row.is_active },
+          { name: "support_notifications", label: "Уведомления о новых обращениях", type: "checkbox", value: row.support_notifications },
           { name: "reason", label: "Причина", type: "textarea", maxLength: 500 },
         ],
         submitLabel: "К подтверждению",
-        onSubmit: async ({ role, is_active, reason }) => {
+        onSubmit: async ({ role, is_active, support_notifications, reason }) => {
           dom.formDialog.close();
-          openStepUp(`Изменить администратора ${row.id}: роль ${role}, активен ${is_active ? "да" : "нет"}`, async () => {
-            await api(`/api/v1/admin/admins/${row.id}`, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, permission_overrides: row.permission_overrides || {} }) });
+          openStepUp("Изменить администратора " + row.id + ": роль " + role + ", активен " + (is_active ? "да" : "нет") + ", уведомления о новых обращениях " + (support_notifications ? "включены" : "выключены"), async () => {
+            await api("/api/v1/admin/admins/" + row.id, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, support_notifications }) });
           });
           return false;
         },
       }))) : ""],
     ];
-    dom.adminView.replaceChildren(panel("Администраторы", table(cols, admins.items || []), actions));
+    const content = el("div");
+    if (isOwner && (!admins.support_notifications_configured || !accounts.some((row) => row.support_notifications_effective))) {
+      const warning = el("div", "panel-body form-message error", admins.support_notifications_configured
+        ? "Нет активных получателей новых обращений. Проверьте включённые уведомления, активность и доступ к поддержке."
+        : "Получатели новых обращений ещё не настроены. Выберите администратора и включите уведомления.");
+      warning.setAttribute("role", "alert");
+      content.appendChild(warning);
+    }
+    content.appendChild(table(cols, accounts));
+    dom.adminView.replaceChildren(panel("Администраторы", content, actions));
   }
 
   async function renderSessions() {
@@ -1053,6 +1085,7 @@
   async function loadMe() {
     state.me = await api("/api/v1/admin/auth/me");
     state.permissions = new Set(state.me.permissions || []);
+    for (const link of document.querySelectorAll("[data-admin-permission]")) link.hidden = !hasPermission(link.dataset.adminPermission);
     dom.adminIdentity.replaceChildren(
       el("strong", "", state.me.username ? `@${state.me.username}` : String(state.me.telegram_id)),
       el("small", "", state.me.role),
@@ -1064,7 +1097,11 @@
     dom.authView.hidden = true;
     dom.adminShell.hidden = false;
     const preferred = hasPermission("dashboard.read") ? "dashboard" : NAV.find(([, , , permission]) => hasPermission(permission))?.[0] || "sessions";
-    setView(preferred);
+    const ticketId = new URLSearchParams(window.location.search).get("support_ticket");
+    if (ticketId && /^[0-9a-f-]{36}$/i.test(ticketId) && hasPermission("support.read")) {
+      state.currentTicketId = ticketId;
+      setView("support");
+    } else { setView(preferred); }
   }
 
   async function logout() {
@@ -1079,6 +1116,8 @@
     state.pendingSensitive = null;
     state.currentUserId = null;
     state.currentTicketId = null;
+    supportInbox?.reset();
+    pagination.reset();
     dom.adminShell.hidden = true;
     dom.authView.hidden = false;
     dom.sidebar.classList.remove("open");

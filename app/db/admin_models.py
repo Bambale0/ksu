@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     DateTime,
@@ -16,9 +16,12 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.db.models import SupportMessage
 
 
 class AdminCommand(TimestampMixin, Base):
@@ -79,6 +82,7 @@ class SupportOutbox(TimestampMixin, Base):
     message_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("support_messages.id", ondelete="CASCADE"), nullable=False
     )
+    message: Mapped["SupportMessage"] = relationship(lazy="raise")
     admin_user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("admin_accounts.id", ondelete="RESTRICT"), nullable=False
     )

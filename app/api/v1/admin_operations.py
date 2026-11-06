@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Literal
+from collections.abc import Awaitable
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -14,10 +15,11 @@ from app.db.models import (
     PartnerWithdrawal,
     Payment,
     ReferralReward,
-    SupportMessage,
-    SupportTicket,
 )
 from app.services.admin_security import AdminAuditService, has_permission
+from app.services.admin_commands import AdminCommandInProgress, AdminCommandStoredFailure, AdminIdempotencyConflict
+from app.services.admin_policy import AdminPolicyError
+from app.services.admin_support import AdminSupportService, SupportTicketClosedError
 from app.services.admin_reporting import AdminReportingService
 from app.services.generation_provider import GenerationProviderService
 
@@ -81,7 +83,7 @@ async def list_generations(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(Generation.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(Generation.created_at.desc(), Generation.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -171,7 +173,7 @@ async def list_payments(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(Payment.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(Payment.created_at.desc(), Payment.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -196,6 +198,40 @@ async def list_payments(
     }
 
 
+def _support_idempotency(value: str | None) -> str:
+    key = str(value or "").strip()
+    if not key or len(key) > 160:
+        raise HTTPException(status_code=400, detail="Valid Idempotency-Key is required")
+    return key
+
+
+def _support_request_id(request: Request) -> str:
+    return str(request.headers.get("X-Request-Id") or f"support:{uuid.uuid4()}")[:64]
+
+
+async def _support_commit(
+    session: SessionDep, operation: Awaitable[tuple[dict[str, Any], bool]],
+) -> tuple[dict[str, Any], bool]:
+    try:
+        result = await operation
+        await session.commit()
+        return result
+    except (LookupError, AdminPolicyError, ValueError, AdminIdempotencyConflict,
+            AdminCommandInProgress, AdminCommandStoredFailure) as exc:
+        await session.rollback()
+        if isinstance(exc, LookupError):
+            status_code = 404
+        elif isinstance(exc, AdminPolicyError):
+            status_code = 403
+        elif isinstance(exc, SupportTicketClosedError):
+            status_code = 409
+        elif isinstance(exc, ValueError):
+            status_code = 422
+        else:
+            status_code = 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
 @router.get("/support/tickets")
 async def list_support_tickets(
     context: SupportReadDep,
@@ -203,31 +239,11 @@ async def list_support_tickets(
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100_000),
-) -> dict[str, object]:
-    del context
-    stmt = select(SupportTicket)
-    if status_filter:
-        stmt = stmt.where(SupportTicket.status == status_filter)
-    rows = list(
-        (
-            await session.scalars(
-                stmt.order_by(SupportTicket.updated_at.desc()).offset(offset).limit(limit)
-            )
-        ).all()
+    q: str | None = Query(default=None, max_length=128),
+) -> dict[str, Any]:
+    return await AdminSupportService.list_tickets(
+        session, admin=context.account, status=status_filter, q=q, limit=limit, offset=offset,
     )
-    return {
-        "items": [
-            {
-                "id": str(item.id),
-                "user_id": str(item.user_id),
-                "topic": item.topic,
-                "status": item.status,
-                "created_at": item.created_at.isoformat(),
-                "updated_at": item.updated_at.isoformat(),
-            }
-            for item in rows
-        ]
-    }
 
 
 @router.get("/support/tickets/{ticket_id}")
@@ -235,37 +251,16 @@ async def get_support_ticket(
     ticket_id: uuid.UUID,
     context: SupportReadDep,
     session: SessionDep,
-) -> dict[str, object]:
-    del context
-    ticket = await session.get(SupportTicket, ticket_id)
-    if ticket is None:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    messages = list(
-        (
-            await session.scalars(
-                select(SupportMessage)
-                .where(SupportMessage.ticket_id == ticket_id)
-                .order_by(SupportMessage.created_at.asc())
-                .limit(500)
-            )
-        ).all()
-    )
-    return {
-        "id": str(ticket.id),
-        "user_id": str(ticket.user_id),
-        "topic": ticket.topic,
-        "status": ticket.status,
-        "messages": [
-            {
-                "id": str(message.id),
-                "sender_user_id": str(message.user_id) if message.user_id else None,
-                "is_admin": message.is_admin,
-                "body": message.body,
-                "created_at": message.created_at.isoformat(),
-            }
-            for message in messages
-        ],
-    }
+    message_limit: int = Query(default=100, ge=1, le=500),
+    before: uuid.UUID | None = Query(default=None),
+) -> dict[str, Any]:
+    try:
+        return await AdminSupportService.get_ticket(
+            session, admin=context.account, ticket_id=ticket_id,
+            message_limit=message_limit, before=before,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/support/tickets/{ticket_id}/messages", status_code=201)
@@ -275,37 +270,20 @@ async def reply_support_ticket(
     request: Request,
     context: SupportManageDep,
     session: SessionDep,
-) -> dict[str, str]:
-    ticket = await session.scalar(
-        select(SupportTicket).where(SupportTicket.id == ticket_id).with_for_update()
-    )
-    if ticket is None:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.status == "closed":
-        raise HTTPException(status_code=409, detail="Ticket is closed")
-    message = SupportMessage(
-        ticket_id=ticket.id,
-        user_id=context.user.id,
-        is_admin=True,
-        body=payload.body.strip(),
-    )
-    session.add(message)
-    if ticket.status == "open":
-        ticket.status = "in_progress"
-    await session.flush()
-    await AdminAuditService.record(
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    confirmation: Annotated[str | None, Header(alias="X-Admin-Confirm")] = None,
+) -> dict[str, Any]:
+    key = _support_idempotency(idempotency_key)
+    confirmed = str(confirmation or "").strip().lower() in {"1", "true", "yes", "confirm", "confirmed"}
+    result, replayed = await _support_commit(
         session,
-        action="admin.support.replied",
-        outcome="success",
-        admin=context.account,
-        admin_session=context.session,
-        request=request,
-        resource_type="support_ticket",
-        resource_id=str(ticket.id),
-        metadata={"message_id": str(message.id)},
+        AdminSupportService.reply_ticket(
+            session, admin=context.account, ticket_id=ticket_id, body=payload.body,
+            idempotency_key=key, request_id=_support_request_id(request), confirmed=confirmed,
+            request=request, admin_session=context.session,
+        ),
     )
-    await session.commit()
-    return {"message_id": str(message.id), "status": ticket.status}
+    return {**result, "status": result["ticket_status"], "idempotency_replayed": replayed}
 
 
 @router.patch("/support/tickets/{ticket_id}/status")
@@ -315,27 +293,19 @@ async def update_support_status(
     request: Request,
     context: SupportManageDep,
     session: SessionDep,
-) -> dict[str, str]:
-    ticket = await session.scalar(
-        select(SupportTicket).where(SupportTicket.id == ticket_id).with_for_update()
-    )
-    if ticket is None:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    before = ticket.status
-    ticket.status = payload.status
-    await AdminAuditService.record(
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> dict[str, Any]:
+    result, replayed = await _support_commit(
         session,
-        action="admin.support.status_changed",
-        outcome="success",
-        admin=context.account,
-        admin_session=context.session,
-        request=request,
-        resource_type="support_ticket",
-        resource_id=str(ticket.id),
-        metadata={"before": before, "after": payload.status},
+        AdminSupportService.update_ticket(
+            session, admin=context.account, ticket_id=ticket_id,
+            status=payload.status, priority=None,
+            idempotency_key=_support_idempotency(idempotency_key),
+            request_id=_support_request_id(request),
+            request=request, admin_session=context.session,
+        ),
     )
-    await session.commit()
-    return {"id": str(ticket.id), "status": ticket.status}
+    return {**result, "idempotency_replayed": replayed}
 
 
 @router.get("/withdrawals")
@@ -352,7 +322,7 @@ async def list_withdrawals(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(PartnerWithdrawal.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(PartnerWithdrawal.created_at.desc(), PartnerWithdrawal.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -426,18 +396,22 @@ async def list_referral_rewards(
     partner_user_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
     limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
     del context
-    stmt = select(ReferralReward)
+    filters = []
     if partner_user_id:
-        stmt = stmt.where(ReferralReward.partner_user_id == partner_user_id)
+        filters.append(ReferralReward.partner_user_id == partner_user_id)
     if status_filter:
-        stmt = stmt.where(ReferralReward.status == status_filter)
-    rows = list(
-        (
-            await session.scalars(stmt.order_by(ReferralReward.created_at.desc()).limit(limit))
-        ).all()
-    )
+        filters.append(ReferralReward.status == status_filter)
+    total = int((await session.scalar(
+        select(func.count()).select_from(ReferralReward).where(*filters)
+    )) or 0)
+    rows = list((await session.scalars(
+        select(ReferralReward).where(*filters)
+        .order_by(ReferralReward.created_at.desc(), ReferralReward.id.desc())
+        .offset(offset).limit(limit)
+    )).all())
     return {
         "items": [
             {
@@ -456,5 +430,7 @@ async def list_referral_rewards(
                 "created_at": item.created_at.isoformat(),
             }
             for item in rows
-        ]
+        ],
+        "total": total, "limit": limit, "offset": offset,
+        "has_more": offset + len(rows) < total,
     }

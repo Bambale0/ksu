@@ -205,6 +205,7 @@ class Settings(BaseSettings):
     upload_rate_limit_per_minute: int = 12
     upload_daily_bytes_limit: int = 1024 * 1024 * 1024
     payment_create_rate_limit_per_minute: int = 6
+    support_message_rate_limit_per_minute: int = Field(default=10, ge=0)
     kie_submit_rate_limit_per_minute: int = 60
     kie_circuit_failure_threshold: int = 5
     kie_circuit_failure_window_seconds: int = 60

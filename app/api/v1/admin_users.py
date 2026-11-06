@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 
 from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
@@ -21,6 +21,7 @@ from app.db.models import (
     WalletTransaction,
 )
 from app.services.admin_security import AdminAuditService, has_permission
+from app.services.admin_users import AdminUserService
 from app.services.credits import InternalCreditService
 from app.services.wallet import InsufficientBalanceError, WalletService
 
@@ -86,41 +87,9 @@ async def list_users(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
-    can_pii = has_permission(context.account, "users.pii")
-    stmt = select(User, Wallet.balance).outerjoin(Wallet, Wallet.user_id == User.id)
-    count_stmt = select(func.count()).select_from(User)
-    conditions = []
-    if is_active is not None:
-        conditions.append(User.is_active == is_active)
-    if q:
-        search = q.strip()
-        text_condition = or_(
-            User.username.ilike(f"%{search}%"),
-            User.first_name.ilike(f"%{search}%"),
-            User.last_name.ilike(f"%{search}%"),
-        )
-        if search.isdigit():
-            text_condition = or_(text_condition, User.telegram_id == int(search))
-        conditions.append(text_condition)
-    if conditions:
-        stmt = stmt.where(*conditions)
-        count_stmt = count_stmt.where(*conditions)
-
-    rows = (
-        await session.execute(
-            stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
-        )
-    ).all()
-    total = int((await session.scalar(count_stmt)) or 0)
-    return {
-        "items": [
-            _user_view(user, balance=balance, can_view_pii=can_pii)
-            for user, balance in rows
-        ],
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    }
+    return await AdminUserService.list_users(
+        session, admin=context.account, q=q, is_active=is_active, limit=limit, offset=offset,
+    )
 
 
 @router.get("/{user_id}")

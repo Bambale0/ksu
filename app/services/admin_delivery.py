@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.admin_models import NotificationCampaignDelivery, SupportOutbox
+from app.db.models import SupportTicket
+
+logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
@@ -19,6 +24,34 @@ def retry_delay(attempts: int) -> int:
 
 class SupportOutboxDeliveryService:
     @staticmethod
+    async def requeue_reachable_user_deliveries(
+        session: AsyncSession, *, user_id: uuid.UUID,
+    ) -> int:
+        """Schedule this user's entire recoverable backlog after private contact."""
+        await session.flush()
+        # One SQL update avoids truncating the recovery signal or silently losing
+        # a temporarily locked row. Actual sends still use bounded worker claims.
+        result = await session.execute(
+            update(SupportOutbox)
+            .where(
+                SupportOutbox.ticket_id.in_(
+                    select(SupportTicket.id).where(SupportTicket.user_id == user_id)
+                ),
+                SupportOutbox.status.in_(["failed", "undeliverable"]),
+                or_(
+                    SupportOutbox.last_error.ilike("%chat not found%"),
+                    SupportOutbox.last_error.ilike("%bot was blocked%"),
+                ),
+            )
+            .values(
+                status="retry", attempts=0, available_at=utcnow(),
+                lease_until=None, last_error=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(result.rowcount or 0)
+
+    @staticmethod
     async def claim_batch(session: AsyncSession) -> list[SupportOutbox]:
         now = utcnow()
         rows = list(
@@ -30,7 +63,7 @@ class SupportOutboxDeliveryService:
                         or_(
                             SupportOutbox.status.in_(["pending", "retry"]),
                             and_(
-                                SupportOutbox.status == "sending",
+                                SupportOutbox.status.in_(["claimed", "sending"]),
                                 SupportOutbox.lease_until.is_not(None),
                                 SupportOutbox.lease_until < now,
                             ),
@@ -42,13 +75,37 @@ class SupportOutboxDeliveryService:
                 )
             ).all()
         )
+        claimed = []
         for row in rows:
-            row.status = "sending"
-            row.attempts += 1
+            if row.status == "sending":
+                # A transport call may already have succeeded before its worker died.
+                SupportOutboxDeliveryService.unknown(row, error="send_lease_expired")
+                continue
+            row.status = "claimed"
             row.lease_until = now + timedelta(seconds=settings.support_outbox_lease_seconds)
             row.last_error = None
+            claimed.append(row)
         await session.flush()
-        return rows
+        return claimed
+
+    @staticmethod
+    def start_sending(row: SupportOutbox) -> None:
+        row.status = "sending"
+        row.attempts += 1
+        row.lease_until = utcnow() + timedelta(seconds=settings.support_outbox_lease_seconds)
+        row.last_error = None
+
+    @staticmethod
+    def unknown(row: SupportOutbox, *, error: str) -> None:
+        SupportOutboxDeliveryService.terminal(row, status="delivery_unknown", error=error)
+        logger.warning(
+            "support_reply_delivery_ambiguous",
+            extra={
+                "outbox_id": str(row.id), "ticket_id": str(row.ticket_id),
+                "message_id": str(row.message_id), "attempts": row.attempts,
+                "reason": error,
+            },
+        )
 
     @staticmethod
     def sent(row: SupportOutbox, *, external_message_id: str) -> None:

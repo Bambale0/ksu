@@ -4,7 +4,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import JSON, String, case, cast, func, literal, select
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.admin_content_models import GenerationModerationState
@@ -26,20 +27,25 @@ class AdminContentService:
         admin: AdminAccount,
         status: str | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "prompts.read")
-        stmt = select(PromptLibraryItem)
-        if status:
-            stmt = stmt.where(PromptLibraryItem.status == status)
-        rows = list(
-            (
-                await session.scalars(
-                    stmt.order_by(PromptLibraryItem.created_at.desc())
-                    .limit(max(1, min(limit, 200)))
-                )
-            ).all()
-        )
-        return {"items": [AdminContentService._prompt_view(item) for item in rows]}
+        limit = max(1, min(limit, 200))
+        offset = max(0, min(offset, 100_000))
+        filters = [PromptLibraryItem.status == status] if status else []
+        total = int((await session.scalar(
+            select(func.count()).select_from(PromptLibraryItem).where(*filters)
+        )) or 0)
+        rows = list((await session.scalars(
+            select(PromptLibraryItem).where(*filters)
+            .order_by(PromptLibraryItem.created_at.desc(), PromptLibraryItem.id.desc())
+            .offset(offset).limit(limit)
+        )).all())
+        return {
+            "items": [AdminContentService._prompt_view(item) for item in rows],
+            "total": total, "limit": limit, "offset": offset,
+            "has_more": offset + len(rows) < total,
+        }
 
     @staticmethod
     def _prompt_view(item: PromptLibraryItem) -> dict[str, Any]:
@@ -124,16 +130,55 @@ class AdminContentService:
         )
 
     @staticmethod
-    async def list_trends(session: AsyncSession, *, admin: AdminAccount) -> dict[str, Any]:
+    async def list_trends(
+        session: AsyncSession,
+        *,
+        admin: AdminAccount,
+        limit: int = 200,
+        offset: int = 0,
+        q: str | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "social.moderate")
-        rows = list(
-            (
-                await session.scalars(
-                    select(AdminTrend).order_by(AdminTrend.created_at.desc()).limit(200)
+        limit = max(1, min(limit, 200))
+        offset = max(0, min(offset, 100_000))
+        filters = []
+        if is_active is not None:
+            filters.append(AdminTrend.is_active.is_(is_active))
+        if q and q.strip():
+            value = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            raw_tags = AdminTrend.payload["tags"]
+            tags = func.json_array_elements_text(
+                case(
+                    (func.json_typeof(raw_tags) == "array", raw_tags),
+                    else_=cast(literal("[]", type_=String), JSON),
                 )
-            ).all()
-        )
-        return {"items": [TrendService.admin_view(item) for item in rows]}
+            ).table_valued("value", with_ordinality="ordinality").render_derived(name="trend_tags")
+            tag_text = (
+                select(func.string_agg(tags.c.value, aggregate_order_by(" ", tags.c.ordinality)))
+                .correlate(AdminTrend).scalar_subquery()
+            )
+            # Match the existing editor's title + model + ordered tags corpus.
+            # Do not broaden search to private prompt/template fields in payload.
+            searchable = func.concat(
+                AdminTrend.title, " ",
+                func.coalesce(AdminTrend.payload["model_id"].as_string(), ""), " ",
+                func.coalesce(tag_text, ""),
+            )
+            filters.append(searchable.ilike(f"%{value}%", escape="\\"))
+        total = int((await session.scalar(
+            select(func.count()).select_from(AdminTrend).where(*filters)
+        )) or 0)
+        rows = list((await session.scalars(
+            select(AdminTrend).where(*filters)
+            .order_by(AdminTrend.created_at.desc(), AdminTrend.id.desc())
+            .offset(offset).limit(limit)
+        )).all())
+        return {
+            "items": [TrendService.admin_view(item) for item in rows],
+            "total": total, "limit": limit, "offset": offset,
+            "has_more": offset + len(rows) < total,
+        }
 
     @staticmethod
     async def create_trend(

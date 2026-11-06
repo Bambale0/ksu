@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.admin_models import CmsDocument, CmsDocumentVersion
@@ -23,17 +23,17 @@ class AdminCmsService:
         *,
         admin: AdminAccount,
         limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "cms.read")
-        rows = list(
-            (
-                await session.scalars(
-                    select(CmsDocument)
-                    .order_by(CmsDocument.updated_at.desc())
-                    .limit(max(1, min(limit, 200)))
-                )
-            ).all()
-        )
+        limit = max(1, min(limit, 200))
+        offset = max(0, min(offset, 100_000))
+        total = int((await session.scalar(select(func.count()).select_from(CmsDocument))) or 0)
+        rows = list((await session.scalars(
+            select(CmsDocument)
+            .order_by(CmsDocument.updated_at.desc(), CmsDocument.id.desc())
+            .offset(offset).limit(limit)
+        )).all())
         return {
             "items": [
                 {
@@ -45,7 +45,9 @@ class AdminCmsService:
                     "updated_at": item.updated_at.isoformat(),
                 }
                 for item in rows
-            ]
+            ],
+            "total": total, "limit": limit, "offset": offset,
+            "has_more": offset + len(rows) < total,
         }
 
     @staticmethod

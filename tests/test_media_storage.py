@@ -1,6 +1,7 @@
 import random
 import socket
 from decimal import Decimal
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import HTTPException
@@ -127,7 +128,13 @@ async def test_generation_detail_prefers_owned_presigned_media(
         assert detail["result_urls"] == [detail["media"][0]["url"]]
         assert "provider.example.invalid" not in str(detail["result_url"])
         assert "X-Amz-Signature" in str(detail["result_url"])
-        assert detail["media"][0]["download_url"].endswith(f"/{asset.id}/download")
+        download = str(detail["media"][0]["download_url"])
+        download_params = parse_qs(urlsplit(download).query)
+        assert "X-Amz-Signature" in download_params
+        assert download_params["response-content-disposition"] == [
+            f'attachment; filename="generation-{generation.id}-1.png"'
+        ]
+        assert detail["media"][0]["download_filename"] == f"generation-{generation.id}-1.png"
 
 
 @pytest.mark.asyncio

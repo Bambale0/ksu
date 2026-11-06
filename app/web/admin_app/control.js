@@ -2,28 +2,30 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
+  const pagination = window.createAdminPagination();
   const state = {
     token: null,
     me: null,
     view: "overview",
+    currentTicketId: null,
     stepResolve: null,
     stepReject: null,
   };
 
   const VIEWS = [
-    ["overview", "Обзор", "Обзор"],
-    ["users", "Пользователи", "Пользователи"],
-    ["payments", "Платежи", "Финансы"],
-    ["operations", "Операции", "Работы"],
-    ["support", "Поддержка", "Поддержка"],
-    ["pricing", "Тарифы", "Тарифы"],
-    ["cms", "Контент", "Контент"],
-    ["campaigns", "Рассылки", "Уведомления"],
-    ["promos", "Промо", "Промо"],
-    ["content", "Модерация", "Модерация"],
-    ["runtime", "Настройки", "Настройки"],
-    ["partners", "Партнёры", "Партнёры"],
-    ["exports", "Экспорт", "Экспорт"],
+    ["overview", "Обзор", "Обзор", "dashboard.read"],
+    ["users", "Пользователи", "Пользователи", "users.read"],
+    ["payments", "Платежи", "Финансы", "payments.read"],
+    ["operations", "Операции", "Работы", "operations.read"],
+    ["support", "Поддержка", "Поддержка", "support.read"],
+    ["pricing", "Тарифы", "Тарифы", "pricing.read"],
+    ["cms", "Контент", "Контент", "cms.read"],
+    ["campaigns", "Рассылки", "Уведомления", "notifications.read"],
+    ["promos", "Промо", "Промо", "promocodes.read"],
+    ["content", "Модерация", "Модерация", ["prompts.read", "social.moderate"]],
+    ["runtime", "Настройки", "Настройки", "runtime.manage"],
+    ["partners", "Партнёры", "Партнёры", "partners.read"],
+    ["exports", "Экспорт", "Экспорт", "finance.read"],
   ];
 
   const dom = {};
@@ -379,16 +381,37 @@
     dom.controlView.replaceChildren(card("Ошибка", content, null, "control-danger"));
   }
 
+  function hasPermission(permission) {
+    const permissions = state.me?.permissions || [];
+    if (permissions.includes("*")) return true;
+    return Array.isArray(permission) ? permission.some((item) => permissions.includes(item)) : permissions.includes(permission);
+  }
+
   function buildNav() {
     dom.controlNav.replaceChildren();
-    for (const [key, title] of VIEWS) {
+    for (const [key, title, , permission] of VIEWS) {
+      if (!hasPermission(permission)) continue;
       const item = button(title, `nav-button${state.view === key ? " active" : ""}`, () => setView(key));
       dom.controlNav.appendChild(item);
+    }
+    if (hasPermission("partners.read")) {
+      const link = node("a", "nav-button", "Партнёрские условия");
+      const destination = new URL("/admin-app/creator-partnership.html", window.location.origin);
+      destination.search = window.location.search;
+      destination.hash = window.location.hash;
+      link.href = destination.href;
+      dom.controlNav.appendChild(link);
     }
   }
 
   function setView(key) {
-    const config = VIEWS.find(([value]) => value === key) || VIEWS[0];
+    const config = VIEWS.find(([value, , , permission]) => value === key && hasPermission(permission))
+      || VIEWS.find(([, , , permission]) => hasPermission(permission));
+    if (!config) {
+      buildNav();
+      dom.controlView.replaceChildren(card("Нет доступных разделов", node("p", "muted", "Для этого аккаунта не назначены права просмотра.")));
+      return;
+    }
     state.view = config[0];
     dom.controlKicker.textContent = config[2];
     dom.controlTitle.textContent = config[1];
@@ -403,7 +426,7 @@
       if (state.view === "users") return await renderUsers();
       if (state.view === "payments") return await renderPayments();
       if (state.view === "operations") return await renderOperations();
-      if (state.view === "support") return await renderSupport();
+      if (state.view === "support") return state.currentTicketId ? await renderTicket(state.currentTicketId) : await renderSupport();
       if (state.view === "pricing") return await renderPricing();
       if (state.view === "cms") return await renderCms();
       if (state.view === "campaigns") return await renderCampaigns();
@@ -441,12 +464,14 @@
     ));
   }
 
-  async function renderUsers(query = "") {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderUsers(filters) {
+    const page = pagination.page("Пользователи", filters, 50);
+    const query = String(page.filters.q || "");
+    const params = page.params;
     if (query) params.set("q", query);
     const data = await api(`/api/v1/admin/control/users?${params}`);
-    const search = input("search", query, "Telegram ID / UUID / username / name");
-    const searchButton = button("Найти", "primary", () => void renderUsers(search.value.trim()));
+    const search = input("search", query, hasPermission("users.pii") ? "Telegram ID / UUID / username / name" : "Внутренний ID пользователя");
+    const searchButton = button("Найти", "primary", () => void renderUsers({ q: search.value.trim() }));
     const filter = node("div", "control-form-inline");
     filter.append(field("Поиск", search), searchButton);
     const userTable = table(
@@ -464,7 +489,7 @@
                   label: `${row.is_active ? "Заблокировать" : "Разблокировать"} пользователя ${row.id}?`,
                 });
                 toast("Статус пользователя обновлён", "ok");
-                await renderUsers(query);
+                await renderUsers();
               },
             });
           }),
@@ -482,7 +507,7 @@
                   label: `Изменить баланс ${row.id} на ${amount} ROX?`,
                 });
                 toast("Баланс обновлён", "ok");
-                await renderUsers(query);
+                await renderUsers();
               },
             });
           }),
@@ -490,11 +515,12 @@
         return [row.username ? `@${row.username}\n${row.id}` : row.id, row.telegram_id, row.balance_credits, row.is_active ? "Активен" : "Заблокирован", actionRow];
       },
     );
-    dom.controlView.replaceChildren(card(`Пользователи · ${data.total ?? 0}`, userTable, filter));
+    dom.controlView.replaceChildren(card(`Пользователи · ${data.total ?? 0}`, userTable, filter), page.controls(data, renderUsers));
   }
 
-  async function renderPayments() {
-    const data = await api("/api/v1/admin/control/payments?limit=100");
+  async function renderPayments(filters) {
+    const page = pagination.page("Платежи", filters, 100);
+    const data = await api(`/api/v1/admin/control/payments?${page.params}`);
     const paymentTable = table(
       ["Платёж", "Провайдер", "Сумма", "ROX", "Статус", "Действия"],
       data.items || [],
@@ -525,11 +551,12 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card(`Платежи · ${data.total ?? 0}`, paymentTable));
+    dom.controlView.replaceChildren(card(`Платежи · ${data.total ?? 0}`, paymentTable), page.controls(data, renderPayments));
   }
 
-  async function renderOperations() {
-    const data = await api("/api/v1/admin/control/operations?limit=100");
+  async function renderOperations(filters) {
+    const page = pagination.page("Операции генерации", filters, 100);
+    const data = await api(`/api/v1/admin/control/operations?${page.params}`);
     const operationTable = table(
       ["Работа", "Модель", "Статус", "Стоимость", "Создана", "Действия"],
       data.items || [],
@@ -565,103 +592,44 @@
             title: `Возврат ${row.id}`,
             fields: [{ name: "reason", label: "Причина", type: "textarea", maxLength: 500 }],
             onSubmit: async ({ reason }) => {
-              await mutate(`/api/v1/admin/control/operations/${row.id}/refund`, {
+              const result = await mutate(`/api/v1/admin/control/operations/${row.id}/refund`, {
                 body: { reason },
                 sensitive: true,
                 label: `Вернуть оплату по операции ${row.id}?`,
               });
-              toast("Возврат выполнен", "ok");
+              if (!result) return false;
+              const notice = result.status === "already_refunded" ? "Возврат уже был выполнен"
+                : result.status === "no_charge" ? "Списания по операции нет — возврат не требуется"
+                : "Возврат выполнен";
+              toast(notice, "ok");
               await renderOperations();
             },
           })),
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("Операции генерации", operationTable));
+    dom.controlView.replaceChildren(card("Операции генерации", operationTable), page.controls(data, renderOperations));
+  }
+
+  let supportInbox = null;
+  function getSupportInbox() {
+    if (!supportInbox) supportInbox = window.createSupportInbox({
+      container: dom.controlView, api, base: "/api/v1/admin/control/tickets",
+      statusSuffix: "/update", statusMethod: "POST", replySuffix: "/reply", assignSuffix: "/assign",
+      isActive: () => Boolean(state.token) && state.view === "support",
+      canManage: () => (state.me?.permissions || []).some((permission) => permission === "*" || permission === "support.manage"),
+      canViewPii: () => hasPermission("users.pii"),
+      onSelect: (id) => { state.currentTicketId = id; },
+    });
+    return supportInbox;
   }
 
   async function renderSupport() {
-    const data = await api("/api/v1/admin/control/tickets?limit=100");
-    const ticketTable = table(
-      ["Обращение", "Тема", "Статус", "Приоритет", "Ответственный", "Действия"],
-      data.items || [],
-      (row) => [
-        row.id,
-        row.topic,
-        statusLabel(row.status),
-        row.priority,
-        row.assigned_admin_id || "—",
-        actions(button("Открыть", "table-action", () => void renderTicket(row.id))),
-      ],
-    );
-    dom.controlView.replaceChildren(card("Обращения в поддержку", ticketTable));
+    return getSupportInbox().list();
   }
 
   async function renderTicket(ticketId) {
-    loading();
-    try {
-      const ticket = await api(`/api/v1/admin/control/tickets/${ticketId}`);
-      const messageList = node("div", "card-list");
-      for (const message of ticket.messages || []) {
-        const item = node("article", "list-card");
-        item.append(
-          node("strong", "", message.is_admin ? "Администратор" : "Пользователь"),
-          node("p", "", message.body),
-          node("small", "muted", formatDate(message.created_at)),
-        );
-        messageList.appendChild(item);
-      }
-      const controls = actions(
-        button("Назначить", "table-action", () => openForm({
-          title: "Назначить обращение",
-          fields: [{ name: "assigned_admin_id", label: "ID администратора (пусто = снять назначение)", required: false }],
-          onSubmit: async ({ assigned_admin_id }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/assign`, {
-              body: { assigned_admin_id: assigned_admin_id || null },
-              confirm: false,
-            });
-            await renderTicket(ticketId);
-          },
-        })),
-        button("Update", "table-action", () => openForm({
-          title: "Update ticket",
-          fields: [
-            { name: "status", label: "Status", type: "select", value: ticket.status, options: [["open", "open"], ["in_progress", "in_progress"], ["resolved", "resolved"], ["closed", "closed"]] },
-            { name: "priority", label: "Priority", type: "select", value: ticket.priority, options: [["low", "low"], ["normal", "normal"], ["high", "high"], ["urgent", "urgent"]] },
-          ],
-          onSubmit: async ({ status, priority }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/update`, {
-              body: { status, priority },
-              confirm: false,
-            });
-            await renderTicket(ticketId);
-          },
-        })),
-        button("Reply", "table-action", () => openForm({
-          title: "Queue support reply",
-          fields: [{ name: "body", label: "Ответ", type: "textarea", maxLength: 4000 }],
-          onSubmit: async ({ body }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/reply`, {
-              body: { body },
-              label: `Поставить ответ по ticket ${ticketId} в durable outbox?`,
-            });
-            toast("Ответ поставлен в durable outbox", "ok");
-            await renderTicket(ticketId);
-          },
-        })),
-        button("← Tickets", "ghost", () => void renderSupport()),
-      );
-      dom.controlView.replaceChildren(
-        card(`Ticket ${ticketId}`, pre({
-          user_id: ticket.user_id,
-          topic: ticket.topic,
-          status: ticket.status,
-          priority: ticket.priority,
-          assigned_admin_id: ticket.assigned_admin_id,
-        }), controls),
-        card("Messages", messageList),
-      );
-    } catch (error) { errorView(error); }
+    return getSupportInbox().open(ticketId);
   }
 
   async function renderPricing() {
@@ -689,8 +657,9 @@
     dom.controlView.replaceChildren(card("Versioned tariffs", content, actions(publish)));
   }
 
-  async function renderCms() {
-    const data = await api("/api/v1/admin/cms/documents");
+  async function renderCms(filters) {
+    const page = pagination.page("CMS documents", filters, 100);
+    const data = await api(`/api/v1/admin/cms/documents?${page.params}`);
     const createButton = button("New version", "primary", () => openForm({
       title: "Save CMS document version",
       fields: [
@@ -741,11 +710,12 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("CMS documents", list, actions(createButton)));
+    dom.controlView.replaceChildren(card("CMS documents", list, actions(createButton)), page.controls(data, renderCms));
   }
 
-  async function renderCampaigns() {
-    const data = await api("/api/v1/admin/notifications/campaigns");
+  async function renderCampaigns(filters) {
+    const page = pagination.page("Durable campaigns", filters, 100);
+    const data = await api(`/api/v1/admin/notifications/campaigns?${page.params}`);
     const createButton = button("Create campaign", "primary", () => openForm({
       title: "Notification campaign",
       fields: [
@@ -808,12 +778,13 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("Durable campaigns", campaignTable, actions(createButton)));
+    dom.controlView.replaceChildren(card("Durable campaigns", campaignTable, actions(createButton)), page.controls(data, renderCampaigns));
   }
 
-  async function renderPromos() {
+  async function renderPromos(filters) {
+    const page = pagination.page("Промокоды", filters, 100);
     const [data, program] = await Promise.all([
-      api("/api/v1/admin/control/promocodes"),
+      api(`/api/v1/admin/control/promocodes?${page.params}`),
       api("/api/v1/admin/control/promocodes/program"),
     ]);
     const createButton = button("Создать промокод", "primary", () => openForm({
@@ -923,12 +894,16 @@
       card("Экономика партнёрской программы", programSummary, actions(programButton)),
       card("Партнёрские промокоды", promoTable, actions(createButton)),
     );
+    dom.controlView.appendChild(page.controls(data, renderPromos));
   }
 
-  async function renderContent() {
+  async function renderContent(filters, kind = "prompts") {
+    const page = pagination.page("Модерация описаний", kind === "prompts" ? filters : undefined, 100);
+    const trendsPage = pagination.page("Тренды", kind === "trends" ? filters : undefined, 200);
+    page.params.set("status", "pending");
     const [prompts, trends] = await Promise.all([
-      api("/api/v1/admin/prompts?status=pending"),
-      api("/api/v1/admin/trends"),
+      hasPermission("prompts.read") ? api(`/api/v1/admin/prompts?${page.params}`) : Promise.resolve({ items: [] }),
+      hasPermission("social.moderate") ? api(`/api/v1/admin/trends?${trendsPage.params}`) : Promise.resolve({ items: [] }),
     ]);
     const promptTable = table(
       ["Описание", "Статус", "Действия"],
@@ -990,9 +965,8 @@
       } catch (error) { toast(error.message, "error"); }
     }));
     dom.controlView.replaceChildren(
-      card("Модерация описаний", promptTable),
-      card("Тренды", trendTable, actions(trendCreate)),
-      card("Модерация ленты", feedForm),
+      ...(hasPermission("prompts.read") ? [card("Модерация описаний", promptTable), page.controls(prompts, (next) => renderContent(next, "prompts"))] : []),
+      ...(hasPermission("social.moderate") ? [card("Тренды", trendTable, actions(trendCreate)), trendsPage.controls(trends, (next) => renderContent(next, "trends")), card("Модерация ленты", feedForm)] : []),
     );
   }
 
@@ -1111,10 +1085,11 @@
     dom.controlView.replaceChildren(card("Настройки приложения", body, controls));
   }
 
-  async function renderPartners() {
+  async function renderPartners(filters) {
+    const page = pagination.page("Withdrawals", filters, 100);
     const [analytics, withdrawals] = await Promise.all([
       api("/api/v1/admin/partners/analytics"),
-      api("/api/v1/admin/partners/withdrawals?limit=100"),
+      api(`/api/v1/admin/partners/withdrawals?${page.params}`),
     ]);
     const summary = pre(analytics);
     const withdrawalTable = table(
@@ -1142,7 +1117,7 @@
         }))),
       ],
     );
-    dom.controlView.replaceChildren(card("Partner analytics", summary), card("Withdrawals", withdrawalTable));
+    dom.controlView.replaceChildren(card("Partner analytics", summary), card("Withdrawals", withdrawalTable), page.controls(withdrawals, renderPartners));
   }
 
   async function renderExports() {
@@ -1206,7 +1181,12 @@
       dom.controlShell.hidden = false;
       dom.controlOtp.value = "";
       dom.controlRecovery.value = "";
-      setView("overview");
+      const ticketId = new URLSearchParams(window.location.search).get("support_ticket");
+      const mayReadSupport = (state.me.permissions || []).some((permission) => permission === "*" || permission === "support.read");
+      if (ticketId && /^[0-9a-f-]{36}$/i.test(ticketId) && mayReadSupport) {
+        state.currentTicketId = ticketId;
+        setView("support");
+      } else { setView("overview"); }
     } catch (error) {
       state.token = null;
       state.me = null;
@@ -1225,6 +1205,9 @@
     dom.controlShell.hidden = true;
     dom.controlAuth.hidden = false;
     dom.controlView.replaceChildren();
+    state.currentTicketId = null;
+    supportInbox?.reset();
+    pagination.reset();
     setMessage(dom.controlLoginMessage, "Сессия завершена.", "ok");
   }
 

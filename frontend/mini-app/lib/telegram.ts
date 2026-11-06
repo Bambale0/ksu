@@ -28,6 +28,7 @@ export type TelegramWebApp = {
   setBackgroundColor?: (color: string) => void;
   setBottomBarColor?: (color: string) => void;
   openLink?: (url: string) => void;
+  downloadFile?: (params: { url: string; file_name: string }, callback?: (accepted: boolean) => void) => void;
   openTelegramLink?: (url: string) => void;
   requestWriteAccess?: (callback?: (allowed: boolean) => void) => void;
   isVersionAtLeast?: (version: string) => boolean;
@@ -429,6 +430,22 @@ export function openExternalLink(url: string): void {
     if (tg?.openLink) { tg.openLink(url); return; }
   } catch { /* optional */ }
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function requestTelegramDownload(url: string, fileName: string): boolean {
+  try {
+    const tg = telegram();
+    if (!tg?.downloadFile || !tg.isVersionAtLeast?.("8.0")) return false;
+    const target = new URL(url, window.location.href);
+    if (target.protocol !== "https:" || !fileName.trim()) return false;
+    // The URL is a short-lived media capability, never Telegram authentication.
+    // A cancelled native request stays cancelled; only an unsupported/throwing
+    // API falls back to the caller's normal attachment link.
+    tg.downloadFile({ url: target.toString(), file_name: fileName });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function openTelegramShare(url: string): void {

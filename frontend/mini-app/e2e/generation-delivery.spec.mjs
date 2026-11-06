@@ -439,18 +439,26 @@ test('more than 32 pending generations are observed without silently losing over
 test('downloads never regresses when an older list response resolves after fresh media', async ({ page }) => {
   await telegramWithoutChat(page);
   let requests = 0;
+  let descriptorRequests = 0;
+  const assetId = "44444444-4444-4444-8444-444444444444";
+  const freshDownloadUrl = "https://media.example.invalid/fresh-attachment.png";
   const old = { ...task(TREND_TASK_ID, 'succeeded'), media_delivery: {
     expected: 1, ready: 0, failed: 0, state: 'pending',
   } };
   const fresh = { ...task(TREND_TASK_ID, 'succeeded', true), media_delivery: {
     expected: 1, ready: 1, failed: 0, state: 'ready',
-  }, media: [{ id: 'owned1', url: IMAGE_URL, download_url: '/api/v1/media/owned1/download' }] };
+  }, media: [{ id: assetId, url: IMAGE_URL, download_url: "/api/v1/media/" + assetId + "/download" }] };
   await page.route('**/api/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (payload) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
     if (path === '/api/v1/me') return json({ telegram_id: 777 });
     if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [] });
+    if (path === '/api/v1/media/' + assetId) {
+      descriptorRequests++;
+      return json({ id: assetId, generation_id: TREND_TASK_ID, status: 'ready',
+        download_url: freshDownloadUrl, download_filename: 'fresh-result.png' });
+    }
     if (path === '/api/v1/generations') {
       requests++;
       const snapshot = requests === 1 ? old : fresh;
@@ -464,10 +472,20 @@ test('downloads never regresses when an older list response resolves after fresh
   await page.evaluate((generation) => window.dispatchEvent(new CustomEvent('roxy:generation-update', {
     detail: { generation, terminal: true, ready: true },
   })), fresh);
-  const link = page.getByRole('link', { name: /Скачать/ }).first();
-  await expect(link).toHaveAttribute('href', '/api/v1/media/owned1/download', { timeout: 12000 });
+  const download = page.getByRole('button', { name: /^Скачать/ });
+  await expect(download).toBeVisible({ timeout: 12000 });
   await page.waitForTimeout(2000);
-  await expect(link).toHaveAttribute('href', '/api/v1/media/owned1/download');
+  await expect(download).toBeVisible();
+  await page.evaluate(() => {
+    window.__requestedDownload = null;
+    window.Telegram.WebApp.isVersionAtLeast = () => true;
+    window.Telegram.WebApp.downloadFile = (params) => { window.__requestedDownload = params; };
+  });
+  await download.click();
+  await expect.poll(() => page.evaluate(() => window.__requestedDownload)).toEqual({
+    url: freshDownloadUrl, file_name: 'fresh-result.png',
+  });
+  expect(descriptorRequests).toBe(1);
 });
 
 test('rotating signed media URLs do not generate duplicate delivery events', async ({ page }) => {

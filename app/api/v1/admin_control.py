@@ -17,7 +17,7 @@ from app.services.admin_policy import AdminPolicyError
 from app.services.admin_promos import AdminPromoService
 from app.services.admin_reporting import AdminReportingService
 from app.services.admin_security import AdminAuthService
-from app.services.admin_support import AdminSupportService
+from app.services.admin_support import AdminSupportService, SupportTicketClosedError
 from app.services.admin_users import AdminUserService
 
 router = APIRouter(prefix="/admin/control", tags=["admin-control"])
@@ -128,6 +128,8 @@ def _error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, AdminPolicyError):
         return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, SupportTicketClosedError):
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ValueError):
         return HTTPException(status_code=422, detail=str(exc))
     return HTTPException(status_code=409, detail=str(exc))
@@ -417,11 +419,13 @@ async def control_tickets(
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=100_000),
+    q: str | None = Query(default=None, max_length=128),
 ) -> dict[str, Any]:
     return await AdminSupportService.list_tickets(
         session,
         admin=context.account,
         status=status_filter,
+        q=q,
         limit=limit,
         offset=offset,
     )
@@ -432,12 +436,16 @@ async def control_ticket(
     ticket_id: uuid.UUID,
     context: SupportReadDep,
     session: SessionDep,
+    message_limit: int = Query(default=100, ge=1, le=500),
+    before: uuid.UUID | None = Query(default=None),
 ) -> dict[str, Any]:
     try:
         return await AdminSupportService.get_ticket(
             session,
             admin=context.account,
             ticket_id=ticket_id,
+            message_limit=message_limit,
+            before=before,
         )
     except Exception as exc:
         raise _error(exc) from exc
@@ -528,13 +536,17 @@ async def control_promocodes(
     context: PromosReadDep,
     session: SessionDep,
     q: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
     if q:
         try:
             return {"item": await AdminPromoService.lookup(session, admin=context.account, query=q)}
         except Exception as exc:
             raise _error(exc) from exc
-    return await AdminPromoService.list_promos(session, admin=context.account)
+    return await AdminPromoService.list_promos(
+        session, admin=context.account, limit=limit, offset=offset,
+    )
 
 
 @router.post("/promocodes")

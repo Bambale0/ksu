@@ -9,6 +9,7 @@ from app.db.models import AdminAccount, Payment
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
 from app.services.card_payments import CardPaymentService
+from app.services.payment_2328 import Payment2328Service
 from app.services.payments import PaymentService
 
 
@@ -30,6 +31,8 @@ class AdminPaymentService:
                 raise LookupError("Payment not found")
             if payment.provider == CardPaymentService.PROVIDER:
                 updated = await CardPaymentService.reconcile(session, payment_id=payment.id)
+            elif payment.provider == Payment2328Service.PROVIDER:
+                updated = await Payment2328Service.reconcile(session, payment_id=payment.id)
             else:
                 updated = await PaymentService.reconcile(session, payment_id=payment.id)
             return {
@@ -81,6 +84,8 @@ class AdminPaymentService:
             before = payment.status
             if payment.provider == CardPaymentService.PROVIDER:
                 updated = await CardPaymentService.reconcile(session, payment_id=payment.id)
+            elif payment.provider == Payment2328Service.PROVIDER:
+                updated = await Payment2328Service.reconcile(session, payment_id=payment.id)
             else:
                 updated = await PaymentService.reconcile(session, payment_id=payment.id)
             return {

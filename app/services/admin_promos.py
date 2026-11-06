@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AdminAccount, PartnerReferralTerms, PromoCode, User
@@ -21,18 +21,22 @@ class AdminPromoService:
         *,
         admin: AdminAccount,
         limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "promocodes.read")
-        rows = list(
-            (
-                await session.scalars(
-                    select(PromoCode)
-                    .order_by(PromoCode.created_at.desc())
-                    .limit(max(1, min(limit, 200)))
-                )
-            ).all()
-        )
-        return {"items": [AdminPromoService._view(item) for item in rows]}
+        limit = max(1, min(limit, 200))
+        offset = max(0, min(offset, 100_000))
+        total = int((await session.scalar(select(func.count()).select_from(PromoCode))) or 0)
+        rows = list((await session.scalars(
+            select(PromoCode)
+            .order_by(PromoCode.created_at.desc(), PromoCode.id.desc())
+            .offset(offset).limit(limit)
+        )).all())
+        return {
+            "items": [AdminPromoService._view(item) for item in rows],
+            "total": total, "limit": limit, "offset": offset,
+            "has_more": offset + len(rows) < total,
+        }
 
     @staticmethod
     async def lookup(

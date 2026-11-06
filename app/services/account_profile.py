@@ -19,6 +19,7 @@ from app.services.neironych_balance_alerts import (
 from app.services.onboarding import OnboardingService
 from app.services.profile_preferences import ProfilePreferenceService
 from app.services.referrals import ReferralService
+from app.services.support import SUPPORT_INCOMING_KIND, SupportConversationService
 
 
 class AccountProfileService:
@@ -99,6 +100,9 @@ class AccountProfileService:
             )
             or 0
         )
+        can_read_support = await SupportConversationService.authorized_operator(
+            session, user.id, lock=True,
+        )
         can_read_balance = await NeironychBalanceAlertService.authorized_owner(
             session, user.id, lock=True
         )
@@ -109,6 +113,7 @@ class AccountProfileService:
                         Notification.user_id == user.id,
                         Notification.is_read.is_(False),
                         *([] if can_read_balance else [Notification.kind.not_in(BALANCE_NOTIFICATION_KINDS)]),
+                        *([] if can_read_support else [Notification.kind != SUPPORT_INCOMING_KIND]),
                     )
                 )
             )

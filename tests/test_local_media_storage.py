@@ -163,7 +163,8 @@ async def test_generation_detail_prefers_signed_host_media_without_s3(
         result_url = str(detail["result_url"])
         assert result_url.startswith(f"/api/v1/media/{asset.id}/signed/")
         assert "provider.example.invalid" not in result_url
-        assert detail["media"][0]["download_url"].endswith(f"/{asset.id}/download")
+        assert detail["media"][0]["download_url"] == f"{result_url}?download=1"
+        assert detail["media"][0]["download_filename"] == f"generation-{generation.id}-1.png"
 
 
 @pytest.mark.asyncio

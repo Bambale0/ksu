@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import Notification
 from app.db.notification_models import NotificationDelivery
+from app.services.admin_delivery import SupportOutboxDeliveryService
 
 
 def utcnow() -> datetime:
@@ -146,7 +147,10 @@ class NotificationDeliveryService:
             row.lease_until = None
             row.last_error = None
         await session.flush()
-        return len(rows)
+        support_recovered = await SupportOutboxDeliveryService.requeue_reachable_user_deliveries(
+            session, user_id=user_id,
+        )
+        return len(rows) + support_recovered
 
     @staticmethod
     async def mark_sent(

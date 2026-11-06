@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from app.api.admin_deps import AdminContext, require_permission
@@ -25,6 +25,14 @@ SessionsManageDep = Annotated[
 
 class SessionRevokeRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        reason = value.strip()
+        if len(reason) < 3:
+            raise ValueError("Reason must contain at least 3 characters")
+        return reason
 
 
 def _integrity_payload(row: AdminAuditLog) -> dict[str, Any]:
@@ -73,7 +81,7 @@ async def list_audit(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(AdminAuditLog.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(AdminAuditLog.created_at.desc(), AdminAuditLog.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -169,17 +177,25 @@ async def list_all_sessions(
     session: SessionDep,
     active_only: bool = True,
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
     del context
-    stmt = select(AdminSession).order_by(AdminSession.last_seen_at.desc()).limit(limit)
+    filters = []
     if active_only:
         now = utcnow()
-        stmt = stmt.where(
+        filters = [
             AdminSession.revoked_at.is_(None),
             AdminSession.expires_at > now,
             AdminSession.idle_expires_at > now,
-        )
-    rows = list((await session.scalars(stmt)).all())
+        ]
+    total = int((await session.scalar(
+        select(func.count()).select_from(AdminSession).where(*filters)
+    )) or 0)
+    rows = list((await session.scalars(
+        select(AdminSession).where(*filters)
+        .order_by(AdminSession.last_seen_at.desc(), AdminSession.id.desc())
+        .offset(offset).limit(limit)
+    )).all())
     return {
         "items": [
             {
@@ -195,7 +211,9 @@ async def list_all_sessions(
                 "revoke_reason": row.revoke_reason,
             }
             for row in rows
-        ]
+        ],
+        "total": total, "limit": limit, "offset": offset,
+        "has_more": offset + len(rows) < total,
     }
 
 
@@ -206,7 +224,7 @@ async def revoke_admin_session(
     request: Request,
     context: SessionsManageDep,
     session: SessionDep,
-) -> dict[str, str]:
+) -> dict[str, object]:
     target = await session.scalar(
         select(AdminSession).where(AdminSession.id == session_id).with_for_update()
     )
@@ -228,4 +246,4 @@ async def revoke_admin_session(
         metadata={"target_admin_id": str(target.admin_id)},
     )
     await session.commit()
-    return {"id": str(target.id), "status": "revoked"}
+    return {"id": str(target.id), "status": "revoked", "revoked": True}

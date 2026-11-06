@@ -1,3 +1,12 @@
+## Active Fix Execution — support inbox and complete admin audit (2026-11-06)
+
+- Baseline main/production: `9590eb61ca209b3fcb2cb9a77ab74c3cf49840c7`; branch `fix/support-inbox-admin-audit-20261106`.
+- Confirmed read-only incident: a customer message was accepted with HTTP 201 and persisted, but no operator notification exists; new messages do not advance ticket activity. Primary admin replies bypass the durable SupportOutbox path. Both admin details truncate the oldest 500 messages; main UI cannot reopen closed tickets.
+- Reuse current RBAC/MFA/audit/command ledger, notification/outbox workers, recipient configuration and schema. Preserve Mini-App-only bot routing/direct contact and all private ownership boundaries. No live test sends, historical replay, balance/provider changes or production writes.
+- Acceptance, 14-point fresh audit, complete verification matrix, guidance, roles and progress: [Support/admin execution ledger](docs/agents/EXECUTION/support-inbox-admin-audit-20261106.md).
+- Status: PR #581 checkpoint 8ab925f3 passed all six CI workflows (2543 backend tests plus Chromium/WebKit and real-API journeys). Four subsequent review cases are now fixed and independently reviewed: notification-only session retention, stale support-history gaps, initial bootstrap enrollment collision, and uncertain Telegram delivery. Focused evidence: 39 backend / 54 browser; recipient42+bootstrap19; final delivery56. Source is frozen for one corrected publication and renewed exact-head CI/review. Production remains at baseline until protected merge and verified deployment.
+- Admin inventory and exercised/source-only distinctions: [Capability coverage matrix](docs/agents/EXECUTION/support-admin-capability-matrix-20261106.md). The confirmed historic paid-price-mismatch requires a separately audited financial resolution; no wallet change has been made.
+
 ## Active Fix Execution — Mini App audit recovery and UI (2026-11-04)
 
 - Baseline: `81ac57608e1807b0c7f81a681032b790c1ceb077`; branch `fix/miniapp-audit-20261104`. The user authorized implementation of the preceding UI/logic/design audit and team development. Production rollout is not part of this implementation request.
@@ -1230,3 +1239,92 @@ The sole fd694ca5 CI failure was an early synchronous quote-count observation in
 - Detailed audit, TDD plan, verification matrix, rollout/rollback and production replay boundary:
   [docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md](docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md).
 
+## 2026-11-06 — final review: support identity and verified payment money
+
+Exact reviewed checkpoint: c8ec8a3ee02c552fd04bc914f6e774485afae486, PR #581. This is an audit/implementation plan before the next production-code slice, not a claim that its tests have passed.
+
+Evidence: the completed automatic review identified two P1 boundaries. AdminSupportService._ticket_view returns structured customer Telegram/name fields to support.read without checking users.pii, and its search predicates include the same protected fields. Reading the existing AdminUserService/main user endpoint confirmed the related search oracle despite masked responses. Incoming operator notices are already generic plus ticket UUID and do not expose those fields.
+
+The second finding follows authoritative CardCheckoutClient.get_invoice through reconcile: optional amount/currency checks permit missing monetary identity, after which a success status or payment.success event reaches complete. Audit all credit entry points and distinguish permissible sparse pending payloads from evidence required before wallet credit. No production balance, provider invoice, contract price or receipt will be changed.
+
+Planned verification: reproduce actual HTTP list/detail/search access with support/moderator/auditor and explicit allow/deny overrides on both admin surfaces; preserve non-PII ticket/topic/internal-ID access and current masks. Add UI regressions for capability-aware identity/search controls. Reproduce absent/malformed successful payment identity at the real reconciliation/completion boundary, then verify canonical credit/idempotency and valid provider compatibility. Independent review plus all six workflows and automatic review must run on the resulting exact head.
+
+Ownership: support_audit owns support/user backend and HTTP regressions; admin_audit owns corresponding UI and browser regressions; engineering_guidance owns payment validation and regressions. Root owns integration review, this context and publication. Production stays at 9590eb61 until the gated release is verified.
+
+### Payment completion follow-up: persistent manual review and lookup race
+
+Independent source review of the same settlement boundary found two concrete state risks before the follow-up product edit: complete and the pending/failed reconcile branches omit refund_review from their protected states; a delayed provider lookup also leaves reconcile using the pre-network ORM status without reloading under its payment lock. Late PAID/PENDING/FAILED can erase manual review, and a delayed pending/failed lookup can overwrite a concurrent successful completion.
+
+Reproduce manual-review replays and the delayed lookup/two-transaction completion race, then preserve the existing protected states and reload current payment state with FOR UPDATE plus populate_existing after provider I/O. Keep external network calls outside the database lock. Do not change refund amounts, policy, actual production payments or canonical credit keys. This is the remaining confirmed financial-state slice, followed by independent review and the same exact-head CI gates.
+
+The same post-I/O state boundary must also cover deterministic lookup rejection. Root and the independent reviewer both found that the early PaymentProviderValidationError path calls the generic terminal-failure helper before refreshing the card payment; that helper uses the supplied ORM state and does not preserve refund_review. Add HTTP 404 regressions for an existing manual review and a completion committed while the lookup is pending. Route this card-local error outcome through the same current-state lock before terminal classification; avoid changing the shared helper or discarding a caller's unflushed integrity metadata.
+
+
+## 2026-11-06 — final PII and payment review corrections verified
+
+The exact c8ec8a3ee02c552fd04bc914f6e774485afae486 checkpoint passed all six workflows (2566 backend tests, 1018 Chromium cases, 353 WebKit cases, 11 keyboard cases, three upload-deadline cases and all seven ROXY journeys). Its completed automatic review then identified the two P1 boundaries below; earlier green CI was not treated as proof that they were safe.
+
+- Structured support identity and PII-backed support/user search are now gated by effective users.pii in both main/control surfaces, including counts. Restricted roles retain existing masks and internal-ID/topic access. The main users list delegates to the existing canonical service. Role grants and freeform support text are unchanged.
+- UI identity and search hints follow the same capability; stale raw profile responses do not display restricted identity. Both HTML pages load the revised scripts.
+- Card completion requires a matching invoice ID, exact finite amount, matching currency and authoritative paid status under the current payment row lock. A success webhook is only a lookup signal. Sparse pending creation/lookup remains compatible.
+- Paid/pending/failed/rejected lookup outcomes preserve committed settlement and refund_review. Provider I/O remains outside the lock; current payment state is reread with FOR UPDATE/populate_existing before classification, including deterministic lookup errors. Canonical credit idempotency and existing refund policy are retained.
+
+Regression evidence: PII HTTP RED18/8 became GREEN84 (26 new plus compatibility); UI RED6/4 became GREEN118, 59 Chromium and 59 mobile WebKit. Payment identity RED19/7, then five state/race RED and two actual HTTP404 RED reproduced durable wrong outcomes. An intermediate 92/1 run exposed a legacy fake-session interface; only its scalar adapter was added, leaving assertions intact. Final payment GREEN93 passed in 18.88s (job_e8b9916fb771, test-run-20261106T075335Z-3815611.log). The 33 new payment cases exercise actual webhook/provider unwrapping with synthetic transport and durable isolated PostgreSQL state; race tests use events and separate transactions.
+
+Privacy/backend and UI slices received root plus independent engineering review. The complete payment slice received root and independent support review; both confirmed the final 404/state fix and GREEN93. Relevant Ruff, AST, JavaScript syntax and diff checks pass. All contributing source files are frozen for publication; the resulting new head still requires its own six CI workflows and automatic review before release.
+
+No production message, balance adjustment, provider mutation, contract-price change, schema migration or historic outbox replay was performed. Read-only release verification must still prove exact deployed SHA, all ten application image IDs, health, persisted recipient membership and the original failed-reply cohort.
+
+## 2026-11-06 — exact-head CI referral fixture correction
+
+CI on f3f75d928c0e264a60339a5012ad63f11efd3e64 stopped at tests/test_referral_partner_end_to_end.py::test_partner_promo_payment_is_first_line_only_and_refunds_are_proportional (1 failed, 1767 passed). The newly required completion guard correctly rejected that existing synthetic success payload, which contained status alone and no invoice ID/amount/currency.
+
+A complete caller inventory across app/tests/scripts, without the earlier filename filter, found nine completion call sites (one production path and eight test calls). Only the success/retry pair in this referral fixture remained incomplete. They now supply the created payment's invoice identity and exact frozen money with a paid status. All original buyer/partner/referral/refund/idempotency assertions are unchanged; AST equality confirms this.
+
+The affected referral + card identity/integrity/bonus compatibility suite passed 70 tests in 14.84s (job_182bc311ea74, test-run-20261106T080159Z-3826617.log). Ruff/AST/diff checks pass and root independently reviewed the fixture. Product code is unchanged from f3; app/services/card_payments.py remains blob c7cf0479ec92609b3746bc06f6486d59b0976751. The next exact head must pass all six workflows and automatic review; f3 is not a successful full-backend checkpoint.
+
+## 2026-11-06 — responsive CI readiness audit
+
+Exact head 634854eea2470a043c53ab81872d2c6972205f65 passed full backend (2625 tests), schema parity, seven ROXY journeys and both automatic reviews. Mini App Chromium reported one unexpected failure / 1025 passes: responsive-device-surfaces.spec.mjs, catalog fits 360 phone, strict locator('main') matched both the application main-shell and a transient v2 onboarding loading main before the overflow assertion.
+
+Evidence was retrieved from completed Chromium artifact 13486969880; trace, later DOM snapshot and screenshot were independently inspected. The fixture already returns onboarding disabled/completed. The existing test only waited for the legacy app surface before its global main assertion; UserOnboardingGate resolves onboarding and me asynchronously. The captured later catalog has no onboarding overlay. This is a confirmed readiness race in the test, not observed persistent layout overflow.
+
+Before the helper correction, add a deterministic held-onboarding-response regression. Then wait for the observed onboarding/me mock responses and removal of the v2 gate, check exactly one scoped application main with real catalog content, and retain every existing viewport/overflow/navigation/topbar assertion. No application behavior, backend, permissions or financial code changes are planned. Run the affected complete responsive suite in both official CI browser engines; collect the remainder of the original WebKit job before publication. Admin_audit owns the test and its matrix evidence; root owns integration, this context and publication.
+
+### Responsive readiness result
+
+The fresh isolated Next 16.3.3/TypeScript build passed. A held onboarding response deterministically reproduced the same strict-main failure before the helper change (job_1d3d8791e6b8). The corrected fixture registers onboarding/me Response listeners before navigation, asserts HTTP 200 and response completion, then waits for the v2 gate to disappear and exactly one visible/nonempty application main. Every catalog viewport also checks its real catalog heading. All original overflow, navigation, topbar, tablet and safe-area assertions remain.
+
+The complete responsive suite passed 164 tests in 2.7 minutes: 82 Chromium and 82 WebKit (job_839b1774e851). Root and independent engineering reviewed the full diff; Node syntax and diff checks pass. The bounded 250 ms negative assertion only proves that a deliberately blocked server response cannot be called ready; it is not an application rendering delay. The held response is released in finally.
+
+The original 634 browser job completed with only the known Chromium failure: 1025 passed / 1 failed, 361 WebKit passed and 11 keyboard cases passed. Its upload-deadline step was skipped because of the earlier failure and is not counted as verified on that head. No other browser failure was found. Product code remains unchanged; only the responsive test and evidence are included in the next commit, which still requires all six exact-head CI gates and automatic review.
+
+
+## 2026-11-06 — bot support and expired download follow-up audit
+
+Automatic code review of ea40686bf940ab409b8247b9b55c4d25590a70f0 completed with two new findings after backend and five workflows passed. Release remains blocked until both are verified and addressed. The current Mini App workflow continues only to establish this checkpoint's full browser evidence.
+
+The legacy app/bot/handlers/support.py FSM directly inserts SupportTicket and SupportMessage, bypassing the canonical customer activity and operator-notification service. The earlier production launcher audit found that router unregistered, so this code finding is not proof that current production bot traffic reaches it. Recheck registration and test the handler itself. Route its accepted messages through the shared persistence/notification path with the existing customer quota and transaction guarantees; preserve direct-support links and avoid enabling a new bot route solely to fix a dormant handler.
+
+The downloads screen retains signed media descriptors issued when the list was loaded. A local media signature expires using the configured storage TTL, so a later click can submit an expired capability and fail. Reproduce an old descriptor in the real browser download seam, then fetch a fresh owner-authorized descriptor at download time or otherwise prove freshness before using it. Preserve native Telegram cancellation, valid user-gesture behavior, safe fallback, attachment MIME, owner/private/public boundaries and existing descriptor configuration. A refresh failure must not silently submit the expired URL. Do not add longer hardcoded expiry or weaken signature validation.
+
+Support_audit owns the bot handler and its focused transaction/quota tests. Admin_audit owns the download client and its browser regressions. Root owns integration, independent review and publication. No production messages, payment/balance changes, historical outbox replay or schema migration are part of these corrections. Each confirmed change needs RED/GREEN evidence, a separate review and all six checks on the resulting exact head before ordinary merge and release.
+
+The bot transaction follow-up also checks duplicate Telegram delivery across its new commit-before-ack boundary. The existing Telegram webhook calls feed_update directly and has no global update receipt. A committed ticket followed by a Redis FSM-clear failure can leave the state waiting and cause the same Telegram message to be retried. Reproduce that specific failure/replay and concurrent identical messages. If confirmed, use a narrowly scoped durable message identity for bot-created tickets with existing database constraints, without adding a global webhook framework or changing registered routes. A replay must not enqueue another operator notice.
+
+
+## 2026-11-06 — bot support and download expiry review corrections verified
+
+Exact checkpoint ea40686bf940ab409b8247b9b55c4d25590a70f0 passed all six workflows on attempt 1: 2625 backend tests with clean schema parity, 1027 Chromium cases, 362 WebKit cases, 11 keyboard cases, three upload-deadline cases, all seven ROXY journeys and the admin/batch/release gates. Root independently fetched the completed runs and browser log. Its completed code review identified the two additional paths below; that green checkpoint was not merged.
+
+The legacy support FSM remains unregistered in the production dispatcher. Its own handler now uses the canonical customer-message/activity/operator-notification service and the same typed Redis admission policy as the API. It commits the ticket/message/notice before clearing state or acknowledging success, preserving the waiting state on persistence failure. A deterministic bot/chat/message ticket ID plus the existing primary-key constraint makes receipt replays converge on one conversation; only the insert winner adds a message and notice. Sequential replay skips quota and preserves a closed ticket. Concurrent initially absent deliveries may consume separate admission attempts, as the existing quota counts attempts; exactly-once quota is not claimed. No new router, global webhook framework or migration was added.
+
+The handler-level real PostgreSQL/Redis/aiogram-DI suite reproduced 13 behavioral failures before the correction. Final combined GREEN53 passed in 22.26s (job_2ff343f2a8b8; test-run-20261106T085231Z-3889600.log), covering the new 13 cases plus previous support quota, delivery, profile and app-only routing. Root independently reviewed every product diff and the full new tests, fetched the completed log, and signed off. Existing quota Assert ASTs are unchanged after moving their fixture configuration to the shared settings object. Ruff/AST/scoped diff checks pass. A complete production/test caller inventory found no unadapted direct caller of the handler.
+
+Downloads now requests the existing owner-authorized media descriptor at each button click, using the exact asset ID, no-store authenticated API access and exact generation/asset/status/URL/name validation. The saved list URL is never used for the operation. A synchronous in-flight guard prevents duplicate preparation; removal/unmount aborts the request and suppresses a late download. A native Telegram request preserves cancellation. The browser fallback uses the fresh attachment in the same browsing context, avoiding an asynchronous popup.
+
+The expiry UI regression uses a controlled HTTPS server clock and an old descriptor whose expiry is in the past when clicked; its signature is synthetic. It is not a replacement for the existing real backend HMAC/expiry tests. Both native use of the stale descriptor and the actual browser HTTP404/no-download outcome were reproduced (RED2, job_713578b701ab). A fresh Next.js 16.3.3/TypeScript build generated all 24 static pages (job_6890615f959e). The first focused run passed all real download scenarios but exposed a test-only global alert selector collision with Next's route announcer (26 passed/20 failed); scoping the same error assertions to the transaction list corrected that selector without changing product code. Final GREEN46 passed in 1.0 minute: 23 Chromium and 23 WebKit cases (job_1651b7f25abc). This includes real HTTPS bytes/filename after a six-second descriptor delay, native error/cancel, expired links, authorization/server errors, invalid identity/status/URL, retry, repeat/duplicate clicks, unmount cancellation and existing Downloads compatibility. Root and a separate engineering reviewer inspected source and evidence and signed off.
+
+The full test-source inventory covered 352 files and 13 matches. Only the existing generation-delivery link assertion needed adaptation; it still checks the stale-list response race and now verifies a real button click obtains the fresh descriptor and passes the fresh URL/name to the native API. No old assertion was weakened to accept a failed operation.
+
+The resulting new head still needs its own six CI workflows, completed review and ordinary protected merge before release. Runtime remains on the base release at this checkpoint. Native Telegram hardware verification and historical business/financial decisions remain outside these isolated tests. No production messages, payment changes, schema changes or historical reply replay occurred.

@@ -29,6 +29,7 @@ from app.services.generation_actions import GenerationActionService
 from app.services.model_catalog import ModelCatalog, UnknownModelError
 from app.services.neironych_balance_alerts import NeironychBalanceAlertService
 from app.services.notifications import NotificationDeliveryService
+from app.services.support import SUPPORT_INCOMING_KIND, SupportConversationService
 from app.services.generation_progress import GENERATION_PROGRESS_KIND, deliver_generation_progress
 from app.services.telegram_generation_media import (
     GenerationMediaPending,
@@ -48,6 +49,7 @@ _PROMPT_TOOL_NOTIFICATION_KINDS = {
     "prompt_tool_video_succeeded",
 }
 _ADMIN_OPERATIONAL_NOTIFICATION_KINDS = {
+    SUPPORT_INCOMING_KIND,
     "creator_partnership_admin_application",
     "neironych_balance_low",
     "neironych_balance_recovered",
@@ -119,6 +121,23 @@ def _creator_partnership_admin_keyboard(notification: Notification) -> InlineKey
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _support_admin_keyboard(notification: Notification) -> InlineKeyboardMarkup | None:
+    if notification.kind != SUPPORT_INCOMING_KIND:
+        return None
+    match = re.search(r"(?m)^Обращение: ([0-9a-fA-F-]{36})$", notification.body or "")
+    base_url = settings.public_base_url.rstrip("/")
+    if not match or not base_url:
+        return None
+    try:
+        ticket_id = str(uuid.UUID(match.group(1)))
+    except ValueError:
+        return None
+    url = f"{base_url}/admin-app/?{urlencode({'support_ticket': ticket_id})}"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть обращение", web_app=WebAppInfo(url=url)),
+    ]])
 
 
 async def _heartbeat(redis: Redis) -> None:
@@ -488,6 +507,14 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
             _sync_generation_delivery(generation, delivery)
             await session.commit()
             return
+        if notification.kind == SUPPORT_INCOMING_KIND:
+            if not await SupportConversationService.authorized_operator(session, user.id, lock=True):
+                await NotificationDeliveryService.mark_terminal(
+                    session, delivery, status="suppressed",
+                    error="support_operator_authorization_revoked",
+                )
+                await session.commit()
+                return
         if notification.kind in {"neironych_balance_low", "neironych_balance_recovered"}:
             await NeironychBalanceAlertService.acquire_lock(session)
             if not await NeironychBalanceAlertService.authorized_owner(session, user.id, lock=True):
@@ -571,7 +598,11 @@ async def _process_delivery(bot: Bot, delivery_id: uuid.UUID) -> None:
                 message = await bot.send_message(
                     chat_id=user.telegram_id,
                     text=_notification_text(notification),
-                    reply_markup=_creator_partnership_admin_keyboard(notification),
+                    reply_markup=(
+                        _support_admin_keyboard(notification)
+                        if notification.kind == SUPPORT_INCOMING_KIND
+                        else _creator_partnership_admin_keyboard(notification)
+                    ),
                 )
             else:
                 message = await bot.send_message(

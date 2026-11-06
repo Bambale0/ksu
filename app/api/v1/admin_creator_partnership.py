@@ -117,7 +117,10 @@ async def list_creator_agreements(
         count_stmt = count_stmt.where(CreatorPartnershipAgreement.status == status)
     rows = (
         await session.execute(
-            stmt.order_by(CreatorPartnershipAgreement.created_at.desc())
+            stmt.order_by(
+                CreatorPartnershipAgreement.created_at.desc(),
+                CreatorPartnershipAgreement.id.desc(),
+            )
             .offset(offset)
             .limit(limit)
         )
