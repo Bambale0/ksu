@@ -33,10 +33,17 @@
     item.value = value;
     return item;
   };
-  const identity = (ticket) => {
+  const identity = (ticket, canViewPii) => {
     const user = ticket.user || {};
+    const internalId = ticket.user_id || user.id;
+    const internal = internalId ? "ID пользователя " + internalId : "";
+    if (!canViewPii) {
+      const maskedTelegram = typeof user.telegram_id === "string"
+        && /^(?:\*{3}\d{4}|\*{4})$/.test(user.telegram_id) ? user.telegram_id : "";
+      return ["Пользователь", maskedTelegram ? "Telegram " + maskedTelegram : "", internal].filter(Boolean).join(" · ");
+    }
     return [user.username ? "@" + user.username : "", [user.first_name, user.last_name].filter(Boolean).join(" "),
-      user.telegram_id ? "Telegram " + user.telegram_id : "", "user " + ticket.user_id].filter(Boolean).join(" · ");
+      user.telegram_id ? "Telegram " + user.telegram_id : "", internal].filter(Boolean).join(" · ");
   };
   const date = (value) => value ? new Date(value).toLocaleString("ru-RU") : "—";
   const statusLabel = (value) => STATUSES.find(([key]) => key === value)?.[1] || value;
@@ -55,6 +62,7 @@
     const active = () => config.isActive();
     const valid = (request) => request === sequence && active();
     const writable = () => config.canManage();
+    const viewPii = () => Boolean(config.canViewPii?.());
     const shell = (title) => {
       const result = element("section", "panel support-inbox");
       result.append(element("h2", "support-title", title));
@@ -90,7 +98,9 @@
         const search = element("input");
         search.type = "search";
         search.value = filters.q;
-        search.placeholder = "Имя, Telegram ID, тема или ID обращения";
+        search.placeholder = viewPii()
+          ? "Имя, Telegram ID, тема или ID обращения"
+          : "Тема, ID обращения или ID пользователя";
         const status = select([["", "Все статусы"], ...STATUSES], filters.status);
         const find = button("Найти", () => {});
         find.type = "submit";
@@ -104,7 +114,7 @@
         for (const row of data.items || []) {
           const item = element("article", "support-ticket");
           const meta = element("div", "support-ticket-summary");
-          meta.append(element("strong", "", row.topic), element("small", "muted", identity(row)));
+          meta.append(element("strong", "", row.topic), element("small", "muted", identity(row, viewPii())));
           if (row.last_message) meta.append(element("p", "", row.last_message.body));
           const state = element("small", row.needs_reply ? "support-needs-reply" : "muted",
             statusLabel(row.status) + (row.needs_reply ? " · Нужен ответ" : "") + " · " + date(row.updated_at));
@@ -171,7 +181,7 @@
     function drawTicket() {
       const id = currentId;
       const panel = shell(ticket.topic + " · " + statusLabel(ticket.status));
-      panel.append(element("p", "muted support-identity", identity(ticket)));
+      panel.append(element("p", "muted support-identity", identity(ticket, viewPii())));
       const navigation = element("div", "support-actions");
       navigation.append(button("← К очереди", () => void list()),
         button("Обновить переписку", () => void open(id)));

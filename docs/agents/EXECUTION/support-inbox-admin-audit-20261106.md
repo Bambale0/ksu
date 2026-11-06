@@ -223,3 +223,19 @@ Automatic review then exposed four further interaction cases. Each was reproduce
 This final full-reply delivery policy supersedes the earlier at-least-once timeout note in this chronological ledger: uncertain support replies now require operator reconciliation. The reply remains available in the durable in-app conversation. A known successful Telegram receipt resolves the state without another send. No exactly-once transport guarantee is claimed. Existing generic notification delivery is outside this narrowly changed worker contract.
 
 All four slices have independent engineering signoff; the concurrent send-state slice was additionally reviewed by the support agent. Ruff, AST/JS syntax and diff checks pass. Their source and audits are frozen for one publication, followed by all six workflows and automatic review on the new exact head. No production message, historical replay, financial exception or schema change has occurred during preparation.
+
+
+## 2026-11-06 — final PII and payment review corrections verified
+
+The exact c8ec8a3ee02c552fd04bc914f6e774485afae486 checkpoint passed all six workflows (2566 backend tests, 1018 Chromium cases, 353 WebKit cases, 11 keyboard cases, three upload-deadline cases and all seven ROXY journeys). Its completed automatic review then identified the two P1 boundaries below; earlier green CI was not treated as proof that they were safe.
+
+- Structured support identity and PII-backed support/user search are now gated by effective users.pii in both main/control surfaces, including counts. Restricted roles retain existing masks and internal-ID/topic access. The main users list delegates to the existing canonical service. Role grants and freeform support text are unchanged.
+- UI identity and search hints follow the same capability; stale raw profile responses do not display restricted identity. Both HTML pages load the revised scripts.
+- Card completion requires a matching invoice ID, exact finite amount, matching currency and authoritative paid status under the current payment row lock. A success webhook is only a lookup signal. Sparse pending creation/lookup remains compatible.
+- Paid/pending/failed/rejected lookup outcomes preserve committed settlement and refund_review. Provider I/O remains outside the lock; current payment state is reread with FOR UPDATE/populate_existing before classification, including deterministic lookup errors. Canonical credit idempotency and existing refund policy are retained.
+
+Regression evidence: PII HTTP RED18/8 became GREEN84 (26 new plus compatibility); UI RED6/4 became GREEN118, 59 Chromium and 59 mobile WebKit. Payment identity RED19/7, then five state/race RED and two actual HTTP404 RED reproduced durable wrong outcomes. An intermediate 92/1 run exposed a legacy fake-session interface; only its scalar adapter was added, leaving assertions intact. Final payment GREEN93 passed in 18.88s (job_e8b9916fb771, test-run-20261106T075335Z-3815611.log). The 33 new payment cases exercise actual webhook/provider unwrapping with synthetic transport and durable isolated PostgreSQL state; race tests use events and separate transactions.
+
+Privacy/backend and UI slices received root plus independent engineering review. The complete payment slice received root and independent support review; both confirmed the final 404/state fix and GREEN93. Relevant Ruff, AST, JavaScript syntax and diff checks pass. All contributing source files are frozen for publication; the resulting new head still requires its own six CI workflows and automatic review before release.
+
+No production message, balance adjustment, provider mutation, contract-price change, schema migration or historic outbox replay was performed. Read-only release verification must still prove exact deployed SHA, all ten application image IDs, health, persisted recipient membership and the original failed-reply cohort.

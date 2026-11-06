@@ -255,7 +255,10 @@ async def test_stale_mismatched_poll_cannot_overwrite_concurrently_settled_payme
             # A verified webhook commits while its earlier lookup is in flight.
             async with SessionFactory() as webhook_session:
                 await CardPaymentService.complete(
-                    webhook_session, payment_id=payment.id, provider_payload={"status": "paid"},
+                    webhook_session, payment_id=payment.id, provider_payload={
+                        "id": invoice_id, "status": "paid",
+                        "receipt": {"amount": "1087.00", "currency": "RUB"},
+                    },
                 )
                 if refund_review:
                     await CardPaymentService.reconcile(webhook_session, payment_id=payment.id)

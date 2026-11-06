@@ -616,14 +616,24 @@ class CardPaymentService:
         provider_payload: dict[str, Any],
     ) -> Payment:
         payment = await session.scalar(
-            select(Payment).where(Payment.id == payment_id).with_for_update()
+            select(Payment)
+            .where(Payment.id == payment_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if payment is None:
             raise LookupError("Payment not found")
         if payment.provider != cls.PROVIDER:
             raise PaymentProviderError("Payment provider mismatch")
-        if payment.status in {"succeeded", "partially_refunded", "refunded"}:
+        if payment.status in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
             return payment
+
+        # Keep the final guard under the payment lock so direct callers cannot
+        # settle from a webhook signal or a sparse/stale provider response.
+        invoice = CardCheckoutClient._unwrap(provider_payload)
+        cls._assert_invoice(payment, invoice, require_identity=True)
+        if CardCheckoutClient.extract_status(invoice) not in cls.SUCCESS_STATUSES:
+            raise PaymentProviderError("Card checkout invoice is not confirmed paid")
 
         wallet_tx = await WalletService.credit(
             session,
@@ -678,21 +688,41 @@ class CardPaymentService:
             settings.card_api_base_url,
             settings.card_webhook_key,
         )
+        invoice: dict[str, Any] | None = None
+        lookup_error: PaymentProviderValidationError | None = None
         try:
             try:
                 invoice = await client.get_invoice(str(payment.external_id))
             except PaymentProviderValidationError as exc:
-                return await PaymentService.mark_reconciliation_failed(
-                    session,
-                    payment,
-                    reason="provider_lookup_rejected",
-                    error=str(exc),
-                )
+                lookup_error = exc
         finally:
             await client.aclose()
 
+        # The network lookup must not hold the payment lock. Refresh afterwards:
+        # a verified completion may have committed while this response was in flight.
+        payment = await session.scalar(
+            select(Payment)
+            .where(Payment.id == payment_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if payment is None:
+            raise LookupError("Payment not found")
+        if lookup_error is not None:
+            if payment.status in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
+                return payment
+            return await PaymentService.mark_reconciliation_failed(
+                session,
+                payment,
+                reason="provider_lookup_rejected",
+                error=str(lookup_error),
+            )
+        assert invoice is not None
+        status = CardCheckoutClient.extract_status(invoice)
         try:
-            cls._assert_invoice(payment, invoice)
+            cls._assert_invoice(
+                payment, invoice, require_identity=status in cls.SUCCESS_STATUSES,
+            )
         except CardInvoiceMismatchError as exc:
             payment = await cls._reject_mismatched_invoice(session, payment.id, invoice, exc)
             if event_type:
@@ -700,16 +730,17 @@ class CardPaymentService:
                 # though the background poller must stop retrying this invoice.
                 raise
             return payment
-        status = CardCheckoutClient.extract_status(invoice)
         normalized_event = str(event_type or "").strip().lower()
-        if normalized_event == "payment.success" or status in cls.SUCCESS_STATUSES:
+        # A success webhook triggers this lookup; only its authoritative paid
+        # status can authorize settlement, including after delayed delivery.
+        if status in cls.SUCCESS_STATUSES:
             payment = await cls.complete(
                 session,
                 payment_id=payment.id,
                 provider_payload=invoice,
             )
         elif normalized_event == "payment.failed" or status in cls.FAILED_STATUSES:
-            if payment.status not in {"succeeded", "partially_refunded", "refunded"}:
+            if payment.status not in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
                 await PromoCodeService.release_payment_reservation(
                     session,
                     payment=payment,
@@ -718,7 +749,7 @@ class CardPaymentService:
                 payment.status = "failed"
                 payment.payload = {**payment.payload, "last_provider_state": invoice}
                 await session.commit()
-        elif payment.status not in {"succeeded", "partially_refunded", "refunded"}:
+        elif payment.status not in {"succeeded", "partially_refunded", "refunded", "refund_review"}:
             payment.status = "pending"
             payment.payload = {**payment.payload, "last_provider_state": invoice}
             await session.commit()
@@ -760,9 +791,12 @@ class CardPaymentService:
         invoice: dict[str, Any],
         *,
         expected_external_id: str | None = None,
+        require_identity: bool = False,
     ) -> None:
         external_id = CardCheckoutClient.extract_invoice_id(invoice)
-        expected_id = expected_external_id or str(payment.external_id)
+        expected_id = str(expected_external_id or payment.external_id or "")
+        if require_identity and (not external_id or not expected_id):
+            raise CardInvoiceMismatchError("invoice id", expected_id, external_id or "missing")
         if external_id and external_id != expected_id:
             raise CardInvoiceMismatchError("invoice id", expected_id, external_id)
         # Never let a matching preferred representation hide a conflicting
@@ -772,17 +806,27 @@ class CardPaymentService:
             value for key in ("amount", "amountTotal", "receipt")
             if isinstance(value := invoice.get(key), dict)
         )
+        has_amount = False
+        has_currency = False
         for money in money_sources:
             try:
                 amount = CardCheckoutClient.extract_amount(money)
             except PaymentProviderError as exc:
                 # Retain the known remote id even if its total is malformed.
                 raise CardInvoiceMismatchError("amount", str(payment.amount), "invalid") from exc
-            if amount is not None and amount != Decimal(payment.amount):
-                raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
+            if amount is not None:
+                has_amount = True
+                if amount != Decimal(payment.amount):
+                    raise CardInvoiceMismatchError("amount", str(payment.amount), str(amount))
             currency = CardCheckoutClient.extract_currency(money)
-            if currency is not None and currency != payment.currency.upper():
-                raise CardInvoiceMismatchError("currency", payment.currency.upper(), currency)
+            if currency is not None:
+                has_currency = True
+                if currency != payment.currency.upper():
+                    raise CardInvoiceMismatchError("currency", payment.currency.upper(), currency)
+        if require_identity and not has_amount:
+            raise CardInvoiceMismatchError("amount", str(payment.amount), "missing")
+        if require_identity and not has_currency:
+            raise CardInvoiceMismatchError("currency", payment.currency.upper(), "missing")
 
     @classmethod
     async def _reject_mismatched_invoice(

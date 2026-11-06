@@ -167,6 +167,8 @@ async def test_incoming_messages_notify_only_configured_authorized_operators(mon
 
 async def test_user_reply_refreshes_activity_and_legacy_activity_is_visible(monkeypatch):
     context, customer = await _actors()
+    # This activity/search case intentionally exercises authorized raw-identity lookup.
+    context.account.permission_overrides = {"allow": ["users.pii"]}
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
     old = datetime.now(UTC) - timedelta(days=7)
     async with SessionFactory() as session:

@@ -14,6 +14,7 @@ from app.db.models import AdminAccount, AdminSession, SupportMessage, SupportTic
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
 from app.services.admin_security import AdminAuditService
+from app.services.admin_users import AdminUserService
 
 SupportStatus = Literal["open", "in_progress", "resolved", "closed"]
 SupportPriority = Literal["low", "normal", "high", "urgent"]
@@ -24,6 +25,8 @@ def _ticket_view(
     state: SupportTicketAdminState | None,
     user: User,
     latest: SupportMessage | None,
+    *,
+    can_view_pii: bool,
 ) -> dict[str, Any]:
     activity_at = max(ticket.updated_at, latest.created_at) if latest else ticket.updated_at
     return {
@@ -31,10 +34,13 @@ def _ticket_view(
         "user_id": str(ticket.user_id),
         "user": {
             "id": str(user.id),
-            "telegram_id": user.telegram_id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
+            "telegram_id": (
+                user.telegram_id if can_view_pii
+                else AdminUserService._masked_telegram_id(user.telegram_id)
+            ),
+            "username": user.username if can_view_pii else None,
+            "first_name": user.first_name if can_view_pii else "[restricted]",
+            "last_name": user.last_name if can_view_pii else None,
         },
         "topic": ticket.topic,
         "status": ticket.status,
@@ -86,6 +92,7 @@ class AdminSupportService:
         offset: int = 0,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "support.read")
+        can_pii = AdminPolicy.has_permission(admin, "users.pii")
         limit = max(1, min(limit, 100))
         offset = max(0, min(offset, 100_000))
         filters = []
@@ -94,15 +101,19 @@ class AdminSupportService:
         if q and q.strip():
             value = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             pattern = f"%{value}%"
-            filters.append(or_(
+            searchable = [
                 SupportTicket.topic.ilike(pattern, escape="\\"),
-                User.username.ilike(pattern, escape="\\"),
-                User.first_name.ilike(pattern, escape="\\"),
-                User.last_name.ilike(pattern, escape="\\"),
-                cast(User.telegram_id, String).ilike(pattern, escape="\\"),
                 cast(User.id, String).ilike(pattern, escape="\\"),
                 cast(SupportTicket.id, String).ilike(pattern, escape="\\"),
-            ))
+            ]
+            if can_pii:
+                searchable.extend([
+                    User.username.ilike(pattern, escape="\\"),
+                    User.first_name.ilike(pattern, escape="\\"),
+                    User.last_name.ilike(pattern, escape="\\"),
+                    cast(User.telegram_id, String).ilike(pattern, escape="\\"),
+                ])
+            filters.append(or_(*searchable))
         latest_alias = aliased(SupportMessage)
         latest_id = (
             select(latest_alias.id)
@@ -130,7 +141,10 @@ class AdminSupportService:
             ).offset(offset).limit(limit)
         )).all()
         return {
-            "items": [_ticket_view(ticket, state, user, latest) for ticket, state, user, latest in rows],
+            "items": [
+                _ticket_view(ticket, state, user, latest, can_view_pii=can_pii)
+                for ticket, state, user, latest in rows
+            ],
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -147,6 +161,7 @@ class AdminSupportService:
         before: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "support.read")
+        can_pii = AdminPolicy.has_permission(admin, "users.pii")
         ticket = await session.get(SupportTicket, ticket_id)
         if ticket is None:
             raise LookupError("Ticket not found")
@@ -179,7 +194,7 @@ class AdminSupportService:
         )).all()
         has_more = len(rows) > limit
         page = list(reversed(rows[:limit]))
-        result = _ticket_view(ticket, state, user, latest)
+        result = _ticket_view(ticket, state, user, latest, can_view_pii=can_pii)
         result.update({
             "messages": [_message_view(message, delivery) for message, delivery in page],
             "messages_total": int((await session.scalar(

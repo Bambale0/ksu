@@ -508,3 +508,74 @@ Follow-up files: app/api/v1/admin_accounts.py; app/web/admin_app/admin.js;
 app/web/admin_app/support-inbox.js; app/web/admin_app/index.html;
 app/web/admin_app/control.html; tests/test_admin_account_session_changes.py;
 frontend/mini-app/e2e/admin-support-inbox.spec.mjs; this audit.
+
+
+## Follow-up audit: support identity and PII-aware search (2026-11-06)
+
+Pre-edit review of the reported support PII boundary:
+
+- The shared inbox directly renders username, first/last name and Telegram ID,
+  and always advertises name/Telegram-ID search. Neither console passes a
+  users.pii capability to this renderer.
+- The canonical backend slice will retain internal user/ticket UUIDs but redact
+  identity without effective users.pii using the existing AdminUserService
+  convention: username/last_name null, first_name [restricted], and Telegram
+  ID *** plus its last four digits (**** for short IDs).
+- Restricted support search remains topic or internal user/ticket UUID only.
+  The same boundary defect was confirmed in user-list search; backend owns
+  predicate restrictions and main-route delegation. Without users.pii its
+  search accepts the full internal User UUID only.
+- Main/control user search hints currently promise PII search to every role.
+  These hints must reflect the capability contract.
+- UI scope is deliberately limited to shared support identity rendering,
+  capability wiring, search hints and browser contracts. Backend serialization,
+  authorization and search predicates remain the backend agent's responsibility.
+  Content of customer-authored ticket messages is not a profile identity field.
+
+Planned UI behavior: effective capabilities decide search hints and full identity.
+Without users.pii, the support identity renderer uses only an already masked
+Telegram value and the internal UUID, and ignores raw name/username fields even
+if a stale response contains them. No browser-side redaction is treated as the
+server authorization boundary. Real browser RED will cover both consoles,
+restricted and allowed capabilities, list/detail identity, non-PII searches,
+and the user-search hint/UUID path. No production reads/writes or messages.
+
+### PII frontend verification and freeze
+
+- Browser RED: **6 failed / 4 passed, 30.1 seconds**, job_eb61810f4462.
+  Restricted users were offered unsupported PII searches in both consoles;
+  the shared inbox also exposed raw legacy identity fields without users.pii.
+  The four allowed-capability scenarios already passed.
+- Browser GREEN: **118 passed, 2.5 minutes**, job_755627df8303:
+  59 Chromium and 59 mobile WebKit cases using the official Playwright 1.56.1
+  image. The complete support-inbox (31 cases) and admin-pagination (28 cases)
+  browser files passed in each engine.
+- Restricted support list/detail render a recognized masked Telegram value and
+  stable internal UUID, ignore raw legacy profile fields, and advertise topic/
+  internal UUID search. The allowed users.pii path retains full profile identity
+  and PII search. Tests deliberately separate role from effective capabilities:
+  an owner without the capability is restricted, and a support role with an
+  explicit capability is allowed.
+- Main/control user-search hints now advertise only the internal User UUID
+  without users.pii. Browser journeys fill the UUID, perform the actual search
+  action and assert the outgoing q parameter and masked result. Allowed paths
+  preserve username search and full identity.
+- The browser fixtures verify UI behavior and request contracts; server-side
+  redaction and predicate authorization are covered by the separate backend
+  slice. Customer-authored topics/messages may themselves contain personal
+  information and remain readable by support.read. No automatic content
+  anonymization is claimed.
+- Node syntax checks on the three product scripts and two browser files passed.
+  HTML entry points cache-bust both the shared inbox and their main/control
+  scripts with the support-pii version. git diff --check passed.
+- Parent and independent engineering review both signed off the source. The
+  engineering reviewer personally retrieved the full GREEN118 job result.
+
+Changed files in this UI slice: app/web/admin_app/support-inbox.js;
+app/web/admin_app/admin.js; app/web/admin_app/control.js;
+app/web/admin_app/index.html; app/web/admin_app/control.html;
+frontend/mini-app/e2e/admin-support-inbox.spec.mjs;
+frontend/mini-app/e2e/admin-pagination.spec.mjs; this audit.
+
+All eight files are frozen for the parent snapshot. No production data was
+read or changed, no messages were sent, and no commit or push was performed.

@@ -166,7 +166,10 @@ async def test_successful_card_payment_credits_exact_paid_rox_without_promo(
         await CardPaymentService.complete(
             session,
             payment_id=payment.id,
-            provider_payload={"status": "paid"},
+            provider_payload={
+                "id": payment.external_id, "status": "paid",
+                "amount": str(payment.amount), "currency": payment.currency,
+            },
         )
 
         wallet = await session.get(Wallet, user.id)

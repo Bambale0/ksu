@@ -534,7 +534,7 @@
     if (filters.is_active !== undefined && filters.is_active !== "") params.set("is_active", filters.is_active);
     const data = await api(`/api/v1/admin/users?${params}`);
     const filter = makeFilter([
-      { name: "q", placeholder: "username / имя / Telegram ID", grow: true, value: filters.q || "" },
+      { name: "q", placeholder: hasPermission("users.pii") ? "username / имя / Telegram ID" : "Внутренний ID пользователя", grow: true, value: filters.q || "" },
       { name: "is_active", value: filters.is_active || "", options: [["", "Все"], ["true", "Активные"], ["false", "Отключённые"]] },
     ], renderUsers);
     const cols = [
@@ -685,6 +685,7 @@
       statusSuffix: "/status", statusMethod: "PATCH", replySuffix: "/messages",
       isActive: () => Boolean(state.token) && state.view === "support",
       canManage: () => hasPermission("support.manage"),
+      canViewPii: () => hasPermission("users.pii"),
       onSelect: (id) => { state.currentTicketId = id; },
     });
     return supportInbox;

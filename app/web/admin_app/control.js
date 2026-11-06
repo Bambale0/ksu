@@ -470,7 +470,7 @@
     const params = page.params;
     if (query) params.set("q", query);
     const data = await api(`/api/v1/admin/control/users?${params}`);
-    const search = input("search", query, "Telegram ID / UUID / username / name");
+    const search = input("search", query, hasPermission("users.pii") ? "Telegram ID / UUID / username / name" : "Внутренний ID пользователя");
     const searchButton = button("Найти", "primary", () => void renderUsers({ q: search.value.trim() }));
     const filter = node("div", "control-form-inline");
     filter.append(field("Поиск", search), searchButton);
@@ -618,6 +618,7 @@
       statusSuffix: "/update", statusMethod: "POST", replySuffix: "/reply", assignSuffix: "/assign",
       isActive: () => Boolean(state.token) && state.view === "support",
       canManage: () => (state.me?.permissions || []).some((permission) => permission === "*" || permission === "support.manage"),
+      canViewPii: () => hasPermission("users.pii"),
       onSelect: (id) => { state.currentTicketId = id; },
     });
     return supportInbox;

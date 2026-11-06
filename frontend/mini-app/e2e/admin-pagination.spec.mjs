@@ -52,6 +52,15 @@ async function setup(page, mode, options = {}) {
       const query = Object.fromEntries(parsed.searchParams);
       requests.push({ path, query });
       const limit = Number(query.limit || 50), offset = Number(query.offset || 0);
+      if (options.usersPii !== undefined && ['/api/v1/admin/users', '/api/v1/admin/control/users'].includes(path)) {
+        const user = {
+          ...row(0, false), id: '66666666-6666-4666-8666-666666666666',
+          username: options.usersPii ? 'private_user_search' : null,
+          first_name: options.usersPii ? 'ЛичноеИмя' : '[restricted]',
+          telegram_id: options.usersPii ? 987654321 : '***4321',
+        };
+        return json({ items: [user], total: 1, limit, offset, has_more: false });
+      }
       const data = { items: offset ? [row(offset, true)] : Array.from({ length: limit }, (_, i) => row(i, false)), limit, offset };
       if (!options.noTotal) data.total = limit + 1;
       return json(data);
@@ -166,3 +175,35 @@ test('prompt-only moderation does not request forbidden social data', async ({ p
   expect(ctx.errors).toEqual([]);
   expect(ctx.unexpected).toEqual([]);
 });
+
+
+for (const mode of ['main', 'control']) {
+  for (const canPii of [false, true]) {
+    test(mode + ': users PII search hint preserves the allowed query path: ' + canPii, async ({ page }) => {
+      const permissions = ['users.read', ...(canPii ? ['users.pii'] : [])];
+      const ctx = await setup(page, mode, { permissions, usersPii: canPii });
+      await (mode === 'main'
+        ? page.locator('[data-view="users"]')
+        : page.locator('#controlNav').getByRole('button', { name: 'Пользователи', exact: true })).click();
+      const search = mode === 'main'
+        ? page.locator('.filter-bar input[name="q"]')
+        : page.getByLabel('Поиск', { exact: true });
+      await expect(search).toHaveAttribute('placeholder',
+        canPii ? /Telegram ID/ : 'Внутренний ID пользователя');
+      const query = canPii ? 'private_user_search' : '66666666-6666-4666-8666-666666666666';
+      await search.fill(query);
+      await page.getByRole('button', { name: mode === 'main' ? 'Применить' : 'Найти', exact: true }).click();
+      const endpoint = '/api/v1/admin/' + (mode === 'main' ? 'users' : 'control/users');
+      await expect.poll(() => ctx.requests.filter((request) => request.path === endpoint).at(-1).query.q).toBe(query);
+      const view = page.locator(mode === 'main' ? '#adminView' : '#controlView');
+      if (canPii) await expect(view).toContainText('@private_user_search');
+      else {
+        await expect(view).toContainText('***4321');
+        await expect(view).not.toContainText('private_user_search');
+        await expect(view).not.toContainText('987654321');
+      }
+      expect(ctx.errors).toEqual([]);
+      expect(ctx.unexpected).toEqual([]);
+    });
+  }
+}

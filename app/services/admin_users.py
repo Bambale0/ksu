@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -82,15 +82,17 @@ class AdminUserService:
         conditions = []
         if is_active is not None:
             conditions.append(User.is_active == is_active)
-        if q:
+        if q and q.strip():
             search = q.strip()
-            text_condition = or_(
-                User.username.ilike(f"%{search}%"),
-                User.first_name.ilike(f"%{search}%"),
-                User.last_name.ilike(f"%{search}%"),
-            )
-            if search.isdigit():
-                text_condition = or_(text_condition, User.telegram_id == int(search))
+            text_condition = false()
+            if can_pii:
+                text_condition = or_(
+                    User.username.ilike(f"%{search}%"),
+                    User.first_name.ilike(f"%{search}%"),
+                    User.last_name.ilike(f"%{search}%"),
+                )
+                if search.isdigit():
+                    text_condition = or_(text_condition, User.telegram_id == int(search))
             try:
                 internal_id = uuid.UUID(search)
             except ValueError:

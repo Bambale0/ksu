@@ -21,6 +21,16 @@ async function fixture(page, mode, options = {}) {
     messages: [{ id: 'latest', body: 'Последнее сообщение пользователя', is_admin: false, created_at: '2026-11-06T00:00:00Z' }],
     messages_total: 101, messages_has_more: true, messages_before: oldId,
   };
+  if (options.piiResponse) ticket = {
+    ...ticket, user_id: '55555555-5555-4555-8555-555555555555',
+    user: {
+      id: '55555555-5555-4555-8555-555555555555',
+      username: options.piiResponse === 'masked' ? null : 'private_customer',
+      telegram_id: options.piiResponse === 'masked' ? '***4321' : 987654321,
+      first_name: options.piiResponse === 'masked' ? '[restricted]' : 'ЛичноеИмя',
+      last_name: options.piiResponse === 'masked' ? null : 'ЛичнаяФамилия',
+    },
+  };
   const history = options.historyCount ? [] : null;
   const appendHistory = (count) => {
     for (let index = 0; index < count; index++) {
@@ -229,6 +239,10 @@ for (const mode of ['main', 'control']) {
 
   test(mode + ': read-only operator cannot send or change status', async ({ page }) => {
     const ctx = await fixture(page, mode, { deepLink: true, readonly: true });
+    await expect(page.locator('.support-identity')).toContainText('user-1');
+    await expect(page.locator('.support-identity')).not.toContainText('@support_customer');
+    await expect(page.locator('.support-identity')).not.toContainText('Ирина');
+    await expect(page.locator('.support-identity')).not.toContainText('Telegram 123');
     await expect(page.getByText('Последнее сообщение пользователя', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Отправить ответ', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Сохранить статус', exact: true })).toHaveCount(0);
@@ -471,4 +485,44 @@ for (const mode of ['main', 'control']) {
     expect(ctx.pageErrors).toEqual([]);
     expect(ctx.unexpectedRequests).toEqual([]);
   });
+}
+
+
+for (const mode of ['main', 'control']) {
+  for (const canPii of [false, true]) {
+    test(mode + ': support PII identity and search follow effective capability: ' + canPii, async ({ page }) => {
+      const permissions = ['support.read', 'support.manage', ...(canPii ? ['users.pii'] : [])];
+      const ctx = await fixture(page, mode, {
+        role: canPii ? 'support' : 'owner', permissions, piiResponse: canPii ? 'full' : 'masked',
+      });
+      const search = page.getByLabel('Поиск обращений', { exact: true });
+      await expect(search).toHaveAttribute('placeholder',
+        canPii ? /Telegram ID/ : 'Тема, ID обращения или ID пользователя');
+      const assertIdentity = async (locator) => {
+        await expect(locator).toContainText('55555555-5555-4555-8555-555555555555');
+        if (canPii) {
+          for (const text of ['@private_customer', 'ЛичноеИмя', 'ЛичнаяФамилия', '987654321']) {
+            await expect(locator).toContainText(text);
+          }
+        } else {
+          await expect(locator).toContainText('Telegram ***4321');
+          await expect(locator).toContainText('Пользователь');
+          for (const text of ['private_customer', 'ЛичноеИмя', 'ЛичнаяФамилия', '987654321', '[restricted]']) {
+            await expect(locator).not.toContainText(text);
+          }
+        }
+      };
+      await assertIdentity(page.locator('.support-ticket-summary').first());
+      const query = canPii ? 'private_customer' : ticketId;
+      await search.fill(query);
+      await page.getByRole('button', { name: 'Найти', exact: true }).click();
+      await expect.poll(() => ctx.reads.at(-1).query.q).toBe(query);
+      await page.getByRole('button', { name: 'Открыть', exact: true }).click();
+      await assertIdentity(page.locator('.support-identity'));
+      await expect(page.getByLabel('Ответ пользователю', { exact: true })).toBeVisible();
+      expect(ctx.writes).toEqual([]);
+      expect(ctx.pageErrors).toEqual([]);
+      expect(ctx.unexpectedRequests).toEqual([]);
+    });
+  }
 }

@@ -1239,3 +1239,38 @@ The sole fd694ca5 CI failure was an early synchronous quote-count observation in
 - Detailed audit, TDD plan, verification matrix, rollout/rollback and production replay boundary:
   [docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md](docs/agents/EXECUTION/seedance-image-reference-normalization-20261031.md).
 
+## 2026-11-06 — final review: support identity and verified payment money
+
+Exact reviewed checkpoint: c8ec8a3ee02c552fd04bc914f6e774485afae486, PR #581. This is an audit/implementation plan before the next production-code slice, not a claim that its tests have passed.
+
+Evidence: the completed automatic review identified two P1 boundaries. AdminSupportService._ticket_view returns structured customer Telegram/name fields to support.read without checking users.pii, and its search predicates include the same protected fields. Reading the existing AdminUserService/main user endpoint confirmed the related search oracle despite masked responses. Incoming operator notices are already generic plus ticket UUID and do not expose those fields.
+
+The second finding follows authoritative CardCheckoutClient.get_invoice through reconcile: optional amount/currency checks permit missing monetary identity, after which a success status or payment.success event reaches complete. Audit all credit entry points and distinguish permissible sparse pending payloads from evidence required before wallet credit. No production balance, provider invoice, contract price or receipt will be changed.
+
+Planned verification: reproduce actual HTTP list/detail/search access with support/moderator/auditor and explicit allow/deny overrides on both admin surfaces; preserve non-PII ticket/topic/internal-ID access and current masks. Add UI regressions for capability-aware identity/search controls. Reproduce absent/malformed successful payment identity at the real reconciliation/completion boundary, then verify canonical credit/idempotency and valid provider compatibility. Independent review plus all six workflows and automatic review must run on the resulting exact head.
+
+Ownership: support_audit owns support/user backend and HTTP regressions; admin_audit owns corresponding UI and browser regressions; engineering_guidance owns payment validation and regressions. Root owns integration review, this context and publication. Production stays at 9590eb61 until the gated release is verified.
+
+### Payment completion follow-up: persistent manual review and lookup race
+
+Independent source review of the same settlement boundary found two concrete state risks before the follow-up product edit: complete and the pending/failed reconcile branches omit refund_review from their protected states; a delayed provider lookup also leaves reconcile using the pre-network ORM status without reloading under its payment lock. Late PAID/PENDING/FAILED can erase manual review, and a delayed pending/failed lookup can overwrite a concurrent successful completion.
+
+Reproduce manual-review replays and the delayed lookup/two-transaction completion race, then preserve the existing protected states and reload current payment state with FOR UPDATE plus populate_existing after provider I/O. Keep external network calls outside the database lock. Do not change refund amounts, policy, actual production payments or canonical credit keys. This is the remaining confirmed financial-state slice, followed by independent review and the same exact-head CI gates.
+
+The same post-I/O state boundary must also cover deterministic lookup rejection. Root and the independent reviewer both found that the early PaymentProviderValidationError path calls the generic terminal-failure helper before refreshing the card payment; that helper uses the supplied ORM state and does not preserve refund_review. Add HTTP 404 regressions for an existing manual review and a completion committed while the lookup is pending. Route this card-local error outcome through the same current-state lock before terminal classification; avoid changing the shared helper or discarding a caller's unflushed integrity metadata.
+
+
+## 2026-11-06 — final PII and payment review corrections verified
+
+The exact c8ec8a3ee02c552fd04bc914f6e774485afae486 checkpoint passed all six workflows (2566 backend tests, 1018 Chromium cases, 353 WebKit cases, 11 keyboard cases, three upload-deadline cases and all seven ROXY journeys). Its completed automatic review then identified the two P1 boundaries below; earlier green CI was not treated as proof that they were safe.
+
+- Structured support identity and PII-backed support/user search are now gated by effective users.pii in both main/control surfaces, including counts. Restricted roles retain existing masks and internal-ID/topic access. The main users list delegates to the existing canonical service. Role grants and freeform support text are unchanged.
+- UI identity and search hints follow the same capability; stale raw profile responses do not display restricted identity. Both HTML pages load the revised scripts.
+- Card completion requires a matching invoice ID, exact finite amount, matching currency and authoritative paid status under the current payment row lock. A success webhook is only a lookup signal. Sparse pending creation/lookup remains compatible.
+- Paid/pending/failed/rejected lookup outcomes preserve committed settlement and refund_review. Provider I/O remains outside the lock; current payment state is reread with FOR UPDATE/populate_existing before classification, including deterministic lookup errors. Canonical credit idempotency and existing refund policy are retained.
+
+Regression evidence: PII HTTP RED18/8 became GREEN84 (26 new plus compatibility); UI RED6/4 became GREEN118, 59 Chromium and 59 mobile WebKit. Payment identity RED19/7, then five state/race RED and two actual HTTP404 RED reproduced durable wrong outcomes. An intermediate 92/1 run exposed a legacy fake-session interface; only its scalar adapter was added, leaving assertions intact. Final payment GREEN93 passed in 18.88s (job_e8b9916fb771, test-run-20261106T075335Z-3815611.log). The 33 new payment cases exercise actual webhook/provider unwrapping with synthetic transport and durable isolated PostgreSQL state; race tests use events and separate transactions.
+
+Privacy/backend and UI slices received root plus independent engineering review. The complete payment slice received root and independent support review; both confirmed the final 404/state fix and GREEN93. Relevant Ruff, AST, JavaScript syntax and diff checks pass. All contributing source files are frozen for publication; the resulting new head still requires its own six CI workflows and automatic review before release.
+
+No production message, balance adjustment, provider mutation, contract-price change, schema migration or historic outbox replay was performed. Read-only release verification must still prove exact deployed SHA, all ten application image IDs, health, persisted recipient membership and the original failed-reply cohort.

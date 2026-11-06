@@ -46,6 +46,9 @@ class _PaymentSession:
             return self.payment
         return None
 
+    async def scalar(self, statement: object) -> Payment:
+        return self.payment
+
     async def commit(self) -> None:
         self.commits += 1
 
