@@ -579,3 +579,64 @@ frontend/mini-app/e2e/admin-pagination.spec.mjs; this audit.
 
 All eight files are frozen for the parent snapshot. No production data was
 read or changed, no messages were sent, and no commit or push was performed.
+
+## CI follow-up audit: responsive surface readiness (2026-11-06)
+
+Pre-edit evidence from head 634854ee, run 42185110757/job 127783730080,
+Chromium artifact 13486969880:
+
+- The only Chromium failure was catalog fits 360 phone in
+  responsive-device-surfaces.spec.mjs. The global main locator matched the
+  legacy application main and UserOnboardingGate's temporary loading main;
+  the strict assertion failed before any viewport bounds check.
+- The fixture already returns enabled:false/completed:true for onboarding.
+  UserOnboardingGate starts with null status and removes its dialog only after
+  the onboarding/me requests settle and React commits that state. Visibility
+  of .roxy-app alone does not establish this readiness.
+- The trace shows the strict assertion failed in about 41 ms. The later error
+  snapshot and screenshot show the catalog with no onboarding overlay. This
+  evidence demonstrates a transient test-readiness race, not persistent
+  catalog overflow.
+- Authorized scope is the responsive browser test only: await actual fixture
+  response completion and v2 gate removal, select the unique application main,
+  and assert route-specific catalog content while preserving every existing
+  overflow/topbar/navigation bounds check. Product code remains unchanged.
+- A held onboarding response will make a new regression deterministic: the
+  readiness helper must stay pending while the visible gate is present,
+  then succeed after release. A scoped locator alone must not pass that test.
+  RED precedes the helper fix; the complete responsive file will run in both
+  engines using the official Playwright 1.56.1 image and a fresh isolated build.
+
+### Responsive readiness verification and freeze
+
+- Fresh isolated production build and TypeScript validation passed:
+  Next.js 16.3.3, 24 static pages, job_09687e3d3f87. The build used the current
+  source snapshot and existing locked dependencies in the official Playwright
+  1.56.1 image, with networking disabled and no production service mounts.
+- Deterministic RED: **1 failed**, job_1d3d8791e6b8. Holding the onboarding
+  response kept the visible gate present; the old readiness helper failed
+  with the exact two-main strict-mode error from CI instead of staying pending.
+- The fixture now records onboarding and me response listeners before navigation
+  and checks both successful status and Response.finished(). The shared helper
+  awaits this fixture promise, the actual disappearance of the onboarding gate,
+  and exactly one visible, nonempty application main. Catalog scenarios also
+  assert the actual catalog heading.
+- The held-response regression verifies that readiness remains pending while
+  the visible gate is held, then verifies the catalog and overflow after release.
+  The bounded negative assertion is intentional; no rendering assertion relies
+  on an arbitrary sleep or retry of the whole test.
+- Full responsive GREEN: **164 passed, 2.7 minutes**, job_839b1774e851:
+  82 Chromium and 82 mobile WebKit cases. This includes all seven route surfaces
+  across eleven viewport sizes, safe-area/tablet/landscape/payment navigation
+  cases, and the new held-response regression in both engines.
+- Every original document/body overflow, navigation bounds and topbar bounds
+  assertion remains unchanged. No first-match selector or skipped assertion
+  was introduced. Node syntax and git diff --check passed.
+- Parent independently reviewed the complete diff and signed off the observed
+  response barrier, gate removal, unique application main, catalog content,
+  preserved bounds and handled teardown behavior.
+
+Only frontend/mini-app/e2e/responsive-device-surfaces.spec.mjs and this audit
+changed in this follow-up. Both are frozen for the parent snapshot. No product
+code, production state or outbound message changed. The final published-head
+CI is owned by the parent release step.

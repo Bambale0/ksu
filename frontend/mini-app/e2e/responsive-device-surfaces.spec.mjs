@@ -67,7 +67,18 @@ const trend = {
   prompt_actions_allowed: false,
 };
 
-async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 0 } } = {}) {
+async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 0 }, onboardingReady } = {}) {
+  const ready = Promise.all(['/api/v1/onboarding', '/api/v1/me'].map(async (path) => {
+    const response = await page.waitForResponse((candidate) => (
+      new URL(candidate.url()).pathname === path && candidate.request().method() === 'GET'
+    ));
+    expect(response.status()).toBe(200);
+    expect(await response.finished()).toBeNull();
+  }));
+  // The caller awaits this promise before asserting surface readiness. Keep
+  // teardown of a deliberately failing held-response regression handled too.
+  void ready.catch(() => {});
+
   await page.addInitScript((insets) => {
     window.Telegram = {
       WebApp: {
@@ -91,7 +102,10 @@ async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
     if (path === '/api/v1/me') return json({ id: 'user_1', telegram_id: 777, first_name: 'QA', username: 'qa_user', balance_rox: '150.00' });
-    if (path === '/api/v1/onboarding') return json({ enabled: false, completed: true });
+    if (path === '/api/v1/onboarding') {
+      await onboardingReady;
+      return json({ enabled: false, completed: true });
+    }
     if (path === '/api/v1/generations/models') return json({ models: [model], families: [family] });
     if (path === '/api/v1/generations/quote') return json({ cost_rox: '15.00', cost_rub: '150.00', balance_rox: '150.00', enough_balance: true });
     if (path === '/api/v1/generations' && method === 'POST') return json({ id: 'gen_new', status: 'queued', cost_rox: '15.00' }, 202);
@@ -123,6 +137,19 @@ async function mockRoxy(page, { safeArea = { top: 0, bottom: 0, left: 0, right: 
     if (path === '/api/v1/batch-generations/quote') return json({ input_count: 1, per_item_cost_credits: '15.00', total_cost_credits: '15.00' });
     return json({ items: [] });
   });
+  return { ready };
+}
+
+
+async function expectApplicationSurfaceReady(page, fixture) {
+  await fixture.ready;
+  await expect(page.locator('.roxy-onboarding-v2')).toHaveCount(0);
+  await expect(page.locator('.roxy-app')).toBeVisible();
+  const main = page.locator('.roxy-app > main.main-shell');
+  await expect(main).toHaveCount(1);
+  await expect(main).toBeVisible();
+  await expect(main).not.toBeEmpty();
+  return main;
 }
 
 async function expectNoHorizontalOverflow(page) {
@@ -152,10 +179,12 @@ for (const device of devices) {
   for (const route of rootRoutes) {
     test(`${route} fits ${device.name}`, async ({ page }) => {
       await page.setViewportSize(device.viewport);
-      await mockRoxy(page);
+      const fixture = await mockRoxy(page);
       await page.goto(`/mini-app/?route=${route}`);
-      await expect(page.locator('.roxy-app')).toBeVisible();
-      await expect(page.locator('main')).not.toBeEmpty();
+      const main = await expectApplicationSurfaceReady(page, fixture);
+      if (route === 'catalog') {
+        await expect(main.getByRole('heading', { name: 'Тренды и модели', exact: true })).toBeVisible();
+      }
       await expectNoHorizontalOverflow(page);
 
       const nav = page.locator('.bottom-nav');
@@ -176,9 +205,9 @@ for (const device of devices) {
 
 test('Telegram safe area keeps native iPhone env fallback', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
-  await mockRoxy(page, { safeArea: { top: 24, bottom: 34, left: 0, right: 0 } });
+  const fixture = await mockRoxy(page, { safeArea: { top: 24, bottom: 34, left: 0, right: 0 } });
   await page.goto('/mini-app/?route=home');
-  await expect(page.locator('.roxy-app')).toBeVisible();
+  await expectApplicationSurfaceReady(page, fixture);
   await expect.poll(() => page.evaluate(() => ({
     top: document.documentElement.style.getPropertyValue('--tg-safe-top'),
     bottom: document.documentElement.style.getPropertyValue('--tg-safe-bottom'),
@@ -190,8 +219,9 @@ test('Telegram safe area keeps native iPhone env fallback', async ({ page }) => 
 
 test('tablet home uses tablet grid instead of phone carousel', async ({ page }) => {
   await page.setViewportSize({ width: 834, height: 1194 });
-  await mockRoxy(page);
+  const fixture = await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
+  await expectApplicationSurfaceReady(page, fixture);
   await expect(page.locator('.home-screen')).toBeVisible();
   const features = page.locator('.catalog-feature-grid').first();
   await expect(features).toBeVisible();
@@ -202,9 +232,9 @@ test('tablet home uses tablet grid instead of phone carousel', async ({ page }) 
 
 test('landscape iPhone keeps navigation compact', async ({ page }) => {
   await page.setViewportSize({ width: 852, height: 393 });
-  await mockRoxy(page);
+  const fixture = await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
-  await expect(page.locator('.roxy-app')).toBeVisible();
+  await expectApplicationSurfaceReady(page, fixture);
   const navBox = await page.locator('.bottom-nav').boundingBox();
   expect(navBox).not.toBeNull();
   expect(navBox.height).toBeLessThanOrEqual(68);
@@ -212,12 +242,51 @@ test('landscape iPhone keeps navigation compact', async ({ page }) => {
 
 test('tablet balance button opens payments page inside viewport', async ({ page }) => {
   await page.setViewportSize({ width: 834, height: 1194 });
-  await mockRoxy(page);
+  const fixture = await mockRoxy(page);
   await page.goto('/mini-app/?route=home');
-  await expect(page.locator('.roxy-app')).toBeVisible();
+  await expectApplicationSurfaceReady(page, fixture);
   await page.locator('.balance-button').click();
   await expect(page).toHaveURL(/\/mini-app\/payments\//);
   await expect(page.getByRole('button', { name: 'Lava Top · резерв', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ЮKassa', exact: true })).toHaveClass(/active/);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
+test('catalog 360 readiness waits for completed onboarding status', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  let releaseOnboarding;
+  const onboardingReady = new Promise((resolve) => { releaseOnboarding = resolve; });
+  const fixture = await mockRoxy(page, { onboardingReady });
+  await page.goto('/mini-app/?route=catalog');
+
+  const gate = page.locator('.roxy-onboarding-v2');
+  await expect(gate).toBeVisible();
+  await expect(page.locator('.roxy-app > main.main-shell')).toBeVisible();
+  const readiness = expectApplicationSurfaceReady(page, fixture);
+  const settled = readiness.then(
+    () => ({ state: 'ready' }),
+    (error) => ({ state: 'failed', message: error.message }),
+  );
+  let deadline;
+  try {
+    // This bounded negative assertion tests a deliberately held server response;
+    // it is not a delay used to make rendering assertions pass.
+    const outcome = await Promise.race([
+      settled,
+      new Promise((resolve) => {
+        deadline = setTimeout(() => resolve({ state: 'blocked' }), 250);
+      }),
+    ]);
+    expect(outcome).toEqual({ state: 'blocked' });
+    await expect(gate).toBeVisible();
+  } finally {
+    clearTimeout(deadline);
+    releaseOnboarding();
+  }
+  await readiness;
+  await expect(gate).toHaveCount(0);
+  await expect(page.locator('.roxy-app > main.main-shell').getByRole('heading', {
+    name: 'Тренды и модели', exact: true,
+  })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
 });
