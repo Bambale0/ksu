@@ -2,6 +2,8 @@ from pathlib import Path
 import uuid
 
 import pytest
+import pytest_asyncio
+from redis.asyncio import Redis
 from fastapi import HTTPException
 from sqlalchemy import select
 
@@ -20,6 +22,7 @@ from app.api.v1.support import (
     reply_ticket,
     ticket_detail,
 )
+from app.core.config import settings
 from app.db.models import Notification, SupportMessage, SupportTicket, User
 from app.db.session import SessionFactory
 
@@ -143,8 +146,17 @@ async def test_notification_inbox_is_owner_scoped_and_read_state_is_authoritativ
         assert foreign_row.is_read is False
 
 
+@pytest_asyncio.fixture
+async def support_redis():
+    redis = Redis.from_url(settings.redis_url)
+    try:
+        yield redis
+    finally:
+        await redis.aclose()
+
+
 @pytest.mark.asyncio
-async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress() -> None:
+async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress(support_redis) -> None:
     async with SessionFactory() as session:
         user = User(telegram_id=930000000000004, first_name="Support user")
         stranger = User(telegram_id=930000000000005, first_name="Stranger")
@@ -155,6 +167,7 @@ async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress()
             CreateTicketRequest(topic="Оплата", message="Не вижу пополнение"),
             user,
             session,
+            redis=support_redis,
         )
         ticket_id = uuid.UUID(str(created["id"]))
 
@@ -182,6 +195,7 @@ async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress()
             ReplyTicketRequest(message="Вот ID операции"),
             user,
             session,
+            redis=support_redis,
         )
         assert reply["author"] == "user"
 
@@ -195,6 +209,7 @@ async def test_support_thread_stays_replyable_after_admin_moves_it_in_progress()
                 ReplyTicketRequest(message="Нельзя до reopen"),
                 user,
                 session,
+                redis=support_redis,
             )
         assert error.value.status_code == 409
 

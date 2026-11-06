@@ -946,43 +946,66 @@
 
   async function renderAdmins() {
     const [admins, roles] = await Promise.all([api("/api/v1/admin/admins"), api("/api/v1/admin/roles")]);
-    const actions = hasPermission("admins.manage") && state.me?.role === "owner" ? button("Добавить администратора", "primary", () => openForm({
+    const accounts = admins.items || [];
+    const isOwner = state.me?.role === "owner";
+    const canManage = isOwner && hasPermission("admins.manage");
+    const actions = canManage ? button("Добавить администратора", "primary", () => openForm({
       title: "Новый администратор",
       fields: [
         { name: "telegram_id", label: "Telegram ID", type: "number" },
         { name: "role", label: "Роль", type: "select", options: Object.keys(roles.roles || {}).map((role) => [role, role]) },
+        { name: "support_notifications", label: "Уведомления о новых обращениях", type: "checkbox", value: false },
       ],
       submitLabel: "К подтверждению",
-      onSubmit: async ({ telegram_id, role }) => {
+      onSubmit: async ({ telegram_id, role, support_notifications }) => {
         dom.formDialog.close();
-        openStepUp(`Создать администратора ${telegram_id} с ролью ${role}`, async () => {
-          await api("/api/v1/admin/admins", { method: "POST", body: JSON.stringify({ telegram_id: Number(telegram_id), role, permission_overrides: {} }) });
+        openStepUp("Создать администратора " + telegram_id + " с ролью " + role + ", уведомления о новых обращениях " + (support_notifications ? "включены" : "выключены"), async () => {
+          await api("/api/v1/admin/admins", { method: "POST", body: JSON.stringify({ telegram_id: Number(telegram_id), role, permission_overrides: {}, support_notifications }) });
         });
         return false;
       },
     })) : null;
     const cols = [
-      ["Администратор", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.username ? `@${row.username}` : String(row.telegram_id)), el("small", "mono", row.id)); return c; }],
+      ["Администратор", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.username ? "@" + row.username : String(row.telegram_id)), el("small", "mono", row.id)); return c; }],
       ["Роль", (row) => statusBadge(row.role)], ["Защита", (row) => statusBadge(row.mfa_enabled ? "active" : "inactive")],
-      ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")], ["Последний вход", (row) => formatDate(row.last_login_at)],
-      ["", (row) => hasPermission("admins.manage") && state.me?.role === "owner" ? actionsCell(button("Изменить", "table-action", () => openForm({
+      ["Статус", (row) => statusBadge(row.is_active ? "active" : "inactive")],
+      ["Уведомления поддержки", (row) => {
+        const cell = el("div", "cell-main");
+        cell.append(
+          el("strong", "", row.support_notifications ? "Включены" : "Выключены"),
+          el("small", "", row.support_notifications_effective ? "Получатель активен" : row.support_notifications ? "Получатель недоступен" : "Не получает уведомления"),
+        );
+        return cell;
+      }],
+      ["Последний вход", (row) => formatDate(row.last_login_at)],
+      ["", (row) => canManage ? actionsCell(button("Изменить", "table-action", () => openForm({
         title: "Изменить администратора",
         fields: [
           { name: "role", label: "Роль", type: "select", options: Object.keys(roles.roles || {}).map((role) => [role, role]), value: row.role },
           { name: "is_active", label: "Активен", type: "checkbox", value: row.is_active },
+          { name: "support_notifications", label: "Уведомления о новых обращениях", type: "checkbox", value: row.support_notifications },
           { name: "reason", label: "Причина", type: "textarea", maxLength: 500 },
         ],
         submitLabel: "К подтверждению",
-        onSubmit: async ({ role, is_active, reason }) => {
+        onSubmit: async ({ role, is_active, support_notifications, reason }) => {
           dom.formDialog.close();
-          openStepUp(`Изменить администратора ${row.id}: роль ${role}, активен ${is_active ? "да" : "нет"}`, async () => {
-            await api(`/api/v1/admin/admins/${row.id}`, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, permission_overrides: row.permission_overrides || {} }) });
+          openStepUp("Изменить администратора " + row.id + ": роль " + role + ", активен " + (is_active ? "да" : "нет") + ", уведомления о новых обращениях " + (support_notifications ? "включены" : "выключены"), async () => {
+            await api("/api/v1/admin/admins/" + row.id, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, permission_overrides: row.permission_overrides || {}, support_notifications }) });
           });
           return false;
         },
       }))) : ""],
     ];
-    dom.adminView.replaceChildren(panel("Администраторы", table(cols, admins.items || []), actions));
+    const content = el("div");
+    if (isOwner && (!admins.support_notifications_configured || !accounts.some((row) => row.support_notifications_effective))) {
+      const warning = el("div", "panel-body form-message error", admins.support_notifications_configured
+        ? "Нет активных получателей новых обращений. Проверьте включённые уведомления, активность и доступ к поддержке."
+        : "Получатели новых обращений ещё не настроены. Выберите администратора и включите уведомления.");
+      warning.setAttribute("role", "alert");
+      content.appendChild(warning);
+    }
+    content.appendChild(table(cols, accounts));
+    dom.adminView.replaceChildren(panel("Администраторы", content, actions));
   }
 
   async function renderSessions() {

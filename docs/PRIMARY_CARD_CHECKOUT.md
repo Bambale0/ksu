@@ -269,3 +269,39 @@ Admin recheck, reprocess, and the finance reconcile endpoint now also dispatch
 `2328` payments through `Payment2328Service`, matching the reconciliation worker.
 These actions keep the existing authorization/MFA requirements and use the
 provider domain's idempotent wallet settlement.
+
+## Catalog price validation follow-up: 2026-11-06
+
+Before the follow-up source change, review of PR #581 identified that parsing a
+configured provider offer's malformed numeric price can raise a decimal error
+after the local intent is committed but before any remote invoice request.
+That error currently takes the ambiguous-creation path and strands the local
+idempotency request even though no remote invoice could have been created.
+
+The bounded correction validates supported-currency catalog amounts as finite
+decimals and raises the existing provider validation error for malformed values.
+The existing terminal path then marks both the payment and creation request
+failed and runs legacy promo reservation cleanup. New partner promo activation
+must remain intact; it is independent from payment success. Unsupported currency
+entries must still be ignored before inspecting their amounts. Transport failures
+and uncertain remote create results keep their existing recovery behavior.
+
+Verification plan: reproduce through the real CardPaymentService with synthetic
+catalog responses, database-backed promo state, an invoice-create call counter,
+and same-key replay; cover malformed/non-finite values, supported finite prices,
+unsupported-currency noise, and pending legacy reservation cleanup. No production
+wallet, provider invoice, customer message, tariff or offer configuration is changed.
+
+The regression first reproduced six failures and three passing controls:
+nonnumeric/NaN/sNaN/object prices left creation unknown, negative infinity reached
+the prohibited create boundary, and a legacy reservation remained pending.
+The finite-price/unsupported-currency controls passed before the correction.
+Evidence: isolated log test-run-20261106T060943Z-3632743.log (6 failed, 3 passed).
+
+After the correction, all 68 selected card invoice/catalog, checkout recovery,
+card bonus and paid-promo compatibility tests passed, including the nine new
+catalog regressions (isolated log test-run-20261106T061054Z-3635920.log).
+Ruff, Python syntax and scoped diff checks passed. The regression confirms that
+malformed supported-currency prices never call remote invoice creation, same-key
+replay stays terminal, current promo attribution stays applied once, and legacy
+pending reservations are released through the existing cleanup service.

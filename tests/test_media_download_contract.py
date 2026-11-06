@@ -4,7 +4,7 @@ import uuid
 from collections.abc import AsyncIterator
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
@@ -94,7 +94,7 @@ async def test_owner_download_descriptor_works_as_ordinary_browser_navigation(
     assert response.status_code == 200, response.text
     filename = f"generation-{asset.generation_id}-1.png"
     assert response.content == CONTENTS
-    assert response.headers["content-type"] == "image/png"
+    assert response.headers["content-type"] == "application/octet-stream"
     assert response.headers["content-disposition"] == f'attachment; filename="{filename}"'
     assert response.headers["access-control-allow-origin"] == "https://web.telegram.org"
     assert descriptor["download_filename"] == filename
@@ -153,6 +153,7 @@ async def test_private_view_and_publication_gates_do_not_change_for_downloads(
     view = await client.get(str(descriptor["url"]))
     assert view.status_code == 200
     assert view.content == CONTENTS
+    assert view.headers["content-type"] == "image/png"
     assert "content-disposition" not in view.headers
     public = await client.get(f"/api/v1/media/{asset.id}/public")
     assert public.status_code == 404
@@ -194,7 +195,7 @@ async def test_video_download_streams_the_original_file_and_supports_byte_ranges
     full = await client.get(str(descriptor["download_url"]))
     assert full.status_code == 200
     assert full.content == contents
-    assert full.headers["content-type"] == "video/mp4"
+    assert full.headers["content-type"] == "application/octet-stream"
     assert full.headers["content-disposition"].endswith('-1.mp4"')
     partial = await client.get(
         str(descriptor["download_url"]), headers={"Range": "bytes=0-15"},
@@ -203,3 +204,82 @@ async def test_video_download_streams_the_original_file_and_supports_byte_ranges
     assert partial.content == contents[:16]
     assert partial.headers["content-range"] == f"bytes 0-15/{len(contents)}"
     assert partial.headers["content-disposition"] == full.headers["content-disposition"]
+    assert partial.headers["content-type"] == "application/octet-stream"
+    preview = await client.get(str(descriptor["url"]))
+    assert preview.status_code == 200
+    assert preview.content == contents
+    assert preview.headers["content-type"] == "video/mp4"
+    assert "content-disposition" not in preview.headers
+
+
+@pytest.mark.asyncio
+async def test_authenticated_local_download_forces_attachment_without_changing_bytes(
+    owned_media, media_client,
+) -> None:
+    owner, _other, asset = owned_media
+    app, client = media_client
+
+    async def owner_context():
+        return owner
+
+    app.dependency_overrides[get_current_user] = owner_context
+    response = await client.get(f"/api/v1/media/{asset.id}/download")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="generation-{asset.generation_id}-1.png"'
+    )
+    assert response.content == CONTENTS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["asset_metadata", "authenticated_download"])
+async def test_s3_attachment_presigns_override_mime_without_changing_preview(
+    owned_media, media_client, monkeypatch: pytest.MonkeyPatch, source: str,
+) -> None:
+    owner, _other, asset = owned_media
+    app, client = media_client
+    # Real offline SigV4 signing: no S3 request or production credential is used.
+    for name, value in {
+        "s3_bucket": "synthetic-download-bucket",
+        "s3_region": "us-east-1",
+        "s3_endpoint_url": "https://synthetic-storage.invalid",
+        "s3_access_key_id": "synthetic-access",
+        "s3_secret_access_key": "synthetic-secret",
+        "s3_session_token": "",
+        "s3_addressing_style": "path",
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    async with SessionFactory() as session:
+        stored = await session.get(MediaAsset, asset.id)
+        stored.bucket = "synthetic-download-bucket"
+        await session.commit()
+        descriptor = MediaAssetService.public_view(stored)
+
+    async def owner_context():
+        return owner
+
+    app.dependency_overrides[get_current_user] = owner_context
+    if source == "asset_metadata":
+        response = await client.get(f"/api/v1/media/{asset.id}")
+        assert response.status_code == 200
+        url = response.json()["download_url"]
+        assert response.json()["content_type"] == "image/png"
+    else:
+        response = await client.get(f"/api/v1/media/{asset.id}/download")
+        assert response.status_code == 307
+        url = response.headers["location"]
+
+    query = parse_qs(urlsplit(url).query)
+    assert query["response-content-type"] == ["application/octet-stream"]
+    assert query["response-content-disposition"] == [
+        f'attachment; filename="generation-{asset.generation_id}-1.png"'
+    ]
+    assert query["X-Amz-Algorithm"] == ["AWS4-HMAC-SHA256"]
+    assert "X-Amz-Signature" in query
+    assert str(asset.object_key) in urlsplit(url).path
+    preview_query = parse_qs(urlsplit(str(descriptor["url"])).query)
+    assert "response-content-type" not in preview_query
+    assert "response-content-disposition" not in preview_query
+    assert "X-Amz-Signature" in preview_query
+    assert descriptor["content_type"] == "image/png"

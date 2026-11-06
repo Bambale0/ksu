@@ -23,6 +23,15 @@ async function fixture(page, mode, options = {}) {
   };
   let failures = options.transportFailure ? 1 : 0;
   let verified = false;
+  const confirmations = [];
+  let recipientConfigured = options.recipientConfigured ?? true;
+  let recipientRevision = 1;
+  let admins = [{
+    id: 'admin-recipient-1', telegram_id: 456, username: 'support_recipient',
+    role: 'support', is_active: true, mfa_enabled: true, permission_overrides: {},
+    support_notifications: options.recipientEnabled ?? false,
+    support_notifications_effective: options.recipientEffective ?? false,
+  }];
   let revoked = false;
   let releaseReply;
   const replyGate = new Promise((resolve) => { releaseReply = resolve; });
@@ -45,9 +54,35 @@ async function fixture(page, mode, options = {}) {
     }
     if (path === '/api/v1/admin/auth/login') return json({ token: 'test-token', mfa_verified: true });
     if (path === '/api/v1/admin/auth/me') return json({
-      role: options.readonly ? 'auditor' : 'owner', is_active: true, telegram_id: 123, username: 'operator',
-      permissions: options.readonly ? ['support.read'] : ['*'],
+      role: options.role || (options.readonly ? 'auditor' : 'owner'), is_active: true, telegram_id: 123, username: 'operator',
+      permissions: options.permissions || (options.readonly ? ['support.read'] : ['*']),
     });
+    if (path === '/api/v1/admin/roles') return json({ roles: { owner: ['*'], admin: [], support: [], finance: [] } });
+    if (path === '/api/v1/admin/admins' && request.method() === 'GET') return json({
+      items: admins, support_notifications_configured: recipientConfigured,
+      support_notifications_revision: recipientRevision,
+    });
+    if (path.startsWith('/api/v1/admin/admins') && ['POST', 'PATCH'].includes(request.method())) {
+      const body = request.postDataJSON();
+      writes.push({ path, method: request.method(), body, headers: request.headers(), mfaVerified: verified });
+      if (!verified) return json({ detail: 'Fresh MFA step-up required' }, 403);
+      verified = false;
+      if (request.method() === 'POST') {
+        admins.push({
+          id: 'new-admin-1', telegram_id: body.telegram_id, username: null, role: body.role,
+          is_active: true, mfa_enabled: false, permission_overrides: {},
+          support_notifications: body.support_notifications,
+          support_notifications_effective: body.support_notifications,
+        });
+      } else {
+        admins = admins.map((admin) => admin.id === path.split('/').pop() ? {
+          ...admin, ...body, support_notifications_effective: Boolean(body.support_notifications && body.is_active),
+        } : admin);
+      }
+      recipientConfigured = true;
+      recipientRevision += 1;
+      return json({ status: 'updated' });
+    }
     if (path === '/api/v1/admin/dashboard') return json({});
     if (path === '/api/v1/admin/control/operations') return json({ items: [{ id: 'operation-1', provider: 'test', status: 'failed', cost_credits: 10 }] });
     if (path === '/api/v1/admin/control/operations/operation-1/refund') {
@@ -57,7 +92,7 @@ async function fixture(page, mode, options = {}) {
     if (path === '/api/v1/admin/security/overview') return json({});
     if (path === '/api/v1/admin/audit') return json({ items: [] });
     if (path === '/api/v1/admin/security/sessions') return json({ items: revoked ? [] : [{ id: 'session-1', admin_id: 'admin-1', mfa_verified: true }] });
-    if (path === '/api/v1/admin/auth/step-up') { verified = true; return json({ step_up_until: '2099-01-01T00:00:00Z' }); }
+    if (path === '/api/v1/admin/auth/step-up') { verified = true; confirmations.push(request.postDataJSON()); return json({ step_up_until: '2099-01-01T00:00:00Z' }); }
     if (path === '/api/v1/admin/security/sessions/session-1' && request.method() === 'DELETE') {
       writes.push({ path, body: request.postDataJSON(), headers: request.headers() });
       if (!verified) return json({ detail: 'Fresh MFA step-up required' }, 403);
@@ -107,8 +142,9 @@ async function fixture(page, mode, options = {}) {
   await page.goto('http://127.0.0.1:3018' + url + (options.deepLink ? '?support_ticket=' + ticketId : ''));
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await expect(page.locator(mode === 'main' ? '#authView' : '#controlAuth')).not.toBeVisible();
-  if (!options.deepLink) await (mode === 'main' ? page.locator('[data-view="support"]') : page.getByRole('button', { name: 'Поддержка', exact: true })).click();
-  return { reads, writes, pageErrors, unexpectedRequests, releaseReply, releaseOther };
+  if (!options.deepLink && mode === 'main' && await page.locator('#sidebarToggle').isVisible()) await page.locator('#sidebarToggle').click();
+  if (!options.deepLink) await (mode === 'main' ? page.locator('[data-view="' + (options.view || 'support') + '"]') : page.getByRole('button', { name: 'Поддержка', exact: true })).click();
+  return { reads, writes, confirmations, pageErrors, unexpectedRequests, releaseReply, releaseOther };
 }
 
 for (const mode of ['main', 'control']) {
@@ -257,6 +293,106 @@ for (const [status, notice] of [
     await page.locator('#controlStepVerify').click();
     await expect(page.locator('#controlToast')).toHaveText(notice);
     expect(ctx.writes.filter((w) => w.path.endsWith('/refund'))).toHaveLength(1);
+    expect(ctx.pageErrors).toEqual([]);
+    expect(ctx.unexpectedRequests).toEqual([]);
+  });
+}
+
+
+async function executeRecipientChange(page, ctx, previousWrites) {
+  await page.locator('#formSubmit').click();
+  await expect(page.locator('#stepUpDialog')).toBeVisible();
+  await expect(page.locator('#stepUpDescription')).toContainText('уведомления');
+  expect(ctx.writes).toHaveLength(previousWrites);
+  await expect(page.locator('#stepUpExecute')).not.toBeVisible();
+  await page.locator('#stepUpOtp').fill('123456');
+  await page.locator('#stepUpVerify').click();
+  await expect(page.locator('#stepUpExecute')).toBeVisible();
+  expect(ctx.writes).toHaveLength(previousWrites);
+  await page.locator('#stepUpExecute').click();
+  await expect(page.locator('#stepUpDialog')).not.toBeVisible();
+  await expect.poll(() => ctx.writes.length).toBe(previousWrites + 1);
+  expect(ctx.writes.at(-1).mfaVerified).toBe(true);
+}
+
+test('main: owner enables and disables a support recipient only after MFA and execute', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const ctx = await fixture(page, 'main', { view: 'admins' });
+  const row = page.getByRole('row').filter({ hasText: '@support_recipient' });
+  await expect(page.getByRole('alert')).toContainText('Нет активных получателей');
+  for (const [index, enabled] of [true, false].entries()) {
+    await row.getByRole('button', { name: 'Изменить', exact: true }).click();
+    const subscription = page.getByLabel('Уведомления о новых обращениях', { exact: true });
+    if (index === 0) await expect(subscription).not.toBeChecked();
+    else await expect(subscription).toBeChecked();
+    await subscription.setChecked(enabled);
+    await page.getByLabel('Причина', { exact: true }).fill('Изменение получателя поддержки');
+    if (index === 0) await page.screenshot({ path: testInfo.outputPath('support-recipient-form-mobile.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+    await executeRecipientChange(page, ctx, index);
+    expect(ctx.writes.at(-1).method).toBe('PATCH');
+    expect(ctx.writes.at(-1).body.support_notifications).toBe(enabled);
+    expect(ctx.confirmations).toHaveLength(index + 1);
+    await expect(row).toContainText(enabled ? 'Включены' : 'Выключены');
+    await expect(row).toContainText(enabled ? 'Получатель активен' : 'Не получает уведомления');
+    if (enabled) await expect(page.getByRole('alert')).toHaveCount(0);
+    else await expect(page.getByRole('alert')).toContainText('Нет активных получателей');
+  }
+  expect(ctx.pageErrors).toEqual([]);
+  expect(ctx.unexpectedRequests).toEqual([]);
+});
+
+for (const enabled of [false, true]) {
+  test('main: new admin support recipient opt-in is explicit: ' + enabled, async ({ page }) => {
+    const ctx = await fixture(page, 'main', { view: 'admins' });
+    await page.getByRole('button', { name: 'Добавить администратора', exact: true }).click();
+    const subscription = page.getByLabel('Уведомления о новых обращениях', { exact: true });
+    await expect(subscription).not.toBeChecked();
+    await page.getByLabel('Telegram ID', { exact: true }).fill('987654321');
+    await page.getByRole('combobox', { name: 'Роль', exact: true }).selectOption('support');
+    await subscription.setChecked(enabled);
+    await executeRecipientChange(page, ctx, 0);
+    expect(ctx.writes[0].method).toBe('POST');
+    expect(ctx.writes[0].body).toMatchObject({
+      telegram_id: 987654321, role: 'support', support_notifications: enabled,
+    });
+    await expect(page.getByRole('row').filter({ hasText: '987654321' })).toContainText(enabled ? 'Включены' : 'Выключены');
+    expect(ctx.pageErrors).toEqual([]);
+    expect(ctx.unexpectedRequests).toEqual([]);
+  });
+}
+
+test('main: non-owner sees recipient state without owner management controls', async ({ page }) => {
+  const ctx = await fixture(page, 'main', {
+    view: 'admins', role: 'admin', permissions: ['admins.read', 'admins.manage'],
+    recipientConfigured: false,
+    recipientEnabled: true, recipientEffective: false,
+  });
+  const row = page.getByRole('row').filter({ hasText: '@support_recipient' });
+  await expect(row).toContainText('Включены');
+  await expect(row).toContainText('Получатель недоступен');
+  await expect(page.getByRole('button', { name: 'Добавить администратора', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Изменить', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(ctx.writes).toEqual([]);
+  expect(ctx.confirmations).toEqual([]);
+  expect(ctx.pageErrors).toEqual([]);
+  expect(ctx.unexpectedRequests).toEqual([]);
+});
+
+for (const configured of [false, true]) {
+  test('main: owner sees missing eligible support recipient warning: configured=' + configured, async ({ page }) => {
+    const ctx = await fixture(page, 'main', {
+      view: 'admins', recipientConfigured: configured,
+      recipientEnabled: true, recipientEffective: false,
+    });
+    await expect(page.getByRole('alert')).toContainText(
+      configured ? 'Нет активных получателей' : 'Получатели новых обращений ещё не настроены',
+    );
+    const row = page.getByRole('row').filter({ hasText: '@support_recipient' });
+    await expect(row).toContainText('Включены');
+    await expect(row).toContainText('Получатель недоступен');
+    expect(ctx.writes).toEqual([]);
     expect(ctx.pageErrors).toEqual([]);
     expect(ctx.unexpectedRequests).toEqual([]);
   });

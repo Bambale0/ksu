@@ -32,6 +32,7 @@ from app.services.admin_pricing import AdminPricingService
 from app.services.feed_static import FeedStaticStorage
 from app.services.notification_events import register_notification_events
 from app.services.reference_static import ReferenceStaticStorage
+from app.services.support_recipient_config import SupportRecipientConfigService
 
 configure_logging()
 register_notification_events()
@@ -65,6 +66,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.app_env.lower() != "test":
         async with SessionFactory() as session:
             await AdminPricingService.hydrate_runtime(session)
+            await SupportRecipientConfigService.seed_from_bootstrap(session)
+            await session.commit()
 
     if settings.bot_token:
         bot = Bot(settings.bot_token)

@@ -212,3 +212,231 @@ contract assertion and this audit record. The earlier admin UI/pagination and
 workflow files remain frozen. Logout/reset inspection found no further confirmed
 cross-session pagination defect. No production CRUD, user reply, notification,
 balance, grant or permission override was executed.
+
+## PR review P1: customer support write rate limit — pre-edit audit
+
+Review comment 4489542846 identified an authenticated abuse path: customer
+`POST /support/tickets` and `POST /support/tickets/{id}/messages` each persist a
+message and enqueue an operator notice, with no common per-customer admission
+limit. Repeated requests can therefore produce unbounded operator notification
+traffic. Operator replies are a different authenticated flow and must remain
+available when a customer's budget is exhausted.
+
+Existing source was inspected before editing: `AbuseProtectionService.consume`
+already implements atomic fixed-window `INCRBY/EXPIRE/TTL` in one Redis Lua
+script; `app.main.resource_policy_error` exposes 429 or fail-closed 503 with
+`Retry-After` and a typed error code. The global
+`ABUSE_PROTECTION_ENABLED` / `ABUSE_FAIL_CLOSED` settings define availability
+policy. Generation, upload and payment limits govern different actions and
+cannot safely stand in for a support-message quota.
+
+Accepted implementation scope: a typed
+`SUPPORT_MESSAGE_RATE_LIMIT_PER_MINUTE` setting, default **10**, documented in
+`.env.example`, with nonnegative validation. As with the existing primitive,
+**0 disables this particular quota**; the global protection switch and
+fail-open/fail-closed behavior remain unchanged. Both customer write endpoints
+share one `abuse:support:user:{user_uuid}` key and a per-minute window. Admission
+occurs after content/ownership/status validation but before creating a support
+record or invoking message notification. Redis rejection must leave support
+records and enqueue calls unchanged. Operator routes are excluded.
+
+Test plan: real signed customer HTTP requests, real isolated Redis/PostgreSQL,
+shared create/reply budget across tickets, concurrent mixed requests, invalid
+payload/foreign/closed ticket behavior, Retry-After from TTL and expiry recovery,
+unavailable Redis, explicit disable/fail-open policies, and an operator reply
+after exhaustion. Notification entry is spied while preserving the real service;
+no Telegram worker or production action is run. Existing support regression
+fixture is owned by the recipient agent; this slice owns the separate new rate
+test and the direct-call profile/support fixture adjustment.
+
+### Customer support rate-limit result
+
+Confirmed RED: **8 failed, 3 passed** (`job_e573b22b29ed`), including all 20
+concurrent mixed create/reply requests being accepted against a configured
+budget of three. Excess and unavailable-Redis requests incorrectly returned 201.
+After the minimal admission guard, **22 tests passed**
+(`job_569aacac89e9`, 10.39 seconds): 11 new HTTP/config tests plus existing
+profile/support and abuse-protection suites. The concurrency regression now
+allows exactly three requests; rejected requests create no extra support rows or
+notification calls. TTL-based retry, real-key expiry, per-user isolation,
+validation ordering, operator replies and existing policy switches are covered.
+Ruff/AST/diff checks and independent engineering review passed.
+
+The only existing customer-write callers found under tests were the delivery
+regression fixture and profile/support direct calls. The latter now supplies a
+real isolated Redis client; the recipient agent owns the delivery-fixture update
+and final combined run. Customer read routes and operator routes gained no new
+limiter dependency. This limit covers the authenticated customer API; the bot's
+legacy fallback writer does not invoke the new operator-notification service.
+
+## Explicit support recipient UI — pre-edit audit
+
+The approved backend contract adds a persisted, opt-in recipient mapping managed
+through existing owner-only admin create/update forms. `GET /admin/admins`
+returns per-row `support_notifications` (configured) and
+`support_notifications_effective` (currently eligible), plus top-level
+`support_notifications_configured` and revision. The list contains all admin
+accounts, so zero eligible recipients can be derived from the returned rows.
+
+Before edits, `renderAdmins` was inspected along with generic checkbox handling,
+`openStepUp`, OTP verification and the explicit execute click. Existing create
+and edit controls already require both owner role and `admins.manage`; changes
+already run through fresh MFA and an explicit final execution step. The missing
+UI control prevents an owner from managing the new durable recipient mapping.
+
+Planned narrow change: add an unchecked-by-default create checkbox and an edit
+checkbox using the persisted configured value, include its boolean in the
+existing MFA-confirmed payload and confirmation description, show configured and
+effective recipient states in the account table, and show an owner-only warning
+when configuration is missing or there are zero eligible recipients. Do not
+infer opt-in from role or change any grants. Extend the existing admin support
+browser spec (already included in Chromium and WebKit CI), prove RED for absent
+checkbox/status/warning, then verify enable/disable and create behavior only
+after the existing MFA + execute flow, and absence of owner controls for
+non-owners. Cache-bust the main admin script.
+
+### Explicit support recipient UI — result
+
+The six new browser cases were first **RED** against the old UI
+(`job_b3da7c6e0fc2`): the checkbox, configured/effective table state and owner
+warning were absent. The narrow renderer change now provides:
+
+- An unchecked create checkbox and an edit checkbox populated from the
+  persisted `support_notifications` value, with explicit boolean POST/PATCH
+  payloads.
+- The selected notification state in the existing sensitive-action description.
+  Verification and the separate execute click remain mandatory in the UI.
+- Configured and currently eligible states shown separately. “Получатель
+  активен” describes eligibility and does not claim Telegram delivery.
+- An owner-visible warning for unconfigured recipients or zero eligible rows.
+  Non-owners retain read access where authorized and receive no owner controls.
+- A new `admin.js?v=20261106-support-recipients` URL in the main HTML.
+
+Final targeted Chromium run: **23/23 passed**
+(`job_b3925e03fa3a`, 21.8 seconds), comprising the 17 previous
+support/security/refund scenarios and six new recipient scenarios. The first
+post-change run had 20 passing cases and three new-test navigation/locator stops;
+the journey was corrected to open the mobile sidebar and target the visible role
+combobox. No product guard or expected result was weakened.
+
+The mobile enable/disable case exercises 390×844 layout, menu navigation,
+checkbox state, reason input, OTP verification, explicit execute, payload and
+reloaded status. Its screenshot was visually inspected: all form fields and
+both action buttons fit, with no document-width overflow. Console page errors
+and unexpected requests remained empty. The spec was already in both Chromium
+and WebKit CI selections; local WebKit availability remains the previously
+documented limitation. Node syntax and diff checks passed.
+
+Rate product files and this recipient UI are stable. The recipient backend
+agent owns the combined delivery/rate/profile validation and final recipient
+concurrency fix; its final shared integration result is recorded in that audit
+and the parent execution ledger. This UI run used synthetic browser API data
+and did not change any real administrator or send notifications.
+
+Independent engineering review signed off the recipient UI after reading the
+actual renderer, six new cases and GREEN23 output: no automatic opt-in, boolean
+payloads, configured/effective distinction, owner gates, reason and the existing
+MFA/execute sequence were preserved. Rate and recipient UI source are frozen.
+
+A final read-only rate compatibility check found that the customer support
+create/reply handlers clear drafts only after the awaited request succeeds.
+`customerRequest` throws for 429; the existing HTTP mapper displays “Слишком
+много запросов. Попробуйте чуть позже.” in the page alert and preserves the draft.
+No frontend change or additional test was needed. The current ROXY real-browser
+runner overrides its legacy support/profile scenario with profile/partner
+navigation and makes zero support writes, so this new budget is not exhausted
+by that seven-scenario gate.
+
+
+## Follow-up audit: browser attachment MIME (2026-11-06)
+
+This slice follows actual PR CI failure: Chromium passed the download scenarios;
+WebKit mobile 1.56.1 timed out on both browser-fallback download events. No
+production request, file, or recipient was changed during reproduction.
+
+Pre-edit evidence:
+
+- Exact CI image mcr.microsoft.com/playwright:v1.56.1-noble, installed
+  Playwright 1.56.1, isolated network-none container with read-only source:
+  unchanged download spec reproduced **2 passed / 2 failed** (job_eae793ecc598).
+- A real loopback HTTPS server and the same PNG bytes/filename reproduced the
+  failure independently of Playwright route fulfillment. The response was 200
+  with Content-Disposition: attachment, but the resulting DOM rendered an
+  image; no download event occurred. Both self/blank target and with/without
+  noreferrer behaved the same (job_14ee1250efd6).
+- Serving those exact bytes as application/octet-stream completed the actual
+  download with the expected filename and identical saved bytes in all four
+  target/rel combinations. A separate HTTP/HTTPS and mobile/desktop comparison
+  also succeeded (job_60a8940d3ec6). Explicit acceptDownloads was enabled.
+- Existing local attachment responses preserve image/video MIME. The S3
+  presigner overrides Content-Disposition only. Both therefore need the same
+  explicit attachment MIME contract. Preview MIME and stored media metadata
+  must remain image/video MIME.
+- Upstream corroboration: microsoft/playwright#34076 reports renderable image
+  attachments opening inline in Playwright WebKit. Our local result, not the
+  issue alone, is the regression evidence.
+
+Approved minimal scope: local signed ?download=1 and authenticated /download
+responses use an octet-stream attachment; S3 download presigns include
+ResponseContentType alongside existing disposition. Ownership, signature,
+expiry, object-key binding, preview MIME, bytes, filename and range semantics
+remain covered. HTTP regression first, then implementation, then browser fixture
+mirrors that real response contract. Native throw must explicitly prove the
+native API was invoked; cancel must not download. No skip or weaker href-only
+assertion is acceptable.
+
+
+### MIME follow-up result and final freeze
+
+Two independent causes were confirmed, so neither was hidden by changing the
+assertions:
+
+1. Product attachment MIME: image/png attachments rendered inline in this
+   WebKit. Explicit local downloads now use application/octet-stream. S3
+   attachment presigns include ResponseContentType with the existing
+   ResponseContentDisposition; preview presigns retain neither override.
+2. Playwright 1.56.1 transport limitation: route.fulfill still did not produce a
+   download event even with octet-stream, while a real HTTPS response with the
+   identical payload completed successfully (job_56f40340225b). The committed
+   browser fixture therefore runs a real loopback HTTPS server, an ephemeral
+   port and a runtime certificate. It closes connections/server and removes
+   certificate files in finally. Certificate verification is disabled only in
+   this test context.
+
+Evidence after the smallest source change:
+
+- HTTP RED: **6 failed / 6 passed**, all failures on the intended MIME/response
+  override contract (job_f2240301cc0c).
+- HTTP and storage compatibility GREEN: **30 passed, 6.28 seconds**
+  (job_5d3dd7fef9eb). Suites: test_media_download_contract,
+  test_local_media_storage, test_media_storage, test_legacy_media_backfill,
+  test_generation_delivery_media_contract.
+- Actual browser GREEN in the same official CI image: **8 passed, 21.8 seconds**
+  (job_92b230491af8): four Chromium plus four mobile WebKit. Browser fallbacks
+  verify the completed download, saved file bytes, suggested filename, exact
+  HTTPS URL, one GET and absence of the Telegram authentication header.
+  The native-error test additionally proves the native API was actually called
+  before falling back; the cancel path produces no attachment request.
+- HTTP coverage preserves owner checks, signed expiry/tampering/object-key
+  binding, image/video preview MIME, original PNG/MP4 bytes and byte ranges.
+  The S3 tests perform real offline SigV4 signing with synthetic credentials;
+  they do not contact external storage.
+- Ruff, Python AST for all three Python files, Node syntax and git diff --check
+  passed. Independent engineering review signed off the source and personally
+  inspected both GREEN job results.
+
+Changed files in this follow-up: app/api/v1/media.py,
+app/services/object_storage.py, tests/test_media_download_contract.py,
+frontend/mini-app/e2e/media-download.spec.mjs, and this audit.
+
+Primary references read for corroboration:
+[Playwright image-attachment report](https://github.com/microsoft/playwright/issues/34076),
+[Playwright routed-download report](https://github.com/microsoft/playwright/issues/28253),
+[official S3 GetObject response overrides](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+The exact 1.56.1 local reproduction is the deciding evidence, rather than the
+historical reports alone.
+
+Source is frozen for the parent snapshot. No production deployment or
+production messages occurred in this slice. Telegram's native download was
+verified through its browser API contract; an actual Telegram device download
+remains outside this verification.

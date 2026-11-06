@@ -227,7 +227,9 @@ class NeironychBalanceAlertService:
             )
         )
         if lock:
-            statement = statement.with_for_update(of=(User, AdminAccount))
+            # Eligibility reads must compose with support's shared locks without
+            # an upgrade cycle; shared locks still block owner/account revocation.
+            statement = statement.with_for_update(read=True, of=(User, AdminAccount))
         owner_id = await session.scalar(statement)
         return owner_id is not None
 

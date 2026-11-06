@@ -9,8 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AdminAccount, Notification, SupportMessage, SupportTicket, User
-from app.services.admin_policy import AdminPolicy
-from app.services.admin_security import parse_bootstrap_ids
+from app.services.support_recipient_config import SupportRecipientConfigService
 from app.services.notifications import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,8 @@ class SupportConversationService:
     async def authorized_operator(
         session: AsyncSession, user_id: uuid.UUID, *, lock: bool = False,
     ) -> bool:
-        recipient_ids = parse_bootstrap_ids()
+        policy = await SupportRecipientConfigService.policy(session, lock=lock)
+        recipient_ids = SupportRecipientConfigService.admin_ids(policy)
         if not recipient_ids:
             return False
         statement = (
@@ -33,17 +33,17 @@ class SupportConversationService:
             .join(AdminAccount, AdminAccount.user_id == User.id)
             .where(
                 User.id == user_id,
-                User.telegram_id.in_(recipient_ids),
+                AdminAccount.id.in_(recipient_ids),
                 User.is_active.is_(True),
                 AdminAccount.is_active.is_(True),
             )
             .execution_options(populate_existing=True)
         )
         if lock:
-            # Keep revocation/deactivation serialized with disclosure or delivery.
-            statement = statement.with_for_update(of=(User, AdminAccount))
+            # Membership lock precedes account locks everywhere that discloses a notice.
+            statement = statement.with_for_update(read=True, of=(User, AdminAccount))
         row = (await session.execute(statement)).first()
-        return bool(row and AdminPolicy.has_permission(row[1], "support.read"))
+        return bool(row and SupportRecipientConfigService.eligible(row[0], row[1]))
 
     @staticmethod
     async def add_customer_message(
@@ -69,7 +69,9 @@ class SupportConversationService:
     async def notify_operators(
         session: AsyncSession, *, ticket: SupportTicket, message: SupportMessage,
     ) -> None:
-        recipient_ids = parse_bootstrap_ids()
+        await SupportRecipientConfigService.seed_from_bootstrap(session)
+        policy = await SupportRecipientConfigService.policy(session, lock=True)
+        recipient_ids = SupportRecipientConfigService.admin_ids(policy)
         recipients = []
         if recipient_ids:
             rows = (
@@ -77,15 +79,17 @@ class SupportConversationService:
                     select(User, AdminAccount)
                     .join(AdminAccount, AdminAccount.user_id == User.id)
                     .where(
-                        User.telegram_id.in_(recipient_ids),
+                        AdminAccount.id.in_(recipient_ids),
                         User.is_active.is_(True),
                         AdminAccount.is_active.is_(True),
                     )
+                    .with_for_update(read=True, of=(User, AdminAccount))
+                    .execution_options(populate_existing=True)
                 )
             ).all()
             recipients = [
                 user for user, account in rows
-                if AdminPolicy.has_permission(account, "support.read")
+                if SupportRecipientConfigService.eligible(user, account)
             ]
         for recipient in recipients:
             # Retrying this same persisted message cannot produce another notice.

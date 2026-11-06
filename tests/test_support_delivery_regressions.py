@@ -8,31 +8,46 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+import pytest_asyncio
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.methods import SendMessage
 from fastapi import FastAPI
-from sqlalchemy import func, select
+from redis.asyncio import Redis
+from sqlalchemy import delete, func, select
 
 from app.api.admin_deps import AdminContext, get_verified_admin
 from app.api.deps import get_current_user
 from app.api.v1 import admin_control, admin_operations, notifications, support
 from app.core.config import settings
-from app.db.admin_models import SupportOutbox
+from app.db.admin_models import AdminRuntimeSetting, SupportOutbox
 from app.db.models import AdminAccount, AdminSession, Notification, SupportMessage, SupportTicket, User
 from app.db.notification_models import NotificationDelivery
 from app.db.session import SessionFactory
 from app.services.notification_events import register_notification_events
 from app.services.notifications import NotificationDeliveryService
+from app.services.support_recipient_config import SUPPORT_RECIPIENT_SETTING_KEY
 from app.workers import admin_support as support_worker
 from app.workers import notifications as notification_worker
 
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture(autouse=True)
-def support_test_settings(monkeypatch):
+@pytest_asyncio.fixture(autouse=True)
+async def support_test_settings(monkeypatch):
     monkeypatch.setattr(settings, "admin_security_key", "support-regression-test-key-32-characters-minimum")
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
+    # Each case owns its explicit operator scope; fixtures must not retain a prior case's policy.
+    async with SessionFactory() as session:
+        await session.execute(delete(AdminRuntimeSetting).where(
+            AdminRuntimeSetting.key == SUPPORT_RECIPIENT_SETTING_KEY,
+        ))
+        await session.commit()
+    yield
+    async with SessionFactory() as session:
+        await session.execute(delete(AdminRuntimeSetting).where(
+            AdminRuntimeSetting.key == SUPPORT_RECIPIENT_SETTING_KEY,
+        ))
+        await session.commit()
 
 
 def _telegram_id() -> int:
@@ -67,8 +82,14 @@ async def _actors():
 
 @asynccontextmanager
 async def _client(context: AdminContext, customer: User):
+    from app.main import resource_policy_error
+    from app.services.abuse_protection import ResourcePolicyError
+
     register_notification_events()
     app = FastAPI()
+    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    app.state.redis = redis
+    app.add_exception_handler(ResourcePolicyError, resource_policy_error)
     for router in (support.router, admin_operations.router, admin_control.router, notifications.router):
         app.include_router(router, prefix="/api/v1")
 
@@ -80,8 +101,11 @@ async def _client(context: AdminContext, customer: User):
 
     app.dependency_overrides[get_verified_admin] = verified
     app.dependency_overrides[get_current_user] = current_user
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        yield client
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            yield client
+    finally:
+        await redis.aclose()
 
 
 async def _ticket(customer: User, *, topic: str = "Support regression") -> SupportTicket:

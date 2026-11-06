@@ -44,8 +44,8 @@ async def list_notifications(
         Notification.user_id == user.id,
         Notification.kind != GENERATION_PROGRESS_KIND,
     )
-    can_read_balance = await _can_read_provider_balance(session, user)
     can_read_support = await SupportConversationService.authorized_operator(session, user.id, lock=True)
+    can_read_balance = await _can_read_provider_balance(session, user)
     if not can_read_balance:
         statement = statement.where(Notification.kind.not_in(_SENSITIVE_BALANCE_KINDS))
     if not can_read_support:
@@ -113,6 +113,7 @@ async def mark_all_notifications_read(
     user: CurrentUserDep,
     session: SessionDep,
 ) -> dict[str, int]:
+    can_read_support = await SupportConversationService.authorized_operator(session, user.id, lock=True)
     can_read_balance = await _can_read_provider_balance(session, user)
     stmt = update(Notification).where(
         Notification.user_id == user.id,
@@ -121,7 +122,7 @@ async def mark_all_notifications_read(
     )
     if not can_read_balance:
         stmt = stmt.where(Notification.kind.not_in(_SENSITIVE_BALANCE_KINDS))
-    if not await SupportConversationService.authorized_operator(session, user.id, lock=True):
+    if not can_read_support:
         stmt = stmt.where(Notification.kind != SUPPORT_INCOMING_KIND)
     result = await session.execute(stmt.values(is_read=True))
     await session.commit()

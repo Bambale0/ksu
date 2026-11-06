@@ -288,6 +288,9 @@ class AdminAuthService:
             admin = AdminAccount(user_id=user.id, role="owner", is_active=True)
             session.add(admin)
             await session.flush()
+        from app.services.support_recipient_config import SupportRecipientConfigService
+
+        await SupportRecipientConfigService.seed_from_bootstrap(session)
         return admin
 
     @staticmethod

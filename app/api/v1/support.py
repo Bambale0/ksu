@@ -6,10 +6,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.bot.support_links import direct_support_handle, normalize_direct_support_url
 from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
+from app.services.abuse_protection import AbuseProtectionService
 from app.services.support import SupportConversationService
 
 router = APIRouter(prefix="/support", tags=["support"])
@@ -69,16 +70,28 @@ async def _owned_ticket(
     return ticket
 
 
+async def _consume_customer_message_quota(redis: RedisDep, user_id: uuid.UUID) -> None:
+    await AbuseProtectionService.consume(
+        redis,
+        key=f"abuse:support:user:{user_id}",
+        limit=settings.support_message_rate_limit_per_minute,
+        window_seconds=60,
+        message="Слишком много сообщений в поддержку. Попробуйте чуть позже.",
+    )
+
+
 @router.post("/tickets", status_code=201)
 async def create_ticket(
     payload: CreateTicketRequest,
     user: CurrentUserDep,
     session: SessionDep,
+    redis: RedisDep,
 ) -> dict[str, object]:
     topic = payload.topic.strip()
     message = payload.message.strip()
     if not topic or not message:
         raise HTTPException(status_code=422, detail="Topic and message are required")
+    await _consume_customer_message_quota(redis, user.id)
     ticket = SupportTicket(user_id=user.id, topic=topic)
     session.add(ticket)
     await session.flush()
@@ -150,6 +163,7 @@ async def reply_ticket(
     payload: ReplyTicketRequest,
     user: CurrentUserDep,
     session: SessionDep,
+    redis: RedisDep,
 ) -> dict[str, object]:
     ticket = await _owned_ticket(
         session,
@@ -162,6 +176,7 @@ async def reply_ticket(
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Message is required")
+    await _consume_customer_message_quota(redis, user.id)
     row = await SupportConversationService.add_customer_message(
         session, ticket=ticket, user=user, body=message,
     )

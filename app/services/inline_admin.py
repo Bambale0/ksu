@@ -19,6 +19,8 @@ async def ensure_bootstrap_admin(
     here: explicit revocation in the admin domain must win over bootstrap config.
     """
 
+    from app.services.support_recipient_config import SupportRecipientConfigService
+
     telegram_id = getattr(user, "telegram_id", None)
     if not bool(getattr(user, "is_active", False)) or telegram_id is None:
         return None
@@ -31,6 +33,7 @@ async def ensure_bootstrap_admin(
 
     account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
     if account is not None:
+        await SupportRecipientConfigService.seed_from_bootstrap(session)
         return account
 
     # Serialize only the first-use bootstrap for the same Telegram user. Existing
@@ -38,9 +41,11 @@ async def ensure_bootstrap_admin(
     await session.execute(select(User.id).where(User.id == user.id).with_for_update())
     account = await session.scalar(select(AdminAccount).where(AdminAccount.user_id == user.id))
     if account is not None:
+        await SupportRecipientConfigService.seed_from_bootstrap(session)
         return account
 
     account = AdminAccount(user_id=user.id, role="owner", is_active=True)
     session.add(account)
     await session.flush()
+    await SupportRecipientConfigService.seed_from_bootstrap(session)
     return account

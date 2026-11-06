@@ -5,7 +5,7 @@ import logging
 import re
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -389,7 +389,15 @@ class CardPackageCatalog:
             amount_raw = item.get("amount")
             if amount_raw in (None, ""):
                 continue
-            amount = Decimal(str(amount_raw))
+            try:
+                amount = Decimal(str(amount_raw))
+                if not amount.is_finite():
+                    raise ValueError("Offer price must be finite")
+            except (InvalidOperation, ValueError) as exc:
+                raise PaymentProviderValidationError(
+                    "Провайдер оплаты вернул некорректную цену предложения. "
+                    "Выберите другой способ оплаты."
+                ) from exc
             if amount > 0:
                 result[currency] = amount
         return result

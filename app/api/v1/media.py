@@ -54,7 +54,8 @@ def _local_file_response(
         headers["Access-Control-Allow-Origin"] = "https://web.telegram.org"
     return FileResponse(
         path=path,
-        media_type=asset.content_type or None,
+        # Renderable MIME can open inline in WebKit despite attachment disposition.
+        media_type="application/octet-stream" if download else asset.content_type or None,
         headers=headers,
     )
 

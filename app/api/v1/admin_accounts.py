@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from app.api.admin_deps import AdminContext, require_permission
 from app.api.deps import SessionDep
 from app.db.models import AdminAccount, AdminSession, User
+from app.services.support_recipient_config import SupportRecipientConfigService
 from app.services.admin_security import (
     AdminAuditService,
     ROLE_PERMISSIONS,
@@ -31,6 +32,7 @@ class AdminCreateRequest(BaseModel):
     telegram_id: int = Field(gt=0)
     role: str
     permission_overrides: dict[str, list[str]] = Field(default_factory=dict)
+    support_notifications: bool = Field(default=False, strict=True)
 
     @field_validator("role")
     @classmethod
@@ -54,6 +56,7 @@ class AdminUpdateRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     permission_overrides: dict[str, list[str]] | None = None
+    support_notifications: bool | None = Field(default=None, strict=True)
     reason: str = Field(min_length=5, max_length=500)
 
     @field_validator("role")
@@ -78,7 +81,9 @@ class AdminUpdateRequest(BaseModel):
         return value
 
 
-def _admin_view(admin: AdminAccount, user: User) -> dict[str, object]:
+def _admin_view(
+    admin: AdminAccount, user: User, *, support_admin_ids: set[uuid.UUID] | None = None,
+) -> dict[str, object]:
     return {
         "id": str(admin.id),
         "user_id": str(admin.user_id),
@@ -88,6 +93,11 @@ def _admin_view(admin: AdminAccount, user: User) -> dict[str, object]:
         "permissions": effective_permissions(admin),
         "permission_overrides": admin.permission_overrides,
         "is_active": admin.is_active,
+        "support_notifications": admin.id in (support_admin_ids or set()),
+        "support_notifications_effective": (
+            admin.id in (support_admin_ids or set())
+            and SupportRecipientConfigService.eligible(user, admin)
+        ),
         "mfa_enabled": admin.mfa_enabled,
         "locked_until": admin.locked_until.isoformat() if admin.locked_until else None,
         "last_login_at": admin.last_login_at.isoformat() if admin.last_login_at else None,
@@ -111,7 +121,13 @@ async def list_admins(context: AdminsReadDep, session: SessionDep) -> dict[str, 
             .order_by(AdminAccount.created_at.asc())
         )
     ).all()
-    return {"items": [_admin_view(admin, user) for admin, user in rows]}
+    policy = await SupportRecipientConfigService.policy(session)
+    selected = SupportRecipientConfigService.admin_ids(policy)
+    return {
+        "items": [_admin_view(admin, user, support_admin_ids=selected) for admin, user in rows],
+        "support_notifications_configured": policy is not None,
+        "support_notifications_revision": SupportRecipientConfigService.revision(policy),
+    }
 
 
 @router.post("/admins", status_code=201)
@@ -123,6 +139,9 @@ async def create_admin(
 ) -> dict[str, object]:
     if context.account.role != "owner":
         raise HTTPException(status_code=403, detail="Only owner may create administrators")
+    policy = await SupportRecipientConfigService.prepare_change(
+        session, admin=context.account, initialize=True,
+    )
     user = await session.scalar(select(User).where(User.telegram_id == payload.telegram_id))
     if user is None:
         raise HTTPException(status_code=404, detail="User must sign in to the product first")
@@ -138,6 +157,15 @@ async def create_admin(
     )
     session.add(admin)
     await session.flush()
+    if policy is None:
+        raise RuntimeError("Support recipient policy could not be initialized")
+    try:
+        await SupportRecipientConfigService.set_subscription(
+            session, policy=policy, admin=context.account, account=admin, user=user,
+            enabled=payload.support_notifications,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await AdminAuditService.record(
         session,
         action="admin.account.created",
@@ -147,10 +175,13 @@ async def create_admin(
         request=request,
         resource_type="admin_account",
         resource_id=str(admin.id),
-        metadata={"target_user_id": str(user.id), "role": admin.role},
+        metadata={
+            "target_user_id": str(user.id), "role": admin.role,
+            "support_notifications": payload.support_notifications,
+        },
     )
     await session.commit()
-    return _admin_view(admin, user)
+    return _admin_view(admin, user, support_admin_ids=SupportRecipientConfigService.admin_ids(policy))
 
 
 @router.patch("/admins/{admin_id}")
@@ -163,6 +194,9 @@ async def update_admin(
 ) -> dict[str, object]:
     if context.account.role != "owner":
         raise HTTPException(status_code=403, detail="Only owner may manage administrators")
+    policy = await SupportRecipientConfigService.prepare_change(
+        session, admin=context.account, initialize=payload.support_notifications is not None,
+    )
     target = await session.scalar(
         select(AdminAccount).where(AdminAccount.id == admin_id).with_for_update()
     )
@@ -194,6 +228,7 @@ async def update_admin(
         "role": target.role,
         "is_active": target.is_active,
         "permission_overrides": target.permission_overrides,
+        "support_notifications": target.id in SupportRecipientConfigService.admin_ids(policy),
     }
     privilege_changed = False
     if payload.role is not None and payload.role != target.role:
@@ -207,6 +242,17 @@ async def update_admin(
         privilege_changed = True
     if target.role == "owner":
         target.permission_overrides = {}
+
+    if payload.support_notifications is not None:
+        if policy is None:
+            raise RuntimeError("Support recipient policy could not be initialized")
+        try:
+            await SupportRecipientConfigService.set_subscription(
+                session, policy=policy, admin=context.account, account=target, user=user,
+                enabled=payload.support_notifications,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if privilege_changed:
         target.session_version += 1
@@ -241,9 +287,10 @@ async def update_admin(
                 "role": target.role,
                 "is_active": target.is_active,
                 "permission_overrides": target.permission_overrides,
+                "support_notifications": target.id in SupportRecipientConfigService.admin_ids(policy),
             },
             "sessions_revoked": privilege_changed,
         },
     )
     await session.commit()
-    return _admin_view(target, user)
+    return _admin_view(target, user, support_admin_ids=SupportRecipientConfigService.admin_ids(policy))

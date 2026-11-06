@@ -153,6 +153,7 @@ class ObjectStorage:
         if download_filename:
             safe_name = download_filename.replace('"', "").replace("\r", "").replace("\n", "")
             params["ResponseContentDisposition"] = f'attachment; filename="{safe_name}"'
+            params["ResponseContentType"] = "application/octet-stream"
         return str(
             client.generate_presigned_url(
                 "get_object",

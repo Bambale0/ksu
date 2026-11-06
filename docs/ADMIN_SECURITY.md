@@ -122,10 +122,31 @@ For the first bootstrap, use a trusted first-party client/tool that is running i
 10. Call `POST /api/v1/admin/auth/mfa/confirm` with the current six-digit TOTP code.
 11. Store the returned recovery codes offline/separately. They are returned once; the backend stores only hashes.
 12. Verify `GET /api/v1/admin/auth/me` now shows `mfa_verified=true` and owner permissions.
-13. Remove the owner's ID from `ADMIN_BOOTSTRAP_TELEGRAM_IDS` and redeploy/reload configuration.
-14. Create all additional administrators through the owner-only admin API after a fresh MFA step-up.
+13. Verify the owner has an effective support notification assignment in `GET /api/v1/admin/admins`.
+14. Remove the owner's ID from `ADMIN_BOOTSTRAP_TELEGRAM_IDS` and redeploy/reload configuration.
+15. Create additional administrators through the owner-only admin API after a fresh MFA step-up and explicitly select any support notification recipients.
 
 Do not leave bootstrap IDs configured as a permanent administrator-management mechanism.
+
+### Support operator notification assignments
+
+Support recipients are explicitly assigned through owner administrator management. `ADMIN_BOOTSTRAP_TELEGRAM_IDS` is used only to initialize an absent durable assignment from eligible existing accounts; it is not the ongoing recipient list. Clearing bootstrap after enrollment must not stop support notifications.
+
+On a fresh installation, startup leaves the recipient policy absent until an eligible configured account exists. Trusted standalone or Mini App owner bootstrap then initializes it. Existing assignments, including an explicitly empty list, are never overwritten by bootstrap configuration or a restart.
+
+Owner admin API fields:
+- `POST /api/v1/admin/admins`: `support_notifications: true` opts the new account in; default is false.
+- `PATCH /api/v1/admin/admins/{admin_id}`: set `support_notifications` explicitly to true or false together with the existing audit reason. Omitted/null preserves the previous assignment.
+- Both mutations retain owner-only authorization and fresh MFA step-up.
+- Account responses include `support_notifications` (stored assignment) and `support_notifications_effective` (assignment plus current active user/account and effective `support.read`).
+- `GET /api/v1/admin/admins` additionally returns `support_notifications_configured` and `support_notifications_revision`.
+
+If bootstrap was cleared before any durable assignment existed, select the intended operators through the owner admin form/API. No assignment is inferred from the full admin list. A configuration with zero effective recipients requires an owner to select an eligible operator; it does not trigger a broadcast. General customer notification preferences do not control these operational notices.
+
+An existing assignment may remain configured after deactivation or removal of support.read; it is then ineffective and cannot receive notices. Repeating the unchanged assignment while editing account access does not block the access change. A new opt-in still requires an active eligible account.
+
+Recipient removal and account privilege changes are serialized with in-flight support notification authorization. Pending delivery and private inbox access recheck the current assignment and permissions.
+
 
 ## 5. Login behavior
 

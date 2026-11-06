@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -24,31 +24,29 @@ class SupportOutboxDeliveryService:
     async def requeue_reachable_user_deliveries(
         session: AsyncSession, *, user_id: uuid.UUID,
     ) -> int:
-        """Re-arm only this user's known blocked/missing-chat replies on contact."""
-        rows = list((await session.scalars(
-            select(SupportOutbox)
-            .join(SupportTicket, SupportTicket.id == SupportOutbox.ticket_id)
+        """Schedule this user's entire recoverable backlog after private contact."""
+        await session.flush()
+        # One SQL update avoids truncating the recovery signal or silently losing
+        # a temporarily locked row. Actual sends still use bounded worker claims.
+        result = await session.execute(
+            update(SupportOutbox)
             .where(
-                SupportTicket.user_id == user_id,
+                SupportOutbox.ticket_id.in_(
+                    select(SupportTicket.id).where(SupportTicket.user_id == user_id)
+                ),
                 SupportOutbox.status.in_(["failed", "undeliverable"]),
                 or_(
                     SupportOutbox.last_error.ilike("%chat not found%"),
                     SupportOutbox.last_error.ilike("%bot was blocked%"),
                 ),
             )
-            .order_by(SupportOutbox.created_at.desc(), SupportOutbox.id.desc())
-            .limit(max(1, settings.support_outbox_batch_size))
-            .with_for_update(of=SupportOutbox, skip_locked=True)
-        )).all())
-        now = utcnow()
-        for row in rows:
-            row.status = "retry"
-            row.attempts = 0
-            row.available_at = now
-            row.lease_until = None
-            row.last_error = None
-        await session.flush()
-        return len(rows)
+            .values(
+                status="retry", attempts=0, available_at=utcnow(),
+                lease_until=None, last_error=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(result.rowcount or 0)
 
     @staticmethod
     async def claim_batch(session: AsyncSession) -> list[SupportOutbox]:
