@@ -19,6 +19,9 @@ test('admin provider routes preserve revision and idempotency through MFA retry'
     const path = new URL(req.url()).pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/admin-app/control.html') return route.fulfill({ contentType: 'text/html', body: readFileSync(new URL('control.html', adminRoot), 'utf8') });
+    if (path === '/admin-app/support-inbox.js') return route.fulfill({
+      contentType: 'application/javascript', body: readFileSync(new URL('support-inbox.js', adminRoot), 'utf8'),
+    });
     if (path === '/admin-app/control.js') return route.fulfill({ contentType: 'application/javascript', body: readFileSync(new URL('control.js', adminRoot), 'utf8') });
     if (path.endsWith('.css')) return route.fulfill({ contentType: 'text/css', body: readFileSync(new URL(path.split('/').pop(), adminRoot), 'utf8') });
     if (path === '/api/v1/admin/auth/login') return json({ token: 'test-token', mfa_verified: true });

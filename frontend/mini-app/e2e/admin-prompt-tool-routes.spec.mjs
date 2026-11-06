@@ -23,6 +23,9 @@ async function openRuntime(page, { expireFirstWrite = true } = {}) {
     if (url.hostname === 'telegram.org') return route.fulfill({ contentType: 'application/javascript', body: '' });
     if (url.origin !== origin) return route.abort();
     if (path === '/admin-app/control.html') return route.fulfill({ contentType: 'text/html', body: readFileSync(new URL('control.html', adminRoot), 'utf8') });
+    if (path === '/admin-app/support-inbox.js') return route.fulfill({
+      contentType: 'application/javascript', body: readFileSync(new URL('support-inbox.js', adminRoot), 'utf8'),
+    });
     if (path === '/admin-app/control.js') return route.fulfill({ contentType: 'application/javascript', body: readFileSync(new URL('control.js', adminRoot), 'utf8') });
     if (path.endsWith('.css')) return route.fulfill({ contentType: 'text/css', body: readFileSync(new URL(path.split('/').pop(), adminRoot), 'utf8') });
     if (path === '/api/v1/admin/auth/login') return json({ token: 'synthetic-admin-token', mfa_verified: true });

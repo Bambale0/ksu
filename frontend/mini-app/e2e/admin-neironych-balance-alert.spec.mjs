@@ -20,6 +20,9 @@ test('admin can change the Neironych balance alert policy after MFA step-up', as
     if (path === '/admin-app/control.html') return route.fulfill({
       contentType: 'text/html', body: readFileSync(new URL('control.html', adminRoot), 'utf8'),
     });
+    if (path === '/admin-app/support-inbox.js') return route.fulfill({
+      contentType: 'application/javascript', body: readFileSync(new URL('support-inbox.js', adminRoot), 'utf8'),
+    });
     if (path === '/admin-app/control.js') return route.fulfill({
       contentType: 'application/javascript', body: readFileSync(new URL('control.js', adminRoot), 'utf8'),
     });

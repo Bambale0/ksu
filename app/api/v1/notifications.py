@@ -8,6 +8,7 @@ from sqlalchemy import func, select, update
 from app.api.deps import CurrentUserDep, SessionDep
 from app.db.models import Notification
 from app.services.generation_progress import GENERATION_PROGRESS_KIND
+from app.services.support import SUPPORT_INCOMING_KIND, SupportConversationService
 from app.services.neironych_balance_alerts import BALANCE_NOTIFICATION_KINDS, NeironychBalanceAlertService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -44,8 +45,11 @@ async def list_notifications(
         Notification.kind != GENERATION_PROGRESS_KIND,
     )
     can_read_balance = await _can_read_provider_balance(session, user)
+    can_read_support = await SupportConversationService.authorized_operator(session, user.id, lock=True)
     if not can_read_balance:
         statement = statement.where(Notification.kind.not_in(_SENSITIVE_BALANCE_KINDS))
+    if not can_read_support:
+        statement = statement.where(Notification.kind != SUPPORT_INCOMING_KIND)
     if unread_only:
         statement = statement.where(Notification.is_read.is_(False))
     rows = list(
@@ -63,6 +67,7 @@ async def list_notifications(
                     Notification.kind != GENERATION_PROGRESS_KIND,
                     Notification.is_read.is_(False),
                     *([] if can_read_balance else [Notification.kind.not_in(_SENSITIVE_BALANCE_KINDS)]),
+                    *([] if can_read_support else [Notification.kind != SUPPORT_INCOMING_KIND]),
                 )
             )
         )
@@ -93,6 +98,10 @@ async def mark_notification_read(
         raise HTTPException(status_code=404, detail="Notification not found")
     if item.kind in _SENSITIVE_BALANCE_KINDS and not await _can_read_provider_balance(session, user):
         raise HTTPException(status_code=404, detail="Notification not found")
+    if item.kind == SUPPORT_INCOMING_KIND and not await SupportConversationService.authorized_operator(
+        session, user.id, lock=True,
+    ):
+        raise HTTPException(status_code=404, detail="Notification not found")
     if not item.is_read:
         item.is_read = True
         await session.commit()
@@ -112,6 +121,8 @@ async def mark_all_notifications_read(
     )
     if not can_read_balance:
         stmt = stmt.where(Notification.kind.not_in(_SENSITIVE_BALANCE_KINDS))
+    if not await SupportConversationService.authorized_operator(session, user.id, lock=True):
+        stmt = stmt.where(Notification.kind != SUPPORT_INCOMING_KIND)
     result = await session.execute(stmt.values(is_read=True))
     await session.commit()
     return {"updated": int(result.rowcount or 0)}

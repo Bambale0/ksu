@@ -71,3 +71,66 @@ All mandatory sources were accessible and inspected remotely; no skills reposito
 - Audit baseline, production evidence and ownership recorded before changing production code.
 - Backend/support owner: support_audit. UI/admin inventory owner: admin_audit. Root: integration, runtime evidence, execution ledger and release/PR coordination. Independent reviewer: engineering_guidance.
 - Implementation and tests pending.
+
+## Expanded support-message triage and payment audit (2026-11-06)
+
+The user explicitly reinforced: check the actual support messages and fix all confirmed issues. Read-only review found 21 incoming messages in 17 open tickets. Categories include missing payment credit, duplicate generation charges/no result, video download, missing history, input/age personalization and generative quality/refund requests. Private message text, user IDs and invoice IDs stay out of Git.
+
+Runtime evidence:
+- All succeeded payments for these ticket users have exactly the expected payment-ledger entry; no succeeded-without-credit case was found.
+- One recent card payment remains pending because its frozen local amount is 543.50 RUB while the same authoritative Lava invoice is COMPLETED at 543.48 RUB for a 500-ROX package. This is a confirmed contract mismatch, not evidence of an unpaid invoice.
+- Current generation rows for the ticket users are terminal; all succeeded rows have a result URL. Actual file availability and duplicate-charge/refund evidence require further targeted checks; do not equate a stored URL with delivery.
+- Open PR #554 (head b17030090ec4ca0264bc56c8e61cd81cf48dc96d) already contains a reviewed fixed-offer/amountTotal integrity fix and deterministic retry termination. Inspect/adapt this existing work against current main instead of implementing a competing unreviewed money rule.
+- Admin payment recheck/reprocess and legacy reconcile dispatch CardPaymentService or PaymentService, while the payment worker also supports Payment2328Service. Verify with failing service/API regressions before adding the missing 2328 dispatch.
+
+Payment slice constraints and acceptance:
+1. Validate authoritative identity, currency and exact amount; no new rounding tolerance, blind expected-amount rewrite, manual SQL credit, duplicate invoice or unapproved real payment/refund.
+2. Preserve reviewed invoice-integrity behavior from #554, newer main changes, settled/refund-review guards, idempotency and safe audit evidence.
+3. Provide a concrete guarded existing-admin/MFA path for a historic paid mismatch; do not forge sessions, confirmation or step-up evidence. Operator compensation/refund decisions are distinct from code repair.
+4. Test fixed/dynamic offers, mismatched/conflicting/non-finite amounts, terminal vs transient lookup, concurrent replay and all supported admin payment providers in the isolated test environment.
+5. No schema or price/configuration mutation planned. Record unresolved individual financial/quality cases honestly rather than automatically closing support tickets.
+
+## Generation refund boundary audit before repair
+
+Read-only per-generation ledger inspection of the duplicate-charge ticket shows one debit per operation; all seven failed operations already have automatic refunds and all nine successful operations are marked sent. Do not refund them again.
+
+A separate source defect is confirmed: AdminGenerationOperationService.refund_operation detects only reference_type=generation_refund, whereas GenerationProviderService.fail_and_refund writes kind=generation_refund with reference_type=generation and the canonical generation:<id>:refund key. The admin path uses a different key and can miss the automatic refund. It also lacks the generation row lock used by the worker.
+
+Root owns this minimal slice: first reproduce automatic→admin, admin→automatic, legacy-admin→automatic and concurrent attempts at real service seams in isolated PostgreSQL; then share detection of both persisted refund shapes, serialize on the same generation row, reuse the canonical refund effect, and retain AdminPolicy/MFA/confirmation/command audit. No production refund, wallet update, or historical transaction rewrite. Existing no-charge/free replay and repeated admin commands must remain no-ops. Test actual ledger balance and refund count, not only returned status.
+
+## Session revocation boundary audit (before correction)
+
+- Full admin inventory found two handlers for the same DELETE `/api/v1/admin/security/sessions/{session_id}`. Router registration selects the legacy account handler first, shadowing the audited handler with step-up MFA and an operator reason.
+- Scope: remove only the duplicate weaker handler; preserve the existing canonical endpoint and its session lock/audit; require a nonblank reason after whitespace normalization; bring the main admin form into the same reason/MFA contract.
+- Regression plan: actual composed router must have one route; stale MFA, missing/blank reason, and missing permission must not revoke; a fresh authorized session must revoke and retain the operator reason in session/audit. Test against isolated fixtures only, never revoke real sessions.
+
+## Duplicate support reads audit (before correction)
+
+- Route inventory found legacy GET support list/detail in `admin_capabilities.py` shadowed by `admin_operations.py`. They already delegate to the support service, but keep obsolete query signatures and an ambiguous OpenAPI contract.
+- Scope: remove redundant handlers and route-only imports/dependencies; retain the canonical permission-checked main/control support service and externally unchanged paths. Verify unique composed GET routes and existing capability tests.
+- Read-only runtime recipient validation: one configured operator, one matching account, one active account/user with effective support-read permission. No identifiers are published here.
+
+## Concurrent message ordering follow-up (before correction)
+
+- PostgreSQL `now()` in the default message timestamp reflects transaction start, which may precede a wait for the ticket lock. Thus a later serialized reply can receive an earlier timestamp and invert newest-message / needs-reply semantics.
+- Use one wall-clock timestamp after the ticket lock for the new message and ticket activity in both customer and admin paths. Verify the delayed-transaction ordering with controlled concurrency in the isolated database.
+
+## Review checkpoint
+
+- Automatic/admin generation refunds: meaningful regression RED 5 failed / 1 passed; focused GREEN including prior financial safety 9 passed. Shared generation row lock and canonical refund key now coordinate both paths; legacy ledger shapes remain recognizable. Independent standards review: no blocker.
+- Card invoice integrity: 19 failed / 1 passed RED, then 20 passed GREEN. Provider 2328 admin dispatch: 3 failed / 5 passed RED, then 8 passed GREEN. No balance changes were made in production.
+- Support: 13 initial regressions RED then GREEN; 17 support regressions plus existing related compatibility tests passed (110 total), before adding the duplicate-route contract and concurrent-timestamp follow-up. Independent privacy/delivery review found no blocker; Telegram remains at-least-once across an ambiguous transport timeout.
+- Session revocation: fixture-only failures were corrected without product edits; meaningful RED 6 failed / 1 passed reproduced the shadowed weaker route, stale-MFA acceptance and lost reason. Canonical handler now retains the legacy response boolean and normalizes the audit reason. Independent review: no blocker.
+- Historical confirmed-paid invoice mismatch remains unresolved operationally. Existing recheck/reprocess rejects the mismatched invoice; raw wallet adjustment is unsafe. A new explicitly approved payment-domain acceptance would need fresh MFA, exact invoice/amount/currency/ROX evidence, atomic command/audit/credit, and defined later refund handling. Do not imply that the prevention fix settled this existing customer payment.
+
+## Download authentication boundary audit (before correction)
+
+- Two support complaints concern saving videos. The exact screen they used is not known, so their historical cause is not assumed.
+- Current Downloads UI independently has a reproducible defect: a plain anchor targets the protected media download endpoint. Telegram authentication for that endpoint requires `X-Telegram-Init-Data`, which a browser anchor cannot send. Existing E2E checks only the href rather than a download.
+- Scope: reproduce the real unauthenticated-navigation failure; repair Downloads using the established authenticated/signed-media contract; preserve media ownership, token expiry and private-media boundaries. Never put Telegram init data into a URL or remove endpoint authentication.
+- Verification: a real click must initiate a successful download with the intended media rather than merely construct a URL; cover relevant auth/signature/ownership failure paths. No paid generation, real user message, provider mutation or historical file rewrite.
+
+## Admin visibility boundary audit (before correction)
+
+- Screenshot QA found that author CSS sets `display:grid` on login/shell containers but does not preserve the native `hidden` attribute. A successful login can leave an entire login panel visible above the intended mobile admin page; hidden step-up controls are affected by the same CSS cascade.
+- Scope: restore `[hidden] { display: none !important; }` in the shared admin stylesheet; test actual visible state after login in both surfaces, including MFA controls. Do not change authentication or permission checks.

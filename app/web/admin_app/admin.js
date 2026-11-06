@@ -333,6 +333,7 @@
     if (field.max != null) control.max = field.max;
     if (field.step != null) control.step = field.step;
     if (field.maxLength != null) control.maxLength = field.maxLength;
+    if (field.minLength != null) control.minLength = field.minLength;
     if (field.type === "select" && field.value != null) control.value = field.value;
     label.appendChild(control);
     if (field.help) label.appendChild(el("small", "", field.help));
@@ -670,45 +671,24 @@
     dom.adminView.replaceChildren(panel("Платежи", table(cols, data.items || []), filter));
   }
 
-  async function renderSupport(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
-    if (filters.status) params.set("status", filters.status);
-    const data = await api(`/api/v1/admin/support/tickets?${params}`);
-    const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]] }], renderSupport);
-    const cols = [
-      ["Тикет", (row) => { const c = el("div", "cell-main"); c.append(el("strong", "", row.topic), el("small", "mono", row.id), el("small", "", `user ${row.user_id}`)); return c; }],
-      ["Статус", (row) => statusBadge(row.status)],
-      ["Обновлён", (row) => formatDate(row.updated_at)],
-      ["", (row) => actionsCell(button("Открыть", "table-action", () => { state.currentTicketId = row.id; void renderSupportDetail(row.id); }))],
-    ];
-    dom.adminView.replaceChildren(panel("Очередь поддержки", table(cols, data.items || []), filter));
+  let supportInbox = null;
+  function getSupportInbox() {
+    if (!supportInbox) supportInbox = window.createSupportInbox({
+      container: dom.adminView, api, base: "/api/v1/admin/support/tickets",
+      statusSuffix: "/status", statusMethod: "PATCH", replySuffix: "/messages",
+      isActive: () => Boolean(state.token) && state.view === "support",
+      canManage: () => hasPermission("support.manage"),
+      onSelect: (id) => { state.currentTicketId = id; },
+    });
+    return supportInbox;
+  }
+
+  async function renderSupport() {
+    return getSupportInbox().list();
   }
 
   async function renderSupportDetail(ticketId) {
-    loading();
-    const ticket = await api(`/api/v1/admin/support/tickets/${ticketId}`);
-    state.currentTicketId = ticketId;
-    const controls = actionsCell(button("← К очереди", "ghost", () => { state.currentTicketId = null; void renderSupport(); }));
-    if (hasPermission("support.manage") && ticket.status !== "closed") {
-      controls.appendChild(button("Ответить", "table-action", () => openForm({
-        title: "Ответ пользователю", fields: [{ name: "body", label: "Сообщение", type: "textarea", maxLength: 4000 }],
-        onSubmit: async ({ body }) => { await api(`/api/v1/admin/support/tickets/${ticketId}/messages`, { method: "POST", body: JSON.stringify({ body }) }); await renderSupportDetail(ticketId); },
-      })));
-      controls.appendChild(button("Изменить статус", "table-action", () => openForm({
-        title: "Статус обращения",
-        fields: [{ name: "status", label: "Статус", type: "select", options: [["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]], value: ticket.status }],
-        onSubmit: async ({ status }) => { await api(`/api/v1/admin/support/tickets/${ticketId}/status`, { method: "PATCH", body: JSON.stringify({ status }) }); await renderSupportDetail(ticketId); },
-      })));
-    }
-    const thread = el("div", "thread panel-body");
-    for (const message of ticket.messages || []) {
-      const card = el("div", `message${message.is_admin ? " admin" : ""}`);
-      const head = el("div", "message-head");
-      head.append(el("strong", "", message.is_admin ? "Администратор" : "Пользователь"), el("small", "muted", formatDate(message.created_at)));
-      card.append(head, el("p", "", message.body));
-      thread.appendChild(card);
-    }
-    dom.adminView.replaceChildren(controls, panel(`${ticket.topic} · ${statusLabel(ticket.status)}`, thread));
+    return getSupportInbox().open(ticketId);
   }
 
   async function renderWithdrawals(filters = {}) {
@@ -921,7 +901,19 @@
         ["Сессия", (row) => el("span", "mono", row.id)], ["Админ", (row) => el("span", "mono", row.admin_id)],
         ["Последняя активность", (row) => formatDate(row.last_seen_at)], ["Защита", (row) => statusBadge(row.mfa_verified ? "active" : "inactive")],
         ["Подтверждение до", (row) => formatDate(row.step_up_until)],
-        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Отозвать", "table-action dangerous", async () => { try { await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE" }); await renderSecurity(); } catch (error) { toast(error.message); } })) : ""],
+        ["", (row) => hasPermission("sessions.manage") ? actionsCell(button("Отозвать", "table-action dangerous", () => openForm({
+          title: "Отзыв сессии администратора",
+          submitLabel: "Отозвать сессию",
+          fields: [{ name: "reason", label: "Причина отзыва", type: "textarea", minLength: 3, maxLength: 500 }],
+          onSubmit: async ({ reason }) => {
+            const value = reason.trim();
+            if (value.length < 3) throw new Error("Укажите причину: не менее 3 символов.");
+            await executeOrStepUp("Отозвать выбранную сессию администратора", async () => {
+              await api(`/api/v1/admin/security/sessions/${row.id}`, { method: "DELETE", body: JSON.stringify({ reason: value }) });
+              await renderSecurity();
+            });
+          },
+        }))) : ""],
       ];
       dom.adminView.appendChild(panel("Активные сессии", table(cols, sessions.items || [])));
     }
@@ -1064,7 +1056,11 @@
     dom.authView.hidden = true;
     dom.adminShell.hidden = false;
     const preferred = hasPermission("dashboard.read") ? "dashboard" : NAV.find(([, , , permission]) => hasPermission(permission))?.[0] || "sessions";
-    setView(preferred);
+    const ticketId = new URLSearchParams(window.location.search).get("support_ticket");
+    if (ticketId && /^[0-9a-f-]{36}$/i.test(ticketId) && hasPermission("support.read")) {
+      state.currentTicketId = ticketId;
+      setView("support");
+    } else { setView(preferred); }
   }
 
   async function logout() {
@@ -1079,6 +1075,7 @@
     state.pendingSensitive = null;
     state.currentUserId = null;
     state.currentTicketId = null;
+    supportInbox?.reset();
     dom.adminShell.hidden = true;
     dom.authView.hidden = false;
     dom.sidebar.classList.remove("open");

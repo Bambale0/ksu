@@ -13,6 +13,7 @@ from app.db.models import Payment
 from app.providers.payments import PaymentProviderError
 from app.services.admin_security import AdminAuditService
 from app.services.card_payments import CardPaymentService
+from app.services.payment_2328 import Payment2328Service
 from app.services.payment_refunds import PaymentRefundService
 from app.services.payments import (
     PaymentIdempotencyConflict,
@@ -47,6 +48,8 @@ async def reconcile_payment(
     try:
         if payment.provider == CardPaymentService.PROVIDER:
             updated = await CardPaymentService.reconcile(session, payment_id=payment.id)
+        elif payment.provider == Payment2328Service.PROVIDER:
+            updated = await Payment2328Service.reconcile(session, payment_id=payment.id)
         else:
             updated = await PaymentService.reconcile(session, payment_id=payment.id)
     except PaymentProviderError as exc:

@@ -5,7 +5,7 @@ import logging
 import uuid
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -53,10 +53,12 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
             await session.commit()
             return
         try:
-            sent = await bot.send_message(
-                chat_id=user.telegram_id,
-                text=f"Ответ поддержки\n\n{message.body}",
-            )
+            async with asyncio.timeout(max(1, settings.support_outbox_lease_seconds / 2)):
+                sent = await bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"Ответ поддержки\n\n{message.body}",
+                    parse_mode=None,
+                )
         except TelegramForbiddenError as exc:
             SupportOutboxDeliveryService.terminal(
                 row,
@@ -69,8 +71,17 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
                 error=f"telegram_retry_after:{exc}",
                 retry_after=int(exc.retry_after),
             )
+        except TelegramBadRequest as exc:
+            if "chat not found" in str(exc).lower():
+                SupportOutboxDeliveryService.terminal(
+                    row, status="undeliverable", error=f"telegram_unreachable:{exc}",
+                )
+            else:
+                SupportOutboxDeliveryService.retry(row, error=f"telegram_api:{exc}")
         except TelegramAPIError as exc:
             SupportOutboxDeliveryService.retry(row, error=f"telegram_api:{exc}")
+        except TimeoutError:
+            SupportOutboxDeliveryService.retry(row, error="telegram_timeout")
         except Exception as exc:  # noqa: BLE001
             logger.exception("admin_support_delivery_error", extra={"outbox_id": str(row.id)})
             SupportOutboxDeliveryService.retry(
@@ -80,6 +91,14 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
         else:
             SupportOutboxDeliveryService.sent(row, external_message_id=str(sent.message_id))
         await session.commit()
+        logger.info(
+            "support_reply_delivery_updated",
+            extra={
+                "ticket_id": str(ticket.id), "message_id": str(message.id),
+                "outbox_id": str(row.id), "delivery_status": row.status,
+                "attempts": row.attempts,
+            },
+        )
 
 
 async def run() -> None:

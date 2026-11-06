@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, or_, select
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.admin_models import NotificationCampaignDelivery, SupportOutbox
+from app.db.models import SupportTicket
 
 
 def utcnow() -> datetime:
@@ -18,6 +20,36 @@ def retry_delay(attempts: int) -> int:
 
 
 class SupportOutboxDeliveryService:
+    @staticmethod
+    async def requeue_reachable_user_deliveries(
+        session: AsyncSession, *, user_id: uuid.UUID,
+    ) -> int:
+        """Re-arm only this user's known blocked/missing-chat replies on contact."""
+        rows = list((await session.scalars(
+            select(SupportOutbox)
+            .join(SupportTicket, SupportTicket.id == SupportOutbox.ticket_id)
+            .where(
+                SupportTicket.user_id == user_id,
+                SupportOutbox.status.in_(["failed", "undeliverable"]),
+                or_(
+                    SupportOutbox.last_error.ilike("%chat not found%"),
+                    SupportOutbox.last_error.ilike("%bot was blocked%"),
+                ),
+            )
+            .order_by(SupportOutbox.created_at.desc(), SupportOutbox.id.desc())
+            .limit(max(1, settings.support_outbox_batch_size))
+            .with_for_update(of=SupportOutbox, skip_locked=True)
+        )).all())
+        now = utcnow()
+        for row in rows:
+            row.status = "retry"
+            row.attempts = 0
+            row.available_at = now
+            row.lease_until = None
+            row.last_error = None
+        await session.flush()
+        return len(rows)
+
     @staticmethod
     async def claim_batch(session: AsyncSession) -> list[SupportOutbox]:
         now = utcnow()

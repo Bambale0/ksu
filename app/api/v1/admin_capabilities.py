@@ -35,10 +35,6 @@ AdminPricingWriteDep = Annotated[
     AdminContext,
     Depends(require_permission("pricing.manage", step_up=True)),
 ]
-AdminSupportReadDep = Annotated[
-    AdminContext,
-    Depends(require_permission("support.read")),
-]
 AdminSupportWriteDep = Annotated[
     AdminContext,
     Depends(require_permission("support.manage")),
@@ -297,39 +293,6 @@ async def web_admin_tariffs_publish(
         ),
     )
     return {**result, "idempotency_replayed": replayed}
-
-
-@router.get("/support/tickets")
-async def web_admin_support_tickets(
-    context: AdminSupportReadDep,
-    session: SessionDep,
-    status_filter: str | None = Query(default=None, alias="status", max_length=24),
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0, le=100_000),
-) -> dict[str, Any]:
-    return await AdminSupportService.list_tickets(
-        session,
-        admin=context.account,
-        status=status_filter,
-        limit=limit,
-        offset=offset,
-    )
-
-
-@router.get("/support/tickets/{ticket_id}")
-async def web_admin_support_ticket(
-    ticket_id: uuid.UUID,
-    context: AdminSupportReadDep,
-    session: SessionDep,
-) -> dict[str, Any]:
-    try:
-        return await AdminSupportService.get_ticket(
-            session,
-            admin=context.account,
-            ticket_id=ticket_id,
-        )
-    except Exception as exc:
-        raise _domain_error(exc) from exc
 
 
 @router.post("/support/tickets/{ticket_id}/assign")

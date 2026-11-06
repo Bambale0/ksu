@@ -4,7 +4,8 @@
 - Confirmed read-only incident: a customer message was accepted with HTTP 201 and persisted, but no operator notification exists; new messages do not advance ticket activity. Primary admin replies bypass the durable SupportOutbox path. Both admin details truncate the oldest 500 messages; main UI cannot reopen closed tickets.
 - Reuse current RBAC/MFA/audit/command ledger, notification/outbox workers, recipient configuration and schema. Preserve Mini-App-only bot routing/direct contact and all private ownership boundaries. No live test sends, historical replay, balance/provider changes or production writes.
 - Acceptance, 14-point fresh audit, complete verification matrix, guidance, roles and progress: [Support/admin execution ledger](docs/agents/EXECUTION/support-inbox-admin-audit-20261106.md).
-- Status: audit recorded before production-code edits; isolated regression-driven fixes and whole-admin inventory next. Independent review and exact-head CI remain completion gates.
+- Status: support delivery/chat, financial idempotency/provider dispatch, and session-MFA fixes implemented after regression RED. Focused support 20 passed, payment compatibility 79 passed, session/refund compatibility 41 passed; admin browser checks cover both surfaces. Independent standards/spec reviews have no open blocker for these slices. Download authentication fix is being verified; exact-head CI and production release verification remain pending.
+- Admin inventory and exercised/source-only distinctions: [Capability coverage matrix](docs/agents/EXECUTION/support-admin-capability-matrix-20261106.md). The confirmed historic paid-price-mismatch requires a separately audited financial resolution; no wallet change has been made.
 
 ## Active Fix Execution — Mini App audit recovery and UI (2026-11-04)
 

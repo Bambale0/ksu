@@ -10,6 +10,7 @@ from app.api.deps import CurrentUserDep, SessionDep
 from app.bot.support_links import direct_support_handle, normalize_direct_support_url
 from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
+from app.services.support import SupportConversationService
 
 router = APIRouter(prefix="/support", tags=["support"])
 
@@ -81,7 +82,9 @@ async def create_ticket(
     ticket = SupportTicket(user_id=user.id, topic=topic)
     session.add(ticket)
     await session.flush()
-    session.add(SupportMessage(ticket_id=ticket.id, user_id=user.id, body=message))
+    await SupportConversationService.add_customer_message(
+        session, ticket=ticket, user=user, body=message,
+    )
     await session.commit()
     await session.refresh(ticket)
     return _ticket_view(ticket)
@@ -159,8 +162,9 @@ async def reply_ticket(
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=422, detail="Message is required")
-    row = SupportMessage(ticket_id=ticket.id, user_id=user.id, body=message)
-    session.add(row)
+    row = await SupportConversationService.add_customer_message(
+        session, ticket=ticket, user=user, body=message,
+    )
     await session.commit()
     await session.refresh(row)
     return {

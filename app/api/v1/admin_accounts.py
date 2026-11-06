@@ -25,7 +25,6 @@ AdminsManageDep = Annotated[
     AdminContext,
     Depends(require_permission("admins.manage", step_up=True)),
 ]
-SessionsManageDep = Annotated[AdminContext, Depends(require_permission("sessions.manage"))]
 
 
 class AdminCreateRequest(BaseModel):
@@ -248,33 +247,3 @@ async def update_admin(
     )
     await session.commit()
     return _admin_view(target, user)
-
-
-@router.delete("/security/sessions/{session_id}")
-async def revoke_any_session(
-    session_id: uuid.UUID,
-    request: Request,
-    context: SessionsManageDep,
-    session: SessionDep,
-) -> dict[str, bool]:
-    target = await session.scalar(
-        select(AdminSession).where(AdminSession.id == session_id).with_for_update()
-    )
-    if target is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if target.revoked_at is None:
-        target.revoked_at = utcnow()
-        target.revoke_reason = "revoked_by_admin"
-    await AdminAuditService.record(
-        session,
-        action="admin.session.revoked_by_admin",
-        outcome="success",
-        admin=context.account,
-        admin_session=context.session,
-        request=request,
-        resource_type="admin_session",
-        resource_id=str(target.id),
-        metadata={"target_admin_id": str(target.admin_id)},
-    )
-    await session.commit()
-    return {"revoked": True}

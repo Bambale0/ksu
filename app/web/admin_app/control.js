@@ -6,6 +6,7 @@
     token: null,
     me: null,
     view: "overview",
+    currentTicketId: null,
     stepResolve: null,
     stepReject: null,
   };
@@ -403,7 +404,7 @@
       if (state.view === "users") return await renderUsers();
       if (state.view === "payments") return await renderPayments();
       if (state.view === "operations") return await renderOperations();
-      if (state.view === "support") return await renderSupport();
+      if (state.view === "support") return state.currentTicketId ? await renderTicket(state.currentTicketId) : await renderSupport();
       if (state.view === "pricing") return await renderPricing();
       if (state.view === "cms") return await renderCms();
       if (state.view === "campaigns") return await renderCampaigns();
@@ -565,12 +566,16 @@
             title: `Возврат ${row.id}`,
             fields: [{ name: "reason", label: "Причина", type: "textarea", maxLength: 500 }],
             onSubmit: async ({ reason }) => {
-              await mutate(`/api/v1/admin/control/operations/${row.id}/refund`, {
+              const result = await mutate(`/api/v1/admin/control/operations/${row.id}/refund`, {
                 body: { reason },
                 sensitive: true,
                 label: `Вернуть оплату по операции ${row.id}?`,
               });
-              toast("Возврат выполнен", "ok");
+              if (!result) return false;
+              const notice = result.status === "already_refunded" ? "Возврат уже был выполнен"
+                : result.status === "no_charge" ? "Списания по операции нет — возврат не требуется"
+                : "Возврат выполнен";
+              toast(notice, "ok");
               await renderOperations();
             },
           })),
@@ -580,88 +585,24 @@
     dom.controlView.replaceChildren(card("Операции генерации", operationTable));
   }
 
+  let supportInbox = null;
+  function getSupportInbox() {
+    if (!supportInbox) supportInbox = window.createSupportInbox({
+      container: dom.controlView, api, base: "/api/v1/admin/control/tickets",
+      statusSuffix: "/update", statusMethod: "POST", replySuffix: "/reply", assignSuffix: "/assign",
+      isActive: () => Boolean(state.token) && state.view === "support",
+      canManage: () => (state.me?.permissions || []).some((permission) => permission === "*" || permission === "support.manage"),
+      onSelect: (id) => { state.currentTicketId = id; },
+    });
+    return supportInbox;
+  }
+
   async function renderSupport() {
-    const data = await api("/api/v1/admin/control/tickets?limit=100");
-    const ticketTable = table(
-      ["Обращение", "Тема", "Статус", "Приоритет", "Ответственный", "Действия"],
-      data.items || [],
-      (row) => [
-        row.id,
-        row.topic,
-        statusLabel(row.status),
-        row.priority,
-        row.assigned_admin_id || "—",
-        actions(button("Открыть", "table-action", () => void renderTicket(row.id))),
-      ],
-    );
-    dom.controlView.replaceChildren(card("Обращения в поддержку", ticketTable));
+    return getSupportInbox().list();
   }
 
   async function renderTicket(ticketId) {
-    loading();
-    try {
-      const ticket = await api(`/api/v1/admin/control/tickets/${ticketId}`);
-      const messageList = node("div", "card-list");
-      for (const message of ticket.messages || []) {
-        const item = node("article", "list-card");
-        item.append(
-          node("strong", "", message.is_admin ? "Администратор" : "Пользователь"),
-          node("p", "", message.body),
-          node("small", "muted", formatDate(message.created_at)),
-        );
-        messageList.appendChild(item);
-      }
-      const controls = actions(
-        button("Назначить", "table-action", () => openForm({
-          title: "Назначить обращение",
-          fields: [{ name: "assigned_admin_id", label: "ID администратора (пусто = снять назначение)", required: false }],
-          onSubmit: async ({ assigned_admin_id }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/assign`, {
-              body: { assigned_admin_id: assigned_admin_id || null },
-              confirm: false,
-            });
-            await renderTicket(ticketId);
-          },
-        })),
-        button("Update", "table-action", () => openForm({
-          title: "Update ticket",
-          fields: [
-            { name: "status", label: "Status", type: "select", value: ticket.status, options: [["open", "open"], ["in_progress", "in_progress"], ["resolved", "resolved"], ["closed", "closed"]] },
-            { name: "priority", label: "Priority", type: "select", value: ticket.priority, options: [["low", "low"], ["normal", "normal"], ["high", "high"], ["urgent", "urgent"]] },
-          ],
-          onSubmit: async ({ status, priority }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/update`, {
-              body: { status, priority },
-              confirm: false,
-            });
-            await renderTicket(ticketId);
-          },
-        })),
-        button("Reply", "table-action", () => openForm({
-          title: "Queue support reply",
-          fields: [{ name: "body", label: "Ответ", type: "textarea", maxLength: 4000 }],
-          onSubmit: async ({ body }) => {
-            await mutate(`/api/v1/admin/control/tickets/${ticketId}/reply`, {
-              body: { body },
-              label: `Поставить ответ по ticket ${ticketId} в durable outbox?`,
-            });
-            toast("Ответ поставлен в durable outbox", "ok");
-            await renderTicket(ticketId);
-          },
-        })),
-        button("← Tickets", "ghost", () => void renderSupport()),
-      );
-      dom.controlView.replaceChildren(
-        card(`Ticket ${ticketId}`, pre({
-          user_id: ticket.user_id,
-          topic: ticket.topic,
-          status: ticket.status,
-          priority: ticket.priority,
-          assigned_admin_id: ticket.assigned_admin_id,
-        }), controls),
-        card("Messages", messageList),
-      );
-    } catch (error) { errorView(error); }
+    return getSupportInbox().open(ticketId);
   }
 
   async function renderPricing() {
@@ -1206,7 +1147,12 @@
       dom.controlShell.hidden = false;
       dom.controlOtp.value = "";
       dom.controlRecovery.value = "";
-      setView("overview");
+      const ticketId = new URLSearchParams(window.location.search).get("support_ticket");
+      const mayReadSupport = (state.me.permissions || []).some((permission) => permission === "*" || permission === "support.read");
+      if (ticketId && /^[0-9a-f-]{36}$/i.test(ticketId) && mayReadSupport) {
+        state.currentTicketId = ticketId;
+        setView("support");
+      } else { setView("overview"); }
     } catch (error) {
       state.token = null;
       state.me = null;
@@ -1225,6 +1171,8 @@
     dom.controlShell.hidden = true;
     dom.controlAuth.hidden = false;
     dom.controlView.replaceChildren();
+    state.currentTicketId = null;
+    supportInbox?.reset();
     setMessage(dom.controlLoginMessage, "Сессия завершена.", "ok");
   }
 

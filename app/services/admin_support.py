@@ -1,20 +1,77 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.db.admin_models import SupportOutbox, SupportTicketAdminState
-from app.db.models import AdminAccount, AdminSession, SupportMessage, SupportTicket
+from app.db.models import AdminAccount, AdminSession, SupportMessage, SupportTicket, User
 from app.services.admin_commands import AdminCommandLedger
 from app.services.admin_policy import AdminPolicy
 from app.services.admin_security import AdminAuditService
 
 SupportStatus = Literal["open", "in_progress", "resolved", "closed"]
 SupportPriority = Literal["low", "normal", "high", "urgent"]
+
+
+def _ticket_view(
+    ticket: SupportTicket,
+    state: SupportTicketAdminState | None,
+    user: User,
+    latest: SupportMessage | None,
+) -> dict[str, Any]:
+    activity_at = max(ticket.updated_at, latest.created_at) if latest else ticket.updated_at
+    return {
+        "id": str(ticket.id),
+        "user_id": str(ticket.user_id),
+        "user": {
+            "id": str(user.id),
+            "telegram_id": user.telegram_id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+        },
+        "topic": ticket.topic,
+        "status": ticket.status,
+        "assigned_admin_id": (
+            str(state.assigned_admin_id) if state and state.assigned_admin_id else None
+        ),
+        "priority": state.priority if state else "normal",
+        "created_at": ticket.created_at.isoformat(),
+        "updated_at": activity_at.isoformat(),
+        "needs_reply": bool(
+            latest and not latest.is_admin and ticket.status in {"open", "in_progress"}
+        ),
+        "last_message": {
+            "id": str(latest.id),
+            "body": latest.body[:240],
+            "is_admin": latest.is_admin,
+            "created_at": latest.created_at.isoformat(),
+        } if latest else None,
+    }
+
+
+def _message_view(message: SupportMessage, delivery: SupportOutbox | None) -> dict[str, Any]:
+    return {
+        "id": str(message.id),
+        "sender_user_id": str(message.user_id) if message.user_id else None,
+        "is_admin": message.is_admin,
+        "body": message.body,
+        "created_at": message.created_at.isoformat(),
+        "outbox_id": str(delivery.id) if delivery else None,
+        "delivery_status": delivery.status if delivery else None,
+        "delivery_attempts": delivery.attempts if delivery else 0,
+        "sent_at": delivery.sent_at.isoformat() if delivery and delivery.sent_at else None,
+    }
+
+
+class SupportTicketClosedError(ValueError):
+    pass
 
 
 class AdminSupportService:
@@ -24,42 +81,60 @@ class AdminSupportService:
         *,
         admin: AdminAccount,
         status: str | None = None,
+        q: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "support.read")
-        stmt = (
-            select(SupportTicket, SupportTicketAdminState)
-            .outerjoin(
-                SupportTicketAdminState,
-                SupportTicketAdminState.ticket_id == SupportTicket.id,
-            )
-        )
+        limit = max(1, min(limit, 100))
+        offset = max(0, min(offset, 100_000))
+        filters = []
         if status:
-            stmt = stmt.where(SupportTicket.status == status)
-        rows = (
-            await session.execute(
-                stmt.order_by(SupportTicket.updated_at.desc())
-                .offset(max(0, min(offset, 100_000)))
-                .limit(max(1, min(limit, 100)))
-            )
-        ).all()
+            filters.append(SupportTicket.status == status)
+        if q and q.strip():
+            value = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{value}%"
+            filters.append(or_(
+                SupportTicket.topic.ilike(pattern, escape="\\"),
+                User.username.ilike(pattern, escape="\\"),
+                User.first_name.ilike(pattern, escape="\\"),
+                User.last_name.ilike(pattern, escape="\\"),
+                cast(User.telegram_id, String).ilike(pattern, escape="\\"),
+                cast(User.id, String).ilike(pattern, escape="\\"),
+                cast(SupportTicket.id, String).ilike(pattern, escape="\\"),
+            ))
+        latest_alias = aliased(SupportMessage)
+        latest_id = (
+            select(latest_alias.id)
+            .where(latest_alias.ticket_id == SupportTicket.id)
+            .order_by(latest_alias.created_at.desc(), latest_alias.id.desc())
+            .limit(1)
+            .correlate(SupportTicket)
+            .scalar_subquery()
+        )
+        query = (
+            select(SupportTicket, SupportTicketAdminState, User, SupportMessage)
+            .join(User, User.id == SupportTicket.user_id)
+            .outerjoin(SupportTicketAdminState, SupportTicketAdminState.ticket_id == SupportTicket.id)
+            .outerjoin(SupportMessage, SupportMessage.id == latest_id)
+            .where(*filters)
+        )
+        total = int((await session.scalar(
+            select(func.count()).select_from(SupportTicket)
+            .join(User, User.id == SupportTicket.user_id).where(*filters)
+        )) or 0)
+        rows = (await session.execute(
+            query.order_by(
+                func.greatest(SupportTicket.updated_at, SupportMessage.created_at).desc(),
+                SupportTicket.id.desc(),
+            ).offset(offset).limit(limit)
+        )).all()
         return {
-            "items": [
-                {
-                    "id": str(ticket.id),
-                    "user_id": str(ticket.user_id),
-                    "topic": ticket.topic,
-                    "status": ticket.status,
-                    "assigned_admin_id": (
-                        str(state.assigned_admin_id) if state and state.assigned_admin_id else None
-                    ),
-                    "priority": state.priority if state else "normal",
-                    "created_at": ticket.created_at.isoformat(),
-                    "updated_at": ticket.updated_at.isoformat(),
-                }
-                for ticket, state in rows
-            ]
+            "items": [_ticket_view(ticket, state, user, latest) for ticket, state, user, latest in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(rows) < total,
         }
 
     @staticmethod
@@ -68,42 +143,52 @@ class AdminSupportService:
         *,
         admin: AdminAccount,
         ticket_id: uuid.UUID,
+        message_limit: int = 100,
+        before: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         AdminPolicy.require_permission(admin, "support.read")
         ticket = await session.get(SupportTicket, ticket_id)
         if ticket is None:
             raise LookupError("Ticket not found")
+        user = await session.get(User, ticket.user_id)
+        if user is None:
+            raise LookupError("Ticket user not found")
         state = await session.get(SupportTicketAdminState, ticket_id)
-        messages = list(
-            (
-                await session.scalars(
-                    select(SupportMessage)
-                    .where(SupportMessage.ticket_id == ticket_id)
-                    .order_by(SupportMessage.created_at.asc())
-                    .limit(500)
-                )
-            ).all()
+        latest = await session.scalar(
+            select(SupportMessage).where(SupportMessage.ticket_id == ticket_id)
+            .order_by(SupportMessage.created_at.desc(), SupportMessage.id.desc()).limit(1)
         )
-        return {
-            "id": str(ticket.id),
-            "user_id": str(ticket.user_id),
-            "topic": ticket.topic,
-            "status": ticket.status,
-            "assigned_admin_id": (
-                str(state.assigned_admin_id) if state and state.assigned_admin_id else None
-            ),
-            "priority": state.priority if state else "normal",
-            "messages": [
-                {
-                    "id": str(message.id),
-                    "sender_user_id": str(message.user_id) if message.user_id else None,
-                    "is_admin": message.is_admin,
-                    "body": message.body,
-                    "created_at": message.created_at.isoformat(),
-                }
-                for message in messages
-            ],
-        }
+        statement = (
+            select(SupportMessage, SupportOutbox)
+            .outerjoin(SupportOutbox, SupportOutbox.message_id == SupportMessage.id)
+            .where(SupportMessage.ticket_id == ticket_id)
+        )
+        if before is not None:
+            cursor = await session.scalar(select(SupportMessage).where(
+                SupportMessage.id == before, SupportMessage.ticket_id == ticket_id,
+            ))
+            if cursor is None:
+                raise LookupError("Message cursor not found")
+            statement = statement.where(or_(
+                SupportMessage.created_at < cursor.created_at,
+                and_(SupportMessage.created_at == cursor.created_at, SupportMessage.id < cursor.id),
+            ))
+        limit = max(1, min(message_limit, 500))
+        rows = (await session.execute(
+            statement.order_by(SupportMessage.created_at.desc(), SupportMessage.id.desc()).limit(limit + 1)
+        )).all()
+        has_more = len(rows) > limit
+        page = list(reversed(rows[:limit]))
+        result = _ticket_view(ticket, state, user, latest)
+        result.update({
+            "messages": [_message_view(message, delivery) for message, delivery in page],
+            "messages_total": int((await session.scalar(
+                select(func.count()).select_from(SupportMessage).where(SupportMessage.ticket_id == ticket_id)
+            )) or 0),
+            "messages_has_more": has_more,
+            "messages_before": str(page[0][0].id) if has_more and page else None,
+        })
+        return result
 
     @staticmethod
     async def assign_ticket(
@@ -255,20 +340,25 @@ class AdminSupportService:
             if ticket is None:
                 raise LookupError("Ticket not found")
             if ticket.status == "closed":
-                raise ValueError("Ticket is closed")
+                raise SupportTicketClosedError("Ticket is closed")
+            # Order messages at the lock boundary, not at PostgreSQL transaction start.
+            now = datetime.now(UTC)
             message = SupportMessage(
+                id=uuid.uuid4(),
                 ticket_id=ticket.id,
                 user_id=admin.user_id,
                 is_admin=True,
                 body=text,
+                created_at=now,
             )
             session.add(message)
+            ticket.updated_at = now
             if ticket.status == "open":
                 ticket.status = "in_progress"
-            await session.flush()
             outbox = SupportOutbox(
                 ticket_id=ticket.id,
                 message_id=message.id,
+                message=message,
                 admin_user_id=admin.id,
                 status="pending",
             )

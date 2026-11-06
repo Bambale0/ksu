@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
 from app.api.admin_deps import AdminContext, require_permission
@@ -25,6 +25,14 @@ SessionsManageDep = Annotated[
 
 class SessionRevokeRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        reason = value.strip()
+        if len(reason) < 3:
+            raise ValueError("Reason must contain at least 3 characters")
+        return reason
 
 
 def _integrity_payload(row: AdminAuditLog) -> dict[str, Any]:
@@ -206,7 +214,7 @@ async def revoke_admin_session(
     request: Request,
     context: SessionsManageDep,
     session: SessionDep,
-) -> dict[str, str]:
+) -> dict[str, object]:
     target = await session.scalar(
         select(AdminSession).where(AdminSession.id == session_id).with_for_update()
     )
@@ -228,4 +236,4 @@ async def revoke_admin_session(
         metadata={"target_admin_id": str(target.admin_id)},
     )
     await session.commit()
-    return {"id": str(target.id), "status": "revoked"}
+    return {"id": str(target.id), "status": "revoked", "revoked": True}

@@ -11,6 +11,7 @@ from app.db.models import AdminAccount, Generation, WalletTransaction
 from app.services.admin_commands import AdminCommandLedger, redact_secrets
 from app.services.admin_policy import AdminPolicy
 from app.services.generation_reliability import GenerationOutboxService
+from app.services.generation_refunds import existing_generation_refund
 from app.services.wallet import WalletService
 
 
@@ -210,12 +211,18 @@ class AdminGenerationOperationService:
         payload = {"reason": reason}
 
         async def operation() -> dict[str, Any]:
-            source = await session.get(Generation, operation_id)
+            source = await session.scalar(
+                select(Generation)
+                .where(Generation.id == operation_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
             if source is None:
                 raise LookupError("Operation not found")
             original_charge = await session.scalar(
                 select(WalletTransaction).where(
                     WalletTransaction.reference_type == "generation",
+                    WalletTransaction.amount < 0,
                     WalletTransaction.reference_id == str(source.id),
                     WalletTransaction.user_id == source.user_id,
                 )
@@ -226,12 +233,8 @@ class AdminGenerationOperationService:
                     "refunded_credits": "0",
                     "status": "no_charge",
                 }
-            existing_refund = await session.scalar(
-                select(WalletTransaction).where(
-                    WalletTransaction.reference_type == "generation_refund",
-                    WalletTransaction.reference_id == str(source.id),
-                    WalletTransaction.user_id == source.user_id,
-                )
+            existing_refund = await existing_generation_refund(
+                session, generation_id=source.id, user_id=source.user_id
             )
             if existing_refund is not None:
                 return {
@@ -245,10 +248,10 @@ class AdminGenerationOperationService:
                 session,
                 user_id=source.user_id,
                 amount=amount,
-                kind="generation_admin_refund",
-                reference_type="generation_refund",
+                kind="generation_refund",
+                reference_type="generation",
                 reference_id=str(source.id),
-                idempotency_key=f"admin-operation-refund:{source.id}",
+                idempotency_key=f"generation:{source.id}:refund",
             )
             return {
                 "operation_id": str(source.id),
