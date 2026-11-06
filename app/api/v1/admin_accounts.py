@@ -237,11 +237,10 @@ async def update_admin(
     if payload.is_active is not None and payload.is_active != target.is_active:
         target.is_active = payload.is_active
         privilege_changed = True
-    if payload.permission_overrides is not None:
-        target.permission_overrides = payload.permission_overrides
+    desired_overrides = {} if target.role == "owner" else payload.permission_overrides
+    if desired_overrides is not None and desired_overrides != target.permission_overrides:
+        target.permission_overrides = desired_overrides
         privilege_changed = True
-    if target.role == "owner":
-        target.permission_overrides = {}
 
     if payload.support_notifications is not None:
         if policy is None:

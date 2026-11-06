@@ -103,3 +103,34 @@ Owned P1 files:
 - docs/agents/EXECUTION/support-recipient-persistence-20261106.md (new)
 
 No schema migration, credential change, production configuration mutation, historical replay, commit or push was performed by this slice.
+
+## Review 4489916202: concurrent first-bootstrap import, before edits
+
+The reviewed source first reads an absent setting and independently queries eligible configured accounts. Two transactions that have just flushed different new AdminAccount rows see distinct candidate snapshots. INSERT ON CONFLICT DO NOTHING preserves the winning policy but discards the losing snapshot permanently. The production recipient set is not being changed during this repair.
+
+Root approved a narrow collision-only repair. Only an initializer that observed absence and lost the actual INSERT conflict may reconcile its original eligible candidate IDs into the winning bootstrap policy. An existing-policy first read remains a plain read and returns immediately. Later enrollments or environment-list changes remain owner-managed; bootstrap is not an ongoing routing authority.
+
+Reconciliation must lock and reread the policy, accept only a valid nonempty source=bootstrap value, and refresh current activity/effective support.read for the original candidates before adding missing membership. It must not enumerate all administrators, remove existing preferences, or overwrite owner intent. Owner saves, including unchanged true/false and an explicitly empty list, must mark source=owner so a concurrent losing initializer cannot undo that intent. There is no DDL, new environment field, API/UI change or production write.
+
+Lock constraints: retain the existing-policy fast path without an exclusive setting lock. On the conflict path, return without a write lock when no original candidates are missing or owner/empty policy already wins. Actual reconciliation obtains the setting FOR UPDATE but does not lock candidate User/AdminAccount rows; live eligibility is reread and all enqueue/delivery/private access still enforce the existing shared-lock permission gates. This avoids introducing unconditional setting locks after auth profile writes.
+
+Before product edits, add a real two-session bootstrap regression with barriers after both absent reads and after both candidate SELECTs. Require both persisted operators after clearing bootstrap configuration, and no unrelated third-owner membership or later environment expansion. Pause the actual INSERT loser to verify a third owner can save unchanged true, unchanged false, or empty selection before reconciliation; separately deactivate the losing user before reconciliation and require no addition. Use the isolated locked PostgreSQL harness, then existing recipient/bootstrap/security/support compatibility.
+
+Bootstrap collision RED: job_030b8a043b0b, test-run-20261106T071716Z-3750364.log, 1 failed / 4 passed in 5.73s on unchanged product source. Both real owner enrollments completed, but the durable set contained only the INSERT winner. The three owner-save interleavings and eligibility-revocation case established the safety contract before the repair.
+
+### Bootstrap-collision evidence and freeze
+
+The repair is limited to app/services/support_recipient_config.py, the new tests/test_support_recipient_bootstrap_races.py, and this audit appendix. Existing admin APIs, UI, startup/auth hooks and schema are unchanged in this slice.
+
+The losing initializer now reconciles only its original missing candidate IDs after an actual INSERT conflict. A plain current-policy check avoids unnecessary exclusive locking; a subsequent locked reread protects against owner changes. The candidate query refreshes ORM state and current activity/effective permission, then stores the union with an incremented revision. Any owner save, including unchanged membership, transitions the policy to source=owner. Later calls that first observe an existing policy still return immediately; changing bootstrap ENV never becomes an ongoing automatic assignment mechanism.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Real concurrent first enrollment RED | 1 failed / 4 passed in 5.73s; only one initial snapshot persisted | job_030b8a043b0b; test-run-20261106T071716Z-3750364.log |
+| New race cases plus recipient, support-delivery and private-read compatibility | 42 passed in 22.62s | job_d8da02555046; test-run-20261106T071805Z-3752127.log |
+| Existing admin-security and Mini App bootstrap compatibility | 19 passed in 3.76s | job_c7f7a2c1095c; test-run-20261106T071925Z-3756044.log |
+| Ruff, AST and scoped diff check | All passed for both Python paths | Exit 0 |
+
+The five new database cases exercise two distinct initial snapshots, unchanged-true owner intent, unchanged-false owner intent, explicit empty choice, and live user deactivation before reconciliation. The successful race also verifies durable authorization after clearing bootstrap and rejects later ENV expansion to an unrelated owner. Fixtures restore the prior setting and remove only their synthetic users/accounts.
+
+engineering_guidance independently reviewed the source without a new blocker. The source and regression test are frozen pending root's combined snapshot and exact-head CI. No production write, live message, historical replay, migration, commit or push was performed; the prior read-only postdeploy baseline is retained.

@@ -990,7 +990,7 @@
         onSubmit: async ({ role, is_active, support_notifications, reason }) => {
           dom.formDialog.close();
           openStepUp("Изменить администратора " + row.id + ": роль " + role + ", активен " + (is_active ? "да" : "нет") + ", уведомления о новых обращениях " + (support_notifications ? "включены" : "выключены"), async () => {
-            await api("/api/v1/admin/admins/" + row.id, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, permission_overrides: row.permission_overrides || {}, support_notifications }) });
+            await api("/api/v1/admin/admins/" + row.id, { method: "PATCH", body: JSON.stringify({ role, is_active, reason, support_notifications }) });
           });
           return false;
         },

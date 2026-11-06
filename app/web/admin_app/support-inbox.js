@@ -2,7 +2,8 @@
   "use strict";
   const STATUSES = [["open", "Открыто"], ["in_progress", "В работе"], ["resolved", "Решено"], ["closed", "Закрыто"]];
   const DELIVERY = {
-    pending: "В очереди отправки", sending: "Отправляется", retry: "Повторная попытка отправки",
+    pending: "В очереди отправки", claimed: "В очереди отправки", sending: "Отправляется", retry: "Повторная попытка отправки",
+    delivery_unknown: "Доставка в Telegram не подтверждена",
     sent: "Доставлено в Telegram", failed: "Не удалось отправить", undeliverable: "Telegram недоступен пользователю",
   };
   const element = (tag, className = "", text = "") => {
@@ -146,13 +147,19 @@
       try {
         const data = await config.api(config.base + "/" + id + "?" + query);
         if (!valid(request) || currentId !== id) return;
+        const knownIds = new Set(messages.map((message) => message.id));
+        const disconnectedLatest = !options.before
+          && !(data.messages || []).some((message) => knownIds.has(message.id));
         mergeMessages(data.messages);
         if (!sameTicket || options.before || !ticket || ticket.id !== id) {
           olderCursor = data.messages_before;
           moreMessages = data.messages_has_more;
           historyComplete = !data.messages_has_more;
-        } else if (!historyComplete && data.messages_has_more && !moreMessages) {
-          olderCursor = data.messages_before; moreMessages = true;
+        } else if (data.messages_has_more && (disconnectedLatest || (!historyComplete && !moreMessages))) {
+          olderCursor = data.messages_before; moreMessages = true; historyComplete = false;
+        }
+        if (Number.isInteger(data.messages_total) && messages.length === data.messages_total) {
+          olderCursor = null; moreMessages = false; historyComplete = true;
         }
         ticket = data;
         drawTicket();
@@ -227,6 +234,9 @@
           const delivery = element("small", ["failed", "undeliverable"].includes(message.delivery_status) ? "support-error" : "muted",
             DELIVERY[message.delivery_status] || "Статус доставки неизвестен");
           item.append(delivery);
+          if (message.delivery_status === "delivery_unknown") {
+            item.append(element("p", "muted", "Уточните получение перед повторной отправкой."));
+          }
         }
         thread.append(item);
       }

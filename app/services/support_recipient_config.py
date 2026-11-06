@@ -102,6 +102,56 @@ class SupportRecipientConfigService:
                 "support_recipients_bootstrap_imported",
                 extra={"recipient_count": len(accounts)},
             )
+            return
+        await cls._merge_bootstrap_collision(session, {account.id for account in accounts})
+
+    @classmethod
+    async def _merge_bootstrap_collision(
+        cls, session: AsyncSession, candidates: set[uuid.UUID],
+    ) -> None:
+        # Only a caller that observed absence and lost INSERT may reconcile its
+        # original snapshot. Existing policies never follow later ENV changes.
+        policy = await cls.policy(session)
+        before = cls.admin_ids(policy)
+        if (
+            not before or not candidates - before
+            or policy.value.get("source") != "bootstrap"
+        ):
+            return
+        policy = await cls.policy(session, for_update=True)
+        before = cls.admin_ids(policy)
+        if (
+            not before or not candidates - before
+            or policy.value.get("source") != "bootstrap"
+        ):
+            return
+        # Auth may already hold its own user lock. Re-read eligibility without
+        # acquiring other user/account locks; every actual delivery rechecks it.
+        rows = (await session.execute(
+            select(User, AdminAccount)
+            .join(AdminAccount, AdminAccount.user_id == User.id)
+            .where(
+                AdminAccount.id.in_(candidates - before),
+                User.is_active.is_(True),
+                AdminAccount.is_active.is_(True),
+            )
+            .order_by(AdminAccount.id)
+            .execution_options(populate_existing=True)
+        )).all()
+        added = {account.id for user, account in rows if cls.eligible(user, account)}
+        if not added:
+            return
+        selected = before | added
+        policy.value = {
+            "revision": cls.revision(policy) + 1,
+            "admin_ids": sorted(str(item) for item in selected),
+            "source": "bootstrap",
+        }
+        await session.flush()
+        logger.info(
+            "support_recipients_bootstrap_merged",
+            extra={"recipient_count": len(selected), "added_count": len(added)},
+        )
 
     @classmethod
     async def prepare_change(
@@ -136,7 +186,10 @@ class SupportRecipientConfigService:
         else:
             selected.discard(account.id)
         revision = cls.revision(policy)
-        if selected == before and revision >= 1:
+        if (
+            selected == before and revision >= 1
+            and policy.value.get("source") == "owner"
+        ):
             return
         policy.value = {
             "revision": revision + 1,

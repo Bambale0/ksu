@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.admin_models import NotificationCampaignDelivery, SupportOutbox
 from app.db.models import SupportTicket
+
+logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
@@ -60,7 +63,7 @@ class SupportOutboxDeliveryService:
                         or_(
                             SupportOutbox.status.in_(["pending", "retry"]),
                             and_(
-                                SupportOutbox.status == "sending",
+                                SupportOutbox.status.in_(["claimed", "sending"]),
                                 SupportOutbox.lease_until.is_not(None),
                                 SupportOutbox.lease_until < now,
                             ),
@@ -72,13 +75,37 @@ class SupportOutboxDeliveryService:
                 )
             ).all()
         )
+        claimed = []
         for row in rows:
-            row.status = "sending"
-            row.attempts += 1
+            if row.status == "sending":
+                # A transport call may already have succeeded before its worker died.
+                SupportOutboxDeliveryService.unknown(row, error="send_lease_expired")
+                continue
+            row.status = "claimed"
             row.lease_until = now + timedelta(seconds=settings.support_outbox_lease_seconds)
             row.last_error = None
+            claimed.append(row)
         await session.flush()
-        return rows
+        return claimed
+
+    @staticmethod
+    def start_sending(row: SupportOutbox) -> None:
+        row.status = "sending"
+        row.attempts += 1
+        row.lease_until = utcnow() + timedelta(seconds=settings.support_outbox_lease_seconds)
+        row.last_error = None
+
+    @staticmethod
+    def unknown(row: SupportOutbox, *, error: str) -> None:
+        SupportOutboxDeliveryService.terminal(row, status="delivery_unknown", error=error)
+        logger.warning(
+            "support_reply_delivery_ambiguous",
+            extra={
+                "outbox_id": str(row.id), "ticket_id": str(row.ticket_id),
+                "message_id": str(row.message_id), "attempts": row.attempts,
+                "reason": error,
+            },
+        )
 
     @staticmethod
     def sent(row: SupportOutbox, *, external_message_id: str) -> None:

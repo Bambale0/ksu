@@ -364,8 +364,10 @@ async def test_full_support_reply_delivery_records_success_and_is_not_resent():
         outbox_id = uuid.UUID(response.json()["outbox_id"])
     async with SessionFactory() as session:
         row = await session.get(SupportOutbox, outbox_id)
-        row.status = "sending"
-        row.attempts = 1
+        # Model the worker's committed claim; the transport start counts the attempt.
+        row.status = "claimed"
+        row.attempts = 0
+        row.lease_until = datetime.now(UTC) + timedelta(seconds=settings.support_outbox_lease_seconds)
         await session.commit()
     calls = []
 
@@ -399,8 +401,10 @@ async def test_support_retry_is_visible_without_exposing_error_details():
         outbox_id = uuid.UUID(response.json()["outbox_id"])
     async with SessionFactory() as session:
         row = await session.get(SupportOutbox, outbox_id)
-        row.status = "sending"
-        row.attempts = 1
+        # Model the worker's committed claim; the transport start counts the attempt.
+        row.status = "claimed"
+        row.attempts = 0
+        row.lease_until = datetime.now(UTC) + timedelta(seconds=settings.support_outbox_lease_seconds)
         await session.commit()
 
     async def send_message(**kwargs):

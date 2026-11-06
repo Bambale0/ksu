@@ -5,7 +5,14 @@ import logging
 import uuid
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -15,7 +22,7 @@ from app.core.observability import record_worker_heartbeat
 from app.db.admin_models import SupportOutbox
 from app.db.models import SupportMessage, SupportTicket, User
 from app.db.session import SessionFactory
-from app.services.admin_delivery import SupportOutboxDeliveryService
+from app.services.admin_delivery import SupportOutboxDeliveryService, utcnow
 
 logger = logging.getLogger(__name__)
 WORKER_NAME = "admin-support-worker"
@@ -31,7 +38,10 @@ async def _heartbeat(redis: Redis) -> None:
 async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
     async with SessionFactory() as session:
         row = await session.get(SupportOutbox, outbox_id, with_for_update=True)
-        if row is None or row.status != "sending":
+        if (
+            row is None or row.status != "claimed"
+            or row.lease_until is None or row.lease_until <= utcnow()
+        ):
             return
         ticket = await session.get(SupportTicket, row.ticket_id)
         message = await session.get(SupportMessage, row.message_id)
@@ -52,6 +62,10 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
             )
             await session.commit()
             return
+        # Commit the intent before crossing Telegram's non-idempotent boundary.
+        # An expired in-flight intent is uncertain, whereas an unused claim is safe to recover.
+        SupportOutboxDeliveryService.start_sending(row)
+        await session.commit()
         try:
             async with asyncio.timeout(max(1, settings.support_outbox_lease_seconds / 2)):
                 sent = await bot.send_message(
@@ -78,17 +92,17 @@ async def _process(bot: Bot, outbox_id: uuid.UUID) -> None:
                 )
             else:
                 SupportOutboxDeliveryService.retry(row, error=f"telegram_api:{exc}")
+        except (TelegramNetworkError, TelegramServerError) as exc:
+            SupportOutboxDeliveryService.unknown(row, error=f"telegram:{type(exc).__name__}")
         except TelegramAPIError as exc:
             SupportOutboxDeliveryService.retry(row, error=f"telegram_api:{exc}")
         except TimeoutError:
-            SupportOutboxDeliveryService.retry(row, error="telegram_timeout")
+            SupportOutboxDeliveryService.unknown(row, error="telegram_timeout")
         except Exception as exc:  # noqa: BLE001
-            logger.exception("admin_support_delivery_error", extra={"outbox_id": str(row.id)})
-            SupportOutboxDeliveryService.retry(
-                row,
-                error=f"unexpected:{type(exc).__name__}:{exc}",
-            )
+            SupportOutboxDeliveryService.unknown(row, error=f"unexpected:{type(exc).__name__}")
         else:
+            # A lease observer may have recorded uncertainty while Telegram replied.
+            await session.refresh(row, with_for_update=True)
             SupportOutboxDeliveryService.sent(row, external_message_id=str(sent.message_id))
         await session.commit()
         logger.info(

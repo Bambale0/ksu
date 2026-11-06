@@ -440,3 +440,71 @@ Source is frozen for the parent snapshot. No production deployment or
 production messages occurred in this slice. Telegram's native download was
 verified through its browser API contract; an actual Telegram device download
 remains outside this verification.
+
+
+## PR review follow-up: session retention and interrupted history (2026-11-06)
+
+Pre-edit source audit for review comments 4489916182 and 4489916210:
+
+- The main admin edit form always submits permission_overrides although that
+  field is not editable. update_admin treats every non-null overrides payload
+  as a privilege change, even when identical; subscription-only and no-op edits
+  therefore revoke the target's sessions, including an owner's own session.
+  Fix scope: compare final persisted overrides with the previous value, preserve
+  owner normalization, and omit the uneditable blob from the edit form. Actual
+  role, active-state and overrides changes must still revoke all target sessions.
+- The shared inbox keeps historyComplete after a refresh with a disjoint latest
+  100-message page. More than 100 arrivals can leave a middle gap with no older
+  paging control. Fix scope: detect a disconnected latest page, resume from its
+  cursor, preserve cached messages/draft, and finish once all unique messages
+  reported by the API are present.
+- Root's independent worker fix adds claimed and delivery_unknown states.
+  The inbox must display queued and unconfirmed delivery explicitly, tell the
+  operator to confirm receipt before another send, and expose no resend action.
+
+Verification planned before product edits: real HTTP PATCH with actual owner/
+target bearer sessions and fresh MFA session state; browser journeys on both
+admin surfaces, including a fully loaded 150-message history followed by 250
+new messages, gap loading, deduplication, draft preservation and delivery labels.
+No production edits, auth probes or messages are part of this follow-up.
+
+
+### PR review follow-up verification and freeze
+
+- HTTP RED: **5 failed / 3 passed**, job_71849eec5fd1. Subscription-only,
+  unchanged and owner-self edits incorrectly incremented session_version;
+  existing real privilege-change behavior remained green.
+- Browser RED: **5 failed**, job_248694432093. The real edit form submitted
+  uneditable overrides; both inboxes hid the gap-loading control; neither
+  displayed the new delivery states.
+- Backend GREEN: **39 passed, 13.40 seconds**, job_4fb47b342f83. New real HTTP
+  PATCH/session tests plus admin privilege revocation, admin security and
+  persisted recipient compatibility. Existing target/self sessions remain
+  usable through subsequent authenticated /auth/me requests for unchanged
+  access. Actual role, active and overrides changes still revoke all target
+  sessions and increment their version once.
+- Browser GREEN: **54 passed, 1.1 minutes**, job_ae9e91733a04: 27 Chromium and
+  27 mobile WebKit scenarios in the same official Playwright 1.56.1 image.
+  Both surfaces restore the missing middle of a complete 150-message history
+  after 250 new arrivals, ending with all 400 unique messages in order and
+  the original draft. Backfill stops when the API total is satisfied.
+- Both inboxes label claimed messages as queued and delivery_unknown as
+  unconfirmed, with a receipt-check instruction and no automatic/manual
+  resend control. The request/worker state tests are owned by the parent slice.
+- All prior reply retry, navigation race, draft preservation, RBAC, MFA,
+  recipient controls and refund-result browser cases remain green.
+- Ruff, Python AST, Node syntax and git diff --check passed. Index/control
+  pages reference the updated shared script version; main admin.js is also
+  cache-busted.
+- Independent engineering review personally inspected both GREEN results and
+  approved the actual source/test diff. No additional blocker or test was
+  requested.
+
+This closes the previously documented disjoint-refresh history gap. The
+changes are frozen for the parent snapshot; no production mutation, commit or
+push was performed by this slice.
+
+Follow-up files: app/api/v1/admin_accounts.py; app/web/admin_app/admin.js;
+app/web/admin_app/support-inbox.js; app/web/admin_app/index.html;
+app/web/admin_app/control.html; tests/test_admin_account_session_changes.py;
+frontend/mini-app/e2e/admin-support-inbox.spec.mjs; this audit.

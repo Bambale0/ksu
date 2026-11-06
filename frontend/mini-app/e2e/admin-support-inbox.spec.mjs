@@ -21,6 +21,25 @@ async function fixture(page, mode, options = {}) {
     messages: [{ id: 'latest', body: 'Последнее сообщение пользователя', is_admin: false, created_at: '2026-11-06T00:00:00Z' }],
     messages_total: 101, messages_has_more: true, messages_before: oldId,
   };
+  const history = options.historyCount ? [] : null;
+  const appendHistory = (count) => {
+    for (let index = 0; index < count; index++) {
+      const number = history.length + 1;
+      history.push({
+        id: '40000000-0000-4000-8000-' + String(number).padStart(12, '0'),
+        body: 'Сообщение истории № ' + number, is_admin: false,
+        created_at: new Date(Date.parse('2026-01-01T00:00:00Z') + number * 1000).toISOString(),
+      });
+    }
+  };
+  if (history) appendHistory(options.historyCount);
+  if (options.deliveryStates) ticket = {
+    ...ticket, messages_total: options.deliveryStates.length, messages_has_more: false, messages_before: null,
+    messages: options.deliveryStates.map((delivery_status, index) => ({
+      id: 'delivery-' + index, body: 'Ответ оператора ' + index, is_admin: true,
+      created_at: '2026-11-06T00:00:00Z', delivery_status,
+    })),
+  };
   let failures = options.transportFailure ? 1 : 0;
   let verified = false;
   const confirmations = [];
@@ -116,6 +135,16 @@ async function fixture(page, mode, options = {}) {
     }
     if (path === apiBase + '/' + ticketId && request.method() === 'GET') {
       reads.push({ path, query: Object.fromEntries(parsed.searchParams) });
+      if (history) {
+        const end = parsed.searchParams.has('before')
+          ? history.findIndex((message) => message.id === parsed.searchParams.get('before'))
+          : history.length;
+        if (end < 0) return json({ detail: 'Unknown history cursor' }, 400);
+        const start = Math.max(0, end - Number(parsed.searchParams.get('message_limit') || 100));
+        const messages = history.slice(start, end);
+        return json({ ...ticket, messages, messages_total: history.length,
+          messages_has_more: start > 0, messages_before: messages[0]?.id || null });
+      }
       if (parsed.searchParams.has('before')) return json({
         ...ticket, messages: [{ id: oldId, body: 'Первое сообщение в истории', is_admin: false, created_at: '2026-01-01T00:00:00Z' }],
         messages_has_more: false, messages_before: null,
@@ -144,7 +173,7 @@ async function fixture(page, mode, options = {}) {
   await expect(page.locator(mode === 'main' ? '#authView' : '#controlAuth')).not.toBeVisible();
   if (!options.deepLink && mode === 'main' && await page.locator('#sidebarToggle').isVisible()) await page.locator('#sidebarToggle').click();
   if (!options.deepLink) await (mode === 'main' ? page.locator('[data-view="' + (options.view || 'support') + '"]') : page.getByRole('button', { name: 'Поддержка', exact: true })).click();
-  return { reads, writes, confirmations, pageErrors, unexpectedRequests, releaseReply, releaseOther };
+  return { reads, writes, confirmations, pageErrors, unexpectedRequests, releaseReply, releaseOther, appendHistory };
 }
 
 for (const mode of ['main', 'control']) {
@@ -332,6 +361,7 @@ test('main: owner enables and disables a support recipient only after MFA and ex
     await executeRecipientChange(page, ctx, index);
     expect(ctx.writes.at(-1).method).toBe('PATCH');
     expect(ctx.writes.at(-1).body.support_notifications).toBe(enabled);
+    expect(ctx.writes.at(-1).body).not.toHaveProperty('permission_overrides');
     expect(ctx.confirmations).toHaveLength(index + 1);
     await expect(row).toContainText(enabled ? 'Включены' : 'Выключены');
     await expect(row).toContainText(enabled ? 'Получатель активен' : 'Не получает уведомления');
@@ -392,6 +422,51 @@ for (const configured of [false, true]) {
     const row = page.getByRole('row').filter({ hasText: '@support_recipient' });
     await expect(row).toContainText('Включены');
     await expect(row).toContainText('Получатель недоступен');
+    expect(ctx.writes).toEqual([]);
+    expect(ctx.pageErrors).toEqual([]);
+    expect(ctx.unexpectedRequests).toEqual([]);
+  });
+}
+
+
+for (const mode of ['main', 'control']) {
+  test(mode + ': a history gap after refresh remains reachable without duplicates or draft loss', async ({ page }) => {
+    const ctx = await fixture(page, mode, { deepLink: true, historyCount: 150 });
+    const older = page.getByRole('button', { name: 'Загрузить предыдущие сообщения', exact: true });
+    const bodies = page.locator('.support-thread > .message > p');
+    await older.click();
+    await expect(bodies).toHaveCount(150);
+    await expect(older).toHaveCount(0);
+    await page.getByLabel('Ответ пользователю', { exact: true }).fill('Черновик после изучения истории');
+    ctx.appendHistory(250);
+    await page.getByRole('button', { name: 'Обновить переписку', exact: true }).click();
+    await expect(page.getByText('Сообщение истории № 400', { exact: true })).toBeVisible();
+    await expect(bodies).toHaveCount(250);
+    await expect(page.getByLabel('Ответ пользователю', { exact: true })).toHaveValue('Черновик после изучения истории');
+    await expect(older).toBeVisible();
+    await older.click();
+    await expect(bodies).toHaveCount(350);
+    await older.click();
+    await expect(bodies).toHaveCount(400);
+    await expect(older).toHaveCount(0);
+    expect(await bodies.allTextContents()).toEqual(
+      Array.from({ length: 400 }, (_, index) => 'Сообщение истории № ' + (index + 1)),
+    );
+    expect(ctx.reads.filter((read) => read.query.before).map((read) => read.query.before)).toEqual(
+      [51, 301, 201].map((number) => '40000000-0000-4000-8000-' + String(number).padStart(12, '0')),
+    );
+    await expect(page.getByLabel('Ответ пользователю', { exact: true })).toHaveValue('Черновик после изучения истории');
+    expect(ctx.writes).toEqual([]);
+    expect(ctx.pageErrors).toEqual([]);
+    expect(ctx.unexpectedRequests).toEqual([]);
+  });
+
+  test(mode + ': delivery uncertainty is explicit without an automatic resend', async ({ page }) => {
+    const ctx = await fixture(page, mode, { deepLink: true, deliveryStates: ['claimed', 'delivery_unknown'] });
+    await expect(page.getByText('В очереди отправки', { exact: true })).toBeVisible();
+    await expect(page.getByText('Доставка в Telegram не подтверждена', { exact: true })).toBeVisible();
+    await expect(page.getByText('Уточните получение перед повторной отправкой.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Повторить отправку|Отправить повторно/ })).toHaveCount(0);
     expect(ctx.writes).toEqual([]);
     expect(ctx.pageErrors).toEqual([]);
     expect(ctx.unexpectedRequests).toEqual([]);
