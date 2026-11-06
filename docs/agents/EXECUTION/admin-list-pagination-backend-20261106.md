@@ -94,3 +94,27 @@ Production:
 Regression: tests/test_admin_list_pagination.py. Audit: this file.
 
 The source was frozen after GREEN and independently reviewed by root. There is no migration and no change to financial commands, campaign sending, session revocation or authorization policy. Commit, exact-head CI and deployment are handled separately by root; these isolated results are not a claim of production deployment or production UI verification.
+
+
+## PR #581 review follow-up: creator list ties (before edits)
+
+Automated review thread PRRT_kwDOT1THts60Z_al, comment 4489781550, identified one remaining pagination ordering defect in the c61 checkpoint. Source inspection confirmed:
+- app/services/creator_partnership.py, CreatorPartnershipService.list_applications: created_at DESC only before OFFSET/LIMIT.
+- app/api/v1/admin_creator_partnership.py, list_creator_agreements: created_at DESC only before OFFSET/LIMIT.
+
+The agreement query is in the API handler, not the service. Both endpoints already support server-side pagination and status filters; equal creation timestamps lack a unique ordering key. A batch can therefore move between page boundaries as query plans/tie order change.
+
+Root authorized only the final descending entity UUID in each ORDER BY plus two real HTTP regression cases. Write tests/test_creator_partnership_pagination_order.py first. Seed six realistic synthetic entities with one identical created_at and intentionally shuffled UUID insertion order; query pages at offsets 0, 2 and 4 with limit 2, assert exact descending UUID order and no duplicates/missing IDs, and retain status-filter/total checks. Clean up only the fixtures' own records.
+
+Three explanations considered: omitted offset, filtered-out records, and undefined timestamp ties. Existing OFFSET/filter SQL is present; the unique ordering suffix is the missing guarantee. No recipient/UI, CRUD, financial, permission, schema, production or release-baseline changes are in scope. Require RED before appending id.desc(), then focused creator and existing pagination compatibility GREEN and an independent review.
+
+
+### Creator P2 final verification and freeze
+
+- Clean RED: both HTTP cases failed on the previous timestamp-only ordering, 2 failed in 4.48s. Job job_5a0281493038; log test-run-20261106T064916Z-3712767.log.
+- The only product changes append CreatorPartnershipApplication.id.desc() and CreatorPartnershipAgreement.id.desc() to the two existing ORDER BY expressions.
+- GREEN: 37 passed in 13.86s, covering both new HTTP cases, all four existing creator-partnership suites and the existing 20 admin-pagination tests. Job job_919dc9379a2c; log test-run-20261106T065041Z-3715162.log.
+- Ruff on the three Python files, AST parsing and scoped git diff --check all passed.
+- engineering_guidance independently read both complete method diffs and the entire new HTTP test, verified preservation of filters/counts/offset/limits/permissions and fixture-owned cleanup, personally read GREEN37 and signed off with no remaining blocker.
+
+Logs remain in /root/ksu-support-admin-test-harness-20261106/. This follow-up changes only app/services/creator_partnership.py, app/api/v1/admin_creator_partnership.py, new tests/test_creator_partnership_pagination_order.py and this audit file. Product/test source is frozen; no additional test run, recipient change, UI change, production mutation, commit or push is required by this slice. Previously captured release-verification baseline remains preserved.
