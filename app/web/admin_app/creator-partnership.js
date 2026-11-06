@@ -2,6 +2,8 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp ?? null;
+  const pagination = window.createAdminPagination();
+  let refreshSequence = 0;
   const launchParams = new URLSearchParams(window.location.search);
   const requestedAction = launchParams.get("action");
   const state = {
@@ -128,18 +130,23 @@
     }
   }
 
-  async function refresh() {
-    const status = byId("statusFilter")?.value || "";
+  async function refresh(options = {}) {
+    const request = ++refreshSequence;
+    const applicationsPage = pagination.page("Заявки", options.applications, 100);
+    const agreementsPage = pagination.page("Соглашения", options.agreements, 100);
     try {
       const [applications, agreements] = await Promise.all([
-        api(`/api/v1/admin/creator-partnership/applications?limit=100${status ? `&status=${encodeURIComponent(status)}` : ""}`),
-        api("/api/v1/admin/creator-partnership/agreements?limit=100"),
+        api(`/api/v1/admin/creator-partnership/applications?${applicationsPage.params}`),
+        api(`/api/v1/admin/creator-partnership/agreements?${agreementsPage.params}`),
       ]);
+      if (request !== refreshSequence) return;
       state.applications = applications.items || [];
       state.agreements = agreements.items || [];
       render();
+      byId("applicationsPagination").replaceChildren(applicationsPage.controls(applications, (filters) => refresh({ applications: filters })));
+      byId("agreementsPagination").replaceChildren(agreementsPage.controls(agreements, (filters) => refresh({ agreements: filters })));
     } catch (error) {
-      toast(error.message || "Не удалось обновить данные");
+      if (request === refreshSequence) toast(error.message || "Не удалось обновить данные");
     }
   }
 
@@ -147,10 +154,10 @@
     const pending = state.applications.filter((item) => item.status === "pending").length;
     const active = state.agreements.filter((item) => item.status === "active").length;
     byId("summary").replaceChildren(
-      metric("Заявок", state.applications.length),
-      metric("На рассмотрении", pending),
-      metric("Активных соглашений", active),
-      metric("Месячный ROX", `${format(state.agreements.filter((item) => item.status === "active").reduce((sum, item) => sum + Number(item.monthly_rox || 0), 0))} ROX`),
+      metric("Заявок на странице", state.applications.length),
+      metric("На рассмотрении на странице", pending),
+      metric("Активных на странице", active),
+      metric("ROX соглашений на странице", `${format(state.agreements.filter((item) => item.status === "active").reduce((sum, item) => sum + Number(item.monthly_rox || 0), 0))} ROX`),
     );
     renderApplications();
     renderAgreements();
@@ -374,7 +381,7 @@
     tg?.expand?.();
     byId("loginForm")?.addEventListener("submit", login);
     byId("refreshButton")?.addEventListener("click", () => void refresh());
-    byId("statusFilter")?.addEventListener("change", () => void refresh());
+    byId("statusFilter")?.addEventListener("change", () => void refresh({ applications: { status: byId("statusFilter").value, offset: 0 } }));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });

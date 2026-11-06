@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +10,7 @@ from app.db.admin_content_models import GenerationModerationState
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
 from app.services.local_media_storage import LocalMediaStorage, LocalMediaStorageError
+from app.services.media_assets import MediaAssetService
 from app.services.object_storage import ObjectStorage, ObjectStorageNotConfigured
 
 router = APIRouter(prefix="/media", tags=["media"])
@@ -28,14 +28,6 @@ def _ready_asset(asset: MediaAsset | None) -> MediaAsset:
     if asset.status != "ready" or not asset.object_key or not asset.bucket:
         raise HTTPException(status_code=409, detail="Media asset is not ready")
     return asset
-
-
-def _filename(asset: MediaAsset) -> str:
-    suffix = ""
-    if asset.object_key:
-        match = re.search(r"(\.[A-Za-z0-9]{1,8})$", asset.object_key)
-        suffix = match.group(1).lower() if match else ""
-    return f"generation-{asset.generation_id}-{asset.ordinal + 1}{suffix}"
 
 
 def _local_file_response(
@@ -58,7 +50,8 @@ def _local_file_response(
         )
     }
     if download:
-        headers["Content-Disposition"] = f'attachment; filename="{_filename(asset)}"'
+        headers["Content-Disposition"] = f'attachment; filename="{MediaAssetService.download_filename(asset)}"'
+        headers["Access-Control-Allow-Origin"] = "https://web.telegram.org"
     return FileResponse(
         path=path,
         media_type=asset.content_type or None,
@@ -81,7 +74,7 @@ def _storage_response(
         url = storage.presign_get(
             key=asset.object_key or "",
             bucket=asset.bucket,
-            download_filename=_filename(asset) if download else None,
+            download_filename=MediaAssetService.download_filename(asset) if download else None,
         )
     except ObjectStorageNotConfigured as exc:
         raise HTTPException(status_code=503, detail="Legacy media storage is unavailable") from exc
@@ -112,6 +105,11 @@ async def get_media_asset(
     session: SessionDep,
 ) -> dict[str, object]:
     asset = _owned_asset(asset_id, user.id, await session.get(MediaAsset, asset_id))
+    delivery = (
+        MediaAssetService.public_view(asset)
+        if asset.status == "ready" and asset.object_key and asset.bucket
+        else {}
+    )
     return {
         "id": str(asset.id),
         "generation_id": str(asset.generation_id),
@@ -119,7 +117,8 @@ async def get_media_asset(
         "content_type": asset.content_type,
         "size_bytes": asset.size_bytes,
         "ordinal": asset.ordinal,
-        "download_url": f"/api/v1/media/{asset.id}/download" if asset.status == "ready" else None,
+        "download_url": delivery.get("download_url"),
+        "download_filename": delivery.get("download_filename"),
     }
 
 
@@ -139,6 +138,7 @@ async def signed_media_asset(
     expires: int,
     signature: str,
     session: SessionDep,
+    download: bool = False,
 ) -> Response:
     asset = _ready_asset(await session.get(MediaAsset, asset_id))
     if not LocalMediaStorage.is_local_bucket(asset.bucket):
@@ -154,7 +154,7 @@ async def signed_media_asset(
         raise HTTPException(status_code=503, detail="Media storage is unavailable") from exc
     if not valid:
         raise HTTPException(status_code=404, detail="Media asset not found")
-    return _storage_response(asset, download=False)
+    return _storage_response(asset, download=download)
 
 
 @router.get("/{asset_id}/public")

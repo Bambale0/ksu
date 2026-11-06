@@ -108,7 +108,7 @@ async def list_users(
 
     rows = (
         await session.execute(
-            stmt.order_by(User.created_at.desc()).offset(offset).limit(limit)
+            stmt.order_by(User.created_at.desc(), User.id.desc()).offset(offset).limit(limit)
         )
     ).all()
     total = int((await session.scalar(count_stmt)) or 0)

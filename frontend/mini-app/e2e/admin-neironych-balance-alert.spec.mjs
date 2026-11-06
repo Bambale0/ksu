@@ -20,6 +20,9 @@ test('admin can change the Neironych balance alert policy after MFA step-up', as
     if (path === '/admin-app/control.html') return route.fulfill({
       contentType: 'text/html', body: readFileSync(new URL('control.html', adminRoot), 'utf8'),
     });
+    if (path === '/admin-app/admin-pagination.js') return route.fulfill({
+      contentType: 'application/javascript', body: readFileSync(new URL('admin-pagination.js', adminRoot), 'utf8'),
+    });
     if (path === '/admin-app/support-inbox.js') return route.fulfill({
       contentType: 'application/javascript', body: readFileSync(new URL('support-inbox.js', adminRoot), 'utf8'),
     });
@@ -30,7 +33,7 @@ test('admin can change the Neironych balance alert policy after MFA step-up', as
       contentType: 'text/css', body: readFileSync(new URL(path.split('/').pop(), adminRoot), 'utf8'),
     });
     if (path === '/api/v1/admin/auth/login') return json({ token: 'test-token', mfa_verified: true });
-    if (path === '/api/v1/admin/auth/me') return json({ role: 'admin', is_active: true, telegram_id: 123 });
+    if (path === '/api/v1/admin/auth/me') return json({ role: 'admin', is_active: true, telegram_id: 123, permissions: ['*'] });
     if (path === '/api/v1/admin/dashboard') return json({});
     if (path === '/api/v1/admin/runtime') return json({
       neironych_balance_alert: policy,

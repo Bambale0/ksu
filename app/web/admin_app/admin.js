@@ -2,6 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
+  const pagination = window.createAdminPagination();
   const state = {
     token: null,
     me: null,
@@ -525,8 +526,10 @@
     dom.adminView.appendChild(panel("Быстрые действия", links));
   }
 
-  async function renderUsers(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderUsers(filters) {
+    const page = pagination.page("Пользователи", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.q) params.set("q", filters.q);
     if (filters.is_active !== undefined && filters.is_active !== "") params.set("is_active", filters.is_active);
     const data = await api(`/api/v1/admin/users?${params}`);
@@ -541,7 +544,7 @@
       ["Создан", (row) => formatDate(row.created_at)],
       ["", (row) => actionsCell(button("Открыть", "table-action", () => { state.currentUserId = row.id; void renderUserDetail(row.id); }))],
     ];
-    dom.adminView.replaceChildren(panel(`Пользователи · ${formatNumber(data.total, 0)}`, table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel(`Пользователи · ${formatNumber(data.total, 0)}`, table(cols, data.items || []), filter), page.controls(data, renderUsers));
   }
 
   async function renderUserDetail(userId) {
@@ -612,8 +615,10 @@
     dom.adminView.replaceChildren(controls, panel("Карточка пользователя", info), panel("История действий", eventList));
   }
 
-  async function renderGenerations(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderGenerations(filters) {
+    const page = pagination.page("Генерации", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     if (filters.user_id) params.set("user_id", filters.user_id);
     const data = await api(`/api/v1/admin/generations?${params}`);
@@ -629,11 +634,13 @@
       ["Создан", (row) => formatDate(row.created_at)],
       ["", (row) => hasPermission("generations.manage") && row.provider === "kie" && row.external_id ? actionsCell(button("Сверить", "table-action", async () => { try { await api(`/api/v1/admin/generations/${row.id}/reconcile`, { method: "POST" }); toast("Работа сверена"); await renderGenerations(filters); } catch (error) { toast(error.message); } })) : ""],
     ];
-    dom.adminView.replaceChildren(panel("Генерации", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Генерации", table(cols, data.items || []), filter), page.controls(data, renderGenerations));
   }
 
-  async function renderPayments(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderPayments(filters) {
+    const page = pagination.page("Платежи", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     if (filters.provider) params.set("provider", filters.provider);
     if (filters.user_id) params.set("user_id", filters.user_id);
@@ -668,7 +675,7 @@
         return cell;
       }],
     ];
-    dom.adminView.replaceChildren(panel("Платежи", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Платежи", table(cols, data.items || []), filter), page.controls(data, renderPayments));
   }
 
   let supportInbox = null;
@@ -691,8 +698,10 @@
     return getSupportInbox().open(ticketId);
   }
 
-  async function renderWithdrawals(filters = {}) {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderWithdrawals(filters) {
+    const page = pagination.page("Партнёрские выводы", filters, 50);
+    filters = page.filters;
+    const params = page.params;
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/withdrawals?${params}`);
     const filter = makeFilter([{ name: "status", value: filters.status || "", options: [["", "Все"], ["pending", "Ожидает"], ["processing", "В обработке"], ["paid", "Выплачено"], ["rejected", "Отклонено"], ["canceled", "Отменено"]] }], renderWithdrawals);
@@ -720,16 +729,17 @@
         })));
       }],
     ];
-    dom.adminView.replaceChildren(panel("Партнёрские выводы", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Партнёрские выводы", table(cols, data.items || []), filter), page.controls(data, renderWithdrawals));
   }
 
-  async function renderPromos() {
+  async function renderPromos(filters) {
+    const page = pagination.page("Партнёрские промокоды", filters, 100);
     const promoHeaders = () => ({
       "Idempotency-Key": crypto.randomUUID(),
       "X-Admin-Confirm": "confirmed",
     });
     const [data, program] = await Promise.all([
-      api("/api/v1/admin/promocodes"),
+      api(`/api/v1/admin/promocodes?${page.params}`),
       api("/api/v1/admin/promocodes/program"),
     ]);
 
@@ -854,11 +864,14 @@
     dom.adminView.replaceChildren(
       panel("Экономика партнёрской программы", summary, actions),
       panel("Партнёрские промокоды", table(cols, data.items || [])),
+      page.controls(data, renderPromos),
     );
   }
 
-  async function renderReferrals(filters = {}) {
-    const params = new URLSearchParams({ limit: "100" });
+  async function renderReferrals(filters) {
+    const page = pagination.page("Реферальные начисления", filters, 100);
+    filters = page.filters;
+    const params = page.params;
     if (filters.partner_user_id) params.set("partner_user_id", filters.partner_user_id);
     if (filters.status) params.set("status", filters.status);
     const data = await api(`/api/v1/admin/referrals/rewards?${params}`);
@@ -876,14 +889,17 @@
       ["Статус", (row) => statusBadge(row.status)],
       ["Создано", (row) => formatDate(row.created_at)],
     ];
-    dom.adminView.replaceChildren(panel("Реферальные начисления", table(cols, data.items || []), filter));
+    dom.adminView.replaceChildren(panel("Реферальные начисления", table(cols, data.items || []), filter), page.controls(data, renderReferrals));
   }
 
-  async function renderSecurity() {
+  async function renderSecurity(filters, kind = "audit") {
+    const page = pagination.page("Журнал действий", kind === "audit" ? filters : undefined, 100);
+    const sessionsPage = pagination.page("Активные сессии", kind === "sessions" ? filters : undefined, 100);
+    sessionsPage.params.set("active_only", "true");
     const requests = [];
     if (hasPermission("security.read")) requests.push(api("/api/v1/admin/security/overview")); else requests.push(Promise.resolve(null));
-    if (hasPermission("audit.read")) requests.push(api("/api/v1/admin/audit?limit=100")); else requests.push(Promise.resolve(null));
-    if (hasPermission("security.read")) requests.push(api("/api/v1/admin/security/sessions?active_only=true&limit=100")); else requests.push(Promise.resolve(null));
+    if (hasPermission("audit.read")) requests.push(api(`/api/v1/admin/audit?${page.params}`)); else requests.push(Promise.resolve(null));
+    if (hasPermission("security.read")) requests.push(api(`/api/v1/admin/security/sessions?${sessionsPage.params}`)); else requests.push(Promise.resolve(null));
     const [overview, audit, sessions] = await Promise.all(requests);
     dom.adminView.replaceChildren();
     if (overview) {
@@ -915,7 +931,7 @@
           },
         }))) : ""],
       ];
-      dom.adminView.appendChild(panel("Активные сессии", table(cols, sessions.items || [])));
+      dom.adminView.append(panel("Активные сессии", table(cols, sessions.items || [])), sessionsPage.controls(sessions, (next) => renderSecurity(next, "sessions")));
     }
     if (audit) {
       const cols = [
@@ -924,7 +940,7 @@
         ["Админ", (row) => el("span", "mono", row.admin_id || "Система")], ["Проверка", (row) => statusBadge(row.integrity_valid ? "success" : "failed")],
         ["Время", (row) => formatDate(row.created_at)], ["Детали", (row) => el("pre", "audit-meta", jsonText(row.metadata))],
       ];
-      dom.adminView.appendChild(panel("Журнал действий", table(cols, audit.items || [])));
+      dom.adminView.append(panel("Журнал действий", table(cols, audit.items || [])), page.controls(audit, (next) => renderSecurity(next, "audit")));
     }
   }
 
@@ -1045,6 +1061,7 @@
   async function loadMe() {
     state.me = await api("/api/v1/admin/auth/me");
     state.permissions = new Set(state.me.permissions || []);
+    for (const link of document.querySelectorAll("[data-admin-permission]")) link.hidden = !hasPermission(link.dataset.adminPermission);
     dom.adminIdentity.replaceChildren(
       el("strong", "", state.me.username ? `@${state.me.username}` : String(state.me.telegram_id)),
       el("small", "", state.me.role),
@@ -1076,6 +1093,7 @@
     state.currentUserId = null;
     state.currentTicketId = null;
     supportInbox?.reset();
+    pagination.reset();
     dom.adminShell.hidden = true;
     dom.authView.hidden = false;
     dom.sidebar.classList.remove("open");

@@ -536,13 +536,17 @@ async def control_promocodes(
     context: PromosReadDep,
     session: SessionDep,
     q: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
     if q:
         try:
             return {"item": await AdminPromoService.lookup(session, admin=context.account, query=q)}
         except Exception as exc:
             raise _error(exc) from exc
-    return await AdminPromoService.list_promos(session, admin=context.account)
+    return await AdminPromoService.list_promos(
+        session, admin=context.account, limit=limit, offset=offset,
+    )
 
 
 @router.post("/promocodes")

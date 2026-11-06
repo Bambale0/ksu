@@ -168,7 +168,7 @@ class AdminPartnerService:
         rows = list(
             (
                 await session.scalars(
-                    stmt.order_by(PartnerWithdrawal.created_at.desc())
+                    stmt.order_by(PartnerWithdrawal.created_at.desc(), PartnerWithdrawal.id.desc())
                     .offset(max(0, min(offset, 100_000)))
                     .limit(max(1, min(limit, 100)))
                 )

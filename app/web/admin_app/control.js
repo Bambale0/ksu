@@ -2,6 +2,7 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
+  const pagination = window.createAdminPagination();
   const state = {
     token: null,
     me: null,
@@ -12,19 +13,19 @@
   };
 
   const VIEWS = [
-    ["overview", "Обзор", "Обзор"],
-    ["users", "Пользователи", "Пользователи"],
-    ["payments", "Платежи", "Финансы"],
-    ["operations", "Операции", "Работы"],
-    ["support", "Поддержка", "Поддержка"],
-    ["pricing", "Тарифы", "Тарифы"],
-    ["cms", "Контент", "Контент"],
-    ["campaigns", "Рассылки", "Уведомления"],
-    ["promos", "Промо", "Промо"],
-    ["content", "Модерация", "Модерация"],
-    ["runtime", "Настройки", "Настройки"],
-    ["partners", "Партнёры", "Партнёры"],
-    ["exports", "Экспорт", "Экспорт"],
+    ["overview", "Обзор", "Обзор", "dashboard.read"],
+    ["users", "Пользователи", "Пользователи", "users.read"],
+    ["payments", "Платежи", "Финансы", "payments.read"],
+    ["operations", "Операции", "Работы", "operations.read"],
+    ["support", "Поддержка", "Поддержка", "support.read"],
+    ["pricing", "Тарифы", "Тарифы", "pricing.read"],
+    ["cms", "Контент", "Контент", "cms.read"],
+    ["campaigns", "Рассылки", "Уведомления", "notifications.read"],
+    ["promos", "Промо", "Промо", "promocodes.read"],
+    ["content", "Модерация", "Модерация", ["prompts.read", "social.moderate"]],
+    ["runtime", "Настройки", "Настройки", "runtime.manage"],
+    ["partners", "Партнёры", "Партнёры", "partners.read"],
+    ["exports", "Экспорт", "Экспорт", "finance.read"],
   ];
 
   const dom = {};
@@ -380,16 +381,37 @@
     dom.controlView.replaceChildren(card("Ошибка", content, null, "control-danger"));
   }
 
+  function hasPermission(permission) {
+    const permissions = state.me?.permissions || [];
+    if (permissions.includes("*")) return true;
+    return Array.isArray(permission) ? permission.some((item) => permissions.includes(item)) : permissions.includes(permission);
+  }
+
   function buildNav() {
     dom.controlNav.replaceChildren();
-    for (const [key, title] of VIEWS) {
+    for (const [key, title, , permission] of VIEWS) {
+      if (!hasPermission(permission)) continue;
       const item = button(title, `nav-button${state.view === key ? " active" : ""}`, () => setView(key));
       dom.controlNav.appendChild(item);
+    }
+    if (hasPermission("partners.read")) {
+      const link = node("a", "nav-button", "Партнёрские условия");
+      const destination = new URL("/admin-app/creator-partnership.html", window.location.origin);
+      destination.search = window.location.search;
+      destination.hash = window.location.hash;
+      link.href = destination.href;
+      dom.controlNav.appendChild(link);
     }
   }
 
   function setView(key) {
-    const config = VIEWS.find(([value]) => value === key) || VIEWS[0];
+    const config = VIEWS.find(([value, , , permission]) => value === key && hasPermission(permission))
+      || VIEWS.find(([, , , permission]) => hasPermission(permission));
+    if (!config) {
+      buildNav();
+      dom.controlView.replaceChildren(card("Нет доступных разделов", node("p", "muted", "Для этого аккаунта не назначены права просмотра.")));
+      return;
+    }
     state.view = config[0];
     dom.controlKicker.textContent = config[2];
     dom.controlTitle.textContent = config[1];
@@ -442,12 +464,14 @@
     ));
   }
 
-  async function renderUsers(query = "") {
-    const params = new URLSearchParams({ limit: "50" });
+  async function renderUsers(filters) {
+    const page = pagination.page("Пользователи", filters, 50);
+    const query = String(page.filters.q || "");
+    const params = page.params;
     if (query) params.set("q", query);
     const data = await api(`/api/v1/admin/control/users?${params}`);
     const search = input("search", query, "Telegram ID / UUID / username / name");
-    const searchButton = button("Найти", "primary", () => void renderUsers(search.value.trim()));
+    const searchButton = button("Найти", "primary", () => void renderUsers({ q: search.value.trim() }));
     const filter = node("div", "control-form-inline");
     filter.append(field("Поиск", search), searchButton);
     const userTable = table(
@@ -465,7 +489,7 @@
                   label: `${row.is_active ? "Заблокировать" : "Разблокировать"} пользователя ${row.id}?`,
                 });
                 toast("Статус пользователя обновлён", "ok");
-                await renderUsers(query);
+                await renderUsers();
               },
             });
           }),
@@ -483,7 +507,7 @@
                   label: `Изменить баланс ${row.id} на ${amount} ROX?`,
                 });
                 toast("Баланс обновлён", "ok");
-                await renderUsers(query);
+                await renderUsers();
               },
             });
           }),
@@ -491,11 +515,12 @@
         return [row.username ? `@${row.username}\n${row.id}` : row.id, row.telegram_id, row.balance_credits, row.is_active ? "Активен" : "Заблокирован", actionRow];
       },
     );
-    dom.controlView.replaceChildren(card(`Пользователи · ${data.total ?? 0}`, userTable, filter));
+    dom.controlView.replaceChildren(card(`Пользователи · ${data.total ?? 0}`, userTable, filter), page.controls(data, renderUsers));
   }
 
-  async function renderPayments() {
-    const data = await api("/api/v1/admin/control/payments?limit=100");
+  async function renderPayments(filters) {
+    const page = pagination.page("Платежи", filters, 100);
+    const data = await api(`/api/v1/admin/control/payments?${page.params}`);
     const paymentTable = table(
       ["Платёж", "Провайдер", "Сумма", "ROX", "Статус", "Действия"],
       data.items || [],
@@ -526,11 +551,12 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card(`Платежи · ${data.total ?? 0}`, paymentTable));
+    dom.controlView.replaceChildren(card(`Платежи · ${data.total ?? 0}`, paymentTable), page.controls(data, renderPayments));
   }
 
-  async function renderOperations() {
-    const data = await api("/api/v1/admin/control/operations?limit=100");
+  async function renderOperations(filters) {
+    const page = pagination.page("Операции генерации", filters, 100);
+    const data = await api(`/api/v1/admin/control/operations?${page.params}`);
     const operationTable = table(
       ["Работа", "Модель", "Статус", "Стоимость", "Создана", "Действия"],
       data.items || [],
@@ -582,7 +608,7 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("Операции генерации", operationTable));
+    dom.controlView.replaceChildren(card("Операции генерации", operationTable), page.controls(data, renderOperations));
   }
 
   let supportInbox = null;
@@ -630,8 +656,9 @@
     dom.controlView.replaceChildren(card("Versioned tariffs", content, actions(publish)));
   }
 
-  async function renderCms() {
-    const data = await api("/api/v1/admin/cms/documents");
+  async function renderCms(filters) {
+    const page = pagination.page("CMS documents", filters, 100);
+    const data = await api(`/api/v1/admin/cms/documents?${page.params}`);
     const createButton = button("New version", "primary", () => openForm({
       title: "Save CMS document version",
       fields: [
@@ -682,11 +709,12 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("CMS documents", list, actions(createButton)));
+    dom.controlView.replaceChildren(card("CMS documents", list, actions(createButton)), page.controls(data, renderCms));
   }
 
-  async function renderCampaigns() {
-    const data = await api("/api/v1/admin/notifications/campaigns");
+  async function renderCampaigns(filters) {
+    const page = pagination.page("Durable campaigns", filters, 100);
+    const data = await api(`/api/v1/admin/notifications/campaigns?${page.params}`);
     const createButton = button("Create campaign", "primary", () => openForm({
       title: "Notification campaign",
       fields: [
@@ -749,12 +777,13 @@
         ),
       ],
     );
-    dom.controlView.replaceChildren(card("Durable campaigns", campaignTable, actions(createButton)));
+    dom.controlView.replaceChildren(card("Durable campaigns", campaignTable, actions(createButton)), page.controls(data, renderCampaigns));
   }
 
-  async function renderPromos() {
+  async function renderPromos(filters) {
+    const page = pagination.page("Промокоды", filters, 100);
     const [data, program] = await Promise.all([
-      api("/api/v1/admin/control/promocodes"),
+      api(`/api/v1/admin/control/promocodes?${page.params}`),
       api("/api/v1/admin/control/promocodes/program"),
     ]);
     const createButton = button("Создать промокод", "primary", () => openForm({
@@ -864,12 +893,16 @@
       card("Экономика партнёрской программы", programSummary, actions(programButton)),
       card("Партнёрские промокоды", promoTable, actions(createButton)),
     );
+    dom.controlView.appendChild(page.controls(data, renderPromos));
   }
 
-  async function renderContent() {
+  async function renderContent(filters, kind = "prompts") {
+    const page = pagination.page("Модерация описаний", kind === "prompts" ? filters : undefined, 100);
+    const trendsPage = pagination.page("Тренды", kind === "trends" ? filters : undefined, 200);
+    page.params.set("status", "pending");
     const [prompts, trends] = await Promise.all([
-      api("/api/v1/admin/prompts?status=pending"),
-      api("/api/v1/admin/trends"),
+      hasPermission("prompts.read") ? api(`/api/v1/admin/prompts?${page.params}`) : Promise.resolve({ items: [] }),
+      hasPermission("social.moderate") ? api(`/api/v1/admin/trends?${trendsPage.params}`) : Promise.resolve({ items: [] }),
     ]);
     const promptTable = table(
       ["Описание", "Статус", "Действия"],
@@ -931,9 +964,8 @@
       } catch (error) { toast(error.message, "error"); }
     }));
     dom.controlView.replaceChildren(
-      card("Модерация описаний", promptTable),
-      card("Тренды", trendTable, actions(trendCreate)),
-      card("Модерация ленты", feedForm),
+      ...(hasPermission("prompts.read") ? [card("Модерация описаний", promptTable), page.controls(prompts, (next) => renderContent(next, "prompts"))] : []),
+      ...(hasPermission("social.moderate") ? [card("Тренды", trendTable, actions(trendCreate)), trendsPage.controls(trends, (next) => renderContent(next, "trends")), card("Модерация ленты", feedForm)] : []),
     );
   }
 
@@ -1052,10 +1084,11 @@
     dom.controlView.replaceChildren(card("Настройки приложения", body, controls));
   }
 
-  async function renderPartners() {
+  async function renderPartners(filters) {
+    const page = pagination.page("Withdrawals", filters, 100);
     const [analytics, withdrawals] = await Promise.all([
       api("/api/v1/admin/partners/analytics"),
-      api("/api/v1/admin/partners/withdrawals?limit=100"),
+      api(`/api/v1/admin/partners/withdrawals?${page.params}`),
     ]);
     const summary = pre(analytics);
     const withdrawalTable = table(
@@ -1083,7 +1116,7 @@
         }))),
       ],
     );
-    dom.controlView.replaceChildren(card("Partner analytics", summary), card("Withdrawals", withdrawalTable));
+    dom.controlView.replaceChildren(card("Partner analytics", summary), card("Withdrawals", withdrawalTable), page.controls(withdrawals, renderPartners));
   }
 
   async function renderExports() {
@@ -1173,6 +1206,7 @@
     dom.controlView.replaceChildren();
     state.currentTicketId = null;
     supportInbox?.reset();
+    pagination.reset();
     setMessage(dom.controlLoginMessage, "Сессия завершена.", "ok");
   }
 

@@ -32,3 +32,6 @@ html,body{min-height:100dvh}.admin-auth{min-height:100dvh;overflow-y:auto;paddin
 }
 
 [hidden] { display: none !important; }
+
+.admin-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:14px; }
+.admin-pagination [role="alert"]:empty { display:none; }

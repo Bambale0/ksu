@@ -6,8 +6,9 @@ import { StandaloneShell } from "@/components/standalone-shell";
 import { customerRequest, dateTime } from "@/lib/customer-api";
 import type { Generation } from "@/lib/types";
 import { subscribeToGenerationUpdates } from "@/lib/generation-delivery";
+import { requestTelegramDownload } from "@/lib/telegram";
 
-type OwnedMedia = { id?: string; url?: string; download_url?: string; public_url?: string; content_type?: string | null; size_bytes?: number | null; ordinal?: number };
+type OwnedMedia = { id?: string; url?: string; download_url?: string; download_filename?: string; public_url?: string; content_type?: string | null; size_bytes?: number | null; ordinal?: number };
 type GenerationWithMedia = Omit<Generation, "media"> & { media?: OwnedMedia[] };
 
 function sizeLabel(bytes?: number | null): string {
@@ -71,7 +72,19 @@ export default function DownloadsPage() {
           return <div className="transaction" key={item.id} style={{ alignItems: "flex-start" }}>
             <div><strong>{model || "ROXY"}</strong><small>{dateTime(item.created_at)}</small>{delivery?.state === "pending" ? <small>Сохраняем файлы: {delivery.ready}/{delivery.expected}</small> : null}{delivery?.state === "failed" ? <small>Не все файлы сохранены: {delivery.ready}/{delivery.expected}</small> : null}{item.prompt && !item.prompt_hidden ? <small>{item.prompt.slice(0, 120)}</small> : null}</div>
             <span style={{ display: "grid", gap: 8 }}>
-              {owned.map((media, index) => <a key={media.id} href={media.download_url} target="_blank" rel="noreferrer">Скачать {owned.length > 1 ? index + 1 : ""}{sizeLabel(media.size_bytes) ? ` · ${sizeLabel(media.size_bytes)}` : ""}</a>)}
+              {owned.map((media, index) => <a
+                key={media.id}
+                href={media.download_url}
+                download={media.download_filename}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => {
+                  if (media.download_url && media.download_filename
+                      && requestTelegramDownload(media.download_url, media.download_filename)) {
+                    event.preventDefault();
+                  }
+                }}
+              >Скачать {owned.length > 1 ? index + 1 : ""}{sizeLabel(media.size_bytes) ? ` · ${sizeLabel(media.size_bytes)}` : ""}</a>)}
               {!owned.length && fallback ? <a href={fallback} target="_blank" rel="noreferrer">Открыть результат</a> : null}
             </span>
           </div>;

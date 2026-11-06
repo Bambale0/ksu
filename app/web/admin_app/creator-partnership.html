@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>ROXY · Партнёры</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="/admin-app/creator-partnership.css">
+  <link rel="stylesheet" href="/admin-app/creator-partnership.css?v=20261106-pagination">
 </head>
 <body>
   <main class="cp-shell">
@@ -15,7 +15,7 @@
         <h1>Партнёрские условия</h1>
         <p>Заявки авторов и каналов, персональные условия и начисления.</p>
       </div>
-      <a href="/admin-app/" class="secondary">← Основная админка</a>
+      <a data-preserve-launch href="/admin-app/" class="secondary">← Основная админка</a>
     </header>
 
     <section id="authPanel" class="panel auth-panel">
@@ -46,6 +46,7 @@
           </select>
         </div>
         <div id="applications" class="cards"></div>
+        <div id="applicationsPagination"></div>
       </section>
 
       <section class="panel">
@@ -53,11 +54,14 @@
           <div><span class="kicker">Соглашения</span><h2>Соглашения</h2></div>
         </div>
         <div id="agreements" class="cards"></div>
+        <div id="agreementsPagination"></div>
       </section>
     </section>
 
     <div id="toast" class="toast" hidden></div>
   </main>
-  <script src="/admin-app/creator-partnership.js"></script>
+  <script src="/admin-app/admin-pagination.js?v=20261106-pagination"></script>
+  <script src="/admin-app/creator-partnership.js?v=20261106-pagination"></script>
+  <script src="/admin-app/admin-navigation.js"></script>
 </body>
 </html>

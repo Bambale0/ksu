@@ -83,7 +83,7 @@ async def list_generations(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(Generation.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(Generation.created_at.desc(), Generation.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -173,7 +173,7 @@ async def list_payments(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(Payment.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(Payment.created_at.desc(), Payment.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -322,7 +322,7 @@ async def list_withdrawals(
     rows = list(
         (
             await session.scalars(
-                stmt.order_by(PartnerWithdrawal.created_at.desc()).offset(offset).limit(limit)
+                stmt.order_by(PartnerWithdrawal.created_at.desc(), PartnerWithdrawal.id.desc()).offset(offset).limit(limit)
             )
         ).all()
     )
@@ -396,18 +396,22 @@ async def list_referral_rewards(
     partner_user_id: uuid.UUID | None = None,
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
     limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, object]:
     del context
-    stmt = select(ReferralReward)
+    filters = []
     if partner_user_id:
-        stmt = stmt.where(ReferralReward.partner_user_id == partner_user_id)
+        filters.append(ReferralReward.partner_user_id == partner_user_id)
     if status_filter:
-        stmt = stmt.where(ReferralReward.status == status_filter)
-    rows = list(
-        (
-            await session.scalars(stmt.order_by(ReferralReward.created_at.desc()).limit(limit))
-        ).all()
-    )
+        filters.append(ReferralReward.status == status_filter)
+    total = int((await session.scalar(
+        select(func.count()).select_from(ReferralReward).where(*filters)
+    )) or 0)
+    rows = list((await session.scalars(
+        select(ReferralReward).where(*filters)
+        .order_by(ReferralReward.created_at.desc(), ReferralReward.id.desc())
+        .offset(offset).limit(limit)
+    )).all())
     return {
         "items": [
             {
@@ -426,5 +430,7 @@ async def list_referral_rewards(
                 "created_at": item.created_at.isoformat(),
             }
             for item in rows
-        ]
+        ],
+        "total": total, "limit": limit, "offset": offset,
+        "has_more": offset + len(rows) < total,
     }

@@ -144,7 +144,7 @@ class AdminReportingService:
         rows = list(
             (
                 await session.scalars(
-                    stmt.order_by(Generation.created_at.desc())
+                    stmt.order_by(Generation.created_at.desc(), Generation.id.desc())
                     .offset(bounded_offset)
                     .limit(bounded_limit)
                 )
@@ -204,7 +204,7 @@ class AdminReportingService:
         rows = list(
             (
                 await session.scalars(
-                    stmt.order_by(Payment.created_at.desc())
+                    stmt.order_by(Payment.created_at.desc(), Payment.id.desc())
                     .offset(bounded_offset)
                     .limit(bounded_limit)
                 )

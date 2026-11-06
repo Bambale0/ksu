@@ -38,21 +38,21 @@ Hypotheses: (A) saved messages without an operator notice and fresh ordering is 
 
 ## Verification matrix
 
-| Category | Required evidence / status |
+| Category | Evidence / status |
 | --- | --- |
-| Unit/domain | Canonical support behavior, valid/invalid lifecycle, activity, content validation; pending |
-| Database/repository | Isolated PostgreSQL ticket/message/notice/outbox atomicity and ordering; pending |
-| Authorization | Owner isolation, support permissions, configured recipient selection, deactivation, no private-text leak; pending |
-| Migration | N/A unless audit proves schema changes necessary; existing tables reused |
-| External contract | Fake Telegram delivery success/forbidden/transient outcomes; no live test send |
-| Idempotency/retry/reconciliation | Same reply key one message/outbox; bounded eligible recovery and no generic/full duplication; pending |
-| API | Real main/control/customer endpoints and backwards compatibility; pending |
-| Frontend/bot E2E | Main/admin conversation open/reply/reopen/paging/refresh/race and existing entity controls; pending; bot routing remains unchanged |
-| Smoke/deployability | Source lint/build plus exact-head required CI; production baseline health read-only |
-| Observability/audit | Safe correlated delivery state + admin action audit; pending |
-| No-hardcode | Existing recipient/config sources, no embedded personal or business values; review pending |
-| Performance/query shape | Bounded paging, stable ordering, avoid accidental N+1; pending |
-| Rollback/recovery | No destructive changes or historical replay, previous-image rollback; review pending |
+| Unit/domain | Support 20, payment compatibility 79, session/refund compatibility 41 focused tests pass; download/storage 38 pass; list paging 20 pass |
+| Database/repository | Real isolated PostgreSQL, canonical message/outbox atomicity, concurrent ticket ordering, refund row-lock/idempotency and stable list ties exercised |
+| Authorization | Owner isolation, configured recipient selection, account deactivation, session MFA/reason, private-media signatures/expiry and paging RBAC pass; login/me capability parity and real signed/MFA session regressions pass (54 with security compatibility) |
+| Migration | N/A: existing tables reused; no schema migration added. Core exact-head CI Alembic 1.20.1 parity passes |
+| External contract | Fake Telegram transport covers success/forbidden/transient delivery; authoritative payment GET only in production; media byte download/browser contract exercised without real customer sends |
+| Idempotency/retry/reconciliation | Same reply key produces one message/outbox; bounded recovery and generic/full-delivery exclusion; concurrent admin/worker refunds remain one credit; Telegram transport remains at-least-once after an ambiguous timeout |
+| API | Real main/control/customer routes, unique route registration, compatibility, lookup-vs-list behavior and bounded pagination exercised |
+| Frontend/bot E2E | 45 Chromium admin support/security/runtime/pagination cases and four media-download cases pass; bot launcher architecture unchanged; WebKit awaits final exact-head CI |
+| Smoke/deployability | Core d7b117e5 full backend CI: 2450 passed; exact final head gates and release proof remain pending |
+| Observability/audit | Safe delivery state, attempts and correlation IDs exposed; revoke reason and admin command audit retained; no body/token logging added |
+| No-hardcode | Recipient configuration, policy supplements, existing business config and media signing reused; no personal IDs or new price/credit rules introduced |
+| Performance/query shape | SQL limit/offset/count over matching filters, deterministic timestamp/UUID ordering, latest-message cursors; no new unbounded entity list |
+| Rollback/recovery | No production data rewrite or historic reply replay; ordinary immutable-image rollback; historical paid mismatch remains an operator/domain-resolution case |
 
 ## Guidance inspected
 
@@ -70,7 +70,7 @@ All mandatory sources were accessible and inspected remotely; no skills reposito
 
 - Audit baseline, production evidence and ownership recorded before changing production code.
 - Backend/support owner: support_audit. UI/admin inventory owner: admin_audit. Root: integration, runtime evidence, execution ledger and release/PR coordination. Independent reviewer: engineering_guidance.
-- Implementation and tests pending.
+- Implementation follows the regression-first slices below; the final exact-head CI/release state is recorded separately from local proofs.
 
 ## Expanded support-message triage and payment audit (2026-11-06)
 
@@ -134,3 +134,26 @@ Root owns this minimal slice: first reproduce automatic→admin, admin→automat
 
 - Screenshot QA found that author CSS sets `display:grid` on login/shell containers but does not preserve the native `hidden` attribute. A successful login can leave an entire login panel visible above the intended mobile admin page; hidden step-up controls are affected by the same CSS cascade.
 - Scope: restore `[hidden] { display: none !important; }` in the shared admin stylesheet; test actual visible state after login in both surfaces, including MFA controls. Do not change authentication or permission checks.
+
+## Verified implementation checkpoint and remaining boundaries (2026-11-06)
+
+- Core code is published in draft PR #581, commit d7b117e5eb9ccd2197fe3c536f6125c221756a6d. GitHub tree content was verified against all 45 isolated source blobs before publication.
+- Final support regression set: 20 passed, including unique HTTP routes and the delayed-transaction timestamp race. Payment/provider dispatch compatibility: 79 passed. Session/refund/security compatibility: 41 passed. Independent reviews found no blocking issue in these slices.
+- The core exact-head CI full backend/product suite passed 2450 tests. This result belongs to d7b117e5 and must not be represented as validation of the later download/pagination/capability commit.
+- Download regression: former header-only endpoint navigation reproduced the failure. Signed local media capability now authorizes browser/native attachment download without leaking Telegram init data; wrong owner/key/asset/signature and expiry remain denied. The backend/storage suite passed 38 tests, actual browser download/native fallback suite passed four, and typecheck/build passed.
+- Read-only rotated production access logs independently contain ten normalized media download requests returning HTTP 401 between 2026-11-04 21:39 UTC and 2026-11-05 18:46 UTC. They confirm the current endpoint problem but do not identify the exact path used in the older complaints.
+- Backend list paging reproduced nine meaningful failures before repair, plus a separate same-created-at ordering regression. All 20 paging tests and 39 related existing compatibility/source checks now pass: eight list surfaces, filtered totals, stable ties, access denial, exact promo lookup compatibility and server-side trend search.
+- UI paging/permission navigation has 45 passing Chromium cases, including the previous 21 support/security/runtime cases, plus 22 static source contracts. Dedicated trends and creator queues have request-sequence guards; generic main/control navigation retains its pre-existing late-response boundary. Do not claim all admin navigation races are fixed.
+- Independent UI review exposed a final contract issue: login/me serialized only legacy role permissions, whereas AdminPolicy also grants role supplements. This is repaired through a common permission module. The five moved role/action/helper definitions are AST-identical to the baseline. Meaningful RED was 14 failed / four passed, followed by 54 passing auth/policy/security regression and compatibility tests. Real signed login/me, role supplements, explicit deny, wildcard/deny-all, inactive account and unverified MFA paths are exercised. Runtime wildcard authorization remains open-ended; only UI capability enumeration is finite when explicit exceptions exist. Seven creator-partnership runtime contract checks also pass after following the re-export. Independent standards/spec/security review signs off with no open blocker for the final prepared slices.
+
+### Actual support-case outcomes
+
+Read-only financial inspection covered 1533 generations belonging to open-ticket users: no nonterminal jobs, duplicate generation debits, missing full failure refunds, excess refunds, or succeeded payments without their ledger credit were found. A stored result URL is not proof of file availability. The specific duplicate-charge complainant had 16 terminal operations: nine successful/sent and seven failed/fully refunded; another refund would duplicate value.
+
+One distinct payment is authoritatively COMPLETED at 543.48 RUB while the immutable local contract expects 543.50 RUB for 500 ROX. It remains pending and uncredited. The prevention fix rejects mismatched future invoices and fixes safe provider dispatch; it does not settle this historical payment. Current fixed Lava offers also need their business catalog/price configuration reconciled before this route can be considered operationally restored. No unsafe tolerance, raw wallet adjustment, price mutation or compensation was applied.
+
+Age/photo-input and visual-quality complaints were correlated read-only within 24 hours of the three relevant ticket dates. The two age/video complaints map to five succeeded v1 generations but none stores a trend ID or workflow link; there are no matching v2 workflow records. The birthday upload complaint has no generation/workflow in that window. Current matching templates normalize, but neither their names nor normalization proves which historic template was used or reproduces output quality. The absence of persisted v1 trend linkage is an observability limitation, not permission to guess or alter a catalog record. No paid generation was launched, no support ticket was silently closed, and no customer reply was sent.
+
+### Release evidence boundary
+
+No production source/image/data changes have occurred during the isolated preparation. Read-only release readiness confirms clean tracked production source at 9590eb61, successful existing read/fetch authentication, and identical 44 migration sources; both repository and production database are at 0044_trend_workflows. The standard release migration command therefore has no pending schema work for this change. Final exact-head six-workflow CI and exact deployed-SHA health evidence remain required; any actual repository review or production-environment approval gate must be honored. No local/browser green result is a production delivery claim.

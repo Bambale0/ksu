@@ -2,6 +2,9 @@
   "use strict";
 
   const tg = window.Telegram?.WebApp;
+  const pagination = window.createAdminPagination();
+  let loadSequence = 0;
+  let searchTimer;
   const state = {
     token: null,
     me: null,
@@ -18,7 +21,7 @@
     "trendMinReferences", "trendMaxReferences", "trendBillingSeconds", "trendSortOrder",
     "trendTags", "trendParameters", "trendKnownFields", "trendActiveRow", "trendActive",
     "trendPreview", "trendFormMessage", "trendSubmit", "trendReset", "trendFormKicker",
-    "trendFormTitle", "trendSearch", "trendStatusFilter", "trendList", "trendToast",
+    "trendFormTitle", "trendSearch", "trendStatusFilter", "trendList", "trendPagination", "trendToast",
   ];
   const dom = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 
@@ -324,22 +327,14 @@
   }
 
   function filteredTrends() {
-    const query = dom.trendSearch.value.trim().toLowerCase();
-    const status = dom.trendStatusFilter.value;
-    return state.trends.filter((item) => {
-      if (status === "active" && !item.is_active) return false;
-      if (status === "inactive" && item.is_active) return false;
-      if (!query) return true;
-      const payload = item.payload || {};
-      return `${item.title} ${payload.model_id || ""} ${(payload.tags || []).join(" ")}`.toLowerCase().includes(query);
-    });
+    return state.trends;
   }
 
   function renderTrends() {
     dom.trendList.replaceChildren();
     const items = filteredTrends();
     if (!items.length) {
-      dom.trendList.append(el("div", "trend-empty", state.trends.length ? "Ничего не найдено" : "Трендов пока нет. Создайте первый слева."));
+      dom.trendList.append(el("div", "trend-empty", dom.trendSearch.value || dom.trendStatusFilter.value !== "all" ? "Ничего не найдено" : "На этой странице трендов нет."));
       return;
     }
     for (const item of items) {
@@ -379,11 +374,15 @@
     }
   }
 
-  async function loadAll() {
+  async function loadAll(filters) {
+    const request = ++loadSequence;
+    const page = pagination.page("Тренды", filters, 200);
     const [options, trends] = await Promise.all([
       api("/api/v1/admin/trends/options"),
-      api("/api/v1/admin/trends"),
+      api(`/api/v1/admin/trends?${page.params}`),
     ]);
+    if (request !== loadSequence) return;
+    dom.trendPagination.replaceChildren(page.controls(trends, loadAll));
     state.models = Array.isArray(options.models) ? options.models : [];
     state.trends = Array.isArray(trends.items) ? trends.items : [];
     populateModels();
@@ -501,6 +500,8 @@
     state.models = [];
     state.trends = [];
     state.editing = null;
+    pagination.reset();
+    ++loadSequence;
     dom.trendShell.hidden = true;
     dom.trendAuth.hidden = false;
     setMessage(dom.trendLoginMessage, "Сессия завершена.", "ok");
@@ -515,8 +516,17 @@
   dom.trendInputMode.addEventListener("change", syncReferenceFields);
   dom.trendPreviewUrl.addEventListener("change", renderPreview);
   dom.trendPreviewUrl.addEventListener("blur", renderPreview);
-  dom.trendSearch.addEventListener("input", renderTrends);
-  dom.trendStatusFilter.addEventListener("change", renderTrends);
+  const applyTrendFilters = () => {
+    window.clearTimeout(searchTimer);
+    const filters = { q: dom.trendSearch.value.trim(), offset: 0 };
+    if (dom.trendStatusFilter.value !== "all") filters.is_active = dom.trendStatusFilter.value === "active";
+    void loadAll(filters).catch((error) => toast(error.message || "Не удалось найти тренды"));
+  };
+  dom.trendSearch.addEventListener("input", () => {
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(applyTrendFilters, 250);
+  });
+  dom.trendStatusFilter.addEventListener("change", applyTrendFilters);
 
   try {
     tg?.ready?.();

@@ -105,7 +105,7 @@ class AdminUserService:
         bounded_offset = max(0, min(offset, 100_000))
         rows = (
             await session.execute(
-                stmt.order_by(User.created_at.desc())
+                stmt.order_by(User.created_at.desc(), User.id.desc())
                 .offset(bounded_offset)
                 .limit(bounded_limit)
             )

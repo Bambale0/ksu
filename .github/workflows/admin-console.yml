@@ -22,6 +22,7 @@ jobs:
         run: |
           node --check app/web/admin_app/admin.js
           node --check app/web/admin_app/support-inbox.js
+          node --check app/web/admin_app/admin-pagination.js
           node --check app/web/admin_app/control.js
           node --check app/web/admin_app/trends.js
           node --check app/web/admin_app/admin-navigation.js

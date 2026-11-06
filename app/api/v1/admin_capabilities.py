@@ -376,8 +376,15 @@ async def web_admin_support_reply(
 
 
 @router.get("/cms/documents")
-async def web_admin_cms_documents(context: AdminCmsReadDep, session: SessionDep) -> dict[str, Any]:
-    return await AdminCmsService.list_documents(session, admin=context.account)
+async def web_admin_cms_documents(
+    context: AdminCmsReadDep,
+    session: SessionDep,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
+) -> dict[str, Any]:
+    return await AdminCmsService.list_documents(
+        session, admin=context.account, limit=limit, offset=offset,
+    )
 
 
 @router.get("/cms/documents/{document_id}")
@@ -465,8 +472,12 @@ async def web_admin_notification_preview(
 async def web_admin_campaigns(
     context: AdminNotificationsReadDep,
     session: SessionDep,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
-    return await AdminNotificationService.list_campaigns(session, admin=context.account)
+    return await AdminNotificationService.list_campaigns(
+        session, admin=context.account, limit=limit, offset=offset,
+    )
 
 
 @router.get("/notifications/campaigns/{campaign_id}")
@@ -585,13 +596,17 @@ async def web_admin_promos(
     context: AdminPromoReadDep,
     session: SessionDep,
     q: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
     if q:
         try:
             return {"item": await AdminPromoService.lookup(session, admin=context.account, query=q)}
         except Exception as exc:
             raise _domain_error(exc) from exc
-    return await AdminPromoService.list_promos(session, admin=context.account)
+    return await AdminPromoService.list_promos(
+        session, admin=context.account, limit=limit, offset=offset,
+    )
 
 
 @router.post("/promocodes", status_code=status.HTTP_201_CREATED)
@@ -763,11 +778,11 @@ async def web_admin_prompts(
     context: AdminPromptReadDep,
     session: SessionDep,
     status_filter: str | None = Query(default=None, alias="status", max_length=24),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
 ) -> dict[str, Any]:
     return await AdminContentService.list_prompts(
-        session,
-        admin=context.account,
-        status=status_filter,
+        session, admin=context.account, status=status_filter, limit=limit, offset=offset,
     )
 
 
@@ -798,8 +813,17 @@ async def web_admin_prompt_moderate(
 
 
 @router.get("/trends")
-async def web_admin_trends(context: AdminSocialDep, session: SessionDep) -> dict[str, Any]:
-    return await AdminContentService.list_trends(session, admin=context.account)
+async def web_admin_trends(
+    context: AdminSocialDep,
+    session: SessionDep,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=100_000),
+    q: str | None = Query(default=None, max_length=128),
+    is_active: bool | None = Query(default=None),
+) -> dict[str, Any]:
+    return await AdminContentService.list_trends(
+        session, admin=context.account, limit=limit, offset=offset, q=q, is_active=is_active,
+    )
 
 
 @router.post("/trends", status_code=status.HTTP_201_CREATED)

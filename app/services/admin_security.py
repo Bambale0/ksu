@@ -21,90 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import AdminAccount, AdminAuditLog, AdminSession
+from app.services.admin_permissions import (
+    ROLE_PERMISSIONS as ROLE_PERMISSIONS,
+    effective_permissions as effective_permissions,
+    has_permission as has_permission,
+)
 from app.services.users import UserService
 
 
 class AdminSecurityConfigurationError(RuntimeError):
     pass
 
-
-ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "owner": frozenset({"*"}),
-    "admin": frozenset(
-        {
-            "dashboard.read",
-            "users.read",
-            "users.pii",
-            "users.manage",
-            "users.wallet.adjust",
-            "users.notes",
-            "generations.read",
-            "generations.manage",
-            "payments.read",
-            "promocodes.read",
-            "promocodes.manage",
-            "support.read",
-            "support.manage",
-            "withdrawals.read",
-            "withdrawals.manage",
-            "referrals.read",
-            "audit.read",
-            "admins.read",
-            "security.read",
-            "sessions.manage",
-        }
-    ),
-    "support": frozenset(
-        {
-            "dashboard.read",
-            "users.read",
-            "users.notes",
-            "generations.read",
-            "payments.read",
-            "support.read",
-            "support.manage",
-        }
-    ),
-    "finance": frozenset(
-        {
-            "dashboard.read",
-            "users.read",
-            "users.pii",
-            "users.wallet.adjust",
-            "payments.read",
-            "withdrawals.read",
-            "withdrawals.manage",
-            "referrals.read",
-            "audit.read",
-        }
-    ),
-    "moderator": frozenset(
-        {
-            "dashboard.read",
-            "users.read",
-            "users.manage",
-            "users.notes",
-            "generations.read",
-            "generations.manage",
-            "support.read",
-        }
-    ),
-    "auditor": frozenset(
-        {
-            "dashboard.read",
-            "users.read",
-            "generations.read",
-            "payments.read",
-            "promocodes.read",
-            "support.read",
-            "withdrawals.read",
-            "referrals.read",
-            "audit.read",
-            "admins.read",
-            "security.read",
-        }
-    ),
-}
 
 VALID_ADMIN_ROLES = frozenset(ROLE_PERMISSIONS)
 SENSITIVE_AUDIT_KEYS = frozenset(
@@ -227,28 +154,6 @@ def consume_recovery_code(admin: AdminAccount, code: str) -> bool:
             admin.recovery_code_hashes = hashes
             return True
     return False
-
-
-def has_permission(admin: AdminAccount, permission: str) -> bool:
-    base = ROLE_PERMISSIONS.get(admin.role, frozenset())
-    overrides = admin.permission_overrides or {}
-    deny = {str(item) for item in overrides.get("deny", [])}
-    allow = {str(item) for item in overrides.get("allow", [])}
-    if permission in deny or "*" in deny:
-        return False
-    if "*" in base or permission in base:
-        return True
-    return permission in allow or "*" in allow
-
-
-def effective_permissions(admin: AdminAccount) -> list[str]:
-    base = ROLE_PERMISSIONS.get(admin.role, frozenset())
-    overrides = admin.permission_overrides or {}
-    deny = {str(item) for item in overrides.get("deny", [])}
-    allow = {str(item) for item in overrides.get("allow", [])}
-    if "*" in base:
-        return ["*"]
-    return sorted((set(base) | allow) - deny)
 
 
 def parse_bootstrap_ids() -> set[int]:

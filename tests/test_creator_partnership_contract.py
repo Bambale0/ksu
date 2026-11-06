@@ -40,14 +40,14 @@ def test_public_and_admin_creator_partnership_routes_are_registered() -> None:
 
 
 def test_sensitive_creator_admin_actions_require_confirmation_and_step_up() -> None:
-    policy = _read("app/services/admin_policy.py")
+    from app.services.admin_policy import AdminPolicy
+
     admin_api = _read("app/api/v1/admin_creator_partnership.py")
-    assert '"creator_partnership.decide"' in policy
-    assert '"creator_partnership.update"' in policy
-    assert '"creator_partnership.grant"' in policy
-    grant = policy.split('"creator_partnership.grant"', 1)[1].split("),", 1)[0]
-    assert "confirmation_required=True" in grant
-    assert "step_up_required=True" in grant
+    for action in ("creator_partnership.decide", "creator_partnership.update", "creator_partnership.grant"):
+        policy = AdminPolicy.action(action)
+        assert policy.permission == "partners.manage"
+        assert policy.confirmation_required is True
+    assert AdminPolicy.action("creator_partnership.grant").step_up_required is True
     assert 'Header(default=None, alias="X-Confirm-Action")' in admin_api
     assert "AdminAuthService.step_up_valid(context.session)" in admin_api
     assert 'Header(alias="Idempotency-Key"' in admin_api

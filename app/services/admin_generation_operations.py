@@ -32,7 +32,7 @@ class AdminGenerationOperationService:
         rows = list(
             (
                 await session.scalars(
-                    stmt.order_by(Generation.created_at.desc())
+                    stmt.order_by(Generation.created_at.desc(), Generation.id.desc())
                     .offset(max(0, min(offset, 100_000)))
                     .limit(max(1, min(limit, 100)))
                 )
