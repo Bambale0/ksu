@@ -266,10 +266,14 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
             request_key=str(uuid.uuid4()),
             promo_code=promo.code,
         )
+        authoritative_invoice = {
+            "id": payment.external_id, "status": "paid",
+            "receipt": {"amount": str(payment.amount), "currency": payment.currency},
+        }
         await CardPaymentService.complete(
             session,
             payment_id=payment.id,
-            provider_payload={"status": "paid"},
+            provider_payload=authoritative_invoice,
         )
 
         buyer_wallet = await session.get(Wallet, buyer.id)
@@ -304,7 +308,7 @@ async def test_partner_promo_payment_is_first_line_only_and_refunds_are_proporti
         await CardPaymentService.complete(
             session,
             payment_id=payment.id,
-            provider_payload={"status": "paid", "retry": True},
+            provider_payload={**authoritative_invoice, "retry": True},
         )
         assert int(
             (

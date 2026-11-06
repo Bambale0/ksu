@@ -132,3 +132,44 @@ Frozen files in this slice:
 - docs/agents/EXECUTION/card-paid-identity-20261106.md
 
 Exact published-head CI and automated review remain separate release gates.
+
+## Exact-head CI fixture correction
+
+On f3f75d928c0e264a60339a5012ad63f11efd3e64, CI run42184167229 /
+job127780441955 stopped at one failure after 1767 passes (76.85s):
+test_partner_promo_payment_is_first_line_only_and_refunds_are_proportional
+called complete with only status=paid. The strict guard correctly rejected the
+missing invoice ID. The earlier fixture search wrongly restricted test filenames
+to card/payment/promo and missed referral coverage.
+
+A repository-wide caller inventory without that filename filter found two
+success/replay calls in the same referral fixture requiring the real invoice ID,
+amount and currency. Update only their synthetic authoritative payload; preserve
+all first-line commission, partner bonus, refund and replay assertions. Product
+code is frozen and unchanged. Validate the affected end-to-end referral file
+together with paid-identity, card-bonus and invoice-integrity compatibility.
+
+### Full caller inventory and fixture verification
+
+The unfiltered Python caller scan (including imported aliases and module-qualified
+calls) found these nine card completion call sites:
+
+| File / entry | Calls | Contract |
+| --- | ---: | --- |
+| app/services/card_payments.py / reconcile | 1 | Authoritative invoice from provider lookup |
+| tests/test_referral_partner_end_to_end.py | 2 | Success and exact replay now use created invoice identity |
+| tests/test_card_invoice_integrity.py | 1 | Concurrent valid webhook settlement fixture |
+| tests/test_card_paid_identity.py | 4 | Intentional invalid evidence, valid concurrent and delayed-race controls |
+| tests/test_card_payment_bonuses.py | 1 | Valid paid invoice for exact bonus/referral accounting |
+
+The affected four-file compatibility run passed **70 tests in 14.84s**, exit 0
+(job_182bc311ea74, test-run-20261106T080159Z-3826617.log). Ruff passed;
+all existing assertions in the referral/refund test file are AST-identical to
+their pre-change form, and the scoped diff whitespace check passed. Root read
+the full referral flow and independently approved the fixture adaptation.
+
+The production card service blob remains unchanged:
+c7cf0479ec92609b3746bc06f6486d59b0976751.
+Only tests/test_referral_partner_end_to_end.py and this execution document change
+in this CI follow-up. Both are frozen; the next published head must rerun the
+six required CI workflows.

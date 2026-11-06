@@ -1274,3 +1274,11 @@ Regression evidence: PII HTTP RED18/8 became GREEN84 (26 new plus compatibility)
 Privacy/backend and UI slices received root plus independent engineering review. The complete payment slice received root and independent support review; both confirmed the final 404/state fix and GREEN93. Relevant Ruff, AST, JavaScript syntax and diff checks pass. All contributing source files are frozen for publication; the resulting new head still requires its own six CI workflows and automatic review before release.
 
 No production message, balance adjustment, provider mutation, contract-price change, schema migration or historic outbox replay was performed. Read-only release verification must still prove exact deployed SHA, all ten application image IDs, health, persisted recipient membership and the original failed-reply cohort.
+
+## 2026-11-06 — exact-head CI referral fixture correction
+
+CI on f3f75d928c0e264a60339a5012ad63f11efd3e64 stopped at tests/test_referral_partner_end_to_end.py::test_partner_promo_payment_is_first_line_only_and_refunds_are_proportional (1 failed, 1767 passed). The newly required completion guard correctly rejected that existing synthetic success payload, which contained status alone and no invoice ID/amount/currency.
+
+A complete caller inventory across app/tests/scripts, without the earlier filename filter, found nine completion call sites (one production path and eight test calls). Only the success/retry pair in this referral fixture remained incomplete. They now supply the created payment's invoice identity and exact frozen money with a paid status. All original buyer/partner/referral/refund/idempotency assertions are unchanged; AST equality confirms this.
+
+The affected referral + card identity/integrity/bonus compatibility suite passed 70 tests in 14.84s (job_182bc311ea74, test-run-20261106T080159Z-3826617.log). Ruff/AST/diff checks pass and root independently reviewed the fixture. Product code is unchanged from f3; app/services/card_payments.py remains blob c7cf0479ec92609b3746bc06f6486d59b0976751. The next exact head must pass all six workflows and automatic review; f3 is not a successful full-backend checkpoint.
