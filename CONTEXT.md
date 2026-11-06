@@ -1,3 +1,11 @@
+## Active Fix Execution — support inbox and complete admin audit (2026-11-06)
+
+- Baseline main/production: `9590eb61ca209b3fcb2cb9a77ab74c3cf49840c7`; branch `fix/support-inbox-admin-audit-20261106`.
+- Confirmed read-only incident: a customer message was accepted with HTTP 201 and persisted, but no operator notification exists; new messages do not advance ticket activity. Primary admin replies bypass the durable SupportOutbox path. Both admin details truncate the oldest 500 messages; main UI cannot reopen closed tickets.
+- Reuse current RBAC/MFA/audit/command ledger, notification/outbox workers, recipient configuration and schema. Preserve Mini-App-only bot routing/direct contact and all private ownership boundaries. No live test sends, historical replay, balance/provider changes or production writes.
+- Acceptance, 14-point fresh audit, complete verification matrix, guidance, roles and progress: [Support/admin execution ledger](docs/agents/EXECUTION/support-inbox-admin-audit-20261106.md).
+- Status: audit recorded before production-code edits; isolated regression-driven fixes and whole-admin inventory next. Independent review and exact-head CI remain completion gates.
+
 ## Active Fix Execution — Mini App audit recovery and UI (2026-11-04)
 
 - Baseline: `81ac57608e1807b0c7f81a681032b790c1ceb077`; branch `fix/miniapp-audit-20261104`. The user authorized implementation of the preceding UI/logic/design audit and team development. Production rollout is not part of this implementation request.
