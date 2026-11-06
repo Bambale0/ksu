@@ -4,11 +4,14 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models import AdminAccount, Notification, SupportMessage, SupportTicket, User
+from app.services.abuse_protection import AbuseProtectionService
 from app.services.support_recipient_config import SupportRecipientConfigService
 from app.services.notifications import NotificationService
 
@@ -19,6 +22,16 @@ SUPPORT_INCOMING_KIND = "support_incoming"
 
 class SupportConversationService:
     """Persist customer activity and notify the explicitly configured operators."""
+
+    @staticmethod
+    async def consume_customer_message_quota(redis: Redis, *, user_id: uuid.UUID) -> None:
+        await AbuseProtectionService.consume(
+            redis,
+            key=f"abuse:support:user:{user_id}",
+            limit=settings.support_message_rate_limit_per_minute,
+            window_seconds=60,
+            message="Слишком много сообщений в поддержку. Попробуйте чуть позже.",
+        )
 
     @staticmethod
     async def authorized_operator(

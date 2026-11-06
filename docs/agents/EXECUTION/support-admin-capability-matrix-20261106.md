@@ -640,3 +640,20 @@ Only frontend/mini-app/e2e/responsive-device-surfaces.spec.mjs and this audit
 changed in this follow-up. Both are frozen for the parent snapshot. No product
 code, production state or outbound message changed. The final published-head
 CI is owned by the parent release step.
+
+
+## 2026-11-06 — legacy bot support and download expiry follow-up
+
+The ea40686bf940ab409b8247b9b55c4d25590a70f0 checkpoint passed all six workflows: 2625 backend, 1027 Chromium, 362 WebKit, 11 keyboard, three upload-deadline cases and seven ROXY journeys. Two completed-review findings were then independently confirmed and corrected before release.
+
+| Capability / failure boundary | Correction | Verification |
+| --- | --- | --- |
+| Legacy bot support customer message | Canonical message/activity/notice service and shared API/bot quota; router remains unregistered | RED13; combined GREEN53 in 22.26s, job_2ff343f2a8b8 |
+| Bot acknowledgement and replay | Durable receipt before FSM clear/ack, transactional rollback, insert winner only, no reopening on replay | Real PostgreSQL/Redis tests cover quota, enqueue/commit failure, post-commit clear/ack failure and simultaneous duplicate delivery |
+| Long-open Downloads screen | Fresh owner-authorized descriptor for each exact asset/generation, no cached capability or hardcoded expiry | Explicit-expiry RED2 against real HTTPS fixture, job_713578b701ab |
+| Native and browser file saving | Preserve native cancellation; same-context attachment after async metadata; validate URL and filename | GREEN46: 23 Chromium + 23 WebKit, job_1651b7f25abc; real bytes/filename after six-second delay |
+| Download failure and UI lifetime | No stale fallback after 403/404/503, identity/status/URL failure; retry, duplicate guard and unmount abort | Same GREEN46, plus preserved and strengthened existing Downloads race/compatibility cases |
+
+The source/test inventories found no extra legacy handler caller to adapt and only one existing Downloads href assertion to update across 352 test-source files. The assertion continues to detect stale list regressions and now verifies the refreshed descriptor/native call. Fresh Next/TypeScript build passed all 24 static pages (job_6890615f959e). The intermediate 26/20 browser run failed only because a global alert selector also matched the Next route announcer; the final scoped assertions retain their original error and no-stale-operation checks.
+
+Root independently reviewed the bot transaction/quota/receipt slice and the download source, tests and observed results. A separate engineering reviewer also signed off the complete download slice. Details are in support-legacy-fsm-20261106.md and downloads-descriptor-expiry-20261106.md in this directory. Source is frozen for the parent's exact-head CI/review/release step; these local and earlier CI results do not substitute for that step. No physical Telegram device, real outbound message, historical replay, financial exception or production schema operation was performed.

@@ -4,7 +4,6 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -36,11 +35,9 @@ def configured_support(monkeypatch):
     monkeypatch.setattr(settings, "admin_bootstrap_telegram_ids", "")
     monkeypatch.setattr(settings, "abuse_protection_enabled", True)
     monkeypatch.setattr(settings, "abuse_fail_closed", True)
-    # Inject route configuration so the pre-fix HTTP RED is about missing
-    # admission, rather than failing fixture setup on the not-yet-added field.
-    monkeypatch.setattr(support, "settings", SimpleNamespace(
-        support_message_rate_limit_per_minute=3, support_telegram_url="",
-    ))
+    # API and the retired bot handler now consume the same configured policy.
+    monkeypatch.setattr(settings, "support_message_rate_limit_per_minute", 3)
+    monkeypatch.setattr(settings, "support_telegram_url", "")
 
 
 @pytest.fixture

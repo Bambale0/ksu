@@ -10,7 +10,6 @@ from app.api.deps import CurrentUserDep, RedisDep, SessionDep
 from app.bot.support_links import direct_support_handle, normalize_direct_support_url
 from app.core.config import settings
 from app.db.models import SupportMessage, SupportTicket
-from app.services.abuse_protection import AbuseProtectionService
 from app.services.support import SupportConversationService
 
 router = APIRouter(prefix="/support", tags=["support"])
@@ -71,13 +70,7 @@ async def _owned_ticket(
 
 
 async def _consume_customer_message_quota(redis: RedisDep, user_id: uuid.UUID) -> None:
-    await AbuseProtectionService.consume(
-        redis,
-        key=f"abuse:support:user:{user_id}",
-        limit=settings.support_message_rate_limit_per_minute,
-        window_seconds=60,
-        message="Слишком много сообщений в поддержку. Попробуйте чуть позже.",
-    )
+    await SupportConversationService.consume_customer_message_quota(redis, user_id=user_id)
 
 
 @router.post("/tickets", status_code=201)
