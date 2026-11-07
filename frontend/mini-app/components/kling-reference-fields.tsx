@@ -7,8 +7,9 @@ import type { UiField } from "@/lib/types";
 
 type Reference = { name?: string; image_urls?: string[]; video_url?: string; audio_url?: string; voice_url?: string; tag?: string; description?: string };
 type Props = { field: UiField; value: unknown; onChange: (value: unknown) => void; onBusyChange?: (busy: boolean) => void };
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
-const VIDEO_ACCEPT = "video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm";
+const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
+const VIDEO_ACCEPT = ".mp4,.mov,.qt,.mkv,.avi,.webm,video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm";
+const AUDIO_ACCEPT = ".mp3,.wav,.aac,.m4a,.ogg,audio/*";
 
 export function KlingReferenceFields({ field, value, onChange, onBusyChange }: Props) {
   const [busy, setBusy] = useState(false);
@@ -30,7 +31,7 @@ export function KlingReferenceFields({ field, value, onChange, onBusyChange }: P
 
   async function upload(index: number, key: "image_urls" | "video_url" | "audio_url" | "voice_url", files: File[]) {
     if (!files.length || uploading.current) return;
-    const accept = key === "image_urls" ? IMAGE_ACCEPT : key === "video_url" ? VIDEO_ACCEPT : "audio/*";
+    const accept = key === "image_urls" ? IMAGE_ACCEPT : key === "video_url" ? VIDEO_ACCEPT : AUDIO_ACCEPT;
     const existing = key === "image_urls" ? rows[index].image_urls || [] : [];
     const max = key === "image_urls" ? 4 : 1;
     try {
@@ -60,7 +61,7 @@ export function KlingReferenceFields({ field, value, onChange, onBusyChange }: P
   function picker(index: number, key: "image_urls" | "video_url" | "audio_url" | "voice_url", label: string) {
     const row = rows[index];
     const urls = key === "image_urls" ? row.image_urls || [] : row[key] ? [String(row[key])] : [];
-    return <div className="field"><label className="upload-control"><span>{label}</span><input aria-label={label} type="file" multiple={key === "image_urls"} disabled={busy} accept={key === "image_urls" ? IMAGE_ACCEPT : key === "video_url" ? VIDEO_ACCEPT : "audio/*"} onChange={event => { const files = Array.from(event.currentTarget.files || []); event.currentTarget.value = ""; void upload(index, key, files); }}/></label>
+    return <div className="field"><label className="upload-control"><span>{label}</span><input aria-label={label} type="file" multiple={key === "image_urls"} disabled={busy} accept={key === "image_urls" ? IMAGE_ACCEPT : key === "video_url" ? VIDEO_ACCEPT : AUDIO_ACCEPT} onChange={event => { const files = Array.from(event.currentTarget.files || []); event.currentTarget.value = ""; void upload(index, key, files); }}/></label>
       <div className="upload-list">{urls.map((url, i) => <button type="button" disabled={busy} key={`${url}-${i}`} aria-label={`Убрать ${label} ${i + 1}`} onClick={() => {
         const next = { ...row };
         if (key === "image_urls") next.image_urls = urls.filter((_, j) => i !== j);
