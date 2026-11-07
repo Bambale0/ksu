@@ -1375,3 +1375,5 @@ Verification matrix: unit/domain, provider contract, API quote/create, ownership
 Plan: 1) RED public catalog/provider tests. 2) Shared contracts, catalog/UI, tariff and trusted metadata validation. 3) Native named-reference editors and browser tests. 4) Independent Standards + Spec review. 5) Exact-head six-workflow CI and PR delivery.
 
 Progress: RED regression slice prepared before implementation. Domain context above is preserved.
+
+Implementation slice: shared strict Kie contract, both active catalog entries, server-owned resolution tariffs, native named-reference editors in Create/repeat, owner-scoped measured video duration and nested image/video size validation implemented. Initial exact-head RED CI `213f8a443e50082741d7a1b188cde2bc4fcb5b0f` reached full regression and failed at UnknownModelError(kling-4.0), after 826 passing tests; earlier build/typecheck/Ruff/schema steps passed (run 42371824780). Local Ruff and compileall pass. Browser cases cover native subject/voice upload, invalid-type retry, upload-in-progress submit lock, and ordered keyframes; mobile WebKit is explicitly included. Exact-head full CI and independent review pending.

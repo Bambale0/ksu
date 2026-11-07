@@ -255,6 +255,11 @@ async def validate_reference_duration_contracts(
 ) -> None:
     from app.services.model_catalog import InvalidModelParametersError
 
+    if model_id == "kling-4.0":
+        from app.services.kling4_contract import validate_kling4_media
+
+        await validate_kling4_media(session, parameters)
+
     if model_id in {"seedance-2.0", "seedance-2.0-fast", "seedance-2.0-mini"}:
         video_total = await _reference_total_seconds(
             session,

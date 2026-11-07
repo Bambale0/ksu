@@ -1,5 +1,7 @@
 "use client";
 
+import { KlingReferenceFields } from "./kling-reference-fields";
+
 import { assertUploadFileType } from "@/lib/upload-file-types";
 
 import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
@@ -211,7 +213,9 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
   const [quoteError, setQuoteError] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [fileUploading, setUploading] = useState(false);
+  const [nestedUploads, setNestedUploads] = useState(0);
+  const uploading = fileUploading || nestedUploads > 0;
   const [error, setError] = useState("");
   const [promptVisible, setPromptVisible] = useState(false);
   const [scope, setScope] = useState<"profile" | "feed">("feed");
@@ -407,7 +411,7 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
           {context.candidate_models.length > 1 && <div className="panel"><label className="label">Модель</label><select className="control" value={modelId} onChange={(event) => chooseModel(event.target.value)}>{context.candidate_models.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>}
           <div className="panel"><span className="kicker">{context.action.label}</span><h2>{promptMeta.title}</h2><p className="muted">{promptMeta.copy}</p>{actionId === "edit" && Boolean(context.edit_presets?.length) && <div className="segmented scrollable action-presets">{context.edit_presets?.map((preset) => <button type="button" key={preset.id} className={editKind === preset.id ? "active" : ""} onClick={() => setEditKind(preset.id)}>{preset.label}</button>)}</div>}<textarea className="control textarea action-prompt" value={prompt} placeholder={promptMeta.placeholder} onChange={(event) => setPrompt(event.target.value)} /></div>
 
-          {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить настройки" : "Настройки работы"}</h2><div className="form-stack">{fields.map((field) => <ActionField key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
+          {fields.length > 0 && <div className="panel"><span className="kicker">Настройки</span><h2>{action === "parameters" ? "Изменить настройки" : "Настройки работы"}</h2><div className="form-stack">{fields.map((field) => <ActionField onBusyChange={busy => setNestedUploads(count => Math.max(0, count + (busy ? 1 : -1)))} key={field.name} field={field} value={parameters[field.name]} onChange={(value) => changeParameter(field.name, value)} onUpload={(files) => uploadFiles(field, files)} />)}</div></div>}
           {model?.ui_schema?.billing_seconds && <div className="panel"><label className="label">{model.ui_schema.billing_seconds.label || "Длительность"}</label><input className="control" type="number" min={model.ui_schema.billing_seconds.min || 1} max={model.ui_schema.billing_seconds.max || 600} value={billingSeconds ?? ""} onChange={(event) => setBillingSeconds(event.target.value ? Number(event.target.value) : null)} /></div>}
         </div>
         <aside className="panel create-summary action-summary"><span className="kicker">Новая версия</span><h2>{model?.title || "Выберите модель"}</h2><div className="quote-box"><span>Стоимость</span><strong>{quote ? `${money(quote.effective_cost_rox || quote.cost_rox)} ROX` : "—"}</strong><small>{quote ? adminRetailNote || `≈ ${money(quote.cost_rub)} ₽` : quoteError || formError || "Считаю…"}</small></div><button className="primary wide" type="button" disabled={!quote || Boolean(formError) || uploading || submitting} onClick={() => void submitDerivative()}><Icon name="spark"/>{submitting ? "Запускаю…" : context.action.label}</button><button className="secondary wide" type="button" onClick={() => goToGeneration(context.generation.id)}>Отмена</button></aside>
@@ -417,7 +421,8 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
   </div>;
 }
 
-function ActionField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
+function ActionField({ field, value, onChange, onUpload, onBusyChange }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void>; onBusyChange?: (busy: boolean) => void }) {
+  if (field.editor) return <KlingReferenceFields field={field} value={value} onChange={onChange} onBusyChange={onBusyChange}/>;
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {
     const urls = field.control === "files" ? (Array.isArray(value) ? value as string[] : []) : value ? [String(value)] : [];
@@ -505,3 +510,4 @@ function PublishSuccess({ share, generationId, publicationScope, downgradedToPro
 function ActionError({ error, generationId }: { error: string; generationId: string }) {
   return <div className="roxy-app"><main className="main-shell"><section className="screen"><div className="panel action-error-card"><Icon name="settings"/><h1>Действие недоступно</h1><p className="muted">{error}</p><button className="primary wide" type="button" onClick={() => goToGeneration(generationId)}>Вернуться к работе</button></div></section></main></div>;
 }
+

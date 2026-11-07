@@ -6,6 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from app.core.config import settings
+from app.services.kling4_contract import KEYFRAME_FIELDS, REFERENCE_FIELDS
 
 MediaType = Literal["image", "video"]
 PriceMode = Literal["flat", "per_second"]
@@ -180,6 +181,8 @@ SPECS: tuple[ModelSpec, ...] = (
     ModelSpec("seedance-2.5", "Seedance 2.5", "seedance", "bytedance/seedance-2-5", "video", "multimodal_video", SEEDANCE_25_FIELDS, ("prompt", "duration"), "per_second", Decimal("60"), 4, 30),
 
     # Kling 3.0 + Motion Control
+    ModelSpec("kling-4.0", "Kling 4.0 · Референсы", "kling", "kling-4.0/reference-to-video", "video", "multimodal_video", REFERENCE_FIELDS, ("prompt",), "per_second", Decimal("30"), 3, 30, notes=("Up to 15 image, video, element and voice references. Native audio is enabled.",)),
+    ModelSpec("kling-4.0-keyframe", "Kling 4.0 · Ключевые кадры", "kling", "kling-4.0/keyframe-to-video", "video", "text_or_image_to_video", KEYFRAME_FIELDS, ("prompt",), "per_second", Decimal("30"), 3, 30, notes=("First, up to eight middle, and last frames; at most min(duration + 1, 10) frames.",)),
     ModelSpec("kling-3.0", "Kling 3.0", "kling", "kling-3.0/video", "video", "text_or_image_to_video", KLING_3_FIELDS, ("duration",), "per_second", Decimal("15"), 3, 15, notes=("Single-shot supports up to first+last frame; multi-shot uses multi_prompt; up to three element references.",)),
     ModelSpec("kling-motion-2.6", "Kling Motion 2.6", "kling", "kling-2.6/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("13"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
     ModelSpec("kling-motion-3.0", "Kling Motion 3.0", "kling", "kling-3.0/motion-control", "video", "motion_control", ("prompt", "input_urls", "video_urls", "mode", "character_orientation", "background_source"), ("prompt", "input_urls", "video_urls"), "per_second", Decimal("15"), 3, 30, None, ("Exactly one reference image and one 3-30s motion video.",)),
@@ -238,6 +241,16 @@ class ModelCatalog:
 
     @staticmethod
     def _validate_model_rules(spec: ModelSpec, clean: dict[str, Any]) -> None:
+        if spec.id in {"kling-4.0", "kling-4.0-keyframe"}:
+            from app.services.kling4_contract import Kling4ContractError, normalize_kling4_input
+
+            try:
+                normalized = normalize_kling4_input(spec.kie_model, clean)
+            except Kling4ContractError as exc:
+                raise InvalidModelParametersError(str(exc)) from exc
+            clean.clear()
+            clean.update(normalized)
+            return
         if spec.family == "seedance" and spec.id != "seedance-1.5-pro":
             # Frame mode is disabled product-wide: Kie rejects Seedance 2.5
             # frame tasks with a non-adaptive ratio (422) and frame/reference
@@ -439,3 +452,4 @@ class ModelCatalog:
         if cost <= 0:
             raise InvalidModelParametersError("Model price must be positive")
         return spec, clean, cost, seconds, unit_price
+

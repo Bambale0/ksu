@@ -15,6 +15,9 @@ from app.services.model_routing import (
 from app.services.reference_static import ReferenceStaticStorage
 
 EXPLICIT_MEDIA_INPUT_FIELDS = (
+    "keyframe_urls",
+    "elements",
+    "voices",
     "image_url",
     "image_urls",
     "image_input",
@@ -132,6 +135,10 @@ class ReferenceResolver:
     def public_audio_references(cls, parameters: dict[str, Any] | None) -> list[str]:
         values: list[str] = []
         data = dict(parameters or {})
+        for collection, field in (("elements", "voice_url"), ("voices", "audio_url")):
+            items = data.get(collection)
+            if isinstance(items, list):
+                values.extend(str(item[field]) for item in items if isinstance(item, dict) and item.get(field))
         for field in PUBLIC_AUDIO_REFERENCE_FIELDS:
             raw = data.get(field)
             if isinstance(raw, (list, tuple)):

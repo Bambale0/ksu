@@ -80,6 +80,13 @@ async def validate_reference_sizes(
         for url in _field_urls(parameters.get(name)):
             limits_by_url[url].append((name, max_size_mb))
 
+    if spec.id == "kling-4.0":
+        for element in parameters.get("elements", []):
+            for url in _field_urls(element.get("image_urls", [])):
+                limits_by_url[url].append(("elements.image_urls", 10))
+            if element.get("video_url"):
+                limits_by_url[element["video_url"]].append(("elements.video_url", 10))
+
     if not limits_by_url:
         return
 

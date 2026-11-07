@@ -362,14 +362,28 @@ class GenerationService:
         if generation_id is not None and requested != 1:
             raise ValueError("Explicit generation_id is supported only for single generation requests")
 
-        spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
-            session,
-            model_id=model_id,
-            prompt=prompt,
-            input_url=input_url,
-            parameters=parameters,
-            billing_seconds=billing_seconds,
-        )
+        # Scope all create paths before reading measured Kling 4 metadata.
+        scoped = model_id in {"kling-4.0", "kling-4.0-keyframe"}
+        info = session.info if scoped else {}
+        previous_owner = info.get("current_user_id")
+        if scoped:
+            info["current_user_id"] = user_id
+        try:
+            spec, clean, retail_cost_rox, seconds, unit_price = await cls.prepare_request(
+                session,
+                model_id=model_id,
+                prompt=prompt,
+                input_url=input_url,
+                parameters=parameters,
+                billing_seconds=billing_seconds,
+            )
+        finally:
+            if scoped:
+                if previous_owner is None:
+                    info.pop("current_user_id", None)
+                else:
+                    info["current_user_id"] = previous_owner
+
         billing = await BillingAccessService.decision(
             session,
             user_id=user_id,

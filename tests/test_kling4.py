@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from decimal import Decimal
 
 import httpx
@@ -12,6 +13,9 @@ from app.services.generations import GenerationService
 from app.services.kie_video_contracts import KieVideoContractError, normalize_kie_video_input
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog
 from app.services.model_ui_contract import build_public_model_ui_schema
+from app.db.models import User
+from app.db.reference_models import UserReference
+from app.db.session import SessionFactory
 
 
 REFERENCE = "kling-4.0"
@@ -110,3 +114,33 @@ async def test_kling4_client_posts_exact_model_input_and_callback():
     assert task == "kling4-task"
     assert captured == [{"model": "kling-4.0/keyframe-to-video", "callBackUrl": "https://roxy.example/callback", "input": {"prompt": "A sunset", "duration": 30, "resolution": "720p"}}]
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nested", [False, True])
+async def test_kling4_owned_video_and_video_subject_double_retail_price(nested):
+    old = settings.generation_pricing_json
+    settings.generation_pricing_json = '{"kling-4.0":{"per_second":30,"by_resolution":{"720p":30,"1080p":45}}}'
+    try:
+        async with SessionFactory() as session:
+            user = User(telegram_id=uuid.uuid4().int % 10**14, first_name="Kling test")
+            session.add(user)
+            await session.flush()
+            url = f"https://cdn.example/{uuid.uuid4()}.mp4"
+            row = UserReference(user_id=user.id, kind="video", status="ready", source="mini_app_upload", source_url=url, duration_ms=5000, probe_status="ready", size_bytes=1024)
+            session.add(row)
+            await session.flush()
+            session.info["current_user_id"] = user.id
+            references = {"elements": [{"name": "Hero", "video_url": url}]} if nested else {"video_urls": [url]}
+            _, _, cost, seconds, price = await GenerationService.prepare_request(session, model_id=REFERENCE, prompt="A sunset", parameters={"duration": 5, "resolution": "1080p", **references})
+            assert (cost, seconds, price) == (Decimal("450.00"), 5, Decimal("90"))
+            row.duration_ms = 31000
+            await session.flush()
+            with pytest.raises(InvalidModelParametersError, match="seconds"):
+                await GenerationService.prepare_request(session, model_id=REFERENCE, prompt="A sunset", parameters={"duration": 5, **references})
+            row.duration_ms = 5000
+            await session.flush()
+            session.info["current_user_id"] = uuid.uuid4()
+            with pytest.raises(InvalidModelParametersError, match="verified"):
+                await GenerationService.prepare_request(session, model_id=REFERENCE, prompt="A sunset", parameters={"duration": 5, **references})
+    finally:
+        settings.generation_pricing_json = old

@@ -48,6 +48,8 @@ _PRESENTATION: dict[str, dict[str, str | None]] = {
     "seedance-2.5": {"title": "Seedance 2.5", "product_key": "seedance-2.5", "product_title": "Seedance 2.5", "family_group": "seedance", "family_title": "Seedance", "version_label": "2.5"},
 
     # Kling video / Motion / Avatar are intentionally separate product families.
+    "kling-4.0": {"title": "Kling 4.0 · Референсы", "product_key": "kling-4.0", "product_title": "Kling 4.0 · Референсы", "family_group": "kling-video", "family_title": "Kling Video", "version_label": "4.0 · Референсы"},
+    "kling-4.0-keyframe": {"title": "Kling 4.0 · Ключевые кадры", "product_key": "kling-4.0-keyframe", "product_title": "Kling 4.0 · Ключевые кадры", "family_group": "kling-video", "family_title": "Kling Video", "version_label": "4.0 · Ключевые кадры"},
     "kling-2.5-turbo-pro-t2v": {"title": "Kling 2.5 Turbo Pro · Text to Video", "product_key": "kling-2.5-turbo-pro", "product_title": "Kling 2.5 Turbo Pro", "family_group": "kling-video", "family_title": "Kling Video", "version_label": "2.5 Turbo Pro"},
     "kling-2.5-turbo-pro-i2v": {"title": "Kling 2.5 Turbo Pro · Image to Video", "product_key": "kling-2.5-turbo-pro", "product_title": "Kling 2.5 Turbo Pro", "family_group": "kling-video", "family_title": "Kling Video", "version_label": "2.5 Turbo Pro"},
     "kling-3.0": {"title": "Kling 3.0", "product_key": "kling-3.0", "product_title": "Kling 3.0", "family_group": "kling-video", "family_title": "Kling Video", "version_label": "3.0"},
@@ -106,3 +108,4 @@ def music_model_title(provider_model: str) -> str:
     }
     base = labels.get(value.upper(), f"Suno {value}" if value else "Suno")
     return f"{base} · Music"
+
