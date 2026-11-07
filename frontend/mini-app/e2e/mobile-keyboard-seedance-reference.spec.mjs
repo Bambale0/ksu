@@ -381,6 +381,15 @@ for (const modelId of ['seedance-2.0', 'seedance-2.5']) {
     await expect(audioField.locator('.upload-list')).toHaveCount(0);
     await expect(input).toHaveValue('');
 
+    await input.setInputFiles([
+      { name: 'music.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('mock MP3') },
+      { name: 'movie.mov', mimeType: 'video/quicktime', buffer: Buffer.from('mock MOV') },
+    ]);
+    await expect(page.getByText('Поддерживаемые форматы: MP3, WAV. Выберите другой файл.', { exact: true })).toBeVisible();
+    expect(uploads).toHaveLength(1);
+    await expect(audioField.locator('.upload-list')).toHaveCount(0);
+    await expect(input).toHaveValue('');
+
     await input.setInputFiles({ name: 'music.wav', mimeType: 'audio/x-wav', buffer: Buffer.from('mock WAV') });
     await expect(audioField.getByText('1 загружено')).toBeVisible();
     expect(uploads).toHaveLength(2);
