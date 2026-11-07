@@ -275,3 +275,41 @@ test('Repeat clears a legacy automatic ratio instead of inheriting a square mode
   await run.click();
   expect((await submitted).postDataJSON().parameters.aspect_ratio).toBe('9:16');
 });
+
+
+test('Seedance repeat validates audio before upload and clears errors on retry', async ({ page }) => {
+  await mockActionApp(page);
+  const context = contextFor('repeat');
+  const model = {
+    ...repeatModel, id: 'seedance-2.5', title: 'Seedance 2.5', family: 'seedance', media_type: 'video',
+    ui_schema: {
+      defaults: {},
+      fields: [
+        { name: 'prompt', label: 'Промпт', control: 'textarea', required: true },
+        { name: 'reference_audio_urls', label: 'Аудио', control: 'files', max_items: 10, accept: '.mp3,.wav,audio/mpeg,audio/wav,audio/x-wav' },
+      ],
+      groups: [{ id: 'main', title: 'Настройки' }],
+    },
+  };
+  context.candidate_models = [model];
+  context.defaults.model_id = model.id;
+  context.defaults.parameters = {};
+  const uploads = [];
+  await page.route('**/api/v1/generations/gen_source/action-context?*', route => json(route, context));
+  await page.route('**/api/v1/uploads/kie', route => {
+    uploads.push(route.request().postDataBuffer().toString());
+    return json(route, { url: 'https://cdn.roxy.local/repeat-audio.mp3' }, 201);
+  });
+  await openAction(page, 'repeat');
+  const input = page.locator('input[accept*=".mp3"]');
+  await input.setInputFiles({ name: 'movie.mov', mimeType: 'video/quicktime', buffer: Buffer.from('MOV') });
+  await expect(page.getByText('Поддерживаемые форматы: MP3, WAV. Выберите другой файл.', { exact: true })).toBeVisible();
+  expect(uploads).toHaveLength(0);
+  await input.setInputFiles({ name: 'sound.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('MP3') });
+  await expect(page.getByText('1 выбрано')).toBeVisible();
+  await expect(page.getByText('Поддерживаемые форматы: MP3, WAV. Выберите другой файл.', { exact: true })).toHaveCount(0);
+  expect(uploads).toHaveLength(1);
+  const submitted = page.waitForRequest(request => request.url().includes('/generations/gen_source/actions/repeat') && request.method() === 'POST');
+  await page.getByRole('button', { name: /Ещё вариант/ }).last().click();
+  expect((await submitted).postDataJSON().parameters.reference_audio_urls).toEqual(['https://cdn.roxy.local/repeat-audio.mp3']);
+});
