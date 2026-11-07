@@ -168,12 +168,12 @@ def _normalize_provider_payload(model: dict[str, Any], clean: dict[str, Any]) ->
 
 
 def test_golden_payload_inventory_covers_current_contracts() -> None:
-    assert len(ModelCatalog.list()) == 23
-    assert len(REGISTERED_MODELS) == 46
-    assert len(CALLABLE_MODELS) >= 23
+    assert len(ModelCatalog.list()) == 25
+    assert len(REGISTERED_MODELS) == 48
+    assert len(CALLABLE_MODELS) >= 25
     assert set(ACTIVE_NEW_WORK_MODEL_IDS) <= set(ModelCatalog._by_id)
     assert MUSIC_MODEL_ID == "suno-v5.5"
-    assert len(REGISTERED_MODELS) + 1 == 47
+    assert len(REGISTERED_MODELS) + 1 == 49
 
 
 @pytest.mark.parametrize("model", CALLABLE_MODELS, ids=lambda item: f"callable:{item['id']}")
