@@ -201,6 +201,7 @@ def _patch_seedance_multiref_schema(schema: dict[str, Any], model_id: str) -> No
         "reference_audio_urls",
         label="Аудио-референсы",
         control="files",
+        accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav",
         max_items=audio_limit,
         max_size_mb=15,
     )
