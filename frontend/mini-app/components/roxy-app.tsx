@@ -639,7 +639,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
               try {
                 const max = field.control === "file" ? 1 : field.max_items || 20;
                 const urls: string[] = field.control === "files" && Array.isArray(draft.values[field.name]) ? [...draft.values[field.name] as string[]] : [];
-                for (const file of files.slice(0, Math.max(0, max - urls.length))) { assertUploadFileType(file, field.accept);
+                const selectedFiles = files.slice(0, Math.max(0, max - urls.length)); selectedFiles.forEach(file => assertUploadFileType(file, field.accept)); for (const file of selectedFiles) {
                   if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) { showToast(`${file.name}: максимум ${field.max_size_mb} МБ`); continue; }
                   const uploaded = await api.upload(file);
                   if (field.control === "file") { updateValue(field.name, uploaded.url); break; }
