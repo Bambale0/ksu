@@ -7,7 +7,9 @@
 - Guidance refreshed: primary diagnosing-bugs and local systematic-debugging; claw/dev-agents-pack debugger, wondelai bounded integration guidance, anthropics webapp-testing. agentskills has no task-specific provider guidance. Existing project Playwright runner takes precedence over generic helper scripts.
 - Verification matrix: schema/config contract, Chromium/WebKit file chooser and submission journey, typecheck/build/lint, exact-head CI and review, immutable deployment/readiness/revision. DB/auth/migration N/A: no changes. Native iPhone file-provider UI cannot be proven by setInputFiles; state that limit.
 - Rollout: normal gated release. Rollback: revert scoped schema/client guard changes. No data migration, no provider changes, no audio transcoding. Preserve the prior 600-second HTTP timeout.
-- Status: audit and schema regression completed; browser regression added; implementation pending.
+- Implementation: explicit extension/MIME audio filter in server schema plus shared pre-upload format guard in both create surfaces. Entire selected batch is validated before the first upload, so a MOV cannot orphan preceding valid files. Source review found no provider/price/routing/timeout/persistence changes; backend byte probing remains authoritative.
+- Verification: 9 schema/UI tests and Ruff passed; all 9 related browser scenarios passed in Chromium and mobile WebKit (existing Playwright v1.56.1 container, isolated source, mocked API). The added mixed-file atomicity assertion is being re-run with typecheck; exact-head CI remains required.
+- Delivery: PR #583. Full CI/review and immutable production deployment verification pending. Native iPhone file selection still requires actual-device confirmation; no paid requests or historic task replay.
 
 ## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
 
