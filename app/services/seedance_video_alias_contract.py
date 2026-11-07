@@ -55,7 +55,7 @@ def install_seedance_video_alias_contract() -> None:
         *_VIDEO_INPUT_ALIASES,
     )
     model_routing.REFERENCE_PARAMETER_FIELDS = frozenset(
-        (*model_routing.IMAGE_REFERENCE_FIELDS, *model_routing.VIDEO_REFERENCE_FIELDS)
+        (*model_routing.REFERENCE_PARAMETER_FIELDS, *model_routing.IMAGE_REFERENCE_FIELDS, *model_routing.VIDEO_REFERENCE_FIELDS)
     )
 
     # ReferenceResolver imports constants by value, so patch its runtime contract

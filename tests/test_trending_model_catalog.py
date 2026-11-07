@@ -34,6 +34,8 @@ def test_current_tanyapi_families_remain_available() -> None:
         "grok-image-i2i",
         # Video
         "kling-3.0",
+        "kling-4.0",
+        "kling-4.0-keyframe",
         "kling-2.5-turbo-pro-t2v",
         "kling-2.5-turbo-pro-i2v",
         "grok-video-i2v",

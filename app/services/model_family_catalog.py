@@ -96,6 +96,8 @@ PRODUCT_DESCRIPTIONS = {
     "seedance-2.5": "Более сильная версия для детальных роликов",
     "kling-2.5-turbo-pro": "Кинематографичное видео в турбо-режиме",
     "kling-3.0": "Кинематографичное видео с гибкой сценой",
+    "kling-4.0": "Видео до 30 секунд с персонажами, голосами и референсами",
+    "kling-4.0-keyframe": "Управление сценой через первый, промежуточные и последний кадры",
     "kling-motion-2.6": "Перенос движения с точным контролем",
     "kling-motion-3.0": "Продвинутый motion control для персонажей",
     "kling-avatar-standard": "Говорящий аватар для быстрых роликов",
@@ -313,3 +315,4 @@ def build_model_families(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
     order = {family_id: index for index, family_id in enumerate(FAMILY_ORDER)}
     families.sort(key=lambda item: (order.get(str(item["family"]), 1000), str(item["title"])))
     return families
+

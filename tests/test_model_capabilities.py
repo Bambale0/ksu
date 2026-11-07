@@ -15,7 +15,7 @@ def test_catalog_contains_exact_trending_public_model_set() -> None:
     families = {item["family"] for item in models}
 
     assert ids == list(TRENDING_PUBLIC_MODEL_ORDER)
-    assert len(ids) == 23
+    assert len(ids) == 25
     assert {
         "nanobanana",
         "seedream",

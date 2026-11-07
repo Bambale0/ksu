@@ -1,5 +1,7 @@
 "use client";
 
+import { KlingReferenceFields } from "./kling-reference-fields";
+
 import { assertUploadFileType } from "@/lib/upload-file-types";
 
 import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
@@ -212,7 +214,7 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
     const ratioError = aspectRatioError(field, value);
     if (ratioError) errors.push(ratioError);
     else if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
-    if (field.control === "json" && !isEmpty(value)) {
+    if (field.control === "json" && typeof value === "string" && !isEmpty(value)) {
       try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
   }
@@ -478,7 +480,9 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [fileUploading, setUploading] = useState(false);
+  const [nestedUploads, setNestedUploads] = useState(0);
+  const uploading = fileUploading || nestedUploads > 0;
   const [familySheet, setFamilySheet] = useState<GenerationModelFamily | null>(null);
   const quoteSeq = useRef(0);
   const byId = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
@@ -634,7 +638,7 @@ function CreateScreen({ models, families, me, onBalance, onCreated, showToast }:
           {groups.map((group) => {
             const grouped = fields.filter((field) => (field.group || "main") === group.id || (groups.length === 1 && !field.group));
             if (!grouped.length) return null;
-            return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => {
+            return <div className="panel" key={group.id}><h2>{group.title}</h2><div className="form-stack">{grouped.map((field) => <DynamicField onBusyChange={busy => setNestedUploads(count => Math.max(0, count + (busy ? 1 : -1)))} key={field.name} field={field} value={draft.values[field.name]} onChange={(value) => updateValue(field.name, value)} onUpload={async (files) => {
               setUploading(true);
               try {
                 const max = field.control === "file" ? 1 : field.max_items || 20;
@@ -684,7 +688,8 @@ function FamilyVariantSheet({ family, models, selectedId, onClose, onChoose }: {
   );
 }
 
-function DynamicField({ field, value, onChange, onUpload }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void> }) {
+function DynamicField({ field, value, onChange, onUpload, onBusyChange }: { field: UiField; value: unknown; onChange: (value: unknown) => void; onUpload: (files: File[]) => Promise<void>; onBusyChange?: (busy: boolean) => void }) {
+  if (field.editor) return <KlingReferenceFields field={field} value={value} onChange={onChange} onBusyChange={onBusyChange}/>;
   const label = userFieldLabel(field);
   if (field.control === "toggle") return <label className="toggle-row"><span><strong>{field.label}</strong></span><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)}/><i/></label>;
   if (field.control === "file" || field.control === "files") {

@@ -24,6 +24,8 @@ DEFAULT_GENERATION_PRICING_JSON = (
     '"kling-avatar-standard":{"per_second":100},'
     '"kling-avatar-pro":{"per_second":150},'
     '"kling-3.0":{"per_second":30},'
+    '"kling-4.0":{"per_second":30,"by_resolution":{"720p":30,"1080p":45}},'
+    '"kling-4.0-keyframe":{"per_second":30,"by_resolution":{"720p":30,"1080p":45}},'
     '"veo-3.1":{"per_second":35},'
     '"grok-video-i2v":{"per_second":15},'
     '"grok-video-1.5":{"per_second":30},'

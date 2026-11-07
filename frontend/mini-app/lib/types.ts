@@ -52,6 +52,7 @@ export type ActivePromo = {
 };
 
 export type UiField = {
+  editor?: "kling_elements" | "kling_voices";
   name: string;
   label: string;
   group?: string;

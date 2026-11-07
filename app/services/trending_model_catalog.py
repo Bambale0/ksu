@@ -29,6 +29,8 @@ TRENDING_PUBLIC_MODEL_ORDER: tuple[str, ...] = (
     # registry as an admin preview. One KSU product can expose several Tanya
     # variants through server-driven fields (for example Veo 3.1 and Kling 3.0).
     "kling-3.0",
+    "kling-4.0",
+    "kling-4.0-keyframe",
     "kling-2.5-turbo-pro-t2v",
     "kling-2.5-turbo-pro-i2v",
     "grok-video-i2v",

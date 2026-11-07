@@ -15,6 +15,8 @@ class KieVideoContractError(ValueError):
 
 
 VIDEO_MODELS = {
+    "kling-4.0/reference-to-video",
+    "kling-4.0/keyframe-to-video",
     "wan/2-7-text-to-video",
     "wan/2-7-image-to-video",
     "wan/2-7-videoedit",
@@ -447,6 +449,13 @@ def _normalize_grok(model: str, payload: dict[str, Any]) -> None:
 
 
 def normalize_kie_video_input(model: str, input_data: dict[str, Any]) -> dict[str, Any]:
+    if model in {"kling-4.0/reference-to-video", "kling-4.0/keyframe-to-video"}:
+        from app.services.kling4_contract import Kling4ContractError, normalize_kling4_input
+
+        try:
+            return normalize_kling4_input(model, input_data)
+        except Kling4ContractError as exc:
+            raise KieVideoContractError(str(exc)) from exc
     """Validate and normalize current Kie Market video request contracts.
 
     Unknown/future models are intentionally passed through unchanged. This
@@ -512,3 +521,4 @@ def normalize_kie_veo_input(input_data: dict[str, Any]) -> dict[str, Any]:
     for field in ("enable_fallback", "enable_translation"):
         _bool(payload, field)
     return payload
+

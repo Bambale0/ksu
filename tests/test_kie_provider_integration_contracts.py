@@ -19,6 +19,8 @@ AUDIO = "https://cdn.example.com/audio.mp3"
 TOKEN = "test-token"
 
 VALID_MARKET_MODEL_INPUTS: dict[str, dict[str, Any]] = {
+    "kling-4.0/reference-to-video": {"prompt": "A sunset", "duration": 5, "resolution": "720p"},
+    "kling-4.0/keyframe-to-video": {"prompt": "@first_frame moves", "first_frame_url": IMG, "duration": 5, "resolution": "720p"},
     "google/nano-banana": {"prompt": "poster", "aspect_ratio": "1:1", "output_format": "png"},
     "google/nano-banana-edit": {"prompt": "edit poster", "aspect_ratio": "1:1", "output_format": "png", "image_urls": [IMG]},
     "nano-banana-pro": {"prompt": "premium poster", "aspect_ratio": "1:1", "resolution": "1K", "output_format": "png", "image_input": [IMG]},

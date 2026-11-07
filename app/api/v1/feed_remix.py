@@ -18,7 +18,7 @@ router = APIRouter(tags=["feed"])
 class RemixCompositionRequest(BaseModel):
     surface: Literal["feed", "profile"] = "feed"
     prompt: str | None = Field(default=None, max_length=30000)
-    reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=36)
+    reference_ids: list[uuid.UUID] = Field(default_factory=list, max_length=48)
     confirm_own_references: bool = False
     aspect_ratio: str | None = Field(default=None, max_length=32)
 

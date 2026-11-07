@@ -80,6 +80,16 @@ async def validate_reference_sizes(
         for url in _field_urls(parameters.get(name)):
             limits_by_url[url].append((name, max_size_mb))
 
+    if spec.id == "kling-4.0":
+        elements = parameters.get("elements", [])
+        if not isinstance(elements, list) or any(not isinstance(item, dict) for item in elements):
+            raise InvalidModelParametersError("Kling 4 elements must be an array of objects")
+        for element in elements:
+            for url in _field_urls(element.get("image_urls", [])):
+                limits_by_url[url].append(("elements.image_urls", 10))
+            if element.get("video_url") and isinstance(element["video_url"], str):
+                limits_by_url[element["video_url"]].append(("elements.video_url", 10))
+
     if not limits_by_url:
         return
 

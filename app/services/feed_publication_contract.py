@@ -205,6 +205,11 @@ def install_feed_publication_contract() -> None:
                 videos.extend(str(item) for item in value if accepted(str(item)))
         if generation.input_url and accepted(str(generation.input_url)):
             images.append(str(generation.input_url))
+        if params.get("_model_id") in {"kling-4.0", "kling-4.0-keyframe"}:
+            from app.services.model_routing import image_references, video_references
+
+            images.extend(url for url in image_references(params) if accepted(url))
+            videos.extend(url for url in video_references(params) if accepted(url))
         return list(dict.fromkeys(images)), list(dict.fromkeys(videos))
 
     @classmethod

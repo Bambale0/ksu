@@ -52,6 +52,8 @@ GROK_VIDEO_RATIOS = ["16:9", "9:16", "1:1", "2:3", "3:2"]
 # model pages: examples are used where the page exposes only an example value;
 # documented ranges are expanded for user-facing select controls.
 KIE_DURATION_OPTIONS: dict[str, list[int]] = {
+    "kling-4.0": list(range(3, 31)),
+    "kling-4.0-keyframe": list(range(3, 31)),
     "wan-2.7-t2v": [5],
     "wan-2.7-i2v": [5],
     "wan-2.7-r2v": [5],
@@ -69,6 +71,8 @@ KIE_DURATION_OPTIONS: dict[str, list[int]] = {
 }
 
 MODEL_FIELD_SUGGESTIONS: dict[str, dict[str, list[str]]] = {
+    "kling-4.0": {"resolution": ["720p", "1080p"], "aspect_ratio": ["16:9", "9:16", "1:1", "21:9"]},
+    "kling-4.0-keyframe": {"resolution": ["720p", "1080p"], "aspect_ratio": ["16:9", "9:16", "1:1", "21:9"]},
     "nano-banana": {"aspect_ratio": NANO_LEGACY_RATIOS, "output_format": ["png", "jpeg"]},
     "nano-banana-edit": {"aspect_ratio": NANO_LEGACY_RATIOS, "output_format": ["png", "jpeg"]},
     "nano-banana-pro": {"aspect_ratio": NANO_PRO_RATIOS, "resolution": ["1K", "2K", "4K"], "output_format": ["png", "jpg"]},
@@ -291,3 +295,4 @@ def build_public_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
         _patch_field(schema, "character_ids", label="Character IDs", control="json", group="references", placeholder='["character_id"]')
 
     return sanitize_aspect_ratio_schema(model_id, schema)
+

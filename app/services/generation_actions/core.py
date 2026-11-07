@@ -293,6 +293,11 @@ class GenerationActionService:
         parameters: dict[str, Any],
     ) -> tuple[dict[str, Any], str | None]:
         result = dict(parameters)
+        if target.id in {"kling-4.0", "kling-4.0-keyframe"} and GenerationActionService.model_id(generation) == target.id:
+            # A same-model repeat already carries the original structured
+            # references. Flattening subjects into top-level arrays changes
+            # mention indexes, quotas, video duration and retail pricing.
+            return result, generation.input_url
         images, videos = GenerationActionService.parent_references(generation)
         fields = set(target.known_fields)
 

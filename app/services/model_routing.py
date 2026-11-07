@@ -24,6 +24,7 @@ IMAGE_REFERENCE_FIELDS = (
     "image_input",
     "image_url",
     "first_frame_url",
+    "keyframe_urls",
     "last_frame_url",
     "first_frame",
     "reference_image",
@@ -55,7 +56,7 @@ SEEDANCE_GENERAL_VIDEO_REFERENCE_FIELDS = (
     "reference_video_urls",
     *LEGACY_VIDEO_REFERENCE_FIELDS,
 )
-REFERENCE_PARAMETER_FIELDS = frozenset((*IMAGE_REFERENCE_FIELDS, *VIDEO_REFERENCE_FIELDS))
+REFERENCE_PARAMETER_FIELDS = frozenset((*IMAGE_REFERENCE_FIELDS, *VIDEO_REFERENCE_FIELDS, "elements", "voices"))
 SEEDANCE_EXACT_MODELS = {
     "seedance-2.0",
     "seedance-2.0-fast",
@@ -145,13 +146,24 @@ def _collect_fields(parameters: dict[str, Any], fields: tuple[str, ...]) -> list
 
 def image_references(parameters: dict[str, Any], input_url: str | None = None) -> list[str]:
     refs = _collect_fields(parameters, IMAGE_REFERENCE_FIELDS)
+    elements = parameters.get("elements")
+    if isinstance(elements, list):
+        for element in elements:
+            if isinstance(element, dict):
+                refs.extend(_as_list(element.get("image_urls")))
     if input_url:
         refs.append(str(input_url))
     return list(dict.fromkeys(refs))
 
 
 def video_references(parameters: dict[str, Any]) -> list[str]:
-    return _collect_fields(parameters, VIDEO_REFERENCE_FIELDS)
+    refs = _collect_fields(parameters, VIDEO_REFERENCE_FIELDS)
+    elements = parameters.get("elements")
+    if isinstance(elements, list):
+        for element in elements:
+            if isinstance(element, dict):
+                refs.extend(_as_list(element.get("video_url")))
+    return list(dict.fromkeys(refs))
 
 
 def has_references(parameters: dict[str, Any], input_url: str | None = None) -> bool:
@@ -282,6 +294,14 @@ def _apply_wan_r2v_reference_contract(
 
 
 def _apply_reference_aliases(spec: ModelSpec, parameters: dict[str, Any], input_url: str | None) -> dict[str, Any]:
+    if spec.id in {"kling-4.0", "kling-4.0-keyframe"}:
+        # These are distinct Kie contracts. Never silently turn a tail frame
+        # into a first frame or discard unsupported media before validation.
+        normalized = dict(parameters)
+        if input_url:
+            field = "image_urls" if spec.id == "kling-4.0" else "first_frame_url"
+            normalized.setdefault(field, [input_url] if field == "image_urls" else input_url)
+        return normalized
     seedance = _apply_seedance_reference_contract(spec, parameters, input_url)
     if seedance is not None:
         return seedance
@@ -372,3 +392,4 @@ def resolve_model_request(
         mode=mode,
         switched=resolved_model_id != requested_model_id,
     )
+

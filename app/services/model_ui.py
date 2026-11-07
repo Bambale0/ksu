@@ -371,7 +371,35 @@ WAN_I2V_SCENARIOS = [
     ),
 ]
 
+KLING4_COMMON_FIELD_OVERRIDES = {
+    "prompt": {"max_length": 8000, "placeholder": "Опишите сцену. Используйте @image_1, @video_1 или @имя персонажа."},
+    "duration": {"control": "combobox", "suggestions": list(range(3, 31))},
+    "resolution": {"suggestions": ["720p", "1080p"]},
+    "aspect_ratio": {"suggestions": ["16:9", "9:16", "1:1", "21:9"]},
+}
+KLING4_IMAGE_FIELD = {"accept": "image/jpeg,image/png,image/webp", "max_size_mb": 10}
+
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
+    "kling-4.0": {
+        "defaults": {"duration": 5, "resolution": "720p", "aspect_ratio": "16:9"},
+        "field_overrides": {
+            **KLING4_COMMON_FIELD_OVERRIDES,
+            "image_urls": {**KLING4_IMAGE_FIELD, "max_items": 10, "label": "Изображения · @image_1…"},
+            "video_urls": {"accept": "video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,video/webm", "max_size_mb": 10, "max_items": 5, "label": "Видео · @video_1… (2–30 с, всего до 30 с)"},
+            "keep_original_sound": {"label": "Сохранить звук видео-референсов", "control": "toggle", "group": "references"},
+            "elements": {"label": "Персонажи и объекты", "control": "json", "editor": "kling_elements", "max_items": 7, "group": "references"},
+            "voices": {"label": "Голоса", "control": "json", "editor": "kling_voices", "max_items": 3, "group": "references"},
+        },
+    },
+    "kling-4.0-keyframe": {
+        "defaults": {"duration": 5, "resolution": "720p", "aspect_ratio": "16:9"},
+        "field_overrides": {
+            **KLING4_COMMON_FIELD_OVERRIDES,
+            "first_frame_url": {**KLING4_IMAGE_FIELD, "label": "Первый кадр · @first_frame"},
+            "keyframe_urls": {**KLING4_IMAGE_FIELD, "label": "Промежуточные кадры · @keyframe_1…", "control": "files", "max_items": 8, "group": "references"},
+            "last_frame_url": {**KLING4_IMAGE_FIELD, "label": "Последний кадр · @last_frame"},
+        },
+    },
     "nano-banana": {
         "defaults": {"aspect_ratio": "1:1", "output_format": "png"},
     },
@@ -491,3 +519,4 @@ def build_model_ui_schema(model: dict[str, Any]) -> dict[str, Any]:
             "required": True,
         }
     return schema
+
