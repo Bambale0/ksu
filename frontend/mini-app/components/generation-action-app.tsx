@@ -1,5 +1,7 @@
 "use client";
 
+import { assertUploadFileType } from "@/lib/upload-file-types";
+
 import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValues } from "@/lib/aspect-ratio";
 
 import { useEffect, useMemo, useState } from "react";
@@ -303,10 +305,13 @@ function GenerationActionApp({ generationId, action, actionContextId }: { genera
 
   const uploadFiles = async (field: UiField, files: File[]) => {
     setUploading(true);
+    setError("");
     try {
       const current = field.control === "files" && Array.isArray(parameters[field.name]) ? [...parameters[field.name] as string[]] : [];
       const max = field.control === "file" ? 1 : field.max_items || 20;
-      for (const file of files.slice(0, Math.max(0, max - current.length))) {
+      const selectedFiles = files.slice(0, Math.max(0, max - current.length));
+      selectedFiles.forEach(file => assertUploadFileType(file, field.accept));
+      for (const file of selectedFiles) {
         if (field.max_size_mb && file.size > field.max_size_mb * 1024 * 1024) throw new Error(`${file.name}: максимум ${field.max_size_mb} МБ`);
         const form = new FormData();
         form.append("file", file, file.name);
