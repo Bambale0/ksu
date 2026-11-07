@@ -1,3 +1,14 @@
+## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
+
+- Baseline main/production: `6e2691185cd7a67aba149e4518b3c449abace6a5`. User requests retrieval of the failed video and an HTTP timeout of 600 seconds.
+- Existing image/video adapters use 180/60-second client defaults. Add a validated deployment setting for generation POST only; status polling, content downloads, overall job deadline, routing, idempotency and billing stay unchanged.
+- Read-only video lookup returned failed/generation_timeout with no result. Provider attempt has no external task ID. Retrieval cannot manufacture a missing result and must not silently create another paid job.
+- Regression first: public adapter transport/config tests failed on baseline (8 failed, 1 passed); isolated worktree with APP_ENV=test, explicit test consent and unreachable DB/Redis avoids production data.
+- Guidance inspected remotely: Bambale0/skills diagnosing-bugs; claw and dev-agents-pack debugger; wondelai release-it bounded integration timeouts. agentskills and anthropics catalogs contain no task-specific provider guidance. Local systematic-debugging applied.
+- Verification matrix: adapter/config regression and adjacent contract/idempotency suites required; exact-head CI and independent review pass required. DB/auth/migration/UI changes N/A (no changes at those seams). Rollout through normal immutable-image deployment, rollback by reverting this scoped change. Runtime timeout verification required after deploy.
+- Acceptance: actual outbound generation POST read timeout is 600 by default and configurable; connect remains 10; polling stays 60; one POST per invocation, existing Idempotency-Key preserved.
+- Implementation: audit → failing tests → configurable POST timeout → focused tests/review → PR/CI → deploy and read-only verification. Status: regression reproduced, implementation pending.
+
 ## Active Fix Execution — support inbox and complete admin audit (2026-11-06)
 
 - Baseline main/production: `9590eb61ca209b3fcb2cb9a77ab74c3cf49840c7`; branch `fix/support-inbox-admin-audit-20261106`.
