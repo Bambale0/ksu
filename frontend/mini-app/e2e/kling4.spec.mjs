@@ -117,7 +117,7 @@ test('Kling 4 reuses saved subject and voice arrays without editing them', async
   const submitted = await setup(page, false, undefined, references);
   await page.goto('/mini-app/?route=history');
   await page.locator('.history-card').first().click();
-  await page.getByRole('button', { name: 'Использовать настройки', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /Использовать настройки/ }).click();
   await expect(page.getByLabel('Имя персонажа 1', { exact: true })).toHaveValue('Hero');
   await expect(page.getByLabel('Имя голоса 1', { exact: true })).toHaveValue('Narrator');
   const create = page.locator('.create-summary button.primary');
