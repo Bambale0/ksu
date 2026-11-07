@@ -39,7 +39,7 @@ async def test_saved_template_audio_survives_personal_pruning_and_deletion(perso
         await session.commit()
         if personal_action == "remove":
             await ReferenceService.remove(session, user_id=owner.id, reference_id=personal.id)
-        for index in range(13):
+        for index in range(ReferenceService.MAX_PER_KIND + 1):
             await ReferenceService.register(session, user_id=owner.id, source_url=f'https://cdn.example.invalid/{uuid.uuid4()}-{index}.mp3', kind='audio')
         assert await session.scalar(select(UserReference.status).where(UserReference.id == personal.id)) == 'deleted'
         await validate_reference_duration_contracts(session, model_id='seedance-2.5', parameters={'reference_audio_urls': [url]})
