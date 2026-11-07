@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadFileTypeMatches } from "./upload-file-types";
+
 import {
   createContext,
   useCallback,
@@ -108,6 +110,10 @@ function acceptedKinds(field: UiField): Set<SavedReference["kind"]> {
 }
 
 function referenceFitsField(reference: SavedReference, field: UiField): boolean {
+  const contentType = reference.content_type || "";
+  const trustedType = contentType && !["application/octet-stream", "binary/octet-stream"].includes(contentType);
+  const name = trustedType ? "" : reference.filename || reference.url.split(/[?#]/, 1)[0];
+  if (!uploadFileTypeMatches({ name, type: trustedType ? contentType : "" }, field.accept)) return false;
   if (!field.max_size_mb || !reference.size_bytes) return true;
   return reference.size_bytes <= field.max_size_mb * 1024 * 1024;
 }
