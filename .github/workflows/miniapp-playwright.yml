@@ -41,6 +41,9 @@ jobs:
       - name: Install Playwright test runtime
         working-directory: frontend/mini-app
         run: npm install --no-save @playwright/test@1.56.1
+      - name: Verify Kling 4 generation journeys
+        working-directory: frontend/mini-app
+        run: npx playwright test e2e/kling4.spec.mjs --project=chromium --project=webkit-mobile
       - name: Run comprehensive Mini App audit
         working-directory: frontend/mini-app
         run: npx playwright test --project=chromium

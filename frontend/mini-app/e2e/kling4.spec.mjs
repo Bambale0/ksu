@@ -115,7 +115,7 @@ test('Kling 4 keyframes preserve first middle last order in the create request',
 test('Kling 4 reuses saved subject and voice arrays without editing them', async ({ page }) => {
   const references = { elements: [{ name: 'Hero', image_urls: ['https://cdn.example/a.png', 'https://cdn.example/b.png'], tag: 'character' }], voices: [{ name: 'Narrator', audio_url: 'https://cdn.example/voice.wav' }], duration: 5, resolution: '720p' };
   const submitted = await setup(page, false, undefined, references);
-  await page.getByRole('button', { name: 'История', exact: true }).click();
+  await page.goto('/mini-app/?route=history');
   await page.locator('.history-card').first().click();
   await page.getByRole('button', { name: 'Использовать настройки', exact: true }).click();
   await expect(page.getByLabel('Имя персонажа 1', { exact: true })).toHaveValue('Hero');
