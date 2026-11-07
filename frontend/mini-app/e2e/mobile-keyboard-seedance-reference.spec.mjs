@@ -334,3 +334,91 @@ test('audio upload stays in audio parameters and long filenames fit mobile forms
   expect(payload.parameters.reference_video_urls).toBeUndefined();
   expect(payload.parameters.reference_image_urls).toBeUndefined();
 });
+
+
+for (const modelId of ['seedance-2.0', 'seedance-2.5']) {
+  test(`${modelId} audio chooser accepts MP3/WAV and rejects a MOV before upload`, async ({ page }) => {
+    await mockRoxy(page);
+    const model = structuredClone(seedance);
+    model.id = modelId;
+    model.title = modelId;
+    const audio = model.ui_schema.fields.find(field => field.name === 'reference_audio_urls');
+    audio.accept = '.mp3,.wav,audio/mpeg,audio/wav,audio/x-wav';
+    const audioUrl = 'https://cdn.roxy.local/music.mp3';
+    const uploads = [];
+    await page.route('**/api/v1/generations/models', route => json(route, {
+      models: [model],
+      families: [{ ...family, variants: [{ ...family.variants[0], id: modelId }] }],
+    }));
+    await page.route('**/api/v1/uploads/kie', route => {
+      uploads.push(route.request().postDataBuffer().toString());
+      return json(route, {
+        url: audioUrl, name: 'music.mp3', mime_type: 'audio/mpeg',
+        probe_status: 'ready', duration_ms: 5000, reference: { id: 'audio', kind: 'audio', url: audioUrl },
+      }, 201);
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/mini-app/?route=create');
+    await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+    const audioField = page.locator('.field').filter({ has: page.locator('input[accept*=".mp3"]') });
+    const input = audioField.locator('input[type="file"]');
+    const chooserPromise = page.waitForEvent('filechooser');
+    await audioField.locator('label.upload-control').click();
+    const chooser = await chooserPromise;
+    expect(await chooser.element().getAttribute('accept')).toContain('.mp3');
+    expect(await chooser.element().getAttribute('accept')).toContain('.wav');
+    expect(await chooser.element().getAttribute('accept')).not.toContain('video/');
+    await chooser.setFiles({ name: 'music.MP3', mimeType: '', buffer: Buffer.from('mock MP3') });
+    await expect(audioField.getByText('1 загружено')).toBeVisible();
+    expect(uploads).toHaveLength(1);
+    await expect(input).toHaveValue('');
+    await audioField.locator('.upload-list button').click();
+
+    // Browser automation bypasses native filtering, so also verify the boundary guard.
+    await input.setInputFiles({ name: 'movie.mov', mimeType: 'video/quicktime', buffer: Buffer.from('mock MOV') });
+    await expect(page.getByText('Поддерживаемые форматы: MP3, WAV. Выберите другой файл.', { exact: true })).toBeVisible();
+    expect(uploads).toHaveLength(1);
+    await expect(audioField.locator('.upload-list')).toHaveCount(0);
+    await expect(input).toHaveValue('');
+
+    await input.setInputFiles([
+      { name: 'music.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('mock MP3') },
+      { name: 'movie.mov', mimeType: 'video/quicktime', buffer: Buffer.from('mock MOV') },
+    ]);
+    await expect(page.getByText('Поддерживаемые форматы: MP3, WAV. Выберите другой файл.', { exact: true })).toBeVisible();
+    expect(uploads).toHaveLength(1);
+    await expect(audioField.locator('.upload-list')).toHaveCount(0);
+    await expect(input).toHaveValue('');
+
+    await input.setInputFiles({ name: 'music.wav', mimeType: 'audio/x-wav', buffer: Buffer.from('mock WAV') });
+    await expect(audioField.getByText('1 загружено')).toBeVisible();
+    expect(uploads).toHaveLength(2);
+    await page.getByRole('textbox', { name: /Описание/ }).fill('Создай видео со звуком');
+    await expect(page.getByText('55 ROX', { exact: true })).toBeVisible();
+    const submitted = page.waitForRequest(request => request.url().endsWith('/api/v1/generations') && request.method() === 'POST');
+    await page.getByRole('button', { name: /Создать · 55 ROX/ }).click();
+    const payload = (await submitted).postDataJSON();
+    expect(payload.model_id).toBe(modelId);
+    expect(payload.parameters.reference_audio_urls).toEqual([audioUrl]);
+    expect(payload.parameters.reference_video_urls).toBeUndefined();
+  });
+}
+
+
+test('explicit Seedance audio formats also filter the saved library', async ({ page }) => {
+  await mockRoxy(page);
+  const model = structuredClone(seedance);
+  model.ui_schema.fields.find(field => field.name === 'reference_audio_urls').accept = '.mp3,.wav,audio/mpeg,audio/wav,audio/x-wav';
+  await page.route('**/api/v1/generations/models', route => json(route, { models: [model], families: [family] }));
+  await page.route('**/api/v1/references?*', route => json(route, { items: [
+    { id: 'saved_mp3', kind: 'audio', url: 'https://cdn.roxy.local/saved.mp3', filename: 'saved.mp3', content_type: 'audio/mpeg' },
+    { id: 'saved_m4a', kind: 'audio', url: 'https://cdn.roxy.local/saved.m4a', filename: 'saved.m4a', content_type: 'audio/mp4' },
+  ] }));
+  await page.goto('/mini-app/?route=create');
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const field = page.locator('.field').filter({ has: page.locator('input[accept*=".mp3"]') });
+  await expect(field.locator('.saved-reference-pick[title="saved.mp3"]')).toBeVisible();
+  await expect(field.locator('.saved-reference-pick[title="saved.m4a"]')).toHaveCount(0);
+  await field.locator('.saved-reference-pick[title="saved.mp3"]').click();
+  await expect(field.getByText('1 загружено')).toBeVisible();
+});

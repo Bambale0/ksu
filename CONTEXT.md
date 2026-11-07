@@ -1,3 +1,18 @@
+## Active Fix Execution — Seedance audio file selection (2026-11-07)
+
+- Baseline: `877d8ffd5a79a76b8b802712f6b6ba5ae61a8a82`. User reports disabled audio files in the iPhone chooser. Earlier failed generation received a MOV in reference_audio_urls and was rejected locally as not WAV/MP3.
+- Confirmed mismatch: public Seedance schemas advertise audio/*, while current Neironych preflight accepts MP3/WAV. Screenshot alone does not prove an iOS wildcard bug or which input was opened; native chooser behavior needs actual-device acceptance. Alternatives: wrong field activation or unsupported actual audio format.
+- Reuse server UI schema as the format authority; specify extensions plus MIME aliases for native pickers. Add a small client guard for explicitly enumerated file formats before uploads. Preserve legacy generic media probing, video/image fields, saved assets, auth, routing, idempotency and billing.
+- RED: four schema cases fail with accepted={audio/*}; browser regression opens the real audio chooser, uploads MP3/WAV, rejects MOV without HTTP upload and retries. Isolated checkout only; no paid generation or historic data changes.
+- Guidance refreshed: primary diagnosing-bugs and local systematic-debugging; claw/dev-agents-pack debugger, wondelai bounded integration guidance, anthropics webapp-testing. agentskills has no task-specific provider guidance. Existing project Playwright runner takes precedence over generic helper scripts.
+- Verification matrix: schema/config contract, Chromium/WebKit file chooser and submission journey, typecheck/build/lint, exact-head CI and review, immutable deployment/readiness/revision. DB/auth/migration N/A: no changes. Native iPhone file-provider UI cannot be proven by setInputFiles; state that limit.
+- Rollout: normal gated release. Rollback: revert scoped schema/client guard changes. No data migration, no provider changes, no audio transcoding. Preserve the prior 600-second HTTP timeout.
+- Implementation: explicit extension/MIME audio filter in server schema plus shared pre-upload format guard in both create surfaces. Entire selected batch is validated before the first upload, so a MOV cannot orphan preceding valid files. Source review found no provider/price/routing/timeout/persistence changes; backend byte probing remains authoritative.
+- Verification: 9 schema/UI tests and Ruff passed; all 9 related browser scenarios passed in Chromium and mobile WebKit (existing Playwright v1.56.1 container, isolated source, mocked API). Final mixed-file atomicity + retry verification passed: typecheck and all 18 focused Chromium/WebKit tests (37.3s). Exact-head CI remains required.
+- Review follow-up: all three automated P2 cases addressed: atomic batch validation; saved library filtered by explicit format using trusted stored MIME with filename/URL fallback only when MIME is unavailable; generation-action uploads use the same guard and clear a prior upload error on retry. Two additional WebKit regressions were reproduced red before the changes.
+- Final focused verification: typecheck plus 38 Chromium/mobile-WebKit create/reference/action/publish/retry journeys passed (1 minute) on code SHA 51349bfe. No unresolved review findings after a separate diff pass. The native iPhone OS chooser remains outside automated coverage.
+- Delivery: PR #583. Final exact-head CI and immutable production deployment verification pending; no paid requests or historic task replay.
+
 ## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
 
 - Baseline main/production: `6e2691185cd7a67aba149e4518b3c449abace6a5`. User requests retrieval of the failed video and an HTTP timeout of 600 seconds.
