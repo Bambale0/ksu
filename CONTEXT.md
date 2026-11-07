@@ -9,7 +9,9 @@
 - Rollout: normal gated release. Rollback: revert scoped schema/client guard changes. No data migration, no provider changes, no audio transcoding. Preserve the prior 600-second HTTP timeout.
 - Implementation: explicit extension/MIME audio filter in server schema plus shared pre-upload format guard in both create surfaces. Entire selected batch is validated before the first upload, so a MOV cannot orphan preceding valid files. Source review found no provider/price/routing/timeout/persistence changes; backend byte probing remains authoritative.
 - Verification: 9 schema/UI tests and Ruff passed; all 9 related browser scenarios passed in Chromium and mobile WebKit (existing Playwright v1.56.1 container, isolated source, mocked API). Final mixed-file atomicity + retry verification passed: typecheck and all 18 focused Chromium/WebKit tests (37.3s). Exact-head CI remains required.
-- Delivery: PR #583. Full CI/review and immutable production deployment verification pending. Native iPhone file selection still requires actual-device confirmation; no paid requests or historic task replay.
+- Review follow-up: all three automated P2 cases addressed: atomic batch validation; saved library filtered by explicit format using trusted stored MIME with filename/URL fallback only when MIME is unavailable; generation-action uploads use the same guard and clear a prior upload error on retry. Two additional WebKit regressions were reproduced red before the changes.
+- Final focused verification: typecheck plus 38 Chromium/mobile-WebKit create/reference/action/publish/retry journeys passed (1 minute) on code SHA 51349bfe. No unresolved review findings after a separate diff pass. The native iPhone OS chooser remains outside automated coverage.
+- Delivery: PR #583. Final exact-head CI and immutable production deployment verification pending; no paid requests or historic task replay.
 
 ## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
 
