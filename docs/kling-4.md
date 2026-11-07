@@ -39,6 +39,14 @@ Provider submissions preserve exact model and input snapshots. Ambiguous
 submissions retain the existing duplicate-prevention/reconciliation behavior.
 No paid live generation was used by the automated contract tests.
 
+Owner repeats preserve named elements, voices and keyframe roles. Public-feed
+repeats disclose no author reference URLs: ROXY replaces every media slot with
+the viewer's own uploads, in order within each media type, while retaining the
+server-owned names and scene structure. Additional references are validated
+against the same provider quotas. The bounded recent-reference library now
+retains 48 items per media type, enough for a maximal valid Kling composition
+of 36 images plus 7 character voices; feed repeat accepts up to 48 reference IDs.
+
 Sources verified 2026-11-07:
 - https://docs.kie.ai/market/kling/v4-reference-to-video.md
 - https://docs.kie.ai/market/kling/v4-keyframe-to-video.md

@@ -214,7 +214,7 @@ function validateDraft(model: GenerationModel, draft: Draft): string[] {
     const ratioError = aspectRatioError(field, value);
     if (ratioError) errors.push(ratioError);
     else if (field.required && isEmpty(value)) errors.push(`Заполните «${label}»`);
-    if (field.control === "json" && !isEmpty(value)) {
+    if (field.control === "json" && typeof value === "string" && !isEmpty(value)) {
       try { JSON.parse(String(value)); } catch { errors.push(`Проверьте поле «${label}»`); }
     }
   }

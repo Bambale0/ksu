@@ -24,7 +24,9 @@ def _utcnow() -> datetime:
 
 class ReferenceService:
     KINDS = {"image", "video", "audio"}
-    MAX_PER_KIND = 12
+    # Kling 4 can use 36 physical images across its 15 material slots.
+    # Retain a complete active composition while keeping the library bounded.
+    MAX_PER_KIND = 48
 
     @staticmethod
     def _safe_url(value: str) -> str:

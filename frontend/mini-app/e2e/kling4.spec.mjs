@@ -20,7 +20,7 @@ function model(keyframes = false) {
   } };
 }
 
-async function setup(page, keyframes = false, uploadHandler) {
+async function setup(page, keyframes = false, uploadHandler, reuse) {
   const chosen = model(keyframes);
   const submitted = [];
   let uploadIndex = 0;
@@ -32,6 +32,9 @@ async function setup(page, keyframes = false, uploadHandler) {
     const path = new URL(request.url()).pathname;
     const reply = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/v1/generations/models') return reply({ models: [chosen], families: [] });
+    if (reuse && path === '/api/v1/generations/source/recreate') return reply({ model_id: chosen.id, prompt: '@Hero greets @Narrator', parameters: reuse });
+    if (reuse && path === '/api/v1/generations/source') return reply({ id: 'source', status: 'succeeded', model: chosen, result_url: 'https://cdn.example/result.mp4' });
+    if (reuse && path === '/api/v1/generations' && request.method() === 'GET') return reply({ items: [{ id: 'source', status: 'succeeded', model: chosen, result_url: 'https://cdn.example/result.mp4' }], has_more: false });
     if (path === '/api/v1/me') return reply({ id: 'user-1', telegram_id: 777, balance_rox: '10000' });
     if (path === '/api/v1/onboarding') return reply({ enabled: false, completed: true });
     if (path.includes('/upload')) {
@@ -107,4 +110,20 @@ test('Kling 4 keyframes preserve first middle last order in the create request',
   await page.locator('.create-summary button.primary').click();
   await expect.poll(() => submitted.length).toBe(1);
   expect(submitted[0].parameters).toMatchObject({ first_frame_url: 'https://cdn.example/upload-1.png', keyframe_urls: ['https://cdn.example/upload-2.png'], last_frame_url: 'https://cdn.example/upload-3.png' });
+});
+
+test('Kling 4 reuses saved subject and voice arrays without editing them', async ({ page }) => {
+  const references = { elements: [{ name: 'Hero', image_urls: ['https://cdn.example/a.png', 'https://cdn.example/b.png'], tag: 'character' }], voices: [{ name: 'Narrator', audio_url: 'https://cdn.example/voice.wav' }], duration: 5, resolution: '720p' };
+  const submitted = await setup(page, false, undefined, references);
+  await page.getByRole('button', { name: 'История', exact: true }).click();
+  await page.locator('.history-card').first().click();
+  await page.getByRole('button', { name: 'Использовать настройки', exact: true }).click();
+  await expect(page.getByLabel('Имя персонажа 1', { exact: true })).toHaveValue('Hero');
+  await expect(page.getByLabel('Имя голоса 1', { exact: true })).toHaveValue('Narrator');
+  const create = page.locator('.create-summary button.primary');
+  await expect(create).toBeEnabled();
+  await create.click();
+  await expect.poll(() => submitted.length).toBe(1);
+  expect(submitted[0].parameters.elements).toEqual(references.elements);
+  expect(submitted[0].parameters.voices).toEqual(references.voices);
 });

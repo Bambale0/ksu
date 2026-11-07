@@ -91,7 +91,7 @@ def normalize_kling4_input(model: str, source: dict[str, Any]) -> dict[str, Any]
         raise Kling4ContractError("Kling 4 duration must be an integer from 3 to 30")
     data["duration"] = duration
     data.setdefault("resolution", "720p")
-    if data["resolution"] not in {"720p", "1080p"}:
+    if not isinstance(data["resolution"], str) or data["resolution"] not in {"720p", "1080p"}:
         raise Kling4ContractError("Kling 4 resolution must be 720p or 1080p")
     if "aspect_ratio" in data and data["aspect_ratio"] not in ASPECT_RATIOS:
         raise Kling4ContractError("Unsupported Kling 4 aspect_ratio")
@@ -189,3 +189,67 @@ async def validate_kling4_media(session: Any, data: dict[str, Any], *, user_id: 
         total_ms += row.duration_ms
     if total_ms > 30000:
         raise InvalidModelParametersError("Kling 4 reference videos may total at most 30 seconds")
+
+
+def kling4_reference_slots(data: dict[str, Any]) -> list[tuple[str, tuple[Any, ...]]]:
+    """Ordered media roles, including every view and bound voice of a subject."""
+    slots: list[tuple[str, tuple[Any, ...]]] = []
+    if data.get("first_frame_url"):
+        slots.append(("image", ("first_frame_url",)))
+    slots.extend(("image", ("keyframe_urls", i)) for i in range(len(data.get("keyframe_urls", []))))
+    if data.get("last_frame_url"):
+        slots.append(("image", ("last_frame_url",)))
+    for field, kind in (("image_urls", "image"), ("video_urls", "video")):
+        slots.extend((kind, (field, i)) for i in range(len(data.get(field, []))))
+    for i, element in enumerate(data.get("elements", [])):
+        slots.extend(("image", ("elements", i, "image_urls", j)) for j in range(len(element.get("image_urls", []))))
+        for field, kind in (("video_url", "video"), ("voice_url", "audio")):
+            if element.get(field):
+                slots.append((kind, ("elements", i, field)))
+    slots.extend(("audio", ("voices", i, "audio_url")) for i in range(len(data.get("voices", []))))
+    return slots
+
+
+def replace_kling4_references(source: dict[str, Any], base: dict[str, Any], references: dict[str, list[str]]) -> dict[str, Any]:
+    """Preserve server-owned roles while replacing every author media URL."""
+    slots = kling4_reference_slots(source)
+    expected = {kind: sum(slot_kind == kind for slot_kind, _ in slots) for kind in ("image", "video", "audio")}
+    if any(len(references.get(kind, [])) < count for kind, count in expected.items()):
+        raise Kling4ContractError("Add the requested Kling 4 image, video and audio references")
+    result = deepcopy(base)
+    for field in ("image_urls", "video_urls", "first_frame_url", "keyframe_urls", "last_frame_url", "elements", "voices"):
+        if field in source:
+            result[field] = deepcopy(source[field])
+    positions = {kind: 0 for kind in expected}
+    for kind, path in slots:
+        target = result
+        for part in path[:-1]:
+            target = target[part]
+        target[path[-1]] = references[kind][positions[kind]]
+        positions[kind] += 1
+    extra = {kind: references.get(kind, [])[count:] for kind, count in expected.items()}
+    keyframes = source.get("_model_id") == "kling-4.0-keyframe" or any(field in source for field in ("first_frame_url", "keyframe_urls", "last_frame_url"))
+    if keyframes:
+        if extra["video"] or extra["audio"]:
+            raise Kling4ContractError("Kling 4 keyframes accept image references only")
+        images = list(extra["image"])
+        if images and not result.get("first_frame_url"):
+            result["first_frame_url"] = images.pop(0)
+        if images:
+            middle = [*result.get("keyframe_urls", []), *images]
+            if len(middle) > 8 and not result.get("last_frame_url"):
+                result["last_frame_url"] = middle.pop()
+            result["keyframe_urls"] = middle
+    else:
+        for kind, field in (("image", "image_urls"), ("video", "video_urls")):
+            if extra[kind]:
+                result[field] = [*result.get(field, []), *extra[kind]]
+        names = {str(item.get("name", "")).casefold() for field in ("elements", "voices") for item in result.get(field, [])}
+        for url in extra["audio"]:
+            index = 1
+            while f"VoiceExtra{index}".casefold() in names:
+                index += 1
+            name = f"VoiceExtra{index}"
+            result.setdefault("voices", []).append({"name": name, "audio_url": url})
+            names.add(name.casefold())
+    return result

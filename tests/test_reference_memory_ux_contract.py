@@ -46,7 +46,7 @@ def test_uploaded_media_is_saved_as_hash_deduplicated_reference_memory() -> None
     assert 'source="mini_app_upload"' in uploads
     assert "ReferenceService.register" in uploads
 
-    assert "MAX_PER_KIND = 12" in references
+    assert "MAX_PER_KIND = 48" in references
     assert "UserReference.file_hash == file_hash" in references
     assert "touch_urls" in references
     assert "last_used_at" in references

@@ -113,6 +113,11 @@ class FeedRemixService:
         source: Generation,
         effective_model_id: str,
     ) -> dict[str, int | bool]:
+        if effective_model_id in {"kling-4.0", "kling-4.0-keyframe"}:
+            from app.services.kling4_contract import kling4_reference_slots
+
+            slots = kling4_reference_slots(dict(source.parameters or {}))
+            return {**{f"{kind}_count": sum(slot_kind == kind for slot_kind, _ in slots) for kind in ("image", "video", "audio")}, "required": bool(slots)}
         context = ReferenceResolver.generation_context(source)
         if effective_model_id == SEEDANCE_AUTHOR_REPLAY_MODEL_ID:
             return seedance_identity_requirements(
@@ -385,6 +390,13 @@ class FeedRemixService:
                     identity_count=len(references.get("image") or []),
                     max_chars=prompt_max_chars(effective_model_id),
                 )
+        elif effective_model_id in {"kling-4.0", "kling-4.0-keyframe"}:
+            from app.services.kling4_contract import Kling4ContractError, replace_kling4_references
+
+            try:
+                parameters = replace_kling4_references(dict(source.parameters or {}), base, references)
+            except Kling4ContractError as exc:
+                raise FeedRemixReferenceError(str(exc)) from exc
         else:
             parameters = cls._parameters_with_owned_references(base, references)
         billing_seconds = (source.parameters or {}).get("_billing_seconds")
