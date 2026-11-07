@@ -403,3 +403,22 @@ for (const modelId of ['seedance-2.0', 'seedance-2.5']) {
     expect(payload.parameters.reference_video_urls).toBeUndefined();
   });
 }
+
+
+test('explicit Seedance audio formats also filter the saved library', async ({ page }) => {
+  await mockRoxy(page);
+  const model = structuredClone(seedance);
+  model.ui_schema.fields.find(field => field.name === 'reference_audio_urls').accept = '.mp3,.wav,audio/mpeg,audio/wav,audio/x-wav';
+  await page.route('**/api/v1/generations/models', route => json(route, { models: [model], families: [family] }));
+  await page.route('**/api/v1/references?*', route => json(route, { items: [
+    { id: 'saved_mp3', kind: 'audio', url: 'https://cdn.roxy.local/saved.mp3', filename: 'saved.mp3', content_type: 'audio/mpeg' },
+    { id: 'saved_m4a', kind: 'audio', url: 'https://cdn.roxy.local/saved.m4a', filename: 'saved.m4a', content_type: 'audio/mp4' },
+  ] }));
+  await page.goto('/mini-app/?route=create');
+  await page.getByRole('button', { name: 'Мультиреференсы', exact: true }).click();
+  const field = page.locator('.field').filter({ has: page.locator('input[accept*=".mp3"]') });
+  await expect(field.locator('.saved-reference-pick[title="saved.mp3"]')).toBeVisible();
+  await expect(field.locator('.saved-reference-pick[title="saved.m4a"]')).toHaveCount(0);
+  await field.locator('.saved-reference-pick[title="saved.mp3"]').click();
+  await expect(field.getByText('1 загружено')).toBeVisible();
+});
