@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.core.config import settings
+
 from app.providers.neironych_errors import (
     NeironychProviderError,
     provider_error,
@@ -108,6 +110,7 @@ class NeironychImageClient:
             path,
             headers=self._headers(idempotency_key),
             content=request_body.encode("utf-8") if request_body is not None else encode_body(payload).encode("utf-8"),
+            timeout=httpx.Timeout(settings.neironych_request_timeout_seconds, connect=10.0),
         )
         if not response.is_success:
             raise provider_error(

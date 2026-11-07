@@ -1,3 +1,16 @@
+## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
+
+- Baseline main/production: `6e2691185cd7a67aba149e4518b3c449abace6a5`. User requests retrieval of the failed video and an HTTP timeout of 600 seconds.
+- Existing image/video adapters use 180/60-second client defaults. Add a validated deployment setting for generation POST only; status polling, content downloads, overall job deadline, routing, idempotency and billing stay unchanged.
+- Read-only video lookup returned failed/generation_timeout with no result. Provider attempt has no external task ID. Retrieval cannot manufacture a missing result and must not silently create another paid job.
+- Regression first: public adapter transport/config tests failed on baseline (8 failed, 1 passed); isolated worktree with APP_ENV=test, explicit test consent and unreachable DB/Redis avoids production data.
+- Guidance inspected remotely: Bambale0/skills diagnosing-bugs; claw and dev-agents-pack debugger; wondelai release-it bounded integration timeouts. agentskills and anthropics catalogs contain no task-specific provider guidance. Local systematic-debugging applied.
+- Verification matrix: adapter/config regression and adjacent contract/idempotency suites required; exact-head CI and independent review pass required. DB/auth/migration/UI changes N/A (no changes at those seams). Rollout through normal immutable-image deployment, rollback by reverting this scoped change. Runtime timeout verification required after deploy.
+- Acceptance: actual outbound generation POST read timeout is 600 by default and configurable; connect remains 10; polling stays 60; one POST per invocation, existing Idempotency-Key preserved.
+- Implementation verified: configurable generation POST timeout added to image/video adapters. Isolated runtime-image regression/contract/submission/policy run: 77 passed in 3.98s; changed-file Ruff passed. Production venv lacked pillow_heif, so final tests used the existing immutable runtime image with no network, no production environment/secrets, and read-only source mounts.
+- Review: separate diff pass confirmed explicit POST override reaches injected and owned clients; connects remain 10 seconds, status polling stays 60, no retries/routing/billing/payload changes. 600-second cap stays below the existing 900-second unknown-submission recovery window. This timeout change does not repair provider invalid_image_count responses.
+- Delivery: PR #582. Exact-head CI and normal production deployment verification pending; no live source/runtime modifications or paid generation retries.
+
 ## Active Fix Execution — support inbox and complete admin audit (2026-11-06)
 
 - Baseline main/production: `9590eb61ca209b3fcb2cb9a77ab74c3cf49840c7`; branch `fix/support-inbox-admin-audit-20261106`.

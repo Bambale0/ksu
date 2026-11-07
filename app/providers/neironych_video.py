@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from app.core.config import settings
+
 from app.providers.neironych_errors import (
     NeironychProviderError,
     provider_error as _safe_error,
@@ -296,6 +298,7 @@ class NeironychVideoClient:
                 "Idempotency-Key": idem,
             },
             content=request_body.encode("utf-8"),
+            timeout=httpx.Timeout(settings.neironych_request_timeout_seconds, connect=10.0),
         )
         if not response.is_success:
             raise _safe_error(response)
