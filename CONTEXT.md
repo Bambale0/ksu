@@ -1,3 +1,14 @@
+## Active Fix Execution — Seedance audio file selection (2026-11-07)
+
+- Baseline: `877d8ffd5a79a76b8b802712f6b6ba5ae61a8a82`. User reports disabled audio files in the iPhone chooser. Earlier failed generation received a MOV in reference_audio_urls and was rejected locally as not WAV/MP3.
+- Confirmed mismatch: public Seedance schemas advertise audio/*, while current Neironych preflight accepts MP3/WAV. Screenshot alone does not prove an iOS wildcard bug or which input was opened; native chooser behavior needs actual-device acceptance. Alternatives: wrong field activation or unsupported actual audio format.
+- Reuse server UI schema as the format authority; specify extensions plus MIME aliases for native pickers. Add a small client guard for explicitly enumerated file formats before uploads. Preserve legacy generic media probing, video/image fields, saved assets, auth, routing, idempotency and billing.
+- RED: four schema cases fail with accepted={audio/*}; browser regression opens the real audio chooser, uploads MP3/WAV, rejects MOV without HTTP upload and retries. Isolated checkout only; no paid generation or historic data changes.
+- Guidance refreshed: primary diagnosing-bugs and local systematic-debugging; claw/dev-agents-pack debugger, wondelai bounded integration guidance, anthropics webapp-testing. agentskills has no task-specific provider guidance. Existing project Playwright runner takes precedence over generic helper scripts.
+- Verification matrix: schema/config contract, Chromium/WebKit file chooser and submission journey, typecheck/build/lint, exact-head CI and review, immutable deployment/readiness/revision. DB/auth/migration N/A: no changes. Native iPhone file-provider UI cannot be proven by setInputFiles; state that limit.
+- Rollout: normal gated release. Rollback: revert scoped schema/client guard changes. No data migration, no provider changes, no audio transcoding. Preserve the prior 600-second HTTP timeout.
+- Status: audit and schema regression completed; browser regression added; implementation pending.
+
 ## Active Fix Execution — Neironych generation HTTP timeout (2026-11-07)
 
 - Baseline main/production: `6e2691185cd7a67aba149e4518b3c449abace6a5`. User requests retrieval of the failed video and an HTTP timeout of 600 seconds.
