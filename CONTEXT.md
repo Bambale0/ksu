@@ -1356,3 +1356,22 @@ The expiry UI regression uses a controlled HTTPS server clock and an old descrip
 The full test-source inventory covered 352 files and 13 matches. Only the existing generation-delivery link assertion needed adaptation; it still checks the stale-list response race and now verifies a real button click obtains the fresh descriptor and passes the fresh URL/name to the native API. No old assertion was weakened to accept a failed operation.
 
 The resulting new head still needs its own six CI workflows, completed review and ordinary protected merge before release. Runtime remains on the base release at this checkpoint. Native Telegram hardware verification and historical business/financial decisions remain outside these isolated tests. No production messages, payment changes, schema changes or historical reply replay occurred.
+
+
+## Active Feature Execution — Kling 4.0 integration (2026-11-07)
+
+Baseline main: `4effe507ae6e9a970a6e0150ec1782775a9cd8ff`. User requests full Kling 4 through Kie.ai and approves retail prices 30 ROX/s (720p), 45 ROX/s (1080p), with existing 2x video-reference pricing.
+
+Fresh audit: existing jobs adapter, signed/bound callbacks, polling reconciliation, outbox, media transport, wallet/refunds, dynamic UI, admin resolution tiers and trusted upload metadata are reusable. Kling 4 models, payload validation, named-reference UI and media rules are missing. No prefactor or database migration is needed. Add explicit reference and keyframe catalog entries; share strict validation between catalog and provider; expose file uploads and named subjects/voices; preserve provider submission identity and existing retry semantics.
+
+Acceptance: exact documented model names; 3–30s; 720p/1080p; five ratios; 8000 chars; first/middle/last frames with duration-dependent frame cap; 10 images/5 videos/7 elements/3 voices/15 aggregate references; case-insensitive unique names and declared prompt mentions; verified video duration limits; price parity for quote/create/admin; actual Create/repeat browser journeys. No Flash or unavailable 4K.
+
+Sources: official Kie OpenAPI markdown at https://docs.kie.ai/market/kling/v4-reference-to-video.md and https://docs.kie.ai/market/kling/v4-keyframe-to-video.md, plus https://kie.ai/kling-4-0. Provider cost credits are separate from the user-approved ROX tariff. Existing 2x public retail policy is retained, not replaced by Kie procurement billing.
+
+Guidance refreshed remotely: Bambale0/skills implement + tdd + code-review (public catalog/provider/generation/browser seams already established in KSU); Bambale0/claw backend-integration (architecture, idempotency, balance history); wondelai/skills system-design/references/reliability-operations (safe structured diagnostics and recovery); Bambale0/dev-agents-pack .github/agents/04-api-integrator.md (verified payloads, bounded paid calls); anthropics/skills webapp-testing (rendered UI journeys); agentskills/agentskills README inspected, no provider-specific implementation guidance. Tracked .agents is absent; workstation .agents cannot be hydrated because OneDrive is unavailable. No companion-specific app architecture is imported.
+
+Verification matrix: unit/domain, provider contract, API quote/create, ownership/media, retries/idempotency, UI/browser and admin pricing require regressions/compatibility CI. Database integration reuses existing UserReference/Generation schema; migration N/A (no schema change). Smoke/deployability: existing CI build/typecheck/full backend and E2E workflows. Observability: existing model/task/generation correlation and pre-submit error handling; no prompts/secrets logged. Performance: bounded at 15 references, no extra provider network requests. Rollback: disable model via existing control plane or revert feature commit; queued jobs retain frozen provider contract. Deployment not requested; no paid generation or production mutation planned.
+
+Plan: 1) RED public catalog/provider tests. 2) Shared contracts, catalog/UI, tariff and trusted metadata validation. 3) Native named-reference editors and browser tests. 4) Independent Standards + Spec review. 5) Exact-head six-workflow CI and PR delivery.
+
+Progress: RED regression slice prepared before implementation. Domain context above is preserved.
