@@ -2,7 +2,7 @@
 
 Baseline: `39b3410ee11de0a2a1da9c0af8e2669279fc921b`. User authorized upstream production readiness followed by KSU primary routing.
 Execution: [Kling rollout](docs/agents/EXECUTION/kling4-neironych-20261108.md).
-State: rollout blocked. Both upstream smoke tasks failed moderation without video. KSU adapter prepared and 115 focused tests/Ruff passed; no production route changed.
+State: rollout resumed. New upstream smoke returned a verified MP4 and Kling 4.0 is published in Neironych. KSU adapter has 115 focused tests/Ruff passed; partner-native acceptance and exact-head release gates pending, no KSU production route changed.
 
 ## Active Fix Execution — Seedance audio file selection (2026-11-07)
 

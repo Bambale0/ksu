@@ -52,7 +52,7 @@ Sources verified 2026-11-07:
 - https://docs.kie.ai/market/kling/v4-keyframe-to-video.md
 - https://kie.ai/kling-4-0
 
-## Prepared Neironych route (2026-11-08; rollout blocked)
+## Neironych route (2026-11-08)
 
 The existing admin provider-routing setting now allows `kling-4.0` to choose
 Neironych and Kie in either order or alone. The default remains Kie first until
@@ -66,7 +66,9 @@ cannot be represented equivalently and fall back before any Neironych POST.
 Kie inputs remain unchanged. Existing paid-submission uncertainty, polling,
 download, refund and route-snapshot protections are reused.
 
-Do not switch production until upstream returns a real video and the public
-enable gate has been satisfied. Two bounded neutral T2V probes on 2026-11-08
-were accepted then failed with upstream `content_policy_violation`; no video
-was returned. A successful process exit is not a successful generation.
+The initial two neutral upstream probes failed moderation. A later explicitly
+requested probe completed and its full MP4 and 3-second usage were verified;
+Kling 4.0 is now published by Neironych's authenticated catalog enable gate.
+KSU rollout still requires partner-native acceptance, exact-head CI, deployment
+verification and the audited admin route switch. Until that switch, Kie remains
+primary; this section does not claim an already completed KSU rollout.
