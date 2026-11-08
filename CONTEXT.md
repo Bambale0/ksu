@@ -1,3 +1,9 @@
+# Active Feature Execution — Kling 4 Neironych primary (2026-11-08)
+
+Baseline: `39b3410ee11de0a2a1da9c0af8e2669279fc921b`. User authorized upstream production readiness followed by KSU primary routing.
+Execution: [Kling rollout](docs/agents/EXECUTION/kling4-neironych-20261108.md).
+State: rollout resumed. New upstream smoke returned a verified MP4 and Kling 4.0 is published in Neironych. KSU adapter has 115 focused tests/Ruff passed; partner-native acceptance and exact-head release gates pending, no KSU production route changed.
+
 ## Active Fix Execution — Seedance audio file selection (2026-11-07)
 
 - Baseline: `877d8ffd5a79a76b8b802712f6b6ba5ae61a8a82`. User reports disabled audio files in the iPhone chooser. Earlier failed generation received a MOV in reference_audio_urls and was rejected locally as not WAV/MP3.

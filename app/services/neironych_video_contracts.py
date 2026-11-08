@@ -178,6 +178,73 @@ def _validate_prompt(payload: dict[str, Any]) -> str:
     return prompt
 
 
+
+def _normalize_kling(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Validate the reviewed native Kling URL-reference contract without losing roles."""
+    payload = deepcopy(input_data)
+    payload.pop("model", None)
+    known = {"prompt", "duration", "resolution", "aspect_ratio", "reference_images",
+             "reference_videos", "generate_audio", "n"}
+    if set(payload) - known:
+        raise NeironychVideoContractError("Unsupported Neironych Kling control")
+    prompt = payload.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > (26000 if prompt.isascii() else 11000):
+        raise NeironychVideoContractError("Invalid Kling prompt")
+    duration = payload.get("duration", 5)
+    if type(duration) is not int or not 3 <= duration <= 30:
+        raise NeironychVideoContractError("Kling duration must be 3-30 integer seconds")
+    if not isinstance(payload.get("resolution", "720p"), str) or payload.get("resolution", "720p") not in {"720p", "1080p"}:
+        raise NeironychVideoContractError("Unsupported Kling resolution")
+    if "generate_audio" in payload and type(payload["generate_audio"]) is not bool:
+        raise NeironychVideoContractError("Kling generate_audio must be boolean")
+    if "n" in payload and (type(payload["n"]) is not int or payload["n"] != 1):
+        raise NeironychVideoContractError("Kling requires n=1")
+    count = 0
+    for field, maximum in (("reference_images", 10), ("reference_videos", 5)):
+        if field not in payload:
+            continue
+        refs = payload[field]
+        if not isinstance(refs, list) or len(refs) > maximum:
+            raise NeironychVideoContractError("Kling reference limit exceeded")
+        # Duplicate URLs are distinct positional roles; never deduplicate.
+        payload[field] = [_url_item(item, field=field) for item in refs]
+        count += len(refs)
+    if count > 15:
+        raise NeironychVideoContractError("Kling reference limit exceeded")
+    ratios = {"16:9", "9:16", "1:1", "21:9"}
+    if count:
+        ratios.add("adaptive")
+    if "aspect_ratio" in payload and (not isinstance(payload["aspect_ratio"], str) or payload["aspect_ratio"] not in ratios):
+        raise NeironychVideoContractError("Unsupported Kling aspect ratio")
+    return payload
+
+
+def prepare_neironych_kling_input(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Translate compatible ROXY/Kie inputs; fail over before spend otherwise."""
+    from app.services.kling4_contract import Kling4ContractError, normalize_kling4_input
+
+    try:
+        source = normalize_kling4_input("kling-4.0/reference-to-video", input_data)
+    except Kling4ContractError as exc:
+        raise NeironychVideoContractError(str(exc)) from exc
+    if source.get("elements") or source.get("voices") or "keep_original_sound" in source:
+        raise NeironychVideoUnsupportedInput("Neironych Kling cannot preserve elements, voices or original-sound controls")
+    payload = {key: source[key] for key in ("prompt", "duration", "resolution", "aspect_ratio") if key in source}
+    for field, native in (("image_urls", "reference_images"), ("video_urls", "reference_videos")):
+        if source.get(field):
+            payload[native] = [{"url": url} for url in source[field]]
+    if payload.get("aspect_ratio") == "auto":
+        if not (payload.get("reference_images") or payload.get("reference_videos")):
+            raise NeironychVideoUnsupportedInput("Neironych Kling cannot preserve automatic text-only geometry")
+        payload["aspect_ratio"] = "adaptive"
+    payload["prompt"] = re.sub(
+        r"@(image|video)_(\d+)(?![A-Za-z0-9_\u4e00-\u9fa5])",
+        lambda match: "@" + match[1].title() + " " + match[2],
+        payload["prompt"],
+    )
+    return _normalize_kling(payload)
+
+
 def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> dict[str, Any]:
     """Normalize the documented Neironych Seedance request before provider spend.
 
@@ -186,6 +253,8 @@ def normalize_neironych_video_input(model: str, input_data: dict[str, Any]) -> d
     documented Seedance invariants are enforced locally.
     """
 
+    if model == "kling-4.0":
+        return _normalize_kling(input_data)
     if model == "grok-imagine-video-1.5":
         return _normalize_grok(input_data)
     family = _family(model)
