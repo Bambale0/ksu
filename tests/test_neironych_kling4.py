@@ -181,7 +181,7 @@ async def test_kling_registry_addition_preserves_older_route_migration():
     result = await configured_routes(session)
     assert result["routes"]["nano-banana-2"] == ["nexus", "neironych", "kie"]
     assert result["routes"]["seedream-5-pro-t2i"] == ["kie", "nexus"]
-    assert result["routes"]["kling-4.0"] == ["kie", "neironych"]
+    assert result["routes"]["kling-4.0"] == ["kie"]
     assert result["revision"] == 7
 
 @pytest.mark.asyncio
@@ -211,3 +211,12 @@ async def test_kling_http_reference_falls_back_without_a_provider_post(monkeypat
         assert result.parameters["image_urls"] == [url]
         assert SNAPSHOT_KEY not in result.parameters
         client.create_video.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_kling_default_is_kie_only_until_audited_admin_switch():
+    from app.services.generation_provider_routing import configured_routes
+    session = AsyncMock()
+    session.get.return_value = None
+    config = await configured_routes(session)
+    assert config["routes"]["kling-4.0"] == ["kie"]
+    assert ["neironych", "kie"] in route_options()["kling-4.0"]

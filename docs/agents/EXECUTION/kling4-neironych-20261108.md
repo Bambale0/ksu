@@ -34,3 +34,6 @@ Local .agents verification-before-completion; Bambale0/skills implement; Bambale
 
 - Final review found valid Kie HTTP references would fail/refund instead of using the compatible Kie route. Reproduced RED at the freeze seam; fixed pre-spend capability fallback and added real DB fallback coverage. Updated focused suite: 117 passed on a fresh isolated PostgreSQL; Ruff passed.
 - Partner-native probe 73c2f2e2-cad0-4563-a40f-dd960aca0c7f reached done with billed_seconds=3; duplicate POST returned the same request UUID. Full partner-content download is still being verified. Production config not yet switched.
+
+- Partner native content/accounting acceptance passed: 950,643-byte MP4 downloaded, 3 billed seconds, identical duplicate-create UUID, completed/charged, 38.22 RUB actual partner charge and 0.3768 USD procurement; exactly one ledger entry.
+- Review findings: HTTP references fixed with RED/GREEN coverage; P1 bootstrap route corrected to Kie-only. Neironych is an explicit audited admin option, including both ordered routes/single provider. Added RED/GREEN default-route regression and retained legacy-route upgrade behavior. Updated focused suite: 118 passed on fresh isolated PostgreSQL, Ruff passed. No production config switch yet.

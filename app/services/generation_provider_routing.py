@@ -32,7 +32,7 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "wan-2.7-t2v": ("nexus", "kie"),
     "wan-2.7-i2v": ("nexus", "kie"),
     "kling-3.0": ("nexus", "kie"),
-    "kling-4.0": ("kie", "neironych"),
+    "kling-4.0": ("kie",),
     "kling-motion-2.6": ("nexus", "kie"),
     "veo-3.1": ("nexus", "kie"),
     "gemini-omni-video": ("nexus", "kie"),
@@ -45,6 +45,8 @@ def route_options() -> dict[str, list[list[str]]]:
     options: dict[str, list[list[str]]] = {}
     for model, route in _PROVIDER_ROUTES.items():
         choices: list[list[str]] = [list(route)]
+        if model == "kling-4.0":
+            choices.extend([["neironych", "kie"], ["kie", "neironych"], ["neironych"]])
         if model in {"seedream-5-pro-t2i", "seedream-5-pro-i2i"}:
             choices.extend([
                 ["kie", "nexus"], ["neironych", "kie", "nexus"],
