@@ -338,6 +338,8 @@ class NeironychGenerationProviderService:
             if model_id == "kling-4.0":
                 for field in ("image_urls", "video_urls"):
                     if field in raw and isinstance(raw[field], list):
+                        if any(urlsplit(str(item)).scheme == "http" for item in raw[field]):
+                            raise NeironychVideoUnsupportedInput("Neironych Kling requires HTTPS references")
                         raw[field] = [cls._public_reference_url(item) for item in raw[field]]
                 raw = prepare_neironych_kling_input(raw)
             payload = normalize_neironych_video_input(model, raw)

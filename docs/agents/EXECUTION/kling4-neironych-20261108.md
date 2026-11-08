@@ -31,3 +31,6 @@ Local .agents verification-before-completion; Bambale0/skills implement; Bambale
 - Existing authenticated catalog enable-gates API recorded the successful smoke, then the enable endpoint published Kling 4.0. Public /v1/models visibility verified. No source or tariff changes in upstream; deployed reviewed upstream revision remains 0f69d2a99a50aa94498afa74c95b96f03ce93e47.
 - KSU partner-authenticated native API smoke is now running, including duplicate-idempotency response equality and content download. KSU production route is unchanged pending its result, exact-head six-workflow CI, deployment and final audited config switch.
 - All six companion evidence-source HEAD hashes refreshed and unchanged from the audit. Repository AGENTS and existing guidance remain applicable. No new implementation changes in this slice.
+
+- Final review found valid Kie HTTP references would fail/refund instead of using the compatible Kie route. Reproduced RED at the freeze seam; fixed pre-spend capability fallback and added real DB fallback coverage. Updated focused suite: 117 passed on a fresh isolated PostgreSQL; Ruff passed.
+- Partner-native probe 73c2f2e2-cad0-4563-a40f-dd960aca0c7f reached done with billed_seconds=3; duplicate POST returned the same request UUID. Full partner-content download is still being verified. Production config not yet switched.

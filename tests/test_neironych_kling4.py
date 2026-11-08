@@ -183,3 +183,31 @@ async def test_kling_registry_addition_preserves_older_route_migration():
     assert result["routes"]["seedream-5-pro-t2i"] == ["kie", "nexus"]
     assert result["routes"]["kling-4.0"] == ["kie", "neironych"]
     assert result["revision"] == 7
+
+@pytest.mark.asyncio
+async def test_kling_valid_http_reference_is_a_capability_fallback(monkeypatch):
+    async def resolve(session, gen, raw):
+        return raw
+    monkeypatch.setattr(GenerationProviderService, "_resolve_workflow_media_input", resolve)
+    gen = generation({"image_urls": ["http://cdn.example/a.png"]})
+    before = deepcopy(gen.parameters)
+    with pytest.raises(NeironychVideoUnsupportedInput):
+        await NeironychGenerationProviderService._freeze_new_submission(AsyncMock(), gen)
+    assert gen.parameters == before
+
+@pytest.mark.asyncio
+async def test_kling_http_reference_falls_back_without_a_provider_post(monkeypatch):
+    from test_neironych_provider_fallbacks import _generation
+    from app.db.session import SessionFactory
+    client = AsyncMock()
+    monkeypatch.setattr("app.services.neironych_generation_provider.NeironychVideoClient",
+                        lambda *args, **kwargs: client)
+    url = "http://cdn.example/a.png"
+    gen = await _generation(model_id="kling-4.0", route=["neironych", "kie"],
+        parameters={"prompt": "A cube", "duration": 3, "image_urls": [url]})
+    async with SessionFactory() as session:
+        result = await NeironychGenerationProviderService.submit(session, gen.id)
+        assert result.provider == "kie" and result.status == "retry"
+        assert result.parameters["image_urls"] == [url]
+        assert SNAPSHOT_KEY not in result.parameters
+        client.create_video.assert_not_called()
