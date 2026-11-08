@@ -2,7 +2,7 @@
 
 Baseline: `39b3410ee11de0a2a1da9c0af8e2669279fc921b`. User authorized upstream production readiness followed by KSU primary routing.
 Execution: [Kling rollout](docs/agents/EXECUTION/kling4-neironych-20261108.md).
-State: audit recorded before production-code changes; paid upstream smoke in progress; no KSU production route changed.
+State: rollout blocked. Both upstream smoke tasks failed moderation without video. KSU adapter prepared and 115 focused tests/Ruff passed; no production route changed.
 
 ## Active Fix Execution — Seedance audio file selection (2026-11-07)
 

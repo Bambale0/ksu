@@ -32,6 +32,7 @@ _PROVIDER_ROUTES: dict[str, tuple[str, ...]] = {
     "wan-2.7-t2v": ("nexus", "kie"),
     "wan-2.7-i2v": ("nexus", "kie"),
     "kling-3.0": ("nexus", "kie"),
+    "kling-4.0": ("kie", "neironych"),
     "kling-motion-2.6": ("nexus", "kie"),
     "veo-3.1": ("nexus", "kie"),
     "gemini-omni-video": ("nexus", "kie"),
@@ -127,8 +128,8 @@ async def configured_routes(session: AsyncSession) -> dict[str, Any]:
     if set(stored_routes) - set(_PROVIDER_ROUTES):
         raise ValueError("Unknown managed generation model in stored routes")
     merged = defaults | stored_routes
-    if set(stored_routes) == set(_PROVIDER_ROUTES) - {
-        "grok-video-1.5", "grok-video-t2v", "grok-video-i2v",
+    if set(stored_routes) - {"kling-4.0"} == set(_PROVIDER_ROUTES) - {
+        "grok-video-1.5", "grok-video-t2v", "grok-video-i2v", "kling-4.0",
     }:
         # This feature explicitly expands these four historical defaults. Keep
         # other admin choices (e.g. Kie-primary Seedream) and frozen jobs intact.

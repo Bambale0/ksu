@@ -38,6 +38,7 @@ from app.services.neironych_video_contracts import (
     NeironychVideoContractError,
     NeironychVideoUnsupportedInput,
     normalize_neironych_video_input,
+    prepare_neironych_kling_input,
 )
 from app.services.reference_static import ReferenceStaticStorage
 from app.services.neironych_reference_validation import (
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 _SEEDANCE_MODELS = frozenset({"seedance-2.0", "seedance-2.5"})
 _GROK_MODELS = frozenset({"grok-video-1.5", "grok-video-t2v", "grok-video-i2v"})
-_VIDEO_MODELS = _SEEDANCE_MODELS | _GROK_MODELS
+_VIDEO_MODELS = _SEEDANCE_MODELS | _GROK_MODELS | {"kling-4.0"}
 _SEEDREAM_MODELS = frozenset({"seedream-5-pro-t2i", "seedream-5-pro-i2i"})
 _IMAGE_MODELS = _SEEDREAM_MODELS | frozenset({"nano-banana-pro", "nano-banana-2", "nano-banana-2-lite",
                           "gpt-image-2-t2i", "gpt-image-2-i2i"})
@@ -334,6 +335,11 @@ class NeironychGenerationProviderService:
                     if len(images) != 1:
                         raise NeironychVideoUnsupportedInput("Grok I2V requires exactly one first frame")
                     raw["image"] = {"url": images[0]}
+            if model_id == "kling-4.0":
+                for field in ("image_urls", "video_urls"):
+                    if field in raw and isinstance(raw[field], list):
+                        raw[field] = [cls._public_reference_url(item) for item in raw[field]]
+                raw = prepare_neironych_kling_input(raw)
             payload = normalize_neironych_video_input(model, raw)
             if model_id in _SEEDANCE_MODELS:
                 validated_images = await normalize_seedance_image_references(model, payload)

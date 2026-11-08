@@ -51,3 +51,22 @@ Sources verified 2026-11-07:
 - https://docs.kie.ai/market/kling/v4-reference-to-video.md
 - https://docs.kie.ai/market/kling/v4-keyframe-to-video.md
 - https://kie.ai/kling-4-0
+
+## Prepared Neironych route (2026-11-08; rollout blocked)
+
+The existing admin provider-routing setting now allows `kling-4.0` to choose
+Neironych and Kie in either order or alone. The default remains Kie first until
+upstream release acceptance. This does not change `kling-4.0-keyframe`.
+
+Compatible text/image/video requests map to Neironych's native Kling 4 contract.
+Image/video roles retain order, including repeated URLs; `@image_N` and
+`@video_N` become `@Image N` and `@Video N` only in the frozen wire request.
+Named elements, voices, original-sound controls and text-only auto geometry
+cannot be represented equivalently and fall back before any Neironych POST.
+Kie inputs remain unchanged. Existing paid-submission uncertainty, polling,
+download, refund and route-snapshot protections are reused.
+
+Do not switch production until upstream returns a real video and the public
+enable gate has been satisfied. Two bounded neutral T2V probes on 2026-11-08
+were accepted then failed with upstream `content_policy_violation`; no video
+was returned. A successful process exit is not a successful generation.
