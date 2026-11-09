@@ -98,7 +98,7 @@ def test_kling4_compact_aliases_normalize_for_quote_and_provider(prompt, image_u
 
 
 @pytest.mark.parametrize("prompt", [
-    "@image2", "@image0", "@image01", "@image1abc", "@image1_more", "@image1Лицо",
+    "@image2", "@image0", "@image01", "@image1abc", "@image1_more", "@image1Лицо", "@image_1Лицо",
     "@video1", "@unknown", "@image1 @video2",
 ])
 def test_kling4_compact_aliases_do_not_create_missing_or_invalid_slots(prompt):
