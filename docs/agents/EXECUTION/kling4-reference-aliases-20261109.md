@@ -37,7 +37,7 @@
 
 ## Execution ledger
 1. Capture RED reproduction on production runtime (read-only) — complete.
-2. Create scoped regression tests before changing production code — pending.
-3. Implement minimal normalization in the shared Kling 4 contract — pending.
-4. Run focused tests and integration/browser coverage, review diff — pending.
+2. Scoped regression tests committed first; confirmed RED via production runtime direct `GenerationService.prepare_request(None, @image1)`, which produced `InvalidModelParametersError: Undeclared reference @image1.` (exit=1).
+3. Shared contract updated after RED: only existing image/video slot aliases normalized, explicit element/voice names win, strict Unicode boundaries and 8000-char post-normalization cap remain.
+4. Focused tests, integration/browser coverage, independent diff review — pending CI.
 5. Open PR, exact-head CI, protected merge, deploy verified SHA, and production smoke — pending.
