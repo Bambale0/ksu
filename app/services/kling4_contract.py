@@ -18,6 +18,7 @@ ASPECT_RATIOS = ("auto", "16:9", "9:16", "1:1", "21:9")
 ELEMENT_TAGS = ("character", "animal", "prop", "costume", "scene", "effect", "others")
 _NAME = re.compile(r"[\u4e00-\u9fa5A-Za-z0-9_]{1,20}\Z")
 _RESERVED = re.compile(r"(?:(?:image|video|keyframe|object|audio)_\d+|first_frame|last_frame)\Z", re.I)
+_COMPACT_MEDIA_REFERENCE = re.compile(r"@(?P<kind>image|video)(?P<index>[1-9][0-9]*)(?!\w)", re.I)
 
 
 class Kling4ContractError(ValueError):
@@ -69,10 +70,23 @@ def _mentions(prompt: str, declared: set[str]) -> None:
     for marker in re.finditer("@", prompt):
         suffix = prompt[marker.end():]
         if not any(suffix.startswith(name) and (
-            len(suffix) == len(name) or not re.match(r"[A-Za-z0-9_\u4e00-\u9fa5]", suffix[len(name)])
+            len(suffix) == len(name) or not re.match(r"\w", suffix[len(name)])
         ) for name in names):
             token = suffix.split()[0] if suffix.split() else ""
             raise Kling4ContractError(f"Undeclared reference @{token[:30]}")
+
+
+def _normalize_compact_media_references(prompt: str, declared: set[str]) -> str:
+    """Expand only unambiguous @image1/@video1 aliases for existing media slots."""
+    def expand(match: re.Match[str]) -> str:
+        supplied = match.group()[1:]
+        if supplied in declared:
+            # A user-named element/voice must never become another media role.
+            return match.group()
+        canonical = f"{match.group('kind').lower()}_{match.group('index')}"
+        return f"@{canonical}" if canonical in declared else match.group()
+
+    return _COMPACT_MEDIA_REFERENCE.sub(expand, prompt)
 
 
 def normalize_kling4_input(model: str, source: dict[str, Any]) -> dict[str, Any]:
@@ -157,7 +171,11 @@ def normalize_kling4_input(model: str, source: dict[str, Any]) -> dict[str, Any]
             _fields(voice, ("name", "audio_url"), "voice")
             declared.add(_name(voice, names))
             _url(voice.get("audio_url"), "audio_url")
-    _mentions(prompt, declared)
+    normalized_prompt = _normalize_compact_media_references(prompt, declared)
+    if len(normalized_prompt) > 8000:
+        raise Kling4ContractError("Kling 4 prompt must contain 1–8000 characters")
+    _mentions(normalized_prompt, declared)
+    data["prompt"] = normalized_prompt
     return data
 
 
