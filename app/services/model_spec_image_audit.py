@@ -146,9 +146,13 @@ def install_model_spec_image_audit() -> None:
                     "Nexus Nano Banana accepts at most four image references"
                 )
             aspect_ratio = str(clean.get("aspect_ratio") or "1:1")
-            if aspect_ratio not in public_nano_ratios[spec.id]:
+            # ModelCatalog.prepare() is also used by structural/template
+            # preflight. Keep its pre-existing Nexus-era ratio breadth so old
+            # trends can still be opened and repaired; new generation admission
+            # is narrowed earlier by validate_generation_aspect_ratio().
+            if aspect_ratio not in nexus_nano_ratios:
                 raise catalog.InvalidModelParametersError(
-                    f"Unsupported public Nano Banana aspect_ratio={aspect_ratio!r}"
+                    f"Unsupported Nexus Nano Banana aspect_ratio={aspect_ratio!r}"
                 )
             resolution = str(clean.get("resolution") or "1K").upper()
             if resolution not in nexus_nano_resolutions:
