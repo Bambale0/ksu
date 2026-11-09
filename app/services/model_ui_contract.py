@@ -35,7 +35,7 @@ REFERENCE_FIELD_NAMES = {
 
 NANO_LEGACY_RATIOS = ["auto", "1:1", "16:9", "9:16", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9"]
 NANO_PRO_RATIOS = ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
-NANO_2_RATIOS = ["auto", "1:1", "2:3", "3:2", "1:4", "4:1", "3:4", "4:3", "4:5", "5:4", "1:8", "8:1", "9:16", "16:9", "21:9"]
+NANO_2_RATIOS = ["auto", "1:1", "16:9", "9:16", "4:3", "3:4"]
 SEEDREAM_RATIOS = ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"]
 SEEDREAM_3_SIZES = ["square_hd", "square", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9"]
 SEEDREAM_4_SIZES = [*SEEDREAM_3_SIZES, "portrait_3_2", "landscape_3_2", "landscape_21_9"]
