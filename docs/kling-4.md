@@ -6,6 +6,12 @@ produce native audio, and support 3–30 seconds at 720p or 1080p.
 Choose either entry under Kling in Create. Describe the scene and optionally
 upload references. Use `@image_1`, `@video_1`, `@first_frame`, `@keyframe_1`,
 `@last_frame`, or the exact character/voice name in the prompt.
+For the reference model, ROXY also accepts compact `@image1` / `@Image1` and
+`@video1` / `@Video1` as input aliases when the corresponding upload slot exists;
+they are normalized to `@image_1` / `@video_1` before quoting, storage, and
+provider submission. Unknown slot numbers are rejected. A declared element or
+voice named exactly `image1` / `video1` takes precedence over the alias.
+Keyframe-mode identifiers (`@first_frame`, etc.) are unchanged.
 
 Reference mode accepts 10 images, 5 videos, 7 named elements (at most 3 video
 elements), and 3 named voices, with at most 15 entries combined. Video references
