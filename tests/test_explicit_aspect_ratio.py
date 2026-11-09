@@ -28,6 +28,51 @@ def _ratio_field(schema: dict) -> dict:
     return next(field for field in schema["fields"] if field["name"] == "aspect_ratio")
 
 
+NEIRONYCH_NANO_2_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"]
+NANO_2_UNSUPPORTED_PUBLIC_RATIOS = ["3:2", "2:3", "5:4", "4:5", "21:9", "1:4", "4:1", "1:8", "8:1"]
+
+
+@pytest.mark.parametrize("model_id", ["nano-banana-2", "nano-banana-2-lite"])
+def test_nano_2_public_ratios_match_neironych_primary_contract(model_id: str) -> None:
+    schema = build_public_model_ui_schema(ModelCatalog.get(model_id).public_dict())
+    assert _ratio_field(schema)["suggestions"] == NEIRONYCH_NANO_2_RATIOS
+
+
+def test_nano_banana_pro_keeps_extended_ratios() -> None:
+    schema = build_public_model_ui_schema(ModelCatalog.get("nano-banana-pro").public_dict())
+    suggestions = set(_ratio_field(schema)["suggestions"])
+    assert {"3:2", "2:3", "5:4", "4:5", "21:9"} <= suggestions
+
+
+@pytest.mark.parametrize("model_id", ["nano-banana-2", "nano-banana-2-lite"])
+@pytest.mark.parametrize("ratio", NANO_2_UNSUPPORTED_PUBLIC_RATIOS)
+async def test_nano_2_unsupported_ratio_is_blocked_before_billing_or_outbox(
+    monkeypatch: pytest.MonkeyPatch,
+    model_id: str,
+    ratio: str,
+) -> None:
+    billing = AsyncMock(side_effect=AssertionError("billing must not run"))
+    debit = AsyncMock(side_effect=AssertionError("debit must not run"))
+    outbox = Mock(side_effect=AssertionError("outbox must not run"))
+    monkeypatch.setattr(BillingAccessService, "decision", billing)
+    monkeypatch.setattr(WalletService, "debit", debit)
+    monkeypatch.setattr(GenerationOutboxService, "add", outbox)
+
+    with pytest.raises(InvalidModelParametersError, match="соотношение сторон"):
+        await GenerationService.create(
+            object(),
+            object(),
+            user_id=uuid4(),
+            model_id=model_id,
+            prompt="A mountain",
+            parameters={"aspect_ratio": ratio},
+        )
+
+    billing.assert_not_awaited()
+    debit.assert_not_awaited()
+    outbox.assert_not_called()
+
+
 def test_public_model_schemas_never_offer_or_default_to_auto_aspect_ratio() -> None:
     for model in ModelCatalog.list():
         schema = build_public_model_ui_schema(model)
@@ -63,6 +108,16 @@ async def test_explicit_lite_ratio_is_preserved(ratio: str) -> None:
         object(), model_id="nano-banana-2-lite", prompt="A mountain", parameters={"aspect_ratio": ratio}
     )
     assert clean["aspect_ratio"] == ratio
+
+
+async def test_nano_2_template_preflight_preserves_legacy_ratio_for_repair() -> None:
+    _spec, clean, _cost, _seconds, _unit = await GenerationService.prepare_template_request(
+        object(),
+        model_id="nano-banana-2",
+        prompt="A portrait",
+        parameters={"aspect_ratio": "4:5", "resolution": "1K"},
+    )
+    assert clean["aspect_ratio"] == "4:5"
 
 
 async def test_removed_auto_is_blocked_before_billing_or_outbox(monkeypatch: pytest.MonkeyPatch) -> None:

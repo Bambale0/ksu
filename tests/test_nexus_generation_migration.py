@@ -35,6 +35,7 @@ DOCUMENTED_NEXUS_NANO_RATIOS = [
     "4:5",
     "21:9",
 ]
+NEIRONYCH_NANO_2_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"]
 
 
 @pytest.mark.asyncio
@@ -202,7 +203,11 @@ def test_public_nexus_ui_matches_provider_capabilities(
 
     assert fields["image_input"]["max_items"] == 4
     assert "output_format" not in fields
-    expected_ratios = [ratio for ratio in DOCUMENTED_NEXUS_NANO_RATIOS if ratio != "auto"]
+    expected_ratios = (
+        [ratio for ratio in DOCUMENTED_NEXUS_NANO_RATIOS if ratio != "auto"]
+        if model_id == "nano-banana-pro"
+        else NEIRONYCH_NANO_2_RATIOS
+    )
     assert fields["aspect_ratio"]["suggestions"] == expected_ratios
     assert fields["resolution"]["suggestions"] == ["1K", "2K", "4K"]
     assert "output_format" not in schema["defaults"]
