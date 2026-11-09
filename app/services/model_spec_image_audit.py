@@ -22,8 +22,9 @@ def install_model_spec_image_audit() -> None:
     gpt2_ids = {"gpt-image-2-t2i", "gpt-image-2-i2i"}
     nano_legacy_ids = {"nano-banana", "nano-banana-edit"}
     nexus_nano_ids = {"nano-banana-pro", "nano-banana-2"}
-    # Nexus documents one shared aspect-ratio contract for the Nano Banana
-    # family. Keep the customer UI and pre-charge validation aligned with it.
+    # Public admission follows the active primary-provider contract. Nexus
+    # remains a wider fallback for frozen/legacy work, but new Nano Banana 2
+    # requests must be representable by Neironych before billing.
     nexus_nano_ratios = [
         "auto",
         "1:1",
@@ -37,6 +38,11 @@ def install_model_spec_image_audit() -> None:
         "4:5",
         "21:9",
     ]
+    neironych_nano_2_ratios = ["auto", "1:1", "16:9", "9:16", "4:3", "3:4"]
+    public_nano_ratios = {
+        "nano-banana-pro": nexus_nano_ratios,
+        "nano-banana-2": neironych_nano_2_ratios,
+    }
     nexus_nano_resolutions = {"1K", "2K", "4K"}
     wan_ids = {"wan-2.7-image", "wan-2.7-image-pro"}
     nsfw_image_ids = {
@@ -81,16 +87,17 @@ def install_model_spec_image_audit() -> None:
         ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})["resolution"] = "1K"
 
     for model_id in nexus_nano_ids:
+        supported_ratios = public_nano_ratios[model_id]
         suggestions = ui_contract.MODEL_FIELD_SUGGESTIONS.setdefault(model_id, {})
         suggestions["aspect_ratio"] = [
-            ratio for ratio in nexus_nano_ratios
+            ratio for ratio in supported_ratios
             if model_id != "nano-banana-pro" or ratio != "auto"
         ]
         suggestions["resolution"] = ["1K", "2K", "4K"]
         suggestions.pop("output_format", None)
         defaults = ui_contract.MODEL_DEFAULTS.setdefault(model_id, {})
         defaults.pop("output_format", None)
-        if str(defaults.get("aspect_ratio") or "1:1") not in nexus_nano_ratios:
+        if str(defaults.get("aspect_ratio") or "1:1") not in supported_ratios:
             defaults["aspect_ratio"] = "1:1"
 
     for model_id in nsfw_image_ids:
@@ -139,9 +146,9 @@ def install_model_spec_image_audit() -> None:
                     "Nexus Nano Banana accepts at most four image references"
                 )
             aspect_ratio = str(clean.get("aspect_ratio") or "1:1")
-            if aspect_ratio not in nexus_nano_ratios:
+            if aspect_ratio not in public_nano_ratios[spec.id]:
                 raise catalog.InvalidModelParametersError(
-                    f"Unsupported Nexus Nano Banana aspect_ratio={aspect_ratio!r}"
+                    f"Unsupported public Nano Banana aspect_ratio={aspect_ratio!r}"
                 )
             resolution = str(clean.get("resolution") or "1K").upper()
             if resolution not in nexus_nano_resolutions:
