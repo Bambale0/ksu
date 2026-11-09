@@ -1,3 +1,12 @@
+## Active Fix Execution — Kling 4 reference alias quote failure (2026-11-09)
+
+- Baseline `main@aff35968cb9a7117db516fc70bb7da6443157f9f`, production image matches. User-visible symptom: `Undeclared reference @image1` and a missing Kling 4.0 quote; repeated `POST /generations/quote` HTTP 422 on 2026-11-09 (not individually correlated to screenshot because logs omit error details).
+- Read-only production contract reproduction confirms `@image1` fails and `@image_1` succeeds with the same owned image slot. Root cause: unrecognized compact alias, not missing upload, price configuration, or provider outage.
+- Existing/reuse: common strict Kling4 contract and model catalog for quote/create/provider; named roles/voice semantics, owner-scoped verified video references, admin prices/routing, immutable provider snapshot, refund/outbox. Missing: alias normalization and boundary regression coverage. No schema/migration/permission/tariff/secret/provider change.
+- Risk: ambiguous `@image1` could be an explicitly named element; preserve exact declared names and reject missing/invalid slots. Preserve pre-spend validation and canonical names. Client unchanged; backend normalizes a supported alias before quote/create and provider dispatch.
+- Plan/verification matrix, no-hardcode, security/observability, rollout and rollback: [Execution ledger](docs/agents/EXECUTION/kling4-reference-aliases-20261109.md). Next: RED tests → smallest fix → focused/API/provider tests → exact-head CI/review → protected merge → immutable production smoke without paid generation.
+- Guidance: `.clinerules` systematic-debugging + TDD; `Bambale0/skills` diagnosing-bugs/TDD; `Bambale0/claw` AGENTS; `Bambale0/dev-agents-pack` PR review; `wondelai/skills` release-it; `anthropics/skills` webapp-testing; `agentskills/agentskills` format only (no app-specific guidance). Local `.agents/` absent on GitHub.
+
 # Active Fix Execution — Nano Banana 2 Neironych ratio contract (2026-11-09)
 
 - Baseline: `main@4eb757063c75088794ccdc298190a9f36c79b7df`. Production evidence on 2026-11-09 shows recent `nano-banana-2` jobs snapshot `["neironych","nexus","kie"]`; 4:5/5:4 requests fall back from Neironych with local `409 capability_mismatch`, then Nexus returns HTTP 402, then Kie succeeds. Supported 9:16/4:3/3:4 jobs succeed on Neironych primary.
