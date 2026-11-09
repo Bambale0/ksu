@@ -18,7 +18,7 @@ ASPECT_RATIOS = ("auto", "16:9", "9:16", "1:1", "21:9")
 ELEMENT_TAGS = ("character", "animal", "prop", "costume", "scene", "effect", "others")
 _NAME = re.compile(r"[\u4e00-\u9fa5A-Za-z0-9_]{1,20}\Z")
 _RESERVED = re.compile(r"(?:(?:image|video|keyframe|object|audio)_\d+|first_frame|last_frame)\Z", re.I)
-_COMPACT_MEDIA_REFERENCE = re.compile(r"@(?P<kind>image|video)(?P<index>[1-9][0-9]*)(?![A-Za-z0-9_\u4e00-\u9fa5])", re.I)
+_COMPACT_MEDIA_REFERENCE = re.compile(r"@(?P<kind>image|video)(?P<index>[1-9][0-9]*)(?!\w)", re.I)
 
 
 class Kling4ContractError(ValueError):
@@ -70,7 +70,7 @@ def _mentions(prompt: str, declared: set[str]) -> None:
     for marker in re.finditer("@", prompt):
         suffix = prompt[marker.end():]
         if not any(suffix.startswith(name) and (
-            len(suffix) == len(name) or not re.match(r"[A-Za-z0-9_\u4e00-\u9fa5]", suffix[len(name)])
+            len(suffix) == len(name) or not re.match(r"\w", suffix[len(name)])
         ) for name in names):
             token = suffix.split()[0] if suffix.split() else ""
             raise Kling4ContractError(f"Undeclared reference @{token[:30]}")
