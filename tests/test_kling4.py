@@ -79,6 +79,89 @@ def test_kling4_invalid_payload_is_blocked_at_both_public_and_provider_boundarie
         normalize_kie_video_input("kling-4.0/reference-to-video", source)
 
 
+@pytest.mark.parametrize(
+    ("prompt", "image_urls", "video_urls", "expected"),
+    [
+        ("Внешность @image1. Полностью сохрани лицо", ["https://cdn.example/face.png"], [], "Внешность @image_1. Полностью сохрани лицо"),
+        ("@Image1 appears", ["https://cdn.example/a.png"], [], "@image_1 appears"),
+        ("Move as @video1", [], ["https://cdn.example/a.mp4"], "Move as @video_1"),
+        ("@VIDEO1 follows @image2", ["https://cdn.example/a.png", "https://cdn.example/b.png"], ["https://cdn.example/a.mp4"], "@video_1 follows @image_2"),
+        ("@image_1 follows @video_1", ["https://cdn.example/a.png"], ["https://cdn.example/a.mp4"], "@image_1 follows @video_1"),
+    ],
+)
+def test_kling4_compact_aliases_normalize_for_quote_and_provider(prompt, image_urls, video_urls, expected):
+    payload = {"prompt": prompt, "duration": 5, "image_urls": image_urls, "video_urls": video_urls}
+    _, clean, _, _, _ = ModelCatalog.prepare(REFERENCE, payload)
+    assert clean["prompt"] == expected
+    assert normalize_kie_video_input("kling-4.0/reference-to-video", payload)["prompt"] == expected
+    assert payload["prompt"] == prompt
+
+
+@pytest.mark.parametrize("prompt", [
+    "@image2", "@image0", "@image01", "@image1abc", "@image1_more",
+    "@video1", "@unknown", "@image1 @video2",
+])
+def test_kling4_compact_aliases_do_not_create_missing_or_invalid_slots(prompt):
+    source = {"prompt": prompt, "duration": 5, "image_urls": ["https://cdn.example/a.png"]}
+    with pytest.raises(InvalidModelParametersError, match="Undeclared reference"):
+        ModelCatalog.prepare(REFERENCE, source)
+
+
+def test_kling4_named_element_image1_takes_precedence_over_compact_alias():
+    source = {
+        "prompt": "@image1 greets @image_1",
+        "duration": 5,
+        "image_urls": ["https://cdn.example/scene.png"],
+        "elements": [{"name": "image1", "image_urls": ["https://cdn.example/a.png", "https://cdn.example/b.png"]}],
+    }
+    _, clean, _, _, _ = ModelCatalog.prepare(REFERENCE, source)
+    assert clean["prompt"] == "@image1 greets @image_1"
+
+
+@pytest.mark.asyncio
+async def test_kling4_quote_accepts_compact_image_tag_without_changing_admin_tariff(monkeypatch):
+    monkeypatch.setattr(settings, "generation_pricing_json", '{"kling-4.0":{"per_second":30}}')
+    spec, clean, cost, seconds, unit_price = await GenerationService.prepare_request(
+        None, model_id=REFERENCE, prompt="@image1. Preserve identity",
+        parameters={"duration": 5, "image_urls": ["https://cdn.example/a.png"]},
+    )
+    assert spec.id == REFERENCE
+    assert clean["prompt"] == "@image_1. Preserve identity"
+    assert (cost, seconds, unit_price) == (Decimal("150.00"), 5, Decimal("30"))
+
+
+@pytest.mark.asyncio
+async def test_kling4_compact_image_tag_is_saved_canonical_before_dispatch(monkeypatch):
+    monkeypatch.setattr(settings, "abuse_protection_enabled", False)
+    monkeypatch.setattr(settings, "generation_pricing_json", '{"kling-4.0":{"per_second":30}}')
+    async with SessionFactory() as session:
+        user = User(telegram_id=uuid.uuid4().int % 10**14, first_name="Kling alias regression")
+        session.add(user)
+        await session.flush()
+        await WalletService.credit(
+            session, user_id=user.id, amount=Decimal("500"), kind="test_seed",
+            reference_type="test", reference_id=str(user.id),
+            idempotency_key=f"kling4-alias-seed:{user.id}",
+        )
+        image_url = f"https://cdn.example/{uuid.uuid4()}.png"
+        session.add(UserReference(
+            user_id=user.id, kind="image", status="ready",
+            source="mini_app_upload", source_url=image_url,
+        ))
+        await session.flush()
+        generations = await GenerationService.create_many(
+            session, AsyncMock(), user_id=user.id, model_id=REFERENCE,
+            prompt="@image1. Keep the subject", parameters={"duration": 5, "image_urls": [image_url]},
+            quantity=1, commit=False, wake=False,
+        )
+        assert len(generations) == 1
+        generation = generations[0]
+        assert generation.prompt == "@image_1. Keep the subject"
+        assert generation.parameters["prompt"] == "@image_1. Keep the subject"
+        assert GenerationProviderService._input_for(generation)["prompt"] == "@image_1. Keep the subject"
+        assert generation.cost_rox == Decimal("150.00")
+
+
 def test_kling4_omni_accepts_named_subjects_and_voices_without_mutating_input():
     source = {"prompt": "@Hero greets @Narrator near @image_1", "duration": 30,
               "image_urls": ["https://cdn.example/scene.png"],
