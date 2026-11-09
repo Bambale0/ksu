@@ -110,6 +110,16 @@ async def test_explicit_lite_ratio_is_preserved(ratio: str) -> None:
     assert clean["aspect_ratio"] == ratio
 
 
+async def test_nano_2_template_preflight_preserves_legacy_ratio_for_repair() -> None:
+    _spec, clean, _cost, _seconds, _unit = await GenerationService.prepare_template_request(
+        object(),
+        model_id="nano-banana-2",
+        prompt="A portrait",
+        parameters={"aspect_ratio": "4:5", "resolution": "1K"},
+    )
+    assert clean["aspect_ratio"] == "4:5"
+
+
 async def test_removed_auto_is_blocked_before_billing_or_outbox(monkeypatch: pytest.MonkeyPatch) -> None:
     billing = AsyncMock(side_effect=AssertionError("billing must not run"))
     debit = AsyncMock(side_effect=AssertionError("debit must not run"))
