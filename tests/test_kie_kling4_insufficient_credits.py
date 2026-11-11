@@ -36,8 +36,9 @@ async def test_kie_insufficient_supplier_balance_is_clear_and_refunded_once(monk
     assert args[1] == generation_id
     assert ("Оплаченные ROX возвращены" in args[2]) is charged
     assert ("ROX не списаны" in args[2]) is (not charged)
-    assert "недостаточно кредитов" in args[2]
-    assert ("Сохранить исходный звук" in args[2]) is original_sound
+    assert "временно недоступн" in args[2]
+    assert not any(name in args[2].lower() for name in ("kie", "нейроныч", "провайдер"))
+    assert "Сохранить исходный звук" not in args[2]
 
 
 @pytest.mark.asyncio
@@ -70,4 +71,4 @@ async def test_kie_http_insufficient_credit_response_is_localized_and_refunded(m
     assert await GenerationProviderService._record_submission_error(session, generation_id, exc) == "permanent"
     refund.assert_awaited_once()
     assert "Оплаченные ROX возвращены" in refund.await_args.args[2]
-    assert "Нейроныча" in refund.await_args.args[2]
+    assert not any(name in refund.await_args.args[2].lower() for name in ("kie", "нейроныч", "провайдер"))
