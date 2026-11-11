@@ -98,6 +98,7 @@ type LegacyDraft = DraftBase & {
   mode: "legacy";
   modelId: string;
   prompt: string;
+  templateVideoUrl: string;
   userFields: TrendUserField[];
   inputMode: "none" | "image";
   minReferences: number;
@@ -134,6 +135,7 @@ function emptyDraft(modelId = ""): LegacyDraft {
     previewUrl: "",
     modelId,
     prompt: "",
+    templateVideoUrl: "",
     userFields: [],
     inputMode: "none",
     minReferences: 0,
@@ -246,6 +248,7 @@ function draftFrom(item: TrendAdminItem, models: TrendAdminModel[], duplicate = 
     previewUrl: String(payload.preview_url || ""),
     modelId: String(payload.model_id || ""),
     prompt: String(payload.prompt || ""),
+    templateVideoUrl: String(payload.template_video_url || ""),
     userFields: Array.isArray(payload.user_fields) ? payload.user_fields.slice(0, 6) : [],
     inputMode: payload.input_mode === "image" ? "image" : "none",
     minReferences: Number(payload.min_references || 0),
@@ -521,6 +524,13 @@ export function InlineTrendAdmin() {
   );
   const referenceAllowed = draft.mode === "legacy" && modelAcceptsReferences(selectedModel);
   const audioAllowed = draft.mode === "legacy" && Boolean(selectedModel?.known_fields?.includes("reference_audio_urls"));
+  const klingPinnedAllowed = draft.mode === "legacy" && draft.modelId === "kling-4.0";
+  const templateVideoUrl = draft.mode === "legacy" ? draft.templateVideoUrl : "";
+  const pinnedParameters = useMemo(() => {
+    if (draft.mode !== "legacy") return {};
+    try { return recipeParameters(draft.parameters); }
+    catch { return {}; }
+  }, [draft]);
   const audioReferences = useMemo(() => {
     if (draft.mode !== "legacy") return [];
     try { return audioReferenceUrls(recipeParameters(draft.parameters)); }
@@ -565,6 +575,7 @@ export function InlineTrendAdmin() {
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       modelId,
+      templateVideoUrl: modelId === "kling-4.0" ? current.templateVideoUrl : "",
       inputMode: modelAcceptsReferences(next) ? current.inputMode : "none",
       minReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.max(1, current.minReferences || 1) : 0,
       maxReferences: modelAcceptsReferences(next) && current.inputMode === "image" ? Math.min(referenceCapacity(next), Math.max(1, current.maxReferences || 1)) : 0,
@@ -574,6 +585,7 @@ export function InlineTrendAdmin() {
   const chooseInputMode = (inputMode: "none" | "image") => {
     if (draft.mode !== "legacy") return;
     if (inputMode === "image" && !referenceAllowed) return;
+    if (draft.templateVideoUrl && inputMode === "none") return;
     setDraft((current) => current.mode === "legacy" ? ({
       ...current,
       inputMode,
@@ -647,6 +659,65 @@ export function InlineTrendAdmin() {
       setError(cause instanceof Error ? cause.message : "Не удалось загрузить превью шага");
     } finally {
       if (draftVersion.current === version) setUploading(false);
+    }
+  };
+
+  const uploadTemplateVideo = async (file?: File) => {
+    if (!file || uploading || saving || !klingPinnedAllowed || draft.mode !== "legacy") return;
+    if (!["video/mp4", "video/quicktime"].includes(file.type)) {
+      setError("Для Kling 4.0 загрузите MP4 или MOV (2–30 секунд, до 10 МБ)");
+      return;
+    }
+    let parameters: Record<string, unknown>;
+    try { parameters = recipeParameters(draft.parameters); }
+    catch {
+      setError("Исправьте JSON параметров перед загрузкой видео");
+      return;
+    }
+    const defaults = workflowParameterDefaults(selectedModel || undefined);
+    for (const name of ["duration", "resolution", "aspect_ratio"]) {
+      if (parameters[name] == null || parameters[name] === "") {
+        const value = defaults[name];
+        if (value != null && value !== "" && value !== "auto") parameters[name] = value;
+      }
+    }
+    const version = draftVersion.current;
+    setUploading(true);
+    setError("");
+    try {
+      const uploaded = await api.upload(file, "template-video");
+      if (draftVersion.current !== version) return;
+      if (uploaded.reference?.kind !== "video" || uploaded.probe_status !== "ready"
+        || !Number.isFinite(uploaded.duration_ms) || Number(uploaded.duration_ms) < 2000) {
+        throw new Error("Видео не прошло проверку. Выберите другой MP4/MOV файл.");
+      }
+      setDraft((current) => current.mode === "legacy" && current.modelId === "kling-4.0" ? ({
+        ...current,
+        templateVideoUrl: uploaded.url,
+        inputMode: "image",
+        minReferences: 2,
+        maxReferences: 2,
+        parameters: JSON.stringify(parameters, null, 2),
+      }) : current);
+    } catch (cause) {
+      if (draftVersion.current === version) {
+        setError(cause instanceof Error ? cause.message : "Не удалось загрузить видео");
+      }
+    } finally {
+      if (draftVersion.current === version) setUploading(false);
+    }
+  };
+
+  const updatePinnedParameter = (name: string, value: unknown) => {
+    if (draft.mode !== "legacy") return;
+    try {
+      const parameters = recipeParameters(draft.parameters);
+      setDraft((current) => current.mode === "legacy"
+        ? { ...current, parameters: JSON.stringify({ ...parameters, [name]: value }, null, 2) }
+        : current);
+      setError("");
+    } catch {
+      setError("Сначала исправьте JSON параметров модели");
     }
   };
 
@@ -828,6 +899,7 @@ export function InlineTrendAdmin() {
         user_fields: userFields.length ? userFields : undefined,
         parameters,
         input_mode: draft.inputMode,
+        template_video_url: draft.templateVideoUrl || undefined,
         min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
         max_references: draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
         tags: draft.tags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
@@ -986,6 +1058,24 @@ export function InlineTrendAdmin() {
           </section>
         </> : <>
           <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+        {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
+          <strong>Постоянное видео для Kling 4.0</strong>
+          <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Пользователь загружает только два фото (@image_1 и @image_2). Превью — отдельное поле.</small>
+          <label><span>Загрузить видео MP4/MOV · 2–30 с, до 10 МБ</span>
+            <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov"
+              aria-label="Загрузить постоянное видео Kling 4.0" disabled={uploading || saving}
+              onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void uploadTemplateVideo(file); }} />
+          </label>
+          {templateVideoUrl ? <div>
+            <video src={templateVideoUrl} muted playsInline controls preload="metadata" style={{ width: "100%" }} aria-label="Закреплённое видео для генерации" />
+            <button className="inline-trend-secondary" type="button" disabled={uploading || saving}
+              onClick={() => setDraft((current) => current.mode === "legacy" ? { ...current, templateVideoUrl: "" } : current)}>
+              Убрать видео из тренда
+            </button>
+            <small>Референсы пользователя: ровно два фото, видео уже загружено администратором.</small>
+          </div> : <small>Видео ещё не закреплено. Обычный тренд продолжит работать без него.</small>}
+          {templateVideoUrl ? <ModelParameterControls model={selectedModel || undefined} parameters={pinnedParameters} onChange={updatePinnedParameter} /> : null}
+        </div> : null}
         {draft.modelId === "seedance-2.5" ? <small>
           Для видео, которое загрузит пользователь, укажите @Video1 в промпте
           (далее @Video2 и т. д.). Превью служит только образцом результата.
@@ -1042,11 +1132,11 @@ export function InlineTrendAdmin() {
           </div>
 
           <div className="inline-trend-two-cols">
-          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none">Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
+          <label><span>Что загружает пользователь</span><select value={draft.inputMode} onChange={(event) => chooseInputMode(event.target.value as "none" | "image")}><option value="none" disabled={Boolean(templateVideoUrl)}>Ничего</option><option value="image" disabled={!referenceAllowed}>Фото / референс</option></select><small>{referenceAllowed ? "Модель поддерживает референсы" : "У выбранной модели нет входного изображения"}</small></label>
           <label><span>Длительность, сек</span><input type="number" min={1} value={draft.billingSeconds} onChange={(event) => setDraft((current) => ({ ...current, billingSeconds: event.target.value }))} placeholder="Авто" /></label>
           </div>
 
-          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }) : current)} /></label><label><span>Максимум фото</span><input type="number" min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }) : current)} /></label></div> : null}
+          {draft.inputMode === "image" ? <div className="inline-trend-two-cols"><label><span>Минимум фото</span><input type="number" disabled={Boolean(templateVideoUrl)} min={1} max={capacity} value={draft.minReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, minReferences: Math.min(capacity, Math.max(1, Number(event.target.value || 1))) }) : current)} /></label><label><span>Максимум фото</span><input type="number" disabled={Boolean(templateVideoUrl)} min={draft.minReferences} max={capacity} value={draft.maxReferences} onChange={(event) => setDraft((current) => current.mode === "legacy" ? ({ ...current, maxReferences: Math.min(capacity, Math.max(current.minReferences, Number(event.target.value || current.minReferences))) }) : current)} /></label></div> : null}
 
           <details className="inline-trend-advanced"><summary>Дополнительные параметры модели</summary><label><span>JSON параметров</span><textarea rows={7} spellCheck={false} value={draft.parameters} disabled={uploading} onChange={(event) => setDraft((current) => ({ ...current, parameters: event.target.value }))} /></label></details>
         </>}
