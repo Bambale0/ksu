@@ -152,15 +152,6 @@ class TrendService:
                     f"В промпте указано фото №{required_user_images}, "
                     f"но модель поддерживает не более {reference_capacity} фото."
                 )
-            video_indexes = [
-                int(match.group(1))
-                for match in re.finditer(r"@video_([1-9][0-9]*)(?!\w)", prompt, flags=re.I)
-            ]
-            if video_indexes and (not template_video_url or max(video_indexes) > 1):
-                raise TrendRecipeError(
-                    "В промпте есть видео @video_1. Загрузите постоянное видео "
-                    "в карточке шаблона или уберите ссылку на видео из промпта."
-                )
         if required_user_images:
             input_mode = "image"
         min_references = max(
@@ -239,6 +230,20 @@ class TrendService:
             return await TrendWorkflowService.validate_recipe(session, recipe)
         from app.services.template_audio import TemplateAudioService
 
+        if recipe["model_id"] == "kling-4.0":
+            video_indexes = [
+                int(match.group(1))
+                for match in re.finditer(
+                    r"@video_([1-9][0-9]*)(?!\w)", recipe["prompt"], flags=re.I
+                )
+            ]
+            if video_indexes and (
+                not recipe["template_video_url"] or max(video_indexes) > 1
+            ):
+                raise TrendRecipeError(
+                    "В промпте есть видео @video_1. Загрузите постоянное видео "
+                    "в карточке шаблона или уберите ссылку на видео из промпта."
+                )
         if recipe["template_video_url"]:
             await TemplateVideoService.verified(session, recipe["template_video_url"])
         if TemplateAudioService.audio_urls(recipe["parameters"]):
