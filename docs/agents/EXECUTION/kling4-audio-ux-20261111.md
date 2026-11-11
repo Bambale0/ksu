@@ -37,3 +37,19 @@ AAC audio is present alongside H.264 video; one sample, not a guarantee.
 - Remaining limitation: native supplier does not support copying original
   soundtrack from a video reference. A strict compatible route remains
   necessary until the supplier publishes a real matching control.
+
+## Exact-head CI runner incident
+Two independent workflow runs on the 2026-11-11 PR head failed **before tests**
+at `Install MP4 tooling`: Ubuntu 26.04 runner `apt-get update` reported
+`Temporary failure resolving 'archive.ubuntu.com'` and
+`security.ubuntu.com`, then reached its five-minute timeout.
+PostgreSQL and Redis Docker images did pull successfully on those runners.
+This is a runner DNS/package installation incident, not a Kling regression.
+
+Fix: `scripts/setup_ci_media_tools.sh` installs *both* ffmpeg/ffprobe from
+`mwader/static-ffmpeg` using a verified immutable multi-arch image digest
+`sha256:f5d100184884eb3e82b0eb14bb5ebf98da99826ac824989720297fb9ef21c822`.
+The tooling itself is not removed; all tests still run. `e2e.yml` installs
+real Chromium through Playwright without re-running apt on the hosted runner;
+the browser journeys still fail if required browser libraries are missing.
+The script runs in the PR CI and is validated by actual media/E2E steps.
