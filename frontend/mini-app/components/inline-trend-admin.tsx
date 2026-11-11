@@ -5,7 +5,7 @@ import { aspectRatioError, normalizeAspectRatioFields, normalizeAspectRatioValue
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
+import { klingTrendRequiredImages, syncWorkflowPromptInputs, trendSaveError, workflowInputError, workflowInputReferenced, workflowPromptError } from "@/lib/trend-workflow-inputs";
 
 import { TrendPreviewMedia } from "@/components/trend-preview-media";
 import { api } from "@/lib/api";
@@ -890,6 +890,22 @@ export function InlineTrendAdmin() {
         setError("Названия полей шаблона не должны повторяться");
         return;
       }
+      const klingImages = model.id === "kling-4.0" ? klingTrendRequiredImages(draft.prompt) : 0;
+      const imageMode = draft.templateVideoUrl || klingImages > 0 ? "image" : draft.inputMode;
+      const imageMinimum = imageMode === "image"
+        ? draft.templateVideoUrl ? 2 : Math.max(1, draft.minReferences, klingImages)
+        : 0;
+      const imageMaximum = imageMode === "image"
+        ? draft.templateVideoUrl ? 2 : Math.min(capacity, Math.max(imageMinimum, draft.maxReferences))
+        : 0;
+      if (klingImages > capacity) {
+        setError(`В промпте указано фото №${klingImages}, но модель поддерживает не более ${capacity} фото.`);
+        return;
+      }
+      if (model.id === "kling-4.0" && /@video_1\\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
+        setError("В промпте указано видео @video_1. Сначала загрузите постоянное видео для шаблона.");
+        return;
+      }
       const legacyPayload: TrendAdminV1Payload = {
         description: draft.description.trim(),
         preview_url: draft.previewUrl.trim(),
@@ -898,10 +914,10 @@ export function InlineTrendAdmin() {
         prompt: draft.prompt.trim(),
         user_fields: userFields.length ? userFields : undefined,
         parameters,
-        input_mode: draft.inputMode,
+        input_mode: imageMode,
         template_video_url: draft.templateVideoUrl || undefined,
-        min_references: draft.inputMode === "image" ? Math.max(1, draft.minReferences) : 0,
-        max_references: draft.inputMode === "image" ? Math.min(capacity, Math.max(draft.minReferences, draft.maxReferences)) : 0,
+        min_references: imageMinimum,
+        max_references: imageMaximum,
         tags: draft.tags.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 20),
         sort_order: Number(draft.sortOrder || 0),
         usage_count: Number(items.find((item) => item.id === editingId)?.payload.usage_count || 0),
@@ -1057,7 +1073,19 @@ export function InlineTrendAdmin() {
             <label><span>Поле изображения видео</span><select value={draft.video.bindingTarget || ""} onChange={(event) => setDraft((current) => current.mode === "workflow" ? { ...current, video: { ...current.video, bindingTarget: event.target.value } } : current)}><option value="">Выберите поле привязки</option>{(models.find((model) => model.id === draft.video.modelId)?.known_fields || []).filter((field) => BINDABLE_IMAGE_FIELDS.has(field)).map((field) => <option value={field} key={field}>{field}</option>)}</select><small>{draft.video.bindingTarget ? `Результат шага фото будет передан в ${draft.video.bindingTarget}.` : "Модель не объявила совместимое поле."}</small></label>
           </section>
         </> : <>
-          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          <label><span>Скрытый промпт</span><textarea value={draft.prompt} maxLength={8000} rows={5} onChange={(event) => setDraft((current) => {
+            if (current.mode !== "legacy") return current;
+            const prompt = event.target.value;
+            if (current.modelId !== "kling-4.0") return { ...current, prompt };
+            const count = klingTrendRequiredImages(prompt);
+            if (!count || count > capacity) return { ...current, prompt };
+            return {
+              ...current, prompt, inputMode: "image",
+              minReferences: current.templateVideoUrl ? 2 : Math.max(current.minReferences, count),
+              maxReferences: current.templateVideoUrl ? 2 : Math.max(current.maxReferences, count),
+            };
+          })} placeholder="Инструкция для модели. Пользователь её не увидит." required /></label>
+          {draft.modelId === "kling-4.0" && klingTrendRequiredImages(draft.prompt) > 0 ? <small role="status">По промпту потребуется минимум {klingTrendRequiredImages(draft.prompt)} фото. Количество автоматически учитывается при сохранении.</small> : null}
         {klingPinnedAllowed ? <div className="inline-trend-user-fields-admin" role="group" aria-label="Постоянное видео Kling 4.0">
           <strong>Постоянное видео для Kling 4.0</strong>
           <small>Это видео автоматически передаётся модели как @video_1 при каждом повторе. Пользователь загружает только два фото (@image_1 и @image_2). Превью — отдельное поле.</small>
