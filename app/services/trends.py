@@ -137,6 +137,30 @@ class TrendService:
         if video_reference_count and (spec.id != "seedance-2.5" or video_reference_count > SEEDANCE25_MAX_VIDEO_REFS):
             raise TrendRecipeError("Video references are not supported in trends for this model or reference count")
         required_user_images = int(seedance_requirements["image"])
+        if spec.id == "kling-4.0":
+            # Kling validates @image_N against actual declared image_urls.
+            # Seedance already inferred this from its prompt, but Kling used
+            # the admin's default minimum of one image and rejected @image_2.
+            image_indexes = [
+                int(match.group(1))
+                for match in re.finditer(r"@image_([1-9][0-9]*)(?!\\w)", prompt, flags=re.I)
+            ]
+            if image_indexes:
+                required_user_images = max(required_user_images, max(image_indexes))
+            if required_user_images > reference_capacity:
+                raise TrendRecipeError(
+                    f"В промпте указано фото №{required_user_images}, "
+                    f"но модель поддерживает не более {reference_capacity} фото."
+                )
+            video_indexes = [
+                int(match.group(1))
+                for match in re.finditer(r"@video_([1-9][0-9]*)(?!\\w)", prompt, flags=re.I)
+            ]
+            if video_indexes and (not template_video_url or max(video_indexes) > 1):
+                raise TrendRecipeError(
+                    "В промпте есть видео @video_1. Загрузите постоянное видео "
+                    "в карточке шаблона или уберите ссылку на видео из промпта."
+                )
         if required_user_images:
             input_mode = "image"
         min_references = max(
