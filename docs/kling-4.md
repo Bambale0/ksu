@@ -86,8 +86,8 @@ verified template clip and exactly two visitor photos. In the Mini App's
 **Тренды → Добавить** editor choose `Kling 4.0`, upload the permanent MP4/MOV
 under **Постоянное видео для Kling 4.0**, then select a fixed video format and
 quality and set a hidden prompt using `@image_1`, `@image_2` and `@video_1`.
-The editor locks customer photo minimum/maximum to two. An absent preview is
-initialized from that clip, but preview and source are separate fields.
+The editor locks customer photo minimum/maximum to two. Upload a separate
+public preview; the video input URL is not used as a preview.
 
 The clip is stored through `/uploads/template-video` with independently
 verified metadata and cannot be pruned as an ordinary user's reference. The
