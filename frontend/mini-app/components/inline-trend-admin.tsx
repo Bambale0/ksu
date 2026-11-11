@@ -694,7 +694,6 @@ export function InlineTrendAdmin() {
       setDraft((current) => current.mode === "legacy" && current.modelId === "kling-4.0" ? ({
         ...current,
         templateVideoUrl: uploaded.url,
-        previewUrl: current.previewUrl || uploaded.url,
         inputMode: "image",
         minReferences: 2,
         maxReferences: 2,
