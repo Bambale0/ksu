@@ -155,9 +155,10 @@ class GenerationProviderService:
                     and (params or {}).get("keep_original_sound") is True
                     and bool((params or {}).get("video_urls"))
                 )
+                charged = current is not None and Decimal(current.cost_rox) > 0
                 public_error = (
                     "На стороне провайдера KIE недостаточно кредитов для генерации. "
-                    "Ваши ROX возвращены."
+                    + ("Оплаченные ROX возвращены." if charged else "ROX не списаны.")
                 )
                 if original_sound:
                     public_error += (
