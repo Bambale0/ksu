@@ -948,3 +948,27 @@ def test_kling_trend_reference_index_out_of_capacity_fails_early():
             "input_mode": "image",
             "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
         })
+
+
+@pytest.mark.asyncio
+async def test_kling_two_images_recipe_preflight_validates_without_provider_post():
+    from app.db.session import SessionFactory
+
+    async with SessionFactory() as session:
+        normalized = await TrendService.validate_recipe(session, title="МОИ СЛЕЗЫ", payload={
+            "model_id": "kling-4.0", "media_type": "video",
+            "prompt": "Singer @image_1 reacts to listener @image_2",
+            "preview_url": "https://cdn.example.invalid/preview.jpg",
+            "input_mode": "image", "min_references": 1, "max_references": 1,
+            "parameters": {"duration": 5, "resolution": "720p", "aspect_ratio": "9:16"},
+        })
+        assert normalized["min_references"] == 2
+        assert normalized["max_references"] == 2
+
+
+def test_invalid_reference_recipe_is_http_422_not_gateway_502():
+    from app.api.v1.trends import _domain_error
+
+    error = _domain_error(TrendRecipeError("В промпте требуется второе фото"))
+    assert error.status_code == 422
+    assert "второе фото" in error.detail
