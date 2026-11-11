@@ -108,3 +108,30 @@ cannot create provider funds.
 Regression cases cover absent/false/true audio flag, pre-debit routing,
 KIE-only restrictions, no source mutation, upstream wire body, and 402 vs
 ambiguous submission error handling.
+
+## Customer-facing sound controls (2026-11-11)
+
+The ROXY Mini App presents model capabilities, never internal supplier names:
+- `Сохранить звук исходного видео` — user chooses to retain the input clip's
+  original audio when uploading a video. This remains a strict capability: do
+  not silently substitute an AI-generated soundtrack if the chosen provider
+  cannot fulfill the request.
+- `Персонажи и объекты` and `Голоса` — customer-visible capabilities; routing
+  and compatibility validation occur only on the backend.
+
+Verified upstream guide `https://api.нейроныч.online/guide`:
+`kling-4.0` supports `generate_audio=true` (default) and
+`generate_audio=false` (silent output), but does **not** document native
+original-track preservation, named subjects/voices or audio references.
+For native-compatible requests, ROXY sends `generate_audio=true` explicitly
+in the frozen idempotent POST, preserving reference order. Original-sound
+requests keep their existing supplier-capable route. There is no fake
+`keep_original_sound` mapping, no audio replacement, and no silent downgrade.
+
+A read-only `ffprobe` of an existing successful native Kling 4.0 MP4
+(2026-11-08) confirmed H.264 video **and AAC audio** streams. This proves
+that example contains audio, not that every future rendering will.
+The user API and Telegram failure messages for Kling 4.0 do not expose
+supplier brand names, routes, upstream codes or credentials; internal logs
+retain enough provenance for incident reconciliation. This is presentation
+sanitization, not deletion of technical error evidence.
