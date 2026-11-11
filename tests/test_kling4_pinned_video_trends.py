@@ -66,3 +66,125 @@ def test_non_pinned_kling_remains_user_video_capable_outside_trends():
     normalized = TrendService.normalize_recipe("Normal template", recipe(template_video_url=None))
     assert normalized["template_video_url"] is None
     assert "video_urls" not in TrendService._parameters_with_references(normalized, IMAGES)
+
+
+@pytest.mark.asyncio
+async def test_public_trend_quotes_pinned_video_without_exposing_video_or_extra_controls(monkeypatch):
+    from datetime import UTC, datetime
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.services.model_catalog import ModelCatalog
+
+    item = SimpleNamespace(
+        id=__import__("uuid").uuid4(), title="Two people", payload=recipe(),
+        created_at=datetime.now(UTC), is_active=True,
+    )
+    session = AsyncMock()
+    session.info = {}
+    async def prepare(_session, _recipe, **kwargs):
+        assert _session.info["authorized_template_video_url"] == VIDEO
+        assert kwargs["parameters"]["video_urls"] == [VIDEO]
+        return ModelCatalog.get("kling-4.0"), {}, Decimal("300"), 5, Decimal("60")
+    monkeypatch.setattr(TrendService, "_prepare_recipe", prepare)
+    view = await TrendService.public_view(session, item)
+    assert view["reference_requirements"]["image"] == {"min": 2, "max": 2}
+    assert view["reference_requirements"]["video"] == {"min": 0, "max": 0}
+    assert view["aspect_ratio_options"] == []
+    assert "quality_options" not in view
+    assert "template_video_url" not in view
+    assert VIDEO not in str(view)
+    assert view["cost_credits"] == "300.00"
+    assert session.info == {}
+
+
+@pytest.mark.asyncio
+async def test_pinned_trend_dispatch_has_server_clip_but_requires_two_photos(monkeypatch):
+    import uuid
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.services.generations import GenerationService
+
+    item = SimpleNamespace(
+        id=uuid.uuid4(), title="Two people", payload=recipe(),
+        created_at=datetime.now(UTC), is_active=True,
+    )
+    session = AsyncMock()
+    session.info = {}
+    session.get = AsyncMock(return_value=item)
+    session.scalar = AsyncMock(return_value=item)
+    session.commit = AsyncMock()
+    generation = SimpleNamespace(id=uuid.uuid4())
+    async def create(_session, _redis, **kwargs):
+        assert _session.info["authorized_template_video_url"] == VIDEO
+        assert kwargs["action_type"] == "trend"
+        assert kwargs["parameters"]["image_urls"] == IMAGES
+        assert kwargs["parameters"]["video_urls"] == [VIDEO]
+        return generation
+    monkeypatch.setattr(GenerationService, "create", create)
+    result, _ = await TrendService.run(
+        session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id,
+        reference_urls=IMAGES,
+    )
+    assert result is generation
+    assert session.info == {}
+    with pytest.raises(TrendRecipeError, match="reference images"):
+        await TrendService.run(
+            session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id,
+            reference_urls=IMAGES[:1],
+        )
+    with pytest.raises(TrendRecipeError, match="video references"):
+        await TrendService.run(
+            session, AsyncMock(), user_id=uuid.uuid4(), trend_id=item.id,
+            reference_urls=IMAGES, video_reference_urls=[VIDEO],
+        )
+
+
+@pytest.mark.asyncio
+async def test_server_owned_video_cannot_be_used_in_ordinary_kling_generation(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.services.kling4_contract import validate_kling4_media
+    from app.services.model_catalog import InvalidModelParametersError
+    from app.services.template_video import TemplateVideoService
+
+    session = AsyncMock()
+    session.info = {}
+    good = SimpleNamespace(duration_ms=4500)
+    verified = AsyncMock(return_value=good)
+    monkeypatch.setattr(TemplateVideoService, "verified", verified)
+    payload = {"video_urls": [VIDEO]}
+
+    with pytest.raises(InvalidModelParametersError, match="authenticated upload owner"):
+        await validate_kling4_media(session, payload)
+    assert verified.await_count == 0
+
+    with TemplateVideoService.authorized(session, VIDEO):
+        await validate_kling4_media(session, payload)
+    assert verified.await_count == 1
+    assert session.info == {}
+
+
+@pytest.mark.asyncio
+async def test_pinned_video_must_be_verified_and_product_owned(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from app.services.template_video import TemplateVideoService
+    from app.services.reference_static import ReferenceStaticStorage
+
+    row = SimpleNamespace(
+        source_url=VIDEO, status="ready", probe_status="ready",
+        content_type="video/mp4", size_bytes=1024, duration_ms=4500,
+    )
+    session = AsyncMock()
+    session.scalar = AsyncMock(return_value=row)
+    monkeypatch.setattr(ReferenceStaticStorage, "local_url_exists", lambda _: True)
+    assert await TemplateVideoService.verified(session, VIDEO) is row
+    row.status = "deleted"
+    with pytest.raises(ValueError, match="Template video"):
+        await TemplateVideoService.verified(session, VIDEO)
+    row.status = "ready"
+    row.size_bytes = 11 * 1024 * 1024
+    with pytest.raises(ValueError, match="10 MB"):
+        await TemplateVideoService.verified(session, VIDEO)
