@@ -170,13 +170,12 @@ test('Kling trend infers two photo fields and retries an uncertain 502 with the 
   await form.getByLabel('Загрузить превью').setInputFiles(photo('preview.png'));
   const save = form.getByRole('button', { name: 'Опубликовать тренд' });
   await save.click();
-  await expect(form.getByRole('alert')).toContainText('временная ошибка связи с сервером');
-  expect(writes).toHaveLength(1);
+  // 502 is retried automatically with the *same* mutation key, so the
+  // administrator does not generate a second trend after an uncertain write.
+  await expect.poll(() => writes.length).toBe(2);
   expect(writes[0].payload.payload.input_mode).toBe('image');
   expect(writes[0].payload.payload.min_references).toBe(2);
   expect(writes[0].payload.payload.max_references).toBe(2);
-  await save.click();
-  await expect.poll(() => writes.length).toBe(2);
   expect(writes[0].key).toBeTruthy();
   expect(writes[1].key).toBe(writes[0].key);
   await expect(form).toHaveCount(0);
