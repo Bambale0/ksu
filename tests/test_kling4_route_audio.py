@@ -34,6 +34,7 @@ def test_generated_audio_is_compatible_with_neironych(value):
         original["keep_original_sound"] = value
     prepared = prepare_neironych_kling_input(original)
     assert "keep_original_sound" not in prepared
+    assert prepared["generate_audio"] is True
     assert prepared["reference_videos"] == [{"url": BASE["video_urls"][0]}]
     assert original.get("keep_original_sound") == value
 
@@ -45,6 +46,7 @@ def test_no_video_input_has_no_original_sound_semantics(value):
         original["keep_original_sound"] = value
     prepared = prepare_neironych_kling_input(original)
     assert "keep_original_sound" not in prepared
+    assert prepared["generate_audio"] is True
 
 
 def test_original_sound_true_must_not_be_silently_dropped():
@@ -78,7 +80,7 @@ def test_only_kie_is_compatible_with_original_sound():
     assert select_kling4_route("kling-4.0", {
         "keep_original_sound": True, "video_urls": BASE["video_urls"]
     }, ("kie", "neironych")) == (("kie",), "original_sound")
-    with pytest.raises(ValueError, match="KIE"):
+    with pytest.raises(ValueError, match="настройками"):
         select_kling4_route("kling-4.0", {
             "keep_original_sound": True, "video_urls": BASE["video_urls"]
         }, ("neironych",))
@@ -143,7 +145,7 @@ async def test_route_selection_happens_at_create_before_rox_debit(monkeypatch):
         session.add(Wallet(user_id=user.id, balance=Decimal("1000")))
         await session.commit()
         before = await session.scalar(select(Wallet.balance).where(Wallet.user_id == user.id))
-        with pytest.raises(ValueError, match="KIE"):
+        with pytest.raises(ValueError, match="настройками"):
             await GenerationService.create(
                 session, Redis(), user_id=user.id, model_id="kling-4.0",
                 prompt=BASE["prompt"], parameters={**BASE, "keep_original_sound": True},
@@ -195,8 +197,7 @@ def test_public_model_schema_explains_original_sound_requires_kie():
     })
     field = next(item for item in schema["fields"] if item["name"] == "keep_original_sound")
     assert field["control"] == "toggle"
-    assert "KIE" in field["label"]
-    assert "Нейроныч" in field["label"]
+    assert field["label"] == "Сохранить звук исходного видео"
     for name in ("elements", "voices"):
         other = next(item for item in schema["fields"] if item["name"] == name)
-        assert "KIE" in other["label"]
+        assert "KIE" not in other["label"]
