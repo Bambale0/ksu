@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select
 
 from app.api.deps import CurrentUserDep, OptionalCurrentUserDep, RedisDep, SessionDep
+from app.core.generation_errors import kling4_public_failure_message
 from app.db.history_models import GenerationHistoryState
 from app.db.media_models import MediaAsset
 from app.db.models import Generation
@@ -170,6 +171,12 @@ def _generation_view(
     private_seedance_replay = is_private_seedance_author_replay(generation)
     prompt_hidden = trend_hidden or private_seedance_replay
     public_error = generation.error
+    if str(params.get("_model_id") or "") == "kling-4.0" and public_error:
+        public_error = (
+            kling4_public_failure_message(public_error)
+            if generation.status == "failed"
+            else "Создание видео ещё выполняется. Продолжаем обработку запроса."
+        )
     if private_seedance_replay and public_error:
         public_error = "Не удалось создать повтор. Попробуйте ещё раз."
     model = _model_view(generation)
