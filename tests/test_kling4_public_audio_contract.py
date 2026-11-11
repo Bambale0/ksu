@@ -7,6 +7,7 @@ at the native boundary without discarding original-sound intent.
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import datetime, timezone
 import uuid
 
 import pytest
@@ -100,6 +101,7 @@ def make_generation(model_id="kling-4.0", error="Kie createTask rejected: Credit
         id=uuid.uuid4(), user_id=uuid.uuid4(), kind="video",
         status="failed", cost_rox=Decimal("25.00"),
         provider="kie", error=error, prompt="A blue cube",
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
         parameters={"_model_id": model_id, "_model_title": "Kling 4.0", "_media_type": "video"},
     )
 
