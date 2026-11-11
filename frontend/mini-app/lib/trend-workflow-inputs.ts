@@ -82,8 +82,22 @@ export function workflowInputError(inputs: TrendAdminInput[], prompt: string, ca
   return "";
 }
 
+export function klingTrendRequiredImages(prompt: string): number {
+  const matches = Array.from(prompt.matchAll(/@image_([1-9][0-9]*)(?!\\w)/gi));
+  if (!matches.length) return 0;
+  const values = matches.map((match) => Number(match[1])).filter((value) => Number.isSafeInteger(value));
+  return values.length ? Math.max(...values) : 0;
+}
+
 export function trendSaveError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
+  if (/Undeclared reference @image[_ ]?([1-9][0-9]*)/i.test(message)) {
+    const number = message.match(/@image[_ ]?([1-9][0-9]*)/i)?.[1];
+    return `Для промпта требуется фото №${number || "2"}. Укажите правильное количество изображений в шаблоне.`;
+  }
+  if (/HTTP 50[234]|Bad Gateway|gateway timeout|service unavailable/i.test(message)) {
+    return "Не удалось подтвердить сохранение: временная ошибка связи с сервером. Проверьте список трендов и повторите попытку, если записи нет.";
+  }
   if (message.includes("@ImageN") || message.includes("ordered image input slots")) {
     return "Проверьте поля фото и номера @Image в промптах обоих шагов. В шаге видео используется только @Image1.";
   }
