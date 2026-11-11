@@ -120,6 +120,8 @@ class TrendService:
             if template_video_raw else None
         )
         if template_video_url:
+            if preview_url == template_video_url:
+                raise TrendRecipeError("Upload a separate public trend preview; pinned video is a private recipe input")
             if spec.id != "kling-4.0":
                 raise TrendRecipeError("Pinned template video is supported only by Kling 4.0 Omni")
             if input_mode != "image" or payload.get("min_references") != 2 or payload.get("max_references") != 2:
