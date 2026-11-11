@@ -338,7 +338,7 @@ async def upload_template_video(
     from app.api.v1.trends import _inline_admin
     from app.db.reference_models import TemplateVideoReference
     from app.services.admin_policy import AdminPolicyError
-    from app.services.template_video import KLING_VIDEO_MAX_BYTES, TemplateVideoService
+    from app.services.template_video import KLING_VIDEO_MAX_BYTES
 
     try:
         await _inline_admin(session, user_id=user.id)
