@@ -1,3 +1,10 @@
+## Active Fix Execution — Kling 4 preserved audio and exhausted KIE (2026-11-11)
+
+- Production cause proven via database/log correlation: route revision 10 is Neironych→KIE, but `keep_original_sound=true` with video forces pre-spend KIE fallback. KIE rejects some videos with insufficient supplier credits; several generations succeed with KIE. KIE API balance at inspection: 119.73 credits, not a sufficient guarantee for any selected task duration. No user-level route overrides.
+- Source of truth: KIE API states `keep_original_sound=false` is default; Neironych currently lacks an original-audio preservation control. Do not silently drop true or invent a substitute field.
+- Fix: explicit false stays Neironych; true with video/unsupported named elements or voices selects KIE at admission; incompatible KIE-free routes fail before ROX debit; UI warns KIE-only; certain KIE 402 is localized and existing refund remains idempotent. Other models and accepted historical tasks unchanged.
+- [Full execution/verification ledger](docs/agents/EXECUTION/kling4-audio-routing-20261111.md). No supplier credit or tariff modifications, no production claim before gates.
+
 ## Active Fix Execution — Kling 4 reference alias quote failure (2026-11-09)
 
 - Baseline `main@aff35968cb9a7117db516fc70bb7da6443157f9f`, production image matches. User-visible symptom: `Undeclared reference @image1` and a missing Kling 4.0 quote; repeated `POST /generations/quote` HTTP 422 on 2026-11-09 (not individually correlated to screenshot because logs omit error details).
