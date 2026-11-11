@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Generation
 from app.services.generation_reliability import GenerationOutboxService
-from app.services.generation_provider_routing import configured_route
+from app.services.generation_provider_routing import configured_route, select_kling4_route
 from app.services.generations import GenerationService
 from app.services.model_catalog import ModelCatalog, ModelSpec
 from app.services.model_presentation import public_model_title
@@ -166,6 +166,9 @@ async def enqueue_generation(
     provider_route, route_revision = await configured_route(
         session, prepared.spec.id, user_id=user_id,
     )
+    provider_route, route_reason = select_kling4_route(
+        prepared.spec.id, prepared.clean, provider_route,
+    )
     generation_parameters = {
         **prepared.clean,
         "_model_id": prepared.spec.id,
@@ -190,6 +193,8 @@ async def enqueue_generation(
             else {}
         ),
     }
+    if route_reason:
+        generation_parameters["_provider_route_reason"] = route_reason
     if provider_route:
         generation_parameters["_provider_route"] = list(provider_route)
         generation_parameters["_provider_route_index"] = 0
