@@ -145,9 +145,14 @@ class GenerationProviderService:
         disposition = cls._submission_error_disposition(exc)
         if disposition == "permanent":
             public_error = str(exc)
-            if isinstance(exc, KieProviderError) and (
-                exc.code == 402 or "credits insufficient" in public_error.lower()
-            ):
+            supplier_balance_rejected = (
+                isinstance(exc, KieProviderError) and (
+                    exc.code == 402 or "credits insufficient" in public_error.lower()
+                )
+            ) or (
+                isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 402
+            )
+            if supplier_balance_rejected:
                 current = await session.get(Generation, generation_id)
                 params = current.parameters if current is not None else {}
                 original_sound = (
