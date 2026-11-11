@@ -40,7 +40,9 @@ def test_generated_audio_is_compatible_with_neironych(value):
 
 @pytest.mark.parametrize("value", [None, False])
 def test_no_video_input_has_no_original_sound_semantics(value):
-    original = {"prompt": "A blue cube", "duration": 3, "resolution": "720p", "keep_original_sound": value}
+    original = {"prompt": "A blue cube", "duration": 3, "resolution": "720p"}
+    if value is not None:
+        original["keep_original_sound"] = value
     prepared = prepare_neironych_kling_input(original)
     assert "keep_original_sound" not in prepared
 
