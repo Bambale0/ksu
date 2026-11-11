@@ -13,7 +13,8 @@ from app.services.generation_provider import GenerationProviderService
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("original_sound", [True, False])
-async def test_kie_insufficient_supplier_balance_is_clear_and_refunded_once(monkeypatch, original_sound):
+@pytest.mark.parametrize("charged", [True, False])
+async def test_kie_insufficient_supplier_balance_is_clear_and_refunded_once(monkeypatch, original_sound, charged):
     generation_id = uuid.uuid4()
     params = {
         "_model_id": "kling-4.0",
@@ -21,7 +22,7 @@ async def test_kie_insufficient_supplier_balance_is_clear_and_refunded_once(monk
         "keep_original_sound": original_sound,
     }
     session = AsyncMock()
-    session.get = AsyncMock(return_value=SimpleNamespace(parameters=params))
+    session.get = AsyncMock(return_value=SimpleNamespace(parameters=params, cost_rox="100" if charged else "0"))
     refunded = AsyncMock()
     monkeypatch.setattr(GenerationProviderService, "fail_and_refund", refunded)
     disposition = await GenerationProviderService._record_submission_error(
@@ -31,7 +32,8 @@ async def test_kie_insufficient_supplier_balance_is_clear_and_refunded_once(monk
     refunded.assert_awaited_once()
     args = refunded.await_args.args
     assert args[1] == generation_id
-    assert "ROX возвращены" in args[2]
+    assert ("Оплаченные ROX возвращены" in args[2]) is charged
+    assert ("ROX не списаны" in args[2]) is (not charged)
     assert "недостаточно кредитов" in args[2]
     assert ("Сохранить исходный звук" in args[2]) is original_sound
 
