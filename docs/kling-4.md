@@ -135,3 +135,27 @@ The user API and Telegram failure messages for Kling 4.0 do not expose
 supplier brand names, routes, upstream codes or credentials; internal logs
 retain enough provenance for incident reconciliation. This is presentation
 sanitization, not deletion of technical error evidence.
+
+
+## Curated Kling 4.0 video trend with two photos
+
+Administrator creates an ordinary one-stage Kling 4.0 trend with a permanently
+uploaded **video input** in the dedicated admin-only upload field, which is
+separate from the publicly displayed preview. Visitor uploads exactly two
+photos, no video. The hidden prompt may use `@image_1`, `@image_2` and
+`@video_1`. Server injects two customer image URLs and the protected pinned
+video URL in a scoped Trend generation, with price calculated from the existing
+model configuration (including the video reference multiplier).
+
+If a non-pinned Kling prompt refers to `@image_2`, server normalization
+automatically declares at least two image slots and preflight validates two
+distinct placeholders before any billing. A prompt referring to a video without
+a pinned clip returns a clear preflight error. The admin editor also synchronizes
+the photo fields, displays actionable validation and 502 messages and keeps
+idempotency keys stable for repeated identical create/update submissions.
+
+For pinned clips: product-owned verified MP4/MOV, 2–30 seconds and 10 MB cap,
+separate additive `template_video_references` metadata from migration 0045.
+The public DTO never exposes the private clip or hidden prompt; clients cannot
+substitute a video or modify fixed ratio/quality. Never replay a timed-out
+paid generation blindly. The supplier route remains runtime configurable.
