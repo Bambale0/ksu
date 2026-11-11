@@ -902,7 +902,7 @@ export function InlineTrendAdmin() {
         setError(`В промпте указано фото №${klingImages}, но модель поддерживает не более ${capacity} фото.`);
         return;
       }
-      if (model.id === "kling-4.0" && /@video_1\\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
+      if (model.id === "kling-4.0" && /@video_1\b/i.test(draft.prompt) && !draft.templateVideoUrl) {
         setError("В промпте указано видео @video_1. Сначала загрузите постоянное видео для шаблона.");
         return;
       }
