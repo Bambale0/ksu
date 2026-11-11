@@ -180,6 +180,13 @@ function idempotencyKey(prefix: string): string {
   return `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 }
 
+class TrendAdminHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "TrendAdminHttpError";
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -194,7 +201,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload?.detail ?? payload?.message ?? `HTTP ${response.status}`;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new TrendAdminHttpError(typeof detail === "string" ? detail : JSON.stringify(detail), response.status);
   }
   return payload as T;
 }
@@ -204,6 +211,27 @@ function writeHeaders(prefix: string): Record<string, string> {
     "Idempotency-Key": idempotencyKey(prefix),
     "X-Request-Id": idempotencyKey("trend-ui"),
   };
+}
+
+// Only trend admin create/update are retried: those writes use the same
+// idempotency token even when a gateway has lost a successful response.
+// Bounded recovery handles short API rotations without repeating a mutation.
+async function sendAdminWrite<T>(path: string, method: "POST" | "PATCH",
+  save: ReturnType<typeof retryableWrite>): Promise<T> {
+  const delaysMs = [0, 800, 2300];
+  for (const [attempt, delay] of delaysMs.entries()) {
+    if (delay) await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    try {
+      return await request<T>(path, {
+        method, headers: save.headers, body: JSON.stringify(save.normalized),
+      });
+    } catch (error) {
+      if (!(error instanceof TrendAdminHttpError)
+        || ![502, 503, 504].includes(error.status)
+        || attempt === delaysMs.length - 1) throw error;
+    }
+  }
+  throw new Error("Не удалось сохранить тренд");
 }
 
 // A gateway timeout can happen *after* a write commits. Reuse the same
@@ -248,11 +276,7 @@ export const trendAdminApi = {
       ? `/api/v1/trend-collections/manage/${encodeURIComponent(collectionId)}/items`
       : "/api/v1/trends/manage";
     const save = retryableWrite(collectionId ? "folder-trend-create" : "trend-create", path, body);
-    const item = await request<TrendAdminItem>(path, {
-      method: "POST",
-      headers: save.headers,
-      body: JSON.stringify(save.normalized),
-    });
+    const item = await sendAdminWrite<TrendAdminItem>(path, "POST", save);
     pendingTrendWrites.delete(save.fingerprint);
     clearTrendCollectionTarget();
     return item;
@@ -260,11 +284,7 @@ export const trendAdminApi = {
   update: async (id: string, body: TrendWriteBody) => {
     const path = `/api/v1/trends/manage/${encodeURIComponent(id)}`;
     const save = retryableWrite("trend-update", path, body);
-    const result = await request<TrendAdminItem>(path, {
-      method: "PATCH",
-      headers: save.headers,
-      body: JSON.stringify(save.normalized),
-    });
+    const result = await sendAdminWrite<TrendAdminItem>(path, "PATCH", save);
     pendingTrendWrites.delete(save.fingerprint);
     return result;
   },
