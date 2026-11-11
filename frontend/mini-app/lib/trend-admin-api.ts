@@ -60,6 +60,7 @@ export type TrendAdminV1Payload = TrendAdminPayloadBase & {
   input_mode?: "none" | "image" | string;
   min_references?: number;
   max_references?: number;
+  template_video_url?: string | null;
 };
 
 export type TrendAdminInput = {

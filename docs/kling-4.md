@@ -78,3 +78,25 @@ Kling 4.0 is now published by Neironych's authenticated catalog enable gate.
 KSU rollout still requires partner-native acceptance, exact-head CI, deployment
 verification and the audited admin route switch. Until that switch, Kie remains
 primary; this section does not claim an already completed KSU rollout.
+
+## Curated trend with administrator-owned video (2026-11-11)
+
+An admin can create a one-stage Kling 4.0 reference-mode Trend with one fixed,
+verified template clip and exactly two visitor photos. In the Mini App's
+**Тренды → Добавить** editor choose `Kling 4.0`, upload the permanent MP4/MOV
+under **Постоянное видео для Kling 4.0**, then select a fixed video format and
+quality and set a hidden prompt using `@image_1`, `@image_2` and `@video_1`.
+The editor locks customer photo minimum/maximum to two. Upload a separate
+public preview; the video input URL is not used as a preview.
+
+The clip is stored through `/uploads/template-video` with independently
+verified metadata and cannot be pruned as an ordinary user's reference. The
+public client sees two photo slots and a single Generate action; the server
+composes `image_urls=[customer_photo_1,customer_photo_2]` and
+`video_urls=[admin_video]` only in a scoped Trend generation. This does not
+enable template clips in ordinary customer Kling create requests.
+
+Existing video-reference ×2 pricing is retained, with unit prices and provider
+routing sourced from the current admin runtime configuration. Paid provider
+quality and fidelity still need live acceptance; static contracts and mocked
+browser tests alone do not prove source-video imitation.
