@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.generation_errors import prompt_length_failure_message, kling4_public_failure_message
+from app.core.generation_errors import kling4_public_failure_message, prompt_length_failure_message
 from app.core.logging import configure_logging
 from app.core.observability import record_worker_heartbeat, request_id_var
 from app.db.models import Generation, Notification, User
@@ -349,10 +349,17 @@ def _generation_failure_text(generation: Generation) -> str:
             refund = f"\nСписанные {_money(generation.cost_rox)} ROX возвращены на баланс."
     except Exception:  # noqa: BLE001 - copy fallback only
         pass
+    model_id = str((generation.parameters or {}).get("_model_id") or "")
+    if model_id == "kling-4.0":
+        reason = kling4_public_failure_message(generation.error) or (
+            "Сервис генерации завершил задачу с ошибкой."
+        )
+    else:
+        reason = _friendly_generation_error(generation.error)
     return (
         "❌ Генерация не выполнена\n\n"
         f"{_generation_model_title(generation)}\n"
-        f"{kling4_public_failure_message(generation.error) if (generation.parameters or {}).get('_model_id') == 'kling-4.0' else _friendly_generation_error(generation.error)}"
+        f"{reason}"
         f"{refund}\n\nUUID задачи: {generation.id}"
     )
 
