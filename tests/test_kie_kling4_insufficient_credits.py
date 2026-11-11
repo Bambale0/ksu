@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import uuid
+
+import httpx
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -50,3 +52,22 @@ async def test_kie_ambiguous_task_acceptance_is_not_relabelled_as_balance_failur
     ambiguous = KieProviderError("Kie createTask returned task ID with error code 402")
     assert await GenerationProviderService._record_submission_error(session, generation_id, ambiguous) == "uncertain"
     fail.assert_not_awaited()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [402])
+async def test_kie_http_insufficient_credit_response_is_localized_and_refunded(monkeypatch, status_code):
+    generation_id = uuid.uuid4()
+    request = httpx.Request("POST", "https://api.kie.ai/api/v1/jobs/createTask")
+    response = httpx.Response(status_code, request=request, json={"code": status_code, "msg": "Credits insufficient", "data": {}})
+    exc = httpx.HTTPStatusError("provider returned 402", request=request, response=response)
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=SimpleNamespace(
+        parameters={"_model_id": "kling-4.0", "video_urls": ["https://cdn.example/v.mp4"], "keep_original_sound": True},
+        cost_rox="100",
+    ))
+    refund = AsyncMock()
+    monkeypatch.setattr(GenerationProviderService, "fail_and_refund", refund)
+    assert await GenerationProviderService._record_submission_error(session, generation_id, exc) == "permanent"
+    refund.assert_awaited_once()
+    assert "Оплаченные ROX возвращены" in refund.await_args.args[2]
+    assert "Нейроныча" in refund.await_args.args[2]
