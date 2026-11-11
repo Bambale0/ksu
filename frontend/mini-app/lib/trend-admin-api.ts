@@ -206,6 +206,26 @@ function writeHeaders(prefix: string): Record<string, string> {
   };
 }
 
+// A gateway timeout can happen *after* a write commits. Reuse the same
+// idempotency key when exactly the same admin save is retried, so a 502
+// never creates duplicate trends. Only a confirmed success releases the key.
+const pendingTrendWrites = new Map<string, string>();
+
+function retryableWrite(prefix: string, path: string, body: TrendWriteBody) {
+  const normalized = normalizeWriteBody(body);
+  const fingerprint = JSON.stringify([prefix, path, normalized]);
+  let key = pendingTrendWrites.get(fingerprint);
+  if (!key) {
+    key = idempotencyKey(prefix);
+    pendingTrendWrites.set(fingerprint, key);
+  }
+  return {
+    normalized,
+    fingerprint,
+    headers: { "Idempotency-Key": key, "X-Request-Id": idempotencyKey("trend-ui") },
+  };
+}
+
 export const trendAdminApi = {
   list: async (): Promise<TrendAdminList> => {
     const [managed, publicCatalog] = await Promise.all([
@@ -227,19 +247,27 @@ export const trendAdminApi = {
     const path = collectionId
       ? `/api/v1/trend-collections/manage/${encodeURIComponent(collectionId)}/items`
       : "/api/v1/trends/manage";
+    const save = retryableWrite(collectionId ? "folder-trend-create" : "trend-create", path, body);
     const item = await request<TrendAdminItem>(path, {
       method: "POST",
-      headers: writeHeaders(collectionId ? "folder-trend-create" : "trend-create"),
-      body: JSON.stringify(normalizeWriteBody(body)),
+      headers: save.headers,
+      body: JSON.stringify(save.normalized),
     });
+    pendingTrendWrites.delete(save.fingerprint);
     clearTrendCollectionTarget();
     return item;
   },
-  update: (id: string, body: TrendWriteBody) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: writeHeaders("trend-update"),
-    body: JSON.stringify(normalizeWriteBody(body)),
-  }),
+  update: async (id: string, body: TrendWriteBody) => {
+    const path = `/api/v1/trends/manage/${encodeURIComponent(id)}`;
+    const save = retryableWrite("trend-update", path, body);
+    const result = await request<TrendAdminItem>(path, {
+      method: "PATCH",
+      headers: save.headers,
+      body: JSON.stringify(save.normalized),
+    });
+    pendingTrendWrites.delete(save.fingerprint);
+    return result;
+  },
   hide: (id: string) => request<TrendAdminItem>(`/api/v1/trends/manage/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: writeHeaders("trend-hide"),
