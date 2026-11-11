@@ -15,7 +15,7 @@ from app.services.billing_access import BillingAccessService
 from app.services.credits import InternalCreditService
 from app.services.generation_reliability import GenerationOutboxService
 from app.services.generation_progress import enqueue_generation_progress
-from app.services.generation_provider_routing import configured_route
+from app.services.generation_provider_routing import configured_route, select_kling4_route
 from app.services.model_catalog import InvalidModelParametersError, ModelCatalog, ModelSpec
 from app.services.model_routing import resolve_model_request, video_references
 from app.services.seedance25_contract import normalize_seedance25_input
@@ -384,6 +384,11 @@ class GenerationService:
                 else:
                     info["current_user_id"] = previous_owner
 
+        provider_route, route_revision = await configured_route(session, spec.id, user_id=user_id)
+        provider_route, provider_route_reason = select_kling4_route(
+            spec.id, clean, provider_route,
+        )
+
         billing = await BillingAccessService.decision(
             session,
             user_id=user_id,
@@ -407,7 +412,6 @@ class GenerationService:
         )
 
         provider_model = cls._provider_model_snapshot(spec, clean)
-        provider_route, route_revision = await configured_route(session, spec.id, user_id=user_id)
         batch_id = uuid.uuid4() if requested > 1 else None
         generations: list[Generation] = []
         for index in range(1, requested + 1):
@@ -424,6 +428,8 @@ class GenerationService:
                 batch_index=index,
                 batch_size=requested,
             )
+            if provider_route_reason:
+                generation_parameters["_provider_route_reason"] = provider_route_reason
             if provider_route:
                 generation_parameters["_provider_route"] = list(provider_route)
                 generation_parameters["_provider_route_index"] = 0
