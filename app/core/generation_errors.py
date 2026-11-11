@@ -35,7 +35,7 @@ def kling4_public_failure_message(error: str | None) -> str | None:
     if any(marker in lowered for marker in (
         "credits insufficient", "недостаточно кредитов",
         "supplier_balance", "insufficient balance", "402",
-        "roх не списаны", "rox не списаны",
+        "rox не списаны", "создание видео временно недоступно",
     )):
         return "Создание видео временно недоступно. Попробуйте повторить позже."
     if "timeout" in lowered or "timed out" in lowered or "таймаут" in lowered:
